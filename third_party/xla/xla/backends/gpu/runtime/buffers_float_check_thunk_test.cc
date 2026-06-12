@@ -94,6 +94,8 @@ template <>
 constexpr PrimitiveType kPrimitiveTypeOf<float> = PrimitiveType::F32;
 template <>
 constexpr PrimitiveType kPrimitiveTypeOf<Eigen::bfloat16> = PrimitiveType::BF16;
+template <>
+constexpr PrimitiveType kPrimitiveTypeOf<Eigen::half> = PrimitiveType::F16;
 
 class BuffersDebugFloatCheckThunkTest : public ::testing::Test {
  protected:
@@ -126,7 +128,8 @@ template <typename T>
 class BuffersDebugFloatCheckThunkTypedTest
     : public BuffersDebugFloatCheckThunkTest {};
 
-using FloatTypes = ::testing::Types<Eigen::bfloat16, float, double>;
+using FloatTypes =
+    ::testing::Types<Eigen::bfloat16, Eigen::half, float, double>;
 TYPED_TEST_SUITE(BuffersDebugFloatCheckThunkTypedTest, FloatTypes);
 
 TYPED_TEST(BuffersDebugFloatCheckThunkTypedTest, CalculatesNanCounts) {

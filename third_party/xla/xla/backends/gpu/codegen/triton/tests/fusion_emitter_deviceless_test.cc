@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -73,8 +74,8 @@ ENTRY entry {
       "kind":"__triton",
       "block_level_fusion_config": {"output_tiles":[{"sizes": ["1","1"]}]}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloText));
   const HloFusionInstruction* triton_fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
   const se::DeviceDescription dev_info =
@@ -131,8 +132,8 @@ ENTRY entry {
         "is_tma_allowed":false}}}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloText));
   const HloFusionInstruction* triton_fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
   const se::DeviceDescription dev_info =
@@ -179,7 +180,7 @@ ENTRY entry {
 
   // Check that we extract the launch configuration correctly when warp
   // specialization is used.
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto* fusion = Cast<HloFusionInstruction>(
       module->entry_computation()->root_instruction());
   const se::DeviceDescription dev_info = TestGpuDeviceInfo::B200SXMDeviceInfo();
@@ -188,7 +189,7 @@ ENTRY entry {
   std::string data_layout = nvptx::DataLayout();
   mlir::MLIRContext mlir_context;
   RegisterSymbolicExprStorage(&mlir_context);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       TritonWrapperResult result,
       TritonWrapper("test_fn", *fusion, se::CudaComputeCapability::Blackwell(),
                     dev_info,
@@ -209,6 +210,78 @@ ENTRY entry {
   EXPECT_EQ(result.thread_dims.x, 384);
   EXPECT_EQ(result.thread_dims.y, 1);
   EXPECT_EQ(result.thread_dims.z, 1);
+}
+
+TEST_F(TritonEmitterDevicelessTest, ScanEmitOk) {
+  const std::string kHloText = R"(
+scan_computation {
+  p_carry = f32[] parameter(0)
+  p_input = f32[] parameter(1)
+  add = f32[] add(p_carry, p_input)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+fusion_computation {
+  p0 = f32[1024]{0} parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1024]{0}, f32[]) scan(p0, p1), dimensions={0}, num_carries=1, is_associative=true, to_apply=scan_computation
+  ROOT gte = f32[1024]{0} get-tuple-element(scan), index=0
+}
+
+ENTRY main {
+  param0 = f32[1024]{0} parameter(0)
+  param1 = f32[] parameter(1)
+  ROOT triton_fusion = f32[1024]{0} fusion(param0, param1), kind=kCustom, calls=fusion_computation, backend_config={
+    "fusion_backend_config": {
+      "kind": "__triton_nested_gemm_fusion",
+      "block_level_fusion_config": {
+        "output_tiles": [{"sizes": ["1024"]}],
+        "num_warps": 4,
+        "num_ctas": 1,
+        "num_stages": 1
+      }
+    }
+  }
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  const HloFusionInstruction* triton_fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  const se::DeviceDescription dev_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+  ASSERT_OK_AND_ASSIGN(auto backend_config,
+                       triton_fusion->backend_config<GpuBackendConfig>());
+
+  ASSERT_OK_AND_ASSIGN(
+      TritonKernelSource triton_source,
+      CreateTritonModule("test_fn", *triton_fusion, dev_info,
+                         BlockLevelParameters::FromBlockLevelFusionConfig(
+                             backend_config.fusion_backend_config()
+                                 .block_level_fusion_config()),
+                         mlir_context));
+
+  std::string triton_mlir = triton_source.ToString();
+
+  constexpr absl::string_view kPattern = R"(
+// CHECK-LABEL: @test_fn
+// CHECK:         %[[EXTRACT:.*]] = xtile.extract %arg0[%c0] [1024] [1] : memref<1024xf32> -> tensor<1024xf32>
+// CHECK:         %[[EXTRACT_0:.*]] = xtile.extract %arg1[] [] [] : memref<f32> -> tensor<f32>
+// CHECK:         %[[SCAN:.*]] = xtile.scan(%[[EXTRACT]]) inits(%[[EXTRACT_0]]) dimension = 0 {scan_dim_size = 1024 : i64} : (tensor<1024xf32>), (tensor<f32>) -> (tensor<1024xf32>), (tensor<1024xf32>) {
+// CHECK:           %[[EXTRACT_1:.*]] = tensor.extract %arg5[] : tensor<f32>
+// CHECK:           %[[EXTRACT_2:.*]] = tensor.extract %arg4[] : tensor<f32>
+// CHECK:           %[[ADD:.*]] = arith.addf %[[EXTRACT_2]], %[[EXTRACT_1]] : f32
+// CHECK:           %[[FROM_ELEMENTS:.*]] = tensor.from_elements %[[ADD]] : tensor<f32>
+// CHECK:           stablehlo.return %[[FROM_ELEMENTS]], %[[FROM_ELEMENTS]] : tensor<f32>, tensor<f32>
+// CHECK:         xtile.insert %outputs into %arg2[%c0] [1024] [1] : tensor<1024xf32> -> memref<1024xf32>
+)";
+
+  EXPECT_THAT(RunFileCheck(triton_mlir, kPattern),
+              absl_testing::IsOkAndHolds(true))
+      << triton_mlir;
 }
 
 }  // namespace

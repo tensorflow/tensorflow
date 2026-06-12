@@ -107,6 +107,7 @@ xla_cc_test(
     tags = ["no_oss"],  # Doesn't pass in OSS when building with the `fusion_emitter_stub`.
     deps = [
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/codegen/triton:triton_kernel_source",
         "//xla/backends/gpu/codegen/triton:xtile_compiler",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
