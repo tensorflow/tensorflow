@@ -24,7 +24,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import cond as tf_cond
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
@@ -68,7 +67,15 @@ triangular_solve = linalg_ops.matrix_triangular_solve
 @tf_export('linalg.logdet')
 @dispatch.add_dispatch_support
 def logdet(matrix, name=None):
-  """Computes log of the determinant of a hermitian positive definite matrix.
+  """Computes log of the determinant of a square matrix.
+
+  Uses LU decomposition via ``tf.linalg.slogdet`` internally, so it works
+  for any non-singular matrix, not just hermitian positive definite (HPD)
+  matrices.
+
+  For real matrices whose determinant is negative the result will be NaN,
+  since the logarithm of a negative real number is undefined.  Use
+  ``tf.linalg.slogdet`` directly if you need to handle negative determinants.
 
   ```python
   # Compute the determinant of a matrix while reducing the chance of over- or
@@ -87,16 +94,12 @@ def logdet(matrix, name=None):
 
   @compatibility(numpy)
   Equivalent to numpy.linalg.slogdet, although no sign is returned since only
-  hermitian positive definite matrices are supported.
+  the log-determinant is computed.
   @end_compatibility
   """
-  # This uses the property that the log det(A) = 2*sum(log(real(diag(C))))
-  # where C is the cholesky decomposition of A.
   with ops.name_scope(name, 'logdet', [matrix]):
-    chol = gen_linalg_ops.cholesky(matrix)
-    return 2.0 * math_ops.reduce_sum(
-        math_ops.log(math_ops.real(array_ops.matrix_diag_part(chol))),
-        axis=[-1])
+    sign, log_abs_det = gen_linalg_ops.log_matrix_determinant(matrix)
+    return log_abs_det + math_ops.log(sign)
 
 
 @tf_export('linalg.adjoint')
