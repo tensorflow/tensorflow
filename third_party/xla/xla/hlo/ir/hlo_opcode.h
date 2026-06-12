@@ -97,6 +97,7 @@ namespace xla {
   V(kCos, "cosine", 1)                                                         \
   V(kCosh, "cosh", 1)                                                          \
   V(kCustomCall, "custom-call", kHloOpcodeIsVariadic)                          \
+  V(kDataflow, "dataflow", 1)                                                  \
   V(kDivide, "divide", 2)                                                      \
   V(kDomain, "domain", 1)                                                      \
   V(kDot, "dot", 2)                                                            \

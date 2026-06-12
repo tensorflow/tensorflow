@@ -346,6 +346,8 @@ class HloOpcode(enum.Enum):
 
   kXor = 132
 
+  kDataflow = 133
+
 class Layout:
   @overload
   def __init__(self, arg: Sequence[int], /) -> None: ...

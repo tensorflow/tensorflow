@@ -780,6 +780,7 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSetDimensionSize:
+    case HloOpcode::kDataflow:
       return true;
     default:
       return false;

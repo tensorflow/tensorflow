@@ -1182,6 +1182,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kMultiply:
     case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
+    case HloOpcode::kDataflow:
     case HloOpcode::kNot:
     case HloOpcode::kPopulationCount:
     case HloOpcode::kOr:
