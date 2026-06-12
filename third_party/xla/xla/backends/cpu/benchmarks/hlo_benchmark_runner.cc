@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/mem.h"
 #include "tsl/platform/path.h"
 
 namespace xla::cpu {
@@ -354,6 +355,16 @@ absl::Status CompileHloBenchmark(benchmark::State& state,
     ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                      client->CompileAndLoad(computation, compile_options));
     tsl::testing::DoNotOptimize(executable);
+
+    // Compiling uses a lot of memory; running it repeatedly in a benchmark
+    // loop would trigger lots of allocation/deallocation. So we only compile
+    // once at the beginning of each iteration, and then release the memory
+    // immediately to prevent OOMs.
+    executable.reset();
+    state.PauseTiming();
+    // Purge all per-thread caches to OS.
+    tsl::port::MallocExtension_ReleaseToSystem(static_cast<size_t>(-1));
+    state.ResumeTiming();
   }
 
   return absl::OkStatus();
