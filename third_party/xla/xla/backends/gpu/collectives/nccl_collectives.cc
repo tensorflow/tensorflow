@@ -248,6 +248,11 @@ static auto DeviceRanksToString(
   });
 }
 
+static auto DevicesToString(absl::Span<const GlobalDeviceId> devices) {
+  return absl::StrFormat("%zu:[%s]", devices.size(),
+                         HumanReadableDevices(devices));
+}
+
 static ncclComm_t Cast(const Communicator* comm) {
   auto* nccl_communicator = absl::down_cast<const NcclCommunicator*>(comm);
   CHECK(nccl_communicator != nullptr) << "Unsupported XLA communicator";
@@ -362,10 +367,11 @@ NcclCollectives::CreateCommunicatorsWithCancel(
   VLOG(1) << absl::StreamFormat(
       "[%s] [ranks=%s] Initialize NCCL (compiled with %s, linked with %s) "
       "communicators for %d local devices (out of %d global devices); "
-      "size(id)=%zu; fingerprint(id)=%v",
+      "devices=%s; size(id)=%zu; fingerprint(id)=%v",
       DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks),
       FormatNcclVersion(NCCL_VERSION_CODE), FormatNcclVersion(nccl_version),
-      ranks.size(), clique_key.num_devices(), clique_ids->size(),
+      ranks.size(), clique_key.num_devices(),
+      DevicesToString(clique_key.devices()), clique_ids->size(),
       clique_ids->fingerprint());
 
   const auto& gpu_config =
@@ -424,9 +430,12 @@ NcclCollectives::CreateCommunicatorsWithCancel(
 
     absl::Time init_done = absl::Now();
     VLOG(1) << absl::StreamFormat(
-        "[%d] [rank=%v] Initialized NCCL communicator for rank %v of %d in %v",
-        device_ordinal, ranks[i].rank, ranks[i].rank, num_ranks,
-        init_done - init_start);
+        "[%d] [rank=%v] Initialized NCCL communicator %p for rank %v of %d "
+        "in %v; devices=%s; size(id)=%zu; fingerprint(id)=%v",
+        device_ordinal, ranks[i].rank, static_cast<const void*>(comm),
+        ranks[i].rank, num_ranks, init_done - init_start,
+        DevicesToString(clique_key.devices()), clique_ids->size(),
+        clique_ids->fingerprint());
 
     return comm;
   };
@@ -443,8 +452,8 @@ NcclCollectives::CreateCommunicatorsWithCancel(
                                    cancel, gpu_config.async_execution);
       if (!comm.ok()) {
         LOG(ERROR) << absl::StreamFormat(
-            "[%d] [rank=%v] Failed to create NCCL communicator: %s",
-            DeviceOrdinal(ranks[i]), ranks[i].rank, comm.status().ToString());
+            "[%d] [rank=%v] Failed to create NCCL communicator: %v",
+            DeviceOrdinal(ranks[i]), ranks[i].rank, comm.status());
       }
       return Cast(std::move(comm));
     });
@@ -493,23 +502,25 @@ NcclCollectives::SplitCommunicatorsWithCancel(
     });
 
     absl::Time split_start = absl::Now();
+    ncclComm_t parent_comm = Cast(comms[i]);
     VLOG(1) << absl::StreamFormat(
-        "[%d] [rank=%v] Split NCCL communicator %p with color %d "
-        "and key %v",
-        device_ordinal, rank, static_cast<const void*>(comms[i]), color, key);
+        "[%d] [rank=%v] Split NCCL communicator %p with color %d and key %v",
+        device_ordinal, rank, static_cast<const void*>(parent_comm), color,
+        key);
 
     ASSIGN_OR_RETURN(ncclConfig_t comm_config,
                      AsNcclConfig(gpu_config, stream_executors[i]));
 
     ncclComm_t split_comm;
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(Cast(comms[i]), color, key.value(),
+    XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(parent_comm, color, key.value(),
                                            &split_comm, &comm_config));
 
     absl::Time split_done = absl::Now();
     VLOG(1) << absl::StreamFormat(
-        "[%d] [rank=%v] Split NCCL communicator %p with color %d "
+        "[%d] [rank=%v] Split NCCL communicator %p -> %p with color %d "
         "and key %v in %v",
-        device_ordinal, rank, static_cast<const void*>(comms[i]), color, key,
+        device_ordinal, rank, static_cast<const void*>(parent_comm),
+        static_cast<const void*>(split_comm), color, key,
         split_done - split_start);
 
     return split_comm;
@@ -527,8 +538,8 @@ NcclCollectives::SplitCommunicatorsWithCancel(
                                    cancel, gpu_config.async_execution);
       if (!comm.ok()) {
         LOG(ERROR) << absl::StreamFormat(
-            "[%d] [rank=%v] Failed to split NCCL communicator: %s",
-            DeviceOrdinal(ranks[i]), ranks[i].rank, comm.status().ToString());
+            "[%d] [rank=%v] Failed to split NCCL communicator: %v",
+            DeviceOrdinal(ranks[i]), ranks[i].rank, comm.status());
       }
       return Cast(std::move(comm));
     });

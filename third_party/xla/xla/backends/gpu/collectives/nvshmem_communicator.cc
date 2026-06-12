@@ -148,7 +148,7 @@ NvshmemCommunicator::NvshmemCommunicator(NvshmemCollectives* collectives)
 }
 
 absl::Status NvshmemCommunicator::Abort() {
-  VLOG(1) << "Abort NVSHMEM communicator: " << ToString();
+  VLOG(1) << "Abort NVSHMEM communicator: " << *this;
   if (aborted_) {
     return FailedPrecondition("NvshmemCommunicator aborted");
   }
@@ -165,7 +165,7 @@ absl::Status NvshmemCommunicator::Abort() {
 
 absl::Status NvshmemCommunicator::Barrier(
     const Communicator::Executor& executor) {
-  VLOG(1) << "Barrier NVSHMEM communicator: " << ToString();
+  VLOG(1) << "Barrier NVSHMEM communicator: " << *this;
   if (aborted_) {
     return FailedPrecondition("NvshmemCommunicator aborted");
   }
@@ -183,7 +183,7 @@ absl::Status NvshmemCommunicator::Barrier(
   return absl::OkStatus();
 }
 absl::StatusOr<size_t> NvshmemCommunicator::NumRanks() const {
-  VLOG(5) << "Get the number of ranks in NVSHMEM communicator: " << ToString();
+  VLOG(5) << "Get the number of ranks in NVSHMEM communicator: " << *this;
   if (aborted_) {
     return absl::FailedPreconditionError("NvshmemCommunicator aborted");
   }
@@ -201,7 +201,7 @@ absl::StatusOr<size_t> NvshmemCommunicator::NumRanks() const {
 }
 
 absl::StatusOr<size_t> NvshmemCommunicator::CurrentRank() {
-  VLOG(5) << "Get current rank in NVSHMEM communicator: " << ToString();
+  VLOG(5) << "Get current rank in NVSHMEM communicator: " << *this;
   if (aborted_) {
     return absl::FailedPreconditionError("NvshmemCommunicator aborted");
   }
@@ -449,7 +449,7 @@ Future<> NvshmemCommunicator::Send(se::DeviceAddressBase recv_buffer,
                                    se::DeviceAddressBase send_buffer,
                                    PrimitiveType dtype, size_t count,
                                    RankId peer, const Executor& executor) {
-  VLOG(1) << "Send NVSHMEM communicator: " << ToString();
+  VLOG(1) << "Send NVSHMEM communicator: " << *this;
   if (aborted_) {
     return absl::FailedPreconditionError("NvshmemCommunicator aborted");
   }
@@ -467,7 +467,7 @@ Future<> NvshmemCommunicator::Recv(se::DeviceAddressBase recv_buffer,
                                    se::DeviceAddressBase send_buffer,
                                    PrimitiveType dtype, size_t count,
                                    RankId peer, const Executor& executor) {
-  VLOG(1) << "Recv NVSHMEM communicator: " << ToString();
+  VLOG(1) << "Recv NVSHMEM communicator: " << *this;
   if (aborted_) {
     return absl::FailedPreconditionError("NvshmemCommunicator aborted");
   }
@@ -482,7 +482,7 @@ Future<> NvshmemCommunicator::Recv(se::DeviceAddressBase recv_buffer,
 }
 
 absl::Status NvshmemCommunicator::Quiet(const Executor& executor) {
-  VLOG(1) << "Quiet NVSHMEM communicator: " << ToString();
+  VLOG(1) << "Quiet NVSHMEM communicator: " << *this;
   if (aborted_) {
     return absl::FailedPreconditionError("NvshmemCommunicator aborted");
   }
@@ -496,7 +496,7 @@ absl::Status NvshmemCommunicator::Quiet(const Executor& executor) {
 }
 
 absl::Status NvshmemCommunicator::Fence() {
-  VLOG(1) << "Fence NVSHMEM communicator: " << ToString();
+  VLOG(1) << "Fence NVSHMEM communicator: " << *this;
   if (aborted_) {
     return absl::FailedPreconditionError("NvshmemCommunicator aborted");
   }

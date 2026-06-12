@@ -166,9 +166,8 @@ NcclCommunicator::NcclCommunicator(se::StreamExecutor* stream_executor,
       executor_(std::move(executor)),
       cancel_(std::move(cancel)),
       capabilities_(GetCapabilities(comm_)) {
-  VLOG(1) << absl::StreamFormat("[%d] Created NCCL communicator %s",
-                                stream_executor_->device_ordinal(),
-                                this->ToString());
+  VLOG(1) << absl::StreamFormat("[%d] Created NCCL communicator %v",
+                                stream_executor_->device_ordinal(), *this);
 }
 
 bool NcclCommunicator::SupportsDeviceComm() const {
@@ -939,8 +938,7 @@ NcclDeviceCommunicator::NcclDeviceCommunicator(const NcclCommunicator* comm,
 
 NcclDeviceCommunicator::~NcclDeviceCommunicator() {
   VLOG(3) << absl::StreamFormat(
-      "Destroy NCCL device comm %s constructed for %s", this->ToString(),
-      comm_->ToString());
+      "Destroy NCCL device comm %v constructed for %v", *this, *comm_);
 
   DCHECK(comm_ && comm_->stream_executor()) << "StreamExecutor is unavailable";
   auto activation = comm_->stream_executor()->Activate();
@@ -955,7 +953,7 @@ absl::StatusOr<std::unique_ptr<NcclDeviceCommunicator>>
 NcclDeviceCommunicator::CreateFrom(const NcclCommunicator& comm,
                                    const Requirements& requirements) {
   VLOG(3) << absl::StreamFormat(
-      "Create NCCL device comm from %s: lsa_barrier_count=%d", comm.ToString(),
+      "Create NCCL device comm from %v: lsa_barrier_count=%d", comm,
       requirements.lsa_barrier_count);
 
   DCHECK(comm.stream_executor()) << "StreamExecutor is unavailable";

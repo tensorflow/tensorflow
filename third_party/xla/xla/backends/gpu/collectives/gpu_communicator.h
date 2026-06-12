@@ -236,6 +236,11 @@ class GpuCommunicator : public Communicator {
                                         const Executor& executor) {
     return Unimplemented("LaunchWaitSignal is not implemented");
   }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const GpuCommunicator& comm) {
+    absl::Format(&sink, "%s", comm.ToString());
+  }
 };
 
 }  // namespace xla::gpu
