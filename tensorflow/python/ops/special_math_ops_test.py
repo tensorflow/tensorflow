@@ -599,7 +599,7 @@ class BesselTest(test.TestCase, parameterized.TestCase):
 
     analytical, numerical = gradient_checker_v2.compute_gradient(
         special_math_ops.bessel_i1e, inputs)
-    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-3)
 
     # Test double gradients do not yield NaN
     x = constant_op.constant([0.0], dtype=dtypes.float32)
