@@ -167,9 +167,7 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
 
   // Given that the autotuner runs post fusion, we have to run priority fusion
   // again to fuse the epilogue and prologues.
-  if (debug_options().xla_gpu_experimental_autotune_post_fusion()) {
-    RETURN_IF_ERROR(RunPriorityFusion(hlo_module.get()));
-  }
+  RETURN_IF_ERROR(RunPriorityFusion(hlo_module.get()));
 
   RETURN_IF_ERROR(
       InlineFissionedComputation(&instr, hlo_module->entry_computation()));

@@ -4023,7 +4023,7 @@ LatencyHidingScheduler::LatencyHidingStatistics(
           .push_back({instr, current_time, curr_pos});
     } else if (instr_node.IsSupportedAsyncDone()) {
       const HloInstruction* start_instr = instr->operand(0);
-      // TODO(b/329731042): Handle pipelined Send/Recv in while-body, which
+      // TODO: Handle pipelined Send/Recv in while-body, which
       // is the only situation where an async done operand is not an async
       // start.
       if (scheduling_context->GetAsyncTracker()->IsSupportedAsyncStart(
