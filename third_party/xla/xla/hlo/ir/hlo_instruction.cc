@@ -4228,22 +4228,38 @@ void HloInstruction::PrintOperandsWithCanonicalNameMap(
       }
       add_space = true;
     }
+
+    bool should_print_name = false;
     if (options.canonicalize_instruction_names()) {
-      if (options.is_in_nested_computation()) {
-        // In a top-level HloInstruction::ToString() call, the operand name is
-        // not part of the canonical string.
-        DCHECK(!options.print_percent());  // no need to call PrintNameInternal
-        if (add_space) {
-          printer->Append(" ");
-        }
-        printer->Append(
-            canonical_name_map->LookupOrInsert(operand->unique_id()));
-      }
-    } else if (options.print_operand_names()) {
+      should_print_name = options.is_in_nested_computation();
+    } else {
+      should_print_name = options.print_operand_names();
+    }
+
+    if (should_print_name) {
       if (add_space) {
         printer->Append(" ");
       }
-      PrintNameInternal(printer, operand->name(), options);
+      if (options.compact_gte() &&
+          operand->opcode() == HloOpcode::kGetTupleElement) {
+        auto [ancestor, index] = operand->LatestNonGteAncestorAndIndex();
+        if (options.canonicalize_instruction_names()) {
+          printer->Append(
+              canonical_name_map->LookupOrInsert(ancestor->unique_id()));
+        } else {
+          PrintNameInternal(printer, ancestor->name(), options);
+        }
+        for (int64_t i : index) {
+          printer->Append(absl::StrCat("#", i));
+        }
+      } else {
+        if (options.canonicalize_instruction_names()) {
+          printer->Append(
+              canonical_name_map->LookupOrInsert(operand->unique_id()));
+        } else {
+          PrintNameInternal(printer, operand->name(), options);
+        }
+      }
     }
   };
   print_one(slice[0]);

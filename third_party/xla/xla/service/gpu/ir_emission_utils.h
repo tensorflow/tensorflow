@@ -99,11 +99,6 @@ inline constexpr absl::string_view kTritonNestedGemmFusionKind =
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 
-// Fusions that can be emitted using a dynamic memcpy. A dynamic memcpy depends
-// on some loop induction variable.
-inline constexpr absl::string_view kDynamicMemcpyFusionKind =
-    "__dynamic_memcpy";
-
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";
 

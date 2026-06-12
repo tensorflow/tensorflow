@@ -1038,33 +1038,6 @@ cc_library(
 )
 
 cc_library(
-    name = "dynamic_memcpy_thunk",
-    srcs = ["dynamic_memcpy_thunk.cc"],
-    hdrs = ["dynamic_memcpy_thunk.h"],
-    deps = [
-        ":copy_thunk_proto_cc",
-        ":thunk",
-        ":thunk_proto_cc",
-        ":while_loop",
-        "//xla:status_macros",
-        "//xla/hlo/ir:hlo",
-        "//xla/runtime:buffer_use",
-        "//xla/service:buffer_assignment",
-        "//xla/service:shaped_slice",
-        "//xla/stream_executor:device_address",
-        "//xla/stream_executor:stream",
-        "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "copy_thunk",
     srcs = ["copy_thunk.cc"],
     hdrs = ["copy_thunk.h"],
@@ -1162,23 +1135,6 @@ xla_test(
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-xla_cc_test(
-    name = "dynamic_memcpy_thunk_test",
-    srcs = ["dynamic_memcpy_thunk_test.cc"],
-    deps = [
-        ":dynamic_memcpy_thunk",
-        ":thunk",
-        ":thunk_proto_cc",
-        "//xla:shape_util",
-        "//xla/service:buffer_assignment",
-        "//xla/service:shaped_slice",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/util/proto:parse_text_proto",
-        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -4536,7 +4492,6 @@ cc_library(
         ":custom_kernel_thunk",
         ":device_to_device_copy_thunk",
         ":device_to_host_copy_thunk",
-        ":dynamic_memcpy_thunk",
         ":dynamic_slice_fusion_v2_thunk",
         ":dynamic_slice_thunk",
         ":fft_thunk",
@@ -4771,7 +4726,6 @@ cc_library(
         ":conditional_thunk",
         ":custom_call_thunk",
         ":device_to_device_copy_thunk",
-        ":dynamic_memcpy_thunk",
         ":dynamic_slice_fusion_v2_thunk",
         ":dynamic_slice_thunk",
         ":ragged_all_to_all_thunk",

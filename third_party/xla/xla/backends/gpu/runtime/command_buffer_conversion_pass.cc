@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
-#include "xla/backends/gpu/runtime/dynamic_memcpy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
@@ -137,9 +136,7 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
   auto kind = thunk.kind();
   switch (kind) {
     case Thunk::kCopy:
-      if (dynamic_cast<const DynamicMemcpyThunk*>(&thunk)) {
-        return DebugOptions::DYNAMIC_SLICE_COPY_FUSION;
-      } else if (dynamic_cast<const DeviceToDeviceCopyThunk*>(&thunk)) {
+      if (dynamic_cast<const DeviceToDeviceCopyThunk*>(&thunk)) {
         return DebugOptions::FUSION;
       } else {
         // Only copy within the same device can be converted to command buffers.
