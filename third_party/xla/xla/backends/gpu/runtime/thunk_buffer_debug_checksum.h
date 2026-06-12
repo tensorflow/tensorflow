@@ -26,11 +26,11 @@ limitations under the License.
 
 namespace xla::gpu {
 
-absl::Status RunChecksumPassInternal(ThunkSequence* thunk_sequence,
-                                     const DebugOptions& debug_options,
-                                     const HloModule* absl_nonnull hlo_module,
-                                     const BufferAssignment* buffer_assignment,
-                                     ThunkPassBufferAllocator& allocator);
+absl::Status RunChecksumPassInternal(
+    ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
+    const HloModule* absl_nonnull hlo_module,
+    const BufferAssignment* absl_nonnull buffer_assignment,
+    ThunkPassBufferAllocator& allocator);
 
 }  // namespace xla::gpu
 

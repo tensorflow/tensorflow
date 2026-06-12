@@ -79,7 +79,8 @@ absl::StatusOr<bool> ThunkBufferDebugPass::Run(
 }
 
 absl::StatusOr<absl::flat_hash_map<size_t, ShapedSlice>> GetOutputShapedBuffers(
-    const HloModule* hlo_module, const BufferAssignment* buffer_assignment) {
+    const HloModule* absl_nonnull hlo_module,
+    const BufferAssignment* absl_nonnull buffer_assignment) {
   absl::flat_hash_map<size_t, ShapedSlice> buffers_to_check;
   if (hlo_module == nullptr || buffer_assignment == nullptr) {
     return buffers_to_check;
@@ -104,8 +105,8 @@ absl::StatusOr<absl::flat_hash_map<size_t, ShapedSlice>> GetOutputShapedBuffers(
 }
 
 absl::StatusOr<absl::flat_hash_map<size_t, BufferAllocation::Slice>>
-GetOutputBuffers(const HloModule* hlo_module,
-                 const BufferAssignment* buffer_assignment) {
+GetOutputBuffers(const HloModule* absl_nonnull hlo_module,
+                 const BufferAssignment* absl_nonnull buffer_assignment) {
   absl::flat_hash_map<size_t, BufferAllocation::Slice> buffers_to_check;
   ASSIGN_OR_RETURN(auto shaped_buffers,
                    GetOutputShapedBuffers(hlo_module, buffer_assignment));
