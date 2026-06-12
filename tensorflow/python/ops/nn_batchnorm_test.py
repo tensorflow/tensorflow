@@ -26,6 +26,7 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
+from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
@@ -587,6 +588,37 @@ class MomentsTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testVarGlobalGradient(self):
     self._testGlobalGradient(from_y="var")
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorAxes(self):
+    with self.cached_session():
+      x = np.random.normal(size=[2, 3, 4]).astype(np.float32)
+      # Test constant tensor.
+      axes_tensor = constant_op.constant([0, 1], dtype=dtypes.int32)
+      mean, var = self._unweighted_moments(x, axes_tensor, keep_dims=False)
+      mean_v, var_v = self.evaluate([mean, var])
+      self.assertEqual(mean_v.shape, (4,))
+      self.assertEqual(var_v.shape, (4,))
+
+      # Test constant tensor with keep_dims=True.
+      mean, var = self._unweighted_moments(x, axes_tensor, keep_dims=True)
+      mean_v, var_v = self.evaluate([mean, var])
+      self.assertEqual(mean_v.shape, (1, 1, 4))
+      self.assertEqual(var_v.shape, (1, 1, 4))
+
+      # Test Variable.
+      axes_var = variables.Variable([0, 1], dtype=dtypes.int32)
+      self.evaluate(axes_var.initializer)
+      mean, var = self._unweighted_moments(x, axes_var, keep_dims=False)
+      mean_v, var_v = self.evaluate([mean, var])
+      self.assertEqual(mean_v.shape, (4,))
+      self.assertEqual(var_v.shape, (4,))
+
+      # Test Variable with keep_dims=True.
+      mean, var = self._unweighted_moments(x, axes_var, keep_dims=True)
+      mean_v, var_v = self.evaluate([mean, var])
+      self.assertEqual(mean_v.shape, (1, 1, 4))
+      self.assertEqual(var_v.shape, (1, 1, 4))
 
 
 class WeightedMomentsTest(MomentsTest):
