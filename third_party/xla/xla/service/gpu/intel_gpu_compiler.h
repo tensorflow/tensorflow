@@ -39,18 +39,6 @@ class IntelGpuCompiler : public GpuCompiler {
       const se::SemanticVersion& toolkit_version,
       CompilationStats* compilation_stats) override;
 
-  // TODO(b/511979384): Remove once xla_gpu_experimental_autotune_post_fusion is
-  // enabled by default.
-  absl::Status AddConvAndGemmAutotuningPass(
-      HloPassPipeline* pipeline, HloModule* hlo_module,
-      const se::GpuComputeCapability& gpu_version,
-      const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
-      se::StreamExecutor* stream_exec,
-      const Compiler::GpuTargetConfig* target_config,
-      const MultiProcessKeyValueStore& key_value_store,
-      const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
-      const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
-      HloCostAnalysis::ShapeSizeFunction shape_size_fn) override;
 
   absl::Status AddAutotunerPass(
       HloPassPipeline* pipeline, HloModule* hlo_module,
