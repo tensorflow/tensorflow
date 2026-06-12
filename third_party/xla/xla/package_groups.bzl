@@ -9,7 +9,7 @@ def xla_package_groups(name = "xla_package_groups"):
 
     native.package_group(
         name = "friends",
-        packages = ["//..."],
+        packages = ["public"],
     )
 
     native.package_group(
