@@ -438,7 +438,7 @@ absl::Status SetAttrFloatList(AbstractOperation* op_, const char* attr_name,
                               const float* values, int num_values,
                               ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(attr_name,
-                         gtl::ArraySlice<const float>(values, num_values));
+                         absl::Span<const const float>(values, num_values));
   return op_->SetAttrFloatList(attr_name, values, num_values);
 }
 absl::Status SetAttrIntList(AbstractOperation* op_, const char* attr_name,
