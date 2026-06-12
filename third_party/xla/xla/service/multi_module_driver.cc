@@ -22,8 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -33,7 +35,9 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/executor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/blocking_counter.h"
+#include "tsl/platform/cpu_info.h"
 
 namespace xla {
 
@@ -89,14 +93,35 @@ absl::StatusOr<std::unique_ptr<HloModule>> MultiModuleDriver::Compile(
       results[i] = compile_fn_(std::move(all_modules[i]), options);
     }
   } else {
-    // Parallel compilation.
+    // Parallel compilation with concurrency capping to avoid LLVM OOM or
+    // thrashing.
+    int max_concurrency = std::max<int>(
+        1, options.thread_pool ? options.thread_pool->NumThreads()
+                               : std::min<int>(8, tsl::port::MaxParallelism()));
+
+    absl::Mutex mutex;
+    int active_compilations = 0;
+
     tsl::BlockingCounter counter(all_modules.size());
     for (size_t i = 0; i < all_modules.size(); ++i) {
-      executor->Execute(
-          [this, &all_modules, &options, &results, &counter, i]() {
-            results[i] = compile_fn_(std::move(all_modules[i]), options);
-            counter.DecrementCount();
-          });
+      {
+        absl::MutexLock lock(&mutex);
+        auto can_compile = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex) {
+          return active_compilations < max_concurrency;
+        };
+        mutex.Await(absl::Condition(&can_compile));
+        active_compilations++;
+      }
+
+      executor->Execute([this, &all_modules, &options, &results, &counter,
+                         &mutex, &active_compilations, i]() {
+        results[i] = compile_fn_(std::move(all_modules[i]), options);
+        {
+          absl::MutexLock lock(&mutex);
+          active_compilations--;
+        }
+        counter.DecrementCount();
+      });
     }
     counter.Wait();
   }
