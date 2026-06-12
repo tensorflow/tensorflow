@@ -1255,7 +1255,7 @@ TEST_F(ConfigAssignerTest, ConfigsWithRegisterSpillingAreFiltered) {
   EXPECT_THAT(config_assigner->AssignConfig(dummy_instr), absl_testing::IsOk());
 }
 
-TEST_F(ConfigAssignerTest, SelectFirstConfigFirstConfigFails) {
+TEST_F(ConfigAssignerTest, SelectFirstConfigPicksFirstCompilable) {
   config_.select_first_config = true;
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
@@ -1288,20 +1288,26 @@ TEST_F(ConfigAssignerTest, SelectFirstConfigFirstConfigFails) {
   EXPECT_THAT(config_assigner->AssignConfig(dummy_instr), absl_testing::IsOk());
 }
 
-TEST_F(ConfigAssignerTest, SelectFirstConfigAllConfigsFail) {
+TEST_F(ConfigAssignerTest,
+       SelectFirstConfigFallsBackToDefaultIfNoSupportedConfigCompiles) {
   config_.select_first_config = true;
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
-  configs.push_back(GetTestConfig("test_config_2"));
 
   auto backend = std::make_unique<MockCodegenBackend>();
+
   EXPECT_CALL(*backend, GetSupportedConfigs(_))
       .WillOnce(Return(std::move(configs)));
   EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_1")))
       .WillOnce(Return(absl::InternalError("test error")));
-  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_2")))
-      .WillOnce(Return(absl::InternalError("test error")));
+
+  EXPECT_CALL(*backend, GetDefaultConfig(_))
+      .WillOnce(Return(ByMove(GetTestConfig("default"))));
+
+  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("default")))
+      .Times(1)
+      .WillRepeatedly(Return(absl::OkStatus()));
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend));
@@ -1315,20 +1321,24 @@ TEST_F(ConfigAssignerTest, SelectFirstConfigAllConfigsFail) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
-  EXPECT_THAT(config_assigner->AssignConfig(dummy_instr),
-              StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(config_assigner->AssignConfig(dummy_instr), absl_testing::IsOk());
 }
 
-TEST_F(ConfigAssignerTest, UseDefaultConfig) {
-  config_.use_default_config = true;
+TEST_F(ConfigAssignerTest,
+       SelectFirstConfigFailsWhenNothingCompilesAndNoDefault) {
+  config_.select_first_config = true;
+
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("test_config_1"));
 
   auto backend = std::make_unique<MockCodegenBackend>();
-  EXPECT_CALL(*backend, GetSupportedConfigs(_)).Times(0);
+  EXPECT_CALL(*backend, GetSupportedConfigs(_))
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_1")))
+      .WillOnce(Return(absl::InternalError("test error")));
   EXPECT_CALL(*backend, GetDefaultConfig(_))
-      .WillOnce(Return(ByMove(GetTestConfig("default"))));
-  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("default")))
-      .Times(1)
-      .WillRepeatedly(Return(absl::OkStatus()));
+      .WillOnce(Return(absl::NotFoundError("no default")));
+
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend));
 
@@ -1339,7 +1349,8 @@ TEST_F(ConfigAssignerTest, UseDefaultConfig) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
-  EXPECT_THAT(config_assigner->AssignConfig(dummy_instr), absl_testing::IsOk());
+  EXPECT_THAT(config_assigner->AssignConfig(dummy_instr),
+              StatusIs(absl::StatusCode::kInternal));
 }
 
 class MockKeyValueStore : public KeyValueStoreInterface {
@@ -1655,8 +1666,7 @@ TEST(ConfigAssignerOptionsTest, ToString) {
   config.scratch_bytes_window_size_us = 10;
   config.expect_all_instructions_in_cache = false;
   config.dump_logs_to = "/tmp/log";
-  config.select_first_config = false;
-  config.use_default_config = true;
+  config.select_first_config = true;
   config.dump_hlos = false;
 
   std::string expected =
@@ -1667,8 +1677,7 @@ TEST(ConfigAssignerOptionsTest, ToString) {
       "  \"scratch_bytes_window_size_us\": 10,\n"
       "  \"expect_all_instructions_in_cache\": false,\n"
       "  \"dump_logs_to\": \"/tmp/log\",\n"
-      "  \"select_first_config\": false,\n"
-      "  \"use_default_config\": true,\n"
+      "  \"select_first_config\": true,\n"
       "  \"dump_hlos\": false\n"
       "}";
   EXPECT_EQ(config.ToString(), expected);

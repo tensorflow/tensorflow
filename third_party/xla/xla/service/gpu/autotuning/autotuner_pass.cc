@@ -270,12 +270,7 @@ ConfigAssigner::Options GetConfigAssignerOptions(
   options.select_first_config =
       debug_options.xla_gpu_deterministic_ops() ||
       debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      debug_options.xla_gpu_autotune_level() == 0;
-
-  if (is_deviceless) {
-    // If we are running on a deviceless target, we want to use default configs.
-    options.use_default_config = true;
-  }
+      debug_options.xla_gpu_autotune_level() == 0 || is_deviceless;
 
   options.expect_all_instructions_in_cache =
       debug_options.xla_gpu_require_complete_aot_autotune_results();

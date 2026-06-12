@@ -507,11 +507,10 @@ INSTANTIATE_TEST_SUITE_P(
                           info.param.fail_on_spill_flag);
     });
 
-TEST_F(AutotunerFlagsTest, DevicelessUsesDefaultConfig) {
+TEST_F(AutotunerFlagsTest, DevicelessUsesFirstConfig) {
   DebugOptions debug_options = GetDebugOptionsForTest();
-  EXPECT_EQ(GetConfigAssignerOptions(debug_options, /*is_deviceless=*/true)
-                .use_default_config,
-            true);
+  EXPECT_TRUE(GetConfigAssignerOptions(debug_options, /*is_deviceless=*/true)
+                  .select_first_config);
 }
 
 TEST_F(AutotunerFlagsTest, DeterministicAutotuningSetsSelectFirstConfig) {

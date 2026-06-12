@@ -47,7 +47,6 @@ class ConfigAssigner {
   // TODO(b/519057668): Consolidate cache fallback options for better
   // readability.
   struct Options {
-    bool use_default_config = false;
     bool select_first_config = false;
     bool expect_all_instructions_in_cache = false;
     bool dump_hlos = false;
