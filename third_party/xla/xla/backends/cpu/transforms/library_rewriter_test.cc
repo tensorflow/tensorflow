@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/codegen/target_machine_test_base.h"
+#include "xla/backends/cpu/transforms/library_fusion_kinds.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -52,6 +53,25 @@ struct DotRewriteTestSpec {
   std::string features;
   std::string fusion_mode;
 };
+
+// Returns true if oneDNN matcher is available in the library matcher list.
+// If oneDNN Graph API is not enabled, this will always return false.
+inline bool IsOneDnnMatcherRegistered() {
+  static bool kIsOneDnnMatcherRegistered = []() {
+    std::unique_ptr<TargetMachineFeatures> dummy_features;
+    tsl::protobuf::RepeatedField<int> fusion_types;
+    fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_DOT);
+    LibraryRewriterOptions options = {
+        /*use_onednn=*/true,
+        /*use_ynnpack=*/false,
+        /*onednn_fusion_types=*/&fusion_types,
+        /*ynn_fusion_types=*/nullptr,
+    };
+    LibraryRewriter rewriter(dummy_features.get(), options);
+    return rewriter.IsLibraryRegistered(kOneDnnFusionKind);
+  }();
+  return kIsOneDnnMatcherRegistered;
+}
 
 class CpuLibraryTest : public TargetMachineTestBase {
  protected:
@@ -448,12 +468,12 @@ std::vector<DotRewriteTestSpec> GetDotRewriteTestSpecs() {
   // Don't test YNNPACK if we don't build with it.
   fusion_modes["ynn"] = {"dot", "greedy"};
 
-#if XLA_ONEDNN_USE_GRAPH_API
   // Don't test oneDNN if we don't build with it.
-  dtype_map[{"onednn", "sapphirerapids"}] = {
-      {"f32", "f32"}, {"bf16", "bf16"}, {"f16", "f16"}};
-  fusion_modes["onednn"] = {"dot"};
-#endif  // XLA_ONEDNN_USE_GRAPH_API
+  if (IsOneDnnMatcherRegistered()) {
+    dtype_map[{"onednn", "sapphirerapids"}] = {
+        {"f32", "f32"}, {"bf16", "bf16"}, {"f16", "f16"}};
+    fusion_modes["onednn"] = {"dot"};
+  }
 
   std::vector<DotRewriteTestSpec> specs;
   for (auto& [lib_cpu, dtype_pairs] : dtype_map) {
