@@ -59,8 +59,7 @@ struct FuncInfo : llvm::DenseMapInfo<mlir::func::FuncOp> {
     if (lhs == rhs) {
       return true;
     }
-    if (lhs == getEmptyKey() || lhs == getTombstoneKey() ||
-        rhs == getEmptyKey() || rhs == getTombstoneKey()) {
+    if (lhs == getEmptyKey() || rhs == getEmptyKey()) {
       return false;
     }
     if (lhs.getFunctionType() != rhs.getFunctionType()) {
