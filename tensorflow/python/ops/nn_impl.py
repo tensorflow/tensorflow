@@ -20,6 +20,7 @@ import warnings
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -1262,7 +1263,7 @@ def moments(
       "keepdims", keepdims, "keep_dims", keep_dims)
   if keep_dims is None:
     keep_dims = False
-  if isinstance(axes, (ops.Tensor, variables.Variable)):
+  if isinstance(axes, (tensor.Tensor, variables.Variable)):
     from tensorflow.python.eager import context
     from tensorflow.python.framework import tensor_util
     if context.executing_eagerly():
@@ -1357,7 +1358,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
       "keepdims", keepdims, "keep_dims", keep_dims)
   if keep_dims is None:
     keep_dims = False
-  if isinstance(axes, (ops.Tensor, variables.Variable)):
+  if isinstance(axes, (tensor.Tensor, variables.Variable)):
     from tensorflow.python.eager import context
     from tensorflow.python.framework import tensor_util
     if context.executing_eagerly():
