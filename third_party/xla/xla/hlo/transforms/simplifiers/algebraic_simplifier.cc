@@ -6636,8 +6636,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
                               /*preserve_frontend_attributes=*/false);
   }
 
-  // Merge reshapes.
-  if (HloOpcode::kReshape == operand->opcode()) {
+  // Merge reshapes with data_formating ops
+  if (operand->opcode() == HloOpcode::kReshape ||
+      operand->opcode() == HloOpcode::kBitcast) {
     return ReplaceWithNewInstruction(
         reshape, HloInstruction::CreateReshape(reshape->shape(),
                                                operand->mutable_operand(0)));
