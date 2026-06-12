@@ -1457,6 +1457,40 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "list_scheduler",
+    srcs = ["list_scheduler.cc"],
+    hdrs = ["list_scheduler.h"],
+    deps = [
+        ":hlo_value",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "list_scheduler_test",
+    srcs = ["list_scheduler_test.cc"],
+    deps = [
+        ":list_scheduler",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "latency_hiding_scheduler_test",
     srcs = ["latency_hiding_scheduler_test.cc"],
