@@ -16,10 +16,11 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
 
 #include <math.h>
-#include <stdint.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "Eigen/Core"
@@ -203,7 +204,7 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
     int32_t stride = op_params.strides[idx];
     TF_LITE_ENSURE_MSG(context, stride != 0, "stride value has to be non-zero");
 
-    int32_t dim_shape = 0;
+    int64_t dim_shape = 0;
     const bool shrink_axis = op_params.shrink_axis_mask & (1 << idx);
     if (shrink_axis) continue;
     if (op_params.offset) {
@@ -214,12 +215,14 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
       int32_t end = ::tflite::strided_slice::StridedSliceEndForAxis(
           op_params, effective_input_shape, idx, begin);
 
-      // This is valid for both positive and negative strides
-      dim_shape = end - begin;
+      dim_shape = static_cast<int64_t>(end) - static_cast<int64_t>(begin);
     }
+    TF_LITE_ENSURE_MSG(context,
+                       stride != std::numeric_limits<int32_t>::min(),
+                       "stride value INT32_MIN is not supported");
     // Ensure we can do an integer division (rounding up) even when dealing with
     // negative numbers.
-    if (dim_shape < 0 != stride < 0) {
+    if ((dim_shape < 0) != (stride < 0)) {
       dim_shape = 0;
     } else {
       if (stride < 0) {
@@ -229,7 +232,15 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
         dim_shape = (dim_shape == 0) ? 0 : (dim_shape - 1) / stride + 1;
       }
     }
-    output_shape_vector.push_back(dim_shape);
+    if (dim_shape < 0 ||
+        dim_shape > std::numeric_limits<int32_t>::max()) {
+      TF_LITE_KERNEL_LOG(
+          context,
+          "StridedSlice: integer overflow computing output dim at axis %d",
+          idx);
+      return kTfLiteError;
+    }
+    output_shape_vector.push_back(static_cast<int32_t>(dim_shape));
   }
 
   TfLiteIntArray* output_shape =
