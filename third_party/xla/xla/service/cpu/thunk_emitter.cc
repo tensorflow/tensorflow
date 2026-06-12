@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/while_thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/transforms/library_fusion_kinds.h"
 #include "xla/backends/cpu/ynn_emitter.h"
 #include "xla/backends/cpu/ynn_support.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"

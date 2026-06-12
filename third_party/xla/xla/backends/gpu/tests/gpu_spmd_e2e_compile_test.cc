@@ -35,10 +35,10 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class GpuSpmdE2ECompileTest : public HloPjRtTestBase {
+class GpuSpmdE2ECompileTest : public HloTestBase {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }

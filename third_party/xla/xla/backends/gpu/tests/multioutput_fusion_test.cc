@@ -49,13 +49,13 @@ namespace {
 constexpr ErrorSpec kErrorSpec{0.0001, 1e-2};
 
 class MultiOutputFusionTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
  protected:
   // Layout assignment assumes that there are no fusions in the input graph.
   // Since the purpose of this test is to send pre-fused graphs to XLA, we have
   // to do layout assignment ourselves.
   DebugOptions GetDebugOptionsForTest() const override {
-    auto opts = HloPjRtTestBase::GetDebugOptionsForTest();
+    auto opts = HloTestBase::GetDebugOptionsForTest();
     opts.add_xla_disable_hlo_passes("layout-assignment");
     return opts;
   }

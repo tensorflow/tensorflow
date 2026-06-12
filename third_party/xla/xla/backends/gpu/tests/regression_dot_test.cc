@@ -27,7 +27,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using RegressionDotTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using RegressionDotTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(RegressionDotTest, LargeBF16Gemm) {
   const char* hlo_text = R"(
