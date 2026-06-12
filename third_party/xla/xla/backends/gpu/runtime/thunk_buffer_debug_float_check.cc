@@ -80,7 +80,7 @@ namespace {
 
 bool IsFloatTypeSupportedByChecker(PrimitiveType type) {
   return type == PrimitiveType::F32 || type == PrimitiveType::BF16 ||
-         type == PrimitiveType::F64;
+         type == PrimitiveType::F16 || type == PrimitiveType::F64;
 }
 
 size_t TempBufferSizeFromMaxBufferSize(size_t max_buffer_size_bytes) {
@@ -427,11 +427,6 @@ CreateOutputBuffersCheckThunk(
   if (!debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs()) {
     return nullptr;
   }
-  if (buffer_assignment == nullptr) {
-    LOG(ERROR)
-        << "Buffer assignment is null, cannot determine module output buffers";
-    return nullptr;
-  }
 
   absl::flat_hash_map<size_t, ShapedSlice> buffers_to_check_shaped;
   ASSIGN_OR_RETURN(buffers_to_check_shaped,
@@ -476,7 +471,7 @@ CreateOutputBuffersCheckThunk(
 absl::Status RunFloatCheckPassInternal(
     ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
     const HloModule* absl_nonnull hlo_module,
-    const BufferAssignment* buffer_assignment,
+    const BufferAssignment* absl_nonnull buffer_assignment,
     ThunkPassBufferAllocator& allocator) {
   std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store =
       std::make_shared<BufferDebugLogEntryMetadataStore>();

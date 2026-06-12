@@ -29,7 +29,7 @@ namespace xla::gpu {
 absl::Status RunFloatCheckPassInternal(
     ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
     const HloModule* absl_nonnull hlo_module,
-    const BufferAssignment* buffer_assignment,
+    const BufferAssignment* absl_nonnull buffer_assignment,
     ThunkPassBufferAllocator& allocator);
 
 }  // namespace xla::gpu

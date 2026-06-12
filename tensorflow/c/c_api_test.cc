@@ -1025,6 +1025,23 @@ TEST(CAPI, ImportGraphDef_MissingUnusedInputMappings) {
   TF_DeleteStatus(s);
 }
 
+TEST(CAPI, ImportGraphDefOptionsAddInputMappingReallocation) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+  TF_Operation* scalar = ScalarConst(10, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_ImportGraphDefOptions* opts = TF_NewImportGraphDefOptions();
+  for (int i = 0; i < 100; ++i) {
+    std::string name = "fake_" + std::to_string(i);
+    TF_ImportGraphDefOptionsAddInputMapping(opts, name.c_str(), 0, {scalar, 0});
+  }
+
+  TF_DeleteImportGraphDefOptions(opts);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
 TEST(CAPI, Session) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();

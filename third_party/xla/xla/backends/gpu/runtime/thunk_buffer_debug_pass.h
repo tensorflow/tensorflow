@@ -43,7 +43,7 @@ class ThunkBufferDebugPass : public ThunkPassInterface {
   };
 
   explicit ThunkBufferDebugPass(
-      Mode mode, const BufferAssignment* buffer_assignment = nullptr)
+      Mode mode, const BufferAssignment* absl_nonnull buffer_assignment)
       : mode_(mode), buffer_assignment_(buffer_assignment) {}
 
   absl::string_view name() const override { return "thunk-buffer-debug"; }
@@ -56,15 +56,16 @@ class ThunkBufferDebugPass : public ThunkPassInterface {
 
  private:
   Mode mode_;
-  const BufferAssignment* buffer_assignment_;
+  const BufferAssignment* absl_nonnull buffer_assignment_;
 };
 
 absl::StatusOr<absl::flat_hash_map<size_t, ShapedSlice>> GetOutputShapedBuffers(
-    const HloModule* hlo_module, const BufferAssignment* buffer_assignment);
+    const HloModule* absl_nonnull hlo_module,
+    const BufferAssignment* absl_nonnull buffer_assignment);
 
 absl::StatusOr<absl::flat_hash_map<size_t, BufferAllocation::Slice>>
-GetOutputBuffers(const HloModule* hlo_module,
-                 const BufferAssignment* buffer_assignment);
+GetOutputBuffers(const HloModule* absl_nonnull hlo_module,
+                 const BufferAssignment* absl_nonnull buffer_assignment);
 
 }  // namespace gpu
 }  // namespace xla

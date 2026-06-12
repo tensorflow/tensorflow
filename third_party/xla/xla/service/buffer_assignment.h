@@ -587,6 +587,8 @@ class BufferAssignment {
   static absl::StatusOr<std::unique_ptr<BufferAssignment>> FromProto(
       const BufferAssignmentProto& proto, const HloModule* module,
       BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info);
+  static std::unique_ptr<BufferAssignment> CreateDummy(
+      const HloModule* module, BufferValue::SizeFunction buffer_size = nullptr);
 
   // Generates a proto representation of the memory usage report.
   // `percentile`: threshold (0.0-1.0) below which remaining allocations are

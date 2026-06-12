@@ -1150,6 +1150,7 @@ std::string BufferAllocation::MemoryUsageReport(const std::string& prefix,
 // across allocations as a vector of pairs with their corresponding sizes.
 std::vector<std::pair<int64_t, const HloValue*>> TopKPeakBuffers(
     uint64_t k, const std::vector<BufferAllocation> allocations) {
+  if (k == 0) return {};
   absl::btree_multimap<int64_t, const HloValue*> topk;
   for (const BufferAllocation& allocation : allocations) {
     for (const HloValue* value : allocation.PeakMemoryLogicalBuffers()) {
@@ -1499,6 +1500,20 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
   }
   buffer_assignment->ComputeSummaryStats();
   return buffer_assignment;
+}
+
+/* static */
+std::unique_ptr<BufferAssignment> BufferAssignment::CreateDummy(
+    const HloModule* module, BufferValue::SizeFunction buffer_size) {
+  if (!buffer_size) {
+    buffer_size = [](const BufferValue& buffer) {
+      return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
+    };
+  }
+  return absl::WrapUnique(new BufferAssignment(
+      module, /*hlo_ordering=*/nullptr, std::move(buffer_size),
+      /*color_alignment=*/nullptr, /*alias_analysis=*/nullptr,
+      /*hlo_live_range=*/nullptr));
 }
 
 void BufferAssignment::Finalize() {
