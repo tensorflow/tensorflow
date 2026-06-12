@@ -57,8 +57,14 @@ class OpenClConverterImpl : public TensorObjectConverter {
     RETURN_IF_ERROR(cl_args_.SetObjectRef("buffer", buffer));
     RETURN_IF_ERROR(cl_args_.SetObjectRef("tensor", tensor));
     RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
-    const int3 grid = int3(tensor->Width() * tensor->Batch(), tensor->Height(),
-                           tensor->Slices());
+    const int64_t grid_x =
+        static_cast<int64_t>(tensor->Width()) * tensor->Batch();
+    if (grid_x > std::numeric_limits<int>::max()) {
+      return absl::InvalidArgumentError(
+          "Grid x-dimension exceeds 32-bit integer maximum.");
+    }
+    const int3 grid =
+        int3(static_cast<int>(grid_x), tensor->Height(), tensor->Slices());
     std::vector<int3> work_groups;
     GetPossibleWorkGroupsConv(TuningType::kFast, gpu_info_, kernel_.info_, grid,
                               &work_groups);
@@ -184,8 +190,14 @@ class TensorToTensorConverter : public OpenClConverterImpl {
     RETURN_IF_ERROR(cl_args_.SetObjectRef("src_tensor", &src_tensor));
     RETURN_IF_ERROR(cl_args_.SetObjectRef("dst_tensor", &dst_tensor));
     RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
-    const int3 grid = int3(dst_tensor.Width() * dst_tensor.Batch(),
-                           dst_tensor.Height(), dst_tensor.Slices());
+    const int64_t grid_x =
+        static_cast<int64_t>(dst_tensor.Width()) * dst_tensor.Batch();
+    if (grid_x > std::numeric_limits<int>::max()) {
+      return absl::InvalidArgumentError(
+          "Grid x-dimension exceeds 32-bit integer maximum.");
+    }
+    const int3 grid = int3(static_cast<int>(grid_x), dst_tensor.Height(),
+                           dst_tensor.Slices());
     const int3 work_group_size = {16, 8, 1};
     const int3 work_groups_count = GetWorkGroupsCount(grid, work_group_size);
     return queue_->Dispatch(kernel_, work_groups_count, work_group_size);
@@ -349,15 +361,15 @@ std::array<size_t, 3> CalculateTextureRegion(const TensorObjectDef& def) {
   switch (ToTensorStorageType(def.object_def.object_type,
                               def.object_def.data_layout)) {
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      region[0] = static_cast<size_t>(dims.w * dims.b);
+      region[0] = static_cast<size_t>(dims.w) * dims.b;
       region[1] = static_cast<size_t>(dims.h);
       break;
     case TensorStorageType::TEXTURE_2D:
-      region[0] = static_cast<size_t>(dims.w * dims.b);
-      region[1] = static_cast<size_t>(dims.h * dims.d());
+      region[0] = static_cast<size_t>(dims.w) * dims.b;
+      region[1] = static_cast<size_t>(dims.h) * dims.d();
       break;
     case TensorStorageType::TEXTURE_ARRAY:
-      region[0] = static_cast<size_t>(dims.w * dims.b);
+      region[0] = static_cast<size_t>(dims.w) * dims.b;
       region[1] = static_cast<size_t>(dims.h);
       region[2] = static_cast<size_t>(dims.d());
       break;

@@ -58,7 +58,7 @@ Future<> AbstractTrackedDeviceBuffer::GetReadyFuture(
   client->TrackFuture(memory_space, "BufferDefinitionEvent", definition_future);
 
   CHECK(!usage_events_locked_);
-  std::vector<PjRtDeviceEventRef> dependencies;
+  PjRtDeviceEventRefVector dependencies;
   dependencies.reserve(definition_events().size() + 1);
   bool first_event_is_buffer_alloc = false;
   if (raw_buffer() && client->include_raw_buffer_in_ready_event()) {
@@ -81,10 +81,12 @@ Future<> AbstractTrackedDeviceBuffer::GetReadyFuture(
         PjRtDeviceEventPtr::FromAsyncValue(definition_future.async_value()),
         dependencies);
   }
-  auto deps = absl::Span<const PjRtDeviceEventRef>(dependencies);
-  xla::RunWhenReady(deps, [definition_event = std::move(definition_promise),
-                           first_event_is_buffer_alloc,
-                           dependencies = std::move(dependencies)]() mutable {
+  PjRtDeviceEventSpan deps_span(dependencies);
+  xla::RunWhenReady(deps_span, [definition_event =
+                                    std::move(definition_promise),
+                                first_event_is_buffer_alloc,
+                                dependencies =
+                                    std::move(dependencies)]() mutable {
     absl::Status status;
     for (size_t i = 0; i < dependencies.size(); ++i) {
       const auto& e = dependencies[i];
@@ -141,12 +143,13 @@ AbstractTrackedDeviceBuffer::AbstractTrackedDeviceBuffer(
 
 void AbstractTrackedDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
   std::unique_ptr<AbstractTrackedDeviceBuffer> device_buffer(this);
-  std::vector<PjRtDeviceEventRef> events;
+  PjRtDeviceEventRefVector events;
   for (const auto& ev : device_buffer->definition_events()) {
     events.push_back(ev);
   }
-  events.insert(events.end(), device_buffer->usage_events_.begin(),
-                device_buffer->usage_events_.end());
+  for (const auto& ev : device_buffer->usage_events_) {
+    events.push_back(ev);
+  }
 
   device_buffer->LockUsageEvents();
   auto raw_buffer = device_buffer->raw_buffer();
@@ -412,7 +415,7 @@ bool CommonPjRtBuffer::IsDeleted() const {
 absl::Status CommonPjRtBuffer::AcquireScopedRawBuffer(
     absl::AnyInvocable<absl::StatusOr<PjRtDeviceEventRef>(
         PjRtRawBufferRef raw_buffer,
-        std::vector<PjRtDeviceEventRef> definition_events) &&>
+        PjRtDeviceEventRefVector definition_events) &&>
         scoped_acquire,
     const char* caller_name) {
   ScopedHold device_buffer(this, ScopedHold::kUsage);
@@ -428,8 +431,11 @@ absl::Status CommonPjRtBuffer::AcquireScopedRawBuffer(
   }
 
   auto definition_events_span = device_buffer.buffer()->definition_events();
-  std::vector<PjRtDeviceEventRef> definition_events(
-      definition_events_span.begin(), definition_events_span.end());
+  PjRtDeviceEventRefVector definition_events;
+  definition_events.reserve(definition_events_span.size());
+  for (const auto& ev : definition_events_span) {
+    definition_events.push_back(ev);
+  }
 
   ASSIGN_OR_RETURN(auto device_event, std::move(scoped_acquire)(
                                           device_buffer.buffer()->raw_buffer(),
@@ -444,7 +450,7 @@ CommonPjRtBuffer::GetRawBufferForUsage(const char* caller_name) {
   xla::PjRtDeviceEventPromiseRef usage_done_promise;
   RETURN_IF_ERROR(AcquireScopedRawBuffer(
       [&](xla::PjRtRawBufferRef raw_buffer_ref,
-          std::vector<xla::PjRtDeviceEventRef> definition_events)
+          xla::PjRtDeviceEventRefVector definition_events)
           -> absl::StatusOr<xla::PjRtDeviceEventRef> {
         // `definition_events` is unused because we return
         // `GetReadyFuture()` below.

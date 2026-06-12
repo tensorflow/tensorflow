@@ -250,10 +250,10 @@ TEST_F(YnnReduceTest, ReduceSquared) {
   )");
 }
 
-class YnnReduceEltwiseTest : public HloPjRtTestBase {
+class YnnReduceEltwiseTest : public HloTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_cpu_experimental_ynn_fusion_type(
         DebugOptions::LIBRARY_FUSION_TYPE_REDUCE);
     debug_options.add_xla_cpu_experimental_ynn_fusion_type(
