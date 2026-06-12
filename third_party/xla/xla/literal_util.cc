@@ -320,18 +320,26 @@ void PopulateWithRandomFullRangeFloatingPointData(Literal* literal,
   // exponent of the floating point to have a uniform distribution.
   const int min_exp = std::numeric_limits<FloatT>::min_exponent;
   const int max_exp = std::numeric_limits<FloatT>::max_exponent;
-  std::uniform_real_distribution<double> generator(min_exp - 1, max_exp - 1);
+
+  using GeneratorT =
+      std::conditional_t<sizeof(FloatT) >= sizeof(double), double, float>;
+  std::uniform_real_distribution<GeneratorT> generator(min_exp - 1,
+                                                       max_exp - 1);
 
   for (FloatT& value : literal->data<FloatT>()) {
     // Each special value has a kSpecialValueProbability chance to be generated
     // instead of sampling using the normal distributions.
-    if (special_value_gen(*engine) <
-        kSpecialValueProbability * kNumSpecialValues) {
+    float random_interval = special_value_gen(*engine);
+    if (random_interval < kSpecialValueProbability * kNumSpecialValues) {
       value =
           static_cast<FloatT>(kSpecialValues[(*engine)() % kNumSpecialValues]);
     } else {
-      float sign = ((*engine)() % 2 == 0) ? 1 : -1;
-      value = static_cast<FloatT>(pow(2, generator(*engine)) * sign);
+      // Non special values range from [kSpecialValueProbability, 1]. Take the
+      // lower half of that range as a sign of -1, the upper half is +1.
+      const float kHalfInterval =
+          0.5f + (kSpecialValueProbability * kNumSpecialValues) / 2;
+      const float sign = (random_interval < kHalfInterval) ? 1 : -1;
+      value = static_cast<FloatT>(exp2(generator(*engine)) * sign);
     }
   }
 }
