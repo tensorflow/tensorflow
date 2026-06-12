@@ -68,7 +68,8 @@ class SchedulingTest : public HloHardwareIndependentTestBase {
       absl::string_view hlo_string, absl::Span<const int64_t> tile_sizes = {}) {
     HloInstruction* root = ParseAndGetRoot(hlo_string);
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-    auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    ASSIGN_OR_RETURN(auto tiling_space,
+                     TilingSpace::Create(*fusion_adaptor, &mlir_context_));
     if (!tile_sizes.empty()) {
       RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
     }

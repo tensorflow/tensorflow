@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -25,12 +26,17 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -42,6 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -359,9 +366,13 @@ TEST_F(CudaStreamTest, DoHostCallbackDuringGraphCapture) {
                                              /*priority=*/std::nullopt));
 
   CUstream cu_stream = stream->stream_handle();
-  ASSERT_THAT(cuda::ToStatus(cuStreamBeginCapture(
-                  cu_stream, CU_STREAM_CAPTURE_MODE_GLOBAL)),
-              absl_testing::IsOk());
+  CUgraph graph;
+  ASSERT_OK(cuda::ToStatus(cuGraphCreate(&graph, 0)));
+  ASSERT_OK_AND_ASSIGN(auto handle,
+                       stream->BeginCapture(graph, /*dependencies=*/nullptr,
+                                            /*dependency_data=*/nullptr,
+                                            /*num_dependencies=*/0,
+                                            CU_STREAM_CAPTURE_MODE_GLOBAL));
 
   bool callback_called = false;
   bool error_callback_called = false;
@@ -381,9 +392,7 @@ TEST_F(CudaStreamTest, DoHostCallbackDuringGraphCapture) {
   // Refresh status should return ok even during capture.
   ASSERT_THAT(stream->RefreshStatus(), absl_testing::IsOk());
 
-  CUgraph graph;
-  ASSERT_THAT(cuda::ToStatus(cuStreamEndCapture(cu_stream, &graph)),
-              absl_testing::IsOk());
+  ASSERT_THAT(handle.EndCapture(), absl_testing::IsOk());
 
   EXPECT_FALSE(error_callback_called);
   EXPECT_FALSE(callback_called);
@@ -399,6 +408,68 @@ TEST_F(CudaStreamTest, DoHostCallbackDuringGraphCapture) {
   ASSERT_THAT(cuda::ToStatus(cuGraphExecDestroy(graph_exec)),
               absl_testing::IsOk());
   ASSERT_THAT(cuda::ToStatus(cuGraphDestroy(graph)), absl_testing::IsOk());
+}
+
+TEST_F(CudaStreamTest, BlockHostUntilDoneWaitsForCapture) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(executor_,
+                                             /*priority=*/std::nullopt));
+
+  absl::Notification capture_started;
+  std::atomic<bool> capture_finished = false;
+  // Background Thread: Starts capture and holds it
+  std::unique_ptr<tsl::Thread> capture_thread(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "capture_thread", [&]() -> void {
+        CUgraph graph = nullptr;
+        ASSERT_OK(cuda::ToStatus(cuGraphCreate(&graph, 0)));
+        ASSERT_OK_AND_ASSIGN(
+            auto handle, stream->BeginCapture(graph, /*dependencies=*/nullptr,
+                                              /*dependency_data=*/nullptr,
+                                              /*num_dependencies=*/0,
+                                              CU_STREAM_CAPTURE_MODE_GLOBAL));
+        capture_started.Notify();
+        // The sleep is a way to make sure that the main threads will wait for
+        // this. In the worse case, this will cause false positives, but should
+        // not cause false negatives.
+        absl::SleepFor(absl::Seconds(2));
+        capture_finished = true;
+        ASSERT_OK(handle.EndCapture());
+        ASSERT_THAT(cuda::ToStatus(cuGraphDestroy(graph)),
+                    absl_testing::IsOk());
+      }));
+  capture_started.WaitForNotification();
+  // BlockHostUntilDone must wait for the capture to finish.
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
+  EXPECT_TRUE(capture_finished);
+}
+
+TEST_F(CudaStreamTest, NestedCaptureFails) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(executor_,
+                                             /*priority=*/std::nullopt));
+
+  CUgraph graph;
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  ASSERT_EQ(cuGraphCreate(&graph, 0), CUDA_SUCCESS);
+  absl::Cleanup cleanup_graph = [graph] { cuGraphDestroy(graph); };
+
+  TF_ASSERT_OK_AND_ASSIGN(auto handle1,
+                          stream->BeginCapture(graph, /*dependencies=*/nullptr,
+                                               /*dependency_data=*/nullptr,
+                                               /*num_dependencies=*/0,
+                                               CU_STREAM_CAPTURE_MODE_GLOBAL));
+
+  CUgraph graph2;
+  ASSERT_EQ(cuGraphCreate(&graph2, 0), CUDA_SUCCESS);
+  absl::Cleanup cleanup_graph2 = [graph2] { cuGraphDestroy(graph2); };
+  auto handle2_or = stream->BeginCapture(graph2, /*dependencies=*/nullptr,
+                                         /*dependency_data=*/nullptr,
+                                         /*num_dependencies=*/0,
+                                         CU_STREAM_CAPTURE_MODE_GLOBAL);
+  // Second capture on the same stream fails-fast
+  EXPECT_THAT(handle2_or,
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(handle1.EndCapture(), absl_testing::IsOk());
 }
 
 }  // namespace
