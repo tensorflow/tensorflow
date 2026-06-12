@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 
 #include <cstdint>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/reduce_window_rewriter.h"
 
-#include <cstdint>
 #include <optional>
 #include <string>
 
