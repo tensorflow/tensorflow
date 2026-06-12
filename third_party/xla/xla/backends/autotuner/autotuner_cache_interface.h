@@ -70,6 +70,31 @@ class AutotunerCacheInterface {
   };
 };
 
+// A no-op implementation of the autotuner cache.
+class NoOpAutotunerCache : public AutotunerCacheInterface {
+ public:
+  std::optional<Config> Lookup(const HloInstruction* instr) override {
+    return std::nullopt;
+  }
+
+  absl::Status Insert(const HloInstruction* instr,
+                      const Config& best_config) override {
+    return absl::OkStatus();
+  }
+
+  CacheStats GetCacheStats() const override { return {}; }
+
+  absl::StatusOr<std::string> Serialize(
+      absl::Span<const HloInstruction* const> instructions_to_serialize)
+      override {
+    return "";
+  }
+
+  absl::Status Deserialize(absl::string_view serialized_cache) override {
+    return absl::OkStatus();
+  }
+};
+
 }  // namespace xla
 
 #endif  // XLA_BACKENDS_AUTOTUNER_AUTOTUNER_CACHE_INTERFACE_H_

@@ -111,6 +111,9 @@ class IndexingAnalysisTest : public IndexingTestBase,
 
             // Custom call / MHLO unknown handling.
             "ScaledDotOp/1",
+
+            "GetTupleElementOp/1",
+            "ScanOp/1",
         };
 
     if (GetParam()) {
@@ -697,6 +700,62 @@ TEST_P(IndexingAnalysisTest, ConstantOp) {
   )");
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), IsEmpty());
+}
+
+TEST_P(IndexingAnalysisTest, GetTupleElementOp) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 20] parameter(0)
+      p1 = f32[30, 40] parameter(1)
+      t0 = (f32[10, 20], f32[30, 40]) tuple(p0, p1)
+      ROOT gte0 = f32[10, 20] get-tuple-element(t0), index=0
+    }
+  )");
+  auto input_indexing = GetOutputToInputIndexing(root);
+  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0, d1) -> (d0, d1),
+                              domain:
+                              d0 in [0, 9],
+                              d1 in [0, 19]
+                          )"));
+}
+
+TEST_P(IndexingAnalysisTest, ScanOp) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    scan_computation {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT t = (f32[], f32[]) tuple(p0, p1)
+    }
+    ENTRY e {
+      p0 = f32[10] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT scan = (f32[10], f32[]) scan(p0, p1), dimensions={0}, num_carries=1, to_apply=scan_computation
+    }
+  )");
+
+  auto input_indexing_0 = GetOutputToInputIndexing(root, /*output_id=*/0);
+  EXPECT_THAT(input_indexing_0.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0) -> (d0),
+                              domain:
+                              d0 in [0, 9]
+                            operand id = 1
+                              (d0) -> (),
+                              domain:
+                              d0 in [0, 9]
+                          )"));
+
+  auto input_indexing_1 = GetOutputToInputIndexing(root, /*output_id=*/1);
+  EXPECT_THAT(input_indexing_1.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              () -> ()
+                            operand id = 1
+                              () -> ()
+                          )"));
 }
 
 TEST_P(IndexingAnalysisTest, ConcatenateOp) {
