@@ -136,15 +136,18 @@ TfLiteStatus PrepareGeneralSubOp(TfLiteContext* context,
   // 31, therefore the addition will still fit in a 32 bit accumulator.
   op_params->left_shift = output->type == kTfLiteInt16 ? 15 : 20;
   const double twice_max_input_scale =
-      2 * std::max(input1_quantization_params.scale,
-                   input2_quantization_params.scale);
+      2 * static_cast<double>(std::max(input1_quantization_params.scale,
+                                       input2_quantization_params.scale));
   const double real_input1_multiplier =
-      input1_quantization_params.scale / twice_max_input_scale;
+      static_cast<double>(input1_quantization_params.scale) /
+      twice_max_input_scale;
   const double real_input2_multiplier =
-      input2_quantization_params.scale / twice_max_input_scale;
+      static_cast<double>(input2_quantization_params.scale) /
+      twice_max_input_scale;
   const double real_output_multiplier =
       twice_max_input_scale /
-      ((1 << op_params->left_shift) * output_quantization_params.scale);
+      ((1 << op_params->left_shift) *
+       static_cast<double>(output_quantization_params.scale));
 
   tflite::QuantizeMultiplierSmallerThanOneExp(real_input1_multiplier,
                                               &op_params->input1_multiplier,
