@@ -401,6 +401,14 @@ class GpuExecutable : public Executable {
       CollectiveMemoryCache& collective_memory_cache,
       bool collective_use_minimal_resource);
 
+  // Compare current allocation's address with previous run's address, and
+  // report the allocation info if memory addressed changed. Useful for identify
+  // in user's model if it is command buffer perf friendly (no command buffer
+  // update cost).
+  void LogChangedAllocationsInBetweenExecutions(
+      const BufferAllocations& buffer_allocations,
+      const ServiceExecutableRunOptions* run_options);
+
   // The LLVM IR, in string format, of the unoptimized module generated for
   // this GpuExecutable. We save a string instead of an llvm::Module* because
   // leaving llvm::Module* in a singleton can cause the heap checker to emit
