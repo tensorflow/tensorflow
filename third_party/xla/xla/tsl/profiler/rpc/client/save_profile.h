@@ -19,6 +19,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
@@ -47,6 +48,11 @@ absl::Status SaveGzippedToolData(const std::string& repository_root,
                                  const std::string& host,
                                  const std::string& tool_name,
                                  const std::string& data);
+
+absl::Status SaveXSpaceChunk(absl::string_view repository_root,
+                             absl::string_view run, absl::string_view host,
+                             int chunk_index,
+                             const tensorflow::profiler::XSpace& xspace);
 
 // Save XSpace to <repository_root>/<run>/<host>_<port>.<kXPlanePb>.
 absl::Status SaveXSpace(const std::string& repository_root,

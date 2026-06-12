@@ -1611,6 +1611,28 @@ TEST_P(SoftmaxOpTest, Softmax4D) {
                               })));
 }
 
+TEST_P(SoftmaxOpTest, Softmax4DHalf) {
+  FloatActivationsOpModel<half> m(GetRegistration(), 0.1f,
+                                  {TensorType_FLOAT16, {1, 2, 1, 4}},
+                                  TensorType_FLOAT16);
+  m.SetInput({
+      half(0),
+      half(-6),
+      half(2),
+      half(4),  // depth = 0
+      half(3),
+      half(-2),
+      half(10),
+      half(1),  // depth = 1
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {.23463, .12877, .28658, .35003,  //
+                   .22528, .13664, .45365, .18443},
+                  static_cast<float>(NumericLimits<half>::epsilon()) * 10)));
+}
+
 TEST_P(SoftmaxOpTest, Softmax4DUint8) {
   QuantizedActivationsOpModel m(GetRegistration(), 0.1f,
                                 {TensorType_UINT8, {1, 2, 1, 4}, -10, 10},

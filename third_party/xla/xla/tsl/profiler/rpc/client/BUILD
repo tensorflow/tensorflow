@@ -73,14 +73,17 @@ cc_library(
         "//xla/tsl/lib/io:zlib_compression_options",
         "//xla/tsl/lib/io:zlib_outputbuffer",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:file_system_utils",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/time",
+        "@riegeli//riegeli/bytes:cord_writer",
+        "@riegeli//riegeli/records:record_writer",
         "@tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
@@ -189,6 +192,23 @@ tsl_cc_test(
         "@tsl//tsl/profiler/lib:profiler_session",
         "@tsl//tsl/profiler/lib:profiler_session_impl",
     ] + tf_protos_profiler_service(),
+)
+
+tsl_cc_test(
+    name = "save_profile_test",
+    srcs = ["save_profile_test.cc"],
+    deps = [
+        ":save_profile",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@riegeli//riegeli/bytes:fd_reader",
+        "@riegeli//riegeli/records:record_reader",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
 )
 
 cc_library(
