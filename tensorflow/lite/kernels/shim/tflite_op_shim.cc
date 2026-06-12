@@ -21,12 +21,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/absl_check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/kernels/shim/op_kernel.h"
+#include "tensorflow/lite/kernels/shim/shape.h"
 #include "tensorflow/lite/kernels/shim/status_macros.h"
+#include "tensorflow/lite/kernels/shim/tensor_view.h"
+#include "tensorflow/lite/kernels/shim/tflite_tensor_view.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {
@@ -109,11 +116,16 @@ TensorViewOr TfLiteInvokeContext::GetOutput(const int idx,
       tflite::DynamicBuffer buf;
       buf.WriteToTensor(tflite_tensor, /*new_shape=*/nullptr);
     }
-    TfLiteIntArray* output_shape_array =
-        ShapeToTfLiteShape(output_shape.value());
-    context_->ResizeTensor(context_, tflite_tensor, output_shape_array);
+    std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)>
+        output_shape_array(ShapeToTfLiteShape(output_shape.value()),
+                           TfLiteIntArrayFree);
+    if (context_->ResizeTensor(context_, tflite_tensor,
+                               output_shape_array.release()) != kTfLiteOk) {
+      return absl::InternalError(
+          absl::StrCat("Failed to resize output tensor. idx: ", idx));
+    }
   } else {
-    DCHECK(TfLiteShapeToShape(tflite_tensor->dims) == output_shape);
+    ABSL_DCHECK(TfLiteShapeToShape(tflite_tensor->dims) == output_shape);
   }
   SH_ASSIGN_OR_RETURN(TfLiteTensorView tensor_view,
                       TensorView::New(tflite_tensor));
@@ -198,7 +210,9 @@ TfLiteIntArray* ShapeToTfLiteShape(const std::vector<int>& shape) {
   TfLiteIntArray* tflite_shape = TfLiteIntArrayCreate(shape.size());
   // TfLiteIntArray has a data array inside which is not a pointer so there's a
   // need for copy
-  std::memcpy(tflite_shape->data, shape.data(), sizeof(int) * shape.size());
+  if (!shape.empty()) {
+    std::memcpy(tflite_shape->data, shape.data(), sizeof(int) * shape.size());
+  }
   return tflite_shape;
 }
 
@@ -212,3 +226,5 @@ Shape TfLiteShapeToShape(const TfLiteIntArray* tflite_shape) {
 
 }  // namespace shim
 }  // namespace tflite
+
+// Dummy comment to trigger Tricorder
