@@ -276,3 +276,22 @@ func.func @sharding_constraint_unreduced(%arg0: tensor<8x8xf32>) -> tensor<8x8xf
   %0 = sdy.sharding_constraint %arg0 <@mesh_1, [{"x", ?}, {?}], unreduced={"y"}> :  tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
+
+// -----
+
+sdy.mesh @mesh_size_1 = <["axis_0"=1]>
+
+// CHECK-LABEL: func @trivial_manual_computation
+// CHECK-SAME:      %arg0: tensor<8x16xf32>
+// CHECK-NEXT:    %[[ADD:.*]] = stablehlo.add %arg0, %arg0
+// CHECK-V2-NEXT: %[[CC:.*]] = stablehlo.custom_call @xla.sdy.FuncResultSharding(%[[ADD]])
+// CHECK-V2-NEXT: return %[[CC]] : tensor<8x16xf32>
+// CHECK-V3-NEXT: return %[[ADD]] : tensor<8x16xf32>
+// CHECK-NOT:     stablehlo.custom_call @xla.sdy.GlobalToLocalShape
+func.func @trivial_manual_computation(%arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_size_1, [{"axis_0"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_size_1, [{"axis_0"}, {}]>}) {
+  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh_size_1, [{"axis_0"}, {}]>] out_shardings=[<@mesh_size_1, [{"axis_0"}, {}]>] manual_axes={"axis_0"} (%arg1: tensor<8x16xf32>) {
+    %1 = stablehlo.add %arg1, %arg1 : tensor<8x16xf32>
+    sdy.return %1 : tensor<8x16xf32>
+  } : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+}

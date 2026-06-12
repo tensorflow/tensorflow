@@ -29,8 +29,8 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 namespace {
-Status InitializeTpuLibrary(void* library_handle) {
-  Status s = InitializeTpuStructFns(library_handle);
+absl::Status InitializeTpuLibrary(void* library_handle) {
+  absl::Status s = InitializeTpuStructFns(library_handle);
 
   // TPU platform registration must only be performed after the library is
   // loaded. We do not want to register a TPU platform in XLA without the
@@ -60,7 +60,7 @@ bool FindAndLoadTpuModelServer() {
   void* library = dlopen(libtpu_path, RTLD_NOW);
   if (library) {
     if (TryAcquireTpuLock().ok()) {
-      Status s = InitializeTpuLibrary(library);
+      absl::Status s = InitializeTpuLibrary(library);
       if (!s.ok()) {
         return false;
       }
