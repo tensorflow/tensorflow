@@ -30,14 +30,15 @@ def _mock_kubernetes_module():
 
 def _mock_kubernetes_client(ret):
   mock_client = mock.MagicMock()
-  mock_client.list_pod_for_all_namespaces.side_effect = (
-      lambda *args, **kwargs: ret[kwargs['label_selector']])
+  mock_client.list_namespaced_pod.side_effect = lambda *args, **kwargs: ret[
+      kwargs['label_selector']
+  ]
   return mock_client
 
 
-def _get_mock_pod_item(name, phase, host_ip):
+def _get_mock_pod_item(name, phase, pod_ip):
   mock_status = mock.Mock()
-  mock_status.configure_mock(phase=phase, host_ip=host_ip)
+  mock_status.configure_mock(phase=phase, pod_ip=pod_ip)
 
   mock_metadata = mock.Mock()
   mock_metadata.configure_mock(name=name)
