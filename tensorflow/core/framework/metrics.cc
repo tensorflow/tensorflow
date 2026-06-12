@@ -264,6 +264,13 @@ auto* tf_data_service_data_transfer_protocol_error =
         "of non-retriable error with this message when using this protocol.",
         "data_transfer_protocol", "error_type", "error_message");
 
+auto* tf_data_service_client_routing_outcome_counter =
+    tsl::monitoring::Counter<4>::New(
+        "/tensorflow/data/service/client_routing_outcome",
+        "The number of times a tf.data client GetElement request resulted in "
+        "success, skip_empty_buffer, or skip_error, broken down by client ID, "
+        "worker address, and thread ID.",
+        "outcome", "client_id", "worker_address", "thread_id");
 auto* tf_data_service_optimal_number_of_workers =
     monitoring::Gauge<int64_t, 0>::New(
         "/tensorflow/data/service/optimal_number_of_workers",
@@ -664,6 +671,15 @@ void RecordTFDataServiceDataTransferProtocolError(
     const std::string& error_message) {
   tf_data_service_data_transfer_protocol_error
       ->GetCell(data_transfer_protocol, error::Code_Name(code), error_message)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataClientGetElementAction(const std::string& action,
+                                        const std::string& client_id,
+                                        const std::string& worker_address,
+                                        const std::string& thread_id) {
+  tf_data_service_client_routing_outcome_counter
+      ->GetCell(action, client_id, worker_address, thread_id)
       ->IncrementBy(1);
 }
 

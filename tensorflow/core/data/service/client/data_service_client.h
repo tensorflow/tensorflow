@@ -171,7 +171,7 @@ class DataServiceClient {
   void RecordTFMetrics(const ClientHeartbeatResponse& resp);
   void UpdateBufferSize();
   void UpdateWorkerThreads();
-  void RunWorkerThread(std::function<void()> done);
+  void RunWorkerThread(int64_t thread_index, std::function<void()> done);
   // Reports whether we can request another element without violating
   // `max_outstanding_requests_`.
   bool ShouldProcessTask();
@@ -186,12 +186,14 @@ class DataServiceClient {
                                  std::shared_ptr<Result> result, Task& task);
   absl::Status GetElementTraced(Task* task, int64_t deadline_micros,
                                 bool enqueue_result, bool allow_skip,
-                                std::shared_ptr<Result> result);
+                                std::shared_ptr<Result> result,
+                                int64_t thread_index = -1);
   absl::Status MaybeRemoveTask(Task& task, int64_t deadline_micros,
                                Result& result);
   absl::Status GetElement(Task* task, int64_t deadline_micros,
                           bool enqueue_result, bool allow_skip,
-                          std::shared_ptr<Result> result);
+                          std::shared_ptr<Result> result,
+                          int64_t thread_index = -1);
   bool ResultReady() const;
   std::shared_ptr<Result> PopNextResult();
   bool IsCoordinatedRead() const;
