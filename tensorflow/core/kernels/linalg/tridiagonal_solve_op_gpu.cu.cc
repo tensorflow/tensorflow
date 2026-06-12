@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/types.pb.h"
 #ifdef GOOGLE_CUDA
@@ -125,8 +126,8 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
     OP_REQUIRES(
         context, num_diags == 3,
         errors::InvalidArgument("Expected diagonals to be provided as a "
-                                "matrix with 3 columns, got ",
-                                num_diags, " columns."));
+                                "matrix with 3 rows, got ",
+                                num_diags, " rows."));
 
     auto num_rows1 = input_matrix_shapes[0].dim_size(1);
     auto num_rows2 = input_matrix_shapes[1].dim_size(0);
@@ -259,9 +260,35 @@ class TridiagonalSolveOpGpu : public OpKernel {
   void Compute(OpKernelContext* context) final {
     const Tensor& lhs = context->input(0);
     const Tensor& rhs = context->input(1);
+
+    OP_REQUIRES(context, lhs.dims() >= 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Input tensor 0 must have rank >= 2, got ", lhs.dims())));
+    OP_REQUIRES(context, lhs.dims() == rhs.dims(),
+                absl::InvalidArgumentError(
+                    "All input tensors must have the same rank."));
+
+    for (int dim = 0; dim < lhs.dims() - 2; ++dim) {
+      OP_REQUIRES(
+          context, lhs.dim_size(dim) == rhs.dim_size(dim),
+          absl::InvalidArgumentError(
+              "All input tensors must have the same outer dimensions."));
+    }
+
     const int ndims = lhs.dims();
+    OP_REQUIRES(context, lhs.dim_size(ndims - 2) == 3,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected diagonals to be provided as a "
+                                 "matrix with 3 rows, got ",
+                                 lhs.dim_size(ndims - 2), " rows.")));
+
     const int64_t num_rhs = rhs.dim_size(rhs.dims() - 1);
     const int64_t matrix_size = lhs.dim_size(ndims - 1);
+
+    OP_REQUIRES(context, matrix_size == rhs.dim_size(rhs.dims() - 2),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Expected same number of rows in both arguments, got ",
+                    matrix_size, " and ", rhs.dim_size(rhs.dims() - 2), ".")));
     int64_t batch_size = 1;
     for (int i = 0; i < ndims - 2; i++) {
       batch_size *= lhs.dim_size(i);
