@@ -6445,8 +6445,7 @@ ENTRY main {
 }
   )";
   auto status = ParseAndReturnUnverifiedModule(hlo).status();
-  EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.message(), HasSubstr("Unknown opcode: all-gather-update"));
+  EXPECT_TRUE(status.ok());
 }
 
 TEST_F(HloParserTest, DesugarParsingTest_CollectivePermuteUpdate_Invalid) {
@@ -6538,6 +6537,30 @@ ENTRY main {
   auto status = ParseAndReturnUnverifiedModule(hlo).status();
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.message(), HasSubstr("Unknown opcode: recv-update"));
+}
+
+TEST_F(HloParserTest, AllGatherStartDesugarsToAsyncStart) {
+  const char* const hlo = R"(
+HloModule ag_module
+
+ENTRY ag_test {
+  p = f32[8] parameter(0)
+  all-gather-start = f32[16] all-gather-start(p), dimensions={0}
+  all-gather-update = f32[16] all-gather-update(all-gather-start)
+  ROOT all-gather-done = f32[16] all-gather-done(all-gather-update)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+  const HloInstruction* done = module->entry_computation()->root_instruction();
+  EXPECT_EQ(done->opcode(), HloOpcode::kAsyncDone);
+  const HloInstruction* update = done->operand(0);
+  EXPECT_EQ(update->opcode(), HloOpcode::kAsyncUpdate);
+  const HloInstruction* start = update->operand(0);
+  EXPECT_EQ(start->opcode(), HloOpcode::kAsyncStart);
+  const HloInstruction* inner_root =
+      start->async_wrapped_computation()->root_instruction();
+  EXPECT_EQ(inner_root->opcode(), HloOpcode::kAllGather);
 }
 
 }  // namespace

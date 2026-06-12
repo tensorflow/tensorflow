@@ -1791,7 +1791,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     }
     // Unary ops.
     case HloOpcode::kAbs:
-    case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
@@ -1908,10 +1907,24 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
             constrain_layout ? *constrain_layout : false, channel_id,
             use_global_device_ids ? *use_global_device_ids : false));
       }
-      return builder->AddInstruction(HloInstruction::CreateAllGatherStart(
-          *shape, operands, dimensions->at(0), std::move(device_list),
-          constrain_layout ? *constrain_layout : false, channel_id,
-          use_global_device_ids ? *use_global_device_ids : false));
+      HloComputation::Builder async_wrapped_builder("async_wrapped_all_gather");
+      std::vector<HloInstruction*> async_params;
+      async_params.reserve(operands.size());
+      for (int i = 0; i < operands.size(); ++i) {
+        async_params.push_back(async_wrapped_builder.AddInstruction(
+            HloInstruction::CreateParameter(i, operands[i]->shape(),
+                                            "async_param")));
+      }
+      HloInstruction* inner_ag =
+          async_wrapped_builder.AddInstruction(HloInstruction::CreateAllGather(
+              shape->IsTuple() ? shape->tuple_shapes(1) : *shape, async_params,
+              dimensions->at(0), std::move(device_list),
+              constrain_layout ? *constrain_layout : false, channel_id,
+              use_global_device_ids ? *use_global_device_ids : false));
+      computations_.emplace_back(async_wrapped_builder.Build(inner_ag));
+      return builder->AddInstruction(HloInstruction::CreateAsyncStart(
+          *shape, operands, computations_.back().get(),
+          HloInstruction::kMainExecutionThread));
     }
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
@@ -2102,6 +2115,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                     "CollectivePermuteStart, but got "
                  << opcode;
     }
+    case HloOpcode::kAllGatherDone:
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncDone: {
@@ -7666,8 +7680,7 @@ bool HloParserImpl::ParseOpcode(
         // These ops do not support async wrapping.
         // TODO(b/319466293): Remove this logic once these opcodes are migrated.
         if (status_or_result.ok() &&
-            (status_or_result.value() == HloOpcode::kAllGather ||
-             status_or_result.value() == HloOpcode::kAllReduce ||
+            (status_or_result.value() == HloOpcode::kAllReduce ||
              status_or_result.value() == HloOpcode::kCollectivePermute ||
              status_or_result.value() == HloOpcode::kCopy ||
              status_or_result.value() == HloOpcode::kRecv ||
