@@ -513,7 +513,6 @@ cc_library(
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/lib/webp:webp_io",
         "//tensorflow/core/platform:byte_order",
-        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/profiler/lib:traceme",
