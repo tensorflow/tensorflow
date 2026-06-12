@@ -771,8 +771,7 @@ class HloAllGatherInstruction : public HloCollectiveInstruction {
   void set_all_gather_dimension(int64_t dim) { all_gather_dimension_ = dim; }
 
   static bool ClassOf(const HloInstruction* hlo) {
-    return hlo->opcode() == HloOpcode::kAllGather ||
-           hlo->opcode() == HloOpcode::kAllGatherStart;
+    return hlo->opcode() == HloOpcode::kAllGather;
   }
 
  protected:
