@@ -14,9 +14,39 @@ diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir b/stabl
  // CHECK: %[[V8:.*]] = arith.ori %[[V7]], %[[C5]] : i32
  // CHECK: %[[V9:.*]] = arith.select %[[V5]], %[[V8]], %[[V3]] : i32
  // CHECK: %[[V10:.*]] = arith.select %[[V6]], %[[V7]], %[[V9]] : i32
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir b/stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir
+@@ -256,7 +256,7 @@
+ // CHECK-SAME:    outs(%[[FILL0]], %[[FILL1]] : tensor<2xi32>, tensor<2xi32>)
+ // CHECK-NEXT:   ^bb0(%[[IN0:.*]]: i32, %[[IN1:.*]]: i32, %[[OUT0:.*]]: i32, %[[OUT1:.*]]: i32):
+ // CHECK-NEXT:     %[[T1:.*]] = arith.cmpi sge, %[[OUT0]], %[[IN0]] : i32
+-// CHECK-NEXT:     %[[T2:.*]] = arith.select %[[T1]], %[[OUT0]], %[[IN0]] : i32
++// CHECK-NEXT:     %[[T2:.*]] = arith.maxsi %[[OUT0]], %[[IN0]] : i32
+ // CHECK-NEXT:     %[[T3:.*]] = arith.cmpi eq, %[[OUT0]], %[[IN0]] : i32
+ // CHECK-NEXT:     %[[T4:.*]] = arith.minsi %[[OUT1:.*]], %[[IN1]] : i32
+ // CHECK-NEXT:     %[[T5:.*]] = arith.select %[[T1]], %[[OUT1]], %[[IN1]] : i32
+@@ -275,7 +275,7 @@
+ // CHECK-PRIMITIVE-SAME:    dimensions = [0]
+ // CHECK-PRIMITIVE-NEXT:   (%[[IN0:.*]]: i32, %[[IN1:.*]]: i32, %[[OUT0:.*]]: i32, %[[OUT1:.*]]: i32) {
+ // CHECK-PRIMITIVE-NEXT:     %[[T1:.*]] = arith.cmpi sge, %[[OUT0]], %[[IN0]] : i32
+-// CHECK-PRIMITIVE-NEXT:     %[[T2:.*]] = arith.select %[[T1]], %[[OUT0]], %[[IN0]] : i32
++// CHECK-PRIMITIVE-NEXT:     %[[T2:.*]] = arith.maxsi %[[OUT0]], %[[IN0]] : i32
+ // CHECK-PRIMITIVE-NEXT:     %[[T3:.*]] = arith.cmpi eq, %[[OUT0]], %[[IN0]] : i32
+ // CHECK-PRIMITIVE-NEXT:     %[[T4:.*]] = arith.minsi %[[OUT1:.*]], %[[IN1]] : i32
+ // CHECK-PRIMITIVE-NEXT:     %[[T5:.*]] = arith.select %[[T1]], %[[OUT1]], %[[IN1]] : i32
 diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
 --- stablehlo/stablehlo/dialect/Base.td
 +++ stablehlo/stablehlo/dialect/Base.td
+@@ -152,7 +152,7 @@
+     AnyTypeOf<[HLO_PerAxisQuantizedSignedInt, HLO_PerAxisQuantizedUnsignedInt], "per-axis integer quantized">;
+ 
+ // Token type.
+-def HLO_Token : Type<CPred<"::llvm::isa<TokenType>($_self)">, "token">;
++def HLO_Token : Type<CPred<"::llvm::isa<::mlir::stablehlo::TokenType>($_self)">, "token">;
+ 
+ // Any integer tensor types
+ def HLO_IntTensor : RankedTensorOf<[HLO_Int]>;
 @@ -181,7 +181,7 @@
  
  def HLO_Tensor : RankedTensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
@@ -230,6 +260,17 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
  }
  
  LogicalResult AllReduceOp::inferReturnTypeComponents(
+@@ -3724,10 +3770,6 @@
+     return NonSpatialDim(DenseMapInfo<int64_t>::getEmptyKey());
+   }
+ 
+-  static inline NonSpatialDim getTombstoneKey() {
+-    return NonSpatialDim(DenseMapInfo<int64_t>::getTombstoneKey());
+-  }
+-
+   static unsigned getHashValue(const NonSpatialDim& key) {
+     return DenseMapInfo<int64_t>::getHashValue(key);
+   }
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
