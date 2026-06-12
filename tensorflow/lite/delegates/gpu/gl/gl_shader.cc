@@ -58,6 +58,9 @@ absl::Status GlShader::CompileShader(GLenum shader_type,
       TFLITE_GPU_CALL_GL(glShaderSource, shader.id(), 1, &src, nullptr));
 
   glCompileShader(shader.id());
+#ifdef __EMSCRIPTEN__
+  glFlush();
+#endif
 
 #ifndef __EMSCRIPTEN__
   // This check is not recommended on WebGL, since it will force a wait on the

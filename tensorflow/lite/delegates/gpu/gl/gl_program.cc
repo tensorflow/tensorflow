@@ -138,6 +138,10 @@ absl::Status GlProgram::CreateWithShader(const GlShader& shader,
   RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glLinkProgram, program.id()));
   RETURN_IF_ERROR(CheckProgramLinked(program.id()));
 
+#ifdef __EMSCRIPTEN__
+  glFlush();
+#endif
+
   *gl_program = std::move(program);
   return absl::OkStatus();
 }
@@ -155,6 +159,10 @@ absl::Status GlProgram::CreateWithBinaryShader(const BinaryShader& shader,
                                      shader.format(), shader.binary().data(),
                                      shader.binary().size()));
   RETURN_IF_ERROR(CheckProgramLinked(program.id()));
+
+#ifdef __EMSCRIPTEN__
+  glFlush();
+#endif
 
   *gl_program = std::move(program);
   return absl::OkStatus();
