@@ -542,8 +542,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // These tensor may be 1D or 2D. It's fine as long as the total size is
   // correct.
   TF_LITE_ENSURE_EQ(context, NumElements(fw_activation_state),
-                    n_batch * n_fw_output);
-  TF_LITE_ENSURE_EQ(context, NumElements(fw_cell_state), n_batch * n_fw_cell);
+                    static_cast<int64_t>(n_batch) * n_fw_output);
+  TF_LITE_ENSURE_EQ(context, NumElements(fw_cell_state),
+                    static_cast<int64_t>(n_batch) * n_fw_cell);
 
   // Resize the output tensors.
   TfLiteIntArray* fw_output_size = TfLiteIntArrayCreate(3);
@@ -625,8 +626,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // These tensor may be 1D or 2D. It's fine as long as the total size is
   // correct.
   TF_LITE_ENSURE_EQ(context, NumElements(bw_activation_state),
-                    n_batch * n_bw_output);
-  TF_LITE_ENSURE_EQ(context, NumElements(bw_cell_state), n_batch * n_bw_cell);
+                    static_cast<int64_t>(n_batch) * n_bw_output);
+  TF_LITE_ENSURE_EQ(context, NumElements(bw_cell_state),
+                    static_cast<int64_t>(n_batch) * n_bw_cell);
 
   // Create a scratch buffer tensor.
   node->temporaries->data[kBwScratchBuffer] =
