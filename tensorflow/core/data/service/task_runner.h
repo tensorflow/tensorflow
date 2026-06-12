@@ -37,6 +37,8 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+class IteratorMetricsCollector;
+
 // Iterator over a task's elements.
 class TaskIterator {
  public:
@@ -78,6 +80,7 @@ class StandaloneTaskIterator : public TaskIterator {
   // lives as long as `iterator`.
   StandaloneTaskIterator(std::unique_ptr<standalone::Dataset> dataset,
                          std::unique_ptr<standalone::Iterator> iterator);
+  ~StandaloneTaskIterator() override;
   absl::Status GetNext(std::vector<Tensor>& element,
                        bool& end_of_sequence) override;
   int64_t Cardinality() const override;
@@ -89,6 +92,7 @@ class StandaloneTaskIterator : public TaskIterator {
  private:
   std::unique_ptr<standalone::Dataset> dataset_;
   std::unique_ptr<standalone::Iterator> iterator_;
+  std::unique_ptr<IteratorMetricsCollector> metrics_collector_;
 };
 
 // Interface for providing elements to task consumers.

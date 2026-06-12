@@ -128,6 +128,16 @@ class LibraryRewriter : public HloModulePass {
   // Finds and creates fusions in the given computation.
   absl::StatusOr<bool> ProcessComputation(HloComputation* computation);
 
+  // Returns true if the library is in the list of matchers.
+  bool IsLibraryRegistered(absl::string_view lib_fusion_kind) const {
+    for (const auto& lib : libs_) {
+      if (lib->fusion_kind() == lib_fusion_kind) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   absl::string_view name() const override { return "dot-library-rewriter"; }
 
  protected:
