@@ -22,41 +22,17 @@ cc_library(
     hdrs = ["copy.h"],
     deps = [
         ":fusion_emitter",
-        "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/runtime:device_to_device_copy_thunk",
-        "//xla/backends/gpu/runtime:dynamic_memcpy_thunk",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
         "//xla/service:shaped_slice",
-        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:ir_emitter_context",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "copy_test",
-    srcs = ["copy_test.cc"],
-    deps = [
-        ":copy",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:path",
     ],
 )
 

@@ -47,17 +47,6 @@ namespace gpu {
 
 std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
     const {
-  if (analysis().emitter_fusion_kind() ==
-      HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy) {
-    if (IsDynamicUpdateSliceFusion(analysis().fusion_spec()) &&
-        !CanEmitDynamicUpdateSliceInPlace()) {
-      // We currently only implement in-place DUSes as memcpys.
-      return std::nullopt;
-    }
-
-    return std::make_unique<DynamicMemcpyFusion>(analysis());
-  }
-
   for (const HloInstructionAdaptor& root_adaptor : analysis().fusion_roots()) {
     const HloInstruction* root = &root_adaptor.instruction();
     if (root->opcode() != HloOpcode::kCopy ||
@@ -97,11 +86,9 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
       }
       return std::make_unique<CustomFusion>();
     }
-    case HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy:
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       // Check for a memcpy fusion before checking if a DUS can be emitted in
-      // place. DUS cmemcpy fusions can be emitted in place, but lowering them
-      // to a memcpy is still better.
+      // place.
       if (auto copy_fusion = fusion_info.GetCopyFusion()) {
         return *std::move(copy_fusion);
       }

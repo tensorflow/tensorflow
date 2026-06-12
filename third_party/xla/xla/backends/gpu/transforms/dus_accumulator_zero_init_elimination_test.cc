@@ -326,9 +326,8 @@ $INIT_EXPR
 }
 
 const FusionDusCase kFusionDusCases[] = {
-    FusionDusCase(
-        "FusionWrappedDus", true, 1,
-        R"(
+    FusionDusCase("FusionWrappedDus", true, 1,
+                  R"(
 %fused_dus (p0: bf16[4,8], p1: s32[], p2: bf16[1,8]) -> bf16[4,8] {
   %p0 = bf16[4,8] parameter(0)
   %p1 = s32[] parameter(1)
@@ -337,11 +336,8 @@ const FusionDusCase kFusionDusCases[] = {
   ROOT %dus = bf16[4,8] dynamic-update-slice(%p0, %p2, %p1, %z)
 }
 )",
-        R"(  dus = bf16[4,8] fusion(acc, it, update), kind=kLoop, calls=%fused_dus,
-        backend_config={"fusion_backend_config":{"kind":"__dynamic_memcpy",
-          "dynamic_memcpy_config":{"depends_on_loop":true,
-            "src_offset_bytes":["0","0","0","0"],
-            "dst_offset_bytes":["0","16","32","48"]}}})"),
+                  "  dus = bf16[4,8] fusion(acc, it, update), kind=kLoop, "
+                  "calls=%fused_dus"),
 
     FusionDusCase("PlainLoopFusionWithDescendingDus", true, 1,
                   R"(
