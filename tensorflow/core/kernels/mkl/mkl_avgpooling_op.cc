@@ -206,6 +206,18 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       const Tensor& grad_tensor =
           MklGetInput(context, kInputTensorIndexInputGradient);
 
+      const bool is_pool2d = (this->ksize_.size() == 4);
+      const int expected_dims = is_pool2d ? 4 : 5;
+      OP_REQUIRES(context,
+                  orig_input_tensor.dims() == 1 &&
+                      orig_input_tensor.NumElements() == expected_dims,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "orig_input_shape must be 1-dimensional and contain ",
+                      expected_dims, " elements")));
+      OP_REQUIRES(context, grad_tensor.dims() == expected_dims,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "grad must be ", expected_dims, "-dimensional")));
+
       // For empty tensor, avg_pool_3d_grad in oneDNN doesn't handle this case.
       // Follow what native TF does in this case.
 
@@ -219,11 +231,8 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                      context->allocate_output(0, output_shape, &output_tensor));
       output_tensor->flat<T>().setZero();
 
-      bool is_pool2d = (this->ksize_.size() == 4);
-
       // out-of-memory boundary index check for output_tensor in 2D case.
-      const int depth_window = this->ksize_[3];
-      if (is_pool2d && depth_window == 1) {
+      if (is_pool2d && this->ksize_[3] == 1) {
         const int window_rows = this->ksize_[1];
         const int window_cols = this->ksize_[2];
         const int row_stride = this->stride_[1];
