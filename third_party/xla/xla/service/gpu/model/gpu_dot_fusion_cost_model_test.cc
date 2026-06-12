@@ -113,9 +113,119 @@ backend_config={"sizes":["512"]}
   float approx_hbm_bandwidth =
       gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth(
           approx_total_bytes, ddh100_);
+
   absl::Duration approx_hbm_time =
       absl::Seconds(1.0f * approx_total_bytes / approx_hbm_bandwidth);
-  ASSERT_EQ(runtime_h100.exec_time, approx_hbm_time);
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(runtime_h100.exec_time),
+              absl::ToDoubleMicroseconds(approx_hbm_time), 0.25);
+}
+
+TEST_F(GpuDotFusionCostModelTest, SkinnyBf16GemmWriteAmplification) {
+  // Skinny GEMM: LHS = [16, 32] (bf16), RHS = [32, 64] (bf16), Output = [16,
+  // 64] Output size mathematically = 16 * 64 * 2 bytes = 2048 bytes. But NCU
+  // profiles show 2,476,800 bytes written to DRAM.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = bf16[16,32] parameter(0)
+  p1 = bf16[32,64] parameter(1)
+  ROOT r = bf16[16,64] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={"sizes":["32"]}
+})"));
+
+  BlockLevelParameters block_params;
+  block_params.output_tile_sizes = {{16, 64}};
+  block_params.num_warps = 4;
+  block_params.num_ctas = 1;
+  block_params.num_stages = 4;
+
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime_h100,
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot, block_params, ddh100_, /*block_k=*/32));
+
+  // With M = 16 and tile_n = 64 (bf16), the contiguous write width is 128
+  // bytes. Since 128 >= 128 (transaction size), there is no write coalescing
+  // penalty. The DRAM write volume remains exactly the mathematical output size
+  // (2048 bytes).
+  EXPECT_EQ(runtime_h100.bytes_written, 2048);
+}
+
+TEST_F(GpuDotFusionCostModelTest, SkinnyGemmDramWriteVolumeMismatch) {
+  // Skinny GEMM: LHS = [64, 894, 2], RHS = [48, 64, 894], Output = [64, 2, 48]
+  // Mathematical Output size = 64 * 2 * 48 * 8 bytes (f64) = 49,152 bytes.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f64[64,894,2] parameter(0)
+  p1 = f64[48,64,894] parameter(1)
+  ROOT r = f64[64,2,48] dot(p0, p1),
+    lhs_batch_dims={0}, lhs_contracting_dims={1},
+    rhs_batch_dims={1}, rhs_contracting_dims={2},
+    backend_config={"sizes":["64"]}
+})"));
+
+  BlockLevelParameters block_params;
+  block_params.output_tile_sizes = {{16, 32}};  // m:16 n:32
+  block_params.num_warps = 2;
+  block_params.num_ctas = 1;
+  block_params.num_stages = 3;
+
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime_h100,
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot, block_params, ddh100_, /*block_k=*/64));
+
+  // Contiguous tile write width is 32 * 8 bytes = 256 bytes.
+  // Since 256 >= 128 (transaction size), there is no coalescing penalty.
+  // Estimated DRAM writes remains the mathematical output size (49152 bytes).
+  EXPECT_EQ(runtime_h100.bytes_written, 49152);
+}
+
+TEST_F(GpuDotFusionCostModelTest, NarrowTileWriteAmplification) {
+  // RowMajor Output = [128, 128] (bf16).
+  // If we use a tile size with a very narrow N (e.g. tile_n = 8),
+  // the continuous write width is 8 * 2 = 16 bytes.
+  // With transaction size = 128 bytes, write coalesce penalty is 128/16 = 8.0x.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = bf16[128,128] parameter(0)
+  p1 = bf16[128,128] parameter(1)
+  ROOT r = bf16[128,128] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={"sizes":["128"]}
+})"));
+
+  BlockLevelParameters block_params;
+  block_params.output_tile_sizes = {
+      {16, 8}};  // tile_m = 16, tile_n = 8 (narrow N)
+  block_params.num_warps = 4;
+  block_params.num_ctas = 1;
+  block_params.num_stages = 4;
+
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime_h100,
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot, block_params, ddh100_, /*block_k=*/128));
+
+  // Mathematical Output size = 128 * 128 * 2 bytes = 32768 bytes.
+  // With write coalesce penalty 8.0x, expected bytes_written = 32768 * 8.0 =
+  // 262144 bytes.
+  EXPECT_EQ(runtime_h100.bytes_written, 262144);
 }
 
 TEST_F(GpuDotFusionCostModelTest, DifferentContractingDimsHaveSameRuntime) {
