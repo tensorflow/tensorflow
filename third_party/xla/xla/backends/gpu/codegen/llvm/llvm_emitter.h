@@ -135,7 +135,7 @@ absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitPadToStaticLLVMIR(
 // }
 //   ```
 absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitSliceToDynamicLLVMIR(
-    const HloCustomCallInstruction* hlo, IrEmitterContext* parent_context,
+    const HloCustomCallInstruction* hlo, IrEmitterContext* ir_emitter_context,
     const emitters::KernelArguments& kernel_arguments);
 
 // Emit a kernel to increment the global state for Philox RNG
@@ -143,7 +143,7 @@ absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitSliceToDynamicLLVMIR(
 absl::StatusOr<KernelDefinition<LlvmKernelSource>>
 EmitRngGetAndUpdateStateLLVMIR(
     const HloRngGetAndUpdateStateInstruction* hlo,
-    IrEmitterContext* parent_context,
+    IrEmitterContext* ir_emitter_context,
     const emitters::KernelArguments& kernel_arguments);
 
 }  // namespace xla::gpu

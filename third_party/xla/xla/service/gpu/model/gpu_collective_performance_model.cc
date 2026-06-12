@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/time/time.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
@@ -415,6 +416,22 @@ GpuPerformanceWithCollectiveModel::ComputeCollectiveTime(
       return kNcclKernelLaunchOverhead;
     }
   }
+}
+
+/*static*/ absl::StatusOr<double>
+GpuPerformanceWithCollectiveModel::GetIciBandwidthPerLaneGbps(
+    const se::DeviceDescription& gpu_device_info) {
+  if (const auto* cuda_cc =
+          gpu_device_info.gpu_compute_capability().cuda_compute_capability()) {
+    return CreateSettings(*cuda_cc).GetNvlinkBw();
+  }
+  if (const auto* rocm_cc =
+          gpu_device_info.gpu_compute_capability().rocm_compute_capability()) {
+    return CreateSettings(*rocm_cc).GetNvlinkBw();
+  }
+  return absl::InvalidArgumentError(
+      "GetIciBandwidthPerLaneGbps: unsupported compute capability "
+      "(neither CUDA nor ROCm)");
 }
 
 }  // namespace gpu
