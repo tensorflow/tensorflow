@@ -36,7 +36,7 @@ namespace xla {
 namespace xla_compile {
 namespace {
 
-class XlaCompileTest : public HloPjRtTestBase {
+class XlaCompileTest : public HloTestBase {
  public:
   void LoadAndRunExecutable(absl::string_view path_to_serialized_aot_result,
                             absl::Span<const Literal* const> args,
