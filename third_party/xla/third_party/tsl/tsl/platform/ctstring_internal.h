@@ -254,7 +254,8 @@ static inline char *TF_TString_ResizeUninitialized(TF_TString *str,
 
   // Case: SMALL/LARGE/VIEW/OFFSET -> SMALL
   if (new_size <= TF_TString_SmallCapacity) {
-    str->u.smll.size = (uint8_t)((new_size << 2) | TF_TSTR_SMALL);  // NOLINT
+    str->u.smll.size =
+        TF_TString_ToInternalSizeT(new_size, TF_TSTR_SMALL);  // NOLINT
     str->u.smll.str[new_size] = '\0';
 
     if (curr_type != TF_TSTR_SMALL && copy_size) {
