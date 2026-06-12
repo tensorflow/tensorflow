@@ -126,7 +126,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 100
+// Next ID: 101
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -271,6 +271,9 @@ message HloInstructionProto {
 
   // The backend configuration payload, can be either inline or an ID reference.
   Payload backend_config_payload = 99;
+
+  // The Tokamax metadata payload, can be either inline or an ID reference.
+  Payload tokamax_metadata_payload = 100;
 
   // Deprecated, but keeping for backward compatibility.
   // Use collective_device_list. Cross replica op fields.
