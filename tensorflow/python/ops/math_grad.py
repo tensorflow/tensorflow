@@ -54,7 +54,15 @@ def _EuclideanNormGrad(op: ops.Operation, grad):
     output = array_ops.reshape(output, output_shape_kept_dims)
     grad = array_ops.reshape(grad, output_shape_kept_dims)
 
-  return math_ops.truediv(op.inputs[0], output / grad), None
+  # When the norm is zero, all inputs must be zero, so the gradient is zero.
+  # Use a safe denominator to avoid NaN/Inf from division by zero, then select
+  # zero for the zero-norm case via math_ops.where.
+  is_zero = math_ops.equal(output, 0)
+  safe_output = math_ops.where(is_zero, array_ops.ones_like(output), output)
+  return math_ops.where(
+      is_zero,
+      array_ops.zeros_like(op.inputs[0]),
+      math_ops.truediv(op.inputs[0], safe_output / grad)), None
 
 
 def SmartBroadcastGradientArgs(x, y, grad=None):
@@ -1459,6 +1467,7 @@ def _DivGrad(op: ops.Operation, grad):
   cx = math_ops.conj(x)
   cy = math_ops.conj(y)
   gx = math_ops.divide(grad, cy)
+  # pylint: disable-next=invalid-unary-operand-type
   gy = grad * math_ops.divide(math_ops.divide(-cx, cy), cy)
   return _ReduceGradientArgs(x, y, gx, gy)
 
@@ -1493,6 +1502,7 @@ def _RealDivGrad(op: ops.Operation, grad):
   cx = math_ops.conj(op.inputs[0])
   cy = math_ops.conj(op.inputs[1])
   gx = math_ops.realdiv(grad, cy)
+  # pylint: disable-next=invalid-unary-operand-type
   gy = grad * math_ops.realdiv(math_ops.realdiv(-cx, cy), cy)
   return _ReduceGradientArgs(x, y, gx, gy)
 
@@ -1503,6 +1513,7 @@ def _DivNoNanGrad(op: ops.Operation, grad):
   x = math_ops.conj(op.inputs[0])
   y = math_ops.conj(op.inputs[1])
   gx = math_ops.div_no_nan(grad, y)
+  # pylint: disable-next=invalid-unary-operand-type
   gy = grad * math_ops.div_no_nan(math_ops.div_no_nan(-x, y), y)
   return _ReduceGradientArgs(x, y, gx, gy)
 
