@@ -54,24 +54,48 @@ diff --git a/src/python/grpcio/grpc/BUILD.bazel b/src/python/grpcio/grpc/BUILD.b
      deps = [
          ":_observability",
 
-diff --git a/MODULE.bazel b/MODULE.bazel
---- a/MODULE.bazel
-+++ b/MODULE.bazel
-@@ -60,7 +60,7 @@ bazel_dep(name = "rules_shell", version = "0.4.0", dev_dependency = True)
- # Python dependencies
- # ===================
+diff --git a/src/core/resolver/dns/dns_resolver_plugin.cc b/src/core/resolver/dns/dns_resolver_plugin.cc
+--- a/src/core/resolver/dns/dns_resolver_plugin.cc
++++ b/src/core/resolver/dns/dns_resolver_plugin.cc
+@@ -48,6 +48,9 @@
+     return;
+   }
+   auto resolver = ConfigVars::Get().DnsResolver();
++  if (resolver.empty()) {
++    resolver = "native";
++  }
+   // ---- Ares resolver ----
+   if (ShouldUseAresDnsResolver(resolver)) {
+     VLOG(2) << "Using ares dns resolver";
+
+
+
+
+
+diff --git a/bazel/cython_library.bzl b/bazel/cython_library.bzl
+--- a/bazel/cython_library.bzl
++++ b/bazel/cython_library.bzl
+@@ -69,5 +69,6 @@ def pyx_library(name, deps = [], py_deps
  
--bazel_dep(name = "rules_python", version = "1.5.4")
-+bazel_dep(name = "rules_python", version = "1.6.3")
- 
- PYTHON_VERSIONS = [
-     "3.9",
-@@ -68,7 +68,7 @@ PYTHON_VERSIONS = [
-     "3.11",
-     "3.12",
-     "3.13",
--    "3.14.0b2",
-+    "3.14",
- ]
- 
- python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+     shared_objects = []
+     defines = kwargs.pop("defines", [])
++    copts = kwargs.pop("copts", [])
+     for src in pyx_srcs:
+         stem = src.split(".")[0]
+@@ -80,6 +81,8 @@ def pyx_library(name, deps = [], py_deps
+             ],
+             defines = defines,
+             linkshared = 1,
++            copts = copts,
++            features = kwargs.get("features", []),
+             linkopts = select({
+                 # The "-undefined dynamic_lookup" flag allows the shared library to use symbols
+                 # that are not defined at link time but will be resolved at runtime.
+diff --git a/src/python/grpcio/grpc/_cython/BUILD.bazel b/src/python/grpcio/grpc/_cython/BUILD.bazel
+--- a/src/python/grpcio/grpc/_cython/BUILD.bazel
++++ b/src/python/grpcio/grpc/_cython/BUILD.bazel
+@@ -35,1 +35,4 @@
+     defines = ["GRPC_PYTHON_BUILD=1"],
++    # -Wno-unused-result is needed because Cython generated code triggers unused result warnings.
++    copts = ["-Wno-unused-result"],
++    features = ["-layering_check"],
