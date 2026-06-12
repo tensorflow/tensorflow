@@ -20,6 +20,8 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
@@ -35,6 +37,15 @@ limitations under the License.
 #include "xla/types.h"  // IWYU pragma: keep
 
 namespace xla::gpu {
+
+// Flattens instructions inside a > 1D collective fusion to 1D instructions
+// inplace. For example, a 2D computation with shape [2, 3] will be flattened to
+// a 1D computation with shape [6] with surrounding bitcasts inserted in the
+// parent computation.
+// NB: This should only be used if the fused computation  only contains
+// elementwise operations (and the collective itself).
+absl::Status FlattenCollectiveFusion(
+    HloFusionInstruction* absl_nonnull fusion_instr);
 
 // Returns a tile such that each dimension is a power of two and that the total
 // number of blocks does not exceed num_blocks. Returns the tile sizes in
