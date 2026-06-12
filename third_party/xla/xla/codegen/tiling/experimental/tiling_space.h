@@ -160,8 +160,8 @@ class TilingSpace {
     SymbolicExpr tile_size;
   };
 
-  static std::unique_ptr<TilingSpace> Create(const HloFusionAdaptor& fusion,
-                                             mlir::MLIRContext* ctx);
+  static absl::StatusOr<std::unique_ptr<TilingSpace>> Create(
+      const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx);
 
   std::string ToString() const;
 

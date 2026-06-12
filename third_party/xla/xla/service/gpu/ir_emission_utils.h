@@ -99,11 +99,6 @@ inline constexpr absl::string_view kTritonNestedGemmFusionKind =
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 
-// Fusions that can be emitted using a dynamic memcpy. A dynamic memcpy depends
-// on some loop induction variable.
-inline constexpr absl::string_view kDynamicMemcpyFusionKind =
-    "__dynamic_memcpy";
-
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";
 
@@ -114,17 +109,6 @@ inline constexpr int64_t kNumShmemBanks = 32;
 
 // The bitwidth of a shared memory bank.
 inline constexpr int64_t kBankBitwidth = 32;
-
-// The name of the custom fusion config for dynamic slice fusion with static
-// slices, such that the offset can be computed at compile time.
-inline constexpr absl::string_view
-    kDynamicSliceFusionWithStaticAddressComputationConfigName =
-        "address_computation";
-// The name of the custom fusion config for dynamic slice fusion with dynamic
-// slices, such that the offset is computed at runtime.
-inline constexpr absl::string_view
-    kDynamicSliceFusionWithDynamicAddressComputationConfigName =
-        "dynamic_address_computation";
 
 // The name of the custom fusion config for dynamic slice fusion V2.
 inline constexpr absl::string_view kDynamicSliceFusionConfigName =
@@ -137,10 +121,6 @@ inline constexpr absl::string_view kDynamicSliceFusionConfigName =
 // If any of this does not exist in the chain, then we return std::nullopt.
 std::optional<std::string> GetCustomFusionConfigName(
     const HloInstruction* instr);
-
-// Returns true if the given instruction is a custom fusion for dynamic slice
-// fusion. This is determined by checking the name of custom fusion config.
-bool IsDynamicSliceFusion(const HloInstruction* instr);
 
 // Returns true if `hlo` will be implemented as a call to a TopK routine.
 bool IsCustomCallToTopK(const HloInstruction& hlo);

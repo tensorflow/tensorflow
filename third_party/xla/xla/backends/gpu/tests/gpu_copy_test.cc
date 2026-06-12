@@ -106,301 +106,6 @@ TEST_F(GpuCopyTest, UseMemcpyForTrivialStaticSliceFusion) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
-constexpr char kSliceMemcpyModule[] = R"(
-    dynamic_slice {
-      p0 = s32[4,8,8]{2,1,0} parameter(0)
-      p1 = s32[] parameter(1)
-      c1 = s32[] constant(1)
-      p2 = s32[] parameter(2)
-
-      p1p1 = s32[] add(p1, c1)
-
-      // Test all supported kinds of offsets: derived from the while loop's
-      // induction variable (p1p1), constant (c1) and always clamped to 0, so
-      // the value is irrelevant (p2).
-      ROOT slice = s32[1,1,8] dynamic-slice(p0, p1p1, c1, p2),
-          dynamic_slice_sizes={1,1,8}
-    }
-
-    remainder {
-      p0 = s32[] parameter(0)
-      c5 = s32[] constant(5)
-      // We take the value modulo 5 to test for correct clamping (the offset 4
-      // must get clamped to 3, since it's greater or equal than the dimension
-      // size).
-      ROOT remainder = s32[] remainder(p0, c5)
-    }
-
-    add {
-      p0 = s32[] parameter(0)
-      c1 = s32[] constant(1)
-      ROOT sum = s32[] add(p0, c1)
-    }
-
-    add_slices {
-      p0 = s32[1,1,8] parameter(0)
-      p1 = s32[1,1,8] parameter(1)
-      ROOT sum = s32[1,1,8] add(p0, p1)
-    }
-
-    times_two {
-      p0 = s32[] parameter(0)
-      ROOT sum = s32[] add(p0, p0)
-    }
-
-    body {
-      p0 = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) parameter(0)
-      ivar = s32[] get-tuple-element(p0), index=0
-      input = s32[4,8,8]{2,1,0} get-tuple-element(p0), index=1
-
-      ivar_copy = s32[] copy(ivar)
-      acc = s32[1,1,8] get-tuple-element(p0), index=2
-      acc_copy = s32[1,1,8] copy(acc)
-
-      offset1 = s32[] fusion(ivar_copy), kind=kLoop, calls=remainder
-      offset2 = s32[] get-tuple-element(p0), index=3
-
-      slice = s32[1,1,8] fusion(input, offset1, offset2), kind=kLoop, calls=dynamic_slice,
-          backend_config={"fusion_backend_config":{
-              "kind":"__dynamic_memcpy",
-              "dynamic_memcpy_config":{
-                  "depends_on_loop":true,
-                  "src_offset_bytes":["288","544","800","800","800","288"],
-                  "dst_offset_bytes":["0","0","0","0","0","0"]}}}
-      next_ivar = s32[] fusion(ivar_copy), kind=kLoop, calls=add
-      next_offset_2 = s32[] fusion(offset2), kind=kLoop, calls=times_two
-
-      next_acc = s32[1,1,8] fusion(acc_copy, slice), kind=kLoop, calls=add_slices
-      ROOT result = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[])
-          tuple(next_ivar, input, next_acc, next_offset_2)
-    }
-
-    compare {
-      p0 = s32[] parameter(0)
-      c6 = s32[] constant(6)
-      ROOT cmp = pred[] compare(p0, c6), direction=LT
-    }
-
-    condition {
-      p0 = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) parameter(0)
-      ivar = s32[] get-tuple-element(p0), index=0
-      ROOT cmp = pred[] fusion(ivar), kind=kLoop, calls=compare
-    }
-
-    zero {
-      c0 = s32[] constant(0)
-      ROOT bc = s32[1,1,8] broadcast(c0), dimensions={}
-    }
-
-    input {
-      iota = s32[256] iota(), iota_dimension=0
-      ROOT bc = s32[4,8,8]{2,1,0} bitcast(iota)
-    }
-
-    ENTRY main {
-      input = s32[4,8,8]{2,1,0} fusion(), kind=kLoop, calls=input
-      init_acc = s32[1,1,8] fusion(), kind=kLoop, calls=zero
-      c0 = s32[] constant(0)
-      c1 = s32[] constant(1)
-      tuple = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) tuple(c0, input, init_acc, c1)
-      ROOT while = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) while(tuple),
-          condition=condition, body=body,
-          backend_config={"known_trip_count":{"n":"6"},
-                          "known_init_step":{"init":"0","step":"1"},
-                          "known_induction_variable":{"tuple_index":"0"}}
-    })";
-
-TEST_F(GpuCopyTest, UseMemcpyForDynamicSlice) {
-  // This verifies that dynamic slices can be implemented using memcpy in
-  // certain conditions.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kSliceMemcpyModule));
-
-  // There should not be a kernel for `dynamic_slice`.
-  ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
-                               "; CHECK-NOT: void @slice",
-                               /*match_optimized_ir=*/false,
-                               /*run_optimization_passes=*/false));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kSliceMemcpyModule, ErrorSpec{1e-5, 1e-5}));
-}
-
-constexpr char kDynamicUpdateSliceModule[] = R"(
-    dynamic_update_slice {
-      p0 = s32[4,8,8] parameter(0)
-      p1 = s32[1,1,8] parameter(1)
-      p2 = s32[] parameter(2)
-      c0 = s32[] constant(0)
-
-      ROOT update-slice = s32[4,8,8] dynamic-update-slice(p0, p1, p2, c0, c0)
-    }
-
-    add {
-      p0 = s32[] parameter(0)
-      c1 = s32[] constant(1)
-      ROOT sum = s32[] add(p0, c1)
-    }
-
-    add_slices {
-      p0 = s32[1,1,8] parameter(0)
-      ROOT sum = s32[1,1,8] add(p0, p0)
-    }
-
-    body {
-      p0 = (s32[], s32[4,8,8], s32[1,1,8]) parameter(0)
-      ivar = s32[] get-tuple-element(p0), index=0
-      input = s32[4,8,8] get-tuple-element(p0), index=1
-      input-copy = s32[4,8,8] copy(input)
-
-      ivar_copy = s32[] copy(ivar)
-      acc = s32[1,1,8] get-tuple-element(p0), index=2
-      acc_copy = s32[1,1,8] copy(acc)
-
-      updated = s32[4,8,8] fusion(input-copy, acc_copy, ivar_copy), kind=kLoop,
-          calls=dynamic_update_slice,
-          backend_config={"fusion_backend_config":{
-              "kind":"__dynamic_memcpy",
-              "dynamic_memcpy_config":{
-                  "depends_on_loop":true,
-                  "src_offset_bytes":["0","0","0","0","0","0"],
-                  "dst_offset_bytes":["0","256","512","768","768","768"]}}}
-      next_ivar = s32[] fusion(ivar_copy), kind=kLoop, calls=add
-
-      next_acc = s32[1,1,8] fusion(acc_copy), kind=kLoop, calls=add_slices
-      ROOT result = (s32[], s32[4,8,8], s32[1,1,8])
-          tuple(next_ivar, updated, next_acc)
-    }
-
-    compare {
-      p0 = s32[] parameter(0)
-      c6 = s32[] constant(6)
-      ROOT cmp = pred[] compare(p0, c6), direction=LT
-    }
-
-    condition {
-      p0 = (s32[], s32[4,8,8], s32[1,1,8]) parameter(0)
-      ivar = s32[] get-tuple-element(p0), index=0
-      ROOT cmp = pred[] fusion(ivar), kind=kLoop, calls=compare
-    }
-
-    input {
-      iota = s32[256] iota(), iota_dimension=0
-      ROOT bc = s32[4,8,8] bitcast(iota)
-    }
-
-    ENTRY main {
-      input = s32[4,8,8] fusion(), kind=kLoop, calls=input
-      init_acc = s32[1,1,8] constant({{{7,6,5,4,3,2,1,0}}})
-      c0 = s32[] constant(0)
-      tuple = (s32[], s32[4,8,8], s32[1,1,8]) tuple(c0, input, init_acc)
-      ROOT while = (s32[], s32[4,8,8], s32[1,1,8]) while(tuple),
-          condition=condition, body=body,
-          backend_config={"known_trip_count":{"n":"6"},
-                          "known_init_step":{"init":"0","step":"1"},
-                          "known_induction_variable":{"tuple_index":"0"}}
-    })";
-
-TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSlice) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> hlo_module,
-      ParseAndReturnVerifiedModule(kDynamicUpdateSliceModule));
-
-  ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
-                               "; CHECK-NOT: void @updated",
-                               /*match_optimized_ir=*/false,
-                               /*run_optimization_passes=*/false));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kDynamicUpdateSliceModule, ErrorSpec{0, 0}));
-}
-
-constexpr char kDynamicUpdateSliceWithBitcastModule[] = R"(
-    dynamic_update_slice {
-      p0 = s32[8,8] parameter(0)
-      p1 = s32[1,4] parameter(1)
-      p2 = s32[] parameter(2)
-      bc0 = s32[64] bitcast(p0)
-      bc1 = s32[4] bitcast(p1)
-      update-slice = s32[64] dynamic-update-slice(bc0, bc1, p2)
-      ROOT bc = s32[8,8] bitcast(update-slice)
-    }
-
-    add {
-      p0 = s32[] parameter(0)
-      c1 = s32[] constant(1)
-      ROOT sum = s32[] add(p0, c1)
-    }
-
-    body {
-      while_arg = (s32[], s32[8,8], s32[1,4]) parameter(0)
-      ivar = s32[] get-tuple-element(while_arg), index=0
-      input = s32[8,8] get-tuple-element(while_arg), index=1
-      update = s32[1,4] get-tuple-element(while_arg), index=2
-      input-copy = s32[8,8] copy(input)
-      ivar-copy = s32[] copy(ivar)
-
-      updated_bc = s32[8,8] fusion(input-copy, update, ivar-copy), kind=kLoop,
-          calls=dynamic_update_slice,
-          backend_config={"fusion_backend_config":{
-              "kind":"__dynamic_memcpy",
-              "dynamic_memcpy_config":{
-                  "depends_on_loop":true,
-                  "src_offset_bytes":["0","0","0","0","0","0"],
-                  "dst_offset_bytes":["0","4","8","12","16","20"]}}}
-      next_ivar = s32[] fusion(ivar-copy), kind=kLoop, calls=add
-
-      ROOT result = (s32[], s32[8,8], s32[1,4])
-          tuple(next_ivar, updated_bc, update)
-    }
-
-    compare {
-      p0 = s32[] parameter(0)
-      c6 = s32[] constant(6)
-      ROOT cmp = pred[] compare(p0, c6), direction=LT
-    }
-
-    condition {
-      while_arg = (s32[], s32[8,8], s32[1,4]) parameter(0)
-      ivar = s32[] get-tuple-element(while_arg), index=0
-      ROOT cmp = pred[] fusion(ivar), kind=kLoop, calls=compare
-    }
-
-    input {
-      iota = s32[64] iota(), iota_dimension=0
-      ROOT bc = s32[8,8] bitcast(iota)
-    }
-
-    ENTRY main {
-      input = s32[8,8] fusion(), kind=kLoop, calls=input
-      init_acc = s32[1,4] constant({{3,2,1,0}})
-      c0 = s32[] constant(0)
-      tuple = (s32[], s32[8,8], s32[1,4]) tuple(c0, input, init_acc)
-      ROOT while = (s32[], s32[8,8], s32[1,4]) while(tuple),
-          condition=condition, body=body,
-          backend_config={"known_trip_count":{"n":"6"},
-                          "known_init_step":{"init":"0","step":"1"},
-                          "known_induction_variable":{"tuple_index":"0"}}
-    })";
-
-TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSliceWithBitcasts) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> hlo_module,
-      ParseAndReturnVerifiedModule(kDynamicUpdateSliceWithBitcastModule));
-
-  ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module), R"(
-    CHECK-NOT: define {{.*}}@
-    CHECK: define {{.*}}@input
-    CHECK-NOT: define {{.*}}@
-    CHECK: define {{.*}}@cmp
-    CHECK-NOT: define {{.*}}@
-    CHECK: define {{.*}}@next_ivar
-    CHECK-NOT: define {{.*}}@
-  )",
-                               /*match_optimized_ir=*/false,
-                               /*run_optimization_passes=*/false));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kDynamicUpdateSliceWithBitcastModule,
-                                       ErrorSpec{0, 0}));
-}
-
 constexpr char kSliceMemcpyModuleUnfused[] = R"(
     body {
       p0 = (s32[], s32[4,8,1000000], s32[1,1,1000000]) parameter(0)
@@ -439,16 +144,16 @@ constexpr char kSliceMemcpyModuleUnfused[] = R"(
           condition=condition, body=body
     })";
 
-TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
+TEST_F(GpuCopyTest, UseDynamicSliceFusionIntegrationTest) {
   auto compute_capability = device_description().gpu_compute_capability();
   if (auto cc = compute_capability.cuda_compute_capability();
       !cc || !cc->IsAtLeastAmpere()) {
     GTEST_SKIP() << "Test requires at least Ampere.";
   }
 
-  // This is an integration test to verify that the pipeline for replacing
-  // dynamic-slices that depend on while loop iteration variables with memcpy
-  // works as a whole.
+  // This is an integration test to verify that the pipeline for rewriting
+  // dynamic-slices that depend on while loop iteration variables works as a
+  // whole.
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> hlo_module,
       ParseAndReturnVerifiedModule(kSliceMemcpyModuleUnfused));
@@ -456,8 +161,8 @@ TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
   // Check that there are exactly two fusions:
   // 1. A `compare` fusion for the loop condition.
   // 2. An `add` fusion for the next ivar.
-  // If the dynamic memcpy optimization does not trigger, there will be a third
-  // fusion for the dynamic-slice.
+  // If the dynamic-slice fusion rewrite does not trigger, there will be a
+  // third fusion for the dynamic-slice.
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module), R"(
                        CHECK-NOT: define {{.*}}@
 
@@ -483,8 +188,8 @@ TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
                                /*run_optimization_passes=*/true));
 }
 
-TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTestControl) {
-  // Control for UseDynamicMemcpyIntegrationTest. Verify that without
+TEST_F(GpuCopyTest, UseDynamicSliceFusionIntegrationTestControl) {
+  // Control for UseDynamicSliceFusionIntegrationTest. Verify that without
   // fusion-dynamic-memcpy-rewriter, we have a third fusion.
   HloModuleConfig config;
   DebugOptions options = GpuPjRtCodegenTest::GetDebugOptionsForTest();

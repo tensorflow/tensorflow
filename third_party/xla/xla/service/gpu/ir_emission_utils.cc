@@ -544,12 +544,6 @@ std::optional<std::string> GetCustomFusionConfigName(
   return fusion_backend_config.custom_fusion_config().name();
 }
 
-bool IsDynamicSliceFusion(const HloInstruction* instr) {
-  std::optional<std::string> name = GetCustomFusionConfigName(instr);
-  return name == kDynamicSliceFusionWithStaticAddressComputationConfigName ||
-         name == kDynamicSliceFusionWithDynamicAddressComputationConfigName;
-}
-
 namespace {
 
 // Whether the instruction is semantically a call.
