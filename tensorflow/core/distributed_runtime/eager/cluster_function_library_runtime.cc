@@ -122,7 +122,7 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
     }
   }
 
-  const absl::optional<std::vector<int>>& ret_indices = options.ret_indices;
+  const std::optional<std::vector<int>>& ret_indices = options.ret_indices;
   enqueue_request_size_metric->GetCell("instantiate")
       ->Add(request->ByteSizeLong());
   eager_client->EnqueueAsync(
