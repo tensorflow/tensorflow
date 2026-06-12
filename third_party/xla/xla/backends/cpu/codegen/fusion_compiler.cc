@@ -471,6 +471,8 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
 
 absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
     llvm::LLVMContext& llvm_context, mlir::ModuleOp mlir_module) {
+  mlir_module->setAttr("xla.cpu",
+                       mlir::UnitAttr::get(mlir_module.getContext()));
   absl::string_view module_name =
       mlir_module.getName() ? *mlir_module.getName() : "UnknownFusionModule";
   auto get_module_op_count = [&mlir_module]() {

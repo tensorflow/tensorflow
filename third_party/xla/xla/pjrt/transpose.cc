@@ -468,7 +468,7 @@ void TransposePlan::ExecuteChunk(int chunk_id, const void* a, void* b,
   }
 
   if (inner_kernel_is_memcpy_) {
-    DCHECK(transformation_ == Transformation::kNone);
+    CHECK(transformation_ == Transformation::kNone);
     // Memcpy-based plans all assume element size 1 (i.e., bytes).
     TransposeConstStride1(ac, bc, nodes.data());
     return;
@@ -939,13 +939,13 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   }
   plan->chunk_contiguity_ = o.chunk_contiguity;
 
-  plan->Initialize();
+  RETURN_IF_ERROR(plan->Initialize());
   return plan;
 }
 
-void TransposePlan::Initialize() {
+absl::Status TransposePlan::Initialize() {
   if (num_elems_ == 0) {
-    return;
+    return absl::OkStatus();
   }
   // permutation maps dimensions of b to a
   // inverse_permutation maps dimensions of a to b
@@ -1005,6 +1005,11 @@ void TransposePlan::Initialize() {
   inner_kernel_is_memcpy_ = (pos_stride1b_in_a == pos_stride1a_in_a) &&
                             (stride_pos1a == elem_size_in_bytes_) &&
                             (stride_pos1b == elem_size_in_bytes_);
+
+  if (inner_kernel_is_memcpy_ && transformation_ != Transformation::kNone) {
+    return InvalidArgument(
+        "Memcpy-based plans cannot be used with transformations.");
+  }
 
   // Calculate sentinel strides.
   if (!inner_kernel_is_memcpy_) {
@@ -1190,6 +1195,7 @@ void TransposePlan::Initialize() {
   }
 
   VLOG(5) << "Final plan: " << ToString();
+  return absl::OkStatus();
 }
 
 void TransposePlan::ChooseLoopOrder(std::vector<Loop>& loop_order) const {
