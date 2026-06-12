@@ -432,8 +432,6 @@ common:avx_linux --copt=-mavx
 common:avx_linux --host_copt=-mavx
 common:avx_win --copt=/arch:AVX
 
-common:win_clang_base --@com_google_protobuf//build_defs:use_dlls=True
-common:win_clang_base --@com_google_absl//absl:use_dlls=True
 common:win_clang_base --linkopt=/demangle:no --host_linkopt=/demangle:no
 common:win_clang_base --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
 common:win_clang_base --copt=/clang:-Weverything
