@@ -752,14 +752,20 @@ class ShardedVariableMixin(trackable.Trackable):
 
   def sparse_read(self, indices, name=None):
     """Implements tf.Variable.sparse_read."""
-    per_var_indices, _ = self._decompose_indices(indices)
+    per_var_indices, partition_assignments = self._decompose_indices(indices)
     result = []
     for i, v in enumerate(self._variables):
       new_name = None
       if name is not None:
         new_name = '{}/part_{}'.format(name, i)
       result.append(v.sparse_read(per_var_indices[i], name=new_name))
-    return array_ops.concat(result, axis=0)
+    original_indices = math_ops.range(
+        array_ops.size(indices, out_type=dtypes.int32)
+    )
+    pindices = data_flow_ops.dynamic_partition(
+        original_indices, partition_assignments, len(self._variables)
+    )
+    return data_flow_ops.dynamic_stitch(pindices, result, name=name)
 
   def _gather_saveables_for_checkpoint(self):
     """Return a `Saveable` for each shard. See `Trackable`."""
