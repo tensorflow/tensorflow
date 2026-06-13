@@ -94,7 +94,7 @@ ENTRY computation {
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(root2_instr->opcode(), HloOpcode::kSend);
   const HloSendInstruction* send_instr =
-      tensorflow::down_cast<const HloSendInstruction*>(root2_instr);
+      absl::down_cast<const HloSendInstruction*>(root2_instr);
   ASSERT_NE(send_instr, nullptr);
 
   // Buffer and Allocation Setup
@@ -187,7 +187,7 @@ ENTRY computation {
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(root2_instr->opcode(), HloOpcode::kRecv);
   const HloRecvInstruction* recv_instr =
-      tensorflow::down_cast<const HloRecvInstruction*>(root2_instr);
+      absl::down_cast<const HloRecvInstruction*>(root2_instr);
   ASSERT_NE(recv_instr, nullptr);
 
   // Buffer and Allocation Setup
@@ -308,7 +308,7 @@ ENTRY computation {
 
   // Downcast to the specific CommandBufferThunk type for inspection.
   CommandBufferThunk* cmd_buffer_thunk =
-      tensorflow::down_cast<CommandBufferThunk*>(thunk.get());
+      absl::down_cast<CommandBufferThunk*>(thunk.get());
   ASSERT_NE(cmd_buffer_thunk, nullptr);
 
   // Inspect the Thunk kinds
