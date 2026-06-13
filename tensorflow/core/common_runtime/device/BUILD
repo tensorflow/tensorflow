@@ -102,6 +102,9 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -122,7 +125,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:regexp",
+        "//third_party/re2",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
