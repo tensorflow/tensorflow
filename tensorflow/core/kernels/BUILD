@@ -8239,7 +8239,7 @@ tf_cc_shared_library(
         "@local_config_tensorrt//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@net_zstd//:__subpackages__",
-        "@onednn//:__subpackages__",
+        "@onednn_async//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
