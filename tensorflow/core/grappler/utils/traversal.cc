@@ -51,7 +51,7 @@ void DfsTraversal(const GraphTopologyView& graph_view,
   stack.reserve(from.size());
 
   for (const NodeDef* node : from) {
-    const absl::optional<int> node_idx = graph_view.GetNodeIndex(*node);
+    const std::optional<int> node_idx = graph_view.GetNodeIndex(*node);
     DCHECK(node_idx.has_value()) << "Illegal start node: " << node->name();
     if (node_idx.has_value()) {
       stack.emplace_back(node_idx.value());
