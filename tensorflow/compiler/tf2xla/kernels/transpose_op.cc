@@ -52,16 +52,17 @@ class TransposeOp : public XlaOpKernel {
     const TensorShape perm_tensor_shape = ctx->InputShape("perm");
 
     // Preliminary validation of sizes.
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(perm_tensor_shape),
-                errors::InvalidArgument("perm must be a vector, not ",
-                                        perm_tensor_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(perm_tensor_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "perm must be a vector, not ", perm_tensor_shape.DebugString())));
 
     const int dims = input_shape.dims();
     OP_REQUIRES(ctx, dims == perm_tensor_shape.num_elements(),
-                errors::InvalidArgument("transpose expects a vector of size ",
-                                        input_shape.dims(),
-                                        ". But input(1) is a vector of size ",
-                                        perm_tensor_shape.num_elements()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "transpose expects a vector of size ", input_shape.dims(),
+                    ". But input(1) is a vector of size ",
+                    perm_tensor_shape.num_elements())));
 
     std::vector<int64_t> perm;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("perm", &perm));
@@ -72,9 +73,9 @@ class TransposeOp : public XlaOpKernel {
     bool is_identity = true;
     for (int i = 0; i < dims; ++i) {
       const int64_t d = perm[i];
-      OP_REQUIRES(
-          ctx, 0 <= d && d < dims,
-          errors::InvalidArgument(d, " is out of range [0 .. ", dims, ")"));
+      OP_REQUIRES(ctx, 0 <= d && d < dims,
+                  absl::InvalidArgumentError(
+                      absl::StrCat(d, " is out of range [0 .. ", dims, ")")));
       bits[d] = true;
       transposed_order.push_back(d);
       if (d != i) {
@@ -82,9 +83,9 @@ class TransposeOp : public XlaOpKernel {
       }
     }
     for (int i = 0; i < dims; ++i) {
-      OP_REQUIRES(
-          ctx, bits[i],
-          errors::InvalidArgument(i, " is missing from 'perm' argument."));
+      OP_REQUIRES(ctx, bits[i],
+                  absl::InvalidArgumentError(
+                      absl::StrCat(i, " is missing from 'perm' argument.")));
     }
 
     xla::XlaOp transposed;
@@ -145,9 +146,10 @@ class InvertPermutationOp : public XlaOpKernel {
       default:
         // This should never happen since we restrict this kernel to only match
         // inputs with supported Tensor datatype.
-        OP_REQUIRES_OK(ctx, errors::InvalidArgument(
-                                "InvertPermutation expects x as either ",
-                                "int32 or int64, not ", DataTypeString(dtype)));
+        OP_REQUIRES_OK(ctx,
+                       absl::InvalidArgumentError(absl::StrCat(
+                           "InvertPermutation expects x as either ",
+                           "int32 or int64, not ", DataTypeString(dtype))));
     }
   }
 
@@ -180,9 +182,11 @@ class InvertPermutationOp : public XlaOpKernel {
       for (int i = 0; i < size; ++i) {
         const int64_t d = perm[i];
         OP_REQUIRES(ctx, FastBoundsCheck(d, size),
-                    errors::InvalidArgument(d, " is not between 0 and ", size));
+                    absl::InvalidArgumentError(
+                        absl::StrCat(d, " is not between 0 and ", size)));
         OP_REQUIRES(ctx, output[d] == -1,
-                    errors::InvalidArgument(d, " is duplicated in the input."));
+                    absl::InvalidArgumentError(
+                        absl::StrCat(d, " is duplicated in the input.")));
         output[d] = i;
       }
 

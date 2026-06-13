@@ -42,13 +42,14 @@ class PadOp : public XlaOpKernel {
     OP_REQUIRES(
         ctx,
         TensorShapeUtils::IsMatrix(pad_shape) && pad_shape.dim_size(1) == 2,
-        errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
-                                pad_shape.DebugString()));
+        absl::InvalidArgumentError(
+            absl::StrCat("paddings must be a matrix with 2 columns: ",
+                         pad_shape.DebugString())));
     OP_REQUIRES(
         ctx, dims == pad_shape.dim_size(0),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "The first dimension of paddings must be the rank of inputs",
-            pad_shape.DebugString(), " ", input_shape.DebugString()));
+            pad_shape.DebugString(), " ", input_shape.DebugString())));
 
     xla::XlaOp input = ctx->Input("input");
     if (dims == 0) {
@@ -72,8 +73,8 @@ class PadOp : public XlaOpKernel {
       int before = pad_literal.Get<int64_t>({i, 0});
       int after = pad_literal.Get<int64_t>({i, 1});
       OP_REQUIRES(ctx, before >= 0 && after >= 0,
-                  errors::InvalidArgument(
-                      "Paddings must be non-negative: ", before, " ", after));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Paddings must be non-negative: ", before, " ", after)));
       dim->set_edge_padding_low(before);
       dim->set_edge_padding_high(after);
     }
@@ -84,7 +85,7 @@ class PadOp : public XlaOpKernel {
     if (ctx->num_inputs() == 3) {
       OP_REQUIRES(
           ctx, TensorShapeUtils::IsScalar(ctx->InputShape("constant_values")),
-          errors::InvalidArgument("constant_values must be a scalar."));
+          absl::InvalidArgumentError("constant_values must be a scalar."));
       pad = xla::Pad(input, ctx->Input("constant_values"), config);
     } else {
       auto zero = XlaHelpers::Zero(ctx->builder(), input_type(0));
@@ -96,7 +97,7 @@ class PadOp : public XlaOpKernel {
 
       OP_REQUIRES(
           ctx, !low_pad_is_dynamic,
-          errors::InvalidArgument("low_pad in Pad op has to be static."));
+          absl::InvalidArgumentError("low_pad in Pad op has to be static."));
       bool high_pad_is_dynamic = padding_dynamism_literal.Get<bool>({i, 1});
       if (high_pad_is_dynamic) {
         // When we have
@@ -125,7 +126,7 @@ class PadOp : public XlaOpKernel {
             size_upper_bound_status_or.value().Get<int32_t>({});
         OP_REQUIRES(
             ctx, size_upper_bound.has_value(),
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(
                 "Failed to infer upperbound of total size after padding."));
         // If we know a tighter upperbound, trim the output with the new
         // upperbound.

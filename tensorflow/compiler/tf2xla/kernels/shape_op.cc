@@ -92,21 +92,21 @@ class XlaSetBoundOp : public XlaOpKernel {
         ctx,
         ctx->InputType("bound") == DT_INT32 &&
             ctx->InputType("input") == DT_INT32,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "XlaSetBound can only set bound for int32 scalar value: got",
-            input_shape.DebugString()));
+            input_shape.DebugString())));
 
-    OP_REQUIRES(
-        ctx, input_shape.dims() == 0,
-        errors::InvalidArgument("XlaSetBound should only be used to set a "
-                                "bound to the an int32 scalar value: got",
-                                input_shape.DebugString()));
+    OP_REQUIRES(ctx, input_shape.dims() == 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("XlaSetBound should only be used to set a "
+                                 "bound to the an int32 scalar value: got",
+                                 input_shape.DebugString())));
 
-    OP_REQUIRES(
-        ctx, bound_shape.dims() == 0,
-        errors::InvalidArgument("XlaSetBound should only be used to set a "
-                                "bound to the an int32 scalar value: got",
-                                bound_shape.DebugString()));
+    OP_REQUIRES(ctx, bound_shape.dims() == 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("XlaSetBound should only be used to set a "
+                                 "bound to the an int32 scalar value: got",
+                                 bound_shape.DebugString())));
     int64_t bound;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("bound", &bound));
     xla::Literal bound_literal = xla::LiteralUtil::CreateR0<int32_t>(bound);
@@ -129,16 +129,17 @@ class XlaSetDynamicDimensionSizeOp : public XlaOpKernel {
     const TensorShape dim_index_shape = ctx->InputShape("dim_index");
     const TensorShape size_shape = ctx->InputShape("size");
 
-    OP_REQUIRES(ctx,
-                ctx->InputType("dim_index") == DT_INT32 &&
-                    ctx->InputType("size") == DT_INT32,
-                errors::InvalidArgument("dim_index and size has to be int32 for"
-                                        "XlaSetDynamicDimensionSizeOp"));
-
     OP_REQUIRES(
-        ctx, dim_index_shape.dims() == 0 && size_shape.dims() == 0,
-        errors::InvalidArgument("XlaSetDynamicDimensionSizeOp's dim_index and "
-                                "size has to be int32 scalar value"));
+        ctx,
+        ctx->InputType("dim_index") == DT_INT32 &&
+            ctx->InputType("size") == DT_INT32,
+        absl::InvalidArgumentError("dim_index and size has to be int32 for"
+                                   "XlaSetDynamicDimensionSizeOp"));
+
+    OP_REQUIRES(ctx, dim_index_shape.dims() == 0 && size_shape.dims() == 0,
+                absl::InvalidArgumentError(
+                    "XlaSetDynamicDimensionSizeOp's dim_index and "
+                    "size has to be int32 scalar value"));
     int64_t dim_index;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("dim_index", &dim_index));
 
@@ -161,13 +162,13 @@ class XlaRemoveDynamicDimensionSizeOp : public XlaOpKernel {
     const TensorShape dim_index_shape = ctx->InputShape("dim_index");
 
     OP_REQUIRES(ctx, ctx->InputType("dim_index") == DT_INT32,
-                errors::InvalidArgument("dim_index has to be int32 for"
-                                        "XlaRemoveDynamicDimensionSizeOp"));
+                absl::InvalidArgumentError("dim_index has to be int32 for"
+                                           "XlaRemoveDynamicDimensionSizeOp"));
 
-    OP_REQUIRES(
-        ctx, dim_index_shape.dims() == 0,
-        errors::InvalidArgument("XlaRemoveDynamicDimensionSizeOp's dim_index "
-                                "has to be int32 scalar value"));
+    OP_REQUIRES(ctx, dim_index_shape.dims() == 0,
+                absl::InvalidArgumentError(
+                    "XlaRemoveDynamicDimensionSizeOp's dim_index "
+                    "has to be int32 scalar value"));
     int64_t dim_index;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("dim_index", &dim_index));
 
@@ -278,16 +279,16 @@ class ExpandDimsOp : public XlaOpKernel {
     std::vector<int64_t> dims;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputReshapedToIntVector("dim", &dims));
     OP_REQUIRES(ctx, dims.size() == 1,
-                errors::InvalidArgument(absl::StrCat(
+                absl::InvalidArgumentError(absl::StrCat(
                     "dim input to ExpandDims must be a scalar; got ",
                     dim_shape.DebugString())));
     int dim = dims[0];
 
     OP_REQUIRES(ctx,
                 (dim >= -1 - input_shape.dims() && dim <= input_shape.dims()),
-                errors::InvalidArgument("Tried to expand dim index ", dim,
-                                        " for tensor with ", input_shape.dims(),
-                                        " dimensions."));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Tried to expand dim index ", dim, " for tensor with ",
+                    input_shape.dims(), " dimensions.")));
 
     auto existing_dims = input_shape.dim_sizes();
     // Safe - # elements in tensor dims bounded.
@@ -333,10 +334,10 @@ class SqueezeOp : public XlaOpKernel {
     std::vector<int64_t> new_shape;
     // Validate squeeze dims against the input.
     for (int32_t dim : squeeze_dims_) {
-      OP_REQUIRES(
-          ctx, (dim >= -rank && dim < rank),
-          errors::InvalidArgument("Tried to squeeze dim index ", dim,
-                                  " for tensor with ", rank, " dimensions."));
+      OP_REQUIRES(ctx, (dim >= -rank && dim < rank),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Tried to squeeze dim index ", dim,
+                                   " for tensor with ", rank, " dimensions.")));
       // If dim is < 0, we wrap around (-1 means the last element).
       if (dim < 0) {
         dim = rank + dim;
@@ -352,19 +353,19 @@ class SqueezeOp : public XlaOpKernel {
       if (!wrapped_squeeze_dims.empty()) {
         if (wrapped_squeeze_dims.count(i) > 0) {
           OP_REQUIRES(ctx, existing_dim == 1,
-                      errors::InvalidArgument(
+                      absl::InvalidArgumentError(absl::StrCat(
                           "Tried to explicitly squeeze dimension ", i,
-                          " but dimension was not 1: ", existing_dim));
+                          " but dimension was not 1: ", existing_dim)));
         } else {
           // This dimension is not being squeezed.
           new_shape.push_back(existing_dim);
         }
       } else {
-        OP_REQUIRES(
-            ctx, !shape.is_dynamic_dimension(i),
-            errors::InvalidArgument("Squeeze op does not support bounded "
-                                    "dynamic dimensions. Input shape: ",
-                                    shape.ToString()));
+        OP_REQUIRES(ctx, !shape.is_dynamic_dimension(i),
+                    absl::InvalidArgumentError(
+                        absl::StrCat("Squeeze op does not support bounded "
+                                     "dynamic dimensions. Input shape: ",
+                                     shape.ToString())));
         // Copy over all non-1-length dimensions.
         if (existing_dim != 1) {
           new_shape.push_back(existing_dim);
@@ -395,7 +396,7 @@ class ZerosLikeOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx, IsTensorListInitialized(list, &is_initialized));
       OP_REQUIRES(
           ctx, is_initialized,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "TensorList input for ZerosLike op is an uninitialized list"));
 
       auto list_shape_or = ctx->builder()->GetShape(list);

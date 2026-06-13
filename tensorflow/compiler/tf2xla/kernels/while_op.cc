@@ -69,10 +69,10 @@ absl::Status VerifyResourceArgsGroupedAtEnd(
     DataType arg_type = body->arg_types[i];
     if (has_seen_resource) {
       if (arg_type != DT_RESOURCE) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Expect input resources are grouped in the end of while body ",
             body_name_attr.name(), ", but the ", i, "-th argument ",
-            body->arg_nodes[i]->name(), " is not a resource.");
+            body->arg_nodes[i]->name(), " is not a resource."));
       }
     } else {
       if (arg_type == DT_RESOURCE) {
@@ -211,10 +211,10 @@ absl::Status VerifyBodyInputAndOutputShapeMatch(
         body.xla_output_shape.tuple_shapes(ctx->num_inputs());
   }
   if (!xla::ShapeUtil::Compatible(body_input_shape, body_output_shape)) {
-    return errors::InvalidArgument(
-        "Input and output shapes of loop body do not match: ",
-        xla::ShapeUtil::HumanString(body_input_shape), " vs. ",
-        xla::ShapeUtil::HumanString(body_output_shape));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Input and output shapes of loop body do not match: ",
+                     xla::ShapeUtil::HumanString(body_input_shape), " vs. ",
+                     xla::ShapeUtil::HumanString(body_output_shape)));
   }
   return absl::OkStatus();
 }
@@ -471,7 +471,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
     // the input list with zeros here, that is done later.
     xla::Shape body_output_shape = body->xla_output_shape;
     OP_REQUIRES(ctx, body_output_shape.IsTuple(),
-                errors::FailedPrecondition(
+                absl::FailedPreconditionError(
                     "xla_output_shape of while body must be a tuple."));
     for (int i = 0; i < arguments.size(); i++) {
       XlaCompiler::Argument& arg = arguments[i];
@@ -500,15 +500,15 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
                                                 arguments, &cond));
 
   OP_REQUIRES(ctx, body->xla_input_shapes.size() == 1,
-              errors::FailedPrecondition("Expected one input shape"));
+              absl::FailedPreconditionError("Expected one input shape"));
   xla::Shape body_input_shape = body->xla_input_shapes[0];
   OP_REQUIRES(ctx, body_input_shape.IsTuple(),
-              errors::FailedPrecondition("Expected tuple shape"));
+              absl::FailedPreconditionError("Expected tuple shape"));
   OP_REQUIRES(ctx, cond.xla_input_shapes.size() == 1,
-              errors::FailedPrecondition("Expected one input shape"));
+              absl::FailedPreconditionError("Expected one input shape"));
   xla::Shape cond_input_shape = cond.xla_input_shapes[0];
   OP_REQUIRES(ctx, cond_input_shape.IsTuple(),
-              errors::FailedPrecondition("Expected tuple shape"));
+              absl::FailedPreconditionError("Expected tuple shape"));
 
   VLOG(2) << "Body shape: " << xla::ShapeUtil::HumanString(body_input_shape)
           << " -> " << xla::ShapeUtil::HumanString(body->xla_output_shape);
@@ -517,10 +517,10 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
 
   OP_REQUIRES(ctx,
               xla::ShapeUtil::Compatible(body_input_shape, cond_input_shape),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Input shapes of loop body and condition do not match: ",
                   xla::ShapeUtil::HumanString(body_input_shape), " vs. ",
-                  xla::ShapeUtil::HumanString(cond_input_shape)));
+                  xla::ShapeUtil::HumanString(cond_input_shape))));
 
   // Check that the shape of the body outputs excluding the compile time const
   // args (which are pruned from the body outputs in body_wapper) matches the
@@ -542,10 +542,10 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
                   xla::ShapeUtil::Compatible(
                       cond.xla_output_shape,
                       expected_cond_output_shape_with_side_effect),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Output shape of loop condition should be (pred[]) or "
                   "(pred[], token[]), got: ",
-                  xla::ShapeUtil::HumanString(cond.xla_output_shape)));
+                  xla::ShapeUtil::HumanString(cond.xla_output_shape))));
 
   int num_inputs = body->input_mapping.size();
   std::vector<xla::XlaOp> inputs(num_inputs);
@@ -662,9 +662,9 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
     auto shape_or = builder->GetShape(token_output);
     OP_REQUIRES_OK(ctx, shape_or.status());
     OP_REQUIRES(ctx, shape_or.value().IsToken(),
-                errors::FailedPrecondition(
+                absl::FailedPreconditionError(absl::StrCat(
                     "Token output is not token type: ",
-                    xla::ShapeUtil::HumanString(shape_or.value())));
+                    xla::ShapeUtil::HumanString(shape_or.value()))));
     OP_REQUIRES_OK(ctx,
                    compiler->SetNodeToken(original_node_name_, token_output));
   }

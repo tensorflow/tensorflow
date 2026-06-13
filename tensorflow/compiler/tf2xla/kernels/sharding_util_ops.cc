@@ -57,9 +57,9 @@ absl::Status GetAndValidateAttributes(OpKernelConstruction* ctx,
   for (int i = 0, e = num_partitions.size(); i < e; ++i) {
     const auto& split = num_partitions[i];
     if (split <= 0) {
-      return errors::InvalidArgument("'", num_partitions_attr_name,
-                                     "' at index ", i,
-                                     " must be positive, but got ", split, ".");
+      return absl::InvalidArgumentError(
+          absl::StrCat("'", num_partitions_attr_name, "' at index ", i,
+                       " must be positive, but got ", split, "."));
     }
     if (split > 1) {
       ++num_dims_to_split;
@@ -70,25 +70,25 @@ absl::Status GetAndValidateAttributes(OpKernelConstruction* ctx,
   int n;
   TF_RETURN_IF_ERROR(ctx->GetAttr("N", &n));
   if (n != num_slices) {
-    return errors::InvalidArgument(
-        "'N' must match number of slices ", num_slices, " from '",
-        num_partitions_attr_name, "', but got ", n, ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat("'N' must match number of slices ", num_slices, " from '",
+                     num_partitions_attr_name, "', but got ", n, "."));
   }
 
   TF_RETURN_IF_ERROR(ctx->GetAttr("paddings", &paddings));
   const int expected_rank = num_partitions.size();
   if (!paddings.empty()) {
     if (paddings.size() != expected_rank) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "'paddings' length must match '", num_partitions_attr_name,
-          "' length ", expected_rank, ", but got ", paddings.size(), ".");
+          "' length ", expected_rank, ", but got ", paddings.size(), "."));
     }
 
     for (int dim = 0; dim < expected_rank; ++dim) {
       if (paddings[dim] < 0) {
-        return errors::InvalidArgument(
-            "'padding' must be all non-negative, but got ", paddings[dim],
-            " at index ", dim, ".");
+        return absl::InvalidArgumentError(
+            absl::StrCat("'padding' must be all non-negative, but got ",
+                         paddings[dim], " at index ", dim, "."));
       }
       if (paddings[dim] > 0) {
         has_paddings = true;
@@ -152,19 +152,19 @@ class XlaSplitNDBaseOp : public XlaOpKernel {
     const int rank = input_shape.dims();
 
     if (rank != num_splits_.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           input_name, " rank must be the same as 'num_splits' length ",
-          num_splits_.size(), ", but got rank ", rank, ".");
+          num_splits_.size(), ", but got rank ", rank, "."));
     }
 
     for (int dim = 0; dim < rank; ++dim) {
       if ((input_shape.dim_size(dim) + paddings_[dim]) % num_splits_[dim] !=
           0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             input_name, " shape dimension ", dim, " (",
             input_shape.dim_size(dim), ") with padding ", paddings_[dim],
             " must be evenly divisible by 'num_splits' ", num_splits_[dim],
-            ".");
+            "."));
       }
     }
 
@@ -288,9 +288,9 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<true> {
                                           &variable_input_shape));
     OP_REQUIRES(
         ctx, variable_input_dtype == dtype_,
-        errors::InvalidArgument("'T' must match 'resource' variable dtype ",
-                                DataTypeString(variable_input_dtype),
-                                ", but got ", dtype_));
+        absl::InvalidArgumentError(absl::StrCat(
+            "'T' must match 'resource' variable dtype ",
+            DataTypeString(variable_input_dtype), ", but got ", dtype_)));
 
     xla::XlaOp handle;
     OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(/*index=*/0, dtype_,
@@ -409,9 +409,9 @@ class XlaConcatNDBaseOp : public XlaOpKernel {
 
     const TensorShape& slice_shape = input_shapes[0];
     if (slice_shape.dims() != num_concats_.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "'inputs' rank must be the same as 'num_concats' length ",
-          num_concats_.size(), ", but got rank ", slice_shape.dims(), ".");
+          num_concats_.size(), ", but got rank ", slice_shape.dims(), "."));
     }
     for (int i = 1; i < num_slices_; ++i) {
       const TensorShape& slice_shape_i = input_shapes[i];
@@ -426,9 +426,10 @@ class XlaConcatNDBaseOp : public XlaOpKernel {
     for (int dim = 0; dim < rank; ++dim) {
       const int max_dim_size = slice_shape.dim_size(dim) * num_concats_[dim];
       if (paddings_[dim] > max_dim_size) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "'paddings' must not exceed expected output shape dimension ",
-            max_dim_size, " at index ", dim, ", but got ", paddings_[dim], ".");
+            max_dim_size, " at index ", dim, ", but got ", paddings_[dim],
+            "."));
       }
       output_shape.push_back(max_dim_size - paddings_[dim]);
     }

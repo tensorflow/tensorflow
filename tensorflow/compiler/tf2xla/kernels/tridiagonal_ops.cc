@@ -36,7 +36,7 @@ class TridiagonalSolveOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    GetNodeAttr(def(), "partial_pivoting", &partial_pivoting));
     if (partial_pivoting) {
-      ctx->SetStatus(errors::Unimplemented(
+      ctx->SetStatus(absl::UnimplementedError(
           "Current implementation does not yet support pivoting."));
       return;
     }
