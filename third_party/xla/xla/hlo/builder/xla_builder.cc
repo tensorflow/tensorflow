@@ -534,9 +534,9 @@ XlaOp operator>>(XlaOp x, XlaOp y) {
     }
     if (ShapeUtil::ElementIsSigned(*shape)) {
       return ShiftRightArithmetic(x, y);
-    } else {
-      return ShiftRightLogical(x, y);
     }
+    return ShiftRightLogical(x, y);
+    
   });
 }
 
@@ -1469,9 +1469,8 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
       }
       if (type == std::nullopt) {
         return Compare(shape, updated_lhs, updated_rhs, *direction);
-      } else {
-        return Compare(shape, updated_lhs, updated_rhs, *direction, *type);
       }
+      return Compare(shape, updated_lhs, updated_rhs, *direction, *type);
     }
 
     if (direction.has_value()) {
@@ -1608,12 +1607,12 @@ XlaOp XlaBuilder::ConstantLiteral(const LiteralSlice& literal) {
             scalar_op, AddInstruction(std::move(instr), HloOpcode::kConstant));
       }
       return Broadcast(scalar_op, literal.shape().dimensions());
-    } else {
+    }
       HloInstructionProto instr;
       *instr.mutable_shape() = literal.shape().ToProto();
       *instr.mutable_literal() = literal.ToProto();
       return AddInstruction(std::move(instr), HloOpcode::kConstant);
-    }
+    
   });
 }
 
@@ -3539,7 +3538,7 @@ XlaOp XlaBuilder::AllReduceImpl(XlaOp operand, XlaComputationId computation,
     std::vector<const Shape*> operand_shapes;
     std::vector<XlaOp> operands;
     if (operand_shape->IsTuple()) {
-      if (operand_shape->tuple_shapes().size() == 0) {
+      if (operand_shape->tuple_shapes().empty()) {
         return Unimplemented("0 element tuple AllReduce is not supported");
       }
       for (int i = 0; i < operand_shape->tuple_shapes().size(); ++i) {
@@ -3629,7 +3628,7 @@ XlaOp XlaBuilder::AllGatherImpl(XlaOp operand, int64_t all_gather_dimension,
     std::vector<const Shape*> operand_shapes;
     std::vector<XlaOp> operands;
     if (operand_shape->IsTuple()) {
-      if (operand_shape->tuple_shapes().size() == 0) {
+      if (operand_shape->tuple_shapes().empty()) {
         return Unimplemented("0 element tuple AllGather is not supported");
       }
       for (int i = 0; i < operand_shape->tuple_shapes().size(); ++i) {
@@ -4204,7 +4203,7 @@ XlaOp XlaBuilder::CrossReplicaSum(
     ASSIGN_OR_RETURN(const Shape* shape, GetShapePtr(operand));
     const Shape* element_shape;
     if (shape->IsTuple()) {
-      if (shape->tuple_shapes().size() == 0) {
+      if (shape->tuple_shapes().empty()) {
         return Unimplemented(
             "0 element tuple CrossReplicaSum is not supported");
       }
@@ -4273,7 +4272,7 @@ XlaOp XlaBuilder::ReduceScatterWithDeviceList(
     std::vector<const Shape*> operand_shapes;
     std::vector<XlaOp> operands;
     if (operand_shape->IsTuple()) {
-      if (operand_shape->tuple_shapes().size() == 0) {
+      if (operand_shape->tuple_shapes().empty()) {
         return Unimplemented("0 element tuple ReduceScatter is not supported");
       }
       for (int i = 0; i < operand_shape->tuple_shapes().size(); ++i) {
@@ -6891,7 +6890,9 @@ absl::StatusOr<XlaOp> ConvertSpmdFullToShardShape(
       }
       const int64_t partitions_i =
           manual_sharding.tile_assignment_dimensions(i);
-      if (partitions_i == 1) continue;
+      if (partitions_i == 1) {
+        continue;
+      }
       const int64_t dim_size =
           CeilOfRatio(output_shape.dimensions(i), partitions_i);
       output_shape.set_dimensions(i, dim_size);

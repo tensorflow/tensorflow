@@ -194,12 +194,11 @@ struct HloProtoEvaluator {
     module.AddEntryComputation(std::move(computation));
     if (shape_index.empty()) {
       return evaluator.Evaluate(module.entry_computation()->root_instruction());
-    } else {
+    }
       ASSIGN_OR_RETURN(
           auto result,
           evaluator.Evaluate(module.entry_computation()->root_instruction()));
       return result.SubLiteral(this->shape_index);
-    }
   }
 
   HloEvaluator& evaluator;
@@ -471,10 +470,10 @@ PostorderDFSNode CreateAllDynamicResult(const Shape& shape,
           // When inferencing constant values, create garbage data, which will
           // be masked out by dynamism counterpart.
           return CreateGarbageLiteral(shape);
-        } else {
+        }
           // When dynamism, return true, indicating all values are dynamic.
           return CreatePredLiteral(true, shape);
-        }
+        
       });
 }
 
@@ -587,7 +586,7 @@ PostorderDFSVisitor::AnalyzeConstantValueFallback(int64_t handle,
               // that we want; If not, the value will be masked anyway so the
               // value inside doesn't matter.
               return std::move(operands[2]);
-            } else {
+            }
               // If predicate is static, return the value of the given branch.
               int64_t branch_index = 0;
               if (operands[0].shape().element_type() == PRED) {
@@ -601,7 +600,7 @@ PostorderDFSVisitor::AnalyzeConstantValueFallback(int64_t handle,
               }
               const int64_t branch_dynamism_index = 2 + branch_index;
               return std::move(operands[branch_dynamism_index]);
-            }
+            
           });
     }
     case HloOpcode::kGetTupleElement: {
@@ -728,9 +727,9 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
             if (ShapeUtil::GetSubshape(root_shape, context.shape_index)
                     .IsTuple()) {
               return LiteralUtil::MakeTupleOwned(std::move(results));
-            } else {
-              return std::move(results[0]);
             }
+            return std::move(results[0]);
+            
           });
     }
     case HloOpcode::kNegate: {
@@ -790,11 +789,12 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
             // First literal of SetBound contains bounds, second literal
             // contains dynamism indicators.
             return Literal::CreateFromProto(root->literal().tuple_literals(0));
-          } else {
-            return Literal::CreateFromProto(root->literal());
           }
+          return Literal::CreateFromProto(root->literal());
+          
         });
-      } else if (root->custom_call_target() == "Sharding") {
+      }
+      if (root->custom_call_target() == "Sharding") {
         return PostorderDFSNode()
             .AddDependency(root->operand_ids(0),
                            PostorderDFSNodeType::kConstantUpperBound, context)
@@ -843,10 +843,10 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
           [dimension, operand_proto]() -> absl::StatusOr<Literal> {
             if (operand_proto->shape().is_dynamic_dimension(dimension)) {
               return LiteralUtil::CreateR0<int32_t>(0);
-            } else {
+            }
               return LiteralUtil::CreateR0<int32_t>(
                   operand_proto->shape().dimensions(dimension));
-            }
+            
           });
     }
     case HloOpcode::kAbs: {
@@ -938,10 +938,10 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
               ASSIGN_OR_RETURN(Shape root_shape,
                                Shape::FromProto(root->shape()));
               return CreateGarbageLiteral(root_shape);
-            } else {
+            }
               return LiteralUtil::CreateR0<int32_t>(
                   operand_proto->shape().dimensions(dimension));
-            }
+            
           });
     }
     case HloOpcode::kSubtract:
@@ -970,11 +970,12 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
             // First literal of SetBound contains bounds, second literal
             // contains dynamism indicators.
             return Literal::CreateFromProto(root->literal().tuple_literals(0));
-          } else {
-            return Literal::CreateFromProto(root->literal());
           }
+          return Literal::CreateFromProto(root->literal());
+          
         });
-      } else if (root->custom_call_target() == "Sharding") {
+      }
+      if (root->custom_call_target() == "Sharding") {
         return PostorderDFSNode()
             .AddDependency(root->operand_ids(0),
                            PostorderDFSNodeType::kConstantValue, context)
@@ -1304,7 +1305,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
                 return false;
               });
           return result;
-        } else {
+        }
           VLOG(1) << "predict is constant value";
           // If predicate is static, return true if given branch result
           // value is dynamic.
@@ -1320,7 +1321,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
           }
           const int64_t branch_dynamism_index = 2 + 2 * branch_index + 1;
           return std::move(operands[branch_dynamism_index]);
-        }
+        
       });
     }
     case HloOpcode::kGetTupleElement: {
@@ -1437,9 +1438,9 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
                     // Evaluator.
                     if (*optional_selector) {
                       return lhs_value;
-                    } else {
-                      return rhs_value;
                     }
+                    return rhs_value;
+
                   } else {
                     // Conservatively assume value is dynamic if selector is
                     // dynamic.
@@ -1486,22 +1487,24 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
           if (type == PostorderDFSNodeType::kBoundIsDynamic) {
             ASSIGN_OR_RETURN(Shape root_shape, Shape::FromProto(root->shape()));
             return CreatePredLiteral(false, root_shape);
-          } else {
+          }
             if (root->literal().shape().element_type() == TUPLE) {
               // First literal of SetBound contains bounds, second literal
               // contains dynamism indicators.
               return Literal::CreateFromProto(
                   root->literal().tuple_literals(1));
-            } else if (type == PostorderDFSNodeType::kValueIsDynamic) {
+            }
+            if (type == PostorderDFSNodeType::kValueIsDynamic) {
               ASSIGN_OR_RETURN(Shape root_shape,
                                Shape::FromProto(root->shape()));
               return CreatePredLiteral(true, root_shape);
             } else {
               return Literal::CreateFromProto(root->literal());
             }
-          }
+          
         });
-      } else if (root->custom_call_target() == "Sharding") {
+      }
+      if (root->custom_call_target() == "Sharding") {
         return result.AddVisit([](Literal operand) { return operand; });
       } else {
         return InvalidArgument(
@@ -1734,14 +1737,13 @@ absl::StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
       if (Shape::Equal()(*output_shape, operand_shape)) {
         // Forward operand handle as result.
         return SimplifyOp(inst->operand_ids(0));
-      } else {
-        return CreateS64Literal(-1, *output_shape);
       }
+      return CreateS64Literal(-1, *output_shape);
     }
     case HloOpcode::kAdd: {
       // a + (b - a) => b
       // a + b + (c - a) => b + c
-      if (output_shape->dimensions().size() == 0) {
+      if (output_shape->dimensions().empty()) {
         ASSIGN_OR_RETURN(auto lhs, SimplifyOp(inst->operand_ids(0)));
         ASSIGN_OR_RETURN(auto rhs, SimplifyOp(inst->operand_ids(1)));
         int64_t lhs_handle = lhs.Get<int64_t>({});
@@ -1803,16 +1805,14 @@ absl::StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
             Add(XlaOp(lhs_handle, builder_), XlaOp(rhs_handle, builder_));
 
         return LiteralUtil::CreateR0<int64_t>(new_sum.handle());
-      } else {
-        return CreateS64Literal(-1, *output_shape);
       }
+      return CreateS64Literal(-1, *output_shape);
     }
     default: {
       if (ShapeUtil::IsScalar(*output_shape)) {
         return LiteralUtil::CreateR0<int64_t>(handle);
-      } else {
-        return CreateS64Literal(-1, *output_shape);
       }
+      return CreateS64Literal(-1, *output_shape);
     }
   }
 }
