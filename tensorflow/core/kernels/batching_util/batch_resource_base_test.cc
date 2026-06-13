@@ -22,9 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#if defined(PLATFORM_GOOGLE)
-#include "base/context.h"
-#endif
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
@@ -42,10 +39,11 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/test_utils.h"
 #include "xla/tsl/platform/criticality.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tensorflow/core/common_runtime/cost_constants.h"
 #include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/request_cost.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -61,12 +59,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tsl/platform/refcount.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace serving {
@@ -912,24 +909,6 @@ TEST_F(SplitInputTaskTest, SplitTasksKeepCriticalityOfOriginalRequest) {
 }
 #endif
 
-class TestTpuCostMeasurement : public CostMeasurement {
- public:
-  using CostMeasurement::CostMeasurement;
-
-  absl::Duration GetTotalCost() override { return absl::Milliseconds(100); }
-  absl::string_view GetCostType() const override { return "test_tpu"; }
-};
-REGISTER_COST_MEASUREMENT("test_tpu", TestTpuCostMeasurement);
-
-class TestGcuCostMeasurement : public CostMeasurement {
- public:
-  using CostMeasurement::CostMeasurement;
-
-  absl::Duration GetTotalCost() override { return absl::Milliseconds(200); }
-  absl::string_view GetCostType() const override { return "test_gcu"; }
-};
-REGISTER_COST_MEASUREMENT("test_gcu", TestGcuCostMeasurement);
-
 std::unique_ptr<BatchResourceBase::BatchTask> MakeBatchTask(
     const int64_t task_size, RequestCost* request_cost,
     absl::Time start_time = absl::UnixEpoch()) {
@@ -938,288 +917,6 @@ std::unique_ptr<BatchResourceBase::BatchTask> MakeBatchTask(
   task->request_cost = request_cost;
   task->start_time = absl::ToUnixNanos(start_time);
   return task;
-}
-
-TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnNoCostMeasurement) {
-  BatchResourceBase::BatchT batch;
-  RequestCost cost;
-  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost));
-  batch.Close();
-
-  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
-      "model_name", "op_name", batch_cost_measurements, /*processed_size=*/16,
-      batch);
-  EXPECT_TRUE(batch.task(0).request_cost->GetCosts().empty());
-  EXPECT_THAT(batch.task(0).request_cost->GetBatchMetrics(),
-              ::testing::ElementsAre(::testing::FieldsAre(
-                  /*processed_size=*/16, /*input_size=*/1, /*padding_size=*/15,
-                  ::testing::IsEmpty())));
-}
-
-TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnZeroCost) {
-  BatchResourceBase::BatchT batch;
-  RequestCost cost;
-  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost));
-  batch.Close();
-
-  CostMeasurement::Context context{/*is_per_query=*/false};
-  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
-  batch_cost_measurements.push_back(
-      CostMeasurementRegistry::CreateByNameOrNull("no_op", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
-      "model_name", "op_name", batch_cost_measurements, /*processed_size=*/16,
-      batch);
-  EXPECT_TRUE(batch.task(0).request_cost->GetCosts().empty());
-  EXPECT_THAT(batch.task(0).request_cost->GetBatchMetrics(),
-              ::testing::ElementsAre(::testing::FieldsAre(
-                  /*processed_size=*/16, /*input_size=*/1, /*padding_size=*/15,
-                  ::testing::IsEmpty())));
-}
-
-TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnZeroBatchSize) {
-  BatchResourceBase::BatchT batch;
-  batch.Close();
-
-  CostMeasurement::Context context{/*is_per_query=*/false};
-  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
-  batch_cost_measurements.push_back(
-      CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
-      "model_name", "op_name", batch_cost_measurements, /*processed_size=*/0,
-      batch);
-}
-
-TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnNoRequestCost) {
-  BatchResourceBase::BatchT batch;
-  batch.AddTask(MakeBatchTask(/*task_size=*/1, nullptr));
-  batch.AddTask(MakeBatchTask(/*task_size=*/9, nullptr));
-  batch.Close();
-
-  CostMeasurement::Context context{/*is_per_query=*/false};
-  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
-  batch_cost_measurements.push_back(
-      CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
-      "model_name", "op_name", batch_cost_measurements, /*processed_size=*/16,
-      batch);
-
-  EXPECT_EQ(batch.task(0).request_cost, nullptr);
-  EXPECT_EQ(batch.task(1).request_cost, nullptr);
-}
-
-TEST(SplitBatchCostsAndRecordMetricsTest, SplitSingleCostType) {
-  BatchResourceBase::BatchT batch;
-  RequestCost cost1, cost2;
-  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost1));
-  batch.AddTask(MakeBatchTask(/*task_size=*/9, &cost2));
-  batch.Close();
-
-  CostMeasurement::Context context{/*is_per_query=*/false};
-  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
-  batch_cost_measurements.push_back(
-      CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
-      "model_name", "op_name", batch_cost_measurements, /*processed_size=*/20,
-      batch);
-
-  EXPECT_THAT(
-      batch.task(0).request_cost->GetCosts(),
-      UnorderedElementsAre(Pair("test_tpu_with_smear", absl::Milliseconds(10)),
-                           Pair("test_tpu_no_smear", absl::Milliseconds(5))));
-  EXPECT_THAT(
-      batch.task(0).request_cost->GetBatchMetrics(),
-      ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10,
-          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100))))));
-  EXPECT_THAT(
-      batch.task(1).request_cost->GetCosts(),
-      UnorderedElementsAre(Pair("test_tpu_with_smear", absl::Milliseconds(90)),
-                           Pair("test_tpu_no_smear", absl::Milliseconds(45))));
-  EXPECT_THAT(
-      batch.task(1).request_cost->GetBatchMetrics(),
-      ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10,
-          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100))))));
-}
-
-TEST(SplitBatchCostsAndRecordMetricsTest, SplitMultiCostTypes) {
-  BatchResourceBase::BatchT batch;
-  RequestCost cost1, cost2;
-  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost1));
-  batch.AddTask(MakeBatchTask(/*task_size=*/9, &cost2));
-  batch.Close();
-
-  CostMeasurement::Context context{/*is_per_query=*/false};
-  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
-  batch_cost_measurements.push_back(
-      CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
-  batch_cost_measurements.push_back(
-      CostMeasurementRegistry::CreateByNameOrNull("test_gcu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
-      "model_name", "op_name", batch_cost_measurements, /*processed_size=*/20,
-      batch);
-
-  EXPECT_THAT(
-      batch.task(0).request_cost->GetCosts(),
-      UnorderedElementsAre(Pair("test_tpu_with_smear", absl::Milliseconds(10)),
-                           Pair("test_tpu_no_smear", absl::Milliseconds(5)),
-                           Pair("test_gcu_with_smear", absl::Milliseconds(20)),
-                           Pair("test_gcu_no_smear", absl::Milliseconds(10))));
-  EXPECT_THAT(
-      batch.task(0).request_cost->GetBatchMetrics(),
-      ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10,
-          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100)),
-                               Pair("test_gcu", absl::Milliseconds(200))))));
-
-  EXPECT_THAT(
-      batch.task(1).request_cost->GetCosts(),
-      UnorderedElementsAre(Pair("test_tpu_with_smear", absl::Milliseconds(90)),
-                           Pair("test_tpu_no_smear", absl::Milliseconds(45)),
-                           Pair("test_gcu_with_smear", absl::Milliseconds(180)),
-                           Pair("test_gcu_no_smear", absl::Milliseconds(90))));
-  EXPECT_THAT(
-      batch.task(1).request_cost->GetBatchMetrics(),
-      ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10,
-          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100)),
-                               Pair("test_gcu", absl::Milliseconds(200))))));
-}
-
-TEST(SplitBatchCostsAndRecordMetricsTest, SplitOnlyNonZeroCostTypes) {
-  BatchResourceBase::BatchT batch;
-  RequestCost cost1, cost2;
-  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost1));
-  batch.AddTask(MakeBatchTask(/*task_size=*/9, &cost2));
-  batch.Close();
-
-  CostMeasurement::Context context{/*is_per_query=*/false};
-  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
-  batch_cost_measurements.push_back(
-      CostMeasurementRegistry::CreateByNameOrNull("no_op", context));
-  batch_cost_measurements.push_back(
-      CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
-      "model_name", "op_name", batch_cost_measurements, /*processed_size=*/20,
-      batch);
-
-  EXPECT_THAT(
-      batch.task(0).request_cost->GetCosts(),
-      UnorderedElementsAre(Pair("test_tpu_with_smear", absl::Milliseconds(10)),
-                           Pair("test_tpu_no_smear", absl::Milliseconds(5))));
-  EXPECT_THAT(
-      batch.task(0).request_cost->GetBatchMetrics(),
-      ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10,
-          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100))))));
-
-  EXPECT_THAT(
-      batch.task(1).request_cost->GetCosts(),
-      UnorderedElementsAre(Pair("test_tpu_with_smear", absl::Milliseconds(90)),
-                           Pair("test_tpu_no_smear", absl::Milliseconds(45))));
-  EXPECT_THAT(
-      batch.task(1).request_cost->GetBatchMetrics(),
-      ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10,
-          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100))))));
-}
-
-TEST(SplitBatchCostsAndRecordMetricsTest, UpdatesGlobalBatchStats) {
-  // Create batch_cost_measurements with one TPU cost.
-  class FakeTpuCostMeasurement : public CostMeasurement {
-   public:
-    using CostMeasurement::CostMeasurement;
-    absl::Duration GetTotalCost() override { return absl::Hours(555); }
-    absl::string_view GetCostType() const override { return kTpuCostName; }
-  };
-  CostMeasurement::Context context{/* is_per_query= */ false};
-  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
-  batch_cost_measurements.push_back(
-      std::make_unique<FakeTpuCostMeasurement>(context));
-
-  // Create a non-empty batch.
-  BatchResourceBase::BatchT batch;
-  batch.AddTask(MakeBatchTask(/* task_size= */ 1, nullptr));
-  batch.Close();
-
-  // Pick a model name that no other test would pick. This is so that we are
-  // sure that the CPU cost for this model name has either never been reported
-  // before or, if this test is executed multiple times, has been reported by
-  // this only.
-  const char kModelName[] = "test_updates_global_batch_stats";
-
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
-      /* model_name= */ kModelName, /* op_name= */ "op_name",
-      batch_cost_measurements, /* processed_size= */ 17, batch);
-
-  EXPECT_EQ(GlobalBatchStatsRegistry()
-                .model(/* model_name= */ kModelName, /* op_name= */ "op_name")
-                .batch_size(17)
-                .tpu_cost()
-                .mean(),
-            absl::Hours(555));
-}
-
-TEST(SplitBatchCostsAndRecordMetricsTest, GlobalBatchStatsProcessedSize) {
-  // Create batch_cost_measurements with one TPU cost.
-  class FakeTpuCostMeasurement : public CostMeasurement {
-   public:
-    using CostMeasurement::CostMeasurement;
-    absl::Duration GetTotalCost() override { return absl::Hours(555); }
-    absl::string_view GetCostType() const override { return kTpuCostName; }
-  };
-  CostMeasurement::Context context{/* is_per_query= */ false};
-  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
-  batch_cost_measurements.push_back(
-      std::make_unique<FakeTpuCostMeasurement>(context));
-
-  // Create a non-empty batch.
-  BatchResourceBase::BatchT batch;
-  batch.AddTask(MakeBatchTask(/* task_size= */ 1, nullptr));
-  batch.Close();
-
-  // Pick a model name that no other test would pick. This is so that we are
-  // sure that the CPU cost for this model name has either never been reported
-  // before or, if this test is executed multiple times, has been reported by
-  // this only.
-  const char kModelName[] = "test_global_batch_stats_processed_size";
-
-  // Get the original cumulative processed size.
-  int original_cumulative_processed_size =
-      GlobalBatchStatsRegistry()
-          .model(/* model_name= */ kModelName, /* op_name= */ "op_name")
-          .cumulative_processed_size();
-
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
-      /* model_name= */ kModelName, /* op_name= */ "op_name",
-      batch_cost_measurements, /* processed_size= */ 17, batch);
-
-  // Expect the cumulative processed size to be updated correctly. Note
-  // that even though the batch size is 17, there is only one non-padding task,
-  // so the cumulative processed size should be
-  // original_cumulative_processed_size + 1.
-  EXPECT_EQ(GlobalBatchStatsRegistry()
-                .model(/* model_name= */ kModelName, /* op_name= */ "op_name")
-                .cumulative_processed_size(),
-            original_cumulative_processed_size + 1);
-
-  // Add a second processed batch with three non-padding tasks and a different
-  // total batch size.
-  BatchResourceBase::BatchT batch2;
-  batch2.AddTask(MakeBatchTask(/* task_size= */ 1, nullptr));
-  batch2.AddTask(MakeBatchTask(/* task_size= */ 1, nullptr));
-  batch2.AddTask(MakeBatchTask(/* task_size= */ 1, nullptr));
-  batch2.Close();
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
-      /* model_name= */ kModelName, /* op_name= */ "op_name",
-      batch_cost_measurements, /* processed_size= */ 8, batch2);
-
-  // Expect the cumulative processed size to be updated correctly.
-  EXPECT_EQ(GlobalBatchStatsRegistry()
-                .model(/* model_name= */ kModelName, /* op_name= */ "op_name")
-                .cumulative_processed_size(),
-            original_cumulative_processed_size + 4);
 }
 
 TEST(RecordBatchDelayMetricsTest,
@@ -1847,6 +1544,287 @@ TEST(BatchTaskTest, FinishTaskRestoresContext) {
   EXPECT_TRUE(Context(ContextKind::kThread) == initial_context);
 }
 #endif  // defined(PLATFORM_GOOGLE)
+
+// A CostMeasurement that always reports a fixed TPU cost.
+class TestTpuCostMeasurement : public CostMeasurement {
+ public:
+  using CostMeasurement::CostMeasurement;
+
+  absl::Duration GetTotalCost() override { return absl::Milliseconds(100); }
+  absl::string_view GetCostType() const override { return "test_tpu"; }
+};
+REGISTER_COST_MEASUREMENT("test_tpu", TestTpuCostMeasurement);
+
+// In production, each incoming request runs on its own thread. Using
+// thread_local gives each concurrent request its own RequestCost instance
+// without locks or map lookups, so costs from different requests never mix.
+class TestRequestCostAccessor : public RequestCostAccessor {
+ public:
+  RequestCost* GetRequestCost() const override {
+    thread_local RequestCost request_cost;
+    return &request_cost;
+  }
+};
+
+bool SetBatchResourceCostMeasurementAndAccessorType() {
+  setenv("TF_COST_MEASUREMENT_TYPE", "test_tpu", 1 /*overwrite*/);
+  setenv("TF_REQUEST_COST_ACCESSOR_TYPE", "test_request_cost_accessor",
+         1 /*overwrite*/);
+  RequestCostAccessorRegistry::RegisterRequestCostAccessor(
+      "test_request_cost_accessor",
+      []() { return std::make_unique<TestRequestCostAccessor>(); });
+  return true;
+}
+static bool batch_resource_cost_measurement_and_accessor_registered =
+    SetBatchResourceCostMeasurementAndAccessorType();
+
+// Test fixture for cost-related tests. Uses a single input/output to be
+// compatible with TestBatchResourceBase (which returns all inputs as outputs).
+class BatchResourceCostTest : public ::testing::Test {
+ protected:
+  BatchResourceCostTest() {
+    device_ = DeviceFactory::NewDevice("CPU", SessionOptions{},
+                                       "/job:a/replica:0/task:0");
+
+    NodeDefBuilder batch_function_builder("my_batch_node", "BatchFunction");
+    batch_function_builder.Attr("max_batch_size", 128);
+    batch_function_builder.Attr("num_batch_threads", 8);
+    batch_function_builder.Attr("allowed_batch_sizes", {4, 8});
+    batch_function_builder.Attr("batch_timeout_micros", 100);
+    batch_function_builder.Attr("max_enqueued_batches", 100);
+    batch_function_builder.Attr("enable_large_batch_splitting", true);
+    batch_function_builder.Attr("Tin", {DataType::DT_INT64});
+    batch_function_builder.Input(std::vector<NodeDefBuilder::NodeOut>{
+        NodeDefBuilder::NodeOut({"n1", 0, DataType::DT_INT64})});
+    batch_function_builder.Attr("Tcaptured", std::vector<DataType>{});
+    batch_function_builder.Input(std::vector<NodeDefBuilder::NodeOut>{});
+    batch_function_builder.Attr("Tout", {DataType::DT_INT64});
+    NameAttrList f;
+    f.set_name("func_to_batch");
+    batch_function_builder.Attr("f", f);
+    NodeDef batch_kernel_node_def;
+    TF_CHECK_OK(batch_function_builder.Finalize(&batch_kernel_node_def));
+
+    absl::Status op_kernel_creation_status;
+    batch_kernel_ =
+        CreateOpKernel(DEVICE_CPU, device_.get(), device_->GetAllocator({}),
+                       batch_kernel_node_def, TF_GRAPH_DEF_VERSION,
+                       &op_kernel_creation_status);
+    TF_CHECK_OK(op_kernel_creation_status);
+    CHECK(batch_kernel_ != nullptr);
+  }
+
+  std::unique_ptr<Device> device_;
+  std::unique_ptr<OpKernel> batch_kernel_;
+};
+
+// Verifies that the RequestCostAccessor-based injection populates costs
+// during actual batch processing.
+TEST_F(BatchResourceCostTest, ProcessFuncBatchWithRequestCost) {
+  using BatchTask = BatchResourceBase::BatchTask;
+  using SharedBatchScheduler = SharedBatchScheduler<BatchTask>;
+
+  std::shared_ptr<SharedBatchScheduler> batcher;
+  TF_ASSERT_OK(SharedBatchScheduler::Create({}, &batcher));
+
+  Tensor input_tensor(DataType::DT_INT64, TensorShape({5, 2, 1}));
+  std::vector<TensorValue> input_tensor_values = {TensorValue(&input_tensor)};
+  SessionMetadata session_metadata;
+  OpKernelContext::Params params = {
+      .op_kernel = batch_kernel_.get(),
+      .device = device_.get(),
+      .session_metadata = &session_metadata,
+      .inputs = input_tensor_values,
+  };
+  auto context = std::make_unique<OpKernelContext>(&params);
+
+  tsl::core::RefCountPtr<TestBatchResourceBase> batch_resource(
+      new TestBatchResourceBase(
+          /*has_process_batch_function=*/true, batcher,
+          SharedBatchScheduler::QueueOptions{},
+          /*allowed_batch_sizes=*/{}));
+
+  absl::Notification task_done;
+  absl::flat_hash_map<std::string, absl::Duration> costs;
+  // Run the request on a dedicated thread so it gets a fresh thread_local
+  // RequestCost. gUnit runs all TEST_F cases on the same main thread, so
+  // without this, costs from earlier tests would accumulate in the main
+  // thread's thread_local instance and pollute subsequent assertions.
+  std::unique_ptr<Thread> request_thread(
+      Env::Default()->StartThread(ThreadOptions(), "request_thread", [&]() {
+        TF_ASSERT_OK(batch_resource->RegisterInput(
+            /*guid=*/0, context.get(), /*batcher_queue_name=*/"queue",
+            /*create_batch_task_fn=*/
+            []() -> absl::StatusOr<std::unique_ptr<BatchTask>> {
+              return std::make_unique<BatchTask>();
+            },
+            /*done_callback=*/[&]() { task_done.Notify(); },
+            /*forced_warmup_batch_size=*/0));
+
+        task_done.WaitForNotification();
+
+        auto accessor = RequestCostAccessorRegistry::CreateByNameOrNull(
+            "test_request_cost_accessor");
+        ASSERT_NE(accessor, nullptr);
+        costs = accessor->GetRequestCost()->GetCosts();
+      }));
+
+  request_thread.reset();  // Wait for thread to finish
+
+  // With 1 task of size 5 (from input_tensor_ shape {5,2,1}),
+  // batch.size() = 5, processed_size = 5 (no allowed_batch_sizes padding),
+  // total cost = 100ms.
+  //   with_smear = 100ms / 5 * 5 = 100ms
+  //   no_smear   = 100ms / 5 * 5 = 100ms
+  EXPECT_THAT(costs, UnorderedElementsAre(
+                         Pair("test_tpu_with_smear", absl::Milliseconds(100)),
+                         Pair("test_tpu_no_smear", absl::Milliseconds(100))));
+}
+
+// Verifies that the RequestCostAccessor-based injection populates costs
+// during actual batch processing with padding.
+TEST_F(BatchResourceCostTest, ProcessFuncBatchWithPaddingAndRequestCost) {
+  using BatchTask = BatchResourceBase::BatchTask;
+  using SharedBatchScheduler = SharedBatchScheduler<BatchTask>;
+
+  std::shared_ptr<SharedBatchScheduler> batcher;
+  TF_ASSERT_OK(SharedBatchScheduler::Create({}, &batcher));
+
+  Tensor input_tensor(DataType::DT_INT64, TensorShape({5, 2, 1}));
+  std::vector<TensorValue> input_tensor_values = {TensorValue(&input_tensor)};
+  SessionMetadata session_metadata;
+  OpKernelContext::Params params = {
+      .op_kernel = batch_kernel_.get(),
+      .device = device_.get(),
+      .session_metadata = &session_metadata,
+      .inputs = input_tensor_values,
+  };
+  auto context = std::make_unique<OpKernelContext>(&params);
+
+  // Set allowed_batch_sizes to 8, which is larger than the input tensor size 5.
+  // This will trigger padding.
+  tsl::core::RefCountPtr<TestBatchResourceBase> batch_resource(
+      new TestBatchResourceBase(
+          /*has_process_batch_function=*/true, batcher,
+          SharedBatchScheduler::QueueOptions{},
+          /*allowed_batch_sizes=*/{8}));
+
+  absl::Notification task_done;
+  absl::flat_hash_map<std::string, absl::Duration> costs;
+  // Run the request on a dedicated thread so it gets a fresh thread_local
+  // RequestCost. gUnit runs all TEST_F cases on the same main thread, so
+  // without this, costs from earlier tests would accumulate in the main
+  // thread's thread_local instance and pollute subsequent assertions.
+  std::unique_ptr<Thread> request_thread(
+      Env::Default()->StartThread(ThreadOptions(), "request_thread", [&]() {
+        TF_ASSERT_OK(batch_resource->RegisterInput(
+            /*guid=*/0, context.get(), /*batcher_queue_name=*/"queue",
+            /*create_batch_task_fn=*/
+            []() -> absl::StatusOr<std::unique_ptr<BatchTask>> {
+              return std::make_unique<BatchTask>();
+            },
+            /*done_callback=*/[&]() { task_done.Notify(); },
+            /*forced_warmup_batch_size=*/0));
+
+        task_done.WaitForNotification();
+
+        auto accessor = RequestCostAccessorRegistry::CreateByNameOrNull(
+            "test_request_cost_accessor");
+        ASSERT_NE(accessor, nullptr);
+        costs = accessor->GetRequestCost()->GetCosts();
+      }));
+
+  request_thread.reset();  // Wait for thread to finish
+
+  // With 1 task of size 5 (from input_tensor_ shape {5,2,1}),
+  // batch.size() = 5, processed_size = 8 (due to allowed_batch_sizes={8}),
+  // total cost = 100ms.
+  //   with_smear = 100ms / 5 * 5 = 100ms
+  //   no_smear   = 100ms / 8 * 5 = 62.5ms
+  EXPECT_THAT(costs, UnorderedElementsAre(
+                         Pair("test_tpu_with_smear", absl::Milliseconds(100)),
+                         Pair("test_tpu_no_smear", absl::Milliseconds(62.5))));
+}
+
+// Verifies that the RequestCostAccessor-based injection populates costs
+// during actual batch processing with splitting and padding.
+TEST_F(BatchResourceCostTest, ProcessFuncBatchWithSplitTaskAndRequestCost) {
+  using BatchTask = BatchResourceBase::BatchTask;
+  using SharedBatchScheduler = SharedBatchScheduler<BatchTask>;
+
+  std::shared_ptr<SharedBatchScheduler> batcher;
+  TF_ASSERT_OK(SharedBatchScheduler::Create({}, &batcher));
+
+  SharedBatchScheduler::QueueOptions queue_options;
+  queue_options.enable_large_batch_splitting = true;
+  // Set max_execution_batch_size to 4, which is smaller than the input tensor
+  // size 6. This will trigger splitting.
+  queue_options.max_execution_batch_size = 4;
+  queue_options.input_batch_size_limit = 10;
+  queue_options.split_input_task_func =
+      [](std::unique_ptr<BatchTask>* input_task, int open_batch_remaining_slot,
+         int max_batch_size,
+         std::vector<std::unique_ptr<BatchTask>>* output_tasks)
+      -> absl::Status {
+    return BatchResourceBase::SplitInputTask(
+        input_task, open_batch_remaining_slot, max_batch_size, output_tasks);
+  };
+
+  // Use a larger input tensor to trigger splitting (6 > 4).
+  Tensor input_tensor(DataType::DT_INT64, TensorShape({6, 2, 1}));
+  std::vector<TensorValue> input_tensor_values = {TensorValue(&input_tensor)};
+  SessionMetadata session_metadata;
+  OpKernelContext::Params params = {
+      .op_kernel = batch_kernel_.get(),
+      .device = device_.get(),
+      .session_metadata = &session_metadata,
+      .inputs = input_tensor_values,
+  };
+  auto context = std::make_unique<OpKernelContext>(&params);
+
+  // Set allowed_batch_sizes to 4 so that the split task is padded to 4.
+  tsl::core::RefCountPtr<TestBatchResourceBase> batch_resource(
+      new TestBatchResourceBase(
+          /*has_process_batch_function=*/true, batcher, queue_options,
+          /*allowed_batch_sizes=*/{4}));
+
+  absl::Notification task_done;
+  absl::flat_hash_map<std::string, absl::Duration> costs;
+  // Run the request on a dedicated thread so it gets a fresh thread_local
+  // RequestCost. gUnit runs all TEST_F cases on the same main thread, so
+  // without this, costs from earlier tests would accumulate in the main
+  // thread's thread_local instance and pollute subsequent assertions.
+  std::unique_ptr<Thread> request_thread(
+      Env::Default()->StartThread(ThreadOptions(), "request_thread", [&]() {
+        TF_ASSERT_OK(batch_resource->RegisterInput(
+            /*guid=*/0, context.get(), /*batcher_queue_name=*/"queue",
+            /*create_batch_task_fn=*/
+            []() -> absl::StatusOr<std::unique_ptr<BatchTask>> {
+              return std::make_unique<BatchTask>();
+            },
+            /*done_callback=*/[&]() { task_done.Notify(); },
+            /*forced_warmup_batch_size=*/0));
+
+        task_done.WaitForNotification();
+
+        auto accessor = RequestCostAccessorRegistry::CreateByNameOrNull(
+            "test_request_cost_accessor");
+        ASSERT_NE(accessor, nullptr);
+        costs = accessor->GetRequestCost()->GetCosts();
+      }));
+
+  request_thread.reset();  // Wait for thread to finish
+
+  // With 1 task of size 6 (from input_tensor_ shape {6,2,1}),
+  // 1 task is split into 2 tasks, size 4 and size 2.
+  // The task of size 4 is not padded and processed as is, and the task of size
+  // 2 is padded to 4.
+  //   with_smear = 100ms / 4 * 4 + 100ms / 4 * 4 = 200ms
+  //   no_smear   = 100ms / 4 * 4 + 100ms / 4 * 2 = 150ms
+  EXPECT_THAT(costs, UnorderedElementsAre(
+                         Pair("test_tpu_with_smear", absl::Milliseconds(200)),
+                         Pair("test_tpu_no_smear", absl::Milliseconds(150))));
+}
 
 }  // namespace
 }  // namespace serving

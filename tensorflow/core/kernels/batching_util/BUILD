@@ -169,6 +169,44 @@ cc_library(
 )
 
 cc_library(
+    name = "batch_cost_utils",
+    srcs = ["batch_cost_utils.cc"],
+    hdrs = ["batch_cost_utils.h"],
+    deps = [
+        ":batch_scheduler_hdrs",
+        ":batch_stats",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime:cost_constants",
+        "//tensorflow/core/common_runtime:cost_measurement",
+        "//tensorflow/core/common_runtime:request_cost",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_cost_utils_test",
+    srcs = ["batch_cost_utils_test.cc"],
+    deps = [
+        ":batch_cost_utils",
+        ":batch_scheduler",
+        ":batch_stats",
+        "//tensorflow/core/common_runtime:cost_constants",
+        "//tensorflow/core/common_runtime:cost_measurement",
+        "//tensorflow/core/common_runtime:cost_measurement_registry",
+        "//tensorflow/core/common_runtime:no_op_cost_measurement",
+        "//tensorflow/core/common_runtime:request_cost",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "threadsafe_status",
     srcs = ["threadsafe_status.cc"],
     hdrs = ["threadsafe_status.h"],
@@ -461,6 +499,7 @@ cc_library(
     hdrs = ["batch_resource_base.h"],
     deps = [
         ":adaptive_shared_batch_scheduler",
+        ":batch_cost_utils",
         ":batch_scheduler",
         ":batch_scheduler_utils",
         ":batch_stats",
@@ -472,13 +511,11 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/common_runtime:cost_constants",
         "//tensorflow/core/common_runtime:cost_measurement",
         "//tensorflow/core/common_runtime:cost_measurement_registry",
         "//tensorflow/core/common_runtime:cost_util",
         "//tensorflow/core/common_runtime:request_cost",
         "//tensorflow/core/common_runtime:request_cost_accessor",
-        "//tensorflow/core/common_runtime:request_cost_accessor_registry",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:thread_annotations",
@@ -487,7 +524,6 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/util:incremental_barrier",
         "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -520,6 +556,7 @@ tf_cc_test(
     name = "batch_resource_base_test",
     srcs = ["batch_resource_base_test.cc"],
     deps = [
+        ":batch_cost_utils",
         ":batch_resource_base",
         ":batch_scheduler_hdrs",
         ":batch_scheduler_utils",
@@ -536,6 +573,8 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:cost_measurement_registry",
         "//tensorflow/core/common_runtime:no_op_cost_measurement",
         "//tensorflow/core/common_runtime:request_cost",
+        "//tensorflow/core/common_runtime:request_cost_accessor",
+        "//tensorflow/core/common_runtime:request_cost_accessor_registry",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:batch_kernels",
         "//tensorflow/core/lib/monitoring:cell_reader",
