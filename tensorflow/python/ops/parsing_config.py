@@ -389,6 +389,12 @@ class FixedLenSequenceFeature(collections.namedtuple(
   """
 
   def __new__(cls, shape, dtype, allow_missing=False, default_value=None):
+    shape = tuple(shape) if shape else ()
+    for i, dim in enumerate(shape):
+      if dim < 1:
+        raise ValueError(
+            f"All shape dimensions must be positive, but "
+            f"dimension {i} is {dim}. Got shape={shape}")
     return super(FixedLenSequenceFeature, cls).__new__(
         cls, shape, dtype, allow_missing, default_value)
 
