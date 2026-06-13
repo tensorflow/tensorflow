@@ -47,6 +47,21 @@ class _LocalCloudTpuClient(object):
   def api_available(self):
     return False
 
+  def get_local_ip(self):
+    return '127.0.0.1'
+
+  def name(self):
+    return 'local'
+
+  def enter(self):
+    pass
+
+  def exit(self, exc_type, exc_value, traceback):
+    pass
+
+  def network_endpoints(self):
+    return []
+
 
 _TPU_DEVICE_REGEX = re.compile(
     r'.*task:(?P<host_id>\d+)/.*device:TPU:(?P<core_id>\d+)$')
@@ -107,10 +122,8 @@ class TPUClusterResolver(cluster_resolver_lib.ClusterResolver):
   Cloud TPUs.
   """
 
-  @staticmethod
-  def connect(tpu=None,
-              zone=None,
-              project=None):
+  @classmethod
+  def connect(cls, tpu=None, zone=None, project=None):
     """Initializes TPU and returns a TPUClusterResolver.
 
     This API will connect to remote TPU cluster and initialize the TPU
@@ -147,8 +160,8 @@ class TPUClusterResolver(cluster_resolver_lib.ClusterResolver):
     tpu_strategy_util.initialize_tpu_system_impl(resolver, TPUClusterResolver)
     return resolver
 
-  @staticmethod
-  def _get_device_dict_and_cores(devices):
+  @classmethod
+  def _get_device_dict_and_cores(cls, devices):
     """Returns a dict of hosts to cores and total cores given devices names.
 
     Returns a namedtuple with two attributes:
@@ -169,8 +182,8 @@ class TPUClusterResolver(cluster_resolver_lib.ClusterResolver):
         num_cores += 1
     return DeviceDetails(device_map, num_cores)
 
-  @staticmethod
-  def _verify_and_return_same_core_count(device_dict):
+  @classmethod
+  def _verify_and_return_same_core_count(cls, device_dict):
     """Verifies that every device in device_dict has the same # of cores."""
     num_cores_per_host_set = (
         {len(core_ids) for core_ids in device_dict.values()})
@@ -462,16 +475,15 @@ class TPUClusterResolver(cluster_resolver_lib.ClusterResolver):
 
   def _start_local_server(self):
     address = compat.as_text(self._cloud_tpu_client.get_local_ip())
-    self._server = server_lib.Server({'local': ['0.0.0.0:0']},
-                                     protocol='grpc',
-                                     config=None,
-                                     start=True)
+    self._server = server_lib.Server(
+        {'local': [address + ':0']}, protocol='grpc', config=None, start=True
+    )
     # self._server.target is of the form: grpc://ipaddress:port
     target = compat.as_bytes(self._server.target)
     splits = target.split(compat.as_bytes(':'))
-    assert len(splits) == 3, self._server.target
+    assert len(splits) >= 3, self._server.target
     assert splits[0] == compat.as_bytes('grpc'), self._server.target
-    self._coordinator_port = compat.as_text(splits[2])
+    self._coordinator_port = compat.as_text(splits[-1])
     self._coordinator_address = '%s:%s' % (
         address, compat.as_text(self._coordinator_port))
 
