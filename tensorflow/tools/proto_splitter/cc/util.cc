@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <ios>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -262,7 +263,12 @@ absl::StatusOr<const std::vector<Field>> GetFieldTypes(
         // Multiple field tags may correspond to a single field when the field
         // is repeated or a map.
         if (field_tags[fti].has_index()) {
-          fields.back().second = static_cast<int>(field_tags[fti++].index());
+          uint64_t tag_index = field_tags[fti++].index();
+          if (tag_index > std::numeric_limits<int>::max()) {
+            return absl::FailedPreconditionError(
+                "Index tag exceeds maximum integer value.");
+          }
+          fields.back().second = static_cast<int>(tag_index);
         } else if (field_tags[fti].has_map_key()) {
           TF_ASSIGN_OR_RETURN(const FieldType& map_key,
                               GetMapKeyFromFieldIndex(field_tags[fti++]));
@@ -494,7 +500,7 @@ absl::StatusOr<MutableFieldResult> GetMutableField(
                               &index](FieldType list_index) -> absl::Status {
     TF_ASSIGN_OR_RETURN(index, FieldInt(list_index));
     const tsl::protobuf::Reflection* reflection = parent->GetReflection();
-    if (reflection->FieldSize(*parent, field) <= index) {
+    if (index < 0 || reflection->FieldSize(*parent, field) <= index) {
       return absl::NotFoundError(absl::StrCat(
           "Can't access index ", index, " in field '", field->name(),
           "' (size = ", reflection->FieldSize(*parent, field), ")."));
@@ -577,7 +583,7 @@ absl::StatusOr<FieldResult> GetField(const tsl::protobuf::Message& message,
                               &index](FieldType list_index) -> absl::Status {
     TF_ASSIGN_OR_RETURN(index, FieldInt(list_index));
     const tsl::protobuf::Reflection* reflection = parent->GetReflection();
-    if (reflection->FieldSize(*parent, field) <= index) {
+    if (index < 0 || reflection->FieldSize(*parent, field) <= index) {
       return absl::NotFoundError(absl::StrCat(
           "Can't access index ", index, " in field '", field->name(),
           "' (size = ", reflection->FieldSize(*parent, field), ")."));
@@ -613,6 +619,9 @@ absl::Status AddFieldTag(const tsl::protobuf::Descriptor& desc,
   auto list_index_callback =
       [&chunked_field](FieldType list_index) -> absl::Status {
     TF_ASSIGN_OR_RETURN(auto index, FieldInt(list_index));
+    if (index < 0) {
+      return absl::InvalidArgumentError("Index cannot be negative.");
+    }
     chunked_field.add_field_tag()->set_index(index);
     return absl::OkStatus();
   };

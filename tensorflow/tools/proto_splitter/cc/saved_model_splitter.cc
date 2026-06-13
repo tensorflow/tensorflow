@@ -36,6 +36,12 @@ using namespace std::string_literals;  // NOLINT
 absl::Status SavedModelSplitter::BuildChunks() {
   TF_RETURN_IF_ERROR(SetMessageAsBaseChunk());
   SavedModel* sm = google::protobuf::DynamicCastMessage<SavedModel>(message());
+  if (sm == nullptr) {
+    return absl::InvalidArgumentError("Message is not a SavedModel.");
+  }
+  if (sm->meta_graphs_size() == 0) {
+    return absl::FailedPreconditionError("SavedModel contains no meta graphs.");
+  }
   int max_size = GetMaxSize();
   if (GetInitialSize() < max_size) return absl::OkStatus();
 
