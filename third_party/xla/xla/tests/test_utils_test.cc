@@ -43,7 +43,7 @@ namespace xla {
 namespace {
 
 // A test fixture is used because we need a client for our computation builder.
-class TestUtilsTest : public HloPjRtTestBase {};
+class TestUtilsTest : public HloTestBase {};
 
 TEST_F(TestUtilsTest, UnusedParam) {
   XlaBuilder builder(TestName());
