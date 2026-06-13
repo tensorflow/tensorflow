@@ -14,7 +14,21 @@
 # limitations under the License.
 
 cmake_minimum_required(VERSION 3.16)
-project(tensorflow-lite-c C CXX)
+
+set(TFLITE_C_API_VERSION "" CACHE STRING "TensorFlow Lite C API version")
+
+if(NOT TFLITE_C_API_VERSION)
+  set(TFLITE_C_API_VERSION "2.20.0")
+endif()
+
+project(tensorflow-lite-c VERSION ${TFLITE_C_API_VERSION} LANGUAGES C CXX)
+
+add_compile_definitions(
+  TF_MAJOR_VERSION=${PROJECT_VERSION_MAJOR}
+  TF_MINOR_VERSION=${PROJECT_VERSION_MINOR}
+  TF_PATCH_VERSION=${PROJECT_VERSION_PATCH}
+  TF_VERSION_SUFFIX=
+)
 
 option(TFLITE_C_BUILD_SHARED_LIBS "Build shared libraries" ON)
 
@@ -86,6 +100,11 @@ if (TFLITE_C_BUILD_SHARED_LIBS)
     target_link_options(tensorflowlite_c PRIVATE "-Wl,--version-script,${TFLITE_SOURCE_DIR}/c/version_script.lds")
   endif()
 endif()
+
+set_target_properties(tensorflowlite_c PROPERTIES
+  VERSION ${PROJECT_VERSION}
+  SOVERSION ${PROJECT_VERSION_MAJOR}
+)
 
 target_link_libraries(tensorflowlite_c
   tensorflow-lite
