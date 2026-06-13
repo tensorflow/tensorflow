@@ -30,9 +30,9 @@ limitations under the License.
 #include "xla/tsl/profiler/rpc/client/profiler_client_test_util.h"
 #include "xla/tsl/profiler/rpc/profiler_server.h"
 #include "xla/tsl/profiler/utils/file_system_utils.h"
+#include "tsl/platform/host_info.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
-#include "tsl/profiler/protobuf/profiler_service.pb.h"
 
 namespace tsl {
 namespace profiler {
@@ -203,7 +203,7 @@ TEST(RemoteProfilerSessionManagerTest, OverrideHostnames) {
   EXPECT_TRUE(Env::Default()
                   ->FileExists(ProfilerJoinPath(
                       request.repository_root(), request.session_id(),
-                      absl::StrCat(random_hostname, ".xplane.pb")))
+                      absl::StrCat(tsl::port::Hostname(), ".xplane.pb")))
                   .ok());
 }
 

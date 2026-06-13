@@ -101,8 +101,12 @@ message ProfileOptions {
   // under the repository path. If not set, the current timestamp will be used.
   string session_id = 14;
 
-  // If set, this hostname will be used to name the profile file.
-  string override_hostname = 15;
+  // Deprecated: This field is now treated as a boolean toggle. If set
+  // (non-empty), the profiler ignores its value and uses the system hostname
+  // (tsl::port::Hostname()) to name the profile file. Otherwise, it falls back
+  // to request.host_name(). For remote mode, use advanced_configuration with
+  // key "override_hostnames" (string) instead.
+  string override_hostname = 15 [deprecated = true];
 }
 
 // Options for remote profiler session manager.

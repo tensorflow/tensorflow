@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
+#include "tsl/platform/host_info.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
@@ -59,9 +60,13 @@ using tensorflow::StopContinuousProfilingResponse;
 using tensorflow::TerminateRequest;
 using tensorflow::TerminateResponse;
 
+// Returns the hostname to be used for the profile filename.
+// If override_hostname is set (non-empty), we use the system hostname
+// (tsl::port::Hostname()) to match programmatic mode.
+// Otherwise, we use the request host_name field (typically IP).
 std::string GetHostname(const ProfileRequest& request) {
   if (!request.opts().override_hostname().empty()) {
-    return request.opts().override_hostname();
+    return tsl::port::Hostname();
   }
   return request.host_name();
 }
