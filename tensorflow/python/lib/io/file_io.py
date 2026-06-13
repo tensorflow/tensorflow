@@ -12,7 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""File IO methods that wrap the C++ FileSystem API."""
+"""File IO methods that wrap the C++ FileSystem API.
+
+Security Note: These file I/O functions do not perform path validation or
+sandboxing. They do not prevent path traversal (e.g., using ``..``), do not
+restrict access to any directory, and will follow symbolic links. Applications
+that accept file paths from untrusted sources (such as user input, model
+configurations, or checkpoint metadata) must validate and canonicalize paths
+before passing them to these functions.
+"""
 import binascii
 import os
 from posixpath import join as urljoin
