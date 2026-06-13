@@ -233,15 +233,26 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(v, ops.convert_to_tensor(sv))
 
   def test_sparse_read(self):
-    v = variables_lib.Variable(array_ops.zeros((30, 1)))
-    indices = constant_op.constant([0, 10, 12, 21, 22])
+    v_val = np.arange(30, dtype=np.float32).reshape((30, 1))
+    v = variables_lib.Variable(v_val)
+    indices = constant_op.constant([21, 0, 10])
 
-    v0 = variables_lib.Variable(array_ops.zeros((10, 1)))
-    v1 = variables_lib.Variable(array_ops.zeros((10, 1)))
-    v2 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    v0 = variables_lib.Variable(v_val[0:10])
+    v1 = variables_lib.Variable(v_val[10:20])
+    v2 = variables_lib.Variable(v_val[20:30])
     sv = sharded_variable.ShardedVariable([v0, v1, v2])
 
     self.assertAllEqual(v.sparse_read(indices), sv.sparse_read(indices))
+
+    # Test empty indices
+    empty_indices = constant_op.constant([], dtype=dtypes.int32)
+    self.assertAllEqual(
+        v.sparse_read(empty_indices), sv.sparse_read(empty_indices)
+    )
+
+    # Test duplicate indices
+    dup_indices = constant_op.constant([10, 10, 0, 21])
+    self.assertAllEqual(v.sparse_read(dup_indices), sv.sparse_read(dup_indices))
 
     @def_function.function
     def func():

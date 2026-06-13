@@ -1491,7 +1491,6 @@ py_library(
         "//tensorflow/python/ops:embedding_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:partitioned_variables",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/trackable:base",
