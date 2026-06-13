@@ -131,7 +131,8 @@ tsl::Future<tensorflow::Tensor> MakeTensorFromArray(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceListRef& device_list,
-    tsl::thread::ThreadPool& thread_pool);
+    tsl::thread::ThreadPool& thread_pool,
+    tensorflow::Allocator* allocator = nullptr);
 
 // A wrapper around xla::ShapeUtil::ByteStrides to get the byte strides of a
 // TensorFlow tensor.
