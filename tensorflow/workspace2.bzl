@@ -389,10 +389,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "@xla//third_party:curl.BUILD",
-        sha256 = "264537d90e58d2b09dddc50944baf3c38e7089151c8986715e2aaeaaf2b8118f",
-        strip_prefix = "curl-8.11.0",
+        sha256 = "2a2c11db4c122691aa23b4363befda1bfd801770bfebf41e1d21cee4f2ab0f71",
+        strip_prefix = "curl-8.19.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.se/download/curl-8.11.0.tar.gz"),
+        urls = tf_mirror_urls("https://curl.se/download/curl-8.19.0.tar.gz"),
     )
 
     tf_http_archive(
