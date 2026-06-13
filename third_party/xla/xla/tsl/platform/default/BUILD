@@ -627,7 +627,7 @@ bzl_library(
 
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "additional_mobile_srcs_no_runtime",
+    name = "additional_mobile_hdrs_no_runtime",
     visibility = internal_visibility(["//tensorflow/core/platform:__pkg__"]),
 )
 
