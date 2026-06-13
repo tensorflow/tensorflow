@@ -738,12 +738,7 @@ cc_library(
     deps = [
         ":logging",
         ":macros",
-        ":mutex",
         ":stack_frame",
-        ":stacktrace",
-        ":str_util",
-        ":strcat",
-        ":stringprintf",
         ":types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
