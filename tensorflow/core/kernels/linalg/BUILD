@@ -215,7 +215,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "banded_triangular_solve_op",
     prefix = "banded_triangular_solve_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -292,7 +295,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
