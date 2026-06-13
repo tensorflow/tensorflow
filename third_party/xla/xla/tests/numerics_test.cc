@@ -33,7 +33,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using NumericsTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using NumericsTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(NumericsTest, AbsOfLargeComplexNumber) {
   const char* hlo = R"(
