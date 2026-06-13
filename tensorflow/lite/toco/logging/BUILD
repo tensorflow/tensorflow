@@ -38,7 +38,10 @@ cc_library(
         "//tensorflow/lite/toco:tooling_util",
         "//tensorflow/lite/toco/tflite:export",
         "//tensorflow/lite/toco/tflite:operator",
+        "//third_party/protobuf:protobuf_lite",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
     ],
 )
@@ -53,6 +56,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:model_flags_proto_cc",
+        "//third_party/protobuf:protobuf_lite",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
