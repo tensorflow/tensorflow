@@ -652,10 +652,16 @@ class NonMaxSuppressionOp : public OpKernel {
     const Tensor& scores = context->input(1);
     // max_output_size: scalar
     const Tensor& max_output_size = context->input(2);
+    
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_output_size.shape()),
                 absl::InvalidArgumentError(
                     absl::StrCat("max_output_size must be 0-D, got shape ",
                                  max_output_size.shape().DebugString())));
+    const int max_output_size_val = max_output_size.scalar<int>()();
+    OP_REQUIRES(context, max_output_size_val >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("max_output_size must be non-negative, got ",
+                                 max_output_size_val)));
 
     OP_REQUIRES(context, iou_threshold_ >= 0 && iou_threshold_ <= 1,
                 absl::InvalidArgumentError("iou_threshold must be in [0, 1]"));
