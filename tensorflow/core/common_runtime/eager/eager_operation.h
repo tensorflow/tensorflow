@@ -152,7 +152,7 @@ class EagerOperation : public ImmediateExecutionOperation {
   absl::Status Reset(
       const char* op, const char* device_name, bool remote,
       EagerExecutor* executor,
-      absl::optional<EagerFunctionParams> eager_func_params = std::nullopt);
+      std::optional<EagerFunctionParams> eager_func_params = std::nullopt);
 
   bool is_function() const { return is_function_; }
   bool colocation_exempt() const { return colocation_exempt_; }
@@ -244,7 +244,7 @@ class EagerOperation : public ImmediateExecutionOperation {
 
   std::string DebugString() const;
 
-  const absl::optional<EagerFunctionParams>& eager_func_params() const {
+  const std::optional<EagerFunctionParams>& eager_func_params() const {
     return eager_func_params_;
   }
 

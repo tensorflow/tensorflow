@@ -99,7 +99,7 @@ class ExecuteNode : public EagerNode {
  public:
   ExecuteNode(EagerContext* ctx,
               const absl::InlinedVector<TensorHandle*, 4>& inputs,
-              const absl::optional<EagerFunctionParams>& eager_func_params,
+              const std::optional<EagerFunctionParams>& eager_func_params,
               const core::RefCountPtr<KernelAndDevice>& kernel,
               GraphCollector* graph_collector,
               CancellationManager* cancellation_manager,
@@ -143,7 +143,7 @@ class ExecuteNode : public EagerNode {
  private:
   EagerContext* ctx_;
   const absl::InlinedVector<TensorHandle*, 4>& inputs_;
-  const absl::optional<EagerFunctionParams>& eager_func_params_;
+  const std::optional<EagerFunctionParams>& eager_func_params_;
   const core::RefCountPtr<KernelAndDevice>& kernel_;
   GraphCollector* graph_collector_;
   CancellationManager* const cancellation_manager_;
@@ -155,7 +155,7 @@ class AsyncExecuteNode : public EagerNode {
  public:
   AsyncExecuteNode(EagerContext* ctx,
                    const absl::InlinedVector<TensorHandle*, 4>& inputs,
-                   const absl::optional<EagerFunctionParams>& eager_func_params,
+                   const std::optional<EagerFunctionParams>& eager_func_params,
                    core::RefCountPtr<KernelAndDevice> kernel,
                    GraphCollector* graph_collector,
                    CancellationManager* cancellation_manager,
@@ -239,7 +239,7 @@ class AsyncExecuteNode : public EagerNode {
  private:
   EagerContext* ctx_;
   absl::InlinedVector<TensorHandle*, 4> inputs_;
-  const absl::optional<EagerFunctionParams> eager_func_params_;
+  const std::optional<EagerFunctionParams> eager_func_params_;
   core::RefCountPtr<KernelAndDevice> kernel_;
   GraphCollector* graph_collector_;
   CancellationManager* const cancellation_manager_;
