@@ -15,11 +15,11 @@
 """Tests for tensorflow.python.ops.special_math_ops."""
 
 from absl.testing import parameterized
-
 import numpy as np
 import opt_einsum
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -589,6 +589,28 @@ class BesselTest(test.TestCase, parameterized.TestCase):
     analytical, numerical = gradient_checker_v2.compute_gradient(
         special_math_ops.bessel_i1e, inputs)
     self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+  @parameterized.parameters(
+      (np.float32, special_math_ops.bessel_i1, 0.5),
+      (np.float32, special_math_ops.bessel_i1e, 0.5),
+      (np.float32, special_math_ops.bessel_j1, 0.5),
+      (np.float64, special_math_ops.bessel_i1, 0.5),
+      (np.float64, special_math_ops.bessel_i1e, 0.5),
+      (np.float64, special_math_ops.bessel_j1, 0.5),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_bessel_gradient_at_zero(self, dtype, func, expected_grad):
+    x = constant_op.constant([0.0], dtype=dtype)
+    with backprop.GradientTape() as tape2:
+      tape2.watch(x)
+      with backprop.GradientTape() as tape1:
+        tape1.watch(x)
+        y = func(x)
+      dy = tape1.gradient(y, x)
+    ddy = tape2.gradient(dy, x)
+
+    self.assertAllClose(self.evaluate(dy), [expected_grad], atol=1e-5)
+    self.assertFalse(np.isnan(self.evaluate(ddy)).any())
 
   def test_besselj_gradient(self):
     inputs = [np.random.uniform(-50., 50., size=int(1e2))]
