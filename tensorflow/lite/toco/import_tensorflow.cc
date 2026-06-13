@@ -148,9 +148,9 @@ absl::Status CheckOptionalAttr(const NodeDef& node,
   if (HasAttr(node, attr_name)) {
     const std::string& value = GetStringAttr(node, attr_name);
     if (value != expected_value) {
-      return tensorflow::errors::InvalidArgument(
-          "Unexpected value for attribute '" + attr_name + "'. Expected '" +
-          expected_value + "'");
+      return absl::InvalidArgumentError("Unexpected value for attribute '" +
+                                        attr_name + "'. Expected '" +
+                                        expected_value + "'");
     }
   }
   return absl::OkStatus();
@@ -162,7 +162,7 @@ absl::Status CheckOptionalAttr(const NodeDef& node,
   if (HasAttr(node, attr_name)) {
     const tensorflow::DataType& value = GetDataTypeAttr(node, attr_name);
     if (value != expected_value) {
-      return tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Unexpected value for attribute '" + attr_name + "'. Expected '" +
           tensorflow::DataType_Name(expected_value) + "'");
     }
@@ -212,7 +212,7 @@ absl::Status ImportShape(const TFLITE_PROTO_NS::RepeatedPtrField<
   for (auto& d : input_dims) {
     // TensorFlow's shapes use int64s, while TOCO uses ints.
     if (d.size() > std::numeric_limits<int>::max()) {
-      return tensorflow::errors::InvalidArgument("Shape element overflows");
+      return absl::InvalidArgumentError("Shape element overflows");
     }
     if (d.size() == 0) {
       zero_sized_shape = true;
@@ -373,7 +373,7 @@ absl::Status ImportTensorData(const TensorProto& input_tensor,
   } else {
     std::string accessor_name = TensorTraits<T>::accessor_name();
     std::string type_name = TensorTraits<T>::type_name();
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         absl::StrCat("Neither input_content (",
                      input_tensor.tensor_content().size() / sizeof(T), ") nor ",
                      accessor_name, " (", num_elements_in_tensor,
@@ -525,7 +525,7 @@ absl::Status ImportStringArray(const TensorProto& input_tensor,
   if (!status.ok()) return status;
 
   if (input_flat_size != input_tensor.string_val_size()) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Input_content string_val doesn't have the right dimensions "
         "for this string tensor");
   }
@@ -559,9 +559,9 @@ absl::Status CheckInputsCount(const NodeDef& node,
                               const TensorFlowImportFlags& tf_import_flags,
                               int expected_input_count) {
   if (GetInputsCount(node, tf_import_flags) != expected_input_count) {
-    return tensorflow::errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         node.op(), " node expects ", expected_input_count,
-        " input(s) other than control dependencies: ", node.DebugString());
+        " input(s) other than control dependencies: ", node.DebugString()));
   }
   return absl::OkStatus();
 }
@@ -865,7 +865,7 @@ absl::Status ConvertConvOperator(const NodeDef& node,
     model->operators.emplace_back(reorder);
   }
   if (!HasAttr(node, "strides")) {
-    return tensorflow::errors::InvalidArgument("Missing attribute 'strides'");
+    return absl::InvalidArgumentError("Missing attribute 'strides'");
   }
   const auto& strides = GetListAttr(node, "strides");
   TF_RETURN_IF_ERROR(ExpectValue(strides.i_size(), 4, "number of strides"));
@@ -878,7 +878,7 @@ absl::Status ConvertConvOperator(const NodeDef& node,
     TF_RETURN_IF_ERROR(
         ExpectValue(dilations.i_size(), 4, "number of dilations"));
     if (dilations.i(0) != 1 || dilations.i(3) != 1) {
-      return tensorflow::errors::InvalidArgument(absl::StrCat(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Can only import Conv ops with dilation along the height "
           "(1st) or width (2nd) axis. TensorFlow op \"",
           node.name(), "\" had dilations:[ ", dilations.i(0), ", ",
@@ -897,7 +897,7 @@ absl::Status ConvertConvOperator(const NodeDef& node,
   } else if (padding == "VALID") {
     padding_type = PaddingType::kValid;
   } else {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Bad padding (only SAME and VALID are supported)");
   }
   auto* conv = new ConvOperator;
@@ -957,7 +957,7 @@ absl::Status ConvertDepthwiseConvOperator(
     TF_RETURN_IF_ERROR(
         ExpectValue(dilations.i_size(), 4, "number of dilations"));
     if (dilations.i(0) != 1 || dilations.i(3) != 1) {
-      return tensorflow::errors::InvalidArgument(absl::StrCat(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Can only import Conv ops with dilation along the height "
           "(1st) or width (2nd) axis. TensorFlow op \"",
           node.name(), "\" had dilations:[ ", dilations.i(0), ", ",
@@ -976,7 +976,7 @@ absl::Status ConvertDepthwiseConvOperator(
   } else if (padding == "VALID") {
     padding_type = PaddingType::kValid;
   } else {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Bad padding (only SAME and VALID are supported)");
   }
   auto* conv = new DepthwiseConvOperator;
@@ -2545,7 +2545,7 @@ absl::Status ConvertUnidirectionalSequenceRnn(
 
   const auto& indices = GetListAttr(node, "_tflite_input_indices");
   if (indices.i_size() != node.input().size()) {
-    return tensorflow::errors::InvalidArgument("Input size does not match.");
+    return absl::InvalidArgumentError("Input size does not match.");
   }
 
   auto* op = new UnidirectionalSequenceRnnOperator();
