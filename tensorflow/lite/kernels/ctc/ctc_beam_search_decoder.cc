@@ -220,11 +220,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       merge_repeated);
 
   // Allocate temporary memory for holding chip operation data.
-  float* input_chip_t_data =
-      static_cast<float*>(malloc(num_classes * sizeof(float)));
+  std::vector<float> input_chip_t_data(num_classes);
   Eigen::array<Eigen::DenseIndex, 1> dims;
   dims[0] = num_classes;
-  optimized_ops::TTypes<float>::Flat input_chip_t(input_chip_t_data, dims);
+  optimized_ops::TTypes<float>::Flat input_chip_t(input_chip_t_data.data(), dims);
 
   std::vector<std::vector<std::vector<int>>> best_paths(batch_size);
   std::vector<float> log_probs;
@@ -254,7 +253,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
-  free(input_chip_t_data);
   return StoreAllDecodedSequences(context, best_paths, node, top_paths);
 }
 
