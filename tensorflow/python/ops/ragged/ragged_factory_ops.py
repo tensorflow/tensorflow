@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+﻿# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -259,6 +259,61 @@ def _constant_value(
       values, dtype=dtype, shape=(len(values),) + inner_shape, name="values")
   for row_splits in reversed(nested_splits):
     values = ragged_factory(values, row_splits)
+
+  # ----- Safe static shape inference -----
+  # Only set concrete lengths for outer ragged dimensions (index < ragged_rank-1)
+  # if the last ragged dimension is non-uniform (i.e., the tensor is truly ragged).
+  if isinstance(values, ragged_tensor.RaggedTensor) and ragged_rank > 0:
+    # First, check if the last ragged dimension is uniform.
+    last_level = pylist
+    last_is_uniform = True
+    for _ in range(ragged_rank):
+      if (not isinstance(last_level, (list, tuple, np.ndarray)) or
+          len(last_level) == 0):
+        last_is_uniform = True
+        break
+      first_len = len(last_level[0])
+      uniform = all(
+          isinstance(row, (list, tuple, np.ndarray)) and
+          len(row) == first_len
+          for row in last_level
+      )
+      last_is_uniform = uniform
+      if (uniform and len(last_level) > 0 and
+          isinstance(last_level[0], (list, tuple, np.ndarray))):
+        last_level = last_level[0]
+      else:
+        break
+
+    shape = [len(pylist)]
+    curr = pylist
+    for i in range(ragged_rank):
+      if isinstance(curr, (list, tuple, np.ndarray)) and len(curr) > 0:
+        first_len = len(curr[0])
+        uniform = all(
+            isinstance(row, (list, tuple, np.ndarray)) and
+            len(row) == first_len
+            for row in curr
+        )
+        # Set concrete length only for outer ragged dimensions when the tensor
+        # is truly ragged.
+        if (i < ragged_rank - 1 and not last_is_uniform and uniform and
+            first_len > 0):
+          shape.append(first_len)
+        else:
+          shape.append(None)
+        if (uniform and first_len > 0 and
+            isinstance(curr[0], (list, tuple, np.ndarray))):
+          curr = curr[0]
+        else:
+          curr = None
+      else:
+        shape.append(None)
+    # All inner_shape dimensions remain None (no static info).
+    shape.extend([None] * len(inner_shape))
+    values._set_shape(tensor_shape.TensorShape(shape))
+  # For regular tensors (ragged_rank == 0) we do nothing – shape is already set.
+
   return values
 
 
@@ -328,12 +383,16 @@ def _default_inner_shape_for_pylist(pylist, ragged_rank):
                        (dim + 1, ragged_rank, ragged_rank))
     flat_values = sum((list(v) for v in flat_values), [])
 
+  # If flat_values is empty, we cannot determine a dense inner shape.
+  # Return empty inner shape so the dimension becomes ragged.
+  if not flat_values:
+    return ()
+
   # Compute the inner shape looking only at the leftmost elements; and then
   # use check_inner_shape to verify that other elements have the same shape.
   inner_shape = get_inner_shape(flat_values)
   check_inner_shape(flat_values, inner_shape)
   return inner_shape[1:]
-
 
 @tf_export(v1=["ragged.placeholder"])
 @dispatch.add_dispatch_support
