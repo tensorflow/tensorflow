@@ -229,6 +229,11 @@ class DefaultTensorTie : public TensorTie {
     if (d.object_def.user_provided) {
       return absl::OkStatus();
     }
+    GlBuffer* existing_ssbo = objects_->FindBuffer(def().id);
+    if (existing_ssbo != nullptr) {
+      internal_obj_ = OpenGlBuffer{existing_ssbo->id()};
+      return absl::OkStatus();
+    }
     switch (d.object_def.object_type) {
       case gpu::ObjectType::OPENGL_SSBO: {
         GlBuffer ssbo;
