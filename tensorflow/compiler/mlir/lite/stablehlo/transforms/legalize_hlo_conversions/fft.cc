@@ -142,7 +142,10 @@ class ConvertNDFftTo2DFftOp : public OpRewritePattern<mhlo::FftOp> {
       expanded_input_shape.push_back(1);
       expanded_input_shape.push_back(input_shape.back());
       auto expanded_input_type = tensorflow::GetTypeFromTFTensorShape(
-          expanded_input_shape, input_type.getElementType());
+          expanded_input_shape,
+          input_type
+              ? input_type.getElementType()
+              : mlir::cast<ShapedType>(fft_op.getOperand().getType()).getElementType());
 
       // Dynamic shape needs to be handled separately as mhlo::ReshapeOp does
       // not support dynamic shape.
