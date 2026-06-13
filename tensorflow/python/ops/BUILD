@@ -51,6 +51,7 @@ package(
 py_library(
     name = "map_fn",
     srcs = ["map_fn.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
@@ -4359,6 +4360,7 @@ py_library(
 py_library(
     name = "nn_impl",
     srcs = ["nn_impl.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
@@ -4412,6 +4414,7 @@ py_library(
 py_library(
     name = "image_ops_impl",
     srcs = ["image_ops_impl.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
