@@ -48,7 +48,6 @@ class VarLenFeature(collections.namedtuple("VarLenFeature", ["dtype"])):
   Fields:
     dtype: Data type of input.
   """
-  pass
 
 
 @tf_export("io.RaggedFeature")
@@ -218,12 +217,14 @@ class RaggedFeature(
         f"{type(partition)}"
     )
 
-  def __new__(cls,
-              dtype,
-              value_key=None,
-              partitions=(),
-              row_splits_dtype=dtypes.int32,
-              validate=False):
+  def __new__(
+      cls,
+      dtype,
+      value_key=None,
+      partitions=(),
+      row_splits_dtype=dtypes.int32,
+      validate=True,
+  ):
     if value_key is not None:
       if not isinstance(value_key, str):
         raise ValueError(
@@ -393,7 +394,7 @@ class FixedLenSequenceFeature(collections.namedtuple(
         cls, shape, dtype, allow_missing, default_value)
 
 
-class _ParseOpParams:
+class _ParseOpParams:  # pylint: disable=unused-private-name
   """Raw parameters used by `gen_parsing_ops`.
 
   Attributes:
@@ -955,9 +956,24 @@ def _add_batched_ragged_partition(rt, partition, tensor_dict, feature_key,
           ragged_tensor.RaggedTensor.from_row_starts(
               rt.values, adjusted_starts, validate=validate))
     elif isinstance(partition, RaggedFeature.RowLengths):
-      return partition_t.with_values(
-          ragged_tensor.RaggedTensor.from_row_lengths(
-              rt.values, partition_t.values, validate=validate))
+      lengths = partition_t.values
+      if isinstance(rt.values, ragged_tensor.RaggedTensor):
+        values_size = rt.values.nrows(out_type=lengths.dtype)
+      else:
+        values_size = math_ops.cast(
+            array_ops.shape(rt.values)[0], lengths.dtype
+        )
+      sum_matches = check_ops.assert_equal(
+          math_ops.reduce_sum(lengths),
+          values_size,
+          message="Row lengths sum must match values size",
+      )
+      with ops.control_dependencies([sum_matches]):
+        return partition_t.with_values(
+            ragged_tensor.RaggedTensor.from_row_lengths(
+                rt.values, lengths, validate=validate
+            )
+        )
     elif isinstance(partition, RaggedFeature.ValueRowIds):
       nrows = math_ops.maximum(  # number of rows in each batch item
           ragged_math_ops.reduce_max(partition_t + 1, axis=1), 0)
