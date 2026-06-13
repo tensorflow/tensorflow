@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/stack_frames.h"
@@ -72,7 +71,6 @@ using ::testing::Eq;
 using ::testing::IsEmpty;
 using ::testing::Pointwise;
 using ::testing::Property;
-using ::testing::StrEq;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 
@@ -1147,8 +1145,7 @@ TEST(HloModuleTest, LoadAndFixNonConsecutiveInstructionIds) {
 
   EXPECT_EQ(module->computation_count(), 2);
   HloComputation* entry_computation = module->entry_computation();
-  HloComputation* computation_2 = module->GetComputationWithName("comp2");
-  ASSERT_NE(computation_2, nullptr);
+  HloComputation* computation_2 = *std::next(module->computations().begin());
   EXPECT_EQ(entry_computation->instruction_count(), 3);
 
   EXPECT_EQ(computation_2->instruction_count(), 4);
@@ -1222,138 +1219,6 @@ TEST(HloModuleTest, TestHloModuleToFromProtoInvarianceInComputation) {
   EXPECT_THAT(
       module_proto.computations(),
       Pointwise(EqualsProto(), module_from_proto->ToProto().computations()));
-}
-
-TEST(HloModuleTest, ReorderComputationsToPostOrderPreservesSemantics) {
-  // Test graph structure:
-  //
-  //     comp0
-  //    /     \
-  //  comp1   comp2
-  //    \     /
-  //     entry
-
-  auto module = std::make_unique<HloModule>("test_module", HloModuleConfig());
-
-  Shape shape = ShapeUtil::MakeShape(F32, {});
-
-  auto make_comp = [&](absl::string_view name,
-                       HloComputation* callee = nullptr) {
-    HloComputation::Builder builder(name);
-    auto p =
-        builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
-    if (callee) {
-      builder.AddInstruction(HloInstruction::CreateCall(shape, {p}, callee));
-    }
-    return builder.Build();
-  };
-
-  auto comp0 = make_comp("comp0");
-  HloComputation* comp0_ptr = comp0.get();
-
-  auto comp1 = make_comp("comp1", comp0_ptr);
-  HloComputation* comp1_ptr = comp1.get();
-
-  auto comp2 = make_comp("comp2", comp0_ptr);
-  HloComputation* comp2_ptr = comp2.get();
-
-  HloComputation::Builder entry_builder("entry");
-  auto p_entry = entry_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "p0"));
-  auto call1 = entry_builder.AddInstruction(
-      HloInstruction::CreateCall(shape, {p_entry}, comp1_ptr));
-  auto call2 = entry_builder.AddInstruction(
-      HloInstruction::CreateCall(shape, {p_entry}, comp2_ptr));
-  entry_builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, call1, call2));
-  auto entry_comp = entry_builder.Build();
-  HloComputation* entry_ptr = entry_comp.get();
-
-  // Add computations in a non-post-order: entry, comp1, comp2, comp0
-  module->AddEntryComputation(std::move(entry_comp));
-  module->AddEmbeddedComputation(std::move(comp1));
-  module->AddEmbeddedComputation(std::move(comp2));
-  module->AddEmbeddedComputation(std::move(comp0));
-
-  // Verify initial non-post-order
-  EXPECT_THAT(module->computations(),
-              ElementsAre(entry_ptr, comp1_ptr, comp2_ptr, comp0_ptr));
-
-  TF_ASSERT_OK(module->ReorderComputationsToPostOrder());
-
-  // Verify post-order. So:
-  // comp0 must be before comp1 and comp2.
-  // comp1 and comp2 must be before entry.
-  // Earliest calling instructions in postorder should appear first.
-  int index0 = -1, index1 = -1, index2 = -1, index_entry = -1;
-  int i = 0;
-  for (HloComputation* comp : module->computations()) {
-    if (comp == comp0_ptr) {
-      index0 = i;
-    } else if (comp == comp1_ptr) {
-      index1 = i;
-    } else if (comp == comp2_ptr) {
-      index2 = i;
-    } else if (comp == entry_ptr) {
-      index_entry = i;
-    }
-    i++;
-  }
-
-  EXPECT_GE(index0, 0);
-  EXPECT_GE(index1, 0);
-  EXPECT_GE(index2, 0);
-  EXPECT_GE(index_entry, 0);
-
-  EXPECT_LT(index0, index1);
-  EXPECT_LT(index0, index2);
-  EXPECT_LT(index1, index_entry);
-  EXPECT_LT(index2, index_entry);
-
-  EXPECT_EQ(module->entry_computation(), entry_ptr);
-  EXPECT_EQ(entry_ptr->root_instruction()->operands()[0]->to_apply(),
-            comp1_ptr);
-  EXPECT_EQ(entry_ptr->root_instruction()->operands()[1]->to_apply(),
-            comp2_ptr);
-}
-
-TEST(HloModuleTest, ReorderComputationsToPostOrderEquivalenceCheck) {
-  // This test is an equivalence check. It verifies that reordering computations
-  // to post-order does not lose or corrupt any computations.
-  // We use ToString() with canonicalize_computations(true) to sort computations
-  // by name when printing. This ignores the storage order in the module and
-  // allows us to verify that the content is identical before and after
-  // reordering.
-  const std::string text = R"(
-HloModule test_module
-
-callee {
-  p0 = f32[] parameter(0)
-  p1 = f32[] parameter(1)
-  ROOT add = f32[] add(p0, p1)
-}
-
-ENTRY entry_comp {
-  p0 = f32[] parameter(0)
-  p1 = f32[] parameter(1)
-  ROOT call = f32[] call(p0, p1), to_apply=callee
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(text));
-
-  HloPrintOptions options;
-  options.set_canonicalize_computations(true);
-  options.set_canonicalize_instruction_names(true);
-  options.set_print_percent(false);
-
-  std::string string_before = module->ToString(options);
-
-  TF_ASSERT_OK(module->ReorderComputationsToPostOrder());
-
-  std::string string_after = module->ToString(options);
-
-  EXPECT_THAT(string_before, StrEq(string_after));
 }
 
 TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {

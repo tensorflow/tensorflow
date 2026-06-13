@@ -953,6 +953,12 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     module->mutable_config().set_device_type(proto.device_type());
   }
 
+  // Sort the computations in the proto id's order.
+  absl::c_sort(computations, [&](const std::unique_ptr<HloComputation>& a,
+                                 const std::unique_ptr<HloComputation>& b) {
+    return to_proto_id[a.get()] < to_proto_id[b.get()];
+  });
+
   // Add sorted computations to the module.
   for (auto& computation : computations) {
     bool is_entry = computation.get() == entry;
@@ -1034,7 +1040,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
 
   module->CanonicalizeStackFrameIds(proto.stack_frame_index());
-  RETURN_IF_ERROR(module->ReorderComputationsToPostOrder());
 
   if (proto.has_original_value_recovery_table()) {
     ASSIGN_OR_RETURN(module->original_value_recovery_table_,
@@ -1254,35 +1259,6 @@ void HloModule::CanonicalizeComputationLocalIds() {
       schedule().GetOrCreateSequence(computation).update_id_sequence();
     }
   }
-}
-
-absl::Status HloModule::ReorderComputationsToPostOrder() {
-  std::vector<HloComputation*> post_order = MakeComputationPostOrder();
-  // Reorder computations_ in place based on post_order.
-  // We move the computations into a temporary map keyed by their raw pointers,
-  // and then move unique_ptrs back into computations_ in the post-order.
-  // This avoids copying and handles unique_ptr correctly.
-  absl::flat_hash_map<HloComputation*, std::unique_ptr<HloComputation>>
-      comp_map;
-  comp_map.reserve(computations_.size());
-  for (auto& comp : computations_) {
-    HloComputation* comp_ptr = comp.get();
-    comp_map[comp_ptr] = std::move(comp);
-  }
-
-  computations_.clear();
-  computations_.reserve(post_order.size());
-  for (HloComputation* comp : post_order) {
-    auto it = comp_map.find(comp);
-    TF_RET_CHECK(it != comp_map.end()) << "Computation not found in module";
-    computations_.push_back(std::move(it->second));
-  }
-
-  TF_RET_CHECK(computations_.size() == comp_map.size())
-      << "Lost computations during reordering. Original count: "
-      << comp_map.size() << ", Post-order count: " << computations_.size();
-
-  return absl::OkStatus();
 }
 
 HloInstruction* HloModule::OutlineExpressionFromComputation(

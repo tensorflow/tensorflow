@@ -370,14 +370,6 @@ class HloModule {
   // of local IDs.
   void CanonicalizeComputationLocalIds();
 
-  // Reorders the computations in the module to match the post-order.
-  //
-  // Many analysis and optimization passes benefit from processing computations
-  // in post-order (callees before callers). Canonicalizing them in this order
-  // makes simple iteration over computations() yield a valid traversal order,
-  // improving determinism.
-  absl::Status ReorderComputationsToPostOrder();
-
   // Compute and return a topological sort of all computations in the module.
   // The sort is defined like so: if computation A has an instruction which
   // calls computation B, then A will appear after B in the sort.
