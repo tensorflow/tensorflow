@@ -38,9 +38,9 @@ namespace tensorflow {
 namespace dtensor {
 
 StatusOr<mlir::Operation*> ExpandDimsExpander::ExpandOp(mlir::Operation* op) {
-  TF_ASSIGN_OR_RETURN(const absl::optional<Layout> output_layout,
+  TF_ASSIGN_OR_RETURN(const std::optional<Layout> output_layout,
                       ExtractSingleLayoutFromOp(op));
-  TF_ASSIGN_OR_RETURN(const absl::optional<Layout> operand_layout,
+  TF_ASSIGN_OR_RETURN(const std::optional<Layout> operand_layout,
                       ExtractLayoutFromOperand(op->getOperand(0)));
   mlir::TF::ExpandDimsOp expand_dims_op =
       mlir::cast<mlir::TF::ExpandDimsOp>(op);

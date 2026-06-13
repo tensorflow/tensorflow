@@ -57,7 +57,7 @@ absl::Status ValidateSendRecvLayoutConfiguration(
   // configuration has already been verified.
   if (!dtensor_send || !dtensor_recv) return absl::OkStatus();
 
-  TF_ASSIGN_OR_RETURN(const absl::optional<Layout> send_layout_or_null,
+  TF_ASSIGN_OR_RETURN(const std::optional<Layout> send_layout_or_null,
                       ExtractLayoutFromOperand(dtensor_send.getInput()));
 
   if (!send_layout_or_null.has_value())

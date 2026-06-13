@@ -138,7 +138,7 @@ StatusOr<llvm::DenseMap<int, Layout>> LayoutFromUnpackedTensors(
 
 StatusOr<mlir::Operation*> PackSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto pack = llvm::cast<mlir::TF::PackOp>(op);
-  TF_ASSIGN_OR_RETURN(const absl::optional<Layout> output_layout,
+  TF_ASSIGN_OR_RETURN(const std::optional<Layout> output_layout,
                       ExtractSingleLayoutFromOp(op));
 
   const int output_rank = ValueRank(pack.getOutput());
@@ -157,7 +157,7 @@ StatusOr<mlir::Operation*> PackSPMDExpander::ExpandOp(mlir::Operation* op) {
       output_layout->GetLayoutWithReducedDims({axis}, /*keep_dims=*/false));
 
   for (int i = 0; i < op->getNumOperands(); ++i) {
-    TF_ASSIGN_OR_RETURN(const absl::optional<Layout> layout,
+    TF_ASSIGN_OR_RETURN(const std::optional<Layout> layout,
                         ExtractLayoutFromOperand(pack.getOperand(i)));
     if (!layout)
       return absl::InvalidArgumentError(
@@ -193,7 +193,7 @@ StatusOr<llvm::DenseMap<int, Layout>> PackSPMDExpander::ComputeLayoutBackward(
 
 StatusOr<mlir::Operation*> UnpackSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto unpack = llvm::cast<mlir::TF::UnpackOp>(op);
-  TF_ASSIGN_OR_RETURN(const absl::optional<Layout> input_layout,
+  TF_ASSIGN_OR_RETURN(const std::optional<Layout> input_layout,
                       ExtractLayoutFromOperand(unpack.getOperand()));
   if (!input_layout) {
     return absl::UnimplementedError("input must have a layout");
@@ -964,8 +964,8 @@ TransposeSPMDExpander::ComputeLayoutBackward(
 
 namespace {
 
-absl::Status RelayoutOneHotInput(const absl::optional<Layout>& input_layout,
-                                 const absl::optional<Layout>& output_layout,
+absl::Status RelayoutOneHotInput(const std::optional<Layout>& input_layout,
+                                 const std::optional<Layout>& output_layout,
                                  const int axis, mlir::TF::OneHotOp& one_hot) {
   if (!input_layout || !output_layout)
     return absl::InvalidArgumentError(

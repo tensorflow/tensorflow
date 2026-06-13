@@ -112,7 +112,7 @@ GatherCommonSPMDExpander::ComputeLayoutForward(
         params_mesh_dims.insert(params_layout->sharding_spec(i));
   }
 
-  auto add_mesh_dim_if = [&](const absl::optional<Layout>& input_layout,
+  auto add_mesh_dim_if = [&](const std::optional<Layout>& input_layout,
                              int64_t dim, bool indices = false) {
     // Only add the mesh dimension to the output_layout if 1) the input layout
     // exists and 2) when the input is indices and the params dims don't
@@ -210,8 +210,8 @@ GatherCommonSPMDExpander::ComputeLayoutBackward(
 namespace {
 
 StatusOr<Layout> GatherNdGetOutputLayoutFromInput(
-    const absl::optional<Layout>& params_layout, int params_rank,
-    const absl::optional<Layout>& indices_layout, int indices_rank,
+    const std::optional<Layout>& params_layout, int params_rank,
+    const std::optional<Layout>& indices_layout, int indices_rank,
     int index_dimensions, const Mesh& mesh) {
   // The layout of the output should be the layout of the first rank-1
   // dimensions of the indices plus the layout of the last params.rank -
