@@ -207,7 +207,7 @@ class PolymorphicFunction(Callable, metaclass=abc.ABCMeta):
     The arguments specified by `args` and `kwargs` follow normal function call
     rules. The returned `ConcreteFunction` has the same set of positional and
     keyword arguments as `self`, but their types are compatible to the types
-    specified by `args` and `kwargs` (though not neccessarily equal).
+    specified by `args` and `kwargs` (though not necessarily equal).
 
     >>> @tf.function
     ... def f(x):

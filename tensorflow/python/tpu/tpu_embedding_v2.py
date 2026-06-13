@@ -302,7 +302,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     # Thus we must fix a common order to tables and ensure they have unique
     # names.
 
-    # Set table order here to the order of the first occurence of the table in a
+    # Set table order here to the order of the first occurrence of the table in a
     # feature provided by the user. The order of this struct must be fixed
     # to provide the user with deterministic behavior over multiple
     # instantiations.

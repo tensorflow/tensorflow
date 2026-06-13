@@ -28,7 +28,7 @@ from tensorflow.python.util import tf_decorator
 class _TFShouldUseHelper(object):
   """Object stored in TFShouldUse-wrapped objects.
 
-  When it is deleted it will emit a warning or error if its `sate` method
+  When it is deleted it will emit a warning or error if its `state` method
   has not been called by time of deletion, and Tensorflow is not executing
   eagerly or inside a tf.function (which use autodeps and resolve the
   main issues this wrapper warns about).
@@ -72,7 +72,7 @@ class _TFShouldUseHelper(object):
       try:
         raise RuntimeError(
             'Object was never used (type {}): {}.  If you want to mark it as '
-            'used call its "mark_used()" method.  It was originally created '
+            'used, call its "mark_used()" method.  It was originally created '
             'here:\n{}'.format(self._type, self._repr, creation_stack))
       finally:
         self.sate()
@@ -80,7 +80,7 @@ class _TFShouldUseHelper(object):
       tf_logging.error(
           '==================================\n'
           'Object was never used (type {}):\n{}\nIf you want to mark it as '
-          'used call its "mark_used()" method.\nIt was originally created '
+          'used, call its "mark_used()" method.\nIt was originally created '
           'here:\n{}\n'
           '=================================='
           .format(self._type, self._repr, creation_stack))
