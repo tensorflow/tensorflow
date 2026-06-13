@@ -107,6 +107,16 @@ static xla::XlaOp MulNoNanImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
 XLA_MAKE_BINARY(MulNoNan,
                 MulNoNanImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
+static xla::XlaOp MinMaxImpl(DataType dtype, bool is_max, xla::XlaOp x,
+                             xla::XlaOp y, const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
+  xla::XlaOp result = is_max ? xla::Max(x, y) : xla::Min(x, y);
+  if (!DataTypeIsFloating(dtype)) {
+    return result;
+  }
+  return xla::Select(xla::IsNan(x), x, xla::Select(xla::IsNan(y), y, result));
+}
+
 // Implementation of FloorDiv.
 //
 // For floating-point values, simply returns floor(x / y).  For integers, does:
@@ -204,8 +214,12 @@ XLA_MAKE_BINARY(RightShift,
 XLA_MAKE_BINARY(LogicalAnd, xla::And(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(LogicalOr, xla::Or(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Mod, xla::Rem(lhs, rhs, extend_dimensions));
-XLA_MAKE_BINARY(Maximum, xla::Max(lhs, rhs, extend_dimensions));
-XLA_MAKE_BINARY(Minimum, xla::Min(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(Maximum,
+                MinMaxImpl(input_type(0), /*is_max=*/true, lhs, rhs,
+                           broadcast_helper));
+XLA_MAKE_BINARY(Minimum,
+                MinMaxImpl(input_type(0), /*is_max=*/false, lhs, rhs,
+                           broadcast_helper));
 XLA_MAKE_BINARY(RealDiv, xla::Div(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(ReciprocalGrad, xla::Neg(xla::Mul(rhs, xla::Mul(lhs, lhs))));
 XLA_MAKE_BINARY(
