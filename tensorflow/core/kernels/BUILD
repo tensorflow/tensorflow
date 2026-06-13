@@ -2561,6 +2561,9 @@ tf_kernel_library(
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/util/ctc:ctc_beam_search_lib",
         "//tensorflow/core/util/ctc:ctc_loss_calculator_lib",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + if_cuda_or_rocm([
         ":gpu_utils",
         ":conv_ops_gpu_hdrs",
@@ -3745,6 +3748,7 @@ tf_kernel_library(
     ),
     prefix = "cast_op",
     deps = MATH_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels/mlir_generated:cast_op",
     ],
 )
@@ -4238,11 +4242,13 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util:image_resizer_state",
         "//tensorflow/core/util/proto:proto_utils",
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
