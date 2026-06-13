@@ -1046,8 +1046,8 @@ cc_library_with_tflite(
     ],
 )
 
-# The builtin_ops target will resolve to optimized kernels when available. This
-# target uses reference kernels only, and is useful for validation and testing.
+# The builtin_ops target will resolve to optimized kernels when available.
+# This target uses reference kernels only, and is useful for validation and testing.
 # It should *not* generally be used in production.
 cc_library(
     name = "reference_ops",
@@ -1127,6 +1127,23 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/types:half",
         "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "logistic_test",
+    size = "small",
+    srcs = ["logistic_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
