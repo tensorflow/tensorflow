@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <ostream>
@@ -771,7 +772,10 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
               ->computation_layout();
       auto result_shape = UnShardedShape(
           instruction, called_computation_layout.result_layout().shape(), -1);
-      RETURN_IF_ERROR(SetInstructionLayout(result_shape, instruction));
+      RETURN_IF_ERROR(SetInstructionLayout(result_shape, instruction,
+                                           /*mandatory=*/false, /*dfs=*/false,
+                                           /*allow_alias=*/false,
+                                           /*priority=*/current_priority_));
       TF_RET_CHECK(instruction->operand_count() ==
                    called_computation_layout.parameter_count());
       for (int64_t i = 0; i < instruction->operand_count(); ++i) {
@@ -779,7 +783,8 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
             instruction, called_computation_layout.parameter_layout(i).shape(),
             i);
         RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction, i,
-                                         /*mandatory=*/true, /*dfs=*/true));
+                                         /*mandatory=*/true, /*dfs=*/true,
+                                         /*priority=*/current_priority_));
       }
     } else if (instruction->opcode() == HloOpcode::kWhile &&
                computation_layouts_.find(instruction->while_body()) !=
@@ -834,10 +839,15 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
 
       // Constrain the output and the operand of the while instruction to match
       // the computations.
-      RETURN_IF_ERROR(
-          SetOperandLayout(body_layout.result_shape(), instruction, 0));
-      RETURN_IF_ERROR(
-          SetInstructionLayout(body_layout.result_shape(), instruction));
+      RETURN_IF_ERROR(SetOperandLayout(body_layout.result_shape(), instruction,
+                                       0,
+                                       /*mandatory=*/false, /*dfs=*/false,
+                                       /*priority=*/current_priority_));
+      RETURN_IF_ERROR(SetInstructionLayout(body_layout.result_shape(),
+                                           instruction,
+                                           /*mandatory=*/false, /*dfs=*/false,
+                                           /*allow_alias=*/false,
+                                           /*priority=*/current_priority_));
     } else if (instruction->opcode() == HloOpcode::kConditional &&
                computation_layouts_.find(instruction->branch_computation(0)) !=
                    computation_layouts_.end()) {
@@ -880,16 +890,19 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
         } else {
           RETURN_IF_ERROR(SetOperandLayout(
               branch_computation_layout.parameter_shape(0), instruction, k + 1,
-              /*mandatory=*/true, /*dfs=*/true));
+              /*mandatory=*/true, /*dfs=*/true,
+              /*priority=*/current_priority_));
         }
       }
       RETURN_IF_ERROR(
           SetOperandLayout(best_branch_computation_layout.parameter_shape(0),
                            instruction, largest_branch + 1,
-                           /*mandatory=*/true, /*dfs=*/true));
+                           /*mandatory=*/true, /*dfs=*/true,
+                           /*priority=*/current_priority_));
       RETURN_IF_ERROR(SetInstructionLayout(
           best_branch_computation_layout.result_shape(), instruction,
-          /*mandatory=*/true, /*dfs=*/true, /*allow_alias=*/false));
+          /*mandatory=*/true, /*dfs=*/true, /*allow_alias=*/false,
+          /*priority=*/current_priority_));
     }
   }
   // Finally set the result layout to match ComputationLayout, if there is one.
