@@ -239,6 +239,51 @@ class DynamicStitchTestBase(object):
 
       self.evaluate(self.stitch_op(indices, data))
 
+  @test_util.run_deprecated_v1
+  def testGradientWithDuplicateIndicesSingleGroup(self):
+    indices = [constant_op.constant([0, 1, 0])]
+    data = [constant_op.constant([10.0, 20.0, 30.0])]
+    stitched_t = self.stitch_op(indices, data)
+
+    # Test gradients
+    stitched_grad = constant_op.constant([1.0, 2.0])
+    grads = gradients_impl.gradients(stitched_t, indices + data, stitched_grad)
+    self.assertIsNone(grads[0])  # Indices have no gradients
+
+    # The gradient for the overwritten index 0 (value 10.0) should be 0.0,
+    # and for the winning index 0 (value 30.0) it should be 1.0.
+    # The gradient for index 1 (value 20.0) should be 2.0.
+    self.assertAllEqual(self.evaluate(grads[1]), [0.0, 2.0, 1.0])
+
+  @test_util.run_deprecated_v1
+  def testGradientWithDuplicateIndicesMultiGroup(self):
+    indices = [constant_op.constant([0, 1]), constant_op.constant([0])]
+    data = [constant_op.constant([10.0, 20.0]), constant_op.constant([30.0])]
+    stitched_t = self.stitch_op(indices, data)
+
+    # Test gradients
+    stitched_grad = constant_op.constant([1.0, 2.0])
+    grads = gradients_impl.gradients(stitched_t, indices + data, stitched_grad)
+    self.assertEqual(grads[:2], [None, None])  # Indices have no gradients
+
+    self.assertAllEqual(self.evaluate(grads[2]), [0.0, 2.0])
+    self.assertAllEqual(self.evaluate(grads[3]), [1.0])
+
+  @test_util.run_deprecated_v1
+  def testGradientWithDuplicateIndicesHigherRank(self):
+    indices = [constant_op.constant([0, 1, 0])]
+    data = [constant_op.constant([[10.0, 11.0], [20.0, 21.0], [30.0, 31.0]])]
+    stitched_t = self.stitch_op(indices, data)
+
+    # Test gradients
+    stitched_grad = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    grads = gradients_impl.gradients(stitched_t, indices + data, stitched_grad)
+    self.assertIsNone(grads[0])  # Indices have no gradients
+
+    self.assertAllEqual(
+        self.evaluate(grads[1]), [[0.0, 0.0], [3.0, 4.0], [1.0, 2.0]]
+    )
+
 
 class DynamicStitchTest(DynamicStitchTestBase, test.TestCase):
 
