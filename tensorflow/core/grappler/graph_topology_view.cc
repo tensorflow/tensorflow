@@ -178,16 +178,16 @@ const NodeDef* GraphTopologyView::GetNode(int node_idx) const {
   return &graph_->node(node_idx);
 }
 
-const absl::optional<int> GraphTopologyView::GetNodeIndex(
+const std::optional<int> GraphTopologyView::GetNodeIndex(
     const absl::string_view node_name) const {
   DCHECK(is_initialized()) << "GraphTopologyView is not initialized";
   const auto it = node_name_to_index_.find(node_name);
   DCHECK(it != node_name_to_index_.end()) << "Node doesn't exist in a graph";
   return it == node_name_to_index_.end() ? absl::nullopt
-                                         : absl::make_optional(it->second);
+                                         : std::make_optional(it->second);
 }
 
-const absl::optional<int> GraphTopologyView::GetNodeIndex(
+const std::optional<int> GraphTopologyView::GetNodeIndex(
     const NodeDef& node) const {
   return GetNodeIndex(node.name());
 }

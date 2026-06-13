@@ -141,7 +141,7 @@ std::unordered_set<std::string> GrapplerItem::NodesToPreserve() const {
     }
   }
 
-  absl::optional<FunctionLibraryDefinition> fn_library;
+  std::optional<FunctionLibraryDefinition> fn_library;
   if (!optimization_options_.allow_pruning_stateful_and_dataset_ops) {
     fn_library.emplace(OpRegistry::Global(), graph.library());
   }

@@ -71,11 +71,11 @@ TEST_F(GraphTopologyViewTest, SimpleGraph) {
   ASSERT_TRUE(b_by_idx);
   EXPECT_EQ(b_by_name, b_by_idx);
 
-  const absl::optional<int> b_idx = graph_view.GetNodeIndex(*b_by_name);
+  const std::optional<int> b_idx = graph_view.GetNodeIndex(*b_by_name);
   ASSERT_TRUE(b_idx.has_value());
   EXPECT_EQ(b_idx.value(), 1);
 
-  const absl::optional<int> c_idx = graph_view.GetNodeIndex("c");
+  const std::optional<int> c_idx = graph_view.GetNodeIndex("c");
   ASSERT_TRUE(c_idx.has_value());
   EXPECT_EQ(c_idx.value(), 2);
 
