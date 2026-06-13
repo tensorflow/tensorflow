@@ -18,6 +18,7 @@ There is a fair amount of setup needed to initialize tensorflow and get it
 into a proper TF2 execution mode. This hides that boilerplate.
 """
 
+import atexit
 import tempfile
 from absl import app
 from absl import flags
@@ -25,6 +26,7 @@ from absl import logging
 import tensorflow.compat.v1 as tf
 
 from tensorflow.python import pywrap_mlir  # pylint: disable=g-direct-tensorflow-import
+from tensorflow.python.lib.io import file_io
 
 # Use /tmp to make debugging the tests easier (see README.md)
 flags.DEFINE_string('save_model_path', '', 'Path to save the model to.')
@@ -88,7 +90,13 @@ def do_test(
     if FLAGS.save_model_path:
       save_model_path = FLAGS.save_model_path
     else:
-      save_model_path = tempfile.mktemp(suffix='.saved_model')
+      save_model_path = tempfile.mkdtemp(suffix='.saved_model')
+      def delete_tmp_dir(dirname):
+        try:
+          file_io.delete_recursively(dirname)
+        except tf.errors.OpError as e:
+          logging.error('Error removing %s: %s', dirname, e)
+      atexit.register(delete_tmp_dir, save_model_path)
 
     signature_def_map, init_op, assets_collection = create_signature()
 
