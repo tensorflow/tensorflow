@@ -2200,6 +2200,17 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
 
     _ = g.get_concrete_function()
 
+  def testNaN(self):
+    """NaN should always be placed at the end of a sorted sequence."""
+    sorted_sequence = np.array([2., 4., 8., 16., 32., 64.], dtype=np.float32)
+    values = np.array([np.nan], dtype=np.float32)
+    for side in ("left", "right"):
+      with self.subTest(side=side):
+        expected = np.searchsorted(sorted_sequence, values, side=side)
+        actual = self.evaluate(
+            array_ops.searchsorted(sorted_sequence, values, side=side))
+        self.assertAllEqual(expected, actual)
+
   def testInvalidValuesLowerBound(self):
     arg_0_tensor = random_ops.random_uniform([3, 3], dtype=dtypes.float32)
     arg_0 = array_ops.identity(arg_0_tensor)
