@@ -45,7 +45,7 @@ class BasicBundle final : public llvm::RTTIExtends<BasicBundle, Bundle> {
   static absl::StatusOr<BundleRef> ConcatBundles(absl::Span<BundleRef> bundles,
                                                  ArrayCopySemantics semantics);
 
-  ~BasicBundle() final = default;
+  ~BasicBundle() final;
 
   Client* client() const final { return client_; }
 

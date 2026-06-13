@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -215,6 +216,7 @@ struct ProgramInterpreterState {
       }
     }
 
+    std::vector<ValueRef> to_delete;
     for (int idx = 0; idx < input_handles.size(); ++idx) {
       // Add to the environment the arrays that are used.
       bool is_donated = donated_input_indices.contains(idx) &&
@@ -230,8 +232,11 @@ struct ProgramInterpreterState {
         }
       } else if (is_donated) {
         // If the argument is donated but not used, it can be deleted.
-        arrays[idx]->Delete();
+        to_delete.push_back(arrays[idx]);
       }
+    }
+    if (!to_delete.empty()) {
+      client->DeleteValues(absl::MakeSpan(to_delete));
     }
 
     for (const auto& op_fn : op_fns) {
@@ -417,12 +422,16 @@ struct CallLoadedExecutableOpState {
     // created. This is because in situations such as `ifrt.Call(%0, %0)` the
     // liveness analysis will return that %0 is dead, but it's used for the
     // second argument.
+    std::vector<ValueRef> to_delete;
     for (const auto handle : arrays_to_remove) {
       if (env.deletable_program_arguments.erase(handle)) {
         // Explicitly delete donated program arguments that are not used later.
-        env.handle_to_array[handle].array->Delete();
+        to_delete.push_back(env.handle_to_array[handle].array);
       }
       env.handle_to_array.erase(handle);
+    }
+    if (!to_delete.empty()) {
+      env.client->DeleteValues(absl::MakeSpan(to_delete));
     }
 
     for (int i = 0; i < output_handles.size(); ++i) {
@@ -883,12 +892,16 @@ struct CopyArraysOpState {
         env.client->CopyArrays(absl::MakeSpan(inputs), new_sharding->devices(),
                                new_sharding->memory_kind(), copy_semantics));
 
+    std::vector<ValueRef> to_delete;
     for (const auto handle : arrays_to_remove) {
       if (env.deletable_program_arguments.erase(handle)) {
         // Explicitly delete donated program arguments that are not used later.
-        env.handle_to_array[handle].array->Delete();
+        to_delete.push_back(env.handle_to_array[handle].array);
       }
       env.handle_to_array.erase(handle);
+    }
+    if (!to_delete.empty()) {
+      env.client->DeleteValues(absl::MakeSpan(to_delete));
     }
 
     TF_RET_CHECK(copied_arrays.size() == inputs.size())

@@ -318,6 +318,9 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // instead to reflect its read-only semantics.
   virtual tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) = 0;
 
+  // Deletes the given values. See `Value::Delete()` for the semantics.
+  virtual tsl::Future<> DeleteValues(absl::Span<ValueRef> values) = 0;
+
   // Builds a tuple from a sequence of values.
   virtual absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<ValueRef> values) = 0;

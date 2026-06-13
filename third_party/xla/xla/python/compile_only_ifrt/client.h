@@ -271,6 +271,11 @@ class CompileOnlyIfRtClient final
         "GetReadyFuture not available with compile-only client."));
   }
 
+  tsl::Future<> DeleteValues(absl::Span<ifrt::ValueRef> values) override {
+    return tsl::Future<>(
+        Unimplemented("DeleteValues not available with compile-only client."));
+  }
+
   absl::StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(
       absl::Span<ifrt::ValueRef> values) override {
     return Unimplemented("MakeTuple not available with compile-only client.");

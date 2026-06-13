@@ -1360,16 +1360,21 @@ IfrtBackend::HandleFullyReplicatedShardRequest(
 
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleDeleteArrayRequest(std::unique_ptr<IfrtRequest> request) {
+  std::vector<ValueRef> to_delete;
   std::vector<uint64_t> bad_handles;
   std::vector<tsl::Future<>> deletion_futures;
 
   for (auto array_handle : request->delete_array_request().array_handle()) {
     absl::StatusOr<IfrtArrayRef> array = array_store_.Find(array_handle);
     if (array.ok()) {
-      deletion_futures.push_back(array.value()->Delete());
+      to_delete.push_back(array.value());
     } else {
       deletion_futures.push_back(tsl::Future<>(array.status()));
     }
+  }
+  if (!to_delete.empty()) {
+    deletion_futures.push_back(
+        client_->DeleteValues(absl::MakeSpan(to_delete)));
   }
 
   uint64_t future_handle = handle_generator_.GenerateAtServer();

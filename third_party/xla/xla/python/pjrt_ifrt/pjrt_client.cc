@@ -1930,6 +1930,15 @@ tsl::Future<> PjRtClient::GetReadyFuture(absl::Span<const ValueRef> values) {
   return JoinFutures(futures);
 }
 
+tsl::Future<> PjRtClient::DeleteValues(absl::Span<ValueRef> values) {
+  absl::InlinedVector<tsl::Future<>, 1> futures;
+  futures.reserve(values.size());
+  for (const auto& value : values) {
+    futures.push_back(value->Delete());
+  }
+  return JoinFutures(futures);
+}
+
 absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
     absl::Span<ValueRef> values) {
   return PjRtTuple::Create(this, values);
