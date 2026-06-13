@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <Python.h>
 
+#include "absl/log/check.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
