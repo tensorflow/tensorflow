@@ -313,6 +313,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"performance_counter_sets", kPerformanceCounterSets},
        // XLA metadata map related.
        {"Hlo Proto", kHloProto},
+       {"Original Hlo Proto", kOriginalHloProto},
        {"EdgeTPU Model information", kEdgeTpuModelInfo},
        {"EdgeTPU Model Profile information", kEdgeTpuModelProfileInfo},
        {"EdgeTPU MLIR", kEdgeTpuMlir},
