@@ -288,22 +288,46 @@ TfLiteDelegate* CreateCoreMlDelegate(const TfLiteCoreMlDelegateOptions* options)
 }  // namespace tflite
 
 namespace {
-// utsname.machine has device identifier. For example, identifier for iPhone Xs is "iPhone11,2".
-// Since Neural Engine is only available for use on A12 and later, major device version in the
-// identifier is checked for these models:
-// A12: iPhone XS (11,2), iPad Mini - 5th Gen (11,1)
-// A12X: iPad Pro - 3rd Gen (8,1)
-// For more information, see https://www.theiphonewiki.com/wiki/Models
-bool IsNeuralEngineAvailable() {
-  struct utsname system_info;
-  uname(&system_info);
 
-  if (strncmp("iPad", system_info.machine, 4) == 0) {
-    const int major_version = atoi(system_info.machine + 4);
-    return major_version >= 8;  // There are no device between iPad 8 and 11.
-  } else if (strncmp("iPhone", system_info.machine, 6) == 0) {
-    const int major_version = atoi(system_info.machine + 6);
-    return major_version >= 11;
+bool IsNeuralEngineAvailable() {
+  if (@available(iOS 17.0, macOS 14.0, *)) {
+    // This is a safe way to check if Neural Engine is available.
+    NSArray<id<MLComputeDeviceProtocol>> *devices = MLAllComputeDevices();
+    Class cls = [MLNeuralEngineComputeDevice class];
+    for (id<MLComputeDeviceProtocol> device in devices) {
+      if ([device isKindOfClass:cls]) {
+        return true;
+      }
+    }
+    return false;
+  } else {
+    #if TARGET_OS_IPHONE
+      // utsname.machine has device identifier. ex: the identifier for iPhone Xs is "iPhone11,2".
+      // Since Neural Engine is only available for use on A12 and later, major device version in the
+      // identifier is checked for these models:
+      // A12: iPhone XS (11,2), iPad Mini - 5th Gen (11,1)
+      // A12X: iPad Pro - 3rd Gen (8,1)
+      // For more information, see https://www.theiphonewiki.com/wiki/Models
+      struct utsname system_info;
+      uname(&system_info);
+      if (strncmp("iPad", system_info.machine, 4) == 0) {
+        const int major_version = atoi(system_info.machine + 4);
+        return major_version >= 8;  // There are no device between iPad 8 and 11.
+      } else if (strncmp("iPhone", system_info.machine, 6) == 0) {
+        const int major_version = atoi(system_info.machine + 6);
+        return major_version >= 11;
+      }
+    #elif TARGET_OS_OSX
+      #if defined(__aarch64__)
+        // All Apple Silicon based Macs have Neural Engine.`
+        return true;
+      #else
+        // Intel based Macs do not have Neural Engine.
+        return false;
+      #endif  // defined(__arm__)
+    #else
+      #error "Unsupported platform. Not recognized as iPhone or Mac."
+    #endif  // TARGET_OS_IPHONE
   }
   return false;
 }
@@ -311,7 +335,7 @@ bool IsNeuralEngineAvailable() {
 }  // namespace
 
 TfLiteDelegate* TfLiteCoreMlDelegateCreate(const TfLiteCoreMlDelegateOptions* options) {
-  if (@available(iOS 12.0, *)) {
+  if (@available(iOS 12.0, macOS 10.13, *)) {
     if (options->enabled_devices == TfLiteCoreMlDelegateDevicesWithNeuralEngine &&
         !IsNeuralEngineAvailable()) {
       NSLog(@"This device does not have Neural Engine, so Core ML delegate will not be enabled. "
@@ -322,7 +346,7 @@ TfLiteDelegate* TfLiteCoreMlDelegateCreate(const TfLiteCoreMlDelegateOptions* op
     return tflite::CreateCoreMlDelegate(options);
   } else {
     NSLog(@"Core ML delegate is not supported in this iOS version. "
-           "Minimum required iOS version is 12.0.");
+           "Minimum required iOS/macOS version is 12.0/10.13.");
     return nullptr;
   }
 }
