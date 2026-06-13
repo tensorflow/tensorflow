@@ -399,7 +399,7 @@ TEST(GraphToFunctionDefTest, ControlOutputs) {
   const auto control_ret = [](const Node* n) -> std::optional<std::string> {
     if (n->name() == "b")
       return absl::make_optional<std::string>("must_execute");
-    return absl::nullopt;
+    return std::nullopt;
   };
 
   FunctionDef fdef;

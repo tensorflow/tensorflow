@@ -1187,7 +1187,7 @@ absl::Status Conv2DBackpropInputShape(shape_inference::InferenceContext* c) {
   ShapeHandle input_grad_shape;
   TF_RETURN_IF_ERROR(ShapeFromDimensions(
       batch_size_dim, specified_input_grad_spatial_dims, input_grad_depth_dim,
-      data_format, /*vect_size=*/absl::nullopt, c, &input_grad_shape));
+      data_format, /*vect_size=*/std::nullopt, c, &input_grad_shape));
   c->set_output(0, input_grad_shape);
   return absl::OkStatus();
 }
