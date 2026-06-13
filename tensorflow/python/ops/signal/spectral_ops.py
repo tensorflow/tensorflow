@@ -61,7 +61,7 @@ def stft(signals, frame_length, frame_step, fft_length=None,
 
   Raises:
     ValueError: If `signals` is not at least rank 1, `frame_length` is
-      not scalar, or `frame_step` is not scalar.
+      not scalar, `frame_step` is not scalar, or `fft_length` is less than 1.
 
   [stft]: https://en.wikipedia.org/wiki/Short-time_Fourier_transform
   """
@@ -78,6 +78,11 @@ def stft(signals, frame_length, frame_step, fft_length=None,
       fft_length = _enclosing_power_of_two(frame_length)
     else:
       fft_length = ops.convert_to_tensor(fft_length, name='fft_length')
+
+    fft_length_static = tensor_util.constant_value(fft_length)
+    if fft_length_static is not None and fft_length_static < 1:
+      raise ValueError(
+          f"fft_length must be at least 1, got {fft_length_static}")
 
     framed_signals = shape_ops.frame(
         signals, frame_length, frame_step, pad_end=pad_end)
