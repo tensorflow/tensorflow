@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class ConstraintPropagatorTest : public HloPjRtTestBase {};
+class ConstraintPropagatorTest : public HloTestBase {};
 
 TEST_F(ConstraintPropagatorTest, EmptyInterval) {
   ConstraintInterval a{0.0, 10.0, false};
