@@ -103,6 +103,7 @@ def _bitcode_library_impl(ctx):
         inputs = [strip_out],
         outputs = [final_bc],
         arguments = [strip_out.path, "-o", final_bc.path],
+        use_default_shell_env = True,
         progress_message = "Preparing final bitcode for {}".format(ctx.label.name),
         mnemonic = "BitcodeFinalize",
     )
@@ -118,17 +119,17 @@ bitcode_library = rule(
         "hdrs": attr.label_list(allow_files = [".h"]),
         "file_specific_flags": attr.string_list_dict(),
         "_clang": attr.label(
-            default = Label("@llvm-project//clang:clang"),
+            default = Label("@local_config_rocm//rocm:hipcc"),
             executable = True,
             cfg = "exec",
         ),
         "_llvm_link": attr.label(
-            default = Label("@llvm-project//llvm:llvm-link"),
+            default = Label("@local_config_rocm//rocm:llvm-link"),
             executable = True,
             cfg = "exec",
         ),
         "_opt": attr.label(
-            default = Label("@llvm-project//llvm:opt"),
+            default = Label("@local_config_rocm//rocm:opt"),
             executable = True,
             cfg = "exec",
         ),
