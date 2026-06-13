@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <fstream>
 #include <ios>
 #include <memory>
 #include <string>
@@ -133,12 +132,11 @@ absl::StatusOr<std::string> LLVMToHSACO(mlir::ModuleOp module,
   std::string temp_file_path = tsl::io::JoinPath(
       tempdir_vector[0], absl::StrCat("xla_triton_", rand_num, ".hsaco"));
 
-  std::ofstream ofs(temp_file_path, std::ios::binary);
-  if (!ofs) {
-    return absl::InternalError("Failed to create an hsaco temp file!");
-  }
-  ofs.write(reinterpret_cast<const char*>(compile_result.hsaco.data()),
-            compile_result.hsaco.size());
+  RETURN_IF_ERROR(tsl::WriteStringToFile(
+      tsl::Env::Default(), temp_file_path,
+      absl::string_view(
+          reinterpret_cast<const char*>(compile_result.hsaco.data()),
+          compile_result.hsaco.size())));
   return temp_file_path;
 }
 
