@@ -988,6 +988,8 @@ void SetCallbackEventUponApiExit(
     case CUPTI_DRIVER_TRACE_CBID_cuGraphAddChildGraphNode:  // 525
     case CUPTI_DRIVER_TRACE_CBID_cuGraphAddEmptyNode:       // 526
     case CUPTI_DRIVER_TRACE_CBID_cuGraphAddHostNode:        // 530
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode:            // 712 (CUDA 12+)
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode_v2:         // 723 (CUDA 12+)
       SetCudaGraphNodeEventUponApiExit(event, cupti_interface, device_id, cbid,
                                        cbdata, start_tsc, end_tsc);
       break;
