@@ -406,6 +406,9 @@ absl::Status HloSchedule::Verify() const {
 }
 
 absl::Status HloSchedule::Verify(const HloComputation* computation) const {
+  TF_RET_CHECK(sequences_.contains(computation->unique_id()))
+      << "Computation " << computation->name() << " missing from HLO schedule.";
+
   absl::flat_hash_map<const HloInstruction*, int> instruction_position;
   int pos = 0;
   for (const HloInstruction* instruction :
@@ -425,16 +428,27 @@ absl::Status HloSchedule::Verify(const HloComputation* computation) const {
   }
 
   for (const HloInstruction* instruction : computation->instructions()) {
+    // We already verified that instruction_position contains all instructions
+    // in computation->instructions(), so lookup is safe.
+    int instruction_idx = instruction_position.at(instruction);
+
     for (const HloInstruction* operand : instruction->operands()) {
-      TF_RET_CHECK(instruction_position.at(operand) <
-                   instruction_position.at(instruction))
+      auto operand_it = instruction_position.find(operand);
+      TF_RET_CHECK(operand_it != instruction_position.end())
+          << "Instruction " << instruction->name() << " has operand "
+          << operand->name() << " which is not in the schedule / computation";
+      TF_RET_CHECK(operand_it->second < instruction_idx)
           << "Instruction " << instruction->name()
           << " is not scheduled after its operand " << operand->name();
     }
 
     for (const HloInstruction* pred : instruction->control_predecessors()) {
-      TF_RET_CHECK(instruction_position.at(pred) <
-                   instruction_position.at(instruction))
+      auto pred_it = instruction_position.find(pred);
+      TF_RET_CHECK(pred_it != instruction_position.end())
+          << "Instruction " << instruction->name()
+          << " has control predecessor " << pred->name()
+          << " which is not in the schedule / computation";
+      TF_RET_CHECK(pred_it->second < instruction_idx)
           << "Instruction " << instruction->name()
           << " is not scheduled after its control predecessor " << pred->name();
     }
