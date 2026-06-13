@@ -1821,6 +1821,7 @@ cc_library(
         "//xla/backends/cpu/codegen:object_loader",
         "//xla/backends/cpu/runtime:function_library",
         "//xla/hlo/ir:hlo",
+        "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
