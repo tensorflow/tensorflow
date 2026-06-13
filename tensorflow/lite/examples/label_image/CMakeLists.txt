@@ -16,6 +16,8 @@
 
 # The label_image example for Tensorflow Lite.
 
+find_package(Protobuf REQUIRED)
+
 populate_source_vars("${TFLITE_SOURCE_DIR}/examples/label_image"
   TFLITE_LABEL_IMAGE_SRCS
   FILTER "_test\\.cc$"
@@ -84,5 +86,6 @@ target_compile_options(label_image
 target_link_libraries(label_image
   tensorflow-lite
   profiling_info_proto
-  libprotobuf
+  protobuf::libprotobuf
+  absl::log
 )
