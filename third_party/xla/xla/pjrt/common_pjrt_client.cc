@@ -855,8 +855,8 @@ absl::Status CommonPjRtClient::PrepareArguments(
           auto ds_kind = client->GetDynamicShapeKind(
               actual_buffer->memory_space()->kind_id());
           auto status_or_buffer = xla::RemoveDynamicShapeMetadataIfPresent(
-              actual_buffer, on_device_shape, handle_logical_device_shape,
-              ds_kind);
+              std::move(actual_buffer), on_device_shape,
+              handle_logical_device_shape, ds_kind);
 
           if (!status_or_buffer.ok()) {
             absl::Status status = status_or_buffer.status();
