@@ -2656,6 +2656,13 @@ def sparse_tensor_dense_matmul(sp_a,
 
   else:
     sp_a = _convert_to_sparse_tensor(sp_a)
+    # Validate dense_shape has no negative dimensions to avoid a
+    # fatal CHECK failure in the C++ kernel (b/107976).
+    shape_val = tensor_util.constant_value(sp_a.dense_shape)
+    if shape_val is not None and any(d < 0 for d in shape_val):
+      raise ValueError(
+          "SparseTensor dense_shape must not contain negative "
+          f"values, got {list(shape_val)}")
     with ops.name_scope(name, "SparseTensorDenseMatMul",
                         [sp_a.indices, sp_a.values, b]) as name:
       b = ops.convert_to_tensor(b, name="b")
