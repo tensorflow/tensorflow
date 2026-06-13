@@ -12,6 +12,7 @@ package(
         "//tensorflow/c/experimental/filesystem:__pkg__",
         "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
         "//xla/tsl/lib/io/snappy:__pkg__",
+        "//platforms/xla/megascale/runtime/executor:__pkg__",
         "//xla:__subpackages__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core/util:__subpackages__",
