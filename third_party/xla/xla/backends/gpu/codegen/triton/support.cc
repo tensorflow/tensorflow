@@ -310,6 +310,71 @@ bool IsTritonSupportedElementwise(HloOpcode opcode, PrimitiveType element_type,
 CodegenDecision IsTritonSupportedInstructionImpl(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
 
+// Filters Scans which can be handled using Triton.
+CodegenDecision CanTritonHandleScan(
+    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
+  const HloScanInstruction& scan = *Cast<HloScanInstruction>(&instr);
+  auto check_element_type = [&](PrimitiveType element_type) -> CodegenDecision {
+    if (element_type == PrimitiveType::F8E4M3FN ||
+        element_type == PrimitiveType::F8E5M2 ||
+        (gpu_version.IsRocm() && element_type == PrimitiveType::F8E5M2FNUZ) ||
+        (gpu_version.IsRocm() && element_type == PrimitiveType::F8E4M3FNUZ)) {
+      return CodegenDecision::Forbid(
+          "F8E4M3FN and F8E5M2 are not supported for scans.");
+    }
+    return CodegenDecision::Allow();
+  };
+
+  if (scan.shape().IsTuple()) {
+    for (const auto& shape : scan.shape().tuple_shapes()) {
+      if (CodegenDecision decision = check_element_type(shape.element_type());
+          !decision) {
+        return decision;
+      }
+    }
+  } else {
+    if (CodegenDecision decision =
+            check_element_type(scan.shape().element_type());
+        !decision) {
+      return decision;
+    }
+  }
+
+  bool is_triton_supported_scan_computation = absl::c_all_of(
+      scan.to_apply()->instructions(), [&](const HloInstruction* instr) {
+        return IsTritonSupportedInstructionImpl(*instr, gpu_version).CanFuse();
+      });
+  if (!is_triton_supported_scan_computation) {
+    return CodegenDecision::Forbid("Unsupported scan computation by Triton.");
+  }
+
+  // XLA scan returns only the outputs, not the carries. The carries are the
+  // last slice of the outputs. Thus, the number of results should match the
+  // number of operand pairs (data + init value), which is exactly
+  // scan.operand_count() / 2.
+  if (scan.shape().IsTuple() &&
+      scan.shape().tuple_shapes_size() != 2 * scan.inputs().size()) {
+    return CodegenDecision::Forbid(
+        "Scan must return a tuple corresponding to its data and carry "
+        "operands.");
+  }
+
+  int num_operands = scan.inputs().size();
+  for (int i = 0; i < num_operands; ++i) {
+    if (!ShapeUtil::IsEffectiveScalar(
+            scan.operand(num_operands + i)->shape())) {
+      return CodegenDecision::Forbid("Scan initial value must be a scalar.");
+    }
+  }
+
+  if (scan.is_associative() != TRI_STATE_TRUE) {
+    return CodegenDecision::Forbid(
+        "Triton requires the scan combiner to be associative.");
+  }
+
+  return CodegenDecision::Allow();
+}
+
 // Filters Reduces which can be handled using Triton.
 CodegenDecision CanTritonHandleReduce(
     const HloReduceInstruction& reduce,
@@ -695,6 +760,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
   }
 
   switch (instr.opcode()) {
+    case HloOpcode::kScan:
+      return CanTritonHandleScan(instr, gpu_version);
     case HloOpcode::kReduce: {
       return CanTritonHandleReduce(*Cast<HloReduceInstruction>(&instr),
                                    gpu_version);
@@ -776,7 +843,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kRaggedDot:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScaledDot:
-    case HloOpcode::kScan:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSetDimensionSize:

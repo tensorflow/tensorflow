@@ -23,7 +23,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -1575,6 +1574,36 @@ ENTRY triton_computation {
                                                     HloOpcode::kConstant));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
 }
+
+using ScanTest = SupportTestWithTypeAndOpcodeAndDeviceParam;
+
+TEST_P(ScanTest, Scan) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+add_computation {
+  p0 = $0[10,20] parameter(0)
+  p1 = $0[10,20] parameter(1)
+  add = $0[10,20] add(p0, p1)
+  ROOT tuple = ($0[10,20], $0[10,20]) tuple(add, add)
+}
+
+ENTRY triton_computation {
+  operand = $0[10,20,30] parameter(0)
+  init = $0[10,20] parameter(1)
+  ROOT scan_op = ($0[10,20,30], $0[10,20]) scan(operand, init), dimensions={2}, num_carries=1, to_apply=add_computation
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTestMultipleOutputTiles(
+      std::move(ti), /*output_tile_sizes=*/{{2, 4, 8}, {2, 4}}, cc);
+}
+
+constexpr std::array kTestedOpsScan = {HloOpcode::kScan};
+
+INSTANTIATE_TEST_SUITE_P(ScanSuite, ScanTest,
+                         AllTestCombinationsForOpcodes(kTestedOpsScan),
+                         SupportTestTypeAndOpcodeAndDeviceToString);
 
 constexpr std::array kTestedOpsConstant = {HloOpcode::kConstant};
 
@@ -3318,7 +3347,6 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kRaggedDot,
     HloOpcode::kReduceWindow,
     HloOpcode::kScaledDot,
-    HloOpcode::kScan,
     HloOpcode::kScatter,
     HloOpcode::kSelectAndScatter,
     HloOpcode::kSetDimensionSize,
@@ -3357,6 +3385,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.insert(kTestedOpsCopy.begin(), kTestedOpsCopy.end());
   ret.insert(kTestedOpsRecv.begin(), kTestedOpsRecv.end());
   ret.insert(kTestedOpsSend.begin(), kTestedOpsSend.end());
+  ret.insert(kTestedOpsScan.begin(), kTestedOpsScan.end());
 
   // go/keep-sorted start
   ret.emplace(HloOpcode::kAddDependency);

@@ -267,6 +267,140 @@ SmallVector<Value> GetRuntimeValues(
   return runtime_values;
 }
 
+absl::Status EmitScanComputation(mlir::ImplicitLocOpBuilder& b,
+                                 const HloInstruction* hlo_scan,
+                                 const HloComputation* scan_computation,
+                                 mlir::Operation* scan) {
+  const HloScanInstruction* scan_instr =
+      ::xla::Cast<HloScanInstruction>(hlo_scan);
+  int num_operands = scan_instr->inputs().size();
+  SmallVector<Type> result_tys;
+  SmallVector<mlir::Location> locs;
+
+  // The arguments to the scan combiner are (in_1, ..., in_N, acc_1, ...,
+  // acc_N). First, add types for the inputs.
+  for (int i = 0; i < num_operands; ++i) {
+    const HloInstruction* input_hlo = hlo_scan->operand(i);
+    TF_ASSIGN_OR_RETURN(
+        Type input_elem_type,
+        PrimitiveTypeToMlirType(b, input_hlo->shape().element_type()));
+    Type input_tensor_type = mlir::RankedTensorType::get({}, input_elem_type);
+    result_tys.push_back(input_tensor_type);
+    locs.push_back(b.getLoc());
+  }
+
+  // Next, add types for the accumulators (initial values).
+  for (int i = 0; i < num_operands; ++i) {
+    const HloInstruction* init_hlo = hlo_scan->operand(num_operands + i);
+    TF_ASSIGN_OR_RETURN(
+        Type init_elem_type,
+        PrimitiveTypeToMlirType(b, init_hlo->shape().element_type()));
+    Type init_tensor_type = mlir::RankedTensorType::get({}, init_elem_type);
+    result_tys.push_back(init_tensor_type);
+    locs.push_back(b.getLoc());
+  }
+
+  mlir::Block* scanner =
+      b.createBlock(&scan->getRegion(0), {}, result_tys, locs);
+  b.setInsertionPointToStart(scanner);
+
+  std::vector<const HloInstruction*> to_emit;
+  absl::flat_hash_map<const HloInstruction*, TensorValue> region_values;
+  for (const HloInstruction* instr :
+       scan_computation->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      int parameter_number = instr->parameter_number();
+      TF_RET_CHECK(parameter_number < num_operands * 2);
+      auto argument = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
+          scanner->getArgument(parameter_number));
+
+      if (!argument) {
+        return Internal("Expected scanner argument to be a tensor.");
+      }
+      TF_RET_CHECK(region_values.insert({instr, argument}).second);
+    } else {
+      to_emit.push_back(instr);
+    }
+  }
+  TF_RET_CHECK(!to_emit.empty());
+
+  TF_ASSIGN_OR_RETURN(TensorValue result, EmitScope(b, to_emit, region_values));
+
+  SmallVector<Value> results;
+  if (auto tuple_type = mlir::dyn_cast<mlir::TupleType>(result.getType())) {
+    for (int i = 0; i < tuple_type.size(); ++i) {
+      results.push_back(stablehlo::GetTupleElementOp::create(
+          b, tuple_type.getType(i), result, i));
+    }
+  } else {
+    results.push_back(result);
+  }
+
+  SmallVector<Value> yielded_results = results;
+  yielded_results.append(results.begin(), results.end());
+
+  stablehlo::ReturnOp::create(b, yielded_results);
+  b.setInsertionPointAfter(scan);
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::vector<TensorValue>> EmitScan(
+    mlir::ImplicitLocOpBuilder& b, const TiledHloInstruction& tiled_hlo_scan,
+    absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
+  const HloScanInstruction& hlo_scan =
+      *::xla::Cast<HloScanInstruction>(tiled_hlo_scan.hlo());
+
+  int num_operands = hlo_scan.inputs().size();
+  SmallVector<Value> inputs;
+  SmallVector<Value> inits;
+  SmallVector<Type> output_types;
+
+  absl::Span<const int64_t> unpadded_tile_sizes =
+      tiled_hlo_scan.operand(0)->tile_sizes();
+
+  for (int i = 0; i < num_operands; ++i) {
+    TensorValue input = values[tiled_hlo_scan.operand(i)];
+
+    llvm::SmallVector<int64_t> mask_dim_bounds;
+    mask_dim_bounds.reserve(unpadded_tile_sizes.size());
+    for (auto [idx, dim_size] : llvm::enumerate(unpadded_tile_sizes)) {
+      if (idx == hlo_scan.scan_dimension()) {
+        mask_dim_bounds.push_back(dim_size);
+      } else {
+        mask_dim_bounds.push_back(input.getType().getDimSize(idx));
+      }
+    }
+    mlir::Value neutral_value = mlir::tensor::ExtractOp::create(
+        b, values[tiled_hlo_scan.operand(num_operands + i)]);
+
+    input = mlir::cast<TensorValue>(
+        b.createOrFold<xtile::MaskOp>(input, mask_dim_bounds, neutral_value));
+
+    inputs.push_back(input);
+    inits.push_back(values[tiled_hlo_scan.operand(num_operands + i)]);
+    output_types.push_back(input.getType());
+  }
+
+  xtile::ScanOp scan =
+      xtile::ScanOp::create(b,
+                            /*outputs=*/output_types,
+                            /*carries=*/output_types,
+                            /*inputs=*/inputs,
+                            /*inits=*/inits,
+                            /*dimension=*/hlo_scan.scan_dimension(),
+                            /*scan_dim_size=*/
+                            unpadded_tile_sizes[hlo_scan.scan_dimension()],
+                            /*is_reverse=*/hlo_scan.is_reverse());
+  TF_RETURN_IF_ERROR(
+      EmitScanComputation(b, &hlo_scan, hlo_scan.to_apply(), scan));
+
+  std::vector<TensorValue> results;
+  for (auto output : scan.getOutputs()) {
+    results.push_back(mlir::cast<TensorValue>(output));
+  }
+  return results;
+}
+
 absl::StatusOr<TensorValue> EmitTiledBitcast(
     mlir::ImplicitLocOpBuilder& b, const TiledHloInstruction& tiled_bitcast,
     TensorValue input) {
@@ -1025,6 +1159,11 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     // Dynamic slice is implemented as a load and does not require any further
     // processing.
     return values[tiled_hlo.operand(0)];
+  }
+
+  if (hlo->opcode() == HloOpcode::kScan) {
+    TF_ASSIGN_OR_RETURN(auto result, EmitScan(b, tiled_hlo, values));
+    return result.front();
   }
 
   return absl::UnimplementedError(
