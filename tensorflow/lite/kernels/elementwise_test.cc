@@ -379,6 +379,33 @@ TEST(ElementWise, Sqrt) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, SqrtEdgeCases) {
+  ElementWiseOpFloatModel m(BuiltinOperator_SQRT, {1, 1, 8, 1});
+  m.PopulateTensor<float>(m.input(), {
+      std::numeric_limits<float>::infinity(),
+      -std::numeric_limits<float>::infinity(),
+      -1.0f,
+      4.0f,
+      0.0f,
+      -0.0f,
+      std::numeric_limits<float>::quiet_NaN(),
+      std::numeric_limits<float>::denorm_min()
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  auto output = m.ExtractVector<float>(m.output());
+  ASSERT_EQ(output.size(), 8);
+  EXPECT_EQ(output[0], std::numeric_limits<float>::infinity());
+  EXPECT_TRUE(std::isnan(output[1]));
+  EXPECT_TRUE(std::isnan(output[2]));
+  EXPECT_EQ(output[3], 2.0f);
+  EXPECT_EQ(output[4], 0.0f);
+  EXPECT_FALSE(std::signbit(output[4]));
+  EXPECT_EQ(output[5], 0.0f);
+  EXPECT_TRUE(std::signbit(output[5]));
+  EXPECT_TRUE(std::isnan(output[6]));
+  EXPECT_GT(output[7], 0.0f);
+}
+
 TEST(ElementWise, SqrtInt8) {
   const std::vector<float> input_data = {0, 1, 2, 9, 16, 25, 1.44, 0.5};
   std::vector<float> expected_output(input_data.size());
