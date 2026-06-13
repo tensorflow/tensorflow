@@ -38,6 +38,8 @@ package(
         "//third_party/xprof/utils:__pkg__",
         # Pathways uses int_type.
         "//third_party/pathways/ifrt/sidecar:__pkg__",
+        "//perftools/accelerators/xprof:__subpackages__",
+        "//perftools/gputools/profiler:__subpackages__",
     ]),
     licenses = ["notice"],
 )
