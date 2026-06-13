@@ -338,39 +338,17 @@ float CostAnalysis::GetBytesAccessedFromAlternateMemory(
   return bytes_accessed_from_alternate_mem;
 }
 
-namespace {
-// Returns true on async instructions since we assume they are already
-// efficiently scheduled such that they are not in the critical path and appear
-// to take no time.
-bool ExcludeInstructionFromElapsed(const HloInstruction& instruction) {
-  return instruction.opcode() == HloOpcode::kAllGatherStart ||
-         instruction.opcode() == HloOpcode::kAllGatherDone ||
-         instruction.opcode() == HloOpcode::kAllReduceStart ||
-         instruction.opcode() == HloOpcode::kAllReduceDone ||
-         instruction.opcode() == HloOpcode::kAsyncStart ||
-         instruction.opcode() == HloOpcode::kAsyncDone ||
-         instruction.opcode() == HloOpcode::kCollectivePermuteStart ||
-         instruction.opcode() == HloOpcode::kCollectivePermuteDone ||
-         instruction.opcode() == HloOpcode::kCopyStart ||
-         instruction.opcode() == HloOpcode::kCopyDone;
-}
-}  // namespace
-
 float CostAnalysis::GetInstructionElapsedDueToCompute(
     const HloInstruction& instruction) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
-    return 0.0f;
-  }
-  return op_cost_manager_.ComputeSeconds(instruction);
+  return std::min(
+      static_cast<float>(op_cost_manager_.LatencySeconds(instruction)),
+      static_cast<float>(op_cost_manager_.ComputeSeconds(instruction)));
 }
 
 float CostAnalysis::GetInstructionElapsedDueToMemory(
     const HloInstruction& instruction,
     absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
     absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
-    return 0.0f;
-  }
   float total_bytes_accessed = op_cost_manager_.TotalBytesAccessed(instruction);
   float bytes_accessed_read_from_alternate_mem =
       GetBytesAccessedFromAlternateMemory(instruction,
@@ -391,15 +369,14 @@ float CostAnalysis::GetInstructionElapsedDueToMemory(
   float elapsed_due_to_default_mem =
       (total_bytes_accessed - bytes_accessed_from_alternate_mem) /
       DefaultMemBandwidthBytesPerSecond();
-  return elapsed_due_to_alternate_mem + elapsed_due_to_default_mem;
+  return std::min(
+      static_cast<float>(op_cost_manager_.LatencySeconds(instruction)),
+      elapsed_due_to_alternate_mem + elapsed_due_to_default_mem);
 }
 
 float CostAnalysis::GetInstructionElapsedDueToMemory(
     const HloInstruction& instruction,
     IsInAlternateMemoryFun is_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
-    return 0.0f;
-  }
   float total_bytes_accessed = op_cost_manager_.TotalBytesAccessed(instruction);
   float bytes_accessed_from_alternate_mem = 0.0;
   for (int operand_num = 0; operand_num < instruction.operand_count();
@@ -442,44 +419,47 @@ float CostAnalysis::GetInstructionElapsedDueToMemory(
   float elapsed_due_to_default_mem =
       (total_bytes_accessed - bytes_accessed_from_alternate_mem) /
       DefaultMemBandwidthBytesPerSecond();
-  return elapsed_due_to_alternate_mem + elapsed_due_to_default_mem;
+  return std::min(
+      static_cast<float>(op_cost_manager_.LatencySeconds(instruction)),
+      elapsed_due_to_alternate_mem + elapsed_due_to_default_mem);
 }
 
 float CostAnalysis::GetInstructionElapsed(
     const HloInstruction& instruction) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
-    return 0.0f;
-  }
   float overhead = GetDefaultMemoryAccessOverhead(instruction);
-  return std::max(GetInstructionElapsedDueToCompute(instruction),
-                  GetInstructionElapsedDueToMemory(instruction) + overhead);
+  float elapsed =
+      std::max(GetInstructionElapsedDueToCompute(instruction),
+               GetInstructionElapsedDueToMemory(instruction) + overhead);
+  return std::min(
+      static_cast<float>(op_cost_manager_.LatencySeconds(instruction)),
+      elapsed);
 }
 
 float CostAnalysis::GetInstructionElapsedInAlternateMemory(
     const HloInstruction& instruction,
     absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
     absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
-    return 0.0f;
-  }
   float overhead = GetDefaultMemoryAccessOverhead(
       instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
-  return std::max(
+  float elapsed = std::max(
       GetInstructionElapsedDueToCompute(instruction),
       GetInstructionElapsedDueToMemory(instruction, operands_in_alternate_mem,
                                        outputs_in_alternate_mem) +
           overhead);
+  return std::min(
+      static_cast<float>(op_cost_manager_.LatencySeconds(instruction)),
+      elapsed);
 }
 
 float CostAnalysis::GetInstructionElapsedInAlternateMemory(
     const HloInstruction& instruction,
     IsInAlternateMemoryFun is_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
-    return 0.0f;
-  }
-  return std::max(
+  float elapsed = std::max(
       GetInstructionElapsedDueToCompute(instruction),
       GetInstructionElapsedDueToMemory(instruction, is_in_alternate_mem));
+  return std::min(
+      static_cast<float>(op_cost_manager_.LatencySeconds(instruction)),
+      elapsed);
 }
 
 float CostAnalysis::GetAsyncCopyElapsed(int64_t size_in_bytes) const {
