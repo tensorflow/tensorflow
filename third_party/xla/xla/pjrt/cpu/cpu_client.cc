@@ -196,7 +196,9 @@ void UpdateResultLayoutMemorySpaces(
     result_layout = *options.executable_build_options.result_layout();
   } else {
     auto program_shape_or = computation.GetProgramShape();
-    if (!program_shape_or.ok()) return;
+    if (!program_shape_or.ok()) {
+      return;
+    }
     result_layout =
         LayoutUtil::GetWithDefaultLayout(program_shape_or->result());
   }
@@ -1466,8 +1468,8 @@ static absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> MemoryForAllocation(
       return absl::down_cast<CpuRawBuffer*>(allocated_output.get())->buffer();
     }
     return arg->buffer();
-  } else if (allocation.is_constant() &&
-             allocation.index() < constants.size()) {
+  }
+  if (allocation.is_constant() && allocation.index() < constants.size()) {
     se::DeviceAddressBase constant =
         constants[allocation.index()].AsDeviceAddress();
     return CpuDeviceMemory::CreateConstantMemory(constant.opaque(),

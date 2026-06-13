@@ -84,7 +84,7 @@ bool CpuAsyncExecutionTracker::SetError(int32_t launch_id, absl::Status error) {
         return true;
       }
       return false;
-    } else {
+    }
       bool any_success = false;
       for (auto& [key, execute_event] : execute_events) {
         if (execute_event.IsUnavailable()) {
@@ -93,7 +93,6 @@ bool CpuAsyncExecutionTracker::SetError(int32_t launch_id, absl::Status error) {
         }
       }
       return any_success;
-    }
   }
   return false;
 }
