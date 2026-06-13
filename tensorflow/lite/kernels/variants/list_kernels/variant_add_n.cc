@@ -139,7 +139,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                  output, t, BuildTfLiteArray(0)));
   TensorArray* const output_arr =
       reinterpret_cast<TensorArray*>(output->data.data);
-  output_arr->Resize(num_elements);
+  TF_LITE_ENSURE(context, output_arr->Resize(num_elements));
 
   ///
   // Compute out_list[i] = Sum(in_list_0[i] + ...) for 0 < i < num_elements

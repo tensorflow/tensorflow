@@ -209,7 +209,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Set size of array.
   TensorArray* const arr =
       static_cast<TensorArray*>(static_cast<VariantData*>(output->data.data));
-  arr->Resize(data.num_elements);
+  TF_LITE_ENSURE(context, arr->Resize(data.num_elements));
   TF_LITE_ENSURE_OK(context, sem.PopulateOutput(arr));
 
   return kTfLiteOk;

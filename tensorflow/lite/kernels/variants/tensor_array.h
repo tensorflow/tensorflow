@@ -57,7 +57,8 @@ class TensorArray : public AbstractVariantData<TensorArray> {
   // Resizes the array for given number of elements. If the length of the array
   // is being decreased, `Drop` the reference to the elements that will no
   // longer be in the array. If index is out of bounds, no effect.
-  void Resize(int num_elements);
+  // Returns true on success.
+  bool Resize(int num_elements);
 
   // Retrieve the tensor at the given index.
   const TfLiteTensor* At(int index) const;

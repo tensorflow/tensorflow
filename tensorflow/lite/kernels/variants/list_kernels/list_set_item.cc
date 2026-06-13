@@ -127,7 +127,7 @@ TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
   TfLiteTensorCopy(item_input, item_copy.get());
 
   if (index >= output_arr->NumElements()) {
-    output_arr->Resize(index + 1);
+    TF_LITE_ENSURE(ctx, output_arr->Resize(index + 1));
   }
   TF_LITE_ENSURE(ctx, output_arr->Set(index, std::move(item_copy)));
   output->data.data = static_cast<VariantData*>(output_arr);
