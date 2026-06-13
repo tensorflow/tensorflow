@@ -12,8 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/experimental/microfrontend/lib/frontend.h"
-#include "tensorflow/lite/experimental/microfrontend/lib/frontend_util.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -22,6 +21,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/lite/experimental/microfrontend/lib/frontend.h"
+#include "tensorflow/lite/experimental/microfrontend/lib/frontend_util.h"
 
 using tensorflow::errors::Internal;
 using tensorflow::errors::InvalidArgument;
@@ -201,7 +202,7 @@ class AudioMicrofrontendOp : public OpKernel {
     const Tensor* audio;
     OP_REQUIRES_OK(ctx, ctx->input("audio", &audio));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(audio->shape()),
-                InvalidArgument("audio is not a vector"));
+                absl::InvalidArgumentError("audio is not a vector"));
 
     auto audio_data =
         reinterpret_cast<const int16_t*>(audio->tensor_data().data());
@@ -227,7 +228,7 @@ class AudioMicrofrontendOp : public OpKernel {
     if (!TF_PREDICT_TRUE(
             FrontendPopulateState(&config_, &state, sample_rate_))) {
       ctx->CtxFailure(__FILE__, __LINE__,
-                      Internal("failed to populate frontend state"));
+                      absl::InternalError("failed to populate frontend state"));
       FrontendFreeStateContents(&state);
       return;
     }
