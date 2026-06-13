@@ -151,7 +151,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     absl::Status status = dev_mgr_->LookupDevice("CPU:0", &cpu_dev);
     if (!status.ok()) {
       delete state;
-      done(s);
+      done(status);
       return;
     }
     AllocatorAttributes cpu_attr;
@@ -190,8 +190,8 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
           absl::Status status =
               PopulateTensorFromResponse(state->call->resp_, dst_tensor);
           if (!status.ok()) {
-            done(status);
             delete state;
+            done(status);
             return;
           }
 

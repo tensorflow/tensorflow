@@ -482,6 +482,51 @@ TEST_P(CollRMADistTest, ConsFirstAbort) {
   EXPECT_EQ(consumer_status.message(), "Cancelled");
 }
 
+TEST_P(CollRMADistTest, ResponseTooLargeUAF) {
+  ResolveDeviceAttributes();
+  absl::Notification consumer_note;
+  absl::Notification producer_note;
+  absl::Status consumer_status;
+  absl::Status producer_status;
+  FakeWorker* wi = workers_[1];
+  const std::string kBufKey = "fake_buf_key";
+  wi->buf_rendezvous()->ProvideBuf(
+      kBufKey, nullptr /*device*/, nullptr /*dev_ctx*/, &large_response_,
+      AllocatorAttributes(),
+      [&producer_note, &producer_status](const absl::Status& s) {
+        producer_status.Update(s);
+        producer_note.Notify();
+      },
+      nullptr /*cancellation_manager*/);
+  Device* dst_device = nullptr;
+  std::string dev_name = "CPU:0";
+  TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
+  DeviceContext* to_device_ctx = nullptr;
+  MaybeSetGPUDevice(dst_device);
+  auto wc_ptr = std::make_unique<FakeCache>();
+  wc_ptr->AddWorker("/job:worker/replica:0/task:1", wi);
+  auto rma_uaf = std::make_unique<CollectiveRemoteAccessDistributed>(
+      device_mgrs_[0], dev_resolvers_["/job:worker/replica:0/task:0"],
+      work_queue_, wc_ptr.get(), kStepId, "/job:worker/replica:0/task:0");
+  rma_uaf->RecvFromPeer(
+      "/job:worker/replica:0/task:1/device:" + dev_name,  // peer_dev
+      "/job:worker/replica:0/task:1",                     // peer_task
+      false,                                              // peer_is_local
+      kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
+      device_locality_, 0 /*dev_to_dev_stream_index*/,
+      nullptr /*cancellation_manager*/,
+      [&consumer_status, &consumer_note, &wc_ptr](const absl::Status& s) {
+        consumer_status = s;
+        wc_ptr.reset();
+        consumer_note.Notify();
+      });
+  consumer_note.WaitForNotification();
+  EXPECT_THAT(consumer_status.message(),
+              ::testing::HasSubstr("Tensor Size Mismatch"));
+  producer_note.WaitForNotification();
+  TF_EXPECT_OK(producer_status);
+}
+
 TEST_P(CollRMADistTest, ResponseTooLarge) {
   ResolveDeviceAttributes();
   absl::Notification consumer_note;
