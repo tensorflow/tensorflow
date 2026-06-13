@@ -462,10 +462,9 @@ class TPUClusterResolver(cluster_resolver_lib.ClusterResolver):
 
   def _start_local_server(self):
     address = compat.as_text(self._cloud_tpu_client.get_local_ip())
-    self._server = server_lib.Server({'local': ['0.0.0.0:0']},
-                                     protocol='grpc',
-                                     config=None,
-                                     start=True)
+    self._server = server_lib.Server(
+        {'local': [f'{address}:0']}, protocol='grpc', config=None, start=True
+    )
     # self._server.target is of the form: grpc://ipaddress:port
     target = compat.as_bytes(self._server.target)
     splits = target.split(compat.as_bytes(':'))

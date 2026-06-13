@@ -28,9 +28,6 @@ py_library(
     ],
     srcs_version = "PY3",
     strict_deps = False,
-    deps = [
-        ":all_utils",
-    ],
 )
 
 py_library(

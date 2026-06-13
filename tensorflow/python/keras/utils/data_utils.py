@@ -18,7 +18,9 @@
 from abc import abstractmethod
 from contextlib import closing
 import functools
+import getpass
 import hashlib
+import tempfile
 import multiprocessing
 import multiprocessing.dummy
 import os
@@ -209,8 +211,14 @@ def get_file(fname,
     hash_algorithm = 'md5'
   datadir_base = os.path.expanduser(cache_dir)
   if not os.access(datadir_base, os.W_OK):
-    datadir_base = os.path.join('/tmp', '.keras')
+    uid = os.getuid() if hasattr(os, 'getuid') else getpass.getuser()
+    datadir_base = os.path.join(tempfile.gettempdir(), f'.keras_{uid}')
   datadir = os.path.join(datadir_base, cache_subdir)
+  if not os.path.exists(datadir_base):
+    try:
+      os.makedirs(datadir_base, mode=0o700)
+    except OSError:
+      pass
   _makedirs_exist_ok(datadir)
 
   fname = path_to_string(fname)
