@@ -44,6 +44,30 @@ namespace xla {
 class PjRtMemorySpace;
 class PjRtBuffer;
 
+class PjRtRawBufferInterface : public PJRT_RawBuffer {
+ public:
+  using RemoteSendCallback =
+      std::function<void(absl::Status status, bool sends_were_enqueued)>;
+  void AddRef();
+  void DropRef();
+
+  PjRtMemorySpace* memory_space() const;
+  void* GetHostPointer() const;
+  size_t GetOnDeviceSizeInBytes() const;
+
+  Future<> CopyRawHostToDevice(const void* src, int64_t offset,
+                               int64_t transfer_size);
+  Future<> CopyRawDeviceToHost(void* dst, int64_t offset,
+                               int64_t transfer_size);
+
+  absl::StatusOr<PjRtDeviceEventRef> CopyRawHostToDeviceAndReturnEvent(
+      const void* src, int64_t offset, int64_t transfer_size);
+  absl::StatusOr<PjRtDeviceEventRef> CopyRawDeviceToHostAndReturnEvent(
+      void* dst, int64_t offset, int64_t transfer_size);
+
+  void* OpaqueDeviceMemoryDataPointer() const;
+};
+
 // Experimental. Don't use unless you know what you're doing.
 // A raw buffer is an unsafe API for directly transferring into device
 // memory while existing processes are consuming or mutating the same buffer.
@@ -87,23 +111,12 @@ class PjRtRawBuffer : public PJRT_RawBuffer,
   virtual Future<> CopyRawDeviceToHost(void* dst, int64_t offset,
                                        int64_t transfer_size) = 0;
 
- private:
-  static const PJRT_RawBuffer_FunctionTable kRawBufferVtable;
-};
-
-class CommonPjRtRawBuffer;
-using PjRtRawBufferRef = tsl::RCReference<CommonPjRtRawBuffer>;
-
-// Adds methods common to all implementations of PjRtRawBuffer based on device
-// events.
-class CommonPjRtRawBuffer : public PjRtRawBuffer {
- public:
   // Return opaque device memory pointer to the underlying memory.
   virtual void* OpaqueDeviceMemoryDataPointer() const = 0;
 
   // Transfers the buffer to a sub-range of the on-device representation.
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
-  // returned future transitions to ready on error, or after the transfer has
+  // returned event transitions to ready on error, or after the transfer has
   // completed.
   //
   // Note that the underlying driver may have requirements
@@ -114,7 +127,7 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
 
   // Transfers a sub-range of the on-device representation of the buffer.
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
-  // returned future transitions to ready on error, or after the transfer has
+  // returned event transitions to ready on error, or after the transfer has
   // completed.
   //
   // Note that the underlying driver may have requirements
@@ -123,6 +136,15 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   virtual absl::StatusOr<PjRtDeviceEventRef> CopyRawDeviceToHostAndReturnEvent(
       void* dst, int64_t offset, int64_t transfer_size) = 0;
 
+ private:
+  static const PJRT_RawBuffer_FunctionTable kRawBufferVtable;
+};
+
+class CommonPjRtRawBuffer;
+using PjRtRawBufferRef = tsl::RCReference<CommonPjRtRawBuffer>;
+
+class CommonPjRtRawBuffer : public PjRtRawBuffer {
+ public:
   // Copies the buffer to a remote device.
   // The serialized_descriptor contains metadata about the buffer on the remote
   // device. The on_done callback is called when the transfer is complete or

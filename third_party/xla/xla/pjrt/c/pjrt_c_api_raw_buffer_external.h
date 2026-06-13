@@ -75,6 +75,11 @@ class PjRtCApiRawBuffer : public PjRtRawBuffer {
                                int64_t transfer_size) override;
   Future<> CopyRawDeviceToHost(void* dst, int64_t offset,
                                int64_t transfer_size) override;
+  absl::StatusOr<PjRtDeviceEventRef> CopyRawHostToDeviceAndReturnEvent(
+      const void* src, int64_t offset, int64_t transfer_size) override;
+  absl::StatusOr<PjRtDeviceEventRef> CopyRawDeviceToHostAndReturnEvent(
+      void* dst, int64_t offset, int64_t transfer_size) override;
+  void* OpaqueDeviceMemoryDataPointer() const override;
 
  private:
   PJRT_RawBuffer* c_buffer_;

@@ -314,7 +314,10 @@ cc_library(
     name = "pjrt_c_api_raw_buffer_extension_hdrs",
     hdrs = ["pjrt_c_api_raw_buffer_extension.h"],
     visibility = ["//visibility:public"],
-    deps = [":pjrt_c_api_hdrs"],
+    deps = [
+        ":pjrt_c_api_device_event_hdrs",
+        ":pjrt_c_api_hdrs",
+    ],
 )
 
 cc_library(

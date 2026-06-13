@@ -177,6 +177,26 @@ Future<> PjRtCApiRawBuffer::CopyRawDeviceToHost(void* dst, int64_t offset,
       c_api_, c_extension_, c_buffer_, dst, offset, transfer_size);
 }
 
+absl::StatusOr<PjRtDeviceEventRef>
+PjRtCApiRawBuffer::CopyRawHostToDeviceAndReturnEvent(const void* src,
+                                                     int64_t offset,
+                                                     int64_t transfer_size) {
+  return static_cast<PjRtRawBufferInterface*>(c_buffer_)
+      ->CopyRawHostToDeviceAndReturnEvent(src, offset, transfer_size);
+}
+
+absl::StatusOr<PjRtDeviceEventRef>
+PjRtCApiRawBuffer::CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
+                                                     int64_t transfer_size) {
+  return static_cast<PjRtRawBufferInterface*>(c_buffer_)
+      ->CopyRawDeviceToHostAndReturnEvent(dst, offset, transfer_size);
+}
+
+void* PjRtCApiRawBuffer::OpaqueDeviceMemoryDataPointer() const {
+  return static_cast<PjRtRawBufferInterface*>(c_buffer_)
+      ->OpaqueDeviceMemoryDataPointer();
+}
+
 static std::optional<absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>>
 PjRtCApiBuffer_CreateRawAliasOfBuffer_Factory(PjRtBuffer* buffer) {
   if (auto* c_api_buffer = dynamic_cast<xla::PjRtCApiBuffer*>(buffer)) {

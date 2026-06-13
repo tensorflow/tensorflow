@@ -86,10 +86,10 @@ PJRT_Error* PJRT_RawBuffer_CopyRawHostToDevice(
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_CopyRawHostToDevice_Args",
       PJRT_RawBuffer_CopyRawHostToDevice_Args_STRUCT_SIZE, args->struct_size));
-  auto* cpp_buffer = static_cast<xla::PjRtRawBuffer*>(args->buffer);
-  auto result = cpp_buffer->CopyRawHostToDevice(args->src, args->offset,
-                                                args->transfer_size);
-  args->event = new PJRT_Event{std::move(result)};
+  auto* interface = static_cast<xla::PjRtRawBufferInterface*>(args->buffer);
+  auto future = interface->CopyRawHostToDevice(args->src, args->offset,
+                                               args->transfer_size);
+  args->event = new PJRT_Event{std::move(future)};
   return nullptr;
 }
 
@@ -98,10 +98,10 @@ PJRT_Error* PJRT_RawBuffer_CopyRawDeviceToHost(
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_CopyRawDeviceToHost_Args",
       PJRT_RawBuffer_CopyRawDeviceToHost_Args_STRUCT_SIZE, args->struct_size));
-  auto* cpp_buffer = static_cast<xla::PjRtRawBuffer*>(args->buffer);
-  auto result = cpp_buffer->CopyRawDeviceToHost(args->dst, args->offset,
-                                                args->transfer_size);
-  args->event = new PJRT_Event{std::move(result)};
+  auto* interface = static_cast<xla::PjRtRawBufferInterface*>(args->buffer);
+  auto future = interface->CopyRawDeviceToHost(args->dst, args->offset,
+                                               args->transfer_size);
+  args->event = new PJRT_Event{std::move(future)};
   return nullptr;
 }
 
