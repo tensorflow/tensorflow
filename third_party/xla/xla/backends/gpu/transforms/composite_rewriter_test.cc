@@ -276,4 +276,36 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 }  // namespace
+
+TEST(CompositeRewriterTest, ChloScanRewrite) {
+  std::string hlo_string = R"(
+    HloModule test_module
+    %chlo.scan.body {
+      %p0 = f32[] parameter(0)
+      %p1 = f32[] parameter(1)
+      ROOT %add = f32[] add(%p0, %p1)
+    }
+    ENTRY %main {
+      %input = f32[10] parameter(0)
+      %init = f32[] parameter(1)
+      ROOT %call = f32[10] call(%input, %init),
+          to_apply=%chlo.scan.body,
+          is_composite=true,
+          frontend_attributes={
+            composite.attributes="{dimension = 0 : i64, is_associative = true, is_reverse = false, operandSegmentSizes = array<i32: 1, 1>}",
+            composite.name="chlo.scan"
+          }
+    }
+  )";
+
+  CompositeRewriter rewriter;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto result = rewriter.Run(module.get());
+  EXPECT_THAT(result, absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction()->opcode(),
+              HloOpcode::kScan);
+}
+
 }  // namespace xla::gpu
