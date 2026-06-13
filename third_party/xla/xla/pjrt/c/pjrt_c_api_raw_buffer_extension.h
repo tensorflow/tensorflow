@@ -64,14 +64,22 @@ typedef struct PJRT_RawBuffer_FunctionTable {
       int64_t transfer_size, PJRT_DeviceEvent* event);
   // Return opaque device memory pointer to the underlying memory.
   void* (*opaque_device_memory_data_pointer)(const PJRT_RawBuffer* raw_buffer);
+  // Fill `event` with the event that signals when the buffer allocation is
+  // complete.
+  PJRT_Error* (*make_allocation_ready_event)(PJRT_RawBuffer* raw_buffer,
+                                             PJRT_DeviceEvent* event);
+  // Fill `event` with the event associated with the buffer (async value).
+  PJRT_Error* (*get_raw_buffer_async_value)(PJRT_RawBuffer* raw_buffer,
+                                            PJRT_DeviceEvent* event);
+  // Returns true if the buffer is mutable.
+  bool (*is_mutable)(const PJRT_RawBuffer* raw_buffer);
 } PJRT_RawBuffer_FunctionTable;
 
 struct PJRT_RawBuffer {
   const PJRT_RawBuffer_FunctionTable* vtable;
 };
 
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer_FunctionTable,
-                          opaque_device_memory_data_pointer);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer_FunctionTable, is_mutable);
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer, vtable);
 
 struct PJRT_RawBuffer_CreateRawAliasOfBuffer_Args {

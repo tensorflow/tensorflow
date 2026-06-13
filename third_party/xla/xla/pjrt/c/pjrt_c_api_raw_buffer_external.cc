@@ -197,6 +197,40 @@ void* PjRtCApiRawBuffer::OpaqueDeviceMemoryDataPointer() const {
       ->OpaqueDeviceMemoryDataPointer();
 }
 
+absl::StatusOr<PjRtRawBufferRef> PjRtCApiRawBuffer::Slice(int64_t offset,
+                                                          int64_t size) {
+  return absl::UnimplementedError("Slice not supported by PJRT C API");
+}
+
+absl::StatusOr<PjRtDeviceEventRef>
+PjRtCApiRawBuffer::MakeAllocationReadyEvent() {
+  return static_cast<PjRtRawBufferInterface*>(c_buffer_)
+      ->MakeAllocationReadyEvent();
+}
+
+void PjRtCApiRawBuffer::CopyTo(
+    PjRtRawBufferRef dst_raw_buffer,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise,
+    absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
+  absl::Status status =
+      absl::UnimplementedError("CopyTo not supported by PJRT C API");
+  definition_event_promise.SetError(status);
+  src_usage_event_promise.SetError(status);
+  if (allocation_event) {
+    std::move(allocation_event)(status);
+  }
+}
+
+PjRtDeviceEventPtr PjRtCApiRawBuffer::GetRawBufferAsyncValue() {
+  return static_cast<PjRtRawBufferInterface*>(c_buffer_)
+      ->GetRawBufferAsyncValue();
+}
+
+bool PjRtCApiRawBuffer::is_mutable() const {
+  return static_cast<const PjRtRawBufferInterface*>(c_buffer_)->is_mutable();
+}
+
 static std::optional<absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>>
 PjRtCApiBuffer_CreateRawAliasOfBuffer_Factory(PjRtBuffer* buffer) {
   if (auto* c_api_buffer = dynamic_cast<xla::PjRtCApiBuffer*>(buffer)) {

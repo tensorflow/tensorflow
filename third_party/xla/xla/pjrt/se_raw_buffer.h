@@ -126,10 +126,6 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
     return PjRtDeviceEventPtr::FromAsyncValue(device_buffer_.GetAsyncValue());
   }
 
-  absl::StatusOr<PjRtDeviceEventRef> CopyRawToRemoteDevice(
-      Future<std::string> serialized_descriptor, RemoteSendCallback on_done,
-      PjRtDeviceEventRefVector transfer_dependency_avs) override;
-
   void DecrefAfter(PjRtDeviceEventRefVector avs) override { DropRef(); }
 
  private:

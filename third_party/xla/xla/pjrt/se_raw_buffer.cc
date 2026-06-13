@@ -483,12 +483,4 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
   src_usage_event_promise.Set(PjRtDeviceEventRef(std::move(usage_event)));
 }
 
-absl::StatusOr<PjRtDeviceEventRef>
-PjRtStreamExecutorRawBuffer::CopyRawToRemoteDevice(
-    Future<std::string> serialized_descriptor, RemoteSendCallback on_done,
-    PjRtDeviceEventRefVector transfer_dependency_avs) {
-  return absl::UnimplementedError(
-      "PjRtStreamExecutorRawBuffer does not support CopyRawToRemoteDevice.");
-}
-
 }  // namespace xla

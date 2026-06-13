@@ -326,11 +326,4 @@ void CpuRawBuffer::CopyTo(
   definition_event_promise.Set(*std::move(other_event));
 }
 
-absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyRawToRemoteDevice(
-    Future<std::string> serialized_descriptor, RemoteSendCallback on_done,
-    PjRtDeviceEventRefVector transfer_dependency_avs) {
-  return absl::UnimplementedError(
-      "CpuRawBuffer does not support CopyRawToRemoteDevice.");
-}
-
 }  // namespace xla

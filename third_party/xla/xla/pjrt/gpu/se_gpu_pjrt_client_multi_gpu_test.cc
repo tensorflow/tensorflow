@@ -1411,11 +1411,11 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
     usage_event_promises.push_back(std::move(usage_event_promise));
 
     // Get a raw buffer.
-    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
+    PjRtRawBufferRef raw_buffer;
     RETURN_IF_ERROR(
         absl::down_cast<CommonPjRtBufferImpl*>(buffer.get())
             ->AcquireScopedRawBuffer(
-                [&](tsl::RCReference<CommonPjRtRawBuffer> buf_raw_buffer,
+                [&](PjRtRawBufferRef buf_raw_buffer,
                     PjRtDeviceEventRefVector buf_definition_events) mutable
                     -> absl::StatusOr<PjRtDeviceEventRef> {
                   raw_buffer = std::move(buf_raw_buffer);
