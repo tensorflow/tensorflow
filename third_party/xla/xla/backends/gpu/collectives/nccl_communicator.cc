@@ -220,7 +220,7 @@ NcclCommunicator::CreateSymmetricMemory(se::DeviceAddressBase addr) {
 absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
     se::StreamExecutor* stream_executor,
     absl::AnyInvocable<absl::StatusOr<ncclComm_t>()> make_comm,
-    std::shared_ptr<CancellationToken> cancel, bool is_async, tsl::Env& env) {
+    std::shared_ptr<CancellationToken> cancel, tsl::Env& env) {
   if (cancel == nullptr) {
     cancel = std::make_shared<CancellationToken>();
   }
@@ -235,17 +235,10 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
     return comm;
   };
 
-  if (!is_async) {
-    // If this NcclCommunicator is synchronous, construct ncclComm_t in the
-    // calling thread.
-    ASSIGN_OR_RETURN(ncclComm_t comm, f());
-    return absl::WrapUnique(new NcclCommunicator(stream_executor, comm, nullptr,
-                                                 std::move(cancel)));
-  }
-
-  // If this NcclCommunicator is asynchronous, then all operations on the
-  // underlying ncclComm_t, including its creation, must take place on the
-  // single threaded executor.
+  // All operations on the  underlying ncclComm_t, including its creation, must
+  // take place on the single threaded executor. It's important to do this even
+  // for the synchronous case since symmetrical memory cleanup might
+  // happen in a different thread.
   auto executor = std::make_unique<SingleThreadedExecutor>(env);
   ASSIGN_OR_RETURN(ncclComm_t comm,
                    MakeFutureOn<ncclComm_t>(*executor, f).Await());
@@ -557,10 +550,10 @@ absl::Status NcclCommunicator::LaunchAllGather(
 
   VLOG(3) << absl::StreamFormat(
       "[%d] Launch NCCL AllGather operation; send_buffer=%p; "
-      "recv_buffer=%p; dtype=%s; count=%d; comm=%p; stream=%p",
+      "recv_buffer=%p; dtype=%s; count=%d; comm=%p; stream=%p; executor=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
-      count, comm_, stream);
+      count, comm_, stream, executor_.get());
 
   ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
