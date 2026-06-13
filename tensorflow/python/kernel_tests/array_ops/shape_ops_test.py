@@ -402,6 +402,24 @@ class ShapeOpsTest(test.TestCase):
         self.assertRaises(ValueError, array_ops.squeeze,
                           np.zeros([1, 2, 1]), [2, 3])
 
+  def testSqueezeWithTensorAxisError(self):
+    """Test that passing a Tensor as axis raises TypeError (issue #62504)."""
+    # Test with int tensor
+    input_tensor = constant_op.constant([[1, 2, 3]], dtype=dtypes.float32)
+    axis_tensor = constant_op.constant(0, dtype=dtypes.int32)
+    with self.assertRaisesRegex(
+        TypeError,
+        r"axis.*must be.*integer.*list.*not a Tensor"):
+      array_ops.squeeze(input_tensor, axis_tensor)
+
+    # Test with float tensor
+    input_tensor = constant_op.constant([1, 2, 3], dtype=dtypes.float32)
+    axis_tensor = constant_op.constant(0.0, dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        TypeError,
+        r"axis.*must be.*integer.*list.*not a Tensor"):
+      array_ops.squeeze(input_tensor, axis_tensor)
+
   @test_util.run_deprecated_v1
   def testSqueezeGradient(self):
     with self.cached_session():
