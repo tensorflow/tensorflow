@@ -487,6 +487,29 @@ class QuantizeAndDequantizeV3OpTest(test_util.TensorFlowTestCase):
           range_given=True,
       )
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_non_scalar_min_max_with_default_axis(self):
+    input_value = constant_op.constant(
+        [-0.8, -0.5, 0, 0.3, 0.8, -2.0], shape=(6,), dtype=dtypes.float32)
+    input_min = constant_op.constant(
+        [-127, -127], shape=(2,), dtype=dtypes.float32)
+    input_max = constant_op.constant(
+        [127, 127], shape=(2,), dtype=dtypes.float32)
+    num_bits = 8
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        "input_min must be a scalar"):
+      self.evaluate(
+          array_ops.quantize_and_dequantize_v3(
+              input_value,
+              input_min,
+              input_max,
+              num_bits=num_bits,
+              signed_input=True,
+              range_given=True,
+          ))
+
 
 if __name__ == "__main__":
   googletest.main()
