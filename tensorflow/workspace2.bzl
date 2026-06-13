@@ -309,17 +309,17 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_github_googlecloudplatform_google_cloud_cpp",
-        sha256 = "ff82045b9491f0d880fc8e5c83fd9542eafb156dcac9ff8c6209ced66ed2a7f0",
-        strip_prefix = "google-cloud-cpp-1.17.1",
+        sha256 = "e868bdb537121d2169fbc1ef69b81f4b4f96e97891c4567a6533d4adf62bffde",
+        strip_prefix = "google-cloud-cpp-3.1.0",
         repo_mapping = {
+            "@abseil-cpp": "@com_google_absl",
             "@com_github_curl_curl": "@curl",
-            "@com_github_nlohmann_json": "@nlohmann_json_lib",
         },
         system_build_file = "//third_party/systemlibs:google_cloud_cpp.BUILD",
         system_link_files = {
             "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
         },
-        urls = tf_mirror_urls("https://github.com/googleapis/google-cloud-cpp/archive/v1.17.1.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/googleapis/google-cloud-cpp/archive/v3.1.0.tar.gz"),
     )
 
     tensorflow_gcp_tools()
@@ -615,11 +615,7 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/facebook/zstd/archive/v1.5.7.zip"),  # 2025-05-20
     )
 
-    xprof(
-        repo_mapping = {
-            "@com_github_nlohmann_json": "@nlohmann_json_lib",
-        },
-    )
+    xprof()
 
     # used for adding androidx.annotation dependencies in tflite android jni.
     maven_install(

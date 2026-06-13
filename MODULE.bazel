@@ -32,7 +32,7 @@ single_version_override(
     version = "31.1",
 )
 
-bazel_dep(name = "google_cloud_cpp", version = "3.0.0-rc1", repo_name = "com_github_googlecloudplatform_google_cloud_cpp")
+bazel_dep(name = "google_cloud_cpp", version = "3.1.0", repo_name = "com_github_googlecloudplatform_google_cloud_cpp")
 bazel_dep(name = "crc32c", version = "1.1.0", repo_name = "com_github_google_crc32c")
 bazel_dep(name = "brotli", version = "1.1.0", repo_name = "org_brotli")
 bazel_dep(name = "rules_cc", version = "0.2.11")
@@ -194,12 +194,6 @@ use_repo(
     "tflite_ovic_testdata",
     "vulkan_headers",
     "xctestrunner",
-)
-
-# TODO: Remove this injection once xprof is updated.
-inject_repo(
-    tf_third_party,
-    com_github_nlohmann_json = "nlohmann_json_lib",
 )
 
 pybind11_internal_configure = use_extension(
