@@ -31,6 +31,8 @@ const char kXlaComputeTypeAttr[] = "_xla_compute_type";
 
 const char kXlaComputeTypeSparse[] = "sparse";
 
+const char kXlaComputeTypeTpuEmbedding[] = "tpu_embedding";
+
 const char kXlaComputeTypeDense[] = "dense";
 
 const char kXlaComputeTypeHost[] = "host";

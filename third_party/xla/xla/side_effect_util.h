@@ -38,6 +38,7 @@ extern const char kXlaComputeTypeAttr[];
 
 // XLA frontend attribute values for kXlaComputeTypeAttr
 extern const char kXlaComputeTypeSparse[];
+extern const char kXlaComputeTypeTpuEmbedding[];
 extern const char kXlaComputeTypeDense[];
 extern const char kXlaComputeTypeHost[];
 extern const char kXlaComputeTypeSparseOffload[];
