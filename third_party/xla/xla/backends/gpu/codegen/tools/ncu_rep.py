@@ -65,7 +65,7 @@ _LIST_METRICS = flags.DEFINE_bool(
     "list_metrics", None, "print metric names and exit", required=False
 )
 
-ncu_bin = shutil.which("ncu")
+ncu_bin = os.environ.get("NCU_PATH") or shutil.which("ncu")
 if not ncu_bin:
   ncu_bin = "/usr/local/cuda/bin/ncu"
 logging.info("ncu binary: %s", ncu_bin)
