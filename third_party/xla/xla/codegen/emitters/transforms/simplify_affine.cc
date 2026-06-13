@@ -46,13 +46,11 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
-#include "xla/hlo/analysis/symbolic_map_converter.h"
 
 namespace xla {
 namespace emitters {
 namespace {
 
-using mlir::AffineMap;
 using mlir::ImplicitLocOpBuilder;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
@@ -62,7 +60,6 @@ using mlir::PatternRewriter;
 using mlir::SmallVector;
 using mlir::Value;
 using mlir::ValueRange;
-using mlir::affine::AffineApplyOp;
 
 namespace arith = mlir::arith;
 
@@ -211,51 +208,6 @@ bool IsLoweringSupported(SymbolicExpr expr, RangeEvaluator& range_evaluator) {
          IsLoweringSupported(expr.GetRHS(), range_evaluator);
 }
 
-// TODO: b/446856305 - Create a RewriteSymbolicApply pattern that takes a
-// SymbolicMap. For now, we convert the AffineMap to SymbolicMap.
-struct RewriteAffineApply : OpRewritePattern<mlir::affine::AffineApplyOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(mlir::affine::AffineApplyOp op,
-                                PatternRewriter& rewriter) const override {
-    SymbolicMap symbolic_map = AffineMapToSymbolicMap(op.getAffineMap());
-    std::vector<IndexingMap::Variable> dim_ranges(symbolic_map.GetNumDims());
-    std::vector<IndexingMap::Variable> symbol_ranges(
-        symbolic_map.GetNumSymbols());
-
-    for (int i = 0;
-         i < symbolic_map.GetNumDims() + symbolic_map.GetNumSymbols(); ++i) {
-      if (auto range = GetRange(op->getOperand(i))) {
-        if (i >= dim_ranges.size()) {
-          symbol_ranges[i - dim_ranges.size()] = IndexingMap::Variable{*range};
-        } else {
-          dim_ranges[i] = IndexingMap::Variable{*range};
-        }
-      } else {
-        return rewriter.notifyMatchFailure(op, "failed to deduce range");
-      }
-    }
-
-    IndexingMap indexing_map(symbolic_map, std::move(dim_ranges),
-                             std::move(symbol_ranges),
-                             /*rt_vars=*/{});
-    indexing_map.Simplify();
-    auto result_expr = indexing_map.GetSymbolicMap().GetResult(0);
-
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    RangeEvaluator range_evaluator = indexing_map.GetRangeEvaluator();
-    if (!IsLoweringSupported(result_expr, range_evaluator)) {
-      return rewriter.notifyMatchFailure(op,
-                                         "unable to lower the affine apply");
-    }
-    b.setInsertionPoint(op);
-    auto result = ExpressionEvaluator(b, op->getOperands())
-                      .EvaluateExpression(result_expr);
-    rewriter.replaceOp(op, result);
-    return mlir::success();
-  }
-};
-
 struct RewriteApplyIndexingOp : OpRewritePattern<ApplyIndexingOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -274,22 +226,12 @@ struct RewriteApplyIndexingOp : OpRewritePattern<ApplyIndexingOp> {
     results.reserve(symbolic_map.GetNumResults());
     for (unsigned i = 0; i < symbolic_map.GetNumResults(); ++i) {
       SymbolicExpr result_expr = symbolic_map.GetResult(i);
-      // If the expression cannot be lowered, we convert it to affine.apply,
-      // since it supports more expression types.
       if (IsLoweringSupported(result_expr, range_evaluator)) {
         results.push_back(
             ExpressionEvaluator(b, operands).EvaluateExpression(result_expr));
       } else {
-        // TODO: b/446856305 - Create a SymbolicApplyOp. For now, we convert the
-        // SymbolicMap back to AffineMap and fall back to AffineApplyOp.
-        AffineMap sub_map = SymbolicMapToAffineMap(symbolic_map.GetSubMap({i}));
-        if (!sub_map) {
-          return rewriter.notifyMatchFailure(op,
-                                             "cannot fallback to affine.apply");
-        }
-        results.push_back(b.create<AffineApplyOp>(
-            sub_map, operands.take_front(symbolic_map.GetNumDims() +
-                                         symbolic_map.GetNumSymbols())));
+        return rewriter.notifyMatchFailure(
+            op, "unable to lower the symbolic apply");
       }
     }
     rewriter.replaceOp(op, results);
@@ -304,7 +246,7 @@ struct SimplifyAffinePass
     MLIRContext* ctx = &getContext();
     RegisterSymbolicExprStorage(ctx);
     mlir::RewritePatternSet patterns(ctx);
-    patterns.add<RewriteAffineApply, RewriteApplyIndexingOp>(ctx);
+    patterns.add<RewriteApplyIndexingOp>(ctx);
     mlir::GreedyRewriteConfig config;
     // There's no point simplifying more than once.
     config.setStrictness(mlir::GreedyRewriteStrictness::ExistingOps);
