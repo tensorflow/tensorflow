@@ -427,6 +427,7 @@ tf_python_pybind_extension(
 py_library(
     name = "dtypes",
     srcs = ["dtypes.py"],
+    lazy_imports = True,
     strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
