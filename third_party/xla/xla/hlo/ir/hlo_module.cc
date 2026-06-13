@@ -1035,6 +1035,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   module->CanonicalizeStackFrameIds(proto.stack_frame_index());
   RETURN_IF_ERROR(module->ReorderComputationsToPostOrder());
+  module->CanonicalizeComputationLocalIds();
 
   if (proto.has_original_value_recovery_table()) {
     ASSIGN_OR_RETURN(module->original_value_recovery_table_,
