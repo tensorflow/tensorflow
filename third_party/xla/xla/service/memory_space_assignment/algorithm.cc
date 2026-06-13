@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/transforms/memory_space_propagation.h"
@@ -582,6 +583,9 @@ void MsaAlgorithm::CreateAllocationValues(
   for (int i = 0; i < positions.size(); ++i) {
     const HloPosition& position = positions.at(i);
     allocation_values.emplace_back(value, position, buffer_interval.size);
+    LOG(ERROR) << "Created AllocationValue: "
+               << allocation_values.back().ToShortString() << " for value "
+               << value->ToShortString();
   }
 
   std::vector<HloUse> uses(value->GetUses().begin(), value->GetUses().end());
@@ -604,8 +608,12 @@ void MsaAlgorithm::CreateAllocationValues(
     AllocationValue* last_allocation_value = nullptr;
     for (int i = beginning_idx; i < allocation_values.size(); ++i) {
       AllocationValue* allocation_value = &allocation_values.at(i);
+      // Treat the async context (operand 0) of an async-update
+      // like an async-done instruction.
       if (HloDataflowAnalysis::IsAsynchronousOperationDone(
-              use.instruction->opcode())) {
+              use.instruction->opcode()) ||
+          (use.instruction->opcode() == HloOpcode::kAsyncUpdate &&
+           use.operand_number == 0)) {
         if (allocation_value->defining_instruction() ==
                 use.instruction->operand(0) &&
             use.operand_index == allocation_value->defining_position().index) {
@@ -620,7 +628,14 @@ void MsaAlgorithm::CreateAllocationValues(
         last_allocation_value = allocation_value;
       }
     }
+    if (last_allocation_value == nullptr) {
+      LOG(FATAL) << "Failed to find AllocationValue for use: "
+                 << use.ToString();
+    }
     CHECK(last_allocation_value != nullptr);
+    LOG(ERROR) << "Associating use " << use.ToString() << " time " << use_time
+               << " with AllocationValue "
+               << last_allocation_value->ToShortString();
     last_allocation_value->AddUse(use, use_time);
   }
 
@@ -629,8 +644,11 @@ void MsaAlgorithm::CreateAllocationValues(
     if (HloDataflowAnalysis::IsAsynchronousOperationStart(
             allocation_value.defining_instruction()->opcode())) {
       CHECK_EQ(allocation_value.uses().size(), 1);
+      // Async-start uses must be either an async-update or async-done.
       CHECK(HloDataflowAnalysis::IsAsynchronousOperationDone(
-          allocation_value.uses().at(0).hlo_use.instruction->opcode()));
+                allocation_value.uses().at(0).hlo_use.instruction->opcode()) ||
+            allocation_value.uses().at(0).hlo_use.instruction->opcode() ==
+                HloOpcode::kAsyncUpdate);
       VLOG(3) << "Mark " << allocation_value.ToShortString()
               << " to require contiguous allocation because it is an async "
                  "start operation.";
@@ -671,16 +689,47 @@ void MsaAlgorithm::FindAliases(
 
   for (AllocationValue& value : *allocation_values) {
     for (AllocationValue::Use& use : value.uses()) {
+      HloInstruction* use_instruction = use.hlo_use.instruction;
+
       // Find any aliases with the instruction itself (operand and output must
       // alias).
       maybe_add_alias_with_instruction(use.hlo_use.instruction, &use);
 
       // Find any aliases with the parameters of called computations.
-      for (const HloComputation* called_computation :
-           use.hlo_use.instruction->called_computations()) {
-        for (const HloInstruction* parameter_instruction :
-             called_computation->parameter_instructions()) {
-          maybe_add_alias_with_instruction(parameter_instruction, &use);
+      if (use_instruction->IsAsynchronous()) {
+        HloComputation* wrapped_computation =
+            use_instruction->async_wrapped_computation();
+        if (use_instruction->opcode() == HloOpcode::kAsyncStart &&
+            use_instruction->operand_count() > 0) {
+          // Operands bound with async-start map directly to the initial
+          // parameters of the wrapped computation.
+          for (int i = 0; i < use_instruction->operand_count(); ++i) {
+            maybe_add_alias_with_instruction(
+                wrapped_computation->parameter_instruction(i), &use);
+          }
+        } else if (use_instruction->opcode() == HloOpcode::kAsyncUpdate &&
+                   use_instruction->operand_count() > 1) {
+          // Operands bound with async-update map to parameters of the
+          // wrapped computation offset by the number of operands
+          // that were bound by previous instructions.
+          auto previously_bound_operands =
+              hlo_instruction_utils::async::GetAsyncBoundOperands(
+                  use_instruction->operand(0));
+          int previously_bound_operand_count = previously_bound_operands.size();
+          for (int i = 1; i < use_instruction->operand_count(); ++i) {
+            maybe_add_alias_with_instruction(
+                wrapped_computation->parameter_instruction(
+                    i - 1 + previously_bound_operand_count),
+                &use);
+          }
+        }
+      } else {
+        for (const HloComputation* called_computation :
+             use.hlo_use.instruction->called_computations()) {
+          for (const HloInstruction* parameter_instruction :
+               called_computation->parameter_instructions()) {
+            maybe_add_alias_with_instruction(parameter_instruction, &use);
+          }
         }
       }
 
@@ -840,6 +889,14 @@ std::string MsaAlgorithm::RequiredMemoryAssignment::SourceToString(
       return "Block prefetch source buffer.";
     case Source::kBlockPrefetchSourceBufferUse:
       return "Block prefetch source buffer use.";
+    case Source::kAsyncComputationParameter:
+      return "Async computation parameter";
+    case Source::kAsyncComputationOutput:
+      return "Async computation output";
+    case Source::kAsyncInstructionOperand:
+      return "Async instruction operand";
+    case Source::kAsyncInstructionOutput:
+      return "Async instruction output";
   }
 }
 
@@ -3587,6 +3644,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   // Process colored buffers before input and output required assignments are
   // added to avoid adding conflicting required assignments.
   AddInputAndOutputRequiredAssignments();
+  AddRequiredAssignmentsForAsyncInstructions();
 
   if (VLOG_IS_ON(3) || options_.dump_fn != nullptr) {
     VLOG(3) << "Flattened instruction sequence:";
@@ -4458,14 +4516,14 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
   for (int alloc_value_idx = 0; alloc_value_idx < allocation_values.size();
        ++alloc_value_idx) {
     auto& allocation_value = allocation_values.at(alloc_value_idx);
-    VLOG(3) << alloc_value_idx + 1 << "/" << allocation_values.size()
-            << ") Allocating allocation value: "
-            << allocation_value.ToShortString();
+    LOG(ERROR) << alloc_value_idx + 1 << "/" << allocation_values.size()
+               << ") Allocating allocation value: "
+               << allocation_value.ToShortString();
 
     if (IsInstructionPendingReplacements(
             allocation_value.defining_instruction())) {
-      VLOG(3) << "Skip allocating allocation value "
-              << allocation_value.ToShortString();
+      LOG(ERROR) << "Skip allocating allocation value "
+                 << allocation_value.ToShortString();
       continue;
     }
 
@@ -4473,8 +4531,8 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
             << RequiresNoCopyAlternateMemAllocation(allocation_value);
     if (RequiresNoCopyAlternateMemAllocation(allocation_value) &&
         allocation_value.size() > available_heap_size()) {
-      VLOG(3) << "Skip " << allocation_value.value()->ToShortString()
-              << " because the buffer is larger than the heap size.";
+      LOG(ERROR) << "Skip " << allocation_value.value()->ToShortString()
+                 << " because the buffer is larger than the heap size.";
       continue;
     }
 
@@ -4489,11 +4547,11 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
           allocation_values.at(entry.allocation_value_to_update_idx);
       std::string extension_only_hint_str =
           entry.only_extend_existing_allocation ? " (extension only): " : ": ";
-      VLOG(3) << "Working on use" << extension_only_hint_str
-              << use.hlo_use.ToString()
-              << ", allocation value: " << allocation_value.ToShortString()
-              << ", updates allocation value: "
-              << allocation_value_to_update.ToShortString();
+      LOG(ERROR) << "Working on use" << extension_only_hint_str
+                 << use.hlo_use.ToString()
+                 << ", allocation value: " << allocation_value.ToShortString()
+                 << ", updates allocation value: "
+                 << allocation_value_to_update.ToShortString();
 
       if (!definition_time_for_allocation_value.contains(
               &allocation_value_to_update)) {
@@ -4504,7 +4562,6 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
             allocation_value_to_update, definition_time_for_allocation_value.at(
                                             &allocation_value_to_update));
       }
-
       if (!preferred_offset_for_allocation_value.contains(
               &allocation_value_to_update)) {
         auto preferred_offset_it = preferred_offset_for_computation.find(
@@ -5917,13 +5974,41 @@ void MsaAlgorithm::AddRequiredAssignment(
       RequiredMemoryAssignmentAt(value, time);
 
   if (existing_required_assignment.has_value()) {
-    CHECK(required_assignment.memory_space_and_offset_equal(
-        existing_required_assignment.value()))
+    bool compatible = false;
+    if (required_assignment.memory_space ==
+        existing_required_assignment->memory_space) {
+      if (existing_required_assignment->offset == nullptr ||
+          required_assignment.offset == nullptr ||
+          existing_required_assignment->offset->offset ==
+              required_assignment.offset->offset) {
+        compatible = true;
+      }
+    }
+    CHECK(compatible)
         << "Failed to add required assignment due to a conflict. Existing "
            "required assignment: "
         << existing_required_assignment.value().ToString()
         << "; new required assignment: " << required_assignment.ToString()
         << "; hlo value: " << value->ToShortString();
+
+    if (existing_required_assignment->offset == nullptr &&
+        required_assignment.offset != nullptr) {
+      VLOG(3) << "Updating existing required assignment with offset: "
+              << required_assignment.offset->offset;
+      auto& assignments = required_assignments_[value];
+      auto it = absl::c_find_if(
+          assignments, [&](const RequiredMemoryAssignment& assignment) {
+            return assignment.time == time;
+          });
+      CHECK(it != assignments.end());
+      it->offset = required_assignment.offset;
+
+      for (auto& pending : pending_required_assignments_) {
+        if (pending.first == value && pending.second.time == time) {
+          pending.second.offset = required_assignment.offset;
+        }
+      }
+    }
     VLOG(3) << "Not adding required assignment because there is one already: "
             << value->ToShortString()
             << " required assignment: " << required_assignment.ToString();
@@ -6012,6 +6097,12 @@ void MsaAlgorithm::AddInputAndOutputRequiredAssignments() {
       root_instruction->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) {
         MemorySpace memory_space = MemorySpace::kDefault;
+        if (subshape.has_layout()) {
+          LOG(ERROR) << "Root subshape has layout, memory space = "
+                     << subshape.layout().memory_space();
+        } else {
+          LOG(ERROR) << "Root subshape has NO layout";
+        }
         if (subshape.has_layout() && subshape.layout().memory_space() ==
                                          options_.alternate_memory_space) {
           memory_space = MemorySpace::kAlternate;
@@ -6019,10 +6110,11 @@ void MsaAlgorithm::AddInputAndOutputRequiredAssignments() {
         for (const HloBuffer* buffer :
              alias_analysis_.ComputeBuffersAt(root_instruction, index)) {
           for (const HloValue* value : buffer->values()) {
-            VLOG(3) << "Adding required assignment for output value = "
-                    << value->ToShortString()
-                    << " time = " << root_instruction_time << " space = "
-                    << (memory_space == MemorySpace::kDefault ? "def" : "alt");
+            LOG(ERROR) << "Adding required assignment for output value = "
+                       << value->ToShortString()
+                       << " time = " << root_instruction_time << " space = "
+                       << (memory_space == MemorySpace::kDefault ? "def"
+                                                                 : "alt");
             AddRequiredAssignment(
                 value, root_instruction, memory_space, root_instruction_time,
                 RequiredMemoryAssignment::Source::kProgramOutput,
@@ -6100,6 +6192,130 @@ void MsaAlgorithm::AddInputAndOutputRequiredAssignments() {
         required_assignments.push_back(
             {MemorySpace::kDefault, instruction_time});
       }
+    }
+  }
+}
+
+void MsaAlgorithm::AddRequiredAssignmentsForAsyncInstructions() {
+  const HloModule& module = alias_analysis_.dataflow_analysis().module();
+  const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+
+  // Find all async computations.
+  absl::flat_hash_set<const HloComputation*> async_computations;
+  for (const HloComputation* computation : module.MakeNonfusionComputations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kAsyncStart ||
+          instruction->opcode() == HloOpcode::kAsyncUpdate) {
+        for (const HloComputation* called_computation :
+             instruction->called_computations()) {
+          async_computations.insert(called_computation);
+        }
+      }
+    }
+  }
+
+  for (const HloComputation* async_comp : async_computations) {
+    // 1. Pin parameters of async computation.
+    for (HloInstruction* param_inst : async_comp->parameter_instructions()) {
+      auto param_inst_it = instruction_schedule.find(param_inst);
+      if (param_inst_it == instruction_schedule.end()) {
+        continue;
+      }
+      int64_t param_inst_time = param_inst_it->second;
+      ShapeUtil::ForEachSubshape(param_inst->shape(), [&](const Shape& subshape,
+                                                          const ShapeIndex&
+                                                              index) {
+        MemorySpace memory_space = MemorySpace::kDefault;
+        if (subshape.has_layout() && subshape.layout().memory_space() ==
+                                         options_.alternate_memory_space) {
+          memory_space = MemorySpace::kAlternate;
+        }
+        for (const HloBuffer* buffer :
+             alias_analysis_.ComputeBuffersAt(param_inst, index)) {
+          for (const HloValue* value : buffer->values()) {
+            VLOG(3) << "Adding required assignment for async param value = "
+                    << value->ToShortString() << " time = " << param_inst_time
+                    << " space = "
+                    << (memory_space == MemorySpace::kDefault ? "def" : "alt");
+            AddRequiredAssignment(
+                value, param_inst, memory_space, param_inst_time,
+                RequiredMemoryAssignment::Source::kAsyncComputationParameter,
+                /*offset=*/nullptr,
+                /*add_to_pending=*/false);
+
+            // Pin all uses of this value that are operands of
+            // async-start/update.
+            for (const HloUse& use : value->GetUses()) {
+              if (use.instruction->opcode() == HloOpcode::kAsyncStart ||
+                  use.instruction->opcode() == HloOpcode::kAsyncUpdate) {
+                int64_t use_time = GetCorrectedUseTime(use);
+                VLOG(3)
+                    << "Adding required assignment for async operand value = "
+                    << value->ToShortString() << " time = " << use_time
+                    << " space = "
+                    << (memory_space == MemorySpace::kDefault ? "def" : "alt");
+                AddRequiredAssignment(
+                    value, use.instruction, memory_space, use_time,
+                    RequiredMemoryAssignment::Source::kAsyncInstructionOperand,
+                    /*offset=*/nullptr,
+                    /*add_to_pending=*/false);
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // 2. Pin root of async computation.
+    HloInstruction* root_inst = async_comp->root_instruction();
+    auto root_inst_it = instruction_schedule.find(root_inst);
+    if (root_inst_it != instruction_schedule.end()) {
+      int64_t root_inst_time = root_inst_it->second;
+      ShapeUtil::ForEachSubshape(root_inst->shape(), [&](const Shape& subshape,
+                                                         const ShapeIndex&
+                                                             index) {
+        MemorySpace memory_space = MemorySpace::kDefault;
+        if (subshape.has_layout() && subshape.layout().memory_space() ==
+                                         options_.alternate_memory_space) {
+          memory_space = MemorySpace::kAlternate;
+        }
+        for (const HloBuffer* buffer :
+             alias_analysis_.ComputeBuffersAt(root_inst, index)) {
+          for (const HloValue* value : buffer->values()) {
+            VLOG(3) << "Adding required assignment for async root value = "
+                    << value->ToShortString() << " time = " << root_inst_time
+                    << " space = "
+                    << (memory_space == MemorySpace::kDefault ? "def" : "alt");
+            AddRequiredAssignment(
+                value, root_inst, memory_space, root_inst_time,
+                RequiredMemoryAssignment::Source::kAsyncComputationOutput,
+                /*offset=*/nullptr,
+                /*add_to_pending=*/false);
+
+            // Pin async-done outputs.
+            for (const HloPosition& position : value->positions()) {
+              if (position.instruction->opcode() == HloOpcode::kAsyncDone) {
+                auto pos_inst_it =
+                    instruction_schedule.find(position.instruction);
+                if (pos_inst_it != instruction_schedule.end()) {
+                  int64_t pos_inst_time = pos_inst_it->second;
+                  VLOG(3) << "Adding required assignment for async done output "
+                             "value = "
+                          << value->ToShortString()
+                          << " time = " << pos_inst_time << " space = "
+                          << (memory_space == MemorySpace::kDefault ? "def"
+                                                                    : "alt");
+                  AddRequiredAssignment(
+                      value, position.instruction, memory_space, pos_inst_time,
+                      RequiredMemoryAssignment::Source::kAsyncInstructionOutput,
+                      /*offset=*/nullptr,
+                      /*add_to_pending=*/false);
+                }
+              }
+            }
+          }
+        }
+      });
     }
   }
 }
@@ -6817,6 +7033,7 @@ void MsaAlgorithm::UpdateRequestWithDefaultMemoryColoringRequirements(
 AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   auto allocation_sequence =
       request.allocation_value->mutable_allocation_sequence();
+
   // inclusive_start_time == end_time is a special case where the value is
   // consumed multiple times by the same instruction. We can just find the
   // previous allocation and use that allocation.
@@ -7364,16 +7581,14 @@ bool MsaAlgorithm::ViolatesMaximumOutstandingAsyncCopies(
 
   // Count the prefetches/evictions in the interval tree for the given interval.
   if (is_prefetch) {
-    int64_t num_prefetches = prefetch_interval_tree_.NumChunksOverlappingInTime(
-                                 inclusive_start_time, end_time) +
-                             num_additional_copies;
-    return num_prefetches >=
+    return prefetch_interval_tree_.NumChunksOverlappingInTime(
+               inclusive_start_time, end_time) +
+               num_additional_copies >=
            options_.max_outstanding_prefetches + extra_async_copy_limit;
   }
-  int64_t num_evictions = eviction_interval_tree_.NumChunksOverlappingInTime(
-                              inclusive_start_time, end_time) +
-                          num_additional_copies;
-  return num_evictions >=
+  return eviction_interval_tree_.NumChunksOverlappingInTime(
+             inclusive_start_time, end_time) +
+             num_additional_copies >=
          options_.max_outstanding_evictions + extra_async_copy_limit;
 }
 

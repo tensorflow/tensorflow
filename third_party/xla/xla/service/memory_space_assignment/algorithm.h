@@ -517,6 +517,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       kProgramInput,
       kBlockPrefetchSourceBuffer,
       kBlockPrefetchSourceBufferUse,
+      kAsyncComputationParameter,
+      kAsyncComputationOutput,
+      kAsyncInstructionOperand,
+      kAsyncInstructionOutput,
     };
 
     MemorySpace memory_space;
@@ -1026,6 +1030,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // that RequireConditionalOutputsInDefaultMemory() returns true for.
   void AddRequiredAssignmentsForConditionalOutputsIfNecessary(
       absl::Span<const MsaBufferInterval* const> colocated_intervals);
+
+  // Adds required assignments for async instructions.
+  void AddRequiredAssignmentsForAsyncInstructions();
 
   // Propagates aliased required assignment for a given position.
   void AddAliasedRequiredAssignment(

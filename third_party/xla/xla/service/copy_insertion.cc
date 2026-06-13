@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -204,10 +205,10 @@ bool IsImplicitNonCopyable(const HloInstruction* instruction) {
   // all ops in HloDataflowAnalysis::IsAsynchronousOperationStart.
   //
   // TODO(bixia): Handle ops that may modify its operand and add kCopyStart
-  // here.
   HloOpcode opcode = instruction->opcode();
   return opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
-         opcode == HloOpcode::kCopyStart;
+         opcode == HloOpcode::kCopyStart || opcode == HloOpcode::kAsyncStart ||
+         opcode == HloOpcode::kAsyncUpdate;
 }
 
 // Returns whether the instruction produces explicit buffer values or uses
@@ -258,12 +259,18 @@ bool IsNonCopyableInWhileInit(const HloInstruction* while_init,
     return true;
   }
 
-  if (index.empty()) {
-    return false;
+  const HloInstruction* element = while_init;
+  for (int64_t i : index) {
+    if (IsImplicitNonCopyable(element)) {
+      return true;
+    }
+    if (element->opcode() != HloOpcode::kTuple ||
+        i >= element->operand_count()) {
+      return false;
+    }
+    element = element->operand(i);
   }
-  int64_t i = index.front();
-  return i < while_init->operand_count() &&
-         IsImplicitNonCopyable(while_init->operand(i));
+  return IsImplicitNonCopyable(element);
 }
 
 // Compute the indices of the loop state which need copies in order to avoid
@@ -1180,16 +1187,59 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
         // times by recording and checking the operand number of operands that
         // have been copied.
         absl::flat_hash_set<int64_t> copied_operands;
+        HloOpcode op_code = instruction->opcode();
+        int64_t nr_previous_bound_operands = 0;
+        const HloInstruction* instr_to_get_aliases = instruction;
+        if (op_code == HloOpcode::kAsyncStart ||
+            op_code == HloOpcode::kAsyncUpdate) {
+          // No operands bound, so we don't need to insert copies for them.
+          if ((op_code == HloOpcode::kAsyncStart &&
+               instruction->operand_count() == 0) ||
+              (op_code == HloOpcode::kAsyncUpdate &&
+               instruction->operand_count() == 1)) {
+            continue;
+          }
+
+          instr_to_get_aliases = instruction->async_wrapped_instruction();
+          if (op_code == HloOpcode::kAsyncUpdate) {
+            CHECK_GE(instruction->operand_count(), 2);
+            nr_previous_bound_operands =
+                xla::hlo_instruction_utils::async::GetAsyncBoundOperands(
+                    instruction->operand(0))
+                    .size();
+          }
+        }
+
         for (const auto& operand_and_output_index :
-             alias_info_->GetInPlaceInputOutputPairs(
-                 // Input/output buffer aliasing analysis needs to be done
-                 // directly with the wrapped instruction when the compiler sees
-                 // an async box.
-                 instruction->opcode() == HloOpcode::kAsyncStart
-                     ? instruction->async_wrapped_instruction()
-                     : instruction)) {
+             alias_info_->GetInPlaceInputOutputPairs(instr_to_get_aliases)) {
           const HloOperandIndex& operand_index = operand_and_output_index.first;
-          if (copied_operands.contains(operand_index.operand_number)) {
+          int64_t logical_operand_number = operand_index.operand_number;
+          int64_t operand_index_in_this_intr = logical_operand_number;
+
+          if (op_code == HloOpcode::kAsyncUpdate ||
+              op_code == HloOpcode::kAsyncStart) {
+            int64_t async_base_operand_idx =
+                (op_code == HloOpcode::kAsyncUpdate) ? 1 : 0;
+            int64_t nr_operands_bound_in_this_intr =
+                instruction->operand_count() - async_base_operand_idx;
+
+            if (logical_operand_number >= nr_previous_bound_operands &&
+                logical_operand_number < nr_previous_bound_operands +
+                                             nr_operands_bound_in_this_intr) {
+              operand_index_in_this_intr =
+                  async_base_operand_idx +
+                  (logical_operand_number - nr_previous_bound_operands);
+            } else {
+              continue;
+            }
+          }
+
+          if (copied_operands.contains(operand_index_in_this_intr)) {
+            continue;
+          }
+          if ((op_code == HloOpcode::kAsyncUpdate ||
+               op_code == HloOpcode::kAsyncDone) &&
+              operand_index_in_this_intr == 0) {
             continue;
           }
 
@@ -1201,15 +1251,15 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
           // *) All uses of the operand are 'instruction'.
           if (HasDisjointReadWriteRegionsAttr(instruction) &&
               absl::c_all_of(
-                  instruction->operand(operand_index.operand_number)->users(),
+                  instruction->operand(operand_index_in_this_intr)->users(),
                   [&instruction](const HloInstruction* user) {
                     return user == instruction;
                   })) {
             continue;
           }
-          copied_operands.insert(operand_index.operand_number);
+          copied_operands.insert(operand_index_in_this_intr);
           RETURN_IF_ERROR(AddCopiesForInPlaceOperation(
-              *alias_analysis, instruction, operand_index.operand_number));
+              *alias_analysis, instruction, operand_index_in_this_intr));
         }
       }
     }
@@ -1288,6 +1338,11 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
         if (!use.instruction->IsCustomCall(kPinCustomCallTarget) &&
             use.instruction == position.instruction) {
           VLOG(3) << "Same instruction: " << position.instruction->ToString();
+          if ((use.instruction->opcode() == HloOpcode::kAsyncUpdate ||
+               use.instruction->opcode() == HloOpcode::kAsyncDone) &&
+              use.operand_number == 0) {
+            continue;
+          }
           if (!alias_analysis->dataflow_analysis()
                    .CanShareOperandBufferWithUser(
                        /*operand=*/use.instruction->mutable_operand(
