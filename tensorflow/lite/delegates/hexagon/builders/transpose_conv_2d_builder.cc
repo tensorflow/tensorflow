@@ -197,7 +197,7 @@ TfLiteStatus TransposeConv2dOpBuilder::RegisterOutputs(
   return kTfLiteOk;
 }
 
-TransposeConv2dOpBuilder::~TransposeConv2dOpBuilder() {}
+TransposeConv2dOpBuilder::~TransposeConv2dOpBuilder() = default;
 
 OpBuilder* CreateTransposeConv2DBuilder(GraphBuilder* graph_builder,
                                         int op_type) {
