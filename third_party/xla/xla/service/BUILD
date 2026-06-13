@@ -6741,7 +6741,10 @@ xla_cc_test(
     srcs = ["gpu_topology_test.cc"],
     deps = [
         ":gpu_topology",
+        ":gpu_topology_proto_cc",
         "//xla/backends/cpu:target_machine_options",
+        "//xla/service/cpu:executable_proto_cc",
+        "//xla/stream_executor/cuda:cuda_compute_capability_proto_cc",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
