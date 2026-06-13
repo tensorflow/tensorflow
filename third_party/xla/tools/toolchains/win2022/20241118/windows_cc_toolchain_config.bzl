@@ -1389,10 +1389,12 @@ def _impl(ctx):
                 sysroot_feature,
             ]
 
-    tool_paths = [
+    tool_paths_attr = [
         tool_path(name = name, path = path)
         for name, path in ctx.attr.tool_paths.items()
     ]
+    if ctx.attr.compiler == "clang-cl":
+        tool_paths_attr.append(tool_path(name = "clang-cl-wrapper.bat", path = "clang-cl-wrapper.bat"))
 
     return cc_common.create_cc_toolchain_config_info(
         ctx = ctx,
@@ -1408,7 +1410,7 @@ def _impl(ctx):
         compiler = ctx.attr.compiler,
         abi_version = ctx.attr.abi_version,
         abi_libc_version = ctx.attr.abi_libc_version,
-        tool_paths = tool_paths,
+        tool_paths = tool_paths_attr,
     )
 
 cc_toolchain_config = rule(
