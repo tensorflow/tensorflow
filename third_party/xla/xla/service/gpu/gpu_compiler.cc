@@ -146,6 +146,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/topk_specializer.h"
 #include "xla/backends/gpu/transforms/topk_splitter.h"
 #include "xla/backends/gpu/transforms/tree_reduction_rewriter.h"
+#include "xla/backends/gpu/transforms/triton_collective_fusion.h"
 #include "xla/backends/gpu/transforms/triton_fusion_numerics_verifier.h"
 #include "xla/backends/gpu/transforms/windowed_einsum_handler.h"
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
@@ -1927,6 +1928,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       pipeline.AddPass<GemmFusion>(gpu_version);
       pipeline.AddPass<HoistFusedBitcasts>();
       pipeline.AddPass<GemmFusionSwapOperands>();
+      pipeline.AddPass<TritonCollectiveFusion>(
+          gpu_target_config.device_description);
     }
 
     // Rewrite GEMMs into custom calls.

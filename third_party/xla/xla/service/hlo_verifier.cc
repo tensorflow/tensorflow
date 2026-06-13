@@ -2713,13 +2713,23 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
           break;
         }
         case HloOpcode::kAllReduceStart: {
-          RETURN_IF_ERROR(
-              VerifySingleUser(instruction, {HloOpcode::kAllReduceDone}));
+          if (!instruction->parent()->IsFusionComputation()) {
+            RETURN_IF_ERROR(
+                VerifySingleUser(instruction, {HloOpcode::kAllReduceDone}));
+          }
           break;
         }
         case HloOpcode::kAllReduceDone: {
-          RETURN_IF_ERROR(
-              VerifySingleOperand(instruction, {HloOpcode::kAllReduceStart}));
+          const HloInstruction* operand = instruction->operand(0);
+          if (operand->opcode() == HloOpcode::kFusion) {
+            const HloInstruction* fused_root = operand->fused_expression_root();
+            TF_RET_CHECK(fused_root->opcode() == HloOpcode::kAllReduceStart)
+                << "Fusion operand of AllReduceDone must have AllReduceStart "
+                   "as root";
+          } else {
+            RETURN_IF_ERROR(
+                VerifySingleOperand(instruction, {HloOpcode::kAllReduceStart}));
+          }
           break;
         }
         case HloOpcode::kAllGatherStart: {

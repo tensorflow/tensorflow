@@ -215,6 +215,33 @@ CHECK: ROOT {{.*}} = f32[1024,2048]{1,0} reduce
                   .value_or(false));
 }
 
+TEST_F(SplitkRewriterTest, B200DecodeGemmSplitK) {
+  se::DeviceDescription b200_desc = TestGpuDeviceInfo::B200SXMDeviceInfo();
+  SplitkRewriter splitk_rewriter(b200_desc);
+
+  const char* hlo_string = R"(
+HloModule decode_gemm
+
+ENTRY test {
+  lhs = f32[1,4096]{1,0} parameter(0)
+  rhs = f32[4096,4096]{1,0} parameter(1)
+  ROOT dot = f32[1,4096]{1,0} dot(lhs, rhs),
+                              lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          splitk_rewriter.HloModulePass::Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_TRUE(RunFileCheck(module->ToString(), R"(
+CHECK: dot({{.*}}), lhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+CHECK: ROOT {{.*}} = f32[1,4096]{1,0} reduce
+  )")
+                  .value_or(false));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
