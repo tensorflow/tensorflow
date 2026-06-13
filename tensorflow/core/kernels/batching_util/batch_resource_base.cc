@@ -29,7 +29,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/fixed_array.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -42,13 +41,10 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "xla/tsl/platform/criticality.h"
-#include "tensorflow/core/common_runtime/cost_constants.h"
 #include "tensorflow/core/common_runtime/cost_measurement.h"
-#include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/cost_util.h"
 #include "tensorflow/core/common_runtime/request_cost.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor.h"
-#include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -56,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/kernels/batching_util/batch_cost_utils.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
 #include "tensorflow/core/kernels/batching_util/batch_stats.h"
@@ -336,23 +333,6 @@ void RecordBatchParamAllowedBatchSizes(const std::string& allowed_batch_sizes,
       "Tracks the sizes that are allowed to form a batch.", "model_name",
       "op_name");
   cell->GetCell(model_name, op_name)->Set(allowed_batch_sizes);
-}
-
-void RecordBatchCosts(const std::string& model_name,
-                      const int64_t processed_size,
-                      const absl::string_view cost_type,
-                      const absl::Duration total_cost) {
-  static auto* cell = tensorflow::monitoring::Sampler<3>::New(
-      {"/tensorflow/serving/batching/costs",
-       "Tracks the batch costs (in microseconds) by model name and processed "
-       "size.",
-       "model_name", "processed_size", "cost_type"},
-      // It's 27 buckets with the last bucket being 2^26 to DBL_MAX;
-      // so the limits are [1, 2, 4, 8, ..., 64 * 1024 * 1024 (~64s), DBL_MAX].
-      monitoring::Buckets::Exponential(1, 2, 27));
-  cell->GetCell(model_name, std::to_string(processed_size),
-                std::string(cost_type))
-      ->Add(absl::ToDoubleMicroseconds(total_cost));
 }
 
 const std::string& GetModelName(OpKernelContext* ctx) {
@@ -1456,82 +1436,6 @@ std::optional<absl::Duration> BatchResourceBase::GetBatchTimeout() const {
         adaptive_batcher_queue_options_.batch_timeout_micros);
   }
   return std::nullopt;
-}
-
-void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
-    const std::string& model_name, const std::string& op_name,
-    const std::vector<std::unique_ptr<CostMeasurement>>&
-        batch_cost_measurements,
-    const int64_t processed_size, BatchT& batch) {
-  absl::flat_hash_map<std::string, absl::Duration> batch_costs;
-  // 1. Split the batch costs to each task.
-  for (const auto& batch_cost_measurement : batch_cost_measurements) {
-    if (batch_cost_measurement->GetTotalCost() <= absl::ZeroDuration()) {
-      continue;
-    }
-    if (batch.size() == 0) {  // NOLINT: empty() checks the batch contains 0
-                              // tasks. size() gets the sum of task sizes.
-      LOG_EVERY_N_SEC(ERROR, 60)
-          << "Non-zero cost collected but the batch size is 0.";
-      return;
-    }
-    if (processed_size == 0) {
-      LOG_EVERY_N_SEC(ERROR, 60)
-          << "Non-zero cost collected but the processed size is 0.";
-      return;
-    }
-    const absl::string_view cost_type = batch_cost_measurement->GetCostType();
-    const absl::Duration total_cost = batch_cost_measurement->GetTotalCost();
-    batch_costs[cost_type] = total_cost;
-
-    // Smeared batch cost: cost for processing this batch.
-    RecordBatchCosts(model_name, processed_size,
-                     absl::StrCat(cost_type, kWithSmearSuffix), total_cost);
-    // Non-smeared batch cost: cost for processing inputs in this batch, i.e.
-    // cost for processing paddings is excluded.
-    RecordBatchCosts(model_name, processed_size,
-                     absl::StrCat(cost_type, kNoSmearSuffix),
-                     total_cost / processed_size * batch.size());
-
-    // Register batch stats for in-process use.
-    if (cost_type == kTpuCostName) {
-      ModelBatchStats& model_stats = GlobalBatchStatsRegistry().model(
-          /* model_name= */ model_name, /* op_name= */ op_name);
-      model_stats.batch_size(processed_size).tpu_cost().Register(total_cost);
-      // batch.size() is the size of the original batch before padding.
-      model_stats.RegisterProcessedSize(batch.size());
-    }
-
-    for (int i = 0; i < batch.num_tasks(); i++) {
-      RequestCost* request_cost = batch.task(i).request_cost;
-      // Skip recording the cost if the request_cost is null.
-      if (!request_cost) continue;
-
-      // Smeared cost: cost of paddings are assigned to each task.
-      const auto cost_with_smear =
-          total_cost / batch.size() * batch.task(i).size();
-
-      // Non-smeared cost: cost of paddings are not assigned to any tasks.
-      const auto cost_no_smear =
-          total_cost / processed_size * batch.task(i).size();
-
-      request_cost->RecordCost(
-          {{absl::StrCat(cost_type, kWithSmearSuffix), cost_with_smear},
-           {absl::StrCat(cost_type, kNoSmearSuffix), cost_no_smear}});
-    }
-  }
-
-  // 2. Records the batch metrics in each task.
-  const int64_t padding_size = processed_size - batch.size();
-  for (int i = 0; i < batch.num_tasks(); i++) {
-    RequestCost* request_cost = batch.task(i).request_cost;
-    // Skip recording the metrics if the request_cost is null.
-    if (!request_cost) continue;
-
-    request_cost->RecordBatchMetrics(RequestCost::BatchMetrics{
-        processed_size, static_cast<int64_t>(batch.task(i).size()),
-        padding_size, batch_costs});
-  }
 }
 
 void BatchResourceBase::RecordBatchDelayMetrics(
