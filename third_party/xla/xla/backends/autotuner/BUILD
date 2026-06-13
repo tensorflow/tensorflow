@@ -71,6 +71,7 @@ cc_library(
     srcs = ["codegen_orchestrator.cc"],
     hdrs = ["codegen_orchestrator.h"],
     deps = [
+        ":backends_proto_cc",
         ":codegen_backend",
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
