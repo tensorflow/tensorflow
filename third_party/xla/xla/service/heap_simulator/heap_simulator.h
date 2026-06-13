@@ -998,6 +998,16 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type() const;
 
   absl::flat_hash_map<const BufferType*, BufferInterval> buffer_intervals_;
+  // Tracks min start time, max end time, and max size across colocated
+  // buffers incrementally using Union-Find to avoid expensive graph traversals.
+  struct ColocationClusterInfo {
+    int64_t min_start_time = INT64_MAX;
+    int64_t max_end_time = -1;
+    int64_t max_size = -1;
+  };
+  mutable absl::node_hash_map<const BufferType*,
+                              UnionFind<ColocationClusterInfo>>
+      colocation_groups_;
   HeapResult result_;
   BufferIntervalCompare buffer_interval_compare_;
   BufferIntervalTree interval_tree_;
