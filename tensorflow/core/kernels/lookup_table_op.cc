@@ -14,18 +14,39 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/lookup_table_op.h"
+
+#include <atomic>
+#include <cstddef>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
+#include "tensorflow/core/framework/lookup_interface.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/kernels/lookup_util.h"
+#include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tsl/platform/thread_annotations.h"
 #define EIGEN_USE_THREADS
 
 #include <string>
-#include <type_traits>
-#include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/kernels/initializable_lookup_table.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/random.h"
 
 namespace tensorflow {
@@ -144,17 +165,9 @@ class MutableHashTableOfScalars final : public LookupInterface {
   TensorShape value_shape() const override { return TensorShape(); }
 
   int64_t MemoryUsed() const override {
-    int64_t ret = 0;
     tf_shared_lock l(mu_);
-    for (unsigned i = 0; i < table_.bucket_count(); ++i) {
-      size_t bucket_size = table_.bucket_size(i);
-      if (bucket_size == 0) {
-        ret++;
-      } else {
-        ret += bucket_size;
-      }
-    }
-    return sizeof(MutableHashTableOfScalars) + ret;
+    return sizeof(MutableHashTableOfScalars) +
+           table_.size() * (sizeof(K) + sizeof(V));
   }
 
   absl::Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override {
@@ -209,7 +222,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
   }
 
   mutable mutex mu_;
-  std::unordered_map<K, V> table_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<K, V> table_ TF_GUARDED_BY(mu_);
 };
 
 // Lookup table that wraps an unordered_map. Behaves identical to
@@ -607,7 +620,13 @@ class MutableDenseHashTable final : public LookupInterface {
                             const Tensor& values) override
       TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
-    num_buckets_ = keys.dim_size(0);
+    int64_t num_buckets = keys.dim_size(0);
+    if (num_buckets < 4 || ((num_buckets & (num_buckets - 1)) != 0)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Number of buckets must be at least 4 and a power of 2, got: ",
+          num_buckets));
+    }
+    num_buckets_ = num_buckets;
     key_buckets_ = keys;
     value_buckets_ = values;
     // Count the number of keys that are not the empty_key or deleted_key.
