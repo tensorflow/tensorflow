@@ -80,6 +80,7 @@ class KubernetesClusterResolver(ClusterResolver):
       rpc_layer='grpc',
       override_client=None,
       executable_location=ExecutableLocation.WITHIN_CLUSTER,
+      namespace='default',
   ):
     """Initializes a new KubernetesClusterResolver.
 
@@ -91,11 +92,9 @@ class KubernetesClusterResolver(ClusterResolver):
       job_to_label_mapping: A mapping of TensorFlow jobs to label selectors.
         This allows users to specify many TensorFlow jobs in one Cluster
         Resolver, and each job can have pods belong with different label
-        selectors. For example, a sample mapping might be
-        ```
-        {'worker': ['job-name=worker-cluster-a', 'job-name=worker-cluster-b'],
-         'ps': ['job-name=ps-1', 'job-name=ps-2']}
-        ```
+        selectors. For example, a sample mapping might be ``` {'worker':
+        ['job-name=worker-cluster-a', 'job-name=worker-cluster-b'], 'ps':
+        ['job-name=ps-1', 'job-name=ps-2']} ```
       tf_server_port: The port the TensorFlow server is listening on.
       rpc_layer: (Optional) The RPC layer TensorFlow should use to communicate
         between tasks in Kubernetes. Defaults to 'grpc'.
@@ -106,6 +105,8 @@ class KubernetesClusterResolver(ClusterResolver):
         `k8sconfig.load_incluster_config()` before using this ClusterResolver.
       executable_location: Parameter that specifies whether or not this
         TensorFlow code is running from within a K8S cluster or not.
+      namespace: (Optional) The Kubernetes namespace to scope the search for
+        pods. Defaults to 'default'.
 
     Raises:
       ImportError: If the Kubernetes Python client is not installed and no
@@ -137,6 +138,7 @@ class KubernetesClusterResolver(ClusterResolver):
     self._job_to_label_mapping = job_to_label_mapping
     self._tf_server_port = tf_server_port
     self._override_client = override_client
+    self._namespace = namespace
 
     self.task_type = None
     self.task_id = None
@@ -197,14 +199,17 @@ class KubernetesClusterResolver(ClusterResolver):
     for tf_job in self._job_to_label_mapping:
       all_pods = []
       for selector in self._job_to_label_mapping[tf_job]:
-        ret = client.list_pod_for_all_namespaces(label_selector=selector)
+        ret = client.list_namespaced_pod(
+            namespace=self._namespace, label_selector=selector
+        )
         selected_pods = []
 
         # Sort the list by the name to make sure it doesn't change call to call.
         for pod in sorted(ret.items, key=lambda x: x.metadata.name):
           if pod.status.phase == 'Running':
             selected_pods.append(
-                '%s:%s' % (pod.status.host_ip, self._tf_server_port))
+                '%s:%s' % (pod.status.pod_ip, self._tf_server_port)
+            )
           else:
             raise RuntimeError('Pod "%s" is not running; phase: "%s"' %
                                (pod.metadata.name, pod.status.phase))

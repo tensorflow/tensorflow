@@ -25,6 +25,8 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
     * Transpose now supports up to 8D tensors.
 
 ### Bug Fixes and Other Changes
+* `KubernetesClusterResolver`
+    * Improves pod discovery logic by supporting namespace scoping and using pod IPs.
 
 * `BatchFunction Operator`
     * Adds the `num_warmup_batch_threads` op attribute to support a separate thread pool for processing warmup requests.
