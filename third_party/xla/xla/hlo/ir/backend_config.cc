@@ -70,8 +70,7 @@ const std::string& BackendConfigWrapper::GetRawStringWithoutMutex() const {
     // Cache the raw string.
     raw_string_ = BackendConfigToRawString(*proto_).value();
   }
-  static const std::string* const kEmptyString = new std::string();
-  return raw_string_.empty() ? *kEmptyString : raw_string_;
+  return raw_string_;
 }
 
 absl::Status BackendConfigWrapper::GetProto(
@@ -133,21 +132,9 @@ BackendConfigWrapper& BackendConfigWrapper::operator=(
 }
 
 bool BackendConfigWrapper::operator==(const BackendConfigWrapper& other) const {
-  tsl::protobuf::Message* this_proto = nullptr;
-
-  // Do not hold two mutexes at the same time to avoid deadlocks.
-  {
-    absl::MutexLock this_lock{mutex_};
-    this_proto = proto_.get();
-  }
-
   const std::string* other_raw_string = nullptr;
   {
-    absl::MutexLock other_lock{other.mutex_};
-    if (this_proto != nullptr && other.proto_ != nullptr) {
-      using ::tsl::protobuf::util::MessageDifferencer;
-      return MessageDifferencer::Equals(*this_proto, *other.proto_);
-    }
+    absl::WriterMutexLock other_lock{other.mutex_};
     other_raw_string = &other.GetRawStringWithoutMutex();
   }
 
