@@ -376,7 +376,6 @@ class AsyncTracker {
       GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
       : get_canonical_async_op_(std::move(func)), config_(config) {}
 
- private:
   // Returns the number of "occupy" type of resources used by the instructions
   // in the given computation. Uses the scheduling information if available to
   // obtain more accurate resource usage. If an instruction uses multiple
@@ -384,6 +383,8 @@ class AsyncTracker {
   // and returned in the resulting map.
   const absl::flat_hash_map<int64_t, int64_t>& RecursivelyComputeResourceMap(
       const HloComputation* computation) const;
+
+ private:
   // Similar as above, but uses scheduling information to obtain more accurate
   // resource usage. Useful for non-fusion computations.
   // REQUIRES: The computation must be scheduled.
