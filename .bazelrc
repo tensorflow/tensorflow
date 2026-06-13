@@ -1003,6 +1003,7 @@ test:windows_x86_ml_actions_pycpp_test --config=windows_x86_cpu_2022_pycpp_test
 # seems it is this way because these flags are old and predate the distinction
 # between host and execution platform.
 common:cross_compile_base --config=clang_local
+common:cross_compile_base --incompatible_enable_cc_toolchain_resolution
 common:cross_compile_base --host_cpu=k8
 common:cross_compile_base --host_crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 common:cross_compile_base --extra_execution_platforms=//tensorflow/tools/toolchains/cross_compile/config:linux_x86_64
@@ -1067,5 +1068,10 @@ test:rbe_cross_compile_macos_x86 --jobs=100
 
 # Enable Java 21 language features
 common --java_runtime_version=remotejdk_21
+
+# Workaround for rules_cc 0.2.18 upgrade autoload cycle
+# This exact behavior is documented under http://b/458493873 (GitHub Issue #27582
+#   https://github.com/bazelbuild/bazel/issues/27582)
+common --repositories_without_autoloads=cc_compatibility_proxy
 
 # LINT.ThenChange(//xla/tensorflow.bazelrc)
