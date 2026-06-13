@@ -62,6 +62,17 @@ class CumulativeLogsumexpTest(test.TestCase):
     self._testLogSumExpAllArgs(x, use_gpu=False)
     self._testLogSumExpAllArgs(x, use_gpu=True)
 
+  def testPlusInfinity(self):
+    for use_gpu in (False, True):
+      for dtype in (dtypes.float32, dtypes.float64):
+        with self.cached_session(use_gpu=use_gpu):
+          x = ops.convert_to_tensor(
+              np.array([[np.inf], [np.inf], [np.inf]]), dtype=dtype)
+          result = self.evaluate(math_ops.cumulative_logsumexp(x, axis=0))
+        self.assertAllEqual(
+            np.array([[np.inf], [np.inf], [np.inf]]), result,
+            msg=f"Expected +inf outputs for all-inf input, got {result}")
+
   def test1D(self):
     x = np.arange(10) / 10.0 - 0.5
     self._testLogSumExpAllArgs(x, use_gpu=False)
