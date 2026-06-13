@@ -647,6 +647,8 @@ def standardize_input_data(data,
           data_shape = tuple(tensorshape.as_list())
         elif is_composite_or_composite_value(data[i]):
           tensorshape = get_composite_shape(data[i])
+          if not tensorshape:
+            continue
           data_shape = tuple(tensorshape.as_list())
         else:
           data_shape = data[i].shape
