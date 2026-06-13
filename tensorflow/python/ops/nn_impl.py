@@ -17,9 +17,12 @@
 import math
 import warnings
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import candidate_sampling_ops
@@ -1261,6 +1264,13 @@ def moments(
       "keepdims", keepdims, "keep_dims", keep_dims)
   if keep_dims is None:
     keep_dims = False
+  if isinstance(axes, (tensor_lib.Tensor, variables.Variable)):
+    if context.executing_eagerly():
+      axes = axes.numpy().tolist()
+    else:
+      axes_const = tensor_util.constant_value(axes)
+      if axes_const is not None:
+        axes = axes_const.tolist()
   with ops.name_scope(name, "moments", [x, axes]):
     # The dynamic range of fp16 is too limited to support the collection of
     # sufficient statistics. As a workaround we simply perform the operations
@@ -1278,8 +1288,12 @@ def moments(
         keepdims=True,
         name="variance")
     if not keep_dims:
-      mean = array_ops.squeeze(mean, axes)
-      variance = array_ops.squeeze(variance, axes)
+      if isinstance(axes, (tensor_lib.Tensor, variables.Variable)):
+        mean = math_ops.reduce_sum(mean, axes, keepdims=False)
+        variance = math_ops.reduce_sum(variance, axes, keepdims=False)
+      else:
+        mean = array_ops.squeeze(mean, axes)
+        variance = array_ops.squeeze(variance, axes)
     if x.dtype == dtypes.float16:
       return (math_ops.cast(mean, dtypes.float16),
               math_ops.cast(variance, dtypes.float16))
@@ -1347,6 +1361,13 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
       "keepdims", keepdims, "keep_dims", keep_dims)
   if keep_dims is None:
     keep_dims = False
+  if isinstance(axes, (tensor_lib.Tensor, variables.Variable)):
+    if context.executing_eagerly():
+      axes = axes.numpy().tolist()
+    else:
+      axes_const = tensor_util.constant_value(axes)
+      if axes_const is not None:
+        axes = axes_const.tolist()
   with ops.name_scope(name, "weighted_moments", [x, frequency_weights, axes]):
     x = ops.convert_to_tensor(x, name="x")
     frequency_weights = ops.convert_to_tensor(
@@ -1390,9 +1411,14 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
     weighted_variance = math_ops.div_no_nan(weighted_distsq, sum_of_weights)
 
     if not keep_dims:
-      weighted_mean = array_ops.squeeze(weighted_mean, axis=axes)
-      weighted_variance = array_ops.squeeze(
-          weighted_variance, axis=axes)
+      if isinstance(axes, (tensor_lib.Tensor, variables.Variable)):
+        weighted_mean = math_ops.reduce_sum(weighted_mean, axes, keepdims=False)
+        weighted_variance = math_ops.reduce_sum(
+            weighted_variance, axes, keepdims=False
+        )
+      else:
+        weighted_mean = array_ops.squeeze(weighted_mean, axis=axes)
+        weighted_variance = array_ops.squeeze(weighted_variance, axis=axes)
 
     if needs_cast:
       weighted_mean = math_ops.cast(weighted_mean, dtypes.float16)
