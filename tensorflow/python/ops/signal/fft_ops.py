@@ -497,8 +497,14 @@ def _rfft_grad_helper(rank, irfft_fn):
     fft_length = op.inputs[1]
     complex_dtype = grad.dtype
     real_dtype = complex_dtype.real_dtype
-    input_shape = _array_ops.shape(op.inputs[0])
+    original_input_shape = _array_ops.shape(op.inputs[0])
     is_even = _math_ops.cast(1 - (fft_length[-1] % 2), complex_dtype)
+
+    # Internal FFT input shape
+    input_shape = _array_ops.concat([
+        original_input_shape[:-rank],
+        _math_ops.minimum(original_input_shape[-rank:], fft_length)
+    ], 0)
 
     def _tile_for_broadcasting(matrix, t):
       expanded = _array_ops.reshape(
@@ -562,10 +568,16 @@ def _rfft_grad_helper(rank, irfft_fn):
     # factor, plus some additional terms to make up for the components dropped
     # due to Hermitian symmetry.
     input_size = _math_ops.cast(
-        _fft_size_for_grad(op.inputs[0], rank), real_dtype)
+          _math_ops.reduce_prod(input_shape[-rank:]), real_dtype)
     the_irfft = irfft_fn(grad, fft_length)
-    return 0.5 * (the_irfft * input_size + _math_ops.real(extra_terms)), None
-
+    return (
+        _maybe_pad_for_rfft(
+            0.5 * (the_irfft * input_size + _math_ops.real(extra_terms)),
+            rank,
+            original_input_shape,
+        ),
+        None,
+    )
   return _grad
 
 
@@ -590,7 +602,11 @@ def _irfft_grad_helper(rank, rfft_fn):
     elif real_dtype == _dtypes.float64:
       complex_dtype = _dtypes.complex128
     is_odd = _math_ops.mod(fft_length[-1], 2)
-    input_last_dimension = _array_ops.shape(op.inputs[0])[-1]
+    original_input_shape = _array_ops.shape(op.inputs[0])
+    input_last_dimension = _math_ops.minimum(
+        original_input_shape[-1],
+        fft_length[-1]//2 + 1
+    )
     mask = _array_ops.concat(
         [[1.0], 2.0 * _array_ops.ones(
             [input_last_dimension - 2 + is_odd], real_dtype),
@@ -604,8 +620,15 @@ def _irfft_grad_helper(rank, rfft_fn):
     # symmetric components of the RFFT by a factor of two, since these
     # components are de-duplicated in the RFFT.
     the_rfft = rfft_fn(grad, fft_length)
-    return the_rfft * _math_ops.cast(rsize * mask, complex_dtype), None
-
+    return (
+        _maybe_pad_for_rfft(
+            the_rfft
+            * _math_ops.cast(rsize * mask, complex_dtype),
+            rank,
+            original_input_shape,
+        ),
+        None,
+    )
   return _grad
 
 
