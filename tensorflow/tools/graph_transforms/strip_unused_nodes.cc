@@ -36,14 +36,14 @@ absl::Status TypeForPlaceholder(const TransformFuncContext& context,
   // Check to see if we have been given a default for all placeholders.
   if (context.params.count("type")) {
     if (context.params.at("type").size() != 1) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "You must pass no more than one default 'type' to "
           "strip_unused_nodes");
     }
     const std::string& type_string = context.params.at("type")[0];
     if (!DataTypeFromString(type_string, result)) {
-      return errors::InvalidArgument("Couldn't understand type argument '",
-                                     type_string, "'");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Couldn't understand type argument '", type_string, "'"));
     }
   }
 
@@ -53,7 +53,7 @@ absl::Status TypeForPlaceholder(const TransformFuncContext& context,
         !context.params.count("type_for_name") ||
         (context.params.at("type_for_name").size() !=
          context.params.at("name").size())) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "You must pass a 'type_for_name' arg for every 'name', e.g. "
           "strip_unused_nodes(name=foo, type_for_name=float, name=bar, "
           "type_for_name=quint8");
@@ -63,8 +63,8 @@ absl::Status TypeForPlaceholder(const TransformFuncContext& context,
       if (context.params.at("name")[i] == node_name) {
         const std::string& type_string = context.params.at("type_for_name")[i];
         if (!DataTypeFromString(type_string, result)) {
-          return errors::InvalidArgument("Couldn't understand type argument '",
-                                         type_string, "'");
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Couldn't understand type argument '", type_string, "'"));
         }
       }
     }
@@ -82,7 +82,7 @@ absl::Status ShapeForPlaceholder(const TransformFuncContext& context,
   // Check to see if we have been given a default for all placeholders.
   if (context.params.count("shape")) {
     if (context.params.at("shape").size() != 1) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "You must pass no more than one default 'shape' to "
           "strip_unused_nodes");
     }
@@ -96,7 +96,7 @@ absl::Status ShapeForPlaceholder(const TransformFuncContext& context,
         !context.params.count("shape_for_name") ||
         (context.params.at("shape_for_name").size() !=
          context.params.at("name").size())) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "You must pass a 'shape_for_name' arg for every 'name', e.g. "
           "strip_unused_nodes(name=foo, shape_for_name=\"2,2,1\", name=bar, "
           "shape_for_name=\"1\"");
@@ -146,8 +146,8 @@ absl::Status StripUnusedNodes(const GraphDef& input_graph_def,
         continue;
       }
       if (!node_lookup.count(current_input)) {
-        return errors::InvalidArgument("Input node ", current_input,
-                                       " not found in graph");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Input node ", current_input, " not found in graph"));
       }
       const NodeDef* current_node = node_lookup[current_input];
       for (const std::string& input_name : current_node->input()) {
