@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -20,11 +21,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape_util.h"
@@ -37,6 +40,23 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+bool IsFloatingPointType(xla::PrimitiveType type) {
+  return xla::primitive_util::IsFloatingPointType(type);
+}
+
+// Reorders feature-group convolution output to extract_patches layout.
+xla::XlaOp ReshapeConvToPatches(xla::XlaBuilder* builder, xla::XlaOp conv,
+                                int64_t depth, int64_t kernel_size) {
+  std::vector<int64_t> conv_dims =
+      xla::SpanToVector(builder->GetShape(conv).value().dimensions());
+  conv_dims.back() = depth;
+  conv_dims.push_back(kernel_size);
+  conv = xla::TransposeInMinorDims(xla::Reshape(conv, conv_dims));
+  conv_dims.pop_back();
+  conv_dims.back() *= kernel_size;
+  return xla::Reshape(conv, conv_dims);
+}
 
 class ExtractImagePatchesOp : public XlaOpKernel {
  public:
@@ -168,20 +188,45 @@ class ExtractImagePatchesOp : public XlaOpKernel {
                    &padding[i].first, &padding[i].second));
     }
 
-    xla::XlaOp conv =
-        xla::ConvGeneralDilated(ctx->Input(0), filter, window_strides, padding,
-                                lhs_dilation, rhs_dilation, dims, depth);
-    // Feature group convolution, will end up with the kernel_size change more
-    // rapidly than the depth. Reshape, transpose and reshape to reorder them.
-    std::vector<int64_t> conv_dims =
-        xla::SpanToVector(builder->GetShape(conv).value().dimensions());
-    conv_dims.back() = depth;
-    conv_dims.push_back(kernel_size);
-    conv = xla::TransposeInMinorDims(xla::Reshape(conv, conv_dims));
-    conv_dims.pop_back();
-    conv_dims.back() *= kernel_size;
-    conv = xla::Reshape(conv, conv_dims);
-    ctx->SetOutput(0, conv);
+    xla::XlaOp input = ctx->Input(0);
+    xla::XlaOp output;
+
+    if (IsFloatingPointType(type)) {
+      // One-hot conv computes sum(w_i * x_i). IEEE 0*NaN poisons the sum even
+      // when w_i=0, unlike eager im2col which copies a single index per patch.
+      xla::XlaOp is_nan = xla::IsNan(input);
+      xla::XlaOp zero =
+          xla::ConvertElementType(xla::ConstantR0<int32_t>(builder, 0), type);
+      xla::XlaOp input_safe = xla::Select(is_nan, zero, input);
+
+      xla::XlaOp conv_out = xla::ConvGeneralDilated(
+          input_safe, filter, window_strides, padding, lhs_dilation,
+          rhs_dilation, dims, depth);
+      conv_out = ReshapeConvToPatches(builder, conv_out, depth, kernel_size);
+
+      xla::XlaOp is_nan_as_input_type =
+          xla::ConvertElementType(is_nan, type);
+      xla::XlaOp nan_indicator = xla::ConvGeneralDilated(
+          is_nan_as_input_type, filter, window_strides, padding, lhs_dilation,
+          rhs_dilation, dims, depth);
+      nan_indicator =
+          ReshapeConvToPatches(builder, nan_indicator, depth, kernel_size);
+
+      xla::XlaOp nan_value =
+          FloatLiteral(builder, type, std::numeric_limits<double>::quiet_NaN());
+      output = xla::Select(
+          xla::Gt(nan_indicator, zero),
+          xla::Broadcast(nan_value,
+                         builder->GetShape(conv_out).value().dimensions()),
+          conv_out);
+    } else {
+      xla::XlaOp conv = xla::ConvGeneralDilated(
+          input, filter, window_strides, padding, lhs_dilation, rhs_dilation,
+          dims, depth);
+      output = ReshapeConvToPatches(builder, conv, depth, kernel_size);
+    }
+
+    ctx->SetOutput(0, output);
   }
 
  protected:
