@@ -202,6 +202,10 @@ SE_DeviceAddressAllocator ToC(
     se_allocator.deallocate = nullptr;
     return se_allocator;
   }
+  if (auto* wrapper = allocator->AsCWrapperAllocator()) {
+    CHECK_NE(wrapper->underlying_allocator(), nullptr);
+    return *wrapper->underlying_allocator();
+  }
   // N.B. Platform is assumed to be the registered backend platform.
   se_allocator.platform = nullptr;
   se_allocator.ctx = allocator;

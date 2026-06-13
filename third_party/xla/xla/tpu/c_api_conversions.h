@@ -93,21 +93,6 @@ void ToC(const xla::ShapedBuffer& buffer, XLA_ShapedBuffer* c_device_buffer);
 xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer);
 void Destroy(XLA_ShapedBuffer* c_buffer);
 
-// se::DeviceAddressBase
-SE_DeviceAddressBase ToC(const stream_executor::DeviceAddressBase& base);
-stream_executor::DeviceAddressBase FromC(const SE_DeviceAddressBase& se_base);
-void Destroy(SE_DeviceAddressBase*);
-
-// Literal
-void ToC(const xla::LiteralSlice& literal, XLA_Literal* c_literal);
-xla::MutableBorrowingLiteral FromC(XLA_Literal* c_literal);
-void Destroy(XLA_Literal* c_literal);
-
-// ShapedBuffer
-void ToC(const xla::ShapedBuffer& buffer, XLA_ShapedBuffer* c_device_buffer);
-xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer);
-void Destroy(XLA_ShapedBuffer* c_buffer);
-
 // TpuEmbeddingEngineParametersData
 struct TpuEmbeddingEngineParametersData {
   // Backing vector for struct
@@ -122,6 +107,27 @@ xla::MaybeOwningDeviceAddress FromC(
     stream_executor::DeviceAddressAllocator* allocator);
 
 // DeviceAddressAllocator
+
+// Abstract base class for C API wrapper allocators. Enables ToC to inspect
+// and unwrap the underlying C allocator structure SE_DeviceAddressAllocator.
+class CWrapperDeviceMemoryAllocator
+    : public stream_executor::DeviceAddressAllocator {
+ public:
+  explicit CWrapperDeviceMemoryAllocator(
+      const stream_executor::Platform* platform,
+      SE_DeviceAddressAllocator* allocator)
+      : stream_executor::DeviceAddressAllocator(platform), alloc_(allocator) {}
+
+  const CWrapperDeviceMemoryAllocator* AsCWrapperAllocator() const override {
+    return this;
+  }
+
+  SE_DeviceAddressAllocator* underlying_allocator() const { return alloc_; }
+
+ private:
+  SE_DeviceAddressAllocator* alloc_;
+};
+
 SE_DeviceAddressAllocator ToC(
     stream_executor::DeviceAddressAllocator* allocator);
 stream_executor::DeviceAddressAllocator* FromC(
