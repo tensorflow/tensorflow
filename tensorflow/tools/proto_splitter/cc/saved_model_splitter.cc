@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/tools/proto_splitter/cc/saved_model_splitter.h"
 
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -38,6 +39,14 @@ absl::Status SavedModelSplitter::BuildChunks() {
   SavedModel* sm = google::protobuf::DynamicCastMessage<SavedModel>(message());
   int max_size = GetMaxSize();
   if (GetInitialSize() < max_size) return absl::OkStatus();
+
+  if (sm == nullptr) {
+    return absl::InvalidArgumentError("Message is not a SavedModel.");
+  }
+
+  if (sm->meta_graphs_size() == 0) {
+    return absl::FailedPreconditionError("SavedModel has no meta graphs.");
+  }
 
   std::vector<FieldType> fields_to_graph_def = {"meta_graphs"s, 0,
                                                 "graph_def"s};
