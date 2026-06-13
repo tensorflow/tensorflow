@@ -24,6 +24,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl  # pylint: disable=unused-import
@@ -78,7 +79,7 @@ def _to_numpy(a):
   if isinstance(a, ops.EagerTensor):
     return a.numpy()
   if isinstance(a, tensor.Tensor):
-    sess = ops.get_default_session()
+    sess = stack.get_default_session()
     return sess.run(a)
   if isinstance(a, indexed_slices.IndexedSlicesValue):
     arr = np.zeros(a.dense_shape)
@@ -118,7 +119,7 @@ def _prepare(f, xs_dtypes, xs_shapes):
       for x_dtype, x_shape in zip(xs_dtypes, xs_shapes)
   ]
   y = f(*xs)
-  sess = ops.get_default_session()
+  sess = stack.get_default_session()
 
   def decorated_graph(*xs_data):
     xs_data = [_to_numpy(a) for a in xs_data]

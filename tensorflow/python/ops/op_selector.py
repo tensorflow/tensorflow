@@ -21,7 +21,7 @@ from tensorflow.python.util import object_identity
 
 def is_differentiable(op):
   try:
-    return ops._gradient_registry.lookup(op.op_def.name) is not None  # pylint: disable=protected-access
+    return ops.gradient_registry.lookup(op.op_def.name) is not None
   except LookupError:
     return False
 

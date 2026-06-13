@@ -23,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 
@@ -431,7 +432,7 @@ def recreate_saveable_objects(saveable_fn_by_name, temp_session):
         name = tensor_info["name"]
         slice_spec = tensor_info["slice_spec"]
         if not context.executing_eagerly():
-          sess = ops.get_default_session()
+          sess = stack.get_default_session()
           if sess is None:
             if temp_session[0] is not None:
               sess = temp_session[0]

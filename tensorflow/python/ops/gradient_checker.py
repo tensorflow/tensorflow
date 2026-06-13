@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
@@ -98,7 +99,7 @@ def _compute_theoretical_jacobian(x, x_shape, x_data, dy, dy_shape, dx,
   # one column of the Jacobian matrix.
   dy_data = np.zeros(dy_shape, dtype=dy.dtype.as_numpy_dtype)
   dy_data_flat = dy_data.ravel().view(dy.dtype.real_dtype.as_numpy_dtype)
-  sess = ops.get_default_session()
+  sess = stack.get_default_session()
   for col in range(dy_size):
     dy_data_flat[col] = 1
     if isinstance(dx, indexed_slices.IndexedSlices):
