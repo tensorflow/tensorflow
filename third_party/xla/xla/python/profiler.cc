@@ -247,7 +247,7 @@ NB_MODULE(_profiler, m) {
             return tensorflow::profiler::python::ProfileData(xspace);
           },
           nb::call_guard<nb::gil_scoped_release>(),
-          nb::sig("def stop_and_get_profile_data() -> ProfileData"))
+          nb::sig("def stop_and_get_profile_data(self) -> ProfileData"))
       .def("export", [](ProfilerSessionWrapper* sess, nb::bytes xspace,
                         const std::string& tensorboard_dir) {
         tensorflow::profiler::XSpace xspace_proto;
