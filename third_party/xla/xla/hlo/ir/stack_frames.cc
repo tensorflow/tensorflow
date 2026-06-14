@@ -117,19 +117,25 @@ HloStackFrame StackFrames::GetStackFrame(StackFrameId id) const {
 }
 
 StackFrameId StackFrames::AddStackFrame(const HloStackFrame& frame) {
-  auto [file_it, file_inserted] = file_name_to_id_.try_emplace(
-      std::string(frame.file_name), proto_.file_names_size() + 1);
-  if (file_inserted) {
+  FileNameId file_id;
+  auto file_it = file_name_to_id_.find(frame.file_name);
+  if (file_it != file_name_to_id_.end()) {
+    file_id = file_it->second;
+  } else {
+    file_id = proto_.file_names_size() + 1;
+    file_name_to_id_.emplace(std::string(frame.file_name), file_id);
     proto_.add_file_names(std::string(frame.file_name));
   }
-  FileNameId file_id = file_it->second;
 
-  auto [func_it, func_inserted] = function_name_to_id_.try_emplace(
-      std::string(frame.function_name), proto_.function_names_size() + 1);
-  if (func_inserted) {
+  FunctionNameId func_id;
+  auto func_it = function_name_to_id_.find(frame.function_name);
+  if (func_it != function_name_to_id_.end()) {
+    func_id = func_it->second;
+  } else {
+    func_id = proto_.function_names_size() + 1;
+    function_name_to_id_.emplace(std::string(frame.function_name), func_id);
     proto_.add_function_names(std::string(frame.function_name));
   }
-  FunctionNameId func_id = func_it->second;
 
   FileLocationKey loc_key = {file_id,      func_id,        frame.line,
                              frame.column, frame.end_line, frame.end_column};
@@ -165,7 +171,10 @@ bool StackFrames::IsPrefix(StackFrameId prefix, StackFrameId full) const {
     if (full == prefix) {
       return true;
     }
-    full = GetStackFrame(full).parent_frame_id;
+    if (full.value > proto_.stack_frames_size()) {
+      return false;
+    }
+    full = StackFrameId{proto_.stack_frames(full.value - 1).parent_frame_id()};
   }
   return false;
 }
