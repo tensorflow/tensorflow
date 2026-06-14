@@ -16,26 +16,44 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
+#include <memory>
+#include <set>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
+#include "llvm/ADT/STLExtras.h"
+#include "xla/tsl/platform/errors.h"
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/auto_mixed_precision.h"
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
@@ -46,6 +64,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/implementation_selector.h"
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
@@ -59,10 +78,13 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/grappler/utils/tpu.h"
+#include "tensorflow/core/grappler/verifiers/graph_verifier.h"
 #include "tensorflow/core/grappler/verifiers/structure_verifier.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/util.h"
 #include "tensorflow/core/util/xla_config_registry.h"
@@ -903,8 +925,9 @@ absl::Status MetaOptimizer::OptimizeGraph(
   return absl::OkStatus();
 }
 
-absl::Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
-                                          GraphDef* optimized_graph) {
+absl::Status MetaOptimizer::OptimizeGraph(
+    Cluster* cluster, GrapplerItem&& item, GraphDef* optimized_graph,
+    const absl::flat_hash_set<std::string>& optimizer_filter) {
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
   std::set<std::string> device_types;
   TF_RETURN_IF_ERROR(GetGraphDevice(item.graph, &device_types));
@@ -913,6 +936,10 @@ absl::Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
   } else {
     TF_RETURN_IF_ERROR(InitializeOptimizersByName(device_types, &optimizers));
   }
+  llvm::erase_if(optimizers, [&optimizer_filter](const auto& optimizer) {
+    return !optimizer_filter.empty() &&
+           !optimizer_filter.contains(optimizer->name());
+  });
   PrintUserAndPluginConfigs(device_types);
 
   return OptimizeGraph(std::move(optimizers), cluster, std::move(item),
@@ -1233,6 +1260,7 @@ absl::Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster,
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
+      absl::flat_hash_set<std::string> optimizer_filter;
       if (is_tpu_graph) {
         // Skip optimizing functions if this is a TPU graph. Currently, Grappler
         // passes do not handle TPU functions correctly in a variety of ways
@@ -1242,25 +1270,17 @@ absl::Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster,
         // TPU metadata and Grappler passes could prune that away. Grappler
         // passes could also cause issues around shape inference. Since the
         // desired and existing behavior is to not optimize TPU functions with
-        // Grappler, this check preserves that. The only exception is
-        // implementation selector what is required to swap in some TPU specific
-        // lowering code and is verified the work correctly on TPUs.
-        ImplementationSelector implementation_selector;
-
-        // Implementation selector needs to have access to valid function
-        // signature and attributes, and it doesn't need actual function body.
-        std::unique_ptr<FunctionDefLibrary> func_item_function_library(
-            func_item.graph.release_library());
-        *func_item.graph.mutable_library() =
-            GetFunctionDefLibraryStub(*func_item_function_library);
-
-        TF_RETURN_IF_ERROR(implementation_selector.Optimize(
-            cluster, func_item, &optimized_func_graph));
-      } else {
-        GrapplerFunctionItem func_item_copy = func_item;
-        TF_RETURN_IF_ERROR(OptimizeGraph(cluster, std::move(func_item_copy),
-                                         &optimized_func_graph));
+        // Grappler, this check preserves that. The only exceptions are
+        // 1) implementation selector, which is required to swap in some TPU
+        //    specific lowering code and is verified the work correctly on TPUs
+        // 2) batch op rewriter, which rewrites batch op attributes and is
+        //    verified to work correctly on TPUs.
+        optimizer_filter = {"implementation_selector", "batch_op_rewriter"};
       }
+      GrapplerFunctionItem func_item_copy = func_item;
+      TF_RETURN_IF_ERROR(OptimizeGraph(cluster, std::move(func_item_copy),
+                                       &optimized_func_graph,
+                                       optimizer_filter));
 
       // Function body optimization might have created new specialized
       // functions for each instantiation context. Add them to the library.
