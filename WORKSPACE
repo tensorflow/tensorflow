@@ -35,6 +35,11 @@ rules_shell_dependencies()
 
 rules_shell_toolchains()
 
+# Initialize hermetic Python
+load("@xla//third_party/py:python_init_rules.bzl", "python_init_rules")
+
+python_init_rules()
+
 # Initialize hermetic C++
 load(
     "@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl",
@@ -51,10 +56,9 @@ register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 
-# Initialize hermetic Python
-load("@xla//third_party/py:python_init_rules.bzl", "python_init_rules")
+register_toolchains("//tensorflow/tools/toolchains/cross_compile/cc:linux_x86_toolchain")
 
-python_init_rules()
+register_toolchains("//tensorflow/tools/toolchains/cross_compile/cc:linux_aarch64_toolchain")
 
 load("@xla//third_party/py:python_init_repositories.bzl", "python_init_repositories")
 

@@ -669,6 +669,7 @@ common:tf_public_macos_cache_push --config=tf_public_macos_cache --remote_upload
 # seems it is this way because these flags are old and predate the distinction
 # between host and execution platform.
 common:cross_compile_base --config=clang_local
+common:cross_compile_base --incompatible_enable_cc_toolchain_resolution
 common:cross_compile_base --host_cpu=k8
 common:cross_compile_base --host_crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 common:cross_compile_base --extra_execution_platforms=//tools/toolchains/cross_compile/config:linux_x86_64
@@ -767,3 +768,8 @@ build:pjrt_aarch64_cuda12_nightly --config=pjrt_aarch64_nightly --config=pjrt_cu
 build:pjrt_x86_cuda13_nightly --config=pjrt_x86_nightly --config=pjrt_cuda13
 build:pjrt_aarch64_cuda13_nightly --config=pjrt_aarch64_nightly --config=pjrt_cuda13
 # END PJRT RELEASE CONFIGS
+
+# Workaround for rules_cc 0.2.18 upgrade autoload cycle
+# This exact behavior is documented under http://b/458493873 (GitHub Issue #27582
+#   https://github.com/bazelbuild/bazel/issues/27582)
+common --repositories_without_autoloads=cc_compatibility_proxy
