@@ -14,6 +14,8 @@
 # ==============================================================================
 """Converts a model's graph def into a tflite model with MLIR-based conversion."""
 import os
+import shlex
+import subprocess
 import tempfile
 
 import numpy as np
@@ -196,7 +198,7 @@ def mlir_convert_file(graph_def_filename,
         graph_def_filename,
         output_file.name,
     )
-    exit_code = os.system(cmd)
+    exit_code = subprocess.run(shlex.split(cmd), shell=False).returncode
     log = (
         cmd + "exited with code %d" % exit_code + "\n------------------\n" +
         stdout_file.read())
