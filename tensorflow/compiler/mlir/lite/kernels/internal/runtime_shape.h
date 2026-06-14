@@ -182,7 +182,7 @@ class RuntimeShape {
   // This will probably be factored out. Old code made substantial use of 4-D
   // shapes, and so this function is used to extend smaller shapes. Note that
   // (a) as Dims<4>-dependent code is eliminated, the reliance on this should be
-  // reduced, and (b) some kernels are stricly 4-D, but then the shapes of their
+  // reduced, and (b) some kernels are strictly 4-D, but then the shapes of their
   // inputs should already be 4-D, so this function should not be needed.
   inline static RuntimeShape ExtendedShape(int new_shape_size,
                                            const RuntimeShape& shape) {

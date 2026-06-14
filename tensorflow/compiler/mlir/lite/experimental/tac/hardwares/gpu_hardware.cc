@@ -72,7 +72,7 @@ namespace {
 // GPU
 constexpr float kGPUArithmeticUnitCost = 0.2;
 
-// The copy can be non-consectutive copy. This is just fake data.
+// The copy can be non-consecutive copy. This is just fake data.
 constexpr float kGPUCopyUnitCost = 0.2;
 
 // Default values.

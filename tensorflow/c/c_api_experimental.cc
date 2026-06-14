@@ -163,7 +163,7 @@ TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
   // CPU tensor to GPU).
   // Setting a larger thread pool does not help with the Swift caller, as we use
   // a different TFE context for each thread of execution (for running graph
-  // functions, and their send/recvs corountines).
+  // functions, and their send/recvs coroutines).
   config.set_inter_op_parallelism_threads(1);
 
   TF_Buffer* ret = TF_NewBuffer();
@@ -599,7 +599,7 @@ void TF_DeleteShapeAndTypeListArray(TF_ShapeAndTypeList** shape_list_array,
 namespace tensorflow {
 absl::Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
-// Helpers for loadding a TensorFlow PluggableDevice plugin (a .so file).
+// Helpers for loading a TensorFlow PluggableDevice plugin (a .so file).
 absl::Status LoadPluggableDeviceLibrary(const char* library_filename,
                                         void** result);
 }  // namespace tensorflow

@@ -55,7 +55,7 @@ class RestoreOpsTest : public ::testing::Test {
   EagerContextPtr ctx_;
 };
 
-// One way of obtaining the checkpointa checkpoint's tensor names is:
+// One way of obtaining the checkpoint's tensor names is:
 // bazel run //tensorflow/python/tools:inspect_checkpoint -- --all_tensors
 // --file_name="$CKPT_PREFIX".
 // Here are the values for VarsAndArithmeticObjectGraph:

@@ -52,7 +52,7 @@ static bool tpu_xla_device_failure_closes_chips_flag = true;
 static bool tpu_use_substreams_for_cross_tpu_device_transfers_flag = true;
 
 // Given a tensor of `shape` and `type`, as what shape should it be stored on
-// the TPU device? This function tranposes or flattens the excessively-padded
+// the TPU device? This function transposes or flattens the excessively-padded
 // tensors to rank 1, but leaves other tensor shapes alone.
 absl::StatusOr<xla::Shape> TpuShapeRepresentation(
     const TensorShape& shape, DataType type, bool use_fast_memory,

@@ -521,7 +521,7 @@ absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
   // Check if the requested entry is uncompiled and return an error if
   // compilation is disabled. This will raise an error for kLazy even if we have
   // not yet hit the compilation threshold and no compilation happens this
-  // round. This is to avoid non-determanism of when compilation is disallowed,
+  // round. This is to avoid non-determinism of when compilation is disallowed,
   // for example by changing the threshold.
   if (state == DeviceCompileState::kUncompiled && FailOnXlaCompilation()) {
     VLOG(1) << "XLA compilation disabled: " << function.name() << "\n"

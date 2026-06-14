@@ -141,7 +141,7 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
         // conversion generation and so the simplicity was chosen over the
         // flexibility.
         StringRef arg_name = arg_values->getArgNameStr(i);
-        // Skip any "intermiadiateXXX" attribute as they are specially handled
+        // Skip any "intermediateXXX" attribute as they are specially handled
         // in the exporter. They are special because though they are attributes
         // in the MLIR they are expressed as tensors in the flatbuffer instead
         // of option.
