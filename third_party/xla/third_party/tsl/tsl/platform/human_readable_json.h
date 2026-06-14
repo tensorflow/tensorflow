@@ -30,13 +30,10 @@ namespace tsl {
 //
 // This string may not be strictly JSON-compliant, but it must be parsable by
 // HumanReadableJSONToProto.
-//
-// When ignore_accuracy_loss = true, this function may ignore JavaScript
-// accuracy loss with large integers.
 absl::StatusOr<std::string> ProtoToHumanReadableJson(
-    const protobuf::Message& proto, bool ignore_accuracy_loss);
+    const protobuf::Message& proto);
 absl::StatusOr<std::string> ProtoToHumanReadableJson(
-    const protobuf::MessageLite& proto, bool ignore_accuracy_loss);
+    const protobuf::MessageLite& proto);
 
 // Converts a string produced by ProtoToHumanReadableJSON to a protobuf.  Not
 // guaranteed to work for general JSON.
