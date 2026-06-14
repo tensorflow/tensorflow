@@ -546,6 +546,19 @@ class MatrixDiagTest(test.TestCase):
       with self.assertRaisesOpError("diagonal must be at least 1-dim"):
         array_ops.matrix_diag(v).eval(feed_dict={v: 0.0})
 
+  def testInvalidBandShapeAtEval(self):
+    # Regression test for GitHub issue #110796:
+    # tf.linalg.diag with a band k=(low, high) (low != high) requires the
+    # diagonal to be at least 2D.  Previously this aborted with a C++ CHECK
+    # failure inside tensor_shape.cc; it should now raise InvalidArgumentError.
+    with self.assertRaisesOpError(
+        "diagonal must be at least 2-dim when a band range"):
+      array_ops.matrix_diag(
+          constant_op.constant([1.0, 2.0, 3.0, 4.0]),
+          k=(-2, 1),
+          align="RIGHT_LEFT",
+      )
+
   @test_util.run_deprecated_v1
   def testGrad(self):
     shapes = ((3,), (7, 4))
