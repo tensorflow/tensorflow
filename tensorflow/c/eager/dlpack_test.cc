@@ -109,5 +109,43 @@ TEST(DLPack, HandleFromDLPackStrides) {
   TF_DeleteStatus(status);
 }
 
+TEST(DLPack, HandleFromDLPackRejectsOverflowingDims) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  // Dimensions whose product would overflow size_t. Without the guard
+  // in TFE_HandleFromDLPack, total_bytes wraps to 0 and the resulting
+  // tensor permits heap OOB read/write via tf.experimental.dlpack.from_dlpack.
+  std::vector<int64_t> overflow_shape = {static_cast<int64_t>(1) << 32,
+                                         static_cast<int64_t>(1) << 32, 16};
+  DLManagedTensor dlm_in = {};
+  DLTensor* dltensor_in = &dlm_in.dl_tensor;
+  dltensor_in->data = nullptr;
+  dltensor_in->device = {kDLCPU, 0};
+  dltensor_in->ndim = static_cast<int32_t>(overflow_shape.size());
+  dltensor_in->dtype = {kDLFloat, 32, 1};
+  dltensor_in->shape = overflow_shape.data();
+  dltensor_in->strides = nullptr;
+  dltensor_in->byte_offset = 0;
+
+  TFE_TensorHandle* handle = TFE_HandleFromDLPack(&dlm_in, status, ctx);
+  EXPECT_EQ(handle, nullptr);
+  EXPECT_NE(TF_GetCode(status), TF_OK);
+
+  std::vector<int64_t> negative_shape = {-1, 4};
+  dltensor_in->ndim = static_cast<int32_t>(negative_shape.size());
+  dltensor_in->shape = negative_shape.data();
+  TF_SetStatus(status, TF_OK, "");
+  TFE_TensorHandle* handle_neg = TFE_HandleFromDLPack(&dlm_in, status, ctx);
+  EXPECT_EQ(handle_neg, nullptr);
+  EXPECT_NE(TF_GetCode(status), TF_OK);
+
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+}
+
 }  // namespace
 }  // namespace tensorflow

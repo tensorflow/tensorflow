@@ -377,6 +377,13 @@ TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status,
 
   size_t total_bytes = dl_tensor->dtype.bits / 8;
   for (int i = 0; i < num_dims; i++) {
+      if (dims[i] < 0 ||
+              (total_bytes != 0 &&
+               static_cast<size_t>(dims[i]) > SIZE_MAX / total_bytes)) {
+              status->status = tensorflow::errors::InvalidArgument(
+                      "DLPack tensor dimensions overflow size_t");
+          return nullptr;
+      }
     total_bytes *= dims[i];
   }
 
