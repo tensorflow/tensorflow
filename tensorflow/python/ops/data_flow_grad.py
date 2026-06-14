@@ -58,7 +58,47 @@ def _DynamicStitchGrads(op, grad):
     output_shape = array_ops.shape(op.outputs[0])
     output_rows = output_shape[0]
     grad = math_ops.unsorted_segment_sum(grad.values, grad.indices, output_rows)
-  values_grad = [array_ops.gather(grad, inp) for inp in inputs]
+
+  # When duplicate indices exist, dynamic_stitch uses last-write-wins
+  # semantics: only the last value written to an output position contributes
+  # to the result. The gradient must therefore only flow to the last writer;
+  # overwritten entries should receive zero gradient.
+  #
+  # Strategy: assign each element a unique sequential flat ID, stitch those
+  # IDs with the same indices to find which ID "won" at each output position,
+  # then mask out non-winners.
+  flat_ids = []
+  offset = 0
+  for inp in inputs:
+    num_elems = array_ops.size(inp)
+    ids = array_ops.reshape(
+        math_ops.range(offset, offset + num_elems), array_ops.shape(inp))
+    flat_ids.append(ids)
+    offset = offset + num_elems
+
+  winner_ids = data_flow_ops.dynamic_stitch(inputs, flat_ids)
+
+  values_grad = []
+  offset = 0
+  for inp in inputs:
+    num_elems = array_ops.size(inp)
+    my_ids = array_ops.reshape(
+        math_ops.range(offset, offset + num_elems), array_ops.shape(inp))
+    winners_for_my_indices = array_ops.gather(winner_ids, inp)
+    mask = math_ops.cast(
+        math_ops.equal(my_ids, winners_for_my_indices), grad.dtype)
+    gathered = array_ops.gather(grad, inp)
+    # Broadcast mask for higher-rank values (e.g. 2D data tensors).
+    mask_shape = array_ops.concat(
+        [array_ops.shape(mask),
+         array_ops.ones(
+             [array_ops.rank(gathered) - array_ops.rank(mask)],
+             dtype=dtypes.int32)],
+        axis=0)
+    mask = array_ops.reshape(mask, mask_shape)
+    values_grad.append(gathered * mask)
+    offset = offset + num_elems
+
   return indices_grad + values_grad
 
 
