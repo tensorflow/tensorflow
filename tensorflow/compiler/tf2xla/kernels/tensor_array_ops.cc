@@ -71,8 +71,10 @@ absl::Status MaybeInitializeTensorArray(xla::XlaBuilder* builder,
 
   if (!resource->initialized()) {
     TF_RETURN_IF_ERROR(resource->SetTypeAndShape(dtype, elem_shape));
-    TF_RETURN_IF_ERROR(resource->SetZeroValue(builder));
-  } else {
+    if (!resource->tensor_array_dynamic_size()) {
+      TF_RETURN_IF_ERROR(resource->SetZeroValue(builder));
+    }
+  } else if (!resource->tensor_array_dynamic_size()) {
     // Checks the elem_shape matches the TensorArray shape.
     auto shape_or_status = builder->GetShape(resource->value());
     if (!shape_or_status.ok()) {
@@ -117,8 +119,58 @@ absl::Status CheckTensorArrayIsInitialized(const std::string& op_name,
 
 absl::Status GetTensorArrayShape(const XlaResource* resource,
                                  xla::XlaBuilder* builder, TensorShape* shape) {
+  if (resource->initialized()) {
+    TF_ASSIGN_OR_RETURN(xla::Shape xla_shape,
+                        builder->GetShape(resource->value()));
+    return XLAShapeToTensorShape(xla_shape, shape);
+  }
   *shape = resource->shape();
   shape->InsertDim(0, resource->max_array_size());
+  return absl::OkStatus();
+}
+
+// Creates a zero-filled TensorArray buffer with a dynamic leading dimension.
+xla::XlaOp CreateDynamicTensorArrayBuffer(xla::XlaBuilder* builder,
+                                          DataType dtype,
+                                          const TensorShape& elem_shape,
+                                          xla::XlaOp leading_dim_size) {
+  TensorShape ta_shape;
+  ta_shape.AddDim(0);
+  ta_shape.AppendShape(elem_shape);
+  xla::XlaOp zero = XlaHelpers::Zero(builder, dtype);
+  xla::XlaOp ta = xla::Broadcast(zero, ta_shape.dim_sizes());
+  return xla::SetDimensionSize(ta, leading_dim_size, 0);
+}
+
+// Grows a dynamic-size TensorArray so that `index` is a valid write index.
+absl::Status GrowTensorArrayToFit(xla::XlaBuilder* builder,
+                                  XlaResource* resource, xla::XlaOp index,
+                                  DataType dtype, const TensorShape& elem_shape,
+                                  xla::XlaOp* ta) {
+  if (!resource->tensor_array_dynamic_size()) {
+    *ta = resource->value();
+    return absl::OkStatus();
+  }
+
+  xla::XlaOp one = xla::ConstantR0<int32_t>(builder, 1);
+  xla::XlaOp required_size = xla::Add(index, one);
+  if (resource->initialized()) {
+    xla::XlaOp current_size =
+        xla::GetDimensionSize(resource->value(), 0);
+    required_size = xla::Max(current_size, required_size);
+  }
+  xla::XlaOp new_buf =
+      CreateDynamicTensorArrayBuffer(builder, dtype, elem_shape, required_size);
+
+  if (resource->initialized()) {
+    xla::XlaOp old = resource->value();
+    const int rank = elem_shape.dims() + 1;
+    std::vector<xla::XlaOp> starts(rank, xla::ConstantR0<int32_t>(builder, 0));
+    new_buf = xla::DynamicUpdateSlice(new_buf, old, starts);
+  }
+
+  TF_RETURN_IF_ERROR(resource->SetValue(new_buf));
+  *ta = new_buf;
   return absl::OkStatus();
 }
 
@@ -140,13 +192,7 @@ class TensorArrayOp : public XlaOpKernel {
   explicit TensorArrayOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("element_shape", &element_shape_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
-    bool dynamic_size;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dynamic_size", &dynamic_size));
-    OP_REQUIRES(
-        ctx, !dynamic_size,
-        errors::Unimplemented(
-            "TensorArrays with dynamic size are not supported by XLA."));
-
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dynamic_size", &dynamic_size_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("tensor_array_name", &tensor_array_name_));
   }
 
@@ -162,7 +208,7 @@ class TensorArrayOp : public XlaOpKernel {
     // Otherwise, defer initialization to the first write.
     xla::XlaOp value;
     TensorShape shape;
-    if (element_shape_.IsFullyDefined()) {
+    if (element_shape_.IsFullyDefined() && !dynamic_size_) {
       CHECK(element_shape_.AsTensorShape(&shape));
       TensorShape ta_shape;
       ta_shape.AddDim(size);
@@ -174,7 +220,8 @@ class TensorArrayOp : public XlaOpKernel {
     XlaResource* var =
         ctx->xla_context()->AddResource(XlaResource::CreateTensorArray(
             /*name=*/absl::StrCat("TensorArray: ", tensor_array_name_), dtype_,
-            shape, /*initial_value=*/value, /*max_array_size=*/size));
+            shape, /*initial_value=*/value, /*max_array_size=*/size,
+            /*dynamic_size=*/dynamic_size_));
     ctx->SetResourceOutput(0, var);
 
     Tensor flow(DT_FLOAT, TensorShape({}));
@@ -185,6 +232,7 @@ class TensorArrayOp : public XlaOpKernel {
  private:
   PartialTensorShape element_shape_;
   DataType dtype_;
+  bool dynamic_size_;
   std::string tensor_array_name_;
 
   TensorArrayOp(const TensorArrayOp&) = delete;
@@ -212,7 +260,9 @@ class TensorArrayWriteOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    MaybeInitializeTensorArray(b, resource, dtype_, elem_shape));
 
-    xla::XlaOp ta = resource->value();
+    xla::XlaOp ta;
+    OP_REQUIRES_OK(ctx, GrowTensorArrayToFit(b, resource, ctx->Input(1),
+                                               dtype_, elem_shape, &ta));
     xla::XlaOp index = ctx->Input(1);
     xla::XlaOp value = ctx->Input(2);
     xla::XlaOp flow = ctx->Input(3);
@@ -570,10 +620,23 @@ class TensorArraySizeOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     XlaResource* var;
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &var));
-    Tensor size_tensor(DT_INT32, {});
-    size_tensor.scalar<int32_t>()() =
-        static_cast<int32_t>(var->max_array_size());
-    ctx->SetConstantOutput(0, size_tensor);
+    if (var->tensor_array_dynamic_size()) {
+      if (!var->initialized()) {
+        Tensor size_tensor(DT_INT32, {});
+        size_tensor.scalar<int32_t>()() = 0;
+        ctx->SetConstantOutput(0, size_tensor);
+      } else {
+        xla::XlaOp size =
+            xla::GetDimensionSize(var->value(), 0);
+        size = xla::ConvertElementType(size, xla::S32);
+        ctx->SetOutput(0, size);
+      }
+    } else {
+      Tensor size_tensor(DT_INT32, {});
+      size_tensor.scalar<int32_t>()() =
+          static_cast<int32_t>(var->max_array_size());
+      ctx->SetConstantOutput(0, size_tensor);
+    }
   }
 
  private:

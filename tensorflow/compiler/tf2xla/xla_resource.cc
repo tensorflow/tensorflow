@@ -67,12 +67,13 @@ namespace tensorflow {
 
 /*static*/ std::unique_ptr<XlaResource> XlaResource::CreateTensorArray(
     std::string name, DataType type, TensorShape shape,
-    xla::XlaOp initial_value, int64_t max_array_size) {
+    xla::XlaOp initial_value, int64_t max_array_size, bool dynamic_size) {
   return std::make_unique<XlaResource>(
       XlaResource::kTensorArray, /*arg_num=*/-1, std::move(name), type, shape,
       initial_value, max_array_size,
       /*tensor_array_gradients=*/std::set<std::string>{},
-      /*tensor_array_multiple_writes_aggregate=*/false);
+      /*tensor_array_multiple_writes_aggregate=*/false,
+      /*tensor_array_dynamic_size=*/dynamic_size);
 }
 
 XlaResource::XlaResource(
@@ -80,6 +81,7 @@ XlaResource::XlaResource(
     xla::XlaOp initial_value, int64_t max_array_size,
     const std::set<std::string>& tensor_array_gradients,
     bool tensor_array_multiple_writes_aggregate,
+    bool tensor_array_dynamic_size,
     const std::optional<ManagedStackTrace>& definition_stack_trace)
     : kind_(kind),
       arg_num_(arg_num),
@@ -91,6 +93,7 @@ XlaResource::XlaResource(
       max_array_size_(max_array_size),
       tensor_array_multiple_writes_aggregate_(
           tensor_array_multiple_writes_aggregate),
+      tensor_array_dynamic_size_(tensor_array_dynamic_size),
       definition_stack_trace_(definition_stack_trace) {
   CHECK(kind_ != kInvalid);
 
