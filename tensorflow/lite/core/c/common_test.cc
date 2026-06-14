@@ -39,6 +39,18 @@ using ::testing::ElementsAreArray;
 using ::testing::Eq;
 using ::testing::Not;
 
+namespace {
+bool CompareTfLiteIntArray(const TfLiteIntArray* int_array,
+                           const std::vector<int>& values) {
+  if (int_array == nullptr) return values.empty();
+  if (int_array->size != values.size()) return false;
+  for (int i = 0; i < int_array->size; ++i) {
+    if (int_array->data[i] != values[i]) return false;
+  }
+  return true;
+}
+}  // namespace
+
 // NOTE: this tests only the TfLiteIntArray part of context.
 // most of common.h is provided in the context of using it with
 // interpreter.h and interpreter.cc, so interpreter_test.cc tests context
@@ -383,35 +395,35 @@ TEST(TestTensorRealloc, TensorReallocLargeBytesFails) {
 }
 
 TEST(TestTfLiteTensorGetDimsSignature, NullDimsSignatureReturnsDims) {
-  TfLiteTensor t{
-      .dims = ConvertVectorToTfLiteIntArray({1, 2, 3}),
-      .dims_signature = nullptr,
-  };
+  TfLiteTensor t = {};
+  t.dims = ConvertVectorToTfLiteIntArray({1, 2, 3});
+  t.dims_signature = nullptr;
 
-  EXPECT_THAT(TfLiteTensorGetDimsSignature(&t), TfLiteArrayIs({1, 2, 3}));
+  EXPECT_TRUE(
+      CompareTfLiteIntArray(TfLiteTensorGetDimsSignature(&t), {1, 2, 3}));
 
   TfLiteTensorFree(&t);
 }
 
 TEST(TestTfLiteTensorGetDimsSignature, EmptyDimsSignatureReturnsDims) {
-  TfLiteTensor t{
-      .dims = ConvertVectorToTfLiteIntArray({1, 2, 3}),
-      .dims_signature = ConvertVectorToTfLiteIntArray({}),
-  };
+  TfLiteTensor t = {};
+  t.dims = ConvertVectorToTfLiteIntArray({1, 2, 3});
+  t.dims_signature = ConvertVectorToTfLiteIntArray({});
 
-  EXPECT_THAT(TfLiteTensorGetDimsSignature(&t), TfLiteArrayIs({1, 2, 3}));
+  EXPECT_TRUE(
+      CompareTfLiteIntArray(TfLiteTensorGetDimsSignature(&t), {1, 2, 3}));
 
   TfLiteTensorFree(&t);
 }
 
 TEST(TestTfLiteTensorGetDimsSignature,
      NonEmptyDimsSignatureReturnsDimsSignature) {
-  TfLiteTensor t{
-      .dims = ConvertVectorToTfLiteIntArray({1, 2, 3}),
-      .dims_signature = ConvertVectorToTfLiteIntArray({4, -1, 5}),
-  };
+  TfLiteTensor t = {};
+  t.dims = ConvertVectorToTfLiteIntArray({1, 2, 3});
+  t.dims_signature = ConvertVectorToTfLiteIntArray({4, -1, 5});
 
-  EXPECT_THAT(TfLiteTensorGetDimsSignature(&t), TfLiteArrayIs({4, -1, 5}));
+  EXPECT_TRUE(
+      CompareTfLiteIntArray(TfLiteTensorGetDimsSignature(&t), {4, -1, 5}));
 
   TfLiteTensorFree(&t);
 }
@@ -1004,7 +1016,7 @@ TEST(TensorCloneTest, CloneATensorAttributes) {
         << i;
   }
 
-  EXPECT_THAT(clone.dims_signature, TfLiteArrayIs(model.dims_signature));
+  EXPECT_TRUE(TfLiteIntArrayEqual(clone.dims_signature, model.dims_signature));
 
   TfLiteTensorFree(&clone);
   TfLiteTensorFree(&model);
@@ -1048,6 +1060,22 @@ TEST(EnsureOk, WithMessage) {
   EXPECT_EQ(test_fn(&context), kTfLiteError);
   EXPECT_THAT(last_error, ::testing::HasSubstr("Error code: 42"));
   EXPECT_THAT(last_error, ::testing::HasSubstr("common_test.cc"));
+}
+
+TEST(TensorResize, ResizeMaybeCopyNullTensor) {
+  EXPECT_EQ(TfLiteTensorResizeMaybeCopy(10, nullptr, /*preserve_data=*/false),
+            kTfLiteError);
+}
+
+TEST(TensorResize, ResizeMaybeCopyOverflow) {
+  TfLiteTensor tensor = {};
+  tensor.allocation_type = kTfLiteDynamic;
+  tensor.data.data = nullptr;
+  tensor.bytes = 0;
+  size_t overflow_bytes = std::numeric_limits<size_t>::max() - 8;
+  EXPECT_EQ(TfLiteTensorResizeMaybeCopy(overflow_bytes, &tensor,
+                                        /*preserve_data=*/false),
+            kTfLiteError);
 }
 
 }  // namespace tflite
