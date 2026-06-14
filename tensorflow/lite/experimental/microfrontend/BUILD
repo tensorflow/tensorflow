@@ -54,6 +54,7 @@ cc_library(
     }),
     deps = [
         "//tensorflow/lite/experimental/microfrontend/lib:frontend",
+        "@com_google_absl//absl/status",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -89,6 +90,7 @@ tf_custom_op_library(
     ],
     deps = [
         "//tensorflow/lite/experimental/microfrontend/lib:frontend",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -97,6 +99,7 @@ tf_gen_op_libs(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/lite/experimental/microfrontend/lib:frontend",
+        "@com_google_absl//absl/status",
     ],
 )
 
