@@ -2200,6 +2200,28 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
 
     _ = g.get_concrete_function()
 
+  def testNaNs(self):
+    for dtype in [np.float32, np.float64]:
+      # NaNs in search values
+      sorted_sequence = np.array([2.0, 4.0, 8.0, 16.0, 32.0, 64.0], dtype=dtype)
+      values = np.array([np.nan, 8.0, np.nan], dtype=dtype)
+      for side in ["left", "right"]:
+        result = np.searchsorted(sorted_sequence, values, side=side)
+        tf_result = self.evaluate(
+            array_ops.searchsorted(sorted_sequence, values, side=side)
+        )
+        self.assertAllEqual(result, tf_result)
+
+      # NaNs in sorted sequence
+      sorted_sequence = np.array([2.0, 4.0, np.nan, np.nan], dtype=dtype)
+      values = np.array([3.0, 5.0, np.nan], dtype=dtype)
+      for side in ["left", "right"]:
+        result = np.searchsorted(sorted_sequence, values, side=side)
+        tf_result = self.evaluate(
+            array_ops.searchsorted(sorted_sequence, values, side=side)
+        )
+        self.assertAllEqual(result, tf_result)
+
   def testInvalidValuesLowerBound(self):
     arg_0_tensor = random_ops.random_uniform([3, 3], dtype=dtypes.float32)
     arg_0 = array_ops.identity(arg_0_tensor)

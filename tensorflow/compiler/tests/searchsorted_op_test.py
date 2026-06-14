@@ -66,6 +66,32 @@ class SearchSorteddOpTest(xla_test.XLATestCase):
       correct_ans = np.array([[1, 2, 4], [0, 2, 5]], dtype)
       self._test2DExample(dtype, 'right', sorted_sequence, values, correct_ans)
 
+  def testNaNs(self):
+    for dtype in [np.float32, np.float64]:
+      if dtype not in self.float_types:
+        continue
+      # NaNs in search values
+      sorted_sequence = np.array([2.0, 4.0, 8.0, 16.0, 32.0, 64.0], dtype=dtype)
+      values = np.array([np.nan, 8.0, np.nan], dtype=dtype)
+      for side in ['left', 'right']:
+        np_ans = np.searchsorted(sorted_sequence, values, side=side)
+        with self.session() as session:
+          with self.test_scope():
+            tf_ans = array_ops.searchsorted(sorted_sequence, values, side=side)
+          tf_out = session.run(tf_ans)
+          self.assertAllEqual(np_ans, tf_out)
+
+      # NaNs in sorted sequence
+      sorted_sequence = np.array([2.0, 4.0, np.nan, np.nan], dtype=dtype)
+      values = np.array([3.0, 5.0, np.nan], dtype=dtype)
+      for side in ['left', 'right']:
+        np_ans = np.searchsorted(sorted_sequence, values, side=side)
+        with self.session() as session:
+          with self.test_scope():
+            tf_ans = array_ops.searchsorted(sorted_sequence, values, side=side)
+          tf_out = session.run(tf_ans)
+          self.assertAllEqual(np_ans, tf_out)
+
 
 if __name__ == '__main__':
   test.main()

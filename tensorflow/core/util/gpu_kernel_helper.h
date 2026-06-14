@@ -381,15 +381,30 @@ absl::Status DispatchToVectorized(int64_t max_vec_size, Args&&... args) {
 // [first, first + count) that is greater than `val`, or `count` if no such
 // element is found. Assumes [first, first + count) is sorted.
 namespace gpu_helper {
+
+// Binary comparator that implements a strict weak ordering placing NaN values
+// after all non-NaN values (where non-NaN < NaN, and NaN < NaN is false).
+template <typename T>
+struct GpuNaNlessCompare {
+  __device__ bool operator()(const T& a, const T& b) const {
+    const bool a_nan = Eigen::numext::isnan(a);
+    const bool b_nan = Eigen::numext::isnan(b);
+    if (a_nan) return false;
+    if (b_nan) return true;
+    return a < b;
+  }
+};
+
 template <typename T, typename OutType = int32_t, typename Iterator = const T*>
 __device__ OutType upper_bound(Iterator first, OutType count, T val) {
   Iterator orig = first;
   OutType step = 0;
+  GpuNaNlessCompare<T> comp;
   while (count > 0) {
     Iterator it = first;
     step = count / 2;
     it += step;
-    if (!(val < *it)) {
+    if (!comp(val, *it)) {
       first = ++it;
       count -= step + 1;
     } else {
@@ -407,11 +422,12 @@ template <typename T, typename OutType = int32_t, typename Iterator = const T*>
 __device__ OutType lower_bound(Iterator first, OutType count, T val) {
   Iterator orig = first;
   OutType step = 0;
+  GpuNaNlessCompare<T> comp;
   while (count > 0) {
     Iterator it = first;
     step = count / 2;
     it += step;
-    if (*it < val) {
+    if (comp(*it, val)) {
       first = ++it;
       count -= step + 1;
     } else {

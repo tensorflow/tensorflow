@@ -17,11 +17,19 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/searchsorted_op.h"
 
+#include <limits>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
@@ -33,6 +41,20 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
+
+// Binary comparator that implements a strict weak ordering placing NaN values
+// after all non-NaN values (where non-NaN < NaN, and NaN < NaN is false).
+template <typename T>
+struct NaNlessCompare {
+  bool operator()(const T& a, const T& b) const {
+    const bool a_nan = Eigen::numext::isnan(a);
+    const bool b_nan = Eigen::numext::isnan(b);
+    if (a_nan) return false;
+    if (b_nan) return true;
+    return a < b;
+  }
+};
+
 template <typename T, typename OutType>
 struct UpperBoundFunctor<CPUDevice, T, OutType> {
   static absl::Status Compute(
@@ -46,9 +68,9 @@ struct UpperBoundFunctor<CPUDevice, T, OutType> {
         const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
         OutType* output_ptr = output->data() + b * num_values;
         for (int64_t i = first; i < last; ++i) {
-          output_ptr[i] = std::upper_bound(sorted_inputs_ptr,
-                                           sorted_inputs_ptr + num_inputs,
-                                           values(i + b * num_values)) -
+          output_ptr[i] = std::upper_bound(
+                              sorted_inputs_ptr, sorted_inputs_ptr + num_inputs,
+                              values(i + b * num_values), NaNlessCompare<T>()) -
                           sorted_inputs_ptr;
         }
       }
@@ -76,9 +98,9 @@ struct LowerBoundFunctor<CPUDevice, T, OutType> {
         const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
         OutType* output_ptr = output->data() + b * num_values;
         for (int64_t i = first; i < last; ++i) {
-          output_ptr[i] = std::lower_bound(sorted_inputs_ptr,
-                                           sorted_inputs_ptr + num_inputs,
-                                           values(i + b * num_values)) -
+          output_ptr[i] = std::lower_bound(
+                              sorted_inputs_ptr, sorted_inputs_ptr + num_inputs,
+                              values(i + b * num_values), NaNlessCompare<T>()) -
                           sorted_inputs_ptr;
         }
       }

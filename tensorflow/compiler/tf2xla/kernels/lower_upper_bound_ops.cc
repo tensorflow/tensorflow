@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -63,8 +62,16 @@ void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
   // the associated sorted_inputs row.
   // The reshapes above leave the tensors with equal rank of 3, so broadcast
   // dimensions are not explicitly specified.
-  auto comparison = xla::Compare(values_reshaped, sorted_inputs_reshaped, {},
-                                 comparison_direction);
+  xla::XlaOp comparison;
+  if (comparison_direction == xla::ComparisonDirection::kGt) {
+    comparison = xla::GtTotalOrder(values_reshaped, sorted_inputs_reshaped);
+  } else if (comparison_direction == xla::ComparisonDirection::kGe) {
+    comparison = xla::GeTotalOrder(values_reshaped, sorted_inputs_reshaped);
+  } else {
+    OP_REQUIRES(ctx, false,
+                absl::InvalidArgumentError(
+                    "Invalid comparison direction for Lower/UpperBound op."));
+  }
 
   const DataType accumulation_type = XlaHelpers::SumAccumulationType(out_dtype);
 
