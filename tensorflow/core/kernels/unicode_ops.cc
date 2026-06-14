@@ -422,9 +422,9 @@ class UnicodeDecodeBaseOp : public OpKernel {
                                              &output_row_splits));
     auto out_row_splits = output_row_splits->vec<SPLITS_TYPE>();
 
-    int row_split_index = 0;
+    int64_t row_split_index = 0;
     SPLITS_TYPE next_row_split = 0;
-    for (int i = 0; i < input_vec.size(); ++i) {
+    for (int64_t i = 0; i < input_vec.size(); ++i) {
       const std::string& input = input_vec(i);
       // Convert input strings into unicode values. Output to a list of
       // char_values, record row splits and char_to_byte_starts, which are all
@@ -444,7 +444,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
     Tensor* output_char_values;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(
-                 "char_values", {static_cast<SPLITS_TYPE>(char_values.size())},
+                 "char_values", {static_cast<int64_t>(char_values.size())},
                  &output_char_values));
     auto out_char_values = output_char_values->vec<int32_t>();
     if (generate_offsets_) {
@@ -452,17 +452,17 @@ class UnicodeDecodeBaseOp : public OpKernel {
       Tensor* output_offset_values;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(
                               "char_to_byte_starts",
-                              {static_cast<SPLITS_TYPE>(offset_values.size())},
+                              {static_cast<int64_t>(offset_values.size())},
                               &output_offset_values));
-      auto out_offset_values = output_offset_values->vec<SPLITS_TYPE>();
+      auto out_offset_values = output_offset_values->vec<int64_t>();
 
       // Load output tensors from intermediate value arrays.
-      for (int i = 0; i < char_values.size(); ++i) {
+      for (int64_t i = 0; i < char_values.size(); ++i) {
         out_char_values(i) = static_cast<int32_t>(char_values[i]);
         out_offset_values(i) = offset_values[i];
       }
     } else {
-      for (int i = 0; i < char_values.size(); ++i) {
+      for (int64_t i = 0; i < char_values.size(); ++i) {
         out_char_values(i) = static_cast<int32_t>(char_values[i]);
       }
     }
@@ -559,9 +559,9 @@ class UnicodeEncodeOp : public OpKernel {
     auto output_tensor_flat = output_tensor->flat<tstring>();
 
     // Use a single index over the flattened input values tensor.
-    int idx = 0;
+    int64_t idx = 0;
     // Loop through our split dimension to create a new string at each split.
-    for (int i = 1; i < input_splits_flat.size(); ++i) {
+    for (int64_t i = 1; i < input_splits_flat.size(); ++i) {
       icu::UnicodeString unicode_string;
       OP_REQUIRES(
           context, input_splits_flat(i - 1) <= input_splits_flat(i),
