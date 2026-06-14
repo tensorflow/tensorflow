@@ -605,7 +605,9 @@ void MsaAlgorithm::CreateAllocationValues(
     for (int i = beginning_idx; i < allocation_values.size(); ++i) {
       AllocationValue* allocation_value = &allocation_values.at(i);
       if (HloDataflowAnalysis::IsAsynchronousOperationDone(
-              use.instruction->opcode())) {
+              use.instruction->opcode()) ||
+          (use.instruction->opcode() == HloOpcode::kAsyncUpdate &&
+           use.operand_number == 0)) {
         if (allocation_value->defining_instruction() ==
                 use.instruction->operand(0) &&
             use.operand_index == allocation_value->defining_position().index) {
@@ -620,6 +622,10 @@ void MsaAlgorithm::CreateAllocationValues(
         last_allocation_value = allocation_value;
       }
     }
+    if (last_allocation_value == nullptr) {
+      LOG(ERROR) << "Failed to find AllocationValue for use: "
+                 << use.ToString();
+    }
     CHECK(last_allocation_value != nullptr);
     last_allocation_value->AddUse(use, use_time);
   }
@@ -630,7 +636,9 @@ void MsaAlgorithm::CreateAllocationValues(
             allocation_value.defining_instruction()->opcode())) {
       CHECK_EQ(allocation_value.uses().size(), 1);
       CHECK(HloDataflowAnalysis::IsAsynchronousOperationDone(
-          allocation_value.uses().at(0).hlo_use.instruction->opcode()));
+                allocation_value.uses().at(0).hlo_use.instruction->opcode()) ||
+            allocation_value.uses().at(0).hlo_use.instruction->opcode() ==
+                HloOpcode::kAsyncUpdate);
       VLOG(3) << "Mark " << allocation_value.ToShortString()
               << " to require contiguous allocation because it is an async "
                  "start operation.";
