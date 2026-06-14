@@ -3397,6 +3397,36 @@ TEST_F(HloInstructionTest, CreateFromProtoExp) {
               ::testing::HasSubstr("Negative tolerance"));
 }
 
+TEST_F(HloInstructionTest, CreateFromProtoAsyncUpdateLateBinding) {
+  HloComputation::Builder async_builder("async_comp");
+  async_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "async_p0"));
+  auto async_computation = async_builder.Build();
+
+  auto param = HloInstruction::CreateParameter(0, r0f32_, "p0");
+  auto async_start = HloInstruction::CreateAsyncStart(
+      r0f32_, {param.get()}, async_computation.get(), "parallel_thread");
+
+  auto param2 = HloInstruction::CreateParameter(1, r0f32_, "p1");
+
+  HloInstructionProto proto;
+  proto.set_opcode("async-update");
+  proto.set_name("async_update");
+  proto.mutable_shape()->set_element_type(PrimitiveType::F32);
+  proto.add_operand_ids(10);
+  proto.add_operand_ids(11);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloInstruction> hlo,
+      HloInstruction::CreateFromProto(
+          proto, {{10, async_start.get()}, {11, param2.get()}}));
+
+  EXPECT_EQ(hlo->opcode(), HloOpcode::kAsyncUpdate);
+  EXPECT_EQ(hlo->operands().size(), 2);
+  EXPECT_EQ(hlo->operand(0), async_start.get());
+  EXPECT_EQ(hlo->operand(1), param2.get());
+}
+
 TEST_F(HloInstructionTest, ExpInvalidResultAccuracy) {
   const char* const hlo_string = R"(
   HloModule exponential_hw

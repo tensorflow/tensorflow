@@ -383,8 +383,14 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   }
   RETURN_IF_ERROR(FindAllocationSequence(hlo_live_range, alias_analysis));
 
+  for (int i = 0; i < allocations_.size(); ++i) {
+    const auto& allocation = allocations_[i];
+    LOG(INFO) << "allocations_[" << i << "]: " << allocation->ToString();
+  }
+
   std::optional<RuntimeSimulator> runtime_simulator = std::nullopt;
   if (options_.cost_analysis) {
+    VLOG(3) << "Cost analysis enabled, creating runtime simulator...";
     runtime_simulator.emplace(options_.cost_analysis,
                               options_.alternate_memory_space);
     if (VLOG_IS_ON(1)) {
@@ -394,11 +400,17 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
       LOG(INFO) << "Estimated elapsed time without async copies (sec): "
                 << estimated_time;
     }
+  } else {
+    VLOG(3) << "Cost analysis disabled.";
   }
 
   RETURN_IF_ERROR(Process(hlo_live_range, alias_analysis));
   if (options_.verify) {
+    VLOG(3) << "Verifying allocations...";
     RETURN_IF_ERROR(VerifyAllocations());
+    VLOG(3) << "Allocations verified.";
+  } else {
+    VLOG(3) << "Skipping allocation verification, disabled by options.";
   }
 
   // DEBUG_LOG_ALLOCATIONS_AT
@@ -410,8 +422,13 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   //     allocations_, /*time*/1);
   ScheduleAsynchronousCopies();
   RETURN_IF_ERROR(SimplifyGraph());
+  VLOG(3) << "Before SetSchedule: " << module_->ToString();
   RETURN_IF_ERROR(SetSchedule());
+  VLOG(3) << "After SetSchedule: " << module_->ToString();
   ASSIGN_OR_RETURN(auto alias, HloAliasAnalysis::Run(module_, alias_info_));
+  for (const HloBuffer& buffer : alias->buffers()) {
+    LOG(INFO) << "ALIAS_BUFFER: " << buffer.ToString();
+  }
   RETURN_IF_ERROR(ExportAndColorBuffers(*alias));
   std::vector<int64_t> alt_mem_bytes_occupied;
   // alt_mem_bytes_occupied is used for logging in the RuntimeSimulator below.
@@ -492,6 +509,7 @@ absl::Status MemorySpaceAssignment::Process(
   // needed.
   absl::flat_hash_set<const Allocation*> needed_allocations;
   if (options_.always_spill_to_default_memory) {
+    LOG(INFO) << "Always spill to default memory enabled.";
     TransformAllocationSequenceToSpill(allocations_, hlo_live_range);
   }
   for (auto& allocation : allocations_) {
@@ -754,6 +772,8 @@ absl::Status CleanupDeadFusionComputations(
 absl::Status MemorySpaceAssignment::SimplifyGraph() {
   VLOG(1) << "Simplifying graph...";
 
+  VLOG(3) << "Before SimplifyGraph: " << module_->ToString();
+
   // Preprocess flattened_instructions_ for quick index lookup.
   absl::flat_hash_map<HloInstruction*, int64_t>
       instruction_to_flattened_instructions_idx;
@@ -863,6 +883,8 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
 
   RemoveAlternateMemoryAssignments(removed_instructions);
   RemoveScopedMemoryAssignments(removed_instructions);
+
+  VLOG(3) << "After SimplifyGraph: " << module_->ToString();
 
   return absl::OkStatus();
 }
@@ -1377,6 +1399,8 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
                    HloLiveRange::Run(module_->schedule(), alias_analysis,
                                      module_->entry_computation()));
 
+  VLOG(0) << "VERIFIER: HLO Live Range: " << hlo_live_range->ToString();
+
   BufferIntervalTree interval_tree;
   absl::flat_hash_set<int64_t> seen_buffers;
   // The key for events is: time, is_free, value_id. This is so that the events
@@ -1390,6 +1414,9 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
   auto add_allocation_and_verify = [&](int64_t start_time, int64_t end_time,
                                        const HeapSimulator::Chunk& chunk,
                                        const HloValue* value) -> absl::Status {
+    VLOG(0) << "VERIFIER: Processing value: " << value->ToShortString()
+            << " start_time: " << start_time << " end_time: " << end_time
+            << " chunk: " << chunk.ToString();
     if (IsConcatBitcastCustomCall(value->instruction())) {
       return absl::OkStatus();
     }
@@ -1406,7 +1433,13 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
     // HloDataflowAnalysis::CanShareOperandBufferWithUser).
     for (const HeapSimulator::Chunk& overlapping_chunk :
          interval_tree.ChunksOverlappingInTime(start_time, end_time - 1)) {
+      VLOG(0) << "VERIFIER: Checking overlap with chunk: "
+              << overlapping_chunk.ToString() << " in time " << start_time
+              << " to " << (end_time - 1);
       if (chunk.OverlapsWith(overlapping_chunk)) {
+        LOG(INFO) << "VERIFIER: DETECTED CONFLICT FOR value: "
+                  << value->ToShortString()
+                  << " with chunk: " << overlapping_chunk.ToString();
         return Internal(
             ("Value %s (%d, %d) off: %d size: %d overlaps with another chunk"
              " off: %d size: %d"),
@@ -1414,6 +1447,8 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
             chunk.size, overlapping_chunk.offset, overlapping_chunk.size);
       }
     }
+    VLOG(0) << "VERIFIER: Adding to interval tree: " << chunk.ToString()
+            << " in time " << start_time << " to " << (end_time - 1);
     interval_tree.Add(start_time, end_time - 1, chunk);
     return absl::OkStatus();
   };
@@ -1442,6 +1477,8 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
   for (const auto& position_and_chunk : preset_assignments_->chunks()) {
     const HloPosition& position = position_and_chunk.first;
     const HeapSimulator::Chunk& chunk = position_and_chunk.second;
+    VLOG(0) << "VERIFIER: Loop preset assignment: position: "
+            << position.ToString() << " chunk: " << chunk.ToString();
     const HloBuffer& buffer =
         alias_analysis.GetUniqueBufferAt(position.instruction, position.index);
     CHECK(!seen_buffers.contains(buffer.id()))
