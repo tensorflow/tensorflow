@@ -220,7 +220,7 @@ class UnaryVariantOpRegistry {
   // and references therein
   template <typename Op>
   struct FuncTuple {
-    FuncTuple(const Op& op, const absl::string_view& dev,
+    FuncTuple(const Op& op, const absl::string_view dev,
               const TypeIndex& type_index)
         : op_type_(op), device_(dev), type_index_(type_index) {}
     Op op_type_;
@@ -300,8 +300,7 @@ bool DecodeUnaryVariant(Variant* variant);
 //   'to' is not null.
 //
 absl::Status VariantDeviceCopy(
-    const VariantDeviceCopyDirection direction, const Variant& from,
-    Variant* to,
+    VariantDeviceCopyDirection direction, const Variant& from, Variant* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy_fn);
 
 // Sets *v_out = unary_op(v).  The variant v must have a registered
