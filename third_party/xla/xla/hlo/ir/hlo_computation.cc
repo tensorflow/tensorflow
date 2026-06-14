@@ -1561,8 +1561,29 @@ absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   }
   async_start->set_metadata(instruction->metadata());
   async_start->CopyBackendConfigFrom(instruction);
+  if (!instruction->output_operand_aliasing().empty()) {
+    const auto& output_operand_aliasing =
+        instruction->output_operand_aliasing();
+    CHECK_EQ(output_operand_aliasing.size(), 1);
+    std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+        new_output_operand_aliasing;
+    // The new output shape index will be one dimension higher than the original
+    // output shape index in the async-start because the first output is the
+    // tuple of the inputs.
+    ShapeIndex old_output_index = output_operand_aliasing[0].first;
+    ShapeIndex new_output_index = {1};
+    new_output_index.insert(new_output_index.end(), old_output_index.begin(),
+                            old_output_index.end());
+    new_output_operand_aliasing.push_back(
+        {/*output_index*/ new_output_index,
+         /*operand_index*/ output_operand_aliasing[0].second});
+    async_start->clear_output_to_operand_aliasing();
+    async_start->set_output_to_operand_aliasing(
+        std::move(new_output_operand_aliasing));
+  }
   async_done->set_metadata(instruction->metadata());
   async_done->CopyBackendConfigFrom(instruction);
+
   for (HloInstruction* control_pred : instruction->control_predecessors()) {
     RETURN_IF_ERROR(control_pred->AddControlDependencyTo(async_start));
   }

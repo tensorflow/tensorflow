@@ -6306,6 +6306,13 @@ const CholeskyOptions& HloInstruction::cholesky_options() const {
   return Cast<HloCholeskyInstruction>(this)->cholesky_options();
 }
 
+void HloInstruction::clear_output_to_operand_aliasing() {
+  HloAliasible* aliasable = dynamic_cast<HloAliasible*>(this);
+  CHECK(aliasable != nullptr)
+      << "Instruction does not support aliasing: " << ToShortString();
+  aliasable->clear_output_to_operand_aliasing();
+}
+
 const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
 HloInstruction::output_operand_aliasing() const {
   const HloAliasible* aliasable = dynamic_cast<const HloAliasible*>(this);
