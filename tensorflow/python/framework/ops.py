@@ -273,6 +273,48 @@ class SymbolicTensor(pywrap_tf_session.PyTensor, tensor_lib.Tensor):
     result.__dict__.update(self.__dict__)
     return result
 
+  def __index__(self) -> int:
+    constant_value = tensor_util.constant_value(self)
+    if constant_value is not None:
+      try:
+        return constant_value.__index__()
+      except (AttributeError, TypeError):
+        if isinstance(constant_value, np.ndarray) and constant_value.shape == ():
+          try:
+            return constant_value.item().__index__()
+          except (AttributeError, TypeError, ValueError):
+            pass
+
+    if self.op.type == "StridedSlice":
+      try:
+        begin = tensor_util.constant_value(self.op.inputs[1])
+        end = tensor_util.constant_value(self.op.inputs[2])
+        strides = tensor_util.constant_value(self.op.inputs[3])
+        if begin is not None and end is not None and strides is not None:
+          begin = begin[0]
+          end = end[0]
+          strides = strides[0]
+          input_shape = tensor_util.constant_value_as_shape(self.op.inputs[0])
+          begin_mask = self.op.get_attr("begin_mask")
+          end_mask = self.op.get_attr("end_mask")
+          ellipsis_mask = self.op.get_attr("ellipsis_mask")
+          new_axis_mask = self.op.get_attr("new_axis_mask")
+          shrink_axis_mask = self.op.get_attr("shrink_axis_mask")
+          valid_attributes = (
+              not ellipsis_mask and not new_axis_mask and
+              shrink_axis_mask == 1 and not begin_mask and not end_mask)
+          if valid_attributes and strides == 1 and end == begin + 1:
+            dimension = input_shape[int(begin)]
+            dimension_value = getattr(dimension, "value", dimension)
+            if dimension_value is not None:
+              return dimension_value.__index__()
+      except (AttributeError, TypeError, ValueError, IndexError):
+        pass
+
+    raise TypeError(
+        f"'{type(self).__name__}' object cannot be interpreted as an integer"
+    )
+
 
 def _create_graph_constant(
     value, dtype, shape, name, verify_shape, allow_broadcast
