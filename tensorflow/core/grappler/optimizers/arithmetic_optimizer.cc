@@ -3549,6 +3549,10 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     //    since we don't have MinPool operations.
     // 4. inner_functions is not a Relu node with an input from FusedBatchNorm
     //    or BiasAdd. This pattern will be fused later by remapper.
+    // 5. inner_function is strictly monotonic if the reduction is
+    //    ArgMin/ArgMax. Non-strictly-monotonic ops (e.g. Relu, Floor) have
+    //    flat regions where ties resolve to a different index than the
+    //    underlying input, breaking the rewrite (issue #116436).
     auto can_be_fused_by_remapper = [](const NodeDef& consumer,
                                        const NodeDef& producer) -> bool {
       if (IsRelu(consumer) || IsRelu6(consumer)) {
@@ -3559,8 +3563,13 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       return false;
     };
     bool is_non_decreasing = false;
+    bool is_strict = false;
+    const bool is_arg_reduction =
+        IsArgMax(*reduction_node) || IsArgMin(*reduction_node);
     if (!IsInPreserveSet(*inner_function) &&
-        IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
+        IsElementWiseMonotonic(*inner_function, &is_non_decreasing,
+                               &is_strict) &&
+        (!is_arg_reduction || is_strict) &&
         ctx().node_map->GetOutputs(inner_function->name()).size() == 1 &&
         (is_non_decreasing || !IsAnyMaxPool(*reduction_node)) &&
         !can_be_fused_by_remapper(*inner_function, *inner_function_input)) {

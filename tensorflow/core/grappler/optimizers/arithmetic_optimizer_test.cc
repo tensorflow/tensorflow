@@ -4043,6 +4043,37 @@ TEST_F(ArithmeticOptimizerTest, OptimizeArgMaxOrArgMinOfMonotonicElementWise) {
 }
 
 TEST_F(ArithmeticOptimizerTest,
+       OptimizeArgMaxOrArgMinOfMonotonicElementWiseDoNotChangeNonStrict) {
+  // ArgMin(Relu(x)) must not be rewritten to ArgMin(x): Relu's flat region
+  // creates ties that resolve to a different index. See issue #116436.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  const auto x =
+      ops::Const(s.WithOpName("x"), {1.0f, -1.0f, -5.0f, 2.0f}, {1, 4});
+  Output relu = ops::Relu(s.WithOpName("relu"), x);
+  Output arg_min = ops::ArgMin(s.WithOpName("arg_min"), relu, 1);
+  Output final_out = ops::Identity(s.WithOpName("final_out"), arg_min);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  const auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(tensors_expected.size(), 1);
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);
+
+  // Optimizer must leave the graph unchanged for non-strictly-monotonic ops
+  // feeding ArgMin/ArgMax.
+  VerifyGraphsMatch(item.graph, output, __LINE__);
+
+  const auto tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(tensors.size(), 1);
+  test::ExpectTensorEqual<int64_t>(tensors[0], tensors_expected[0]);
+}
+
+TEST_F(ArithmeticOptimizerTest,
        OptimizeMaxOrMinOfMonotonicElementWiseDoNotChangeFetchNode) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
