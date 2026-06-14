@@ -87,6 +87,7 @@ bool operator==(const Variant& a, const Variant& b) {
 
 namespace {
 
+
 TEST(TensorTest, Default) {
   Tensor t;
   EXPECT_EQ(t.dtype(), DT_FLOAT);
