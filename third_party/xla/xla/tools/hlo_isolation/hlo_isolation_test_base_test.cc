@@ -55,8 +55,9 @@ namespace xla {
 namespace hlo_isolation {
 namespace {
 
-class HloIsolationTest : public HloIsolationTestMixin<
-                             HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
+class HloIsolationTest
+    : public HloIsolationTestMixin<HloInterpreterReferenceMixin<HloTestBase>> {
+};
 
 TEST_F(HloIsolationTest, RunSimpleModule) {
   const char* hlo_text = R"(
