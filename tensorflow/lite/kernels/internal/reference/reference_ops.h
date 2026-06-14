@@ -794,24 +794,13 @@ void SelectTrueCoords(const RuntimeShape& input_condition_shape,
   }
 }
 
-template <typename TI>
-inline bool IsValidIndex(const std::vector<TI>& index,
-                         const RuntimeShape& output_shape) {
-  for (int j = 0; j < 4; ++j) {
-    if (index[j] < 0 || index[j] >= output_shape.Dims(j)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 // For easy implementation, the indices is always a vector of size-4 vectors.
 template <typename T, typename TI>
-inline TfLiteStatus SparseToDense(const std::vector<std::vector<TI>>& indices,
-                                  const T* values, T default_value,
-                                  bool value_is_scalar,
-                                  const RuntimeShape& unextended_output_shape,
-                                  T* output_data) {
+inline void SparseToDense(const std::vector<std::vector<TI>>& indices,
+                          const T* values, T default_value,
+                          bool value_is_scalar,
+                          const RuntimeShape& unextended_output_shape,
+                          T* output_data) {
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
@@ -829,28 +818,21 @@ inline TfLiteStatus SparseToDense(const std::vector<std::vector<TI>>& indices,
     for (int i = 0; i < value_count; ++i) {
       const std::vector<TI>& index = indices[i];
       TFLITE_DCHECK_EQ(index.size(), 4);
-      if (!IsValidIndex(index, output_shape)) {
-        return kTfLiteError;
-      }
       const T value = *values;  // just use the first value.
       output_data[Offset(output_shape, index[0], index[1], index[2],
                          index[3])] = value;
     }
-    return kTfLiteOk;
+    return;
   }
 
   // Go through the values and indices to fill the sparse values.
   for (int i = 0; i < value_count; ++i) {
     const std::vector<TI>& index = indices[i];
     TFLITE_DCHECK_EQ(index.size(), 4);
-    if (!IsValidIndex(index, output_shape)) {
-      return kTfLiteError;
-    }
     const T value = values[i];
     output_data[Offset(output_shape, index[0], index[1], index[2], index[3])] =
         value;
   }
-  return kTfLiteOk;
 }
 
 template <typename T>
