@@ -64,7 +64,7 @@ namespace xla::gpu {
 namespace {
 
 class CuDnnFusionTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   se::StreamExecutor* stream_executor() const {
     auto platform =
