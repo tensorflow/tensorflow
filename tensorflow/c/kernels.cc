@@ -850,7 +850,7 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
                              int num_dims, size_t len, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
-  tensorflow::gtl::ArraySlice<const int64_t> dimarray(
+  absl::Span<const const int64_t> dimarray(
       reinterpret_cast<const int64_t*>(dims), num_dims);
   tensorflow::Tensor* tensor;
   absl::Status s = cc_ctx->allocate_output(
@@ -877,7 +877,7 @@ TF_Tensor* TF_ForwardInputOrAllocateOutput(
 
   absl::Span<const int> input_indices_array(candidate_input_indices,
                                             num_candidate_input_indices);
-  tensorflow::gtl::ArraySlice<const int64_t> output_dimarray(
+  absl::Span<const const int64_t> output_dimarray(
       reinterpret_cast<const int64_t*>(output_dims), output_num_dims);
   tensorflow::Tensor* output_tensor_pointer;
   absl::Status s = cc_ctx->forward_input_or_allocate_output(
@@ -902,7 +902,7 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
                            TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
   TF_SetStatus(status, TF_OK, "");
-  tensorflow::gtl::ArraySlice<const int64_t> dimarray(
+  absl::Span<const const int64_t> dimarray(
       reinterpret_cast<const int64_t*>(dims), num_dims);
   if (alloc_attrs && !alloc_attrs->struct_size) {
     TF_SetStatus(
