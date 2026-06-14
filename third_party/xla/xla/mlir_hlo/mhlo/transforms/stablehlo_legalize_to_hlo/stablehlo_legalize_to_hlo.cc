@@ -397,7 +397,7 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
 
     // Extensibility protocol for public MHLO features that are not yet
     // supported in StableHLO. See hlo_legalize_to_stablehlo.cc for details.
-    if constexpr (std::is_same<StablehloOpTy, stablehlo::CustomCallOp>::value) {
+    if constexpr (std::is_same_v<StablehloOpTy, stablehlo::CustomCallOp>) {
       if (stablehloOp.getCallTargetName().starts_with("mhlo.")) {
         return rewriteCustomCallAsMhloOp(stablehloOp, rewriter, typeConverter,
                                          hloTypes, hloOperands);
@@ -409,8 +409,7 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     // with the exception of ArrayAttr which is converted recursively.
     SmallVector<NamedAttribute> hloAttrs;
     for (NamedAttribute stablehloAttr : stablehloOp->getAttrs()) {
-      if constexpr (std::is_same<StablehloOpTy,
-                                 stablehlo::CustomCallOp>::value) {
+      if constexpr (std::is_same_v<StablehloOpTy, stablehlo::CustomCallOp>) {
         if (stablehloAttr.getName() == "mhlo.backend_config") continue;
       }
       auto hloAttr = convertAttr(stablehloAttr.getValue());
@@ -433,7 +432,7 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     }
 
     // For backward compatibility, fix custom call with mhlo.backend_config
-    if constexpr (std::is_same<StablehloOpTy, stablehlo::CustomCallOp>::value) {
+    if constexpr (std::is_same_v<StablehloOpTy, stablehlo::CustomCallOp>) {
       if (failed(fixupMhloBackendConfig(stablehloOp, hloOp))) return failure();
     }
 
