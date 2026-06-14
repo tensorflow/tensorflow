@@ -2,6 +2,7 @@
 #   Contains the Keras initializer API (internal TensorFlow version).
 
 load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -40,5 +41,14 @@ py_library(
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:stateless_random_ops",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+tf_py_strict_test(
+    name = "initializers_v2_test",
+    srcs = ["initializers_v2_test.py"],
+    deps = [
+        ":initializers",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
