@@ -552,6 +552,18 @@ struct scalar_round_half_to_even_op<Scalar, true, false> {
 };
 
 template <typename Scalar>
+struct scalar_round_half_to_even_op<Scalar, true, true> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& x) const {
+    return x;
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    return x;
+  }
+};
+
+template <typename Scalar>
 struct scalar_round_half_to_even_op<Scalar, false, true> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
