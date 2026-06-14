@@ -598,6 +598,55 @@ TEST(FastParse, DenseFloat_TooFewElements_ReportsError) {
             std::string::npos);
 }
 
+TEST(FastParse, TruncatedBytesList_ReportsError) {
+  FastParseExampleConfig config;
+  config.sparse.push_back({"test_bytes", DT_STRING});
+
+  auto encode_varint = [](uint32_t v, std::string* out) {
+    while (v >= 0x80) {
+      out->push_back((v & 0x7f) | 0x80);
+      v >>= 7;
+    }
+    out->push_back(v);
+  };
+
+  std::string bytes_list_data;
+  bytes_list_data.push_back(10);         // DelimitedTag(1) for value
+  encode_varint(100, &bytes_list_data);  // Expecting 100 bytes
+  bytes_list_data.append("abcde");       // Only 5 bytes actually provided
+
+  std::string serialized_feature;
+  serialized_feature.push_back(18);  // DelimitedTag(2) for bytes_list
+  encode_varint(bytes_list_data.size(), &serialized_feature);
+  serialized_feature.append(bytes_list_data);
+
+  std::string map_entry;
+  map_entry.push_back(10);  // DelimitedTag(1) for key
+  encode_varint(sizeof("test_bytes") - 1, &map_entry);
+  map_entry.append("test_bytes");
+  map_entry.push_back(18);  // DelimitedTag(2) for value
+  encode_varint(serialized_feature.size(), &map_entry);
+  map_entry.append(serialized_feature);
+
+  std::string features_msg;
+  features_msg.push_back(10);  // DelimitedTag(1) for map entry
+  encode_varint(map_entry.size(), &features_msg);
+  features_msg.append(map_entry);
+
+  std::string serialized_example;
+  serialized_example.push_back(10);  // DelimitedTag(1) for features
+  encode_varint(features_msg.size(), &serialized_example);
+  serialized_example.append(features_msg);
+
+  Result result;
+  std::vector<tstring> serialized_vec = {tstring(serialized_example)};
+  absl::Status parse_status =
+      FastParseExample(config, serialized_vec, {}, nullptr, &result);
+
+  EXPECT_FALSE(parse_status.ok());
+  EXPECT_TRUE(absl::IsInvalidArgument(parse_status));
+}
+
 }  // namespace
 }  // namespace example
 }  // namespace tensorflow
