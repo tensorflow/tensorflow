@@ -1229,6 +1229,7 @@ py_library(
 py_library(
     name = "cond",
     srcs = ["cond.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
