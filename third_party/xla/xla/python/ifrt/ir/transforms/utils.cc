@@ -444,7 +444,7 @@ xla::CompileOptions GetDefaultCompileOptions(CallOp call_op,
     exec_build_options.set_device_assignment(device_assignment);
     exec_build_options.set_use_spmd_partitioning(true);
     mlir::ModuleOp callee_module = callee->getParentOfType<mlir::ModuleOp>();
-    if (xla::sdy::hasShardyMesh(callee_module)) {
+    if (enable_sharding_propagation && xla::sdy::hasShardyMesh(callee_module)) {
       exec_build_options.set_use_shardy_partitioner(true);
     }
     if (enable_sharding_propagation) {
