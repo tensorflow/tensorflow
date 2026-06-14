@@ -4140,6 +4140,9 @@ absl::Status AlgebraicSimplifierVisitor::RewriteBatchPlusContractingAsReduce(
   absl::c_iota(reduce_dims, outer_dims + dnums.lhs_batch_dimensions_size());
   new_dot = AddReduce(new_dot, reduce_dims, dot_type);
   new_dot = AsType(new_dot, dot->shape().element_type());
+  if (options_.is_layout_sensitive()) {
+    *new_dot->mutable_shape()->mutable_layout() = dot->shape().layout();
+  }
   return ReplaceInstruction(dot, new_dot);
 }
 
@@ -4164,6 +4167,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(dot, m::Dot(m::Op(&lhs), m::Op(&rhs))));
   if (options_.is_layout_sensitive()) {
+    if (options_.executing_on_cpu() &&
+        SupportedDotPrecisionConfig(dot->precision_config(),
+                                    /*has_contracting_dim=*/true) &&
+        options_.enable_dot_strength_reduction() &&
+        DotHasOnlyBatchAndContractingOnOneOperand(
+            lhs->shape().dimensions().size(), rhs->shape().dimensions().size(),
+            dnums) &&
+        ShouldStrengthReduceDotToReduce(dot)) {
+      return RewriteBatchPlusContractingAsReduce(dot_cast, lhs, rhs, dnums);
+    }
     return absl::OkStatus();
   }
 
@@ -10595,6 +10608,85 @@ absl::Status AlgebraicSimplifierVisitor::HandleConditional(
   return absl::OkStatus();
 }
 
+namespace {
+
+// Traces a dimension back from a fused instruction to a parameter.
+std::pair<const HloInstruction*, int64_t> TraceDimensionBackInsideFusion(
+    const HloInstruction* hlo, int64_t dim) {
+  while (true) {
+    if (hlo->opcode() == HloOpcode::kCopy) {
+      hlo = hlo->operand(0);
+    } else if (hlo->opcode() == HloOpcode::kTranspose) {
+      dim = hlo->dimensions()[dim];
+      hlo = hlo->operand(0);
+    } else if (hlo->opcode() == HloOpcode::kParameter) {
+      break;
+    } else {
+      break;
+    }
+  }
+  return {hlo, dim};
+}
+
+// Traces a dimension back through transposes, copies, and fusions.
+std::pair<const HloInstruction*, int64_t> TraceDimensionBack(
+    const HloInstruction* hlo, int64_t dim) {
+  while (true) {
+    if (hlo->opcode() == HloOpcode::kCopy) {
+      hlo = hlo->operand(0);
+    } else if (hlo->opcode() == HloOpcode::kTranspose) {
+      dim = hlo->dimensions()[dim];
+      hlo = hlo->operand(0);
+    } else if (hlo->opcode() == HloOpcode::kFusion) {
+      const HloInstruction* root = hlo->fused_expression_root();
+      auto traced = TraceDimensionBackInsideFusion(root, dim);
+      if (traced.first->opcode() == HloOpcode::kParameter) {
+        int64_t param_num = traced.first->parameter_number();
+        hlo = hlo->operand(param_num);
+        dim = traced.second;
+      } else {
+        break;
+      }
+    } else {
+      break;
+    }
+  }
+  return {hlo, dim};
+}
+
+bool AreContractingDimsMinorMost(const HloInstruction* inst,
+                                 absl::Span<const int64_t> contracting_dims) {
+  if (!inst->shape().has_layout()) {
+    return true;
+  }
+  std::vector<int64_t> traced_dims;
+  traced_dims.reserve(contracting_dims.size());
+  const HloInstruction* underlying = nullptr;
+  for (int64_t dim : contracting_dims) {
+    auto traced = TraceDimensionBack(inst, dim);
+    if (underlying == nullptr) {
+      underlying = traced.first;
+    } else {
+      DCHECK_EQ(underlying, traced.first);
+    }
+    traced_dims.push_back(traced.second);
+  }
+
+  if (!underlying->shape().has_layout()) {
+    return true;
+  }
+  const Layout& underlying_layout = underlying->shape().layout();
+  for (int i = 0; i < traced_dims.size(); ++i) {
+    int64_t minor_dim = underlying_layout.minor_to_major(i);
+    if (!absl::c_linear_search(traced_dims, minor_dim)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
+
 bool AlgebraicSimplifierVisitor::ShouldStrengthReduceDotToReduce(
     const HloInstruction* hlo) {
   if (options_.executing_on_cpu()) {
@@ -10615,8 +10707,23 @@ bool AlgebraicSimplifierVisitor::ShouldStrengthReduceDotToReduce(
             dnums.rhs_contracting_dimensions_size() ==
         rhs->shape().dimensions().size();
 
-    return lhs_has_only_batch_and_contracting &&
-           rhs_has_only_batch_and_contracting;
+    if (!(lhs_has_only_batch_and_contracting &&
+          rhs_has_only_batch_and_contracting)) {
+      return false;
+    }
+
+    if (!options_.is_layout_sensitive()) {
+      return true;
+    }
+
+    if (!AreContractingDimsMinorMost(lhs, dnums.lhs_contracting_dimensions()) ||
+        !AreContractingDimsMinorMost(rhs, dnums.rhs_contracting_dimensions())) {
+      VLOG(2) << "Rejecting dot strength reduction because contracting "
+                 "dimensions are not minor-most in underlying buffers.";
+      return false;
+    }
+
+    return true;
   }
   return true;
 }
