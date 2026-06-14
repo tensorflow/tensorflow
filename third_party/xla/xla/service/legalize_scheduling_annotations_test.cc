@@ -344,16 +344,21 @@ TEST_F(LegalizeSchedulingAnnotationsTest, DropAnnotationFromBitcast) {
       bitcast->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr));
 }
 
-TEST_F(LegalizeSchedulingAnnotationsTest, DropAnnotationFromTrivialGroup) {
+TEST_F(LegalizeSchedulingAnnotationsTest, DropAnnotationFromTrivialGroups) {
   constexpr absl::string_view hlo_string = R"(
   HloModule test
+  sum {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
   ENTRY entry {
     p0 = f32[256,1024]{1,0} parameter(0)
     p1 = f32[16,64,256]{2,1,0} parameter(1)
     ags0 = (f32[256,1024]{1,0}, f32[1024,1024]{1,0}) all-gather-start(p0), replica_groups={{0,1,2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="0"}
     bitcast = f32[16,64,256]{2,1,0} bitcast(p1), frontend_attributes={_scheduling_group_id="1"}
-    copy = f32[16,64,256]{2,1,0} copy(bitcast), frontend_attributes={_scheduling_group_id="2"}
-    bitcast2 = f32[16,64,256]{2,1,0} bitcast(copy), frontend_attributes={_scheduling_group_id="3"}
+    all-reduce = f32[16,64,256]{2,1,0} all-reduce(bitcast), replica_groups={}, to_apply=sum, frontend_attributes={_scheduling_group_id="2"}
+    bitcast2 = f32[16,64,256]{2,1,0} bitcast(all-reduce), frontend_attributes={_scheduling_group_id="3"}
     bitcast3 = f32[16,64,256]{2,1,0} bitcast(bitcast2), frontend_attributes={_scheduling_group_id="3"}
     agd0 = f32[1024,1024]{1,0} all-gather-done(ags0), frontend_attributes={_scheduling_group_id="0"}
     ROOT tuple = (f32[16,64,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(bitcast3, agd0)
@@ -370,15 +375,15 @@ TEST_F(LegalizeSchedulingAnnotationsTest, DropAnnotationFromTrivialGroup) {
   HloInstruction* bitcast3 =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
   HloInstruction* bitcast2 = bitcast3->mutable_operand(0);
-  HloInstruction* copy = bitcast2->mutable_operand(0);
-  HloInstruction* bitcast = copy->mutable_operand(0);
-  EXPECT_TRUE(
-      copy->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr));
+  HloInstruction* all_reduce = bitcast2->mutable_operand(0);
+  HloInstruction* bitcast = all_reduce->mutable_operand(0);
+  EXPECT_TRUE(all_reduce->frontend_attributes().map().contains(
+      kXlaSchedulingGroupIdAttr));
   EXPECT_FALSE(
       bitcast->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr));
-  EXPECT_TRUE(bitcast2->frontend_attributes().map().contains(
+  EXPECT_FALSE(bitcast2->frontend_attributes().map().contains(
       kXlaSchedulingGroupIdAttr));
-  EXPECT_TRUE(bitcast3->frontend_attributes().map().contains(
+  EXPECT_FALSE(bitcast3->frontend_attributes().map().contains(
       kXlaSchedulingGroupIdAttr));
 }
 
