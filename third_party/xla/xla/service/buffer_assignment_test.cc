@@ -3302,8 +3302,8 @@ TEST_F(BufferAssignmentTest, AsyncCallImplicitSharding) {
 
   ENTRY entry {
     p0 = f32[8] parameter(0)
-    call-start = ((f32[8]), f32[8], s32[]) call-start(p0), async_execution_thread="foo", to_apply=called_computation
-    ROOT call-done = f32[8] call-done(call-start)
+    call-start = ((f32[8]), f32[4], s32[]) call-start(p0), async_execution_thread="foo", to_apply=called_computation
+    ROOT call-done = f32[4] call-done(call-start)
   }
   )";
 
