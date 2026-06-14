@@ -281,6 +281,15 @@ def _constant_impl(
     value, dtype, shape, name, verify_shape, allow_broadcast
 ) -> Union[ops.Operation, ops._EagerTensorBase]:
   """Implementation of constant."""
+  # Provide a descriptive error message if a Tensor is passed to tf.constant.
+  if hasattr(value, "__tensor_metadata__") or isinstance(value, ops.Tensor):
+    raise TypeError(
+        f"tf.constant() expected a Python scalar, list, or numpy array, "
+        f"but got a tensor instead: {value}\n"
+        f"Note: You are passing an existing tensor into tf.constant(), which "
+        f"is not supported. If you already have a tensor, use it directly."
+    )
+
   ctx = context.context()
   if ctx.executing_eagerly():
     if trace.enabled:
