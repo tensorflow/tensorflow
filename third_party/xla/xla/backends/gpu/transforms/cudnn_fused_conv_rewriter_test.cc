@@ -110,7 +110,7 @@ class CudnnFusedConvRewriterHloTest : public HloPjRtGpuTestBase {
 };
 
 class CudnnFusedConvRewriterTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+    : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  public:
   bool IsCuda() const {
     return device_description().gpu_compute_capability().IsCuda();
