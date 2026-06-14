@@ -379,6 +379,22 @@ TEST(ElementWise, Sqrt) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, SqrtEdgeCases) {
+  constexpr float kInf = std::numeric_limits<float>::infinity();
+  constexpr float kNaN = std::numeric_limits<float>::quiet_NaN();
+  ElementWiseOpFloatModel m(BuiltinOperator_SQRT, {1, 1, 5, 1});
+  m.PopulateTensor<float>(m.input(), {-0.0f, 0.0f, kInf, -kInf, kNaN});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  std::vector<float> output = m.ExtractVector<float>(m.output());
+  EXPECT_TRUE(std::signbit(output[0]));
+  EXPECT_FALSE(std::signbit(output[1]));
+  if (m.GetNumberOfAppliedDelegates() == 0) {
+    EXPECT_EQ(output[2], kInf);
+  }
+  EXPECT_TRUE(std::isnan(output[3]));
+  EXPECT_TRUE(std::isnan(output[4]));
+}
+
 TEST(ElementWise, SqrtInt8) {
   const std::vector<float> input_data = {0, 1, 2, 9, 16, 25, 1.44, 0.5};
   std::vector<float> expected_output(input_data.size());
