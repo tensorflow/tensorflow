@@ -170,7 +170,7 @@ running the benchmark tool:
     inputs of the model graph need to be specified. However, the input name
     does not need to match that encoded in the model. Additionally, the order
     of input layer names specified here is assumed to be same with that is seen
-    by the Tensorflow Lite interpreter. This is a bit inconvenient but the
+    by the TensorFlow Lite interpreter. This is a bit inconvenient but the
     [visualization tool](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/visualize.py)
     should help to find this order.
 *   `input_layer_shape`: `string` \
@@ -287,7 +287,7 @@ delegate first, and then the XNNPACK delegate secondly.
 
 Note: The benchmarking tool must be compiled with a TFLite runtime that
 supports the ops found in the model to be tested.<br/>
-If Tensorflow Ops ("flex ops")
+If TensorFlow Ops ("flex ops")
 or other custom ops are used in the model, please see the section [below](#build-the-benchmark-tool-with-tensorflow-ops-support).
 
 ### On Android:
@@ -480,14 +480,14 @@ some additional parameters as detailed below.
     Whether to perform all benchmark runs, each of which has different
     performance options, in a random order.
 
-## Build the benchmark tool with Tensorflow ops support
+## Build the benchmark tool with TensorFlow ops support
 
 If you see an error that says: `ERROR: Select TensorFlow op(s), included in the
 given model, is(are) not supported by this interpreter.` you will need to
-build with [Tensorflow operators support](https://www.tensorflow.org/lite/guide/ops_select).
+build with [TensorFlow operators support](https://www.tensorflow.org/lite/guide/ops_select).
 
-Having Tensorflow ops in the TFLite file works when the benchmark tool is built
-with Tensorflow ops support. It doesn't require any additional option to use it.
+Having TensorFlow ops in the TFLite file works when the benchmark tool is built
+with TensorFlow ops support. It doesn't require any additional option to use it.
 
 ### How to build
 
@@ -510,7 +510,7 @@ bazel build -c opt \
   tensorflow/lite/tools/benchmark:benchmark_model_plus_flex
 ```
 
-### How to benchmark tflite model with Tensorflow ops
+### How to benchmark tflite model with TensorFlow ops
 
 Follow the further instructions [above](#to-buildinstallrun) replacing
 `benchmark_model` with the `benchmark_model_plus_flex` file created here.

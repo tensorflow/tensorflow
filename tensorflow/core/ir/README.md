@@ -5,7 +5,7 @@ for TensorFlow graphs using MLIR.
 
 ## Introduction
 
-This directory defined an MLIR dialect, the “TensorFlow Graph dialect”, that
+This directory defines an MLIR dialect, the “TensorFlow Graph dialect”, that
 represents accurately TensorFlow graphs. Contrary to the previous TensorFlow
 dialect which made some opinionated choices that diverged from GraphDef and
 TensorFlow Graph semantics, this dialect embraces TensorFlow Graph as it is. In
@@ -63,7 +63,7 @@ However, the implementation of TensorFlow 2.0 didn't break away from TensorFlow
 V1 entirely, instead TensorFlow functions are wrapped above TensorFlow V1 and
 expose a leaky abstraction over the classical graph. As a result, the TensorFlow
 dialect never got in a position to be enabled by default in TensorFlow. In
-particular there are many subtle way in which TensorFlow functions diverges from
+particular there are many subtle ways in which TensorFlow functions diverge from
 the sequential eager interpretation. For example the following pattern has been
 recommended to users who intended to call a function `bar` knowing that the
 first argument wasn’t necessary if they only used the first result.
@@ -108,7 +108,7 @@ foo(1., 2., variable)
 ```
 
 Throws an exception because `tf.matmul` expects rank-2 tensors, but the variable
-may or may not have been assigned. As such a user may want to opt in a safer
+may or may not have been assigned. As such a user may want to opt into a safer
 behavior for their function:
 
 ```
@@ -131,7 +131,7 @@ it exists today cannot support all of these use-cases, and it prevented MLIR
 from providing a general graph transformation solution for TensorFlow,
 contributing to more fragmentation instead of reducing it as promised.
 
-The rest of this document describe how this new dialect follows a more pragmatic
+The rest of this document describes how this new dialect follows a more pragmatic
 approach to enable MLIR deployment in TensorFlow.
 
 ## Design
@@ -196,7 +196,7 @@ the TensorFlow dialect was designed. It was actually
 and break away from the CFG-centric representation, but we couldn’t reach a
 consensus, and some key members of the team believed that a departure from
 CFG/SSA would limit the reusability of many algorithms. On the other hand, this
-choice prevented us to design a graph dialect that can just replace TensorFlow
+choice prevented us from designing a graph dialect that can just replace TensorFlow
 Graph structure as-is. Since then MLIR evolved to become more general and this
 feature is now available (it was motivated by the
 [support for HW synthesis tools](https://llvm.discourse.group/t/rfc-allowing-dialects-to-relax-the-ssa-dominance-condition/833)).
@@ -222,15 +222,15 @@ values, and finally contains a list of nodes for its body. While on the surface
 this `repeated NodeDef node_def` field looks identical to the body of
 [GraphDef](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/graph.proto#L17),
 there are fundamental differences in the representation, and in particular the
-format the edges are represented is different.
+format in which the edges are represented is different.
 
 To understand these differences, it is important to realize that a key aspect of
-`FunctionsDef` is that they are stored uninstantiated, and can be considered in
+`FunctionDef` is that they are stored uninstantiated, and can be considered in
 a similar way to a C++ template function. The signature is actually an `OpDef`,
 and just like any regular TensorFlow operation the types of the arguments and
 the results are encoded and constrained with attributes. These attributes are
 only provided or inferred based on the function’s use: the call-site is
-responsible for instantiating a function before it’s body can be represented as
+responsible for instantiating a function before its body can be represented as
 a Graph. Because of this, the body of an uninstantiated function is modeled
 differently than Graph body:
 
@@ -254,7 +254,7 @@ a single tensor output and a control token. The tensor output is then unpacked
 by looking up individual results by name. This is particularly visible with the
 `Switch` operation where the two results are accessed using `tfg.get_result`
 looking them up by name `output_true:0` and `output_false:0`. This is required
-because the OpDef can define the number of output based on the attribute present
+because the OpDef can define the number of outputs based on the attributes present
 on the NodeDef, and these attributes can in turn be dependent on the attributes
 added on the function during instantiation (you can read more about it in the
 [description of the placeholder attribute value](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/attr_value.proto#L48-L55)).
@@ -346,7 +346,7 @@ TensorFlow dialect directly as follows:
 
 MLIR transformations in this dialect will operate on a module that will contain
 at most one `graph` operation as well as a list of functions. This interface
-will make such transformations suitable for fit within Grappler or as
+will make such transformations suitable to fit within Grappler or as
 GraphOptimization interchangeably.
 
 Instead of a flat graph, an entry function will be provided when feeds/fetches
@@ -361,7 +361,7 @@ The executor dialect wasn’t designed to write transformation: it is designed a
 a wrapper around the TensorFlow dialect: the intent was for it to be a stepping
 stone to integrate MLIR and TensorFlow, and then disappear when TensorFlow V1
 graphs would be deprecated. This new dialect embraces TensorFlow as it is
-instead of as I wish it would be.
+instead of as we wish it would be.
 
 In particular the executor dialect represents each TensorFlow node as an
 isolated “subgraph” nested under an “island” operation. This requires 3
@@ -387,7 +387,7 @@ The details of such mechanisms are left for future work.
 <!-- Footnotes -->
 
 [^1]: While the semantic model is sequential, this does not prevent an
-    implementation to execute operation in parallel when proven safe. This is
+    implementation from executing operations in parallel when proven safe. This is
     similar to how a superscalar CPU involves implicit parallelism. For
     example when mapping the TensorFlow dialect to TFRT, only side-effecting
     operations (Variable accesses for example) are sequenced.

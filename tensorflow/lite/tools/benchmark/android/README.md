@@ -87,7 +87,7 @@ adb logcat | grep "Inference timings in us"
 ... tflite  : Inference timings in us: Init: 1007529, First inference: 4098, Warmup (avg): 1686.59, Inference (avg): 1687.92
 ```
 
-## To trace Tensorflow Lite internals including operator invocation
+## To trace TensorFlow Lite internals including operator invocation
 
 The steps described here follows the method of
 https://developer.android.com/topic/performance/tracing/on-device. Refer to the

@@ -25,7 +25,7 @@ read the
 
 TensorFlow C++ resource classes are derived from the
 [`ResourceBase` class](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/resource_base.h).
-A resource is referenced in the Tensorflow Graph as a
+A resource is referenced in the TensorFlow Graph as a
 [`ResourceHandle`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/resource_handle.h)
 Tensor, of the type
 [`DT_RESOURCE`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/types.proto).
@@ -210,7 +210,7 @@ class SimpleHashTableResource : public ::tensorflow::ResourceBase {
 
   Status Find(const Tensor& key, Tensor* value, const Tensor& default_value) {
     // Note that tf_shared_lock could be used instead of mutex_lock
-    // in ops that do not not modify data protected by a mutex, but
+    // in ops that do not modify data protected by a mutex, but
     // go/totw/197 recommends using exclusive lock instead of a shared
     // lock when the lock is not going to be held for a significant amount
     // of time.
@@ -717,7 +717,7 @@ Python logic that is lost when a `tf.function` is created). In the case of
 ```
 
 The Python wrapper specifies that gradients are not implemented in this example.
-For an example of a differentiable map. For general information about gradients,
+For an example of a differentiable map, see the OSS guide. For general information about gradients,
 read
 [Implement the gradient in Python](https://www.tensorflow.org/guide/create_op#implement_the_gradient_in_python)
 in the OSS guide.
@@ -730,7 +730,7 @@ tf.no_gradient("Examples>SimpleHashTableRemove")
 ```
 
 The full source code for the Python wrapper is in
-`simple_hash_table_op.py`]
+`simple_hash_table_op.py`
 and
 `simple_hash_table.py`.
 

@@ -19,5 +19,5 @@ Each test is structured as:
 
 The sample functions are what demonstrate how code is authored for AutoGraph.
 
-The test in generale ensure that the sample code produces the same results when
+The tests in general ensure that the sample code produces the same results when
 run in a TF graph as it would when executed as regular Python.

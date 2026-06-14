@@ -7,7 +7,7 @@ the TensorFlow Lite
 [benchmark tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark)
 and
 [MiniBenchmark](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/acceleration/mini_benchmark)
-with the focus on testing Tensorflow Lite delegates that implement stable
+with the focus on testing TensorFlow Lite delegates that implement stable
 delegate ABI.
 
 Development of TensorFlow Lite delegates needs both accuracy and latency

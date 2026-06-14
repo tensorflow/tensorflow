@@ -95,7 +95,7 @@ following code examples:
 
 ## Use GPU with standalone TensorFlow Lite {:#standalone}
 
-If your application is targets devices which are not running Google Play,
+If your application targets devices which are not running Google Play,
 it is possible to bundle the GPU delegate to your application and use it
 with the standalone version of TensorFlow Lite.
 

@@ -164,7 +164,7 @@ be an example of how to implement ops that do I/O or that block on other ops.
 
 delay: tf.Tensor which is a scalar of type float.
 
-Returns the time spent in blocking sleep (which may be less that `delay` or
+Returns the time spent in blocking sleep (which may be less than `delay` or
 zero if other ops run while this is waiting asynchronously).
 )doc");
 ```
@@ -180,7 +180,7 @@ REGISTER_OP("Examples>SyncSleep")
     .Doc(R"doc(
 Pause for `delay` seconds (which need not be an integer).
 
-This is a synchronous (blocking) version of sleep. It's purpose is
+This is a synchronous (blocking) version of sleep. Its purpose is
 to be contrasted with Examples>AsyncSleep.
 
 delay: tf.Tensor which is a scalar of type float.
@@ -498,7 +498,7 @@ class SleepTest(tf.test.TestCase):
     self._check_sleep(sleep_op.AsyncSleep)
 
   def test_async_sleep_error(self):
-    # It is import that ComputeAsync() calls its done() callback if it returns
+    # It is important that ComputeAsync() calls its done() callback if it returns
     # early due to an error.
     func = tf.function(lambda: sleep_op.AsyncSleep(-1.0))
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError,

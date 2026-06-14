@@ -13,7 +13,7 @@ spectrum; and subsequently compute the filter banks.
 Here we provide implementations for both a TensorFlow and TensorFlow Lite
 operations that encapsulate the functionality of the audio frontend.
 
-Both frontend Ops receives audio data and produces as many unstacked frames
+Both frontend Ops receive audio data and produces as many unstacked frames
 (filterbanks) as audio is passed in, according to the configuration.
 
 The processing uses a lightweight library to perform:

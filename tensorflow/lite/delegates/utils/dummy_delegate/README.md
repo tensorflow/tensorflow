@@ -30,12 +30,12 @@ mechanism
 mechanism.
 
 The former approach requires few changes as detailed below. The latter one
-requires even fewer changes and works with pre-built Tensorflow Lite tooling
+requires even fewer changes and works with pre-built TensorFlow Lite tooling
 binaries. However, it is less explicit and it might be more complicated to set
 up in automated integration tests. Therefore, for better clarity, the
 delegate-registrar approach is slightly preferred here.
 
-We now describe each option above in more details in the following sections.
+We now describe each option above in more detail in the following sections.
 
 ### Option 1: Utilize Delegate Registrar
 In this approach, create a delegate provider like the
@@ -121,8 +121,8 @@ bazel-bin/tensorflow/lite/delegates/utils/dummy_delegate/benchmark_model_plus_du
 
 ```
 
-### Option 2: Utilize Tensorflow Lite External Delegate
-In this **alternative approach to reuse existing Tensorflow Lite kernel testing
+### Option 2: Utilize TensorFlow Lite External Delegate
+In this **alternative approach to reuse existing TensorFlow Lite kernel testing
 and tooling**, we first create an external delegate adaptor like the [`external_delegate_adaptor.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/dummy_delegate/external_delegate_adaptor.cc) here, and create the corresponding BUILD target
 to build a dynamic library.
 
@@ -156,9 +156,9 @@ bazel-bin/tensorflow/lite/tools/benchmark/benchmark_model \
 ```
 
 It is worth noting the *external delegate* is the corresponding C++
-implementation of the *delegate* in Tensorflow Lite Python binding as shown
+implementation of the *delegate* in TensorFlow Lite Python binding as shown
 [here](https://github.com/tensorflow/tensorflow/blob/7145fc0e49be01ef6943f4df386ce38567e37797/tensorflow/lite/python/interpreter.py#L42).
 Therefore, the dynamic external delegate adaptor library created here could be
-directly used with Tensorflow Lite Python APIs.
+directly used with TensorFlow Lite Python APIs.
 
 More detailed guide on TFLite delegate is coming soon.

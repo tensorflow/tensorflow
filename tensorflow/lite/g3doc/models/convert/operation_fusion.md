@@ -96,7 +96,7 @@ def get_implements_signature():
 @tf.function(experimental_implements=get_implements_signature())
 def my_custom_fused_op(input_1, input_2):
   # An empty function that represents pre/post processing example that
-  # is not represented as part of the Tensorflow graph.
+  # is not represented as part of the TensorFlow graph.
   output_1 = tf.constant(0.0, dtype=tf.float32, name='first_output')
   output_2 = tf.constant(0.0, dtype=tf.float32, name='second_output')
   return output_1, output_2
