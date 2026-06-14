@@ -2217,6 +2217,73 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       self._testAvgPoolGradSamePadding2_2(data_format, use_gpu)
       self._testAvgPoolGradSamePadding3_1(data_format, use_gpu)
 
+  def testAvgPoolGradInvalidRanks(self):
+    for data_format, use_gpu in GetTestConfigs():
+      with self.cached_session(use_gpu=use_gpu):
+        # 1. Test case where orig_input_shape is not 1D (e.g. 2D).
+        orig_input_shape = constant_op.constant(
+            [[1, 1, 1, 1]], dtype=dtypes.int32
+        )
+        grad = [[[[1.0]]]]
+        with self.assertRaisesRegex(
+            (errors_impl.InvalidArgumentError, ValueError),
+            "(orig_input_shape must be 1-dimensional|Shape must be rank|grad"
+            " must be|out_backprop must be|tensor_in must be 1-dimensional)",
+        ):
+          self.evaluate(
+              gen_nn_ops.AvgPoolGrad(
+                  orig_input_shape=orig_input_shape,
+                  grad=grad,
+                  ksize=[1, 1, 1, 1],
+                  strides=[1, 1, 1, 1],
+                  padding="SAME",
+                  data_format=data_format,
+              )
+          )
+
+        # 2. Test case where orig_input_shape has wrong number of elements
+        # (5 instead of 4).
+        orig_input_shape = constant_op.constant(
+            [1, 1, 1, 1, 1], dtype=dtypes.int32
+        )
+        grad = [[[[1.0]]]]
+        with self.assertRaisesRegex(
+            (errors_impl.InvalidArgumentError, ValueError),
+            "(orig_input_shape must be 1-dimensional|Shape must be rank|grad"
+            " must be|out_backprop must be|tensor_in must be 1-dimensional)",
+        ):
+          self.evaluate(
+              gen_nn_ops.AvgPoolGrad(
+                  orig_input_shape=orig_input_shape,
+                  grad=grad,
+                  ksize=[1, 1, 1, 1],
+                  strides=[1, 1, 1, 1],
+                  padding="SAME",
+                  data_format=data_format,
+              )
+          )
+
+        # 3. Test case where grad has wrong rank (5 instead of 4).
+        orig_input_shape = constant_op.constant(
+            [1, 1, 1, 1], dtype=dtypes.int32
+        )
+        grad = [[[[[1.0]]]]]
+        with self.assertRaisesRegex(
+            (errors_impl.InvalidArgumentError, ValueError),
+            "(orig_input_shape must be 1-dimensional|Shape must be rank|grad"
+            " must be|out_backprop must be|tensor_in must be 1-dimensional)",
+        ):
+          self.evaluate(
+              gen_nn_ops.AvgPoolGrad(
+                  orig_input_shape=orig_input_shape,
+                  grad=grad,
+                  ksize=[1, 1, 1, 1],
+                  strides=[1, 1, 1, 1],
+                  padding="SAME",
+                  data_format=data_format,
+              )
+          )
+
   def _testAvgPoolGradValidPadding1_1(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         nn_ops.avg_pool,
