@@ -90,3 +90,17 @@ endif()
 target_link_libraries(tensorflowlite_c
   tensorflow-lite
 )
+if(TFLITE_ENABLE_INSTALL)
+  install(TARGETS tensorflowlite_c)
+
+  configure_file(
+    tensorflowlite_c.pc.in
+    ${CMAKE_CURRENT_BINARY_DIR}/tensorflowlite_c.pc
+    @ONLY
+  )
+
+  install(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/tensorflowlite_c.pc
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
+  )
+endif()
