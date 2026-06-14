@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_stack_trace.h"
@@ -48,6 +49,13 @@ namespace xla {
 absl::StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
     const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
     const HloComputation* computation, bool module_scoped_analysis) {
+  VLOG(3) << "Running HloLiveRange::Run";
+  VLOG(3) << "module_scoped_analysis: " << module_scoped_analysis;
+  VLOG(3) << "computation: " << computation->name();
+  VLOG(3) << "schedule: " << schedule.ToString();
+  VLOG(3) << "dataflow_analysis: "
+          << alias_analysis.dataflow_analysis().ToString();
+  VLOG(3) << "alias_analysis: " << alias_analysis.ToString();
   std::unique_ptr<HloLiveRange> hlo_live_range(
       new HloLiveRange(schedule, alias_analysis, module_scoped_analysis));
   hlo_live_range->FlattenSchedule(*computation);
@@ -63,6 +71,7 @@ void HloLiveRange::NormalizeAliasedBuffers() {
   for (auto& entry : buffer_live_ranges_) {
     const HloValue& value = *entry.first;
     const HloBuffer& buffer = alias_analysis_.GetBufferContainingValue(value);
+    VLOG(3) << "buffer: " << buffer.id() << " value: " << value.id();
     live_ranges_by_buffer[buffer.id()].push_back({&entry.second, value.id()});
   }
 
@@ -81,6 +90,14 @@ void HloLiveRange::NormalizeAliasedBuffers() {
       live_range2.end = std::max(live_range1.end, live_range2.end);
       live_range1.end = std::min(live_range1.end, live_range2.start);
     }
+
+    VLOG(3) << "buffer: " << entry.first;
+    for (int64_t i = 0; i < aliased_live_ranges.size(); ++i) {
+      VLOG(3) << "live range " << i << ": "
+              << aliased_live_ranges[i].first->start << "-"
+              << aliased_live_ranges[i].first->end
+              << " value: " << aliased_live_ranges[i].second;
+    }
   }
 }
 
@@ -95,7 +112,9 @@ void HloLiveRange::FlattenSchedule(const HloComputation& computation,
   }
 
   // Check if we've already processed this computation.
-  if (computation_span_times_.contains(&computation)) return;
+  if (computation_span_times_.contains(&computation)) {
+    return;
+  }
 
   // Mark this computation into the async context, if available.
   if (async_context != nullptr) {
@@ -110,17 +129,20 @@ void HloLiveRange::FlattenSchedule(const HloComputation& computation,
       // Recurse into sub computations if running with module scoped analysis
       // mode.
       if (instruction->opcode() == HloOpcode::kCall ||
-          instruction->opcode() == HloOpcode::kConditional ||
-          instruction->opcode() == HloOpcode::kAsyncStart) {
+          instruction->opcode() == HloOpcode::kConditional) {
         for (const HloComputation* called_computation :
              instruction->called_computations()) {
-          // AsyncStart starts an async context. Other ops that call
-          // computations just propagate the existing one, if any.
-          FlattenSchedule(*called_computation,
-                          instruction->opcode() == HloOpcode::kAsyncStart
-                              ? called_computation
-                              : async_context);
+          FlattenSchedule(*called_computation, async_context);
         }
+      } else if ((instruction->opcode() == HloOpcode::kAsyncStart ||
+                  instruction->opcode() == HloOpcode::kAsyncUpdate ||
+                  instruction->opcode() == HloOpcode::kAsyncDone) &&
+                 hlo_instruction_utils::async::AreOperandsAndOutputFullyBound(
+                     instruction)
+                     .value_or(false)) {
+        const HloComputation* called_computation =
+            instruction->async_wrapped_computation();
+        FlattenSchedule(*called_computation, called_computation);
       } else if (instruction->opcode() == HloOpcode::kWhile) {
         // Order of flattening matters here: for while loops, the condition
         // must be flattened first, then the body.
