@@ -2,6 +2,18 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
+WINDOWS_PYBIND_UNDEFS = select({
+    "//third_party/odml/litert/litert:windows": [
+        "/UPROTOBUF_USE_DLLS",
+        "/UABSL_CONSUME_DLL",
+    ],
+    "//tensorflow:windows": [
+        "/UPROTOBUF_USE_DLLS",
+        "/UABSL_CONSUME_DLL",
+    ],
+    "//conditions:default": [],
+})
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
@@ -66,6 +78,11 @@ cc_test(
 pybind_extension(
     name = "_pywrap_tfl_calibration",
     srcs = ["tfl_calibration_wrapper.cc"],
+    common_lib_packages = [
+        "litert/python",
+        "third_party/tensorflow/lite/python",
+    ],
+    copts = WINDOWS_PYBIND_UNDEFS,
     module_name = "_pywrap_tfl_calibration",
     wrap_py_init = True,
     deps = [
