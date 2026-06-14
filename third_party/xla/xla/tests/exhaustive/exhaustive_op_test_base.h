@@ -63,9 +63,8 @@ void AddExhaustiveFlags(std::vector<tsl::Flag>& flag_list);
 // - FillInput
 // - RelaxedDenormalSigns
 template <PrimitiveType T, size_t N>
-class ExhaustiveOpTestBase
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+class ExhaustiveOpTestBase : public ClientLibraryTestRunnerMixin<
+                                 HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   using Traits = ExhaustiveOpTestTraits<T, N>;
   static constexpr PrimitiveType kT = Traits::kT;
