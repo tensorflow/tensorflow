@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_CONV_H_
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 #include "tensorflow/lite/kernels/internal/common.h"
 
@@ -135,17 +137,15 @@ inline void ConvPerChannel(
   }
 }
 
-
 // Fixed-point per-channel-quantization convolution reference kernel.
 // 16-bit data and 8-bit filter
-template <typename AccumScalar>
+template <typename BiasType>
 inline void ConvPerChannel(
-    const ConvParams& params, const int32_t* output_multiplier,
-    const int32_t* output_shift, const RuntimeShape& input_shape,
-    const int16_t* input_data, const RuntimeShape& filter_shape,
-    const int8_t* filter_data, const RuntimeShape& bias_shape,
-    const AccumScalar* bias_data, const RuntimeShape& output_shape,
-    int16_t* output_data) {
+    const ConvParams& params, const double* effective_output_scale,
+    const RuntimeShape& input_shape, const int16_t* input_data,
+    const RuntimeShape& filter_shape, const int8_t* filter_data,
+    const RuntimeShape& bias_shape, const BiasType* bias_data,
+    const RuntimeShape& output_shape, int16_t* output_data) {
   // Get parameters.
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
@@ -153,6 +153,8 @@ inline void ConvPerChannel(
   const int dilation_height_factor = params.dilation_height_factor;
   const int pad_width = params.padding_values.width;
   const int pad_height = params.padding_values.height;
+  const int32_t input_offset = params.input_offset;
+  const int32_t output_offset = params.output_offset;
 
   // Set min and max value of the output.
   const int32_t output_activation_min = params.quantized_activation_min;
@@ -177,8 +179,10 @@ inline void ConvPerChannel(
   const int filter_width = filter_shape.Dims(2);
   const int filter_input_depth = filter_shape.Dims(3);
   const int groups = input_depth / filter_input_depth;
+  TFLITE_DCHECK_NE(groups, 0);
   TFLITE_DCHECK_EQ(input_depth % filter_input_depth, 0);
   const int filters_per_group = output_depth / groups;
+  TFLITE_DCHECK_NE(filters_per_group, 0);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
   for (int batch = 0; batch < batches; ++batch) {
@@ -188,7 +192,7 @@ inline void ConvPerChannel(
         const int in_x_origin = (out_x * stride_width) - pad_width;
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
           auto group = out_channel / filters_per_group;
-          AccumScalar acc = 0;
+          int64_t acc = 0;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             const int in_y = in_y_origin + dilation_height_factor * filter_y;
             for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
@@ -216,15 +220,23 @@ inline void ConvPerChannel(
                 // 32767] -
                 // [-32768, 32767]), which is [-8322945, 8322945].
                 // log2(8322945) = 22.99.
-                acc += filter_val * input_val;
+                acc += filter_val * (input_val + input_offset);
               }
             }
           }
           if (bias_data) {
             acc += bias_data[out_channel];
           }
-          int32_t scaled_acc = MultiplyByQuantizedMultiplier(
-              acc, output_multiplier[out_channel], output_shift[out_channel]);
+          const double scaled_acc_double =
+              acc * effective_output_scale[out_channel];
+          const double rounded_val = std::round(scaled_acc_double);
+          const int32_t min_int32 = std::numeric_limits<int32_t>::min();
+          const int32_t max_int32 = std::numeric_limits<int32_t>::max();
+          const double clamped_val =
+              std::max(static_cast<double>(min_int32),
+                       std::min(static_cast<double>(max_int32), rounded_val));
+          int32_t scaled_acc = static_cast<int32_t>(clamped_val);
+          scaled_acc += output_offset;
           scaled_acc = std::max(scaled_acc, output_activation_min);
           scaled_acc = std::min(scaled_acc, output_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =
