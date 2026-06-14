@@ -219,6 +219,9 @@ absl::StatusOr<uint64_t> HashFields(
     if (chunked_message.has_chunk_index() && matches == field_tags.size()) {
       // chunked_field_tags are an exact match with field_tags. Hash referenced
       // chunk.
+      TF_RETURN_IF_ERROR(
+          tools::proto_splitter::ValidateChunkIndex(
+              chunked_message.chunk_index(), chunks_info.size()));
       TF_ASSIGN_OR_RETURN(
           std::string chunk,
           ReadChunk(reader, chunks_info[chunked_message.chunk_index()]));
@@ -244,6 +247,9 @@ absl::StatusOr<uint64_t> HashFields(
         merged_message =
             mfr.parent->GetReflection()->MutableMessage(mfr.parent, mfr.field);
       }
+      TF_RETURN_IF_ERROR(
+          tools::proto_splitter::ValidateChunkIndex(
+              chunked_message.chunk_index(), chunks_info.size()));
       TF_ASSIGN_OR_RETURN(
           std::string chunk,
           ReadChunk(reader, chunks_info[chunked_message.chunk_index()]));

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TOOLS_PROTO_SPLITTER_CC_UTIL_H_
 #define TENSORFLOW_TOOLS_PROTO_SPLITTER_CC_UTIL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -164,6 +165,9 @@ absl::StatusOr<std::string> ReadChunk(
 // Returns true if prefix can only be found as a .pb file, and false if a .cpb
 // file exists. Returns an error if neither .pb nor .cpb exist.
 absl::StatusOr<bool> OnlyContainsPb(absl::string_view prefix);
+
+// Validates that a chunk index is within the bounds of a chunks vector.
+absl::Status ValidateChunkIndex(uint64_t chunk_index, size_t chunks_size);
 
 }  // namespace tools::proto_splitter
 }  // namespace tensorflow

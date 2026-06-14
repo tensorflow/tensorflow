@@ -391,6 +391,41 @@ TEST(FingerprintingTest, TestHashSavedObjectGraph) {
       absl_testing::IsOkAndHolds(17454850744699451884U));
 }
 
+TEST(FingerprintingTest, TestHashFieldsReturnsErrorOnInvalidChunkIndex) {
+  std::string cpb_file = io::JoinPath(
+      TensorFlowSrcRoot(), "tools/proto_splitter/testdata", "many-field.cpb");
+  TF_ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
+
+  auto read_metadata = GetChunkMetadata(reader);
+  if (!read_metadata.ok()) {
+    reader.Close();
+    TF_ASSERT_OK(read_metadata.status());
+  }
+  ChunkMetadata chunk_metadata = read_metadata.value();
+
+  ChunkedMessage invalid_chunked_message;
+  invalid_chunked_message.set_chunk_index(0);
+  auto* invalid_field = invalid_chunked_message.add_chunked_fields();
+  invalid_field->add_field_tag()->set_field(1);
+
+  std::vector<ChunkInfo> chunks_info = std::vector<ChunkInfo>(
+      chunk_metadata.chunks().begin(), chunk_metadata.chunks().end());
+  invalid_field->mutable_message()->set_chunk_index(chunks_info.size());
+
+  RepeatedPtrField<FieldIndex> target_tags;
+  target_tags.Add()->set_field(1);
+
+  ManyFields merged_message;
+
+  auto statusor = HashFields(invalid_chunked_message, reader, chunks_info,
+                             target_tags, &merged_message);
+
+  EXPECT_FALSE(statusor.ok());
+  EXPECT_EQ(statusor.status().code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_THAT(std::string(statusor.status().message()),
+              ::testing::HasSubstr("is out of range"));
+}
+
 }  // namespace
 
 }  // namespace tensorflow::saved_model::fingerprinting
