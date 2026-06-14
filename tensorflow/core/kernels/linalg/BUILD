@@ -144,7 +144,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cholesky_grad",
     prefix = "cholesky_grad",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + ["@com_google_absl//absl/status"],
 )
 
 tf_kernel_library(
