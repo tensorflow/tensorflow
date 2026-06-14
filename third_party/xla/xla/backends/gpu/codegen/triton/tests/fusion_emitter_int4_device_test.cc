@@ -39,7 +39,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class TritonTest : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+class TritonTest : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();

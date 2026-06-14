@@ -94,13 +94,13 @@ const HloFusionInstruction& GetFusionInstruction(
 constexpr ErrorSpec kExactMatch{/*aabs=*/0, /*arel=*/0};
 
 class TritonEmitterTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest>,
+    : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest>,
       public XTileTestBase {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     // TODO: b/509502550 - remove the flag and disable tests that use
     // multi-output fusions when removing the feature.
-    DebugOptions debug_options = HloPjRtInterpreterReferenceMixin<
+    DebugOptions debug_options = HloInterpreterReferenceMixin<
         GpuPjRtCodegenTest>::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(
         true);
