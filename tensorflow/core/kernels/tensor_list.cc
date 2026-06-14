@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/tensor_list.h"
 
+#include <limits>
+
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -59,40 +61,75 @@ bool TensorList::Decode(const VariantTensorData& data) {
   data.get_metadata(&metadata);
   uint64_t scratch;
   absl::string_view iter(metadata);
-  std::vector<size_t> invalid_indices;
-  core::GetVarint64(&iter, &scratch);
-  size_t num_invalid_tensors = static_cast<size_t>(scratch);
-  invalid_indices.resize(num_invalid_tensors);
-  for (size_t i = 0; i < num_invalid_tensors; i++) {
-    core::GetVarint64(&iter, &scratch);
-    invalid_indices[i] = static_cast<size_t>(scratch);
-  }
+  if (!core::GetVarint64(&iter, &scratch)) return false;
+  if (scratch > std::numeric_limits<size_t>::max()) return false;
+  const size_t num_invalid_tensors = static_cast<size_t>(scratch);
 
-  size_t total_num_tensors = data.tensors().size() + num_invalid_tensors;
-  tensors().reserve(total_num_tensors);
-  std::vector<size_t>::iterator invalid_indices_it = invalid_indices.begin();
-  std::vector<Tensor>::const_iterator tensors_it = data.tensors().begin();
-  for (size_t i = 0; i < total_num_tensors; i++) {
-    if (invalid_indices_it != invalid_indices.end() &&
-        *invalid_indices_it == i) {
-      tensors().emplace_back(Tensor(DT_INVALID));
-      invalid_indices_it++;
-    } else if (tensors_it != data.tensors().end()) {
-      tensors().emplace_back(*tensors_it);
-      tensors_it++;
-    } else {
-      // VariantTensorData is corrupted.
+  if (num_invalid_tensors >
+      std::numeric_limits<size_t>::max() - data.tensors().size()) {
+    return false;
+  }
+  const size_t total_num_tensors = data.tensors().size() + num_invalid_tensors;
+
+  std::vector<Tensor> decoded_tensors;
+  if (total_num_tensors > decoded_tensors.max_size()) return false;
+  decoded_tensors.reserve(total_num_tensors);
+
+  size_t output_index = 0;
+  size_t tensor_index = 0;
+  bool have_previous_invalid_index = false;
+  size_t previous_invalid_index = 0;
+  for (size_t i = 0; i < num_invalid_tensors; ++i) {
+    if (!core::GetVarint64(&iter, &scratch)) return false;
+    if (scratch > std::numeric_limits<size_t>::max()) return false;
+    const size_t invalid_index = static_cast<size_t>(scratch);
+    if (invalid_index >= total_num_tensors) return false;
+    if (have_previous_invalid_index && invalid_index <= previous_invalid_index) {
       return false;
     }
+
+    while (output_index < invalid_index) {
+      if (tensor_index >= data.tensors().size()) return false;
+      decoded_tensors.emplace_back(data.tensors()[tensor_index]);
+      ++tensor_index;
+      ++output_index;
+    }
+    decoded_tensors.emplace_back(Tensor(DT_INVALID));
+    ++output_index;
+    previous_invalid_index = invalid_index;
+    have_previous_invalid_index = true;
   }
 
-  core::GetVarint64(&iter, &scratch);
-  element_dtype = static_cast<DataType>(scratch);
-  core::GetVarint64(&iter, &scratch);
-  max_num_elements = static_cast<int>(scratch);
+  while (output_index < total_num_tensors) {
+    if (tensor_index >= data.tensors().size()) return false;
+    decoded_tensors.emplace_back(data.tensors()[tensor_index]);
+    ++tensor_index;
+    ++output_index;
+  }
+  if (tensor_index != data.tensors().size()) return false;
+
+  if (!core::GetVarint64(&iter, &scratch)) return false;
+  if (scratch > std::numeric_limits<int>::max()) return false;
+  const DataType decoded_element_dtype = static_cast<DataType>(scratch);
+
+  if (!core::GetVarint64(&iter, &scratch)) return false;
+  int decoded_max_num_elements;
+  if (scratch == std::numeric_limits<uint64_t>::max()) {
+    decoded_max_num_elements = -1;
+  } else {
+    if (scratch > std::numeric_limits<int>::max()) return false;
+    decoded_max_num_elements = static_cast<int>(scratch);
+  }
+
   TensorShapeProto element_shape_proto;
-  element_shape_proto.ParseFromString(iter);
-  element_shape = PartialTensorShape(element_shape_proto);
+  if (!element_shape_proto.ParseFromString(iter)) return false;
+
+  const PartialTensorShape decoded_element_shape(element_shape_proto);
+
+  element_dtype = decoded_element_dtype;
+  max_num_elements = decoded_max_num_elements;
+  tensors() = std::move(decoded_tensors);
+  element_shape = decoded_element_shape;
   return true;
 }
 
