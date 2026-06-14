@@ -352,6 +352,15 @@ std::vector<JitVectorizationTestSpec> GetJitVectorizationTestCases() {
                                R"(CHECK: fmul <%d x float>)", 8},
       JitVectorizationTestSpec{HloOpcode::kMultiply, "AVX512",
                                R"(CHECK: fmul <%d x float>)", 16},
+      JitVectorizationTestSpec{
+          HloOpcode::kAtan2, "SSE4_2",
+          R"(CHECK: call <%d x float> @Sleef_atan2f%d_u10)", 4},
+      JitVectorizationTestSpec{
+          HloOpcode::kAtan2, "AVX2",
+          R"(CHECK: call <%d x float> @Sleef_atan2f%d_u10)", 8},
+      JitVectorizationTestSpec{
+          HloOpcode::kAtan2, "AVX512",
+          R"(CHECK: call <%d x float> @Sleef_atan2f%d_u10)", 16},
   });
 }
 

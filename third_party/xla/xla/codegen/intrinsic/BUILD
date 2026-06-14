@@ -51,6 +51,20 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "atan2",
+    srcs = ["atan2.cc"],
+    hdrs = ["atan2.h"],
+    deps = [
+        ":intrinsic",
+        "//xla:xla_data_proto_cc",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
     name = "fptrunc",
     srcs = ["fptrunc.cc"],
     hdrs = ["fptrunc.h"],
@@ -431,6 +445,23 @@ xla_cc_test(
         ":simple_jit_runner",
         ":tanh",
         ":test_matchers",
+        "//xla:xla_data_proto_cc",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "atan2_test",
+    srcs = ["atan2_test.cc"],
+    linkopts = ["-rdynamic"],
+    deps = [
+        ":atan2",
+        ":intrinsic",
+        ":simple_jit_runner",
+        ":test_matchers",
+        "//third_party/sleef",
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:JITLink",

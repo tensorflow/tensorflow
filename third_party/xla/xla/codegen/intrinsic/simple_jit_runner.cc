@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/ExecutionEngine/Orc/EPCDynamicLibrarySearchGenerator.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
@@ -98,6 +99,14 @@ JitRunner::JitRunner(std::unique_ptr<llvm::Module> module,
         llvm::Twine(llvm::toString(jit_or_err.takeError())));
   }
   jit_ = std::move(jit_or_err.get());
+
+  auto G = llvm::orc::EPCDynamicLibrarySearchGenerator::GetForTargetProcess(
+      jit_->getExecutionSession(), jit_->getDylibMgr());
+  if (!G) {
+    llvm::report_fatal_error(llvm::Twine(llvm::toString(G.takeError())));
+  }
+  jit_->getMainJITDylib().addGenerator(std::move(*G));
+
   llvm::orc::ThreadSafeModule tsm(std::move(module), *tsc_);
   llvm::ExitOnError exit_on_err;
   exit_on_err(jit_->addIRModule(std::move(tsm)));
