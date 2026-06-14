@@ -259,7 +259,7 @@ static absl::Status DecodeDenseAttrToTensorInterface(
   Expected<DenseHostTensor> dht =
       tfrt::DeserializeDenseHostTensorFromDenseAttr(dense_attr, host);
   if (!dht)
-    return tensorflow::errors::Internal(tfrt::StrCat(
+    return absl::InternalError(tfrt::StrCat(
         "cannot create DenseHostTensor in DecodeDenseAttrToTensorInterface:",
         dht.takeError()));
   OwnedTFTensor tf_tensor = MoveDHTToTFTensor(std::move(*dht), host);
@@ -345,8 +345,7 @@ static absl::Status PrepareAttributes(EagerOperation* eager_op,
         *status_ptr = eager_op->SetAttrTypeList(entry.name, tf_dtypes.data(),
                                                 tf_dtypes.size());
       } else {
-        *status_ptr =
-            tensorflow::errors::Internal("unsupported array attribute type");
+        *status_ptr = absl::InternalError("unsupported array attribute type");
       }
     } else {
       if (entry.type == OpAttrType::I64) {
@@ -447,12 +446,10 @@ static absl::Status PrepareAttributes(EagerOperation* eager_op,
           *status_ptr = eager_op->SetAttrShapeList(entry.name, dims.data(),
                                                    ranks.data(), num_values);
         } else {
-          *status_ptr =
-              tensorflow::errors::Internal("unsupported list attribute type");
+          *status_ptr = absl::InternalError("unsupported list attribute type");
         }
       } else {
-        *status_ptr =
-            tensorflow::errors::Internal("unsupported scalar attribute type");
+        *status_ptr = absl::InternalError("unsupported scalar attribute type");
       }
     }
   });
