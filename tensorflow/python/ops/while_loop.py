@@ -60,22 +60,22 @@ def while_loop_v2(cond,
 
   >>> @tf.function
   ... def sumSquare(n):
-  ...   i, result = tf.constant(0), tf.constant(0)
-  ...   while i < n: # AutoGraph converts while-loop to tf.while_loop().
+  ...   i, result = tf.constant(1), tf.constant(0)
+  ...   while i <= n: # AutoGraph converts while-loop to tf.while_loop().
   ...     result += i * i
   ...     i += 1
   ...   return result
   >>> print(sumSquare(10).numpy())
-  285
+  385
 
   >>> @tf.function
   ... def sumSquare2(n):
-  ...   i, result = tf.constant(0), tf.constant(0)
-  ...   c = lambda i, _: tf.less(i, n)
+  ...   i, result = tf.constant(1), tf.constant(0)
+  ...   c = lambda i, _: tf.less_equal(i, n)
   ...   b = lambda i, result: (i + 1, result + i * i)
   ...   return tf.while_loop(c, b, [i, result])[1]
   >>> print(sumSquare2(10).numpy())
-  285
+  385
 
   For more information, see [tf.function and AutoGraph guide
   ](https://www.tensorflow.org/guide/function#autograph_transformations).
