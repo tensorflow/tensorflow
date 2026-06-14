@@ -53,7 +53,7 @@ class AsyncSubgraph {
   // The `buffer` will be sent to all backends and TfLite runtime
   // will assign an unique `handle` for backends to recognize the buffer.
   // `buffer`, `attrs`, and `handle` should not be null.
-  // Returns kTfLiteError is any of the backends failed to register
+  // Returns kTfLiteError if any of the backends failed to register
   // the buffer (e.g. buffer type is not supported).
   TfLiteStatus RegisterBuffer(TfLiteIoType io_type,
                               const TfLiteBackendBuffer* buffer,
