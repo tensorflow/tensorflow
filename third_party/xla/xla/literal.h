@@ -1095,7 +1095,7 @@ class LiteralBase {
 
     // Inlined dense array storage.
     struct DenseInlinedRep {
-      DenseInlinedRep() = default;
+      DenseInlinedRep() { std::memset(data, 0, kMaxInlinedBytes); }
       DenseInlinedRep(const char* init, size_t size) {
         DCHECK_LE(size, kMaxInlinedBytes);
         std::memcpy(data, init, size);
@@ -1739,6 +1739,11 @@ bool LiteralBase::Piece::DeserializeData(
                                       subshape().dimensions().size());
     if (!state.ReadDynamicSizes(sizes)) {
       return false;
+    }
+    for (int64_t i = 0; i < sizes.size(); ++i) {
+      if (sizes[i] < 0 || sizes[i] > subshape().dimensions(i)) {
+        return false;
+      }
     }
   }
   return state.ReadElements(data<NativeT>());

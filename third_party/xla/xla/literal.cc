@@ -647,14 +647,24 @@ absl::Status LiteralBase::Piece::AllocateBuffers() {
   const int64_t bytes = total_bytes_dense();
   if (bytes > kMaxInlinedBytes) {
     CHECK_EQ(buffer(), nullptr);
-    storage_.Emplace<DenseRep>(static_cast<char*>(tsl::port::AlignedMalloc(
-        bytes, static_cast<std::align_val_t>(kMinimumAlignment))));
-    if (buffer() == nullptr) {
+    char* alloc = static_cast<char*>(tsl::port::AlignedMalloc(
+        bytes, static_cast<std::align_val_t>(kMinimumAlignment)));
+    if (alloc == nullptr) {
       return absl::ResourceExhaustedError(
           "Failed to allocate buffer for Literal");
     }
+    std::memset(alloc, 0, bytes);
+    storage_.Emplace<DenseRep>(alloc);
   } else {
     storage_.Emplace<DenseInlinedRep>();
+  }
+
+  if (subshape().is_dynamic()) {
+    for (int64_t i = 0; i < subshape().dimensions().size(); ++i) {
+      if (subshape().is_dynamic_dimension(i)) {
+        SetDynamicSize(i, subshape().dimensions(i));
+      }
+    }
   }
   return absl::OkStatus();
 }

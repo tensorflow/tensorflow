@@ -735,6 +735,70 @@ TEST_F(LiteralUtilTest, DynamicShapeEquality) {
   EXPECT_NE(tuple1, tuple_3);
 }
 
+TEST_F(LiteralUtilTest, CreateFromProtoWithDynamicShape) {
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  shape.set_dynamic_dimension(0, true);
+  Literal literal(shape);
+  // By default, dynamic size should be initialized to static bound.
+  EXPECT_EQ(literal.GetDynamicSize(0), 4);
+
+  // Set dynamic size to something smaller.
+  literal.SetDynamicSize(0, 2);
+  EXPECT_EQ(literal.GetDynamicSize(0), 2);
+
+  // Convert to proto.
+  LiteralProto proto = literal.ToProto();
+
+  // Recreate from proto.
+  TF_ASSERT_OK_AND_ASSIGN(Literal recreated, Literal::CreateFromProto(proto));
+
+  // Since LiteralProto does not store dynamic sizes, it should be restored
+  // with dynamic size initialized to static bound (4), not the previous (2).
+  EXPECT_EQ(recreated.GetDynamicSize(0), 4);
+}
+
+TEST_F(LiteralUtilTest, DeserializeWithInvalidDynamicSizes) {
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  shape.set_dynamic_dimension(0, true);
+  Literal literal(shape);
+  literal.SetDynamicSize(0, 2);
+
+  std::vector<char> serialized;
+  TF_ASSERT_OK(literal.Serialize(std::back_inserter(serialized)));
+
+  // Corrupt the serialized dynamic size to be out of bounds.
+  // serialized[0..7] is shape_size (uint64_t)
+  uint64_t shape_size = *reinterpret_cast<uint64_t*>(serialized.data());
+  size_t dynamic_size_offset = 8 + shape_size;
+  ASSERT_LT(dynamic_size_offset + 4, serialized.size());
+
+  // Case 1: Dynamic size is larger than static bound (5 > 4).
+  {
+    std::vector<char> corrupted = serialized;
+    int32_t* dynamic_size_ptr =
+        reinterpret_cast<int32_t*>(corrupted.data() + dynamic_size_offset);
+    *dynamic_size_ptr = 5;
+    auto deserialized_or =
+        Literal::Deserialize(corrupted.begin(), corrupted.end());
+    EXPECT_FALSE(deserialized_or.ok());
+    EXPECT_THAT(deserialized_or.status().message(),
+                HasSubstr("Failed to deserialize all data"));
+  }
+
+  // Case 2: Dynamic size is negative (-1).
+  {
+    std::vector<char> corrupted = serialized;
+    int32_t* dynamic_size_ptr =
+        reinterpret_cast<int32_t*>(corrupted.data() + dynamic_size_offset);
+    *dynamic_size_ptr = -1;
+    auto deserialized_or =
+        Literal::Deserialize(corrupted.begin(), corrupted.end());
+    EXPECT_FALSE(deserialized_or.ok());
+    EXPECT_THAT(deserialized_or.status().message(),
+                HasSubstr("Failed to deserialize all data"));
+  }
+}
+
 TEST_F(LiteralUtilTest, C64Equality) {
   // Test equality with tuples.
   auto vector = LiteralUtil::CreateR1<complex64>({{1.0, 2.0}, {3.0, 4.0}});
