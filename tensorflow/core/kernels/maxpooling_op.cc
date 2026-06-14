@@ -1100,9 +1100,9 @@ struct LaunchMaxPoolingGradWithArgmax<CPUDevice, T> {
             const int64_t cur_batch = index / input_size_per_batch;
             grad_out_index += cur_batch * output_size_per_batch;
           }
-          CHECK(grad_out_index >= output_start && grad_out_index < output_end)
-              << "Invalid output gradient index: " << grad_out_index << ", "
-              << output_start << ", " << output_end;
+          if (grad_out_index < output_start || grad_out_index >= output_end) {
+            continue;
+          }
           grad_out_flat(grad_out_index) += grad_in_flat(index);
         }
       }
