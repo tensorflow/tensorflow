@@ -654,7 +654,7 @@ PjRtStreamExecutorClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
 }
 
 absl::Status PjRtStreamExecutorClient::WaitForAllocation(
-    se::Stream* stream, const CommonPjRtRawBuffer& raw_buffer) {
+    se::Stream* stream, const PjRtRawBuffer& raw_buffer) {
   ASSIGN_OR_RETURN(
       auto event,
       tensorflow::down_cast<const PjRtStreamExecutorRawBuffer*>(&raw_buffer)

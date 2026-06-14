@@ -81,6 +81,19 @@ class PjRtCApiRawBuffer : public PjRtRawBuffer {
       void* dst, int64_t offset, int64_t transfer_size) override;
   void* OpaqueDeviceMemoryDataPointer() const override;
 
+  absl::StatusOr<PjRtRawBufferRef> Slice(int64_t offset, int64_t size) override;
+
+  absl::StatusOr<PjRtDeviceEventRef> MakeAllocationReadyEvent() override;
+
+  void CopyTo(
+      PjRtRawBufferRef dst_raw_buffer,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise,
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event) override;
+
+  PjRtDeviceEventPtr GetRawBufferAsyncValue() override;
+  bool is_mutable() const override;
+
  private:
   PJRT_RawBuffer* c_buffer_;
   PjRtCApiClient* client_;
