@@ -28,6 +28,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -256,6 +257,22 @@ class PyBuiltinsTest(test.TestCase):
       self.assertAllEqual(self.evaluate(r), [1, 2])
       r = py_builtins.range_(2, 0, constant_op.constant(-1))
       self.assertAllEqual(self.evaluate(r), [2, 1])
+
+  def test_range_tensor_static_invalid_python_range_values(self):
+    r = py_builtins.range_(array_ops.identity(constant_op.constant(0.5)))
+    self.assertTrue(tensor_util.is_tf_type(r))
+    self.assertIsNone(
+        py_builtins._tf_type_to_py_index(  # pylint: disable=protected-access
+            array_ops.identity(constant_op.constant([3]))))
+
+  def test_range_symbolic_tensor_static_value(self):
+    @def_function.function(autograph=False)
+    def test_fn(x):
+      return constant_op.constant(
+          list(py_builtins.range_(array_ops.shape(x)[0])))
+
+    self.assertAllEqual(
+        self.evaluate(test_fn(constant_op.constant([1, 2, 3]))), [0, 1, 2])
 
   def test_range_tensor_empty_range(self):
     with self.session() as sess:

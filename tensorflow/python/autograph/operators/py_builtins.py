@@ -18,6 +18,7 @@ List of built-in functions: https://docs.python.org/3/library/functions.html
 """
 
 import inspect
+import operator
 
 from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.autograph.utils import type_registry
@@ -373,8 +374,34 @@ def _py_max(*args, **kwargs):
 
 def range_(start_or_stop, stop=UNSPECIFIED, step=UNSPECIFIED):
   if any(tensor_util.is_tf_type(s) for s in (start_or_stop, stop, step)):
+    if any(_tf_range_arg_needs_py_value(s)
+           for s in (start_or_stop, stop, step)):
+      start_or_stop_ = _tf_type_to_py_index(start_or_stop)
+      stop_ = _tf_type_to_py_index(stop)
+      step_ = _tf_type_to_py_index(step)
+    else:
+      start_or_stop_ = stop_ = step_ = None
+    if start_or_stop_ is not None and stop_ is not None and step_ is not None:
+      return _py_range(start_or_stop_, stop_, step_)
     return _tf_range(start_or_stop, stop, step)
   return _py_range(start_or_stop, stop, step)
+
+
+def _tf_range_arg_needs_py_value(s):
+  return (isinstance(s, ops.SymbolicTensor) and
+          s.op.type != 'Const' and
+          tensor_util.constant_value(s) is not None)
+
+
+def _tf_type_to_py_index(s):
+  if s is UNSPECIFIED:
+    return s
+  if tensor_util.is_tf_type(s):
+    s = tensor_util.constant_value(s)
+  try:
+    return operator.index(s)
+  except (TypeError, ValueError):
+    return None
 
 
 def _tf_range(start_or_stop, stop, step):
