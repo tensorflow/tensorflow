@@ -31,7 +31,7 @@ namespace gpu {
 namespace {
 
 class GroupedGemmRewriteTest
-    : public HloPjRtInterpreterReferenceMixin<GemmRewriteTestBase> {
+    : public HloInterpreterReferenceMixin<GemmRewriteTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();
