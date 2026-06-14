@@ -164,7 +164,7 @@ static bool IsScalarOp(const HloInstruction* op) {
 // scalar shape.
 static std::optional<absl::flat_hash_set<int64_t>> GetGTEDependenceIndices(
     const HloInstruction* out, const HloInstruction* in) {
-  // Fast path : pattern matching.
+  // Fast path: pattern matching.
   std::optional<absl::flat_hash_set<int64_t>> tuple_idxs =
       GetGTEOperandIndices(out, in);
   if (tuple_idxs.has_value()) {
@@ -175,60 +175,53 @@ static std::optional<absl::flat_hash_set<int64_t>> GetGTEDependenceIndices(
     return std::nullopt;
   }
 
-  // Extracts the instruction `out` as a function of the instruction `in`.
-  // HloModule extracted
-  // ENTRY main {
-  //   in = parameter(0)
-  //   //... some calculations
-  //   ROOT out = ...
-  // }
-  std::unique_ptr<HloModule> extracted = ExtractModule(
-      /*instruction=*/out, /*height=*/-1, /*extract_selector=*/
-      [in](const HloInstruction* inst) -> bool { return inst != in; },
-      /*replace_type_selector=*/
-      [](const HloInstruction* inst) -> ReplaceType {
-        return ReplaceType::kReplaceParam;
-      },
-      /*cross_computation=*/false, /*inline_calls_and_fusions=*/true,
-      /*run_verifier=*/false);
-  HloComputation* entry = extracted->entry_computation();
-
-  // Check that the extracted module takes nothing but `in` as input. If `out`
-  // does not depend on in, the extracted module will have some other shape for
-  // input.
-  if (entry->num_parameters() != 1 ||
-      entry->parameter_instruction(0)->shape() != in->shape()) {
-    return std::nullopt;
-  }
-  HloInstruction* param = entry->parameter_instruction(0);
-
-  // If there are no users for the input `in`, it would mean that `out` does not
-  // depend on a get-tuple-element of `in`.
-  if (param->user_count() == 0) {
-    return nullopt;
-  }
-
-  // If any of the users of the input `in` is not a get-tuple-element
-  // instruction, then that would mean that the output does not depend uniquely
-  // on a get-tuple-element of on `in`, instead it depends on some other
-  // calculations on `in`.
-  if (absl::c_any_of(param->users(), [](const HloInstruction* inst) -> bool {
-        return inst->opcode() != HloOpcode::kGetTupleElement;
-      })) {
-    return std::nullopt;
-  }
-
-  // At this point we already know that the all the users are get-tuple-elements
-  // and that there is at least one user. Now, extract all indices of the users.
   absl::flat_hash_set<int64_t> candidate_indices;
-  for (const HloInstruction* user : param->users()) {
-    candidate_indices.insert(user->tuple_index());
+  absl::flat_hash_set<const HloInstruction*> visited;
+  std::vector<const HloInstruction*> worklist;
+
+  visited.insert(out);
+  worklist.push_back(out);
+
+  while (!worklist.empty()) {
+    const HloInstruction* curr = worklist.back();
+    worklist.pop_back();
+
+    if (curr == in) {
+      // Reached `in` directly (not via a GTE). `out` depends on the entire
+      // tuple.
+      return std::nullopt;
+    }
+
+    if (curr->opcode() == HloOpcode::kGetTupleElement &&
+        curr->operand(0) == in) {
+      // Reached a GTE of `in`. Ensure the GTE itself is scalar.
+      if (!IsScalarOp(curr)) {
+        return std::nullopt;
+      }
+      candidate_indices.insert(curr->tuple_index());
+      // Do not traverse further up this path; we already established dependence
+      // on `in`.
+      continue;
+    }
+
+    if (curr->opcode() == HloOpcode::kParameter) {
+      // Reached some other parameter of the computation.
+      return std::nullopt;
+    }
+
+    // All intermediate operations on the path must be pure scalar ops.
+    if (!IsScalarOp(curr)) {
+      return std::nullopt;
+    }
+
+    for (const HloInstruction* operand : curr->operands()) {
+      if (visited.insert(operand).second) {
+        worklist.push_back(operand);
+      }
+    }
   }
 
-  if (absl::c_any_of(
-          entry->instructions(), [](const HloInstruction* inst) -> bool {
-            return inst->opcode() != HloOpcode::kParameter && !IsScalarOp(inst);
-          })) {
+  if (candidate_indices.empty()) {
     return std::nullopt;
   }
 
