@@ -201,6 +201,7 @@ tf_cc_test(
         ":shape_inference_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:errors",

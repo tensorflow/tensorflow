@@ -373,6 +373,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
             << c.DebugString(shape_handle) << "\n";
 
     Type new_element_type = result_element_type_fn(output);
+
     // Populate the handle shapes for a resource/variant.
     if (new_element_type &&
         isa<tf_type::ResourceType, tf_type::VariantType>(new_element_type)) {
@@ -383,7 +384,10 @@ LogicalResult InferReturnTypeComponentsForTFOp(
         for (const auto& shape_n_type : *handle_shapes_types) {
           Type element_type;
           auto status = ConvertDataType(shape_n_type.dtype, b, &element_type);
-          assert(status.ok() && "Unknown element type");
+          if (!status.ok()) {
+            return ReportErrorFromShapeFunction(location, op_name,
+                                                std::string(status.message()));
+          }
           subtypes.push_back(
               CreateTensorType(c, shape_n_type.shape, element_type));
         }
