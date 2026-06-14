@@ -191,6 +191,44 @@ TEST(BundleImplTest, Slice) {
   EXPECT_EQ(retrieved_values1[1].get(), array3.get());
 }
 
+TEST(BundleImplTest, Alias) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+
+  std::vector<ValueRef> values;
+  values.reserve(10);
+  for (int i = 0; i < 10; ++i) {
+    DType dtype(DType::kF32);
+    Shape shape({2, 3});
+    std::vector<float> data(6);
+    absl::c_fill(data, 1.0f);
+
+    Device* device = client->addressable_devices().at(0);
+    ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+
+    ASSERT_OK_AND_ASSIGN(
+        values.emplace_back(),
+        client->MakeArrayFromHostBuffer(
+            data.data(), dtype, shape,
+            /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
+            Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+            /*on_done_with_host_buffer=*/nullptr));
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  EXPECT_EQ(bundle->num_values(), 10);
+
+  values.resize(5);
+
+  bundle = {};
+
+  for (const auto& value : values) {
+    EXPECT_FALSE(value->IsDeleted());
+  }
+}
+
 TEST(BundleImplTest, CopyArrays) {
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
 
