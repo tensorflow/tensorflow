@@ -367,35 +367,37 @@ absl::Status HloAliasAnalysis::Verify() const {
 std::string HloAliasAnalysis::ToString() const {
   std::string out =
       absl::StrCat("HloAliasAnalysis, module ", module_->name(), "\n");
-  StrAppend(&out, "  Buffers at each position:\n");
-  for (const HloComputation* computation : module_->computations()) {
-    for (const HloInstruction* instruction : computation->instructions()) {
-      StrAppend(&out, "    ", instruction->name(), ":\n");
-      if (instruction->shape().IsTuple()) {
-        ShapeUtil::ForEachSubshape(
-            instruction->shape(),
-            [&out, &instruction, this](const Shape&, const ShapeIndex& index) {
-              StrAppend(&out, "      tuple index ", index.ToString(), ":\n");
-              for (const HloBuffer* buffer :
-                   ComputeBuffersAt(instruction, index)) {
-                StrAppend(&out, "        ", buffer->ToString(), "\n");
-              }
-            });
-      } else {
-        for (const HloBuffer* buffer :
-             ComputeBuffersAt(instruction, /*index=*/{})) {
-          StrAppend(&out, "      ", buffer->ToString(), "\n");
-        }
-      }
+
+  StrAppend(&out, "Buffers(size=", buffers().size(), "):\n");
+  for (const HloBuffer& buffer : buffers()) {
+    StrAppend(&out, "  ", buffer.ToString(), "\n");
+    StrAppend(&out, "    positions:\n");
+    for (const HloPosition& position : buffer.ComputePositions()) {
+      StrAppend(&out, "      ", position.ToString(), "\n");
     }
   }
 
-  StrAppend(&out, "  Buffers:\n");
-  for (const HloBuffer& buffer : buffers()) {
-    StrAppend(&out, "    ", buffer.ToString(), "\n");
-    StrAppend(&out, "      positions:\n");
-    for (const HloPosition& position : buffer.ComputePositions()) {
-      StrAppend(&out, "        ", position.ToString(), "\n");
+  StrAppend(&out, "Buffers at each position:\n");
+  for (const HloComputation* computation : module_->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->shape().IsTuple()) {
+        StrAppend(&out, "  ", instruction->name(), ":\n");
+        ShapeUtil::ForEachSubshape(
+            instruction->shape(),
+            [&out, &instruction, this](const Shape&, const ShapeIndex& index) {
+              StrAppend(&out, "    tuple index ", index.ToString(), ":\n");
+              for (const HloBuffer* buffer :
+                   ComputeBuffersAt(instruction, index)) {
+                StrAppend(&out, "      ", buffer->ToString(), "\n");
+              }
+            });
+      } else {
+        StrAppend(&out, "  ", instruction->name(), "{}:\n");
+        for (const HloBuffer* buffer :
+             ComputeBuffersAt(instruction, /*index=*/{})) {
+          StrAppend(&out, "    ", buffer->ToString(), "\n");
+        }
+      }
     }
   }
 

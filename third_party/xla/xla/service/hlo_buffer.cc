@@ -52,11 +52,12 @@ std::vector<HloPosition> HloBuffer::ComputePositions() const {
 
 std::string HloBuffer::ToString() const {
   return absl::StrCat(
-      "HloBuffer ", id_, ", values: ",
+      "<HloBuffer ", id_, ", values(size=", values_.size(), "):\n",
       absl::StrJoin(values_, ", ",
                     [](std::string* result, const HloValue* value) {
                       result->append(value->ToShortString());
-                    }));
+                    }),
+      ">");
 }
 
 std::string HloBuffer::ToDebugString() const {
