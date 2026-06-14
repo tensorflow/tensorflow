@@ -130,6 +130,23 @@ class ReductionInvalidKeepdims(test.TestCase):
               input_tensor=x, keepdims=np.array([63600, 1], dtype=np.float16))
           self.evaluate(y)
 
+  def testIntegerKeepdims(self):
+    # Test case for GitHub issue 112808.
+    # Non-bool integers for keepdims should raise TypeError.
+    x = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    for reduction in (math_ops.reduce_sum, math_ops.reduce_mean,
+                      math_ops.reduce_prod, math_ops.reduce_max,
+                      math_ops.reduce_min):
+      for bad_value in [-1, 1, 2]:
+        with self.assertRaisesRegex(TypeError, "Expected bool"):
+          reduction(x, axis=1, keepdims=bad_value)
+    # Bool values should still work.
+    for reduction in (math_ops.reduce_sum, math_ops.reduce_mean,
+                      math_ops.reduce_prod, math_ops.reduce_max,
+                      math_ops.reduce_min):
+      for good_value in [True, False, None]:
+        reduction(x, axis=1, keepdims=good_value)
+
 
 class BaseReductionTest(test.TestCase):
 
