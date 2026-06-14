@@ -862,7 +862,7 @@ void TF_SetAttrInt(TF_OperationDescription* desc, const char* attr_name,
 void TF_SetAttrIntList(TF_OperationDescription* desc, const char* attr_name,
                        const int64_t* values, int num_values) {
   desc->node_builder.Attr(
-      attr_name, ArraySlice<const int64_t>(
+      attr_name, absl::Span<const const int64_t>(
                      reinterpret_cast<const int64_t*>(values), num_values));
 }
 
