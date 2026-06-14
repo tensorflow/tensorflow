@@ -347,6 +347,18 @@ TEST(ParseExampleOpsTest, SparseTest) {
               ElementsAreArray(ArrayFloatNear({1, 1})));
 }
 
+TEST(ParseExampleOpsTest, SparseEmptyBatchDoesNotCrash) {
+  ParseExampleOpModel<float> m({}, {"time"}, {}, {}, {},
+                               {TensorType_FLOAT32}, kNodeDefTxt2, 0);
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetSparseIndicesOutput<int64_t>(0), testing::IsEmpty());
+  EXPECT_THAT(m.GetSparseValuesOutput<float>(0), testing::IsEmpty());
+  EXPECT_THAT(m.GetSparseShapesOutput<int64_t>(0),
+              testing::ElementsAreArray({0, 0}));
+}
+
 TEST(ParseExampleOpsTest, SimpleBytesTest) {
   tf::Example example;
   const std::string test_data = "simpletest";

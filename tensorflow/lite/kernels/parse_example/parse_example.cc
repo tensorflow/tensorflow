@@ -404,6 +404,7 @@ absl::Status FastParseSerializedExample(
 void CountSparseFeatures(const SparseBuffer& sparse_buffer,
                          size_t* total_num_features, size_t* max_num_features) {
   const std::vector<size_t>& end_indices = sparse_buffer.example_end_indices;
+  if (end_indices.empty()) return;
   *total_num_features += end_indices.back();
   *max_num_features = std::max(*max_num_features, end_indices[0]);
   for (size_t i = 1; i < end_indices.size(); ++i) {
