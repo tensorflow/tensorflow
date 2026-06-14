@@ -1477,7 +1477,7 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
 
   Args:
     tensor:  N-D Tensor.
-    mask:  K-D boolean Tensor, K <= N and K must be known statically.
+    mask: K-D boolean Tensor. Non-boolean masks may also be accepted by the implementation. K <= N and K must be known statically.
     name:  A name for this operation (optional).
     axis:  A 0-D int Tensor representing the axis in `tensor` to mask from. By
       default, axis is 0 which will mask from the first dimension. Otherwise K +
