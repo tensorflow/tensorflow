@@ -1,0 +1,23 @@
+diff --git a/mlir/include/mlir/IR/BuiltinDialectBytecode.td b/mlir/include/mlir/IR/BuiltinDialectBytecode.td
+--- a/mlir/include/mlir/IR/BuiltinDialectBytecode.td
++++ b/mlir/include/mlir/IR/BuiltinDialectBytecode.td
+@@ -206,7 +206,7 @@
+ )>;
+ 
+ // Make easy to disable until version number gets added.
+-class EnableAffineMapPrintingJuly2026<dag d> : DialectAttribute<d>;
++class EnableAffineMapPrintingJuly2026<dag d> : DialectTypeNoPrint<d>;
+ 
+ def AffineMapAttr : EnableAffineMapPrintingJuly2026<(attr
+   WithParser<"succeeded(readAffineMap($_reader, context, $_var))",
+diff --git a/mlir/test/Dialect/Builtin/Bytecode/builtin_fixed.mlir b/mlir/test/Dialect/Builtin/Bytecode/builtin_fixed.mlir
+--- a/mlir/test/Dialect/Builtin/Bytecode/builtin_fixed.mlir
++++ b/mlir/test/Dialect/Builtin/Bytecode/builtin_fixed.mlir
+@@ -1,6 +1,6 @@
+ // RUN: mlir-opt -allow-unregistered-dialect -emit-bytecode -emit-bytecode-producer=fixed %s -o %t
+ // Verify unchanged.
+-// RUN: cmp -s %t %p/builtin_fixed_0.mlirbc
++// REENABLE: cmp -s %t %p/builtin_fixed_0.mlirbc
+ // Verify can read as expected.
+ // RUN: mlir-opt -allow-unregistered-dialect -mlir-print-local-scope %t | FileCheck %s
+ 
