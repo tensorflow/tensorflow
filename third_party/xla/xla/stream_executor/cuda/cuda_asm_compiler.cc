@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
-#include <string>
 #include <utility>
 #include <vector>
 
