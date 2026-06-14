@@ -40,12 +40,30 @@ cc_library(
     srcs = ["optimization_barrier_expander.cc"],
     hdrs = ["optimization_barrier_expander.h"],
     deps = [
-        ":op_expander_pass",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "optimization_barrier_expander_test",
+    srcs = ["optimization_barrier_expander_test.cc"],
+    deps = [
+        ":optimization_barrier_expander",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

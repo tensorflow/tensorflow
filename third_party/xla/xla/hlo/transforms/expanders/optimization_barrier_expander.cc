@@ -23,6 +23,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
 
@@ -34,10 +38,16 @@ absl::StatusOr<bool> OptimizationBarrierExpander::RunImpl(
        module->MakeNonfusionComputations(execution_threads)) {
     bool modified = false;
     for (HloInstruction* inst : computation->instructions()) {
-      if (inst->opcode() == HloOpcode::kOptimizationBarrier) {
-        barriers.push_back(inst);
-        modified = true;
+      if (inst->opcode() != HloOpcode::kOptimizationBarrier) {
+        continue;
       }
+      if (only_remove_singleton_opt_barriers_ && inst->operand_count() == 1 &&
+          inst->operand(0)->opcode() == HloOpcode::kTuple &&
+          inst->operand(0)->operand_count() > 1) {
+        continue;
+      }
+      barriers.push_back(inst);
+      modified = true;
     }
 
     if (modified && module->has_schedule()) {

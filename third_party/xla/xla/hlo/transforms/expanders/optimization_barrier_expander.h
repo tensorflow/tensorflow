@@ -19,7 +19,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/transforms/expanders/op_expander_pass.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -27,13 +28,19 @@ namespace xla {
 class OptimizationBarrierExpander : public HloModulePass {
  public:
   OptimizationBarrierExpander() = default;
+  explicit OptimizationBarrierExpander(bool only_remove_singleton_opt_barriers)
+      : only_remove_singleton_opt_barriers_(
+            only_remove_singleton_opt_barriers) {}
 
-  absl::string_view name() const override { return "cse_barrier_expander"; }
+  absl::string_view name() const override { return "opt-barrier-expander"; }
 
  protected:
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  bool only_remove_singleton_opt_barriers_ = false;
 };
 
 }  // namespace xla
