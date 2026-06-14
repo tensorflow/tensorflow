@@ -51,6 +51,7 @@ load(
     "tf_additional_plugin_deps",
     "tf_additional_profiler_deps",
 )
+load("//tensorflow/python:pywrap_def_file.bzl", "pywrap_def_file")
 
 # TODO(mdan): Break into per-directory files.
 
@@ -1514,6 +1515,8 @@ pybind_extension(
 cc_library(
     name = "_protobuf_inline_symbols_enforcer",
     srcs = ["protobuf_inline_symbols_enforcer.cc"],
+    copts = ["-fexceptions"],
+    features = ["-use_header_modules"],
     local_defines = select({
         "//tensorflow:windows": [
             "PROTOBUF_USE_DLLS",
@@ -1522,18 +1525,78 @@ cc_library(
         "//conditions:default": [],
     }),
     deps = [
+        ":_pywrap_library_dependency_enforcer",
+        "//tensorflow/c:c_api_headers",
+        "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/c:tf_buffer_hdrs",
+        "//tensorflow/c:tf_datatype_hdrs",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c/eager:gradients_internal",
+        "//tensorflow/c/experimental/gradients",
+        "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/gradients/tape",
+        "//tensorflow/compiler/jit:get_compiler_ir_hdrs_only",
+        "//tensorflow/compiler/mlir/lite/python:converter_python_api",
+        "//tensorflow/compiler/mlir/python:mlir",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/python:pywrap_quantization_lib_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo_lib_impl",
+        "//tensorflow/compiler/tf2tensorrt:common_utils",
+        "//tensorflow/compiler/tf2tensorrt:py_utils",
+        "//tensorflow/compiler/tf2xla:tf2xla_opset",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/data/service:dispatcher_client",
+        "//tensorflow/core/data/service:py_utils",
+        "//tensorflow/core/data/service/snapshot:path_utils",
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:device_attributes_proto_cc",
         "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/costs:graph_memory",
+        "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/costs:op_performance_data_cc",
+        "//tensorflow/core/profiler/internal:print_model_analysis_hdr",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/tpu/kernels:sparse_core_ops_utils",
+        "//tensorflow/dtensor/cc:dtensor_device_cc",
+        "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/proto:layout_proto_cc",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/python/framework:py_context_manager",
+        "//tensorflow/python/framework:python_api_dispatcher",
+        "//tensorflow/python/framework:python_api_info",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//tensorflow/tools/graph_transforms:transform_graph_lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:ShapeDialect",
+        "@pybind11_abseil//pybind11_abseil:import_status_module",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@xla//xla/tsl/c:tsl_status_headers",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:stack_frame",
         "@xla//xla/tsl/protobuf:coordination_service_proto_cc",
     ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -1571,12 +1634,228 @@ cc_library(
     ),
 )
 
+# Dedicated staging target to generate C++ protobuf headers (.pb.h) in bazel-out.
+# This is executed by pycpp.sh on the host CI runner before Stage 1 AST harvesting,
+# ensuring the Python scanner can dynamically discover and parse protobuf constructors
+# and destructors without requiring hardcoded class lists in regenerate_win_exports.py.
+cc_library(
+    name = "pywrap_required_headers",
+    deps = [
+        ":_protobuf_inline_symbols_enforcer",
+        ":win_lib_files_for_exported_symbols_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
+        "//tensorflow/core:protos_all_cc",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
+        # copybara:uncomment "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+    ],
+)
+
+cc_library(
+    name = "win_lib_files_for_exported_symbols_lib",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
+        "//tensorflow/c:python_api",  # tf_session
+        "//tensorflow/c:safe_ptr",  # checkpoint_reader
+        "//tensorflow/c:tf_status_helper",  # tfe
+        "//tensorflow/cc:const_op",  # const_op
+        "//tensorflow/cc/saved_model:fingerprinting_impl",  # SavedModel fingerprinting
+        "//tensorflow/cc/saved_model:metrics_impl",  # SavedModel metrics
+        "//tensorflow/compiler/jit:flags",  # tfe
+        "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
+        "//tensorflow/compiler/mlir/lite/python:converter_python_api",  # converter
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",  # quantization
+        "//tensorflow/compiler/mlir/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo_lib_impl",  # tensorflow_to_stablehlo
+        "//tensorflow/compiler/tf2xla:tf2xla_opset",  # pywrap_xla_ops
+        "//tensorflow/core:framework_internal_impl",  # op_def_registry
+        "//tensorflow/core:lib_internal_impl",  # device_lib
+        "//tensorflow/core:op_gen_lib",  # tf_session
+        "//tensorflow/core/common_runtime:graph_constructor",  # tf_session
+        "//tensorflow/core/common_runtime:quantize_training",  # quantize_training
+        "//tensorflow/core/common_runtime:session_options",  # device_lib, tfe, tf_session
+        "//tensorflow/core/common_runtime:session_state",  # tf_session
+        "//tensorflow/core/common_runtime/eager:context",  # tfe
+        "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
+        "//tensorflow/core/common_runtime/eager:tensor_handle",  # tfe
+        "//tensorflow/core/config:flag_defs",  # flags_api
+        "//tensorflow/core/config:flags",  # flags_api
+        "//tensorflow/core/data/service:dispatcher_client",  # dispatcher_client
+        "//tensorflow/core/data/service:grpc_util",  # grpc_util
+        "//tensorflow/core/data/service:server_lib",  # server_lib
+        "//tensorflow/core/framework:attr_value_proto_cc",  # tf_text
+        "//tensorflow/core/framework:op_def_proto_cc",  # tf_text
+        "//tensorflow/core/function/runtime_client:runtime_client_cc",  # runtime_client_pybind
+        "//tensorflow/core/grappler:devices",  # tf_cluster
+        "//tensorflow/core/grappler:grappler_item",  # tf_item
+        "//tensorflow/core/grappler:grappler_item_builder",  # tf_item
+        "//tensorflow/core/grappler/clusters:cluster",  # tf_cluster
+        "//tensorflow/core/grappler/clusters:single_machine",  # tf_cluster
+        "//tensorflow/core/grappler/clusters:utils",  # tf_optimizer
+        "//tensorflow/core/grappler/clusters:virtual_cluster",  # tf_cluster
+        "//tensorflow/core/grappler/costs:analytical_cost_estimator",  # cost analyzer
+        "//tensorflow/core/grappler/costs:graph_memory",  # tf_cluster
+        "//tensorflow/core/grappler/costs:graph_properties",  # tf_item
+        "//tensorflow/core/grappler/costs:measuring_cost_estimator",  # tf_cluster
+        "//tensorflow/core/grappler/costs:op_level_cost_estimator",  # tf_cluster
+        "//tensorflow/core/grappler/costs:utils",  # tf_cluster
+        "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
+        "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
+        "//tensorflow/core/platform:cpu_feature_guard",  # cpu_feature_guard
+        "//tensorflow/core/platform:statusor",  # tfe
+        "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
+        "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
+        "//tensorflow/core/tpu/kernels:sparse_core_layout",  # sparse_core_layouts
+        "//tensorflow/core/util:determinism",  # determinism
+        "//tensorflow/core/util:port",  # util_port
+        "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
+        "//tensorflow/dtensor/cc:dtensor_device_cc",  # DTensor
+        "//tensorflow/dtensor/cc:tensor_layout",  # DTensor
+        "//tensorflow/lite/toco/python:toco_python_api",  # toco
+        "//tensorflow/python/client:tf_session_helper",  # tf_session
+        "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
+        "//tensorflow/python/framework:op_def_util_cc",  # op_def_util
+        "//tensorflow/python/framework:python_api_dispatcher",  # python_api_dispatcher
+        "//tensorflow/python/framework:python_api_info",  # python_api_info
+        "//tensorflow/python/framework:python_api_parameter_converter",  # python_api_parameter_converter
+        "//tensorflow/python/framework:python_op_gen",  # python_op_gen
+        "//tensorflow/python/framework:python_tensor_converter",  # python_tensor_converter
+        "//tensorflow/python/grappler:cost_analyzer_lib",
+        "//tensorflow/python/grappler:model_analyzer_lib",  # model_analyzer
+        "//tensorflow/python/lib/core:ndarray_tensor",  # checkpoint_reader
+        "//tensorflow/python/lib/core:py_exception_registry",  # py_exception_registry
+        "//tensorflow/python/lib/core:py_func_lib",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",  # checkpoint_reader
+        "//tensorflow/python/util:cpp_nest",
+        "//tensorflow/python/util:cpp_python_util",
+        "//tensorflow/python/util:kernel_registry",
+        "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
+        "@llvm-project//llvm:FileCheckLib",  # filecheck_wrapper
+        "@tsl//tsl/platform:tensor_float_32_utils",  # tensor_float_32
+        "@tsl//tsl/profiler/lib:profiler_session_impl",  # profiler
+        "@xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",  # profiler
+        "@xla//xla/tsl/profiler/rpc:profiler_server_impl",  # profiler
+        "@xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
+        "@xla//xla/tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
+        "@xla//xla/tsl/python/lib/core:numpy",  # checkpoint_reader
+    ] + select({
+        "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
+        "//conditions:default": [
+            "//tensorflow/compiler/mlir/python:mlir",  # mlir
+        ],
+    }) + if_xla_available([
+        "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
+        "@xla//xla:status_macros",  # tfcompile
+        "@xla//xla/hlo/ir:hlo",  # tfcompile
+        "@xla//xla/tsl/concurrency:async_value",  # tfcompile
+    ]),
+)
+
+pywrap_def_file(
+    name = "gen_pywrap_tensorflow_def",
+    out = "_pywrap_tensorflow_gen.def",
+    # Cache buster to invalidate fully qualified AST DEF generation
+    exit_1 = False,
+    static_export_table = ":_pywrap_tensorflow.def",
+    unmangled_symbols_file = "_pywrap_tensorflow_unmangled.def",
+    win_tool = select({
+        "//tensorflow:windows": "//tensorflow/tools/def_file_gen:regenerate_win_exports",
+        "//conditions:default": None,
+    }),
+    deps = [
+        ":_protobuf_inline_symbols_enforcer",
+        ":win_lib_files_for_exported_symbols_lib",
+        "//tensorflow/compiler/mlir/lite/python:_pywrap_converter_api",
+        "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/python:pywrap_quantization",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_quantize_model",
+        "//tensorflow/compiler/mlir/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo",
+        "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
+        "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/python:_pywrap_dtensor_device",
+        "//tensorflow/python:_pywrap_mlir",
+        "//tensorflow/python:_pywrap_parallel_device",
+        "//tensorflow/python:_pywrap_py_exception_registry",
+        "//tensorflow/python:_pywrap_quantize_training",
+        "//tensorflow/python:_pywrap_sanitizers",
+        "//tensorflow/python:_pywrap_tensorflow_cc_only",
+        "//tensorflow/python:_pywrap_tensorflow_internal",
+        "//tensorflow/python:_pywrap_tfcompile",
+        "//tensorflow/python:_pywrap_tfe",
+        "//tensorflow/python:_pywrap_toco_api",
+        "//tensorflow/python:flags_pybind",
+        "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
+        "//tensorflow/python/client:_pywrap_debug_events_writer",
+        "//tensorflow/python/client:_pywrap_device_lib",
+        "//tensorflow/python/client:_pywrap_events_writer",
+        "//tensorflow/python/client:_pywrap_tf_session",
+        "//tensorflow/python/data/experimental/service:_pywrap_server_lib",
+        "//tensorflow/python/data/experimental/service:_pywrap_snapshot_utils",
+        "//tensorflow/python/data/experimental/service:_pywrap_utils_exp",
+        "//tensorflow/python/framework:_dtypes",
+        "//tensorflow/python/framework:_errors_test_helper",
+        "//tensorflow/python/framework:_op_def_library_pybind",
+        "//tensorflow/python/framework:_op_def_registry",
+        "//tensorflow/python/framework:_op_def_util",
+        "//tensorflow/python/framework:_proto_comparators",
+        "//tensorflow/python/framework:_py_context_manager",
+        "//tensorflow/python/framework:_python_memory_checker_helper",
+        "//tensorflow/python/framework:_pywrap_python_api_dispatcher",
+        "//tensorflow/python/framework:_pywrap_python_api_info",
+        "//tensorflow/python/framework:_pywrap_python_api_parameter_converter",
+        "//tensorflow/python/framework:_pywrap_python_op_gen",
+        "//tensorflow/python/framework:_pywrap_python_tensor_converter",
+        "//tensorflow/python/framework:_test_metrics_util",
+        "//tensorflow/python/framework/experimental:_math_ops",
+        "//tensorflow/python/framework/experimental:_nn_ops",
+        "//tensorflow/python/framework/experimental:_tape",
+        "//tensorflow/python/framework/experimental:_unified_api",
+        "//tensorflow/python/grappler:_pywrap_cost_analyzer",
+        "//tensorflow/python/grappler:_pywrap_model_analyzer",
+        "//tensorflow/python/grappler:_pywrap_tf_cluster",
+        "//tensorflow/python/grappler:_pywrap_tf_item",
+        "//tensorflow/python/grappler:_pywrap_tf_optimizer",
+        "//tensorflow/python/lib/core:_pywrap_py_func",
+        "//tensorflow/python/lib/io:_pywrap_file_io",
+        "//tensorflow/python/lib/io:_pywrap_record_io",
+        "//tensorflow/python/platform:_pywrap_cpu_feature_guard",
+        "//tensorflow/python/platform:_pywrap_stacktrace_handler",
+        "//tensorflow/python/platform:_pywrap_tf2",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
+        "//tensorflow/python/profiler/internal:_pywrap_traceme",
+        "//tensorflow/python/saved_model:pywrap_saved_model",
+        "//tensorflow/python/tpu:_pywrap_sparse_core_layout",
+        "//tensorflow/python/tpu:_pywrap_tpu_embedding",
+        "//tensorflow/python/util:_function_parameter_canonicalizer_binding_for_test",
+        "//tensorflow/python/util:_pywrap_checkpoint_reader",
+        "//tensorflow/python/util:_pywrap_determinism",
+        "//tensorflow/python/util:_pywrap_kernel_registry",
+        "//tensorflow/python/util:_pywrap_nest",
+        "//tensorflow/python/util:_pywrap_stat_summarizer",
+        "//tensorflow/python/util:_pywrap_tensor_float_32_execution",
+        "//tensorflow/python/util:_pywrap_tfprof",
+        "//tensorflow/python/util:_pywrap_transform_graph",
+        "//tensorflow/python/util:_pywrap_util_port",
+        "//tensorflow/python/util:_pywrap_utils",
+        "//tensorflow/python/util:_tf_stack",
+        "//tensorflow/python/util:fast_module_type",
+        "//tensorflow/python/util:pywrap_xla_ops",
+    ],
+)
+
 pywrap_library(
     name = "_pywrap_tensorflow",
     # buildifier: disable=unsorted-dict-items
     # @unsorted-dict-items
     common_lib_def_files_or_filters = {
-        "tensorflow/python/_pywrap_tensorflow_common": ":_pywrap_tensorflow.def",
+        "tensorflow/python/_pywrap_tensorflow_common": select({
+            "//tensorflow:windows": ":_pywrap_tensorflow_gen.def",
+            "//conditions:default": ":_pywrap_tensorflow.def",
+        }),
     },
     # buildifier: disable=unsorted-dict-items
     # @unsorted-dict-items

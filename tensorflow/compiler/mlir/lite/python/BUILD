@@ -253,9 +253,10 @@ tf_python_pybind_extension(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":converter_python_api",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
         "@pybind11",
         "@xla//third_party/python_runtime:headers",
-    ] + if_pywrap([":converter_python_api"]),
+    ],
 )

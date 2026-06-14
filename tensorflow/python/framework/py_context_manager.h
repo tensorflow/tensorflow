@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
 namespace tensorflow {
@@ -50,8 +51,9 @@ namespace tensorflow {
 // important, because changing the state of PyErr_Occurred in the destructor
 // would mean that we are returning a nullptr with no exception set, or
 // returning a non-null value with an exception set (both of which are invalid).
-class PyContextManager {
+class TF_EXPORT PyContextManager {
  public:
+  PyContextManager();
   // Calls `py_context_manager.__enter__()`, and stores the result in `var`.
   // Return true if `__enter__` succeeds, or false if `__enter__` raises an
   // exception.  (Also returns false if `py_context_manager` is nullptr.)
@@ -66,7 +68,7 @@ class PyContextManager {
   // Returns the variable returned by `context_manager.__enter__()`.
   // (This is the `var` bound by `with context_manager as var`.)
   // Returns a borrowed reference.
-  PyObject* var() { return var_.get(); }
+  PyObject* var();
 
  protected:
   Safe_PyObjectPtr context_manager_;

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/types/variant.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 
@@ -29,8 +30,10 @@ namespace tensorflow {
 namespace profiler {
 namespace pywrap {
 
-class ProfilerSessionWrapper {
+class TF_EXPORT ProfilerSessionWrapper {
  public:
+  ProfilerSessionWrapper();
+  ~ProfilerSessionWrapper();
   absl::Status Start(
       const char* logdir,
       const absl::flat_hash_map<std::string,

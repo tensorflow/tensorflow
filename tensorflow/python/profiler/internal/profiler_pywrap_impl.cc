@@ -33,6 +33,9 @@ namespace tensorflow {
 namespace profiler {
 namespace pywrap {
 
+ProfilerSessionWrapper::ProfilerSessionWrapper() = default;
+ProfilerSessionWrapper::~ProfilerSessionWrapper() = default;
+
 using tsl::profiler::GetRemoteSessionManagerOptionsLocked;
 
 absl::Status ProfilerSessionWrapper::Start(

@@ -20,6 +20,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+PyContextManager::PyContextManager() = default;
+
 bool PyContextManager::Enter(PyObject* py_context_manager) {
   if (context_manager_) {
     PyErr_SetString(
@@ -70,5 +72,7 @@ PyContextManager::~PyContextManager() {
     }
   }
 }
+
+PyObject* PyContextManager::var() { return var_.get(); }
 
 }  // namespace tensorflow
