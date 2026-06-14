@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h"
 
 namespace mlir {
 namespace mhlo {
@@ -301,21 +302,14 @@ struct MapableIf<MapTy, OpTy, std::true_type> {
 
 // Inserts the computation that corresponds to the body of the loop for lowered
 // MHLO unary/binary op. Returns the value for the result.
-template <typename MhloOpTy>
+template <typename OpTy>
 inline Value mapMhloOpToStdScalarOp(Location loc, ArrayRef<Type> resultTypes,
                                     ArrayRef<Type> argTypes,
-                                    typename MhloOpTy::Adaptor adaptor,
+                                    typename OpTy::Adaptor adaptor,
                                     ArrayRef<NamedAttribute> attributes,
                                     OpBuilder* b) {
-  using ScalarIOpOrVoid = typename MapableIf<ScalarIOp, MhloOpTy>::type;
-  using ScalarUOpOrVoid = typename MapableIf<ScalarUOp, MhloOpTy>::type;
-  using ScalarFOpOrVoid = typename MapableIf<ScalarFOp, MhloOpTy>::type;
-  using ScalarCOpOrVoid = typename MapableIf<ScalarCOp, MhloOpTy>::type;
-  return MapMhloOpToScalarOpImpl<IsSignedIntegerType, ScalarIOpOrVoid,
-                                 IsUnsignedIntegerType, ScalarUOpOrVoid,
-                                 IsFloatType, ScalarFOpOrVoid, IsComplexType,
-                                 ScalarCOpOrVoid>{}(
-      loc, resultTypes, argTypes, adaptor.getOperands(), attributes, b);
+  return ::mlir::stablehlo::StablehloOpToStdScalarOp::mapOpOfType<OpTy>(
+      loc, resultTypes, argTypes, adaptor, attributes, b);
 }
 
 template <>
