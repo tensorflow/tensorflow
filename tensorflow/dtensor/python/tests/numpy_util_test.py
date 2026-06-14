@@ -16,8 +16,11 @@
 
 import numpy as np
 
+
+
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.dtensor.python import layout
+from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.dtensor.python import numpy_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.platform import test as tf_test
@@ -122,6 +125,22 @@ class NumpyUtilTest(test_util.DTensorBaseTest):
         numpy_util.unpacked_to_numpy(tensors, sharded_on_y_x),
         np.arange(16).reshape(4, 4))
 
+  def test_unpack_uneven_split_raises(self):
+    value = np.arange(5)
+
+    layout = layout_lib.Layout.batch_sharded(
+        self.mesh,
+        batch_dim="x",
+        rank=1
+    )
+
+    with self.assertRaisesRegex(
+        ValueError,
+        "not evenly divisible"
+    ):
+      numpy_util.unpack(value, layout)
+
+    
 
 if __name__ == '__main__':
   tf_test.main()

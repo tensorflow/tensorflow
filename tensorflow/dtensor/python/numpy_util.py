@@ -33,11 +33,21 @@ from tensorflow.python.types.core import Tensor, TensorLike  # pylint: disable=g
 def _split(value, splits, axis=0, split_fn=np.split, stack_fn=np.stack):
   """Split `value` into a sharded nparray/tf tensor based on the number of splits.
   """
+  if value.shape[axis] % splits[0] != 0:
+    raise ValueError(
+        f"Tensor dimension {value.shape[axis]} on axis {axis} "
+        f"is not evenly divisible by {splits[0]} shards."
+    )
+
   children = split_fn(value, splits[0], axis=axis)
+
   if len(splits) > 1:
     splits = splits[1:]
     children = [_split(child, splits, axis + 1) for child in children]
+
   return stack_fn(children)
+
+
 
 
 def to_numpy(tensor: TensorLike) -> np.ndarray:
