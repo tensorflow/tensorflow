@@ -366,6 +366,7 @@ xla_cc_test(
     srcs = ["permutation_sort_expander_test.cc"],
     deps = [
         ":permutation_sort_expander",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tsl/platform:statusor",
