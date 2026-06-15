@@ -404,6 +404,9 @@ absl::Status FastParseSerializedExample(
 void CountSparseFeatures(const SparseBuffer& sparse_buffer,
                          size_t* total_num_features, size_t* max_num_features) {
   const std::vector<size_t>& end_indices = sparse_buffer.example_end_indices;
+  if (end_indices.empty()) {
+    return;
+  }
   *total_num_features += end_indices.back();
   *max_num_features = std::max(*max_num_features, end_indices[0]);
   for (size_t i = 1; i < end_indices.size(); ++i) {
@@ -503,6 +506,9 @@ absl::Status FastParseExampleLite(
 
     TfLiteTensor* sparse_shape = result->sparse_shapes[d];
     auto* sparse_shape_ptr = reinterpret_cast<int64_t*>(sparse_shape->data.raw);
+    const int batch_size =
+        serialized->dims->size > 0 ? serialized->dims->data[0] : 1;
+    sparse_shape_ptr[0] = batch_size;
     sparse_shape_ptr[1] = max_num_features;
 
     TfLiteIntArray* index_shape = TfLiteIntArrayCreate(2);
@@ -555,6 +561,9 @@ absl::Status FastParseExampleLite(
     size_t max_num_features = 0;
     std::vector<size_t>& end_indices =
         varlen_dense_buffers[d].example_end_indices;
+    if (end_indices.empty()) {
+      continue;
+    }
     max_num_features = std::max(max_num_features, end_indices[0]);
     for (size_t i = 1; i < end_indices.size(); ++i) {
       size_t example_size = end_indices[i] - end_indices[i - 1];
@@ -811,9 +820,6 @@ TfLiteStatus PrepareParseExample(TfLiteContext* context, TfLiteNode* node) {
     TfLiteIntArray* sparse_size = TfLiteIntArrayCreate(1);
     sparse_size->data[0] = 2;
     context->ResizeTensor(context, parse_output, sparse_size);
-    auto* shapes_shape_t = reinterpret_cast<int64_t*>(parse_output->data.i64);
-    shapes_shape_t[0] = batch_size;
-    shapes_shape_t[1] = 1;
     data->got.sparse_shapes.push_back(parse_output);
   }
   data->created = false;
