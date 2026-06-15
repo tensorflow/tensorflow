@@ -448,9 +448,11 @@ class HloInstruction {
       HloComputation* async_computation,
       absl::string_view async_execution_thread = kMainExecutionThread);
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
-      const Shape& shape, HloInstruction* operand);
+      const Shape& shape, HloInstruction* operand,
+      std::optional<HloOpcode> async_wrapped_opcode = std::nullopt);
   static std::unique_ptr<HloInstruction> CreateAsyncDone(
-      const Shape& shape, HloInstruction* operand);
+      const Shape& shape, HloInstruction* operand,
+      std::optional<HloOpcode> async_wrapped_opcode = std::nullopt);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -2507,6 +2509,10 @@ class HloInstruction {
 
   // Delagates to HloAsyncInstruction::async_chain_start().
   HloInstruction* async_chain_start() const;
+
+  // Traces backward from an instruction to find the matching async producer.
+  static HloInstruction* FindAsyncProducer(HloInstruction* instr);
+  static const HloInstruction* FindAsyncProducer(const HloInstruction* instr);
 
   // Delagates to HloAsyncInstruction::async_done().
   HloInstruction* async_chain_done() const;

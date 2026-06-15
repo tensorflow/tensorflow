@@ -802,15 +802,22 @@ absl::Status HloParserImpl::Run(HloModule* module) {
     }
   }
 
-  // There should be a 1:1 correspondence between async-start ops and
-  // async wrapped computations. Verify that each async computation has exactly
-  // one caller.
+  // Verify that each async computation is only called by async-start ops.
   for (HloComputation* computation : module->computations()) {
-    if (computation->IsAsyncComputation() &&
-        !computation->GetUniqueCaller(HloOpcode::kAsyncStart)) {
-      return InvalidArgument(
-          "Computation %s is called by more than one async op.",
-          computation->name());
+    if (computation->IsAsyncComputation()) {
+      auto callers = computation->caller_instructions();
+      for (auto* caller : callers) {
+        if (caller->opcode() != HloOpcode::kAsyncStart) {
+          return InvalidArgument(
+              "Async computation %s is called by non-async-start instruction "
+              "%s.",
+              computation->name(), caller->name());
+        }
+      }
+      if (callers.empty()) {
+        return InvalidArgument("Async computation %s has no callers.",
+                               computation->name());
+      }
     }
   }
 
@@ -2118,15 +2125,17 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           return nullptr;
         }
       }
-      // async-{update,done} expect their one singular operand to be the
-      // previous async op.
+      // async-{update,done} expect their one singular operand.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
-        if (operands.size() != 1 || !operands[0]->IsAsynchronous() ||
+        if (operands.size() != 1) {
+          TokenError("AsyncUpdate and AsyncDone expect a single operand.");
+          return nullptr;
+        }
+        if (HloAsyncInstruction::ClassOf(operands[0]) &&
             operands[0]->opcode() == HloOpcode::kAsyncDone) {
           TokenError(
-              "AsyncUpdate and AsyncDone expect a single async op as their "
-              "operand.");
+              "AsyncUpdate and AsyncDone cannot have AsyncDone as operand.");
           return nullptr;
         }
       }
@@ -2184,12 +2193,19 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           // Since async-{update,done} will inherit the computation from
           // async-start, we'll only need to make sure it matches what was
           // specified explicitly.
-          if (operands[0]->async_wrapped_opcode() != *async_wrapped_opcode) {
-            TokenError(
-                StrFormat("Expect async wrapped opcode to be %s, but got %s",
-                          HloOpcodeString(operands[0]->async_wrapped_opcode()),
-                          HloOpcodeString(*async_wrapped_opcode)));
-            return nullptr;
+          HloInstruction* async_producer =
+              HloInstruction::FindAsyncProducer(operands[0]);
+          if (async_producer != nullptr &&
+              HloAsyncInstruction::ClassOf(async_producer)) {
+            auto* async_op = Cast<HloAsyncInstruction>(async_producer);
+            if (async_op->async_chain_start() != nullptr &&
+                async_op->async_wrapped_opcode() != *async_wrapped_opcode) {
+              TokenError(
+                  StrFormat("Expect async wrapped opcode to be %s, but got %s",
+                            HloOpcodeString(async_op->async_wrapped_opcode()),
+                            HloOpcodeString(*async_wrapped_opcode)));
+              return nullptr;
+            }
           }
         }
       } else {
@@ -2209,20 +2225,28 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       // specified matches what is inherited.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
-        if (async_execution_thread &&
-            operands[0]->async_execution_thread() != *async_execution_thread) {
-          TokenError(StrFormat(
-              "Expect async_execution_thread to be %s, but got %s",
-              operands[0]->async_execution_thread(), *async_execution_thread));
-          return nullptr;
-        }
-        if (async_computation &&
-            operands[0]->async_wrapped_computation() != *async_computation) {
-          TokenError(
-              StrFormat("Expect async_wrapped_computation to be %s, but got %s",
-                        operands[0]->async_wrapped_computation()->name(),
-                        (*async_computation)->name()));
-          return nullptr;
+        HloInstruction* async_producer =
+            HloInstruction::FindAsyncProducer(operands[0]);
+        if (async_producer != nullptr &&
+            HloAsyncInstruction::ClassOf(async_producer)) {
+          auto* async_op = Cast<HloAsyncInstruction>(async_producer);
+          if (async_op->async_chain_start() != nullptr) {
+            if (async_execution_thread &&
+                async_op->async_execution_thread() != *async_execution_thread) {
+              TokenError(StrFormat(
+                  "Expect async_execution_thread to be %s, but got %s",
+                  async_op->async_execution_thread(), *async_execution_thread));
+              return nullptr;
+            }
+            if (async_computation &&
+                async_op->async_wrapped_computation() != *async_computation) {
+              TokenError(StrFormat(
+                  "Expect async_wrapped_computation to be %s, but got %s",
+                  async_op->async_wrapped_computation()->name(),
+                  (*async_computation)->name()));
+              return nullptr;
+            }
+          }
         }
       }
 
@@ -2242,11 +2266,11 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return instr;
       }
       if (opcode == HloOpcode::kAsyncUpdate) {
-        return builder->AddInstruction(
-            HloInstruction::CreateAsyncUpdate(*shape, operands[0]));
+        return builder->AddInstruction(HloInstruction::CreateAsyncUpdate(
+            *shape, operands[0], async_wrapped_opcode));
       }
-      return builder->AddInstruction(
-          HloInstruction::CreateAsyncDone(*shape, operands[0]));
+      return builder->AddInstruction(HloInstruction::CreateAsyncDone(
+          *shape, operands[0], async_wrapped_opcode));
     }
     case HloOpcode::kCopyStart: {
       optional<int> cross_program_prefetch_index = std::nullopt;
