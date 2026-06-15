@@ -302,8 +302,38 @@ DataType GetScaleType(DataType c_type, ComputationType computation_type) {
               : c_type);
 }
 
-absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateMatmulPlan(
-    const std::string& key, PlanCreateFunc create) {
+absl::Status BlasLt::MatmulPlan::SetCachedAlgorithm(size_t algorithm_idx,
+                                                    size_t max_algorithm_count,
+                                                    size_t max_workspace_size) {
+  bool cache_dirty = false;
+  // We drop the cache even if max_algorithm_count < cached_algorithm_count_
+  // or max_workspace_size < cached_workspace_size_ since the list of the
+  // algorithms may be different in these cases.
+  if (cached_algorithms_.empty() ||
+      cached_algorithm_count_ != max_algorithm_count ||
+      cached_workspace_size_ != max_workspace_size) {
+    ASSIGN_OR_RETURN(cached_algorithms_,
+                     GetAlgorithms(max_algorithm_count, max_workspace_size));
+    cached_algorithm_count_ = max_algorithm_count;
+    cached_workspace_size_ = max_workspace_size;
+    cache_dirty = true;
+  }
+  // SetAlgorithm could be expensive, e.g., for GroupedMatmulPlan.
+  if (cache_dirty || cached_algorithm_idx_ != algorithm_idx) {
+    if (algorithm_idx >= cached_algorithms_.size()) {
+      return absl::InternalError(
+          absl::StrFormat("Algorithm index is out of range: %zu >= %zu",
+                          algorithm_idx, cached_algorithm_count_));
+    }
+    cached_algorithm_idx_ = algorithm_idx;
+    return SetAlgorithm(cached_algorithms_[algorithm_idx]);
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateMatmulPlanWithAlgorithm(
+    const std::string& key, PlanCreateFunc create, size_t algorithm_idx,
+    size_t num_algorithms, size_t max_workspace_size) {
   absl::MutexLock lock(plan_cache_mu_);
   auto res = plan_cache_.emplace(key, MatmulPlanPtr{});
   // New entry inserted: always create a new matmul plan if key is empty,
@@ -313,7 +343,10 @@ absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateMatmulPlan(
     ASSIGN_OR_RETURN(res.first->second, create());
     VLOG(2) << "Plan created: cache size: " << plan_cache_.size();
   }
-  return res.first->second.get();
+  auto plan = res.first->second.get();
+  RETURN_IF_ERROR(plan->SetCachedAlgorithm(algorithm_idx, num_algorithms,
+                                           max_workspace_size));
+  return plan;
 }
 
 void BlasLt::ClearMatmulPlanCache() {

@@ -118,11 +118,10 @@ message GemmBackendConfig {
   int32 scale_mode = 21;
 }
 
-// Backend config for the GEMM operation running through cuBLASLt.
+// Backend config for the grouped (ragged-dot) GEMM operation running through
+// cuBLASLt.
 message GroupedGemmBackendConfig {
-  oneof gemm_config {
-    GemmBackendConfig gemm_backend_config = 1;
-  }
+  GemmBackendConfig gemm_backend_config = 1;
 
   xla.RaggedDotDimensionNumbers ragged_dot_dimension_numbers = 2;
 }

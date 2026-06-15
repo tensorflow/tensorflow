@@ -116,7 +116,12 @@ class BlasLt : public gpu::BlasLt {
         size_t max_algorithm_count, size_t max_workspace_size) const override;
 
     absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) override {
-      algorithm_ = algorithm;
+      auto palgo = std::any_cast<cublasLtMatmulAlgo_t>(&algorithm.opaque_algo);
+      if (palgo == nullptr) {
+        return absl::InternalError("Invalid algorithm type!");
+      }
+      algorithm_ = *palgo;
+      workspace_size_ = algorithm.workspace_size;
       return absl::OkStatus();
     }
 
@@ -130,7 +135,8 @@ class BlasLt : public gpu::BlasLt {
     alignas(16) std::array<uint8_t, kMaxScaleBytes> alpha_, beta_;
     bool zero_beta_;
     bool must_swap_operands_;
-    std::optional<MatmulAlgorithm> algorithm_;  // selected algorithm
+    std::optional<cublasLtMatmulAlgo_t> algorithm_;  // selected algorithm
+    size_t workspace_size_ = 0;
   };  // class MatmulPlan
 
   explicit BlasLt(StreamExecutor* executor)

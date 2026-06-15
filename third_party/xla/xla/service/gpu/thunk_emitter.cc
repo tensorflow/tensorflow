@@ -321,6 +321,22 @@ ThunkSequence FlattenThunkSequence(std::vector<ThunkSequence>&& sequences) {
   return result;
 }
 
+absl::StatusOr<std::string> CanonicalGemmHlo(
+    const HloCustomCallInstruction* instr) {
+  ASSIGN_OR_RETURN(auto gpu_config, instr->backend_config<GpuBackendConfig>());
+
+  auto* gemm_config = gpu_config.has_grouped_gemm_backend_config()
+                          ? gpu_config.mutable_grouped_gemm_backend_config()
+                                ->mutable_gemm_backend_config()
+                          : gpu_config.mutable_gemm_backend_config();
+
+  // Clear algorithm-specific fields from the cache key
+  gemm_config->clear_selected_algorithm();
+  gemm_config->set_autotune_workspace_size(0);
+  return instr->ToString(HloPrintOptions::Fingerprint()) +
+         BackendConfigWrapper(gpu_config).GetRawString();
+}
+
 }  // namespace
 
 ThunkEmitter::ThunkEmitter(
@@ -568,8 +584,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunk(
                    gpublas_lt::AsBlasLtEpilogue(epilogue));
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
-  std::string canonical_hlo = instr->ToString(
-      HloPrintOptions::Fingerprint().set_print_backend_config(true));
+
+  ASSIGN_OR_RETURN(std::string canonical_hlo, CanonicalGemmHlo(instr));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       std::move(thunk_info), std::move(canonical_hlo), std::move(gemm_config),
       blas_lt_epilogue, algorithm, config.autotune_workspace_size(), a, b, c, d,
@@ -658,8 +674,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunkF8(
                    gpublas_lt::AsBlasLtEpilogue(epilogue));
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
-  std::string canonical_hlo = instr->ToString(
-      HloPrintOptions::Fingerprint().set_print_backend_config(true));
+  ASSIGN_OR_RETURN(std::string canonical_hlo, CanonicalGemmHlo(instr));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       std::move(thunk_info), std::move(canonical_hlo), std::move(gemm_config),
       blas_lt_epilogue, algorithm, config.autotune_workspace_size(), a, b, c, d,
@@ -734,8 +749,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtGroupedMatmulThunk(
 
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
-  std::string canonical_hlo = instr->ToString(
-      HloPrintOptions::Fingerprint().set_print_backend_config(true));
+  ASSIGN_OR_RETURN(std::string canonical_hlo, CanonicalGemmHlo(instr));
 
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       std::move(thunk_info), std::move(canonical_hlo), std::move(gemm_config),
@@ -788,8 +802,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunkMx(
                    gpublas_lt::AsBlasLtEpilogue(epilogue));
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
-  std::string canonical_hlo = instr->ToString(
-      HloPrintOptions::Fingerprint().set_print_backend_config(true));
+  ASSIGN_OR_RETURN(std::string canonical_hlo, CanonicalGemmHlo(instr));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       std::move(thunk_info), std::move(canonical_hlo), std::move(gemm_config),
       blas_lt_epilogue, algorithm, config.autotune_workspace_size(), a, b, c, d,

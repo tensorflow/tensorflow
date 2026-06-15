@@ -635,7 +635,7 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
     blas::ProfileResult* profile_result) const {
   if (!algorithm_.has_value()) {
     return absl::InternalError(
-        "Algorithm must be set before calling DoMatMul!");
+        "Algorithm must be set before calling ExecuteOnStream!");
   }
   DeviceAddressBase a = args.a, b = args.b;
   DeviceAddressBase a_scale = args.a_scale, b_scale = args.b_scale;
@@ -656,7 +656,7 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
   }
 
   void* workspace_addr = nullptr;
-  uint64_t workspace_size = algorithm_->workspace_size;
+  uint64_t workspace_size = workspace_size_;
   if (workspace_size > 0) {
     if (args.scratch_allocator != nullptr) {
       ASSIGN_OR_RETURN(DeviceAddress<uint8_t> alloc,
@@ -670,7 +670,6 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
     }
   }
 
-  auto palgo = std::any_cast<hipblasLtMatmulAlgo_t>(&algorithm_->opaque_algo);
   {
     absl::MutexLock lock(blas_lt_.mu_);
     TF_RET_CHECK(blas_lt_.handle_ != nullptr);
@@ -713,23 +712,19 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
     std::unique_ptr<ActivateContext> activation =
         blas_lt_.executor_->Activate();
 
-    if (palgo != nullptr) {
-      SE_HIPBLAS_RETURN_IF_ERROR(hipblasLtMatmul(
-          blas_lt_.handle_.get(), op_desc_.get(), &alpha_[0], a.opaque(),
-          a_desc_.get(), b.opaque(), b_desc_.get(), &beta_[0], args.c.opaque(),
-          c_desc_.get(), args.d.opaque(), d_desc_.get(), palgo, workspace_addr,
-          workspace_size,
-          absl::bit_cast<hipStream_t>(
-              stream->platform_specific_handle().stream)));
-    } else {
-      return absl::InternalError("hipblaslt: Invalid algorithm type");
-    }
+    SE_HIPBLAS_RETURN_IF_ERROR(hipblasLtMatmul(
+        blas_lt_.handle_.get(), op_desc_.get(), &alpha_[0], a.opaque(),
+        a_desc_.get(), b.opaque(), b_desc_.get(), &beta_[0], args.c.opaque(),
+        c_desc_.get(), args.d.opaque(), d_desc_.get(), &algorithm_.value(),
+        workspace_addr, workspace_size,
+        absl::bit_cast<hipStream_t>(
+            stream->platform_specific_handle().stream)));
   }
 
   if (profile_result != nullptr) {
     ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
     // set algorithm ID to be unique (otherwise it gets kDefaultAlgorithm ID)
-    profile_result->set_algorithm(hipblaslt_ext::getIndexFromAlgo(*palgo));
+    profile_result->set_algorithm(hipblaslt_ext::getIndexFromAlgo(*algorithm_));
     profile_result->set_is_valid(true);
     profile_result->set_elapsed_time_in_ms(absl::ToDoubleMilliseconds(elapsed));
   }
@@ -927,13 +922,9 @@ absl::Status BlasLt::GroupedMatmulPlan::ExecuteOnStream(
     blas::ProfileResult* profile_result) const {
   if (!algorithm_.has_value()) {
     return absl::InternalError(
-        "Algorithm must be set before calling DoMatMul!");
+        "Algorithm must be set before calling ExecuteOnStream!");
   }
 
-  auto palgo = std::any_cast<hipblasLtMatmulAlgo_t>(&algorithm_->opaque_algo);
-  if (palgo == nullptr) {
-    return absl::InternalError("Invalid algorithm type!");
-  }
   absl::MutexLock lock(blas_lt_.mu_);
 
   // The first chunk of the workspace is reserved for userargs.
@@ -942,7 +933,7 @@ absl::Status BlasLt::GroupedMatmulPlan::ExecuteOnStream(
         static_cast<uint8_t*>(args.workspace.opaque()) +
         sizeof(hipblaslt_ext::UserArguments) * cfg_.group_count);
     SE_HIPBLAS_RETURN_IF_ERROR(
-        grouped_gemm_->initialize(*palgo, addr_workspace));
+        grouped_gemm_->initialize(*algorithm_, addr_workspace));
     algorithm_dirty_ = false;
     saved_address_workspace_ = args.workspace;
   }
@@ -1042,7 +1033,7 @@ absl::Status BlasLt::GroupedMatmulPlan::ExecuteOnStream(
   if (profile_result != nullptr) {
     ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
     // set algorithm ID to be unique (otherwise it gets kDefaultAlgorithm ID)
-    profile_result->set_algorithm(hipblaslt_ext::getIndexFromAlgo(*palgo));
+    profile_result->set_algorithm(hipblaslt_ext::getIndexFromAlgo(*algorithm_));
     profile_result->set_is_valid(true);
     profile_result->set_elapsed_time_in_ms(absl::ToDoubleMilliseconds(elapsed));
   }
