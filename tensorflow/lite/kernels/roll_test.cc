@@ -126,6 +126,17 @@ TYPED_TEST(RollOpTest, AxisOutOfRangeReturnsError) {
   ASSERT_EQ(m.Invoke(), kTfLiteError);
 }
 
+TYPED_TEST(RollOpTest, AxisNegativeOutOfRangeReturnsError) {
+  // A negative axis that is still out of bounds after adding input_rank
+  // (here -2 + 1 == -1 for a rank-1 input) must also be rejected.
+  BaseRollOpModel m(
+      /*input=*/{GetTensorType<TypeParam>(), {10}, 0, 31.875},
+      /*shift=*/{3}, /*axis=*/{-2},
+      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 31.875});
+  m.SetInput<TypeParam>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
 TYPED_TEST(RollOpTest, Roll3D) {
   BaseRollOpModel m(
       /*input=*/{GetTensorType<TypeParam>(), {2, 4, 4}, 0, 31.875},
