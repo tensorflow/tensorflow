@@ -41,7 +41,6 @@
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/stacktrace.h"
 
 namespace xla {
@@ -88,8 +87,8 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     if (init_response.IsReady() && init_response.Await().ok()) {
       // If the init RPC has already completed successfully, we have
       // already or will be returning OK from the `AttemptConnection` call.
-      LOG(WARNING) << "IFRT proxy server disconnected: " << s
-                   << "; Stack trace: " << tsl::CurrentStackTrace();
+      LOG(WARNING) << "IFRT proxy server disconnected with status: " << s;
+      LOG(INFO) << "Stack trace: " << tsl::CurrentStackTrace();
       if (on_disconnect != nullptr) {
         on_disconnect(s);
       }

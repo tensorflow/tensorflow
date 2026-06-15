@@ -566,7 +566,6 @@ cc_library(
         "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
