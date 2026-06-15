@@ -21,7 +21,9 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/xla_computation.h"

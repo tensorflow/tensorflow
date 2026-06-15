@@ -30,13 +30,13 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
 // The source_location.h is not available in open source.
 #if defined(PLATFORM_GOOGLE)
-#include "absl/types/source_location.h"
 #endif  // PLATFORM_GOOGLE
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"

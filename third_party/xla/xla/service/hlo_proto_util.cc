@@ -22,7 +22,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "google/protobuf/repeated_ptr_field.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
