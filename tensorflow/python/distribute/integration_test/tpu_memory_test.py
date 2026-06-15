@@ -170,20 +170,11 @@ class TpuMemoryTest(tf.test.TestCase):
       # A dummy result to indicate this @tf.function has finished.
       return 1.0
 
-    if FLAGS.tpu_use_tfrt:
-      result = train_step(iterator)
-
-      self.assertAllClose(1.0, result, atol=1e-07)
-    else:
-      # TPU StreamExecutor does not support auto-defrag in program loading. So
-      # it will return a ResourceExhaustedError.
-      with self.assertRaises(tf.errors.ResourceExhaustedError):
-        _ = train_step(iterator)
+    result = train_step(iterator)
+    self.assertAllClose(1.0, result, atol=1e-07)
 
   def testAutoDefragInBufferAllocation(self):
-    if not FLAGS.tpu_use_tfrt:
-      self.skipTest(
-          "TPU StreamExecutor does not support auto-defrag in allocation.")
+
     with tf.device("TPU:0"):
       # DF has ~15G HBM. Following 7 buffers will consume most HBM.
       # pylint: disable=unused-variable

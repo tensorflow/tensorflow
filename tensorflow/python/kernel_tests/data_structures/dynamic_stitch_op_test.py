@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.ops.data_flow_ops.{,parallel_}dynamic_stitch."""
+"""Tests for the dynamic stitch and parallel dynamic stitch operations in data_flow_ops."""
 
 import numpy as np
 
@@ -22,8 +22,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
 import tensorflow.python.ops.data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
@@ -239,6 +239,74 @@ class DynamicStitchTestBase(object):
 
       self.evaluate(self.stitch_op(indices, data))
 
+  @test_util.run_deprecated_v1
+  def testGradientWithDuplicateIndicesSingleGroup(self):
+    indices = [constant_op.constant([0, 0])]
+    data = [constant_op.constant([1.0, 2.0], dtype=dtypes.float32)]
+    stitched_t = self.stitch_op(indices, data)
+    stitched_grad = constant_op.constant([3.0], dtype=dtypes.float32)
+    grads = gradients_impl.gradients(stitched_t, indices + data, stitched_grad)
+    self.assertIsNone(grads[0])  # Indices have no gradient
+    self.assertAllEqual([0.0, 3.0], self.evaluate(grads[1]))
+
+  @test_util.run_deprecated_v1
+  def testGradientWithDuplicateIndicesMultiGroup(self):
+    indices = [constant_op.constant([0, 1]), constant_op.constant([1, 2])]
+    data = [
+        constant_op.constant([10.0, 20.0], dtype=dtypes.float32),
+        constant_op.constant([30.0, 40.0], dtype=dtypes.float32),
+    ]
+    stitched_t = self.stitch_op(indices, data)
+    stitched_grad = constant_op.constant([2.0, 3.0, 4.0], dtype=dtypes.float32)
+    grads = gradients_impl.gradients(stitched_t, indices + data, stitched_grad)
+    self.assertEqual(grads[:2], [None] * 2)  # Indices have no gradient
+    self.assertAllEqual([2.0, 0.0], self.evaluate(grads[2]))
+    self.assertAllEqual([3.0, 4.0], self.evaluate(grads[3]))
+
+  @test_util.run_deprecated_v1
+  def testGradientWithDuplicateIndicesHigherRank(self):
+    indices = [constant_op.constant([0, 0])]
+    data = [
+        constant_op.constant(
+            [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]],
+            dtype=dtypes.float32,
+        )
+    ]
+    stitched_t = self.stitch_op(indices, data)
+    stitched_grad = constant_op.constant(
+        [[[10.0, 20.0], [30.0, 40.0]]], dtype=dtypes.float32
+    )
+    grads = gradients_impl.gradients(stitched_t, indices + data, stitched_grad)
+    self.assertIsNone(grads[0])  # Indices have no gradient
+    expected_grad = [[[0.0, 0.0], [0.0, 0.0]], [[10.0, 20.0], [30.0, 40.0]]]
+    self.assertAllEqual(expected_grad, self.evaluate(grads[1]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMismatchedDataAndIndexListSizes(self):
+    indices = [
+        constant_op.constant([2]),
+        constant_op.constant([1]),
+        constant_op.constant([0]),
+        constant_op.constant([3]),
+    ]
+    data = [
+        constant_op.constant([1.0]),
+        constant_op.constant([2.0]),
+        constant_op.constant([3.0]),
+        constant_op.constant([4.0]),
+    ]
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "expected inputs .* do not match|List argument .* must match",
+    ):
+      self.evaluate(self.stitch_op(indices[0:2], data))
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "expected inputs .* do not match|List argument .* must match",
+    ):
+      self.evaluate(self.stitch_op(indices, data[0:2]))
+
 
 class DynamicStitchTest(DynamicStitchTestBase, test.TestCase):
 
@@ -258,7 +326,7 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
       indices = [constant_op.constant(0), constant_op.constant(1)]
       data = [constant_op.constant(40.0), constant_op.constant(60.0)]
       for step in -1, 1:
-        stitched_t = data_flow_ops.dynamic_stitch(indices[::step], data)
+        stitched_t = self.stitch_op(indices[::step], data)
         stitched_val = self.evaluate(stitched_t)
         self.assertAllEqual([40.0, 60.0][::step], stitched_val)
         # Dimension 0 is max(flatten(indices))+1.
@@ -277,7 +345,7 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
         constant_op.constant(
             [[[51, 52], [21, 22]], [[1, 2], [31, 32]]], dtype=dtypes.float32)
     ]
-    stitched_t = data_flow_ops.dynamic_stitch(indices, data)
+    stitched_t = self.stitch_op(indices, data)
     stitched_val = self.evaluate(stitched_t)
     correct = 10 * np.arange(7)[:, None] + [1.0, 2.0]
     self.assertAllEqual(correct, stitched_val)
@@ -295,7 +363,7 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
     indices = [constant_op.constant(0), constant_op.constant(1)]
     data = [constant_op.constant(40.0), constant_op.constant(60.0)]
     for step in -1, 1:
-      stitched_t = data_flow_ops.dynamic_stitch(indices[::step], data)
+      stitched_t = self.stitch_op(indices[::step], data)
       stitched_val = self.evaluate(stitched_t)
       self.assertAllEqual([40.0, 60.0][::step], stitched_val)
       # Dimension 0 is max(flatten(indices))+1.
@@ -314,7 +382,7 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
         constant_op.constant(
             [[[51, 52], [21, 22]], [[1, 2], [31, 32]]], dtype=dtypes.float32)
     ]
-    stitched_t = data_flow_ops.dynamic_stitch(indices, data)
+    stitched_t = self.stitch_op(indices, data)
     stitched_val = self.evaluate(stitched_t)
     correct = 10 * np.arange(7)[:, None] + [1.0, 2.0]
     self.assertAllEqual(correct, stitched_val)
@@ -327,29 +395,6 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
     for datum, grad in zip(data, self.evaluate(grads[3:])):
       self.assertAllEqual(7.0 * self.evaluate(datum), grad)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testMismatchedDataAndIndexListSizes(self):
-    indices = [
-        constant_op.constant([2]),
-        constant_op.constant([1]),
-        constant_op.constant([0]),
-        constant_op.constant([3]),
-    ]
-    data = [
-        constant_op.constant([1.0]),
-        constant_op.constant([2.0]),
-        constant_op.constant([3.0]),
-        constant_op.constant([4.0])
-    ]
-    with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError),
-        "expected inputs .* do not match|List argument .* must match"):
-      self.evaluate(data_flow_ops.dynamic_stitch(indices[0:2], data))
-
-    with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError),
-        "expected inputs .* do not match|List argument .* must match"):
-      self.evaluate(data_flow_ops.dynamic_stitch(indices, data[0:2]))
 
 if __name__ == "__main__":
   test.main()

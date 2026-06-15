@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -71,7 +72,7 @@ static bool IsAtLeastCuda12300(
 
 absl::StatusOr<std::vector<const CommandBuffer::Command*>> Wrap(
     absl::StatusOr<const CommandBuffer::Command*> command) {
-  TF_RETURN_IF_ERROR(command.status());
+  RETURN_IF_ERROR(command.status());
   return std::vector<const CommandBuffer::Command*>{*command};
 }
 
@@ -173,6 +174,32 @@ TEST(GpuCommandBufferTest, TraceSingleKernel) {
 
   std::vector<int32_t> expected = {3, 3, 3, 3};
   ASSERT_EQ(dst, expected);
+}
+
+TEST(GpuCommandBufferTest, TraceEmptyChildCommand) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (executor->GetPlatform()->id() == cuda::kCudaPlatformId &&
+      !IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "Command buffer tracing is supported after CUDA 12.3";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  ASSERT_OK_AND_ASSIGN(auto traced_cmd_buffer,
+                       TraceCommandBufferFactory::Create(
+                           executor, stream.get(),
+                           [](Stream*) { return absl::OkStatus(); }, nested));
+
+  ASSERT_OK_AND_ASSIGN(auto cmd_buffer, executor->CreateCommandBuffer(primary));
+  ASSERT_OK_AND_ASSIGN(auto* child,
+                       cmd_buffer->CreateChildCommand(*traced_cmd_buffer, {}));
+  (void)child;
+  ASSERT_OK(cmd_buffer->Finalize());
+
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 }
 
 TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {

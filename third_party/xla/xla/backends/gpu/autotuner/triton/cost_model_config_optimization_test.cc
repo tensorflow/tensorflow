@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {

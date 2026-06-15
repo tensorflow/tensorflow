@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
@@ -71,7 +72,7 @@ static GpuCollectives* ResolveCollectives(
         CollectivesRegistry::Get(platform_name, *implementation_name);
     CHECK_OK(collectives) << "Failed to get GPU collectives implementation: "
                           << *implementation_name;
-    return tsl::down_cast<GpuCollectives*>(*collectives);
+    return absl::down_cast<GpuCollectives*>(*collectives);
   }
   return GpuCollectives::Default(platform_name);
 }
@@ -102,8 +103,8 @@ absl::StatusOr<CollectiveParams> CollectiveParams::Create(
                            ? &*gpu_options->incarnations()
                            : nullptr;
 
-  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
-                      GetGlobalDeviceId(device_id_map, local_device_id));
+  ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                   GetGlobalDeviceId(device_id_map, local_device_id));
 
   return CollectiveParams(
       collectives, run_options.stream()->parent(),

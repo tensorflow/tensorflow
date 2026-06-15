@@ -27,8 +27,8 @@ limitations under the License.
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -41,7 +41,7 @@ namespace {
 //
 // Several tests requires multiple GPUs. For instructions on running this
 // within Google, see go/multi-gpu-unit-test.
-class CollectiveOpsCommandBufferTest : public HloTestBase {
+class CollectiveOpsCommandBufferTest : public HloTestBaseLegacy {
  public:
   CollectiveOpsCommandBufferTest() {
     VLOG(1) << "Running with " << num_devices() << " devices";
@@ -49,7 +49,7 @@ class CollectiveOpsCommandBufferTest : public HloTestBase {
 
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBaseLegacy::GetDebugOptionsForTest();
     // Disable async->sync collective conversion pass to enable unit testing
     // of async collectives.
     debug_options.add_xla_disable_hlo_passes(
@@ -63,7 +63,7 @@ class CollectiveOpsCommandBufferPeerAccessTest
     : public CollectiveOpsCommandBufferTest {
  protected:
   void SetUp() override {
-    HloTestBase::SetUp();  // Don't forget to call the base class SetUp
+    HloTestBaseLegacy::SetUp();  // Don't forget to call the base class SetUp
 
     stream_executor::Platform* platform = GetTestPlatform();
 

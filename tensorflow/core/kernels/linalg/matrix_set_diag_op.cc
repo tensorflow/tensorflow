@@ -15,6 +15,11 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+#include <algorithm>
+#include <tuple>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

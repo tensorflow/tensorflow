@@ -624,6 +624,61 @@ HloInstructionIndexing ComputeOutputToInputPadOpIndexing(
       {input_indexing_map, padding_value_indexing_map});
 }
 
+HloInstructionIndexing ComputeOutputToInputGetTupleElementOpIndexing(
+    const HloGetTupleElementInstruction* gte, MLIRContext* mlir_context) {
+  int64_t rank = gte->shape().dimensions().size();
+  IndexingMap identity_map = IndexingMap::FromTensorSizes(
+      SymbolicMap::GetMultiDimIdentityMap(rank, mlir_context),
+      gte->shape().dimensions(), {});
+
+  HloInstructionIndexing instr_indexing;
+  instr_indexing.indexing_maps.resize(1);
+  instr_indexing.indexing_maps[0].insert(OperandIndexing(identity_map));
+  return instr_indexing;
+}
+
+HloInstructionIndexing ComputeOutputToInputScanOpIndexing(
+    const HloScanInstruction* scan, int output_id, MLIRContext* mlir_context) {
+  int64_t num_carries = scan->num_carries();
+  int64_t num_inputs = scan->operand_count() - num_carries;
+
+  const Shape& output_shape = GetOutputShape(scan, output_id);
+
+  HloInstructionIndexing instr_indexing;
+  instr_indexing.indexing_maps.resize(scan->operand_count());
+
+  if (output_shape.dimensions().empty()) {
+    // It is a scalar output (carry).
+    // Map all operands to scalar indexing maps.
+    for (int64_t id = 0; id < scan->operand_count(); ++id) {
+      instr_indexing.indexing_maps[id].insert(
+          OperandIndexing(CreateScalarIndexingMap(output_shape, mlir_context)));
+    }
+    return instr_indexing;
+  }
+
+  // It is an array output.
+  // For the array inputs, the mapping is 1:1 (identity).
+  IndexingMap inputs_indexing_map = IndexingMap::FromTensorSizes(
+      SymbolicMap::GetMultiDimIdentityMap(output_shape.dimensions().size(),
+                                          mlir_context),
+      output_shape.dimensions(), {});
+
+  // For the carry inputs, the mapping is scalar.
+  IndexingMap carries_indexing_map =
+      CreateScalarIndexingMap(output_shape, mlir_context);
+
+  for (int64_t id = 0; id < num_inputs; ++id) {
+    instr_indexing.indexing_maps[id].insert(
+        OperandIndexing(inputs_indexing_map));
+  }
+  for (int64_t id = num_inputs; id < scan->operand_count(); ++id) {
+    instr_indexing.indexing_maps[id].insert(
+        OperandIndexing(carries_indexing_map));
+  }
+  return instr_indexing;
+}
+
 HloInstructionIndexing ComputeOutputToInputReduceOpIndexing(
     const HloReduceInstruction* reduce, MLIRContext* mlir_context) {
   const Shape& input_shape = reduce->operand(0)->shape();
@@ -1635,6 +1690,9 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
   if (auto gather = DynCast<HloGatherInstruction>(instr)) {
     return ComputeOutputToInputGatherOpIndexing(gather, mlir_context);
   }
+  if (auto gte = DynCast<HloGetTupleElementInstruction>(instr)) {
+    return ComputeOutputToInputGetTupleElementOpIndexing(gte, mlir_context);
+  }
   if (auto iota = DynCast<HloIotaInstruction>(instr)) {
     return HloInstructionIndexing{};
   }
@@ -1659,6 +1717,9 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
   }
   if (auto scaled_dot = DynCast<HloScaledDotInstruction>(instr)) {
     return ComputeOutputToInputScaledDotOpIndexing(scaled_dot, mlir_context);
+  }
+  if (auto scan = DynCast<HloScanInstruction>(instr)) {
+    return ComputeOutputToInputScanOpIndexing(scan, output_id, mlir_context);
   }
   if (auto slice = DynCast<HloSliceInstruction>(instr)) {
     return ComputeOutputToInputSliceOpIndexing(slice, mlir_context);

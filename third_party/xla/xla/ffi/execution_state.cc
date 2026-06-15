@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/ffi/execution_state.pb.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/tsl/platform/errors.h"
@@ -74,10 +75,10 @@ absl::StatusOr<ExecutionStateProto> ExecutionState::ToProto() const {
                            state_.get_deleter().type_id);
   }
 
-  TF_ASSIGN_OR_RETURN(absl::string_view type_name,
-                      TypeRegistry::GetTypeName(state_.get_deleter().type_id));
-  TF_ASSIGN_OR_RETURN(std::string state,
-                      state_.get_deleter().type_info.serializer(state_.get()));
+  ASSIGN_OR_RETURN(absl::string_view type_name,
+                   TypeRegistry::GetTypeName(state_.get_deleter().type_id));
+  ASSIGN_OR_RETURN(std::string state,
+                   state_.get_deleter().type_info.serializer(state_.get()));
 
   ExecutionStateProto proto;
   proto.set_type_name(type_name);
@@ -92,9 +93,8 @@ absl::StatusOr<ExecutionState> ExecutionState::FromProto(
     return state;
   }
 
-  TF_ASSIGN_OR_RETURN(TypeId type_id,
-                      TypeRegistry::GetTypeId(proto.type_name()));
-  TF_ASSIGN_OR_RETURN(TypeInfo type_info, TypeRegistry::GetTypeInfo(type_id));
+  ASSIGN_OR_RETURN(TypeId type_id, TypeRegistry::GetTypeId(proto.type_name()));
+  ASSIGN_OR_RETURN(TypeInfo type_info, TypeRegistry::GetTypeInfo(type_id));
 
   if (!type_info.deserializer) {
     return InvalidArgument(
@@ -102,8 +102,8 @@ absl::StatusOr<ExecutionState> ExecutionState::FromProto(
         proto.type_name());
   }
 
-  TF_ASSIGN_OR_RETURN(auto opaque_state, type_info.deserializer(proto.state()));
-  TF_RETURN_IF_ERROR(state.Set(type_id, type_info, opaque_state.release()));
+  ASSIGN_OR_RETURN(auto opaque_state, type_info.deserializer(proto.state()));
+  RETURN_IF_ERROR(state.Set(type_id, type_info, opaque_state.release()));
   return state;
 }
 

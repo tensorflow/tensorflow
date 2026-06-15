@@ -23,16 +23,17 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
-#include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
-#include "xla/tests/llvm_irgen_test_base.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -47,12 +48,12 @@ using ::tsl::testing::StatusIs;
 
 constexpr size_t kMemoryAllocationSize = 1024;
 
-class SyclExecutorTest : public xla::LlvmIrGenTestBase {};
+class SyclExecutorTest : public xla::gpu::HloPjRtGpuTestBase {};
 
 TEST_F(SyclExecutorTest, GetSyclKernel) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          stream_executor::PlatformManager::PlatformWithId(
-                              stream_executor::sycl::kSyclPlatformId));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Platform * platform,
+      stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(kDefaultDeviceOrdinal));
 
@@ -70,9 +71,12 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
       xla::ParseAndReturnUnverifiedModule(hlo_text, config));
 
   TF_ASSERT_OK_AND_ASSIGN(
+      hlo_module, compiler()->RunHloPasses(std::move(hlo_module), executor,
+                                           /*device_allocator=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::Executable> exec,
-      CompileToExecutable(std::move(hlo_module),
-                          /*run_optimization_passes=*/true));
+      compiler()->RunBackend(std::move(hlo_module), executor,
+                             /*device_allocator=*/nullptr));
 
   auto* gpu_exec = static_cast<xla::gpu::GpuExecutable*>(exec.get());
   ASSERT_NE(gpu_exec, nullptr);

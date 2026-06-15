@@ -16,13 +16,13 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
 
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -36,11 +36,9 @@ namespace {
 
 using Parameter = DynamicSliceFusion::Parameter;
 using Result = DynamicSliceFusion::Result;
+using Offset = DynamicSliceFusion::Offset;
 
-using CstOff = DynamicSliceFusion::ConstantOffset;
-using RtOff = DynamicSliceFusion::RuntimeOffset;
-
-using Offsets = std::vector<DynamicSliceFusion::Offset>;
+using Offsets = std::vector<Offset>;
 
 DynamicSliceConfig MakeConfig(int64_t loop_index, int64_t offset,
                               int64_t stride) {
@@ -120,6 +118,36 @@ TEST_F(DynamicSliceFusionTest, FindHeroSkipsInfrastructure) {
   EXPECT_EQ(hero->opcode(), HloOpcode::kDot);
 }
 
+TEST_F(DynamicSliceFusionTest, FindHeroSkipsOffsetExpression) {
+  const char* hlo = R"(
+    HloModule test
+
+    %fused {
+      %p0 = s32[4,2] parameter(0)
+      %p1 = s32[] parameter(1)
+      %zero = s32[] constant(0)
+      %one = s32[] constant(1)
+      %offset = s32[] add(%p1, %one)
+      %ds = s32[1,2] dynamic-slice(%p0, %offset, %zero),
+        dynamic_slice_sizes={1,2}
+      ROOT %copy = s32[1,2] copy(%ds)
+    }
+
+    ENTRY main {
+      %input = s32[4,2] parameter(0)
+      %ivar = s32[] parameter(1)
+      ROOT %fusion = s32[1,2] fusion(%input, %ivar), kind=kCustom, calls=%fused
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  const HloComputation* body = module->GetComputationWithName("fused");
+
+  const HloInstruction* hero = DynamicSliceFusion::FindHero(body);
+  ASSERT_NE(hero, nullptr);
+  EXPECT_EQ(hero->opcode(), HloOpcode::kCopy);
+}
+
 TEST_F(DynamicSliceFusionTest, FindHeroReturnsNullWhenNoHero) {
   const char* hlo = R"(
     HloModule test
@@ -172,10 +200,11 @@ TEST_F(DynamicSliceFusionTest, ResolveParamWithDynamicSliceConstantOffsets) {
   ASSERT_OK_AND_ASSIGN(auto params,
                        DynamicSliceFusion::ResolveParameters(hero));
   ASSERT_EQ(params.size(), 1);
-  EXPECT_EQ(params[0],
-            (Parameter{0, ShapeUtil::MakeShape(F32, {4, 4}),
-                       ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
-                       Offsets{CstOff{0, 0}, CstOff{0, 1}}}));
+  EXPECT_EQ(
+      params[0],
+      (Parameter{0, ShapeUtil::MakeShape(F32, {4, 4}),
+                 ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
+                 Offsets{{0, Offset::Constant(0)}, {1, Offset::Constant(0)}}}));
 }
 
 TEST_F(DynamicSliceFusionTest, ResolveParamWithDynamicSliceRuntimeOffsets) {
@@ -208,9 +237,95 @@ TEST_F(DynamicSliceFusionTest, ResolveParamWithDynamicSliceRuntimeOffsets) {
                        DynamicSliceFusion::ResolveParameters(hero));
   ASSERT_EQ(params.size(), 1);
   EXPECT_EQ(params[0],
-            (Parameter{0, ShapeUtil::MakeShape(F32, {4, 4}),
-                       ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
-                       Offsets{RtOff{1, 0}, CstOff{0, 1}}}));
+            (Parameter{
+                0, ShapeUtil::MakeShape(F32, {4, 4}),
+                ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
+                Offsets{{0, Offset::Parameter(1)}, {1, Offset::Constant(0)}}}));
+}
+
+TEST_F(DynamicSliceFusionTest, ResolveParamWithComputedDynamicSliceOffset) {
+  const char* hlo = R"(
+    HloModule test
+
+    %fused {
+      %p0 = f32[4,4] parameter(0)
+      %p1 = s32[] parameter(1)
+      %one = s32[] constant(1)
+      %zero = s32[] constant(0)
+      %offset = s32[] add(%p1, %one)
+      %ds = f32[1,4] dynamic-slice(%p0, %offset, %zero), dynamic_slice_sizes={1,4},
+        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+      ROOT %custom = f32[1,4] custom-call(%ds), custom_call_target="hero"
+    }
+
+    ENTRY main {
+      %input = f32[4,4] parameter(0)
+      %ivar = s32[] parameter(1)
+      ROOT %fusion = f32[1,4] fusion(%input, %ivar), kind=kCustom, calls=%fused
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  HloComputation* body = module->GetComputationWithName("fused");
+  const HloInstruction* hero = body->GetInstructionWithName("custom");
+  ASSERT_NE(hero, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(auto params,
+                       DynamicSliceFusion::ResolveParameters(hero));
+  ASSERT_EQ(params.size(), 1);
+  EXPECT_EQ(
+      params[0],
+      (Parameter{
+          0, ShapeUtil::MakeShape(F32, {4, 4}),
+          ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
+          Offsets{{0, Offset::Add(Offset::Parameter(1), Offset::Constant(1))},
+                  {1, Offset::Constant(0)}}}));
+}
+
+TEST_F(DynamicSliceFusionTest, ResolveParamWithSelectOffsetExpression) {
+  const char* hlo = R"(
+    HloModule test
+
+    %fused {
+      %p0 = f32[4,4] parameter(0)
+      %p1 = s32[] parameter(1)
+      %one = s32[] constant(1)
+      %zero = s32[] constant(0)
+      %is_negative = pred[] compare(%p1, %zero), direction=LT
+      %incremented = s32[] add(%p1, %one)
+      %offset = s32[] select(%is_negative, %zero, %incremented)
+      %ds = f32[1,4] dynamic-slice(%p0, %offset, %zero), dynamic_slice_sizes={1,4},
+        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+      ROOT %custom = f32[1,4] custom-call(%ds), custom_call_target="hero"
+    }
+
+    ENTRY main {
+      %input = f32[4,4] parameter(0)
+      %ivar = s32[] parameter(1)
+      ROOT %fusion = f32[1,4] fusion(%input, %ivar), kind=kCustom, calls=%fused
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  HloComputation* body = module->GetComputationWithName("fused");
+  const HloInstruction* hero = body->GetInstructionWithName("custom");
+  ASSERT_NE(hero, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(auto params,
+                       DynamicSliceFusion::ResolveParameters(hero));
+  ASSERT_EQ(params.size(), 1);
+  EXPECT_EQ(
+      params[0],
+      (Parameter{
+          0, ShapeUtil::MakeShape(F32, {4, 4}),
+          ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
+          Offsets{{0, Offset::Select(Offset::Compare(ComparisonDirection::kLt,
+                                                     Offset::Parameter(1),
+                                                     Offset::Constant(0)),
+                                     Offset::Constant(0),
+                                     Offset::Add(Offset::Parameter(1),
+                                                 Offset::Constant(1)))},
+                  {1, Offset::Constant(0)}}}));
 }
 
 TEST_F(DynamicSliceFusionTest, ResolveParamWithStaticSlice) {
@@ -309,10 +424,11 @@ TEST_F(DynamicSliceFusionTest, ResolveResultWithDUSConstantOffsets) {
 
   ASSERT_OK_AND_ASSIGN(auto results, DynamicSliceFusion::ResolveResults(hero));
   ASSERT_EQ(results.size(), 1);
-  EXPECT_EQ(results[0],
-            (Result{0, 0, ShapeUtil::MakeShape(F32, {4, 4}),
-                    ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
-                    Offsets{CstOff{0, 0}, CstOff{0, 1}}}));
+  EXPECT_EQ(
+      results[0],
+      (Result{0, 0, ShapeUtil::MakeShape(F32, {4, 4}),
+              ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
+              Offsets{{0, Offset::Constant(0)}, {1, Offset::Constant(0)}}}));
 }
 
 TEST_F(DynamicSliceFusionTest, ResolveResultWithDUSRuntimeOffsets) {
@@ -344,10 +460,50 @@ TEST_F(DynamicSliceFusionTest, ResolveResultWithDUSRuntimeOffsets) {
 
   ASSERT_OK_AND_ASSIGN(auto results, DynamicSliceFusion::ResolveResults(hero));
   ASSERT_EQ(results.size(), 1);
-  EXPECT_EQ(results[0],
-            (Result{0, 0, ShapeUtil::MakeShape(F32, {4, 4}),
-                    ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
-                    Offsets{RtOff{1, 0}, CstOff{0, 1}}}));
+  EXPECT_EQ(
+      results[0],
+      (Result{0, 0, ShapeUtil::MakeShape(F32, {4, 4}),
+              ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
+              Offsets{{0, Offset::Parameter(1)}, {1, Offset::Constant(0)}}}));
+}
+
+TEST_F(DynamicSliceFusionTest, ResolveResultWithComputedDusOffset) {
+  const char* hlo = R"(
+    HloModule test
+
+    %fused {
+      %p0 = f32[4,4] parameter(0)
+      %p1 = s32[] parameter(1)
+      %fill = f32[4] custom-call(), custom_call_target="fill"
+      %bitcast = f32[1,4] bitcast(%fill)
+      %one = s32[] constant(1)
+      %zero = s32[] constant(0)
+      %offset = s32[] add(%p1, %one)
+      ROOT %dus = f32[4,4] dynamic-update-slice(%p0, %bitcast, %offset, %zero),
+        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+    }
+
+    ENTRY main {
+      %input = f32[4,4] parameter(0)
+      %ivar = s32[] parameter(1)
+      ROOT %fusion = f32[4,4] fusion(%input, %ivar), kind=kCustom, calls=%fused
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  HloComputation* body = module->GetComputationWithName("fused");
+  const HloInstruction* hero = body->GetInstructionWithName("fill");
+  ASSERT_NE(hero, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(auto results, DynamicSliceFusion::ResolveResults(hero));
+  ASSERT_EQ(results.size(), 1);
+  EXPECT_EQ(
+      results[0],
+      (Result{
+          0, 0, ShapeUtil::MakeShape(F32, {4, 4}),
+          ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
+          Offsets{{0, Offset::Add(Offset::Parameter(1), Offset::Constant(1))},
+                  {1, Offset::Constant(0)}}}));
 }
 
 TEST_F(DynamicSliceFusionTest, ResolveResultWithBitcastThenDUS) {
@@ -377,10 +533,11 @@ TEST_F(DynamicSliceFusionTest, ResolveResultWithBitcastThenDUS) {
 
   ASSERT_OK_AND_ASSIGN(auto results, DynamicSliceFusion::ResolveResults(hero));
   ASSERT_EQ(results.size(), 1);
-  EXPECT_EQ(results[0],
-            (Result{0, 0, ShapeUtil::MakeShape(F32, {4, 4}),
-                    ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(1, 32, 64),
-                    Offsets{CstOff{0, 0}, CstOff{0, 1}}}));
+  EXPECT_EQ(
+      results[0],
+      (Result{0, 0, ShapeUtil::MakeShape(F32, {4, 4}),
+              ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(1, 32, 64),
+              Offsets{{0, Offset::Constant(0)}, {1, Offset::Constant(0)}}}));
 }
 
 TEST_F(DynamicSliceFusionTest, ResolveResultNoDUS) {
@@ -436,9 +593,11 @@ TEST_F(DynamicSliceFusionTest, ResolveResultDUSWithoutConfig) {
 
   ASSERT_OK_AND_ASSIGN(auto results, DynamicSliceFusion::ResolveResults(hero));
   ASSERT_EQ(results.size(), 1);
-  EXPECT_EQ(results[0], (Result{0, 0, ShapeUtil::MakeShape(F32, {4, 4}),
-                                ShapeUtil::MakeShape(F32, {1, 4}), std::nullopt,
-                                Offsets{CstOff{0, 0}, CstOff{0, 1}}}));
+  EXPECT_EQ(
+      results[0],
+      (Result{0, 0, ShapeUtil::MakeShape(F32, {4, 4}),
+              ShapeUtil::MakeShape(F32, {1, 4}), std::nullopt,
+              Offsets{{0, Offset::Constant(0)}, {1, Offset::Constant(0)}}}));
 }
 
 //===----------------------------------------------------------------------===//
@@ -480,16 +639,18 @@ TEST_F(DynamicSliceFusionTest, ParamsAndResultsWithRuntimeOffsets) {
                        DynamicSliceFusion::ResolveParameters(hero));
   ASSERT_EQ(params.size(), 1);
   EXPECT_EQ(params[0],
-            (Parameter{0, ShapeUtil::MakeShape(F32, {4, 4}),
-                       ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
-                       Offsets{RtOff{2, 0}, CstOff{0, 1}}}));
+            (Parameter{
+                0, ShapeUtil::MakeShape(F32, {4, 4}),
+                ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
+                Offsets{{0, Offset::Parameter(2)}, {1, Offset::Constant(0)}}}));
 
   ASSERT_OK_AND_ASSIGN(auto results, DynamicSliceFusion::ResolveResults(hero));
   ASSERT_EQ(results.size(), 1);
-  EXPECT_EQ(results[0],
-            (Result{1, 0, ShapeUtil::MakeShape(F32, {4, 4}),
-                    ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
-                    Offsets{RtOff{2, 0}, CstOff{0, 1}}}));
+  EXPECT_EQ(
+      results[0],
+      (Result{1, 0, ShapeUtil::MakeShape(F32, {4, 4}),
+              ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
+              Offsets{{0, Offset::Parameter(2)}, {1, Offset::Constant(0)}}}));
 }
 
 //===----------------------------------------------------------------------===//
@@ -531,14 +692,16 @@ TEST_F(DynamicSliceFusionTest, ResolveResultsFlatTupleWithDUS) {
 
   ASSERT_OK_AND_ASSIGN(auto results, DynamicSliceFusion::ResolveResults(hero));
   ASSERT_EQ(results.size(), 2);
-  EXPECT_EQ(results[0],
-            (Result{0, 0, ShapeUtil::MakeShape(F32, {4, 4}),
-                    ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
-                    Offsets{RtOff{2, 0}, CstOff{0, 1}}}));
-  EXPECT_EQ(results[1],
-            (Result{1, 1, ShapeUtil::MakeShape(F32, {4, 8}),
-                    ShapeUtil::MakeShape(F32, {1, 8}), MakeConfig(0, 0, 32),
-                    Offsets{CstOff{0, 0}, CstOff{0, 1}}}));
+  EXPECT_EQ(
+      results[0],
+      (Result{0, 0, ShapeUtil::MakeShape(F32, {4, 4}),
+              ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
+              Offsets{{0, Offset::Parameter(2)}, {1, Offset::Constant(0)}}}));
+  EXPECT_EQ(
+      results[1],
+      (Result{1, 1, ShapeUtil::MakeShape(F32, {4, 8}),
+              ShapeUtil::MakeShape(F32, {1, 8}), MakeConfig(0, 0, 32),
+              Offsets{{0, Offset::Constant(0)}, {1, Offset::Constant(0)}}}));
 }
 
 TEST_F(DynamicSliceFusionTest, ResolveResultsNestedTupleWithDUS) {
@@ -584,7 +747,7 @@ TEST_F(DynamicSliceFusionTest, ResolveResultsNestedTupleWithDUS) {
 
   ASSERT_OK_AND_ASSIGN(auto results, DynamicSliceFusion::ResolveResults(hero));
   ASSERT_EQ(results.size(), 3);
-  Offsets const_2d{CstOff{0, 0}, CstOff{0, 1}};
+  Offsets const_2d{{0, Offset::Constant(0)}, {1, Offset::Constant(0)}};
   EXPECT_EQ(results[0], (Result{0, 0, ShapeUtil::MakeShape(F32, {4, 4}),
                                 ShapeUtil::MakeShape(F32, {1, 4}),
                                 MakeConfig(0, 0, 16), const_2d}));
@@ -632,7 +795,7 @@ TEST_F(DynamicSliceFusionTest, ResolveResultsNestedTuplePartialDUS) {
 
   ASSERT_OK_AND_ASSIGN(auto results, DynamicSliceFusion::ResolveResults(hero));
   ASSERT_EQ(results.size(), 3);
-  Offsets const_2d{CstOff{0, 0}, CstOff{0, 1}};
+  Offsets const_2d{{0, Offset::Constant(0)}, {1, Offset::Constant(0)}};
   EXPECT_EQ(results[0], (Result{0, 0, ShapeUtil::MakeShape(F32, {4, 4}),
                                 ShapeUtil::MakeShape(F32, {1, 4}),
                                 MakeConfig(0, 0, 16), const_2d}));
@@ -644,18 +807,143 @@ TEST_F(DynamicSliceFusionTest, ResolveResultsNestedTuplePartialDUS) {
 }
 
 //===----------------------------------------------------------------------===//
+// Offset evaluation tests
+//===----------------------------------------------------------------------===//
+
+TEST_F(DynamicSliceFusionTest, EvaluateOffsetExprConstantAndParameter) {
+  ASSERT_OK_AND_ASSIGN(int64_t constant,
+                       DynamicSliceFusion::Evaluate(Offset::Constant(42), {}));
+  EXPECT_EQ(constant, 42);
+
+  ASSERT_OK_AND_ASSIGN(int64_t parameter, DynamicSliceFusion::Evaluate(
+                                              Offset::Parameter(3), {{3, -7}}));
+  EXPECT_EQ(parameter, -7);
+}
+
+TEST_F(DynamicSliceFusionTest, EvaluateOffsetExprArithmetic) {
+  auto expr = Offset::Subtract(
+      Offset::Multiply(Offset::Add(Offset::Parameter(0), Offset::Constant(2)),
+                       Offset::Parameter(1)),
+      Offset::Constant(5));
+
+  ASSERT_OK_AND_ASSIGN(int64_t result,
+                       DynamicSliceFusion::Evaluate(expr, {{0, 4}, {1, 3}}));
+  EXPECT_EQ(result, 13);
+}
+
+TEST_F(DynamicSliceFusionTest, EvaluateOffsetExprCompareAndSelect) {
+  auto expr = Offset::Select(
+      Offset::Compare(ComparisonDirection::kLt, Offset::Parameter(0),
+                      Offset::Constant(3)),
+      Offset::Add(Offset::Parameter(0), Offset::Constant(1)),
+      Offset::Multiply(Offset::Parameter(1), Offset::Constant(2)));
+
+  ASSERT_OK_AND_ASSIGN(int64_t on_true,
+                       DynamicSliceFusion::Evaluate(expr, {{0, 2}, {1, 9}}));
+  EXPECT_EQ(on_true, 3);
+
+  ASSERT_OK_AND_ASSIGN(int64_t on_false,
+                       DynamicSliceFusion::Evaluate(expr, {{0, 3}, {1, 9}}));
+  EXPECT_EQ(on_false, 18);
+}
+
+TEST_F(DynamicSliceFusionTest, EvaluateOffsetExprMissingParameterFails) {
+  auto status =
+      DynamicSliceFusion::Evaluate(Offset::Parameter(7), {{3, 12}}).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              ::testing::HasSubstr("Missing value for offset parameter 7"));
+}
+
+TEST_F(DynamicSliceFusionTest, OffsetIsExprChecksScalarIntegerOperations) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY main {
+      p0 = s32[] parameter(0)
+      p1 = s64[] parameter(1)
+      pred_param = pred[] parameter(2)
+      float_param = f32[] parameter(3)
+      vector_param = s32[1] parameter(4)
+      c0 = s32[] constant(0)
+      c1 = s64[] constant(1)
+      pred_const = pred[] constant(true)
+      add = s32[] add(p0, c0)
+      multiply = s64[] multiply(p1, c1)
+      compare = pred[] compare(p0, c0), direction=LT
+      select = s32[] select(compare, p0, c0)
+      pred_select = pred[] select(pred_param, compare, pred_const)
+      convert = s64[] convert(p0)
+      bitcast = s32[] bitcast(p0)
+      scalar_reshape = s32[] reshape(vector_param)
+      vector_reshape = s32[1] reshape(p0)
+      maximum = s32[] maximum(p0, c0)
+      float_add = f32[] add(float_param, float_param)
+      ROOT root = (s32[], s64[], pred[], s32[], pred[], s64[], s32[],
+                   s32[], s32[1], s32[], f32[]) tuple(
+          add, multiply, compare, select, pred_select, convert,
+          bitcast, scalar_reshape, vector_reshape,
+          maximum, float_add)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  HloComputation* c = module->entry_computation();
+
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("p0")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("p1")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("pred_param")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("c0")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("c1")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("pred_const")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("add")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("multiply")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("compare")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("select")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("pred_select")));
+
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("float_param")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("vector_param")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("convert")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("bitcast")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("scalar_reshape")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("vector_reshape")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("maximum")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("float_add")));
+}
+
+TEST_F(DynamicSliceFusionTest, CollectOffsetParameters) {
+  auto expr =
+      Offset::Select(Offset::Parameter(2),
+                     Offset::Add(Offset::Parameter(4), Offset::Parameter(2)),
+                     Offset::Constant(0));
+
+  EXPECT_THAT(DynamicSliceFusion::CollectOffsetParameters(expr),
+              ::testing::ElementsAre(2, 4));
+}
+
+//===----------------------------------------------------------------------===//
 // Stringify tests
 //===----------------------------------------------------------------------===//
 
 TEST_F(DynamicSliceFusionTest, StringifyParameterWithConfig) {
   Parameter p{0, ShapeUtil::MakeShape(F32, {4, 4}),
               ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
-              Offsets{RtOff{1, 0}, CstOff{0, 1}}};
+              Offsets{{0, Offset::Parameter(1)}, {1, Offset::Constant(0)}}};
   std::string s = absl::StrCat(p);
   EXPECT_EQ(s,
             "Parameter{param=0 f32[4,4]->f32[1,4], "
             "config{loop=0, offset=0, stride=16}, "
-            "offsets=[r(d0,p1), c(d1,0)]}");
+            "offsets=[o(d0,p1), o(d1,0)]}");
+}
+
+TEST_F(DynamicSliceFusionTest, StringifyOffsetExpr) {
+  auto expr =
+      Offset::Select(Offset::Compare(ComparisonDirection::kLt,
+                                     Offset::Parameter(0), Offset::Constant(3)),
+                     Offset::Add(Offset::Parameter(0), Offset::Constant(1)),
+                     Offset::Constant(0));
+  EXPECT_EQ(absl::StrCat(expr), "select(cmp(LT, p0, 3), add(p0, 1), 0)");
 }
 
 TEST_F(DynamicSliceFusionTest, StringifyParameterWithoutConfig) {
@@ -673,12 +961,12 @@ TEST_F(DynamicSliceFusionTest, StringifyResultWithConfig) {
            ShapeUtil::MakeShape(F32, {4, 4}),
            ShapeUtil::MakeShape(F32, {1, 4}),
            MakeConfig(0, 0, 16),
-           Offsets{CstOff{0, 0}, CstOff{0, 1}}};
+           Offsets{{0, Offset::Constant(0)}, {1, Offset::Constant(0)}}};
   std::string s = absl::StrCat(r);
   EXPECT_EQ(s,
             "Result{param=0, result=0 f32[1,4]->f32[4,4], "
             "config{loop=0, offset=0, stride=16}, "
-            "offsets=[c(d0,0), c(d1,0)]}");
+            "offsets=[o(d0,0), o(d1,0)]}");
 }
 
 TEST_F(DynamicSliceFusionTest, StringifyResultWithoutConfig) {

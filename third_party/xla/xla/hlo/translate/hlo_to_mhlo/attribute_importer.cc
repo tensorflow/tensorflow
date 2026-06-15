@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/layout.h"
@@ -438,8 +440,8 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
 
 absl::StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     xla::CustomCallApiVersion api_version) {
-  TF_ASSIGN_OR_RETURN(auto stablehlo_api_version,
-                      stablehlo::ConvertCustomCallApiVersion(api_version));
+  ASSIGN_OR_RETURN(auto stablehlo_api_version,
+                   stablehlo::ConvertCustomCallApiVersion(api_version));
   auto mhlo_api_version = mlir::mhlo::symbolizeCustomCallApiVersion(
       mlir::stablehlo::stringifyCustomCallApiVersion(stablehlo_api_version));
   if (!mhlo_api_version.has_value()) {
@@ -598,6 +600,37 @@ mlir::NamedAttribute ConvertSourceTargetPairs(
 
 mlir::NamedAttribute ConvertUseGlobalDeviceIds(mlir::Builder* builder) {
   return builder->getNamedAttr("use_global_device_ids", builder->getUnitAttr());
+}
+
+// Converts the original value to attributes.
+mlir::mhlo::OriginalValueAttr ConvertOriginalValue(
+    const xla::OriginalValue& original_value, mlir::Builder* builder) {
+  if (original_value.is_synthetic_call()) {
+    return mlir::mhlo::OriginalValueAttr::get(builder->getContext(),
+                                              /*is_synthetic_call=*/true,
+                                              /*original_value_elements=*/{});
+  }
+  llvm::SmallVector<mlir::mhlo::OriginalValueElementAttr>
+      original_value_elements;
+  for (const auto& [shape_index, original_array] :
+       original_value.tree().leaves()) {
+    std::optional<mlir::mhlo::OriginalArrayAttr> original_array_attr;
+    if (original_array.has_value()) {
+      original_array_attr = mlir::mhlo::OriginalArrayAttr::get(
+          builder->getContext(),
+          builder->getStringAttr(original_array->instruction_name),
+          original_array->shape_index);
+    }
+    mlir::mhlo::OriginalValueElementAttr original_element_attr =
+        mlir::mhlo::OriginalValueElementAttr::get(
+            builder->getContext(), shape_index, original_array_attr);
+    original_value_elements.push_back(original_element_attr);
+  }
+  mlir::mhlo::OriginalValueAttr original_value_attr =
+      mlir::mhlo::OriginalValueAttr::get(builder->getContext(),
+                                         original_value.is_synthetic_call(),
+                                         original_value_elements);
+  return original_value_attr;
 }
 
 absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(

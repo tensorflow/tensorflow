@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Argument.h"
@@ -185,7 +186,7 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
                              unique_kernel_name, llvm_module);
 
   AnnotateFunctionAsGpuKernel(llvm_module, kernel, builder);
-  TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
+  RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
       gpu_device_info, launch_dimensions, kernel, llvm_module));
 
   // Update the insert point to the entry basic block.
@@ -216,12 +217,11 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototype(
 }
 
 absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
-    llvm::Module* llvm_module, IrEmitterContext& ir_emitter_context,
-    const std::string& sanitized_kernel_name, bool keep_scratch) {
+    llvm::Module* llvm_module, const std::string& sanitized_kernel_name,
+    const std::string& sanitized_kernel_impl_name, bool keep_scratch) {
   llvm::Function* impl_fn = llvm_module->getFunction(sanitized_kernel_name);
   TF_RET_CHECK(impl_fn);
-  impl_fn->setName(ir_emitter_context.GetSanitizedUniqueName(
-      sanitized_kernel_name + "_impl"));
+  impl_fn->setName(sanitized_kernel_impl_name);
 
   constexpr int arg_to_remove = 2;
 

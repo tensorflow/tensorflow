@@ -27,17 +27,18 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/executable.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/tpu/c_api_conversions.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/proto_helper.h"
-#include "xla/stream_executor/tpu/status_helper.h"
-#include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_stream.h"
+#include "xla/tpu/c_api_conversions.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/proto_helper.h"
+#include "xla/tpu/status_helper.h"
+#include "xla/tpu/tpu_executor_api.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
@@ -222,8 +223,8 @@ absl::StatusOr<std::unique_ptr<TpuExecutable>> TpuExecutable::Deserialize(
   absl::Cleanup cleanup_c_module = [&c_module]() {
     ApiConverter::Destroy(&c_module);
   };
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      ApiConverter::FromC(c_module));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                   ApiConverter::FromC(c_module));
   return std::make_unique<TpuExecutable>(se_executable, std::move(hlo_module));
 }
 

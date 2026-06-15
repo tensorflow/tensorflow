@@ -2,19 +2,19 @@ path: "tensorflow.nn"
 tf_module {
   member {
     name: "RNNCellDeviceWrapper"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "RNNCellDropoutWrapper"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "RNNCellResidualWrapper"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "experimental"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member_method {
     name: "all_candidate_sampler"

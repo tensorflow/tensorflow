@@ -159,6 +159,7 @@ cc_library(
     deps = [
         ":batch_scheduler_hdrs",
         ":batch_stats",
+        "//tensorflow/core:lib",
         "//tensorflow/core:portable_gif_internal",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -284,9 +285,12 @@ tf_cc_test(
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest_main",
+        "@xla//xla/tsl/lib/monitoring:cell_reader",
     ],
 )
 

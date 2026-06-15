@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/autotuner/autotuner_cache.pb.h"
+#include "xla/backends/autotuner/backend_config.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
@@ -38,7 +38,7 @@ class AutotunerCacheInterface {
   // Serializable config. Will be changed to a proto in the future.
   struct Config {
     autotuner::Backend codegen_backend;
-    google::protobuf::Any backend_config;
+    autotuner::BackendConfig backend_config;
   };
 
   struct CacheStats {
@@ -68,6 +68,31 @@ class AutotunerCacheInterface {
   virtual absl::Status Deserialize(absl::string_view serialized_cache) {
     return absl::UnimplementedError("Deserialize is not implemented.");
   };
+};
+
+// A no-op implementation of the autotuner cache.
+class NoOpAutotunerCache : public AutotunerCacheInterface {
+ public:
+  std::optional<Config> Lookup(const HloInstruction* instr) override {
+    return std::nullopt;
+  }
+
+  absl::Status Insert(const HloInstruction* instr,
+                      const Config& best_config) override {
+    return absl::OkStatus();
+  }
+
+  CacheStats GetCacheStats() const override { return {}; }
+
+  absl::StatusOr<std::string> Serialize(
+      absl::Span<const HloInstruction* const> instructions_to_serialize)
+      override {
+    return "";
+  }
+
+  absl::Status Deserialize(absl::string_view serialized_cache) override {
+    return absl::OkStatus();
+  }
 };
 
 }  // namespace xla

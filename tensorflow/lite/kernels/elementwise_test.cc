@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -60,6 +61,18 @@ class ElementWiseOpFloatModel : public ElementWiseOpBaseModel {
                           std::initializer_list<int> input_shape) {
     input_ = AddInput(TensorType_FLOAT32);
     output_ = AddOutput(TensorType_FLOAT32);
+    SetBuiltinOp(op, BuiltinOptions_NONE, 0);
+    BuildInterpreter({input_shape});
+  }
+};
+
+template <typename T>
+class ElementWiseOpModel : public ElementWiseOpBaseModel {
+ public:
+  ElementWiseOpModel(BuiltinOperator op,
+                     std::initializer_list<int> input_shape) {
+    input_ = AddInput(GetTensorType<T>());
+    output_ = AddOutput(GetTensorType<T>());
     SetBuiltinOp(op, BuiltinOptions_NONE, 0);
     BuildInterpreter({input_shape});
   }
@@ -166,12 +179,34 @@ TEST(ElementWise, Sin) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, SinHalf) {
+  ElementWiseOpModel<half> m(BuiltinOperator_SIN, {1, 1, 4, 1});
+  m.PopulateTensor<half>(m.input(), {0, 3.1415926, -3.1415926, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<half>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {0, 0, 0, 0.84147},
+                  static_cast<float>(NumericLimits<half>::epsilon()) * 10)));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
 TEST(ElementWise, Cos) {
   ElementWiseOpFloatModel m(BuiltinOperator_COS, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {0, 3.1415926, -3.1415926, 1});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({1, -1, -1, 0.54030})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(ElementWise, CosHalf) {
+  ElementWiseOpModel<half> m(BuiltinOperator_COS, {1, 1, 4, 1});
+  m.PopulateTensor<half>(m.input(), {0, 3.1415926, -3.1415926, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<half>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {1, -1, -1, 0.54030},
+                  static_cast<float>(NumericLimits<half>::epsilon()) * 10)));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 

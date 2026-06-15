@@ -64,9 +64,8 @@ std::string TritonSupportTestTypeToString(
   return primitive_util::LowercasePrimitiveTypeName(data.param);
 }
 
-class MixedTypeTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>,
-      public ::testing::WithParamInterface<MixTypeParams> {};
+class MixedTypeTest : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase>,
+                      public ::testing::WithParamInterface<MixTypeParams> {};
 
 // TODO(b/393299275): there is a significant amount of overlap between this test
 // and tests for ALG_UNSET in `fusion_emitter_device_test.cc`. We should
@@ -141,7 +140,7 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, MixedTypeTest,
                          }),
                          DotTestParamsToString);
 
-class TritonTest : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+class TritonTest : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
@@ -851,7 +850,7 @@ INSTANTIATE_TEST_SUITE_P(
 // TODO(b/412651198): lots of tests in TritonNormalizationTest are no longer
 // relevant. Clean this up.
 class TritonNormalizationTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>,
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase>,
       public ::testing::WithParamInterface<PrimitiveType> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {

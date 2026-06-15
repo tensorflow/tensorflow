@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -43,7 +44,7 @@ absl::StatusOr<bool> ReduceWindowResizer::RunImpl(
       if (reduce_window->inputs().front()->shape().dimensions().size() != 1) {
         continue;
       }
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           reduce_window_util::Replace1DReduceWindowWithReshape(reduce_window));
 
       changed = true;

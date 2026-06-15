@@ -3,18 +3,18 @@ tf_class {
   is_instance: "<class \'tensorflow.python.client.session.InteractiveSession\'>"
   is_instance: "<class \'tensorflow.python.client.session.BaseSession\'>"
   is_instance: "<class \'tensorflow.python.client.session.SessionInterface\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "graph"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "graph_def"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "sess_str"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

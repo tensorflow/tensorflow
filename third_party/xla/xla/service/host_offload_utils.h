@@ -22,7 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape_util.h"
@@ -90,9 +90,12 @@ bool IsMoveToHostWithDynamicUpdateSlice(const HloInstruction* instr);
 
 bool IsMoveToDeviceWithDynamicSlice(const HloInstruction* instr);
 
-// Scans while loop body for DS/DUS, traces their index operands back to GTEs
-// and marks corresponding tuple indices as dynamic variables.
-absl::Status MarkDynamicVariables(HloInstruction* while_loop);
+// Returns the set of `while_loop` tuple-element indices that flow into the
+// index operands of DS/DUS instructions in the loop body, restricted to bodies
+// that contain host-offload move-to-host/move-to-device custom-call patterns.
+// Returns an empty set otherwise. Pure analysis; does not mutate the module.
+absl::flat_hash_set<int64_t> CollectDynamicVariableTupleIndices(
+    const HloInstruction* while_loop);
 
 }  // namespace host_offload_utils
 }  // namespace xla

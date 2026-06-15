@@ -15,8 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_RENDERERS_INCLUDE_RENDERER_H_
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_RENDERERS_INCLUDE_RENDERER_H_
 
+#include <vector>
+
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer_context.h"
+#include "tensorflow/c/experimental/ops/gen/cpp/views/op_view.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -29,7 +32,7 @@ class IncludeRenderer : public Renderer {
 
   std::string SelfHeaderPath() const;
   void SelfHeader();
-  void Headers();
+  void Headers(const std::vector<OpView>& ops);
 
  private:
   void Include(const std::string& tf_file_path);

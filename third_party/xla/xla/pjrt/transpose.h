@@ -37,6 +37,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/lru_cache.h"
@@ -191,6 +192,8 @@ class TransposePlan {
   // Returns the number of items of parallel work in the plan.
   int Parallelism() const { return nodes_.size(); }
 
+  bool inner_kernel_is_memcpy() const { return inner_kernel_is_memcpy_; }
+
   struct Node;
 
  protected:
@@ -268,8 +271,8 @@ class TransposePlan {
   }
 
  private:
-  // Performs plan initialization that cannot fail.
-  void Initialize();
+  // Performs plan initialization.
+  absl::Status Initialize();
 
   void BuildPlanNodes(int chunk_id, std::vector<Node>& nodes);
 

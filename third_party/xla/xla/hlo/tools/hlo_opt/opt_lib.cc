@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -154,8 +155,8 @@ static ProviderMap& GetProviderMap() {
     std::string platform) {
   absl::MutexLock l(provider_mu);
 
-  TF_ASSIGN_OR_RETURN(std::string canonical_name,
-                      xla::PlatformUtil::CanonicalPlatformName(platform));
+  ASSIGN_OR_RETURN(std::string canonical_name,
+                   xla::PlatformUtil::CanonicalPlatformName(platform));
   auto it = GetProviderMap().find(canonical_name);
   if (it == GetProviderMap().end()) {
     return absl::UnimplementedError(absl::StrCat(

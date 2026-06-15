@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COMMAND_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COMMAND_H_
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -29,66 +28,18 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
-
-//===----------------------------------------------------------------------===//
-// CommandType
-//===----------------------------------------------------------------------===//
-
-// clang-format off
-#define XLA_GPU_COMMAND_LIST(V)                              \
-  V(kTracedCommand, "TracedCommand")       \
-  V(kComputationIdCmd, "ComputationIdCmd")                   \
-  V(kLaunchCmd, "LaunchCmd")                                 \
-  V(kCustomKernelLaunchCmd, "CustomKernelLaunchCmd")         \
-  V(kCublasLtCmd, "CublasLtCmd")                             \
-  V(kCuDnnCmd, "CuDnnCmd")                                   \
-  V(kConvolutionCmd, "ConvolutionCmd")                       \
-  V(kGemmCmd, "GemmCmd")                                     \
-  V(kMemcpyDeviceToDeviceCmd, "MemcpyDeviceToDeviceCmd")     \
-  V(kMemzeroCmd, "MemzeroCmd")                               \
-  V(kMemset32Cmd, "Memset32Cmd")                             \
-  V(kCaseCmd, "CaseCmd")                                     \
-  V(kWhileCmd, "WhileCmd")                                   \
-  V(kCustomCallCmd, "CustomCallCmd")                         \
-  V(kBarrierCmd, "BarrierCmd")                               \
-  V(kCollectiveCmd, "CollectiveCmd")                         \
-  V(kAllToAllCmd, "AllToAllCmd")                             \
-  V(kAllGatherCmd, "AllGatherCmd")                           \
-  V(kCollectivePermuteCmd, "CollectivePermuteCmd")           \
-  V(kRecvCmd, "RecvCmd")                                     \
-  V(kSendCmd, "SendCmd")                                     \
-  V(kAsyncDone, "AsyncDone")                                 \
-  V(kUnknownCmd, "UnknownCmd") \
-  // clang-format on
-
-enum class CommandType : int32_t {
-#define DECLARE_ENUM(enum_name, cmd_name, ...) enum_name,
-  XLA_GPU_COMMAND_LIST(DECLARE_ENUM)
-#undef DECLARE_ENUM
-};
-
-std::string CommandTypeString(CommandType type);
-
-template <typename Sink>
-void AbslStringify(Sink& sink, CommandType type) {
-  sink.Append(CommandTypeString(type));
-}
-
-// Returns true if command type corresponds to a collective operation.
-bool IsCollectiveCommand(CommandType type);
 
 //===----------------------------------------------------------------------===//
 // Command
@@ -120,11 +71,9 @@ bool IsCollectiveCommand(CommandType type);
 // done with a state manager.
 class Command : public Thunk {
  public:
-  explicit Command(CommandType cmd_type,
+  explicit Command(Thunk::Kind kind = Thunk::Kind::kCommand,
                    se::StreamPriority priority = se::StreamPriority::Default)
-      : Thunk(Thunk::Kind::kCommand, ThunkInfo{}),
-        cmd_type_(cmd_type),
-        priority_(priority) {
+      : Thunk(kind, ThunkInfo{}), priority_(priority) {
     token_ = Resource::Create(Resource::kToken);
   }
 
@@ -138,11 +87,9 @@ class Command : public Thunk {
   // Constructor for Thunk subclasses that are also Commands. Preserves the
   // caller's Thunk::Kind and ThunkInfo instead of using Kind::kCommand and an
   // empty ThunkInfo.
-  Command(CommandType cmd_type, Thunk::Kind thunk_kind, ThunkInfo thunk_info,
+  Command(Thunk::Kind thunk_kind, ThunkInfo thunk_info,
           se::StreamPriority priority = se::StreamPriority::Default)
-      : Thunk(thunk_kind, std::move(thunk_info)),
-        cmd_type_(cmd_type),
-        priority_(priority) {
+      : Thunk(thunk_kind, std::move(thunk_info)), priority_(priority) {
     token_ = Resource::Create(Resource::kToken);
   }
 
@@ -214,6 +161,14 @@ class Command : public Thunk {
   // ensure that all ranks execute NCCL command update.
   virtual bool requires_initialization() const { return false; }
 
+  // Returns true if command requires a one-time fallback execution before it is
+  // recorded into a command buffer.
+  virtual bool requires_warmup() const { return false; }
+
+  // Returns true if command buffer command parameters can change even when
+  // buffer allocation base addresses are unchanged.
+  virtual bool requires_update() const { return false; }
+
   // Returns true if this command is implemented via CUDA stream activity
   // tracing (i.e. a subclass of TracedCommand).
   virtual bool IsTracedCommand() const { return false; }
@@ -225,12 +180,11 @@ class Command : public Thunk {
 
   std::shared_ptr<Resource> token() const { return token_; }
 
-  CommandType command_type() const { return cmd_type_; }
   se::StreamPriority priority() const { return priority_; }
   void set_priority(se::StreamPriority priority) { priority_ = priority; }
 
   std::string ToString(int indent) const override {
-    return CommandTypeString(cmd_type_);
+    return std::string(Thunk::KindToString(kind()));
   }
 
   // Recursively walks all the commands nested inside *this one and calls
@@ -243,13 +197,18 @@ class Command : public Thunk {
   std::invoke_result_t<F, const Command*> Walk(F&& callback) const;
 
  protected:
-  // WalkNested uses Thunk::Walker = absl::FunctionRef<absl::Status(Thunk*)>.
-  // Subclasses that have nested commands must override this.
+  // Walks all nested commands and calls `callback` for them. This is separate
+  // from Thunk::WalkNested because a Thunk/Command hybrid can own non-command
+  // thunks for direct execution and command executors for command-buffer
+  // recording.
+  using CommandWalker = absl::FunctionRef<absl::Status(Command*)>;
+  virtual absl::Status WalkNestedCommands(CommandWalker /*callback*/) {
+    return absl::OkStatus();
+  }
+
   absl::Status WalkNested(Walker callback) override { return absl::OkStatus(); }
 
  private:
-  CommandType cmd_type_;
-
   // The token resource is used to specify additional dependency across
   // commands, like control dependency across HLO operators, and LHS scheduling
   // dependency.
@@ -259,11 +218,6 @@ class Command : public Thunk {
   // priority.
   se::StreamPriority priority_ = se::StreamPriority::Default;
 };
-
-// Returns true if command is a collective one.
-inline bool IsCollectiveCommand(const Command& cmd) {
-  return IsCollectiveCommand(cmd.command_type());
-}
 
 //===----------------------------------------------------------------------===//
 // Command templates implementation.
@@ -277,11 +231,8 @@ std::invoke_result_t<F, Command*> Command::Walk(F&& callback) {
     }).IgnoreError();  // Error can never happen here.
   } else {
     RETURN_IF_ERROR(callback(this));
-    // Adapt Command*-typed callback to Thunk::Walker (Thunk*-typed) for
-    // WalkNested. The down_cast is safe because WalkNested only visits
-    // Commands in a Command context.
-    return WalkNested([&callback](Thunk* thunk) -> absl::Status {
-      return callback(tsl::down_cast<Command*>(thunk));
+    return WalkNestedCommands([&callback](Command* command) -> absl::Status {
+      return callback(command);
     });
   }
 }
@@ -311,7 +262,7 @@ class AsyncStartCommand : public Command {
 class AsyncDoneCommand : public Command {
  public:
   explicit AsyncDoneCommand(const AsyncStartCommand* async_start)
-      : Command(CommandType::kAsyncDone), async_start_(async_start) {
+      : Command(Thunk::Kind::kAsyncDone), async_start_(async_start) {
     DCHECK(async_start_) << "AsyncStart command must be not null";
   }
 
@@ -329,9 +280,8 @@ class AsyncDoneCommand : public Command {
 // A sequence of commands (corresponds to a ThunkSequence from the Thunk API).
 //
 // Commands are stored as raw pointers in append order. Ownership is split:
-// - Commands created during conversion (i.e. Command subclasses in
-//   command_buffer_cmd.h that are not yet migrated to their corresponding
-//   Thunk) are owned by this sequence's internal `owned_` vector.
+// - Commands created during conversion are owned by this sequence's internal
+//   `owned_` vector.
 // - Commands that live in a Thunk which itself implements Command (e.g.
 //   ReplicaOrPartitionIdThunk) are borrowed: only a raw pointer is stored here,
 //   and the ThunkSequence in CommandBufferThunk retains ownership.

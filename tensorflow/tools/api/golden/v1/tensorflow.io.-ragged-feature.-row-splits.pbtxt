@@ -1,13 +1,17 @@
 path: "tensorflow.io.RaggedFeature.RowSplits"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.parsing_config.RowSplits\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "key"
     mtype: "<class \'collections._tuplegetter\'>"
   }
   member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__new__"
+    argspec: "args=[\'_cls\', \'key\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count"

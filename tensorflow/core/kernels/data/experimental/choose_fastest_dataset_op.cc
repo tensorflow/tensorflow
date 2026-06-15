@@ -42,7 +42,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->input_list("input_datasets", &input_list));
     OP_REQUIRES(
         ctx, input_list.size() > 1,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "ChooseFastestDataset must have at least two input datasets."));
 
     std::vector<DatasetBase*> inputs;
@@ -56,12 +56,12 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
     for (size_t i = 1, num_inputs = inputs.size(); i < num_inputs; ++i) {
       OP_REQUIRES(
           ctx, inputs[i]->output_dtypes() == output_types_,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "All inputs to ChooseFastestDataset "
               "must have the same output types. Input ",
               i, " has output types: ",
               DataTypeVectorString(inputs[i]->output_dtypes()),
-              ". Expected: ", DataTypeVectorString(output_types_), "."));
+              ". Expected: ", DataTypeVectorString(output_types_), ".")));
     }
 
     // Merge the output shapes of all the input datasets, returning an
@@ -69,12 +69,12 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
     for (size_t i = 1, num_inputs = inputs.size(); i < num_inputs; ++i) {
       OP_REQUIRES(
           ctx, inputs[i]->output_shapes().size() == output_shapes_.size(),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "All inputs to ChooseFastestDataset must have compatible outputs."
               " Input ",
               i, " has ", inputs[i]->output_shapes().size(),
               " components. Expected to have ", output_shapes_.size(),
-              " components."));
+              " components.")));
       for (size_t j = 0, num_components = output_shapes_.size();
            j < num_components; ++j) {
         PartialTensorShape result;
@@ -102,12 +102,12 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
             ctx,
             inputs[i]->Cardinality() == cardinality ||
                 inputs[i]->Cardinality() == kUnknownCardinality,
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 "All inputs to ChooseFastestDataset must have compatible "
                 "cardinalities. Input ",
                 i, " has cardinality: ", inputs[i]->Cardinality(),
                 ", while all prior inputs have cardinality: ", cardinality,
-                "."));
+                ".")));
       }
     }
     *output = new Dataset(ctx, std::move(inputs), output_types_, output_shapes_,

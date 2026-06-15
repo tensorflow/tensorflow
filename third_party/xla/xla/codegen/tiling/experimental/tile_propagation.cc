@@ -651,6 +651,69 @@ Tiles PropagateTileToOutputForReduceOp(const HloReduceInstruction& reduce,
   return {input_tile.CloneWithNewDims(std::move(output_dim_tiles))};
 }
 
+Tiles PropagateTileToInputForScanOp(const HloInstruction& scan,
+                                    const Tile& output_tile,
+                                    int64_t output_index) {
+  const auto& scan_inst = *Cast<HloScanInstruction>(&scan);
+  int64_t num_carries = scan_inst.num_carries();
+  int64_t num_inputs = scan.operand_count() - num_carries;
+
+  Tile scalar_tile{output_tile.tiling_space(),
+                   {},
+                   llvm::to_vector(output_tile.replica_ids())};
+
+  if (output_index >= num_inputs) {
+    return Tiles(scan.operand_count(), scalar_tile);
+  }
+
+  Tiles operand_tiles;
+  operand_tiles.reserve(scan.operand_count());
+  for (int i = 0; i < num_inputs; ++i) {
+    operand_tiles.push_back(output_tile);
+  }
+  for (int i = 0; i < num_carries; ++i) {
+    operand_tiles.push_back(scalar_tile);
+  }
+  return operand_tiles;
+}
+
+absl::StatusOr<Tiles> PropagateTileToOutputForScanOp(const HloInstruction& scan,
+                                                     const Tile& input_tile,
+                                                     int64_t input_index) {
+  const auto& scan_inst = *Cast<HloScanInstruction>(&scan);
+  int64_t num_carries = scan_inst.num_carries();
+  int64_t num_inputs = scan.operand_count() - num_carries;
+
+  if (input_index >= num_inputs) {
+    return absl::InvalidArgumentError(
+        "Input to output tile propagation not implemented from scan carry "
+        "operands.");
+  }
+
+  Tile scalar_tile{
+      input_tile.tiling_space(), {}, llvm::to_vector(input_tile.replica_ids())};
+
+  Tiles output_tiles;
+  output_tiles.reserve(scan.operand_count());
+  for (int i = 0; i < num_inputs; ++i) {
+    output_tiles.push_back(input_tile);
+  }
+  for (int i = 0; i < num_carries; ++i) {
+    output_tiles.push_back(scalar_tile);
+  }
+  return output_tiles;
+}
+
+Tiles PropagateTileToInputForGetTupleElementOp(const HloInstruction& gte,
+                                               const Tile& output_tile) {
+  return Tiles{output_tile};
+}
+
+Tiles PropagateTileToOutputForGetTupleElementOp(const HloInstruction& gte,
+                                                const Tile& input_tile) {
+  return Tiles{input_tile};
+}
+
 absl::Status IsSupportedReshape(const std::vector<MinimalReshape>& reshapes) {
   for (const auto& minimal_reshape : reshapes) {
     if (minimal_reshape.category == MinimalReshapeCategory::kGeneric) {
@@ -692,28 +755,112 @@ NonTrivialDimInfo GetNonTrivialDimInfo(
   return result;
 }
 
-// Returns true if the symbolic expression simplifies to the given constant.
-bool IsConstantValue(const SymbolicExpr& expr, int64_t value) {
+// Returns the constant value of the symbolic expr if it simplifies to one.
+std::optional<int64_t> TryGetConstantValue(const SymbolicExpr& expr) {
   auto canonical = expr.Canonicalize();
-  return canonical.GetType() == SymbolicExprType::kConstant &&
-         canonical.GetValue() == value;
+  if (canonical.GetType() == SymbolicExprType::kConstant) {
+    return canonical.GetValue();
+  }
+  return std::nullopt;
 }
 
-// Consider a reshape with 1-to-n (kExpandShape) or n-to-1 (kCollapseShape)
-// mapping of the "significant" dimensions, verify if the reshape is supported.
+// Returns true if the symbolic expression simplifies to the given constant.
+bool IsConstantValue(const SymbolicExpr& expr, int64_t value) {
+  auto val = TryGetConstantValue(expr);
+  return val.has_value() && *val == value;
+}
+
+// Returns true if the tile fully covers the given dimension size.
+// This is the case if size == dim or size * stride == dim.
+bool DimIsFullyCovered(const DimTile& tile, int64_t dim) {
+  auto size_val = TryGetConstantValue(tile.size);
+  if (!size_val.has_value()) {
+    return false;
+  }
+
+  if (*size_val == dim) {
+    return true;
+  }
+
+  auto stride_val = TryGetConstantValue(tile.stride);
+  return stride_val.has_value() && (*size_val * *stride_val) == dim;
+}
+
+/// Checks whether a minimal reshape (Collapse or Expand) has a supported
+/// contiguity pattern.
 //
-// We consider a kCollapseShape / kExpandShape to be supported if for the
-// multidim side there is at most one dimension that is partially tiled.
-// Specifically:
-// - At most one dimension is partially tiled (1 < ts_i < d_i).
-// - Any dimensions inner to the tiled dimension are fully covered (ts_i = d_i),
-//   or skipped (ts_i = 1) only for collapse.
-// - Any dimensions outer to the tiled dimension are skipped (ts_i = 1).
-// - All dimensions except the innermost have stride 1.
-// Example: for [3, 4] -> [12] we support:
-// - tile_size [1, 4], or
-// - tile_size [3, 1] (allowing collapsed dimension segments with inner
-//   degenerate tile sizes)
+// =============================================================================
+//                       RESHAPE TILING PROPAGATION
+// =============================================================================
+// Tiling propagation maps tiles between a 1D "linear" side and a
+// "multidimensional" side (e.g., [12] <-> [3, 4]).
+//
+// We support two distinct tiling patterns for collapse and expand reshapes:
+//
+// -----------------------------------------------------------------------------
+// PATTERN 1: CONTIGUOUS TILING
+// -----------------------------------------------------------------------------
+// All active dimensions have stride 1. We allow AT MOST ONE partially tiled
+// dimension on the multidim side.
+//
+// Visual layout of multidim tiles (from left/outermost to right/innermost):
+//
+//   [  1,  1,  ...,  1,   Partially Tiled,   Full,  Full,  ...,  Full  ]
+//    \________________/  \_______________/  \_________________________/
+//      Outer Skipped       At most one dim        Inner Fully Covered
+//       (size == 1)       (1 < size < dim)       (size*stride == dim)
+//                    ^                        ^
+//              Index i                  Index j
+//
+// --- Concrete Collapse Examples ([3, 4] -> [12]) ---
+//   * SUPPORTED:
+//     - multidim tile: [1, 2] -> linear tile: [2]
+//       Tiling only the innermost dimension partially.
+//     - multidim tile: [2, 4] -> linear tile: [8]
+//       Tiling the outer dimension partially, innermost is fully covered.
+//     - multidim tile: [3, 4] -> linear tile: [12]
+//       All fully covered.
+//   * UNSUPPORTED:
+//     - multidim tile: [2, 2] -> linear tile would have holes/gaps!
+//
+// -----------------------------------------------------------------------------
+// PATTERN 2: STRIDED (NON-CONTIGUOUS) TILING
+// -----------------------------------------------------------------------------
+// We allow EXACTLY ONE dimension on the multidim side to have a stride > 1.
+// This is the "strided" dimension.
+//
+// --- Collapse [3, 4] -> [12] ---
+// Assume source strides are [2, 1].
+//   * SUPPORTED:
+//     - multidim tile stride [2, 1] with multidim tile sizes [2, 1].
+//       Linear indices: { 0, 8 } (size 2, stride 8).
+//   * UNSUPPORTED:
+//     - multidim tile strides [2, 1] with multidim tile sizes [2, 2].
+//       Linear indices: { 0, 8, 1, 9 } does not have a constant stride.
+//
+// --- Expand [12] -> [3, 4] ---
+// The flat strides of target [3, 4] are [4, 1]. If the linear source tile has a
+// stride > 1, it MUST match one of these flat strides.
+//   * SUPPORTED:
+//     - Linear tile has stride 4.
+//       Matches flat stride of target Dim 0. Target Dim 0 is the strided dim.
+//       Target tiles: Dim 0 (tiled size > 1), Dim 1 (must be size 1).
+//       Linear Source:  [ X . . . X . . . X ]  (stride 4)
+//                        |       |       |
+//       Target [3, 4]:  (0,0)   (1,0)   (2,0)  (Stepped along Dim 0)
+//   * NOTE on restricting to flat strides:
+//     - About flat strides: For a target shape [D0, D1, D2], the flat strides
+//       are [D1*D2, D2, 1].
+//     - Mathematically, any stride that is a multiple of a target flat stride
+//       (e.g. linear stride 8) is also valid. It would map onto target Dim 0
+//       with a mapped stride of 2 (matching indices at (0,0) and (2,0)).
+//     - For simplicity, the current implementation
+//       strictly enforces that the linear stride must equal the flat stride
+//       (i.e. mapped target stride is always 1), as stride multiples are not
+//       generated during tiling propagation.
+//   * UNSUPPORTED:
+//     - Linear tile has stride 2.
+//
 absl::Status VerifyReshapeContiguity(
     const MinimalReshape& minimal_reshape,
     absl::Span<const DimTile> linear_side_tiles,
@@ -733,46 +880,111 @@ absl::Status VerifyReshapeContiguity(
       << "Invalid minimal reshape dimensions for " << minimal_reshape.ToString()
       << ".";
 
-  // Verify that the source tiles are contiguous.
-  // - In Collapse: All but the innermost source dimensions must be stride 1.
-  // - In Expand: The single source dimension must be stride 1.
+  // ===========================================================================
+  // 1. Stride Verification & Strided Dimension Identification
+  // ===========================================================================
   int n = static_cast<int>(multidim_side_tiles.size());
   auto source_stride_check_span =
       is_collapse ? multidim_side_tiles.subspan(0, n - 1) : linear_side_tiles;
-  if (!absl::c_all_of(source_stride_check_span, [](const DimTile& dt) {
-        return IsConstantValue(dt.stride, 1);
-      })) {
-    return FormatError("Source tiles must be contiguous.");
+
+  // Extract and validate source strides.
+  std::vector<int64_t> source_strides;
+  for (const auto& source_stride : source_stride_check_span) {
+    auto source_stride_val = TryGetConstantValue(source_stride.stride);
+    if (!source_stride_val.has_value() || *source_stride_val <= 0) {
+      return FormatError("Expect constant positive source tile stride. Got: ",
+                         source_stride.stride.ToString());
+    }
+    source_strides.push_back(*source_stride_val);
   }
 
+  // Identify which dimensions (if any) are strided (stride > 1).
+  // - In Collapse: any outer source dimension (except the innermost) with
+  //   stride > 1 is strided.
+  // - In Expand: the single linear source stride must match one of the flat
+  //   strides of the target dimensions to identify which target dimension is
+  //   strided. For target shape [D0, D1, D2], flat strides are [D1*D2, D2, 1].
+  std::vector<int> strided_dims;
+  if (is_collapse) {
+    for (int j = 0; j < source_strides.size(); ++j) {
+      if (source_strides[j] > 1) {
+        strided_dims.push_back(j);
+      }
+    }
+  } else if (source_strides[0] > 1) {
+    int64_t flat_stride = 1;
+    for (int i = n - 2; i >= 0; --i) {
+      flat_stride *= multidim_side_dims[i + 1];
+      if (source_strides[0] == flat_stride) {
+        strided_dims.push_back(i);
+        break;
+      }
+    }
+    if (strided_dims.empty()) {
+      return FormatError(
+          "Source tile stride (=", source_strides[0],
+          ") does not match any of the flat strides of the target dimensions");
+    }
+  }
+
+  // We only support at most one strided dimension.
+  if (strided_dims.size() > 1) {
+    return FormatError(
+        "At most one dimension can have stride >1, found strided dimensions: [",
+        absl::StrJoin(strided_dims, ", "), "]");
+  }
+
+  // ===========================================================================
+  // 2. Non-Contiguous Tiling Verification (Has Strided Dimension)
+  // ===========================================================================
+  // If a strided dimension is present, we enforce a strict rule: No other
+  // dimension on the multidim side can be tiled (all others must have size 1).
+  if (!strided_dims.empty()) {
+    int strided_dim = strided_dims[0];
+    for (int j = 0; j < n; ++j) {
+      if (j != strided_dim &&
+          !IsConstantValue(multidim_side_tiles[j].size, 1)) {
+        return FormatError(
+            "For non-contiguous source tile stride, only the strided "
+            "dimension ",
+            strided_dim, " can have size > 1. Found: dim ", j, " has size ",
+            multidim_side_tiles[j].size.ToString(), ".");
+      }
+    }
+    return absl::OkStatus();
+  }
+
+  // ===========================================================================
+  // 3. Contiguous Tiling Verification (All strides are 1)
+  // ===========================================================================
   // Verify that the multidim side has at most one partially tiled dimension.
-  // - In Collapse: we allow the inner dimensions to be fully covered or
-  //   skipped (size 1)
+  // - In Collapse: we allow the inner dimensions to be fully covered
+  //   or skipped (size 1)
   // - In Expand: we allow inner dimensions to be fully covered.
   int i = 0;
   while (i < n && IsConstantValue(multidim_side_tiles[i].size, 1)) {
     ++i;
   }
+
   int j = n - 1;
   while (j >= 0 &&
-         (IsConstantValue(multidim_side_tiles[j].size, multidim_side_dims[j]) ||
+         (DimIsFullyCovered(multidim_side_tiles[j], multidim_side_dims[j]) ||
           (is_collapse && IsConstantValue(multidim_side_tiles[j].size, 1)))) {
     --j;
   }
+
   // All dimensions before i are size 1 and all dimensions after j are full.
   // If i >= j, then only index k=i=j potentially partially tiled.
   if (i < j) {
     return FormatError(
         "Multiple dimensions are partially tiled: tile_size [",
         absl::StrJoin(multidim_side_tiles, ", ",
-                      [](std::string* out, const DimTile& dt) {
-                        absl::StrAppend(out, dt.size.ToString());
+                      [](std::string* out, const DimTile& tile) {
+                        absl::StrAppend(out, tile.size.ToString());
                       }),
-        "] dim_size [", absl::StrJoin(multidim_side_dims, ", "),
-        "]. The first dimension with tile size > 1 is at index ", i,
-        " and the last dimension that is not fully covered is at index ", j,
-        ". Expected i >= j.");
+        "], dims [", absl::StrJoin(multidim_side_dims, ", "), "]");
   }
+
   return absl::OkStatus();
 }
 
@@ -786,6 +998,7 @@ absl::Status PropagateTileThroughMinimalReshape(
       GetNonTrivialDimInfo(source_shape, source_range, source_tile.dim_tiles());
   auto target_info = GetNonTrivialDimInfo(target_shape, target_range,
                                           absl::MakeSpan(target_dim_tiles));
+  const TilingSpace& tiling_space = source_tile.tiling_space();
 
   switch (minimal_reshape.category) {
     // 1-to-1 mapping of the "significant" dimensions (size > 1).
@@ -813,8 +1026,7 @@ absl::Status PropagateTileThroughMinimalReshape(
 
       int64_t target_id = target_info.ids[0];
       target_dim_tiles[target_id].offset =
-          LinearizeShape(source_info.dims, offsets, mlir_context)
-              .Canonicalize();
+          LinearizeShape(source_info.dims, offsets, mlir_context);
       // The linear stride of the collapsed dimension is the step of the
       // innermost tiled dimension (with tile size > 1) multiplied by the sizes
       // of all dimensions inner to it.
@@ -827,13 +1039,20 @@ absl::Status PropagateTileThroughMinimalReshape(
         }
         multiplier *= source_info.dims[idx];
       }
-      target_dim_tiles[target_id].stride = collapsed_stride.Canonicalize();
-      target_dim_tiles[target_id].size = total_tile_elements.Canonicalize();
+      target_dim_tiles[target_id].stride = collapsed_stride;
+      target_dim_tiles[target_id].size = total_tile_elements;
       target_dim_tiles[target_id].upper_bound =
-          (LinearizeShape(source_info.dims, upper_bounds_inclusive,
-                          mlir_context) +
-           1)
-              .Canonicalize();
+          LinearizeShape(source_info.dims, upper_bounds_inclusive,
+                         mlir_context) +
+          1;
+
+      target_dim_tiles[target_id].Simplify(tiling_space);
+
+      if (tiling_space.IsSymbolic()) {
+        VLOG(2) << "Skipping reshape contiguity check as tile sizes are not "
+                   "assigned yet.";
+        return absl::OkStatus();
+      }
 
       return VerifyReshapeContiguity(
           minimal_reshape, absl::MakeSpan(&target_dim_tiles[target_id], 1),
@@ -850,13 +1069,20 @@ absl::Status PropagateTileThroughMinimalReshape(
 
       for (int i = 0; i < static_cast<int>(target_info.ids.size()); ++i) {
         int64_t target_id = target_info.ids[i];
-        target_dim_tiles[target_id].offset = offsets[i].Canonicalize();
-        target_dim_tiles[target_id].stride = source_dt.stride.Canonicalize();
+        target_dim_tiles[target_id].offset = offsets[i];
+        target_dim_tiles[target_id].stride =
+            CreateSymbolicConstant(1, mlir_context);
         target_dim_tiles[target_id].size =
-            (upper_bounds_inclusive[i] - offsets[i] + 1).Canonicalize();
-        target_dim_tiles[target_id].upper_bound =
-            (upper_bounds_inclusive[i] + 1).Canonicalize();
+            upper_bounds_inclusive[i] - offsets[i] + 1;
+        target_dim_tiles[target_id].upper_bound = upper_bounds_inclusive[i] + 1;
+        target_dim_tiles[target_id].Simplify(tiling_space);
         target_info.tiles[i] = target_dim_tiles[target_id];
+      }
+
+      if (tiling_space.IsSymbolic()) {
+        VLOG(2) << "Skipping reshape contiguity check as tile sizes are not "
+                   "assigned yet.";
+        return absl::OkStatus();
       }
 
       return VerifyReshapeContiguity(minimal_reshape, source_info.tiles,
@@ -925,7 +1151,8 @@ absl::StatusOr<Tile> PropagateTileForBitcastOp(const Tile& tile,
   if (!src.dimensions().empty()) {
     if (std::optional<std::vector<int64_t>> transpose_dims =
             ShapeUtil::DeduceTransposeDimensionsForBitcast(src, dst)) {
-      return PropagateTileThroughTransposeOp(tile, *transpose_dims);
+      return PropagateTileThroughTransposeOp(
+          tile, InversePermutation(*transpose_dims));
     }
   }
   // Bitcast is reshape.
@@ -938,12 +1165,13 @@ absl::StatusOr<Tile> PropagateTileForBitcastOp(const Tile& tile,
     return absl::InvalidArgumentError("Bitcast is not decomposable to TRT.");
   }
   const ShapeUtil::BitcastDecompositionTrt& trt = maybe_trt.value();
-  Tile transpose1_tile =
-      PropagateTileThroughTransposeOp(tile, trt.transpose1_dims);
+  Tile transpose1_tile = PropagateTileThroughTransposeOp(
+      tile, InversePermutation(trt.transpose1_dims));
   ASSIGN_OR_RETURN(auto reshape_tile, PropagateTileThroughReshape(
                                           transpose1_tile, trt.transpose1_shape,
                                           trt.reshape_shape));
-  return PropagateTileThroughTransposeOp(reshape_tile, trt.transpose2_dims);
+  return PropagateTileThroughTransposeOp(
+      reshape_tile, InversePermutation(trt.transpose2_dims));
 }
 
 absl::StatusOr<Tiles> PropagateTileToInputForBitcastOp(
@@ -986,6 +1214,7 @@ Tiles PropagateTileToInputForAllGatherOp(const TilingSpace& tiling_space,
       << "Multi-operand AllGather is not yet supported.";
   const Shape& input_shape = hlo.operand(0)->shape();
   int64_t local_size = input_shape.dimensions(gather_dim);
+  int64_t num_replicas = hlo.shape().dimensions(gather_dim) / local_size;
 
   const DimTile& output_dim_tile = output_tile.dim_tiles()[gather_dim];
 
@@ -1005,8 +1234,19 @@ Tiles PropagateTileToInputForAllGatherOp(const TilingSpace& tiling_space,
     }
   }
 
-  Tile input_tile(output_tile.tiling_space(), std::move(input_dim_tiles));
-  input_tile.set_replica_id(replica_id);
+  mlir::MLIRContext* ctx = output_tile.mlir_context();
+  llvm::SmallVector<DimTile> replica_id_dim_tiles =
+      llvm::to_vector(output_tile.replica_ids());
+  replica_id_dim_tiles.push_back(DimTile{
+      /*offset=*/replica_id,
+      /*size=*/CreateSymbolicConstant(1, ctx),
+      /*stride=*/CreateSymbolicConstant(1, ctx),
+      /*upper_bound=*/
+      CreateSymbolicConstant(num_replicas, ctx),
+  });
+
+  Tile input_tile(output_tile.tiling_space(), std::move(input_dim_tiles),
+                  std::move(replica_id_dim_tiles));
 
   return {input_tile};
 }
@@ -1067,6 +1307,12 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
   if (hlo.opcode() == HloOpcode::kReshape) {
     return PropagateTileToInputForReshapeOp(hlo, output_tile);
   }
+  if (hlo.opcode() == HloOpcode::kScan) {
+    return PropagateTileToInputForScanOp(hlo, output_tile, output_index);
+  }
+  if (hlo.opcode() == HloOpcode::kGetTupleElement) {
+    return PropagateTileToInputForGetTupleElementOp(hlo, output_tile);
+  }
   return absl::InvalidArgumentError(absl::StrCat(
       "Output to input tile propagation not implemented for ", hlo.opcode()));
 }
@@ -1109,6 +1355,12 @@ absl::StatusOr<Tiles> PropagateTileToOutput(const TilingSpace& tiling_space,
   }
   if (hlo.opcode() == HloOpcode::kReshape) {
     return PropagateTileToOutputForReshapeOp(hlo, input_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kScan) {
+    return PropagateTileToOutputForScanOp(hlo, input_tile, input_index);
+  }
+  if (hlo.opcode() == HloOpcode::kGetTupleElement) {
+    return PropagateTileToOutputForGetTupleElementOp(hlo, input_tile);
   }
   return absl::InvalidArgumentError(absl::StrCat(
       "Input to output tile propagation not implemented for ", hlo.opcode()));

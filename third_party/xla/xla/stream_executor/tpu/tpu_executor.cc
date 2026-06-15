@@ -26,19 +26,20 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/tpu/c_api_conversions.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_event.h"
-#include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_stream.h"
-#include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/tpu/c_api_conversions.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/status_helper.h"
+#include "xla/tpu/tpu_executor_api.h"
+#include "xla/tpu/tpu_topology.h"
 #include "xla/tsl/c/tsl_status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
@@ -91,7 +92,7 @@ absl::StatusOr<std::unique_ptr<Event>> TpuExecutor::CreateEvent() {
   StatusHelper status;
   ExecutorApiFn()->TpuExecutor_AllocateEventFn(executor_, se_event,
                                                status.c_status);
-  TF_RETURN_IF_ERROR(status.status());
+  RETURN_IF_ERROR(status.status());
 
   return std::move(tpu_event);
 }

@@ -38,9 +38,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class BitcastConvertTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+class BitcastConvertTest : public ClientLibraryTestRunnerMixin<
+                               HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   BitcastConvertTest() {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
@@ -155,7 +154,7 @@ TEST_F(BitcastConvertTest, ConvertReshape) {
 }
 
 class BitcastConvertHloTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {};
 
 TEST_F(BitcastConvertHloTest, S32to4S8) {
   absl::string_view hlo_string = R"(
@@ -231,7 +230,7 @@ class HloPjRtInterpreterReferenceMixinNoAot
 };
 
 class BitcastConvertNoAotTest
-    : public HloPjRtInterpreterReferenceMixinNoAot<HloPjRtTestBase> {};
+    : public HloPjRtInterpreterReferenceMixinNoAot<HloTestBase> {};
 
 TEST_F(BitcastConvertNoAotTest, S8ToPred) {
   absl::string_view hlo_string = R"(

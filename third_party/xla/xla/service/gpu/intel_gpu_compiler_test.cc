@@ -15,13 +15,13 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using IntelGpuCompilerTest = HloTestBase;
+using IntelGpuCompilerTest = HloTestBaseLegacy;
 
 TEST_F(IntelGpuCompilerTest, CheckCompiler) {
   auto compiler = backend().compiler();

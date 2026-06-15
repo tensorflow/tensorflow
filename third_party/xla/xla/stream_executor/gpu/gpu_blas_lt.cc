@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/shape.h"
@@ -186,8 +187,8 @@ absl::StatusOr<MatrixLayout> MatrixLayout::FromProto(
       return absl::InvalidArgumentError("Invalid matrix layout order");
   }
 
-  TF_ASSIGN_OR_RETURN(blas::Transpose transpose,
-                      blas::FromProto(proto.transpose()));
+  ASSIGN_OR_RETURN(blas::Transpose transpose,
+                   blas::FromProto(proto.transpose()));
   return MatrixLayout(proto.dtype(), proto.num_rows(), proto.num_cols(), order,
                       proto.batch_size(), proto.leading_dim_stride(),
                       proto.batch_stride(), transpose);
@@ -285,18 +286,13 @@ bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
   return swap_operands;
 }
 
-/*static*/ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
-    const Stream* stream, const GemmConfig& cfg, Epilogue epilogue) {
-  auto blas = Get(stream);
-  if (blas == nullptr) {
-    return xla::Internal("BlasLt is unavailable");
+/*static*/ absl::StatusOr<BlasLt*> BlasLt::Get(StreamExecutor* executor) {
+  auto blas = executor->AsBlas();
+  auto blas_lt = blas != nullptr ? blas->GetBlasLt() : nullptr;
+  if (blas_lt == nullptr) {
+    return absl::InternalError("BlasLt is unavailable");
   }
-  return blas->GetMatmulPlan(cfg, epilogue);
-}
-
-/*static*/ BlasLt* BlasLt::Get(const Stream* stream) {
-  auto blas = stream->parent()->AsBlas();
-  return (blas != nullptr ? blas->GetBlasLt() : nullptr);
+  return blas_lt;
 }
 
 DataType GetScaleType(DataType c_type, ComputationType computation_type) {
@@ -306,18 +302,51 @@ DataType GetScaleType(DataType c_type, ComputationType computation_type) {
               : c_type);
 }
 
-absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateMatmulPlan(
-    const std::string& key, PlanCreateFunc create) {
-  absl::MutexLock lock(plan_cache_mu_);  // double mutex ???
+absl::Status BlasLt::MatmulPlan::SetCachedAlgorithm(size_t algorithm_idx,
+                                                    size_t max_algorithm_count,
+                                                    size_t max_workspace_size) {
+  bool cache_dirty = false;
+  // We drop the cache even if max_algorithm_count < cached_algorithm_count_
+  // or max_workspace_size < cached_workspace_size_ since the list of the
+  // algorithms may be different in these cases.
+  if (cached_algorithms_.empty() ||
+      cached_algorithm_count_ != max_algorithm_count ||
+      cached_workspace_size_ != max_workspace_size) {
+    ASSIGN_OR_RETURN(cached_algorithms_,
+                     GetAlgorithms(max_algorithm_count, max_workspace_size));
+    cached_algorithm_count_ = max_algorithm_count;
+    cached_workspace_size_ = max_workspace_size;
+    cache_dirty = true;
+  }
+  // SetAlgorithm could be expensive, e.g., for GroupedMatmulPlan.
+  if (cache_dirty || cached_algorithm_idx_ != algorithm_idx) {
+    if (algorithm_idx >= cached_algorithms_.size()) {
+      return absl::InternalError(
+          absl::StrFormat("Algorithm index is out of range: %zu >= %zu",
+                          algorithm_idx, cached_algorithm_count_));
+    }
+    cached_algorithm_idx_ = algorithm_idx;
+    return SetAlgorithm(cached_algorithms_[algorithm_idx]);
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateMatmulPlanWithAlgorithm(
+    const std::string& key, PlanCreateFunc create, size_t algorithm_idx,
+    size_t num_algorithms, size_t max_workspace_size) {
+  absl::MutexLock lock(plan_cache_mu_);
   auto res = plan_cache_.emplace(key, MatmulPlanPtr{});
   // New entry inserted: always create a new matmul plan if key is empty,
   // this is used by command_buffer_thunk test.
   if (res.second || key.empty()) {
     VLOG(2) << "Creating a plan for: " << key;
-    TF_ASSIGN_OR_RETURN(res.first->second, create());
+    ASSIGN_OR_RETURN(res.first->second, create());
     VLOG(2) << "Plan created: cache size: " << plan_cache_.size();
   }
-  return res.first->second.get();
+  auto plan = res.first->second.get();
+  RETURN_IF_ERROR(plan->SetCachedAlgorithm(algorithm_idx, num_algorithms,
+                                           max_workspace_size));
+  return plan;
 }
 
 void BlasLt::ClearMatmulPlanCache() {
@@ -330,50 +359,16 @@ size_t BlasLt::GetMatmulPlanCacheSize() const {
   return plan_cache_.size();
 }
 
-/*static*/ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetGroupedMatmulPlan(
-    const Stream* stream, GroupedGemmConfig& cfg, Epilogue epilogue) {
-  BlasLt* blas = BlasLt::Get(stream);
-  if (blas == nullptr) {
-    return xla::Internal("BlasLt is unavailable");
-  }
-  return blas->GetGroupedMatmulPlan(cfg, epilogue);
-}
-
-absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateGroupedMatmulPlan(
-    const std::string& key, PlanCreateFunc create) {
-  absl::MutexLock lock(plan_cache_mu_);
-  auto res = grouped_plan_cache_.emplace(key, MatmulPlanPtr{});
-  // New entry inserted: always create a new matmul plan if key is empty,
-  // this is used by command_buffer_thunk test.
-  if (res.second || key.empty()) {
-    VLOG(2) << "Creating a grouped plan for: " << key;
-    TF_ASSIGN_OR_RETURN(res.first->second, create());
-    VLOG(2) << "Grouped Plan created: cache size: "
-            << grouped_plan_cache_.size();
-  }
-  return res.first->second.get();
-}
-
-void BlasLt::ClearGroupedMatmulPlanCache() {
-  absl::MutexLock lock(plan_cache_mu_);
-  grouped_plan_cache_.clear();
-}
-
-size_t BlasLt::GetGroupedMatmulPlanCacheSize() const {
-  absl::MutexLock lock(plan_cache_mu_);
-  return grouped_plan_cache_.size();
-}
-
 absl::StatusOr<GemmConfig> GemmConfig::FromProto(
     const xla::GemmConfigProto& proto) {
-  TF_ASSIGN_OR_RETURN(MatrixLayout lhs_layout,
-                      MatrixLayout::FromProto(proto.lhs_layout()));
-  TF_ASSIGN_OR_RETURN(MatrixLayout rhs_layout,
-                      MatrixLayout::FromProto(proto.rhs_layout()));
-  TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,
-                      MatrixLayout::FromProto(proto.c_layout()));
-  TF_ASSIGN_OR_RETURN(MatrixLayout output_layout,
-                      MatrixLayout::FromProto(proto.output_layout()));
+  ASSIGN_OR_RETURN(MatrixLayout lhs_layout,
+                   MatrixLayout::FromProto(proto.lhs_layout()));
+  ASSIGN_OR_RETURN(MatrixLayout rhs_layout,
+                   MatrixLayout::FromProto(proto.rhs_layout()));
+  ASSIGN_OR_RETURN(MatrixLayout c_layout,
+                   MatrixLayout::FromProto(proto.c_layout()));
+  ASSIGN_OR_RETURN(MatrixLayout output_layout,
+                   MatrixLayout::FromProto(proto.output_layout()));
   std::optional<blas::ComputationType> compute_type =
       blas::FromProto(proto.compute_type());
   return GemmConfig{
@@ -419,16 +414,14 @@ absl::StatusOr<GroupedGemmConfig> GroupedGemmConfig::FromProto(
     const xla::GroupedGemmConfigProto& proto) {
   std::optional<blas::ComputationType> compute_type =
       blas::FromProto(proto.compute_type());
-  TF_ASSIGN_OR_RETURN(blas::DataType typeA, AsBlasDataType(proto.type_a()));
-  TF_ASSIGN_OR_RETURN(blas::DataType typeB, AsBlasDataType(proto.type_b()));
-  TF_ASSIGN_OR_RETURN(blas::DataType typeC, AsBlasDataType(proto.type_c()));
-  TF_ASSIGN_OR_RETURN(blas::DataType typeD, AsBlasDataType(proto.type_d()));
-  TF_ASSIGN_OR_RETURN(RaggedDotMode ragged_mode,
-                      RaggedDotModeFromProto(proto.ragged_mode()));
-  TF_ASSIGN_OR_RETURN(blas::Transpose trans_a,
-                      blas::FromProto(proto.trans_a()));
-  TF_ASSIGN_OR_RETURN(blas::Transpose trans_b,
-                      blas::FromProto(proto.trans_b()));
+  ASSIGN_OR_RETURN(blas::DataType typeA, AsBlasDataType(proto.type_a()));
+  ASSIGN_OR_RETURN(blas::DataType typeB, AsBlasDataType(proto.type_b()));
+  ASSIGN_OR_RETURN(blas::DataType typeC, AsBlasDataType(proto.type_c()));
+  ASSIGN_OR_RETURN(blas::DataType typeD, AsBlasDataType(proto.type_d()));
+  ASSIGN_OR_RETURN(RaggedDotMode ragged_mode,
+                   RaggedDotModeFromProto(proto.ragged_mode()));
+  ASSIGN_OR_RETURN(blas::Transpose trans_a, blas::FromProto(proto.trans_a()));
+  ASSIGN_OR_RETURN(blas::Transpose trans_b, blas::FromProto(proto.trans_b()));
   return GroupedGemmConfig{proto.m(),
                            proto.n(),
                            proto.k(),

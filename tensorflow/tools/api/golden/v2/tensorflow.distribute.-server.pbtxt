@@ -1,14 +1,14 @@
 path: "tensorflow.distribute.Server"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.server_lib.Server\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "server_def"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "target"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

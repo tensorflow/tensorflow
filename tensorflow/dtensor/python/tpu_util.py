@@ -16,7 +16,7 @@
 
 import functools
 import time
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -35,7 +35,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import topology
 from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.tf_export import tf_export
-
 
 _MESH_DIM_X = "x"
 _TPU_DEVICE_TYPE = "TPU"
@@ -65,7 +64,12 @@ class _CoreLocation:
   def __eq__(self, other):
     if not isinstance(other, _CoreLocation):
       return False
-    return self.x == other.x and self.y == other.y and self.z == other.z and self.core == other.core
+    return (
+        self.x == other.x
+        and self.y == other.y
+        and self.z == other.z
+        and self.core == other.core
+    )
 
   def __ne__(self, other):
     if not isinstance(other, _CoreLocation):
@@ -76,7 +80,10 @@ class _CoreLocation:
     return hash((self.x, self.y, self.z, self.core))
 
   def __repr__(self):
-    return f"{type(self).__name__}(x={self.x}, y={self.y}, z={self.z}, core={self.core})"
+    return (
+        f"{type(self).__name__}(x={self.x}, y={self.y}, z={self.z},"
+        f" core={self.core})"
+    )
 
   def to_list(self):
     return [self.x, self.y, self.z, self.core]
@@ -90,15 +97,19 @@ def _create_device_array(shape, device_type, host_id, local_device_ids=None):
 
   # User can specify local_device_ids or use default list for multi host.
   num_local_devices = len(local_device_list)
-  local_device_ids = [
-      x + host_id * num_local_devices for x in range(num_local_devices)  # pytype: disable=unsupported-operands
-  ] if not local_device_ids else local_device_ids
+  if not local_device_ids:
+    local_device_ids = [
+        x + host_id * num_local_devices for x in range(num_local_devices)  # pytype: disable=unsupported-operands
+    ]
 
   return global_device_ids, local_device_ids, local_device_list
 
 
-def _create_tpu_topology(core_locations: List[_CoreLocation], num_tasks: int,
-                         num_devices_per_task: int) -> topology.Topology:
+def _create_tpu_topology(
+    core_locations: List[_CoreLocation],
+    num_tasks: int,
+    num_devices_per_task: int,
+) -> topology.Topology:
   """Returns a Topology object build from a _CoreLocation list.
 
   Args:
@@ -120,10 +131,12 @@ def _create_tpu_topology(core_locations: List[_CoreLocation], num_tasks: int,
 
   device_coordinates = [[l.x, l.y, l.z, l.core] for l in core_locations]
   device_coordinates = numpy_compat.np_asarray(device_coordinates).reshape(
-      num_tasks, num_devices_per_task, 4)
+      num_tasks, num_devices_per_task, 4
+  )
 
   return topology.Topology(
-      mesh_shape=mesh_shape, device_coordinates=device_coordinates)
+      mesh_shape=mesh_shape, device_coordinates=device_coordinates
+  )
 
 
 def shutdown_tpu_system():
@@ -140,17 +153,20 @@ def shutdown_tpu_system():
     logging.warning("TPU system fails to shut down.")
 
 
-def tpu_system_init_helper(task_id,
-                           num_tasks,
-                           num_devices,
-                           use_tfrt_host_runtime=True,
-                           use_megacore=False):
+def tpu_system_init_helper(
+    task_id,
+    num_tasks,
+    num_devices,
+    use_tfrt_host_runtime=True,
+    use_megacore=False,
+):
   """A helper function to initialize multi-client tpu system."""
 
   @def_function.function
   def _tpu_init_fn():
     return gen_dtensor_ops.configure_and_initialize_global_tpu(
-        use_tfrt_host_runtime=use_tfrt_host_runtime)
+        use_tfrt_host_runtime=use_tfrt_host_runtime
+    )
 
   @def_function.function
   def _set_global_tpu_array_fn(topology_proto):
@@ -175,13 +191,17 @@ def tpu_system_init_helper(task_id,
   num_devices_per_task = int(num_devices / num_tasks)
 
   # Create a one-time use mesh and layout just for merging core IDs.
-  mesh = layout_lib.Mesh([_MESH_DIM_X],
-                         *_create_device_array((num_devices,), _TPU_DEVICE_TYPE,
-                                               config.client_id()))
+  mesh = layout_lib.Mesh(
+      [_MESH_DIM_X],
+      *_create_device_array(
+          (num_devices,), _TPU_DEVICE_TYPE, config.client_id()
+      ),
+  )
   layout = layout_lib.Layout([_MESH_DIM_X, layout_lib.UNSHARDED], mesh)
   device = dtensor_device.DTensorDevice(meshes=[mesh])
-  logging.info("TPU core locations: %s",
-               device.tpu_core_ids_to_locations(my_core_ids))
+  logging.info(
+      "TPU core locations: %s", device.tpu_core_ids_to_locations(my_core_ids)
+  )
 
   # At this point, we don't know which cores are attached to other hosts.
   # The core ID mappings in the runtime haven't been set yet.
@@ -239,8 +259,9 @@ def tpu_system_init_helper(task_id,
   _all_core_locations = all_core_locations
   logging.info("All TPU core locations: %s", all_core_locations)
 
-  tpu_topology = _create_tpu_topology(all_core_locations, num_tasks,
-                                      num_devices_per_task)
+  tpu_topology = _create_tpu_topology(
+      all_core_locations, num_tasks, num_devices_per_task
+  )
 
   _set_global_tpu_array_fn(tpu_topology.serialized())
   return tpu_topology, device
@@ -267,11 +288,16 @@ def initialize_tpu_system(use_megacore=False):
         num_tasks,
         num_devices,
         use_tfrt_host_runtime=use_tfrt_host_runtime,
-        use_megacore=use_megacore)
+        use_megacore=use_megacore,
+    )
     global _tpu_topology
     _tpu_topology = tpu_topology
-    logging.vlog(1, "TPU Topology: %s, %s", tpu_topology.mesh_shape,
-                 tpu_topology.device_coordinates)
+    logging.vlog(
+        1,
+        "TPU Topology: %s, %s",
+        tpu_topology.mesh_shape,
+        tpu_topology.device_coordinates,
+    )
 
     global _dtensor_device
     _dtensor_device = device
@@ -280,14 +306,16 @@ def initialize_tpu_system(use_megacore=False):
 
   except errors.InvalidArgumentError as e:
     raise errors.NotFoundError(
-        None, None,
-        "Initialization failed, no valid TPUs found. " + str(e)) from e
+        None, None, "Initialization failed, no valid TPUs found. " + str(e)
+    ) from e
 
   except errors.InternalError as e:
-    logging.error("Hit internal error during TPU system initialization. "
-                  + "It is likely hardware failure. \nPlease check the error "
-                  + "messages above to see whether that's the case. \nIf so, "
-                  + "consider to restart the job or try another machine.")
+    logging.error(
+        "Hit internal error during TPU system initialization. "
+        + "It is likely hardware failure. \nPlease check the error "
+        + "messages above to see whether that's the case. \nIf so, "
+        + "consider to restart the job or try another machine."
+    )
     raise e
 
   # Clear out the eager context caches since the memory is invalid now.
@@ -295,9 +323,13 @@ def initialize_tpu_system(use_megacore=False):
   context.context()._clear_caches()  # pylint: disable=protected-access
 
 
-def _enumerate_cores(bounds: List[int], ring_bounds: List[int],
-                     ring_sizes: List[int], host_bounds: List[int],
-                     host_sizes: List[int]) -> List[List[int]]:
+def _enumerate_cores(
+    bounds: List[int],
+    ring_bounds: List[int],
+    ring_sizes: List[int],
+    host_bounds: List[int],
+    host_sizes: List[int],
+) -> List[List[int]]:
   """Enumerates cores within `bounds` from fatest to slowest varying axes.
 
   Args:
@@ -314,8 +346,13 @@ def _enumerate_cores(bounds: List[int], ring_bounds: List[int],
     return [[]]
 
   # Recursively enumerate cores under all but the slowest varying axis.
-  partials = _enumerate_cores(bounds[:-1], ring_bounds[:-1], ring_sizes[:-1],
-                              host_bounds[:-1], host_sizes[:-1])
+  partials = _enumerate_cores(
+      bounds[:-1],
+      ring_bounds[:-1],
+      ring_sizes[:-1],
+      host_bounds[:-1],
+      host_sizes[:-1],
+  )
 
   # Append the slowest varying axis to the end of all partial results.
   # From ring_i|j to host_i|j to core_i|j, use progressively smaller or equal
@@ -334,10 +371,13 @@ def _enumerate_cores(bounds: List[int], ring_bounds: List[int],
   return results
 
 
-def _enumerate_core_locations(bounds: List[int], ring_bounds: List[int],
-                              axes: List[str],
-                              can_split_host_across_rings: bool,
-                              ring_size: int) -> List[_CoreLocation]:
+def _enumerate_core_locations(
+    bounds: List[int],
+    ring_bounds: List[int],
+    axes: List[str],
+    can_split_host_across_rings: bool,
+    ring_size: int,
+) -> List[_CoreLocation]:
   """Enumerates all possible core locations under the axis iteration order.
 
   Args:
@@ -399,14 +439,17 @@ def _enumerate_core_locations(bounds: List[int], ring_bounds: List[int],
   if ring_size < host_size:
     assert not can_split_host_across_rings
     raise ValueError(
-        "Rings too small for can_split_host_across_rings = False: %d" %
-        ring_size)
+        "Rings too small for can_split_host_across_rings = False: %d"
+        % ring_size
+    )
 
   # Reorder ring_bounds and validate it's element-wise >= host_bounds.
   ring_bounds = [ring_bounds[i] for i in axes]
   if ring_bounds < host_bounds:
-    raise ValueError("ring_bounds %s should be >= host_bounds %s" %
-                     (ring_bounds, host_bounds))
+    raise ValueError(
+        "ring_bounds %s should be >= host_bounds %s"
+        % (ring_bounds, host_bounds)
+    )
   ring_sizes = [1]
   # ring_sizes is the cumulative products of ring_bounds.
   for ring_bound in ring_bounds:
@@ -415,8 +458,9 @@ def _enumerate_core_locations(bounds: List[int], ring_bounds: List[int],
 
   # Enumerate cores in the given iteration order. Each core is represented as a
   # list of int, which are offsets from fatest to slowest varying axes.
-  cores = _enumerate_cores(bounds, ring_bounds, ring_sizes, host_bounds,
-                           host_sizes)
+  cores = _enumerate_cores(
+      bounds, ring_bounds, ring_sizes, host_bounds, host_sizes
+  )
   # Reorder offsets of each core back to the x, y, z, core order.
   core_locations = []
   for core in cores:
@@ -425,8 +469,9 @@ def _enumerate_core_locations(bounds: List[int], ring_bounds: List[int],
   return core_locations
 
 
-def _build_all_reduce_ring(core_locations: List[_CoreLocation],
-                           rotate: bool = False) -> List[int]:
+def _build_all_reduce_ring(
+    core_locations: List[_CoreLocation], rotate: bool = False
+) -> List[int]:
   """Reorders a list of TPU cores to optimize for AllReduce performance.
 
   This is ported from the C++ tensorflow::BuildAllReduceRing function,
@@ -448,7 +493,7 @@ def _build_all_reduce_ring(core_locations: List[_CoreLocation],
 
   first_column = min([l.x for l in core_locations])
   first_row = min([l.y for l in core_locations])
-  same_z = (len(set([l.z for l in core_locations])) == 1)
+  same_z = len(set([l.z for l in core_locations])) == 1
   logging.vlog(2, "first_column: %d", first_column)
   logging.vlog(2, "first_row: %d", first_row)
   logging.vlog(2, "same_z: %s", same_z)
@@ -459,8 +504,8 @@ def _build_all_reduce_ring(core_locations: List[_CoreLocation],
       b = core_locations[ib]
 
       # Order the first column last in the sequence, except for the first row.
-      a_first = (a.x == first_column and a.y != first_row)
-      b_first = (b.x == first_column and b.y != first_row)
+      a_first = a.x == first_column and a.y != first_row
+      b_first = b.x == first_column and b.y != first_row
       if a_first != b_first:
         return -1 if b_first else 1
 
@@ -479,8 +524,8 @@ def _build_all_reduce_ring(core_locations: List[_CoreLocation],
       b = core_locations[ib]
 
       # Order the first row last in the sequence, except for the first column.
-      a_first = (a.y == first_row and a.x != first_column)
-      b_first = (b.y == first_row and b.x != first_column)
+      a_first = a.y == first_row and a.x != first_column
+      b_first = b.y == first_row and b.x != first_column
       if a_first != b_first:
         return -1 if b_first else 1
 
@@ -499,8 +544,8 @@ def _build_all_reduce_ring(core_locations: List[_CoreLocation],
     a = core_locations[ia]
     b = core_locations[ib]
 
-    a_corner = (a.x == first_column and a.y == first_row)
-    b_corner = (b.x == first_column and b.y == first_row)
+    a_corner = a.x == first_column and a.y == first_row
+    b_corner = b.x == first_column and b.y == first_row
 
     # If both are in the corner, order in reverse z then core order.
     if a_corner and b_corner:
@@ -529,8 +574,10 @@ def _build_all_reduce_ring(core_locations: List[_CoreLocation],
 
 
 def _build_orthogonal_rings(
-    core_locations: List[_CoreLocation], ring_size: int,
-    rotate_ring_across_rings: bool) -> List[_CoreLocation]:
+    core_locations: List[_CoreLocation],
+    ring_size: int,
+    rotate_ring_across_rings: bool,
+) -> List[_CoreLocation]:
   """Build two all-reduce rings orthogonal to each other.
 
   One ring includes every `ring_size` consecutive core locations. It is usually
@@ -552,7 +599,7 @@ def _build_orthogonal_rings(
   num_cores = len(core_locations)
   permutation = _build_all_reduce_ring(core_locations[:ring_size])
   for r in range(0, num_cores, ring_size):
-    core_locations[r:r + ring_size] = [
+    core_locations[r : r + ring_size] = [
         core_locations[r + permutation[i]] for i in range(ring_size)
     ]
   logging.vlog(1, "Permutated core locations: %s", core_locations)
@@ -568,9 +615,10 @@ def _build_orthogonal_rings(
 
   num_rings = int(num_cores / ring_size)
   permutation = _build_all_reduce_ring(
-      transposed[:num_rings], rotate=rotate_ring_across_rings)
+      transposed[:num_rings], rotate=rotate_ring_across_rings
+  )
   for r in range(0, num_cores, num_rings):
-    transposed[r:r + num_rings] = [
+    transposed[r : r + num_rings] = [
         transposed[r + permutation[i]] for i in range(num_rings)
     ]
 
@@ -593,7 +641,8 @@ def create_tpu_mesh(
     can_split_host_across_rings: bool = True,
     build_ring_across_rings: bool = False,
     rotate_ring_across_rings: bool = False,
-    use_xla_spmd: bool = layout_lib.USE_XLA_SPMD) -> layout_lib.Mesh:
+    use_xla_spmd: bool = layout_lib.USE_XLA_SPMD,
+) -> layout_lib.Mesh:
   """Returns a distributed TPU mesh optimized for AllReduce ring reductions.
 
   Only as many as leading axes specified by `ring_axes` as necessary will be
@@ -624,16 +673,16 @@ def create_tpu_mesh(
       across model-parallel rings. This ring could be strided.
     rotate_ring_across_rings: Optional; If true, build the data-parallel ring in
       column-major instead of row-major order.
-    use_xla_spmd: Boolean when True, will use XLA SPMD instead of
-      DTensor SPMD.
+    use_xla_spmd: Boolean when True, will use XLA SPMD instead of DTensor SPMD.
   """
 
   logging.info("Building a TPU mesh %s of shape %s", mesh_name, mesh_shape)
   logging.info("Requested ring_dims: %s", ring_dims)
   logging.info("Requested ring_axes: %s", ring_axes)
   logging.info("Requested ring_bounds: %s", ring_bounds)
-  logging.info("Requested can_split_host_across_rings: %s",
-               can_split_host_across_rings)
+  logging.info(
+      "Requested can_split_host_across_rings: %s", can_split_host_across_rings
+  )
   if not mesh_name:
     mesh_name = "mesh_%f" % time.time()
   logging.info("Requested mesh_name: %s", mesh_name)
@@ -657,15 +706,18 @@ def create_tpu_mesh(
   # Validate ring_bounds values.
   if _tpu_topology is None:
     raise ValueError(
-        "Invalid TPU topology, run dtensor.initialize_tpu_system() first")
+        "Invalid TPU topology, run dtensor.initialize_tpu_system() first"
+    )
   topology_shape = list(_tpu_topology.mesh_shape)
   if ring_bounds is None:
     ring_bounds = topology_shape
   elif len(ring_bounds) != 4:
     raise ValueError("Expected 4 elements in ring_bounds, got %s" % ring_bounds)
   elif ring_bounds > topology_shape:
-    raise ValueError("ring_bounds %s should be <= topology sizes %s" %
-                     (ring_bounds, topology_shape))
+    raise ValueError(
+        "ring_bounds %s should be <= topology sizes %s"
+        % (ring_bounds, topology_shape)
+    )
   logging.info("Actual ring_bounds: %s", ring_bounds)
 
   # Compute ring_size, the number of cores in a ring.
@@ -679,8 +731,12 @@ def create_tpu_mesh(
 
   # Rearrange all cores according to the axis iteration order.
   global_core_locations = _enumerate_core_locations(
-      topology_shape, ring_bounds, ring_axes, can_split_host_across_rings,
-      ring_size)
+      topology_shape,
+      ring_bounds,
+      ring_axes,
+      can_split_host_across_rings,
+      ring_size,
+  )
   logging.vlog(1, "Enumerated core locations: %s", global_core_locations)
   num_cores = len(global_core_locations)
 
@@ -688,19 +744,20 @@ def create_tpu_mesh(
   mesh_size = np.prod(mesh_shape)
   if mesh_size != num_cores:
     raise ValueError(
-        "Invalid mesh size: mesh shape %s cannot 1:1 map to %d TPU cores" %
-        (mesh_shape, num_cores))
+        "Invalid mesh size: mesh shape %s cannot 1:1 map to %d TPU cores"
+        % (mesh_shape, num_cores)
+    )
 
   # Build a ring for the `ring_size` dimension and, if required, a strided ring
   # for the orthogonal dimension.
   if build_ring_across_rings:
-    global_core_locations = _build_orthogonal_rings(global_core_locations,
-                                                    ring_size,
-                                                    rotate_ring_across_rings)
+    global_core_locations = _build_orthogonal_rings(
+        global_core_locations, ring_size, rotate_ring_across_rings
+    )
   else:
     permutation = _build_all_reduce_ring(global_core_locations[:ring_size])
     for r in range(0, num_cores, ring_size):
-      global_core_locations[r:r + ring_size] = [
+      global_core_locations[r : r + ring_size] = [
           global_core_locations[r + permutation[i]] for i in range(ring_size)
       ]
     logging.vlog(1, "Permutated core locations: %s", global_core_locations)
@@ -709,10 +766,13 @@ def create_tpu_mesh(
   # easier interaction with the C++ API.
   global_core_locations = [l.to_list() for l in global_core_locations]
   if _dtensor_device is None:
-    raise ValueError("Invalid system device, "
-                     "run dtensor.initialize_accelerator_system() first")
+    raise ValueError(
+        "Invalid system device, "
+        "run dtensor.initialize_accelerator_system() first"
+    )
   global_core_ids = _dtensor_device.tpu_core_locations_to_ids(
-      global_core_locations)
+      global_core_locations
+  )
 
   # Store a per-mesh mapping in the runtime.
   _dtensor_device.set_tpu_core_ids(mesh_name, global_core_ids)
@@ -724,7 +784,8 @@ def create_tpu_mesh(
       for local_core_location in local_core_locations
   ]
   global_device_ids, local_device_ids, local_device_list = _create_device_array(
-      mesh_shape, _TPU_DEVICE_TYPE, None, local_device_ids=indexes)
+      mesh_shape, _TPU_DEVICE_TYPE, None, local_device_ids=indexes
+  )
   return layout_lib.Mesh(
       mesh_dim_names,
       global_device_ids,
@@ -735,8 +796,9 @@ def create_tpu_mesh(
   )
 
 
-def get_device_ids(mesh: layout_lib.Mesh,
-                   client_id: Optional[int] = None) -> List[int]:
+def get_device_ids(
+    mesh: layout_lib.Mesh, client_id: Optional[int] = None
+) -> List[int]:
   """Returns the device IDs of all TPU cores local to the given client.
 
   A device ID is a non-negative integer that uniquely identifies a device in the
@@ -760,12 +822,13 @@ def get_device_ids(mesh: layout_lib.Mesh,
   # It's not clear we should ever allow a client to query other clients for
   # their device IDs.
   raise NotImplementedError(
-      "Looking up other clients' device IDs is not supported")
+      "Looking up other clients' device IDs is not supported"
+  )
 
 
 def get_device_locations(
-    mesh: layout_lib.Mesh,
-    client_id: Optional[int] = None) -> List[Dict[str, int]]:
+    mesh: layout_lib.Mesh, client_id: Optional[int] = None
+) -> List[Dict[str, int]]:
   """Returns the device locations of all TPU cores local to the given client.
 
   A device location is a dictionary from dimension names to indices on those
@@ -794,7 +857,8 @@ def get_device_locations(
   # It's not clear we should ever allow a client to query other clients for
   # their device locations.
   raise NotImplementedError(
-      "Looking up other clients' device locations is not supported")
+      "Looking up other clients' device locations is not supported"
+  )
 
 
 # TODO(b/245589661): Remove dtensor_initialize_tpu_system() and
@@ -802,11 +866,14 @@ def get_device_locations(
 def dtensor_initialize_tpu_system(enable_coordination_service=False):
   """Deprecated way to initialize the TPU system."""
   from . import accelerator_util  # pylint: disable=g-import-not-at-top
+
   accelerator_util.initialize_accelerator_system(
-      "TPU", enable_coordination_service=enable_coordination_service)
+      "TPU", enable_coordination_service=enable_coordination_service
+  )
 
 
 def dtensor_shutdown_tpu_system():
   """Deprecated way to shutodwn the TPU system."""
   from . import accelerator_util  # pylint: disable=g-import-not-at-top
+
   accelerator_util.shutdown_accelerator_system()

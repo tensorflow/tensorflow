@@ -1,8 +1,9 @@
 # Test-related settings.
 
 build:rocm_dev --remote_upload_local_results=false
-build:rocm_dev --remote_cache="https://wardite.cluster.engflow.com"
+build:rocm_dev --remote_cache="grpcs://wardite.cluster.engflow.com"
 
+build:rocm_rbe --remote_cache="grpcs://wardite.cluster.engflow.com"
 build:rocm_rbe --repo_env=REMOTE_GPU_TESTING=1
 build:rocm_rbe --bes_backend="grpcs://wardite.cluster.engflow.com"
 build:rocm_rbe --bes_results_url="https://wardite.cluster.engflow.com/invocation/"
@@ -14,8 +15,9 @@ build:rocm_rbe --tls_client_certificate="/data/ci-cert.crt"
 build:rocm_rbe --tls_client_key="/data/ci-cert.key"
 build:rocm_rbe --spawn_strategy=remote,local
 build:rocm_rbe --grpc_keepalive_time=30s
+build:rocm_rbe --remote_cache_compression
 
-test:rocm_rbe --jobs=200
+test:rocm_rbe --jobs=30
 test:rocm_rbe --remote_executor=grpcs://wardite.cluster.engflow.com
 test:rocm_rbe --remote_timeout=3600
 test:rocm_rbe --strategy=TestRunner=remote,local
@@ -56,6 +58,10 @@ build:ci_multi_gpu --test_sharding_strategy=disabled
 build:ci_multi_gpu --flaky_test_attempts=3
 build:ci_multi_gpu --experimental_guard_against_concurrent_changes
 build:ci_multi_gpu --test_env=HIP_VISIBLE_DEVICES=0,1,2,3
+
+build:ci_rocm_cpu --run_under=//build_tools/rocm:sanitizer_wrapper
+build:ci_rocm_cpu --local_test_jobs=200
+build:ci_rocm_cpu --strategy=TestRunner=local
 
 test:xla_sgpu -- \
 //xla/... \

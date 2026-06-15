@@ -1,7 +1,7 @@
 path: "tensorflow.RegisterGradient"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.RegisterGradient\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'op_type\'], varargs=None, keywords=None, defaults=None"

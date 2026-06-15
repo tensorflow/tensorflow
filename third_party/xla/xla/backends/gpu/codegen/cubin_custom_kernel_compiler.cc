@@ -22,13 +22,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
+#include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
+#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -37,6 +41,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
@@ -126,6 +131,32 @@ absl::StatusOr<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::CompileImpl(
 
   return std::make_unique<CustomKernelThunk>(
       thunk_info, std::move(custom_kernel), kernel_arguments);
+}
+
+xla::Future<TritonWrapperResult> CubinCustomKernelCompiler::CompileTritonToLlvm(
+    const absl::string_view kernel_name, const HloModule& hlo_module,
+    const se::DeviceDescription& device_info,
+    const BlockLevelParameters& block_level_parameters,
+    const llvm::Triple& target_triple, const std::string& data_layout,
+    TritonKernelSource triton_source, BorrowedMlirContext borrowed_context,
+    bool is_xla_fusion) {
+  if (!thread_pool_) {
+    return gpu::CompileTritonToLLVM(kernel_name, hlo_module, device_info,
+                                    block_level_parameters, target_triple,
+                                    data_layout, std::move(triton_source),
+                                    **borrowed_context, is_xla_fusion);
+  }
+  return xla::MakeFutureOn(
+      *thread_pool_->AsExecutor(),
+      [kernel_name = std::string(kernel_name), hlo_module = &hlo_module,
+       device_info, block_level_parameters, target_triple, is_xla_fusion,
+       data_layout, borrowed_context = std::move(borrowed_context),
+       triton_source = std::move(triton_source)]() mutable {
+        return gpu::CompileTritonToLLVM(kernel_name, *hlo_module, device_info,
+                                        block_level_parameters, target_triple,
+                                        data_layout, std::move(triton_source),
+                                        **borrowed_context, is_xla_fusion);
+      });
 }
 
 }  // namespace xla::gpu

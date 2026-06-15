@@ -127,6 +127,7 @@ class CollectivePipeliner : public HloModulePass {
   };
   static const char* const kInsertedByPreviousStep;
   static const char* const kSunkByPreviousStep;
+  static constexpr absl::string_view kAlwaysSinkAttr = "always_sink";
   explicit CollectivePipeliner(const Config& config) : config_(config) {}
   CollectivePipeliner(CollectivePipeliner&& other) = default;
   CollectivePipeliner& operator=(CollectivePipeliner&& other) = default;

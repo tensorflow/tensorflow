@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "mlir/IR/MLIRContext.h"
 #include "google/protobuf/text_format.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -55,7 +56,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base_legacy.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/logging.h"
@@ -85,9 +86,9 @@ class GpuHloScheduleTest : public HloTestBaseLegacy {
     std::unique_ptr<GpuAliasInfo> alias_info =
         gpu_compiler->GetAliasInfo(gpu_device_info);
     int64_t pointer_size = gpu_compiler->GetPointerSize();
+    mlir::MLIRContext mlir_context;
     return xla::gpu::ScheduleGpuModule(module, pointer_size, gpu_device_info,
-                                       gpu_compiler->mlir_context(),
-                                       alias_info.get());
+                                       &mlir_context, alias_info.get());
   }
 
   SequentialHloOrdering BuildHloOrdering(HloModule* module) {

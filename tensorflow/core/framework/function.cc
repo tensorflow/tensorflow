@@ -1168,7 +1168,7 @@ FunctionCallFrame::FunctionCallFrame(DataTypeSlice arg_types,
   rets_.resize(ret_types_.size());
 }
 
-FunctionCallFrame::~FunctionCallFrame() {}
+FunctionCallFrame::~FunctionCallFrame() = default;
 
 absl::Status FunctionCallFrame::SetArgs(absl::Span<const Tensor> args) {
   // Input type checks.
@@ -1851,7 +1851,7 @@ absl::Status FunctionLibraryDefinition::GetAttr(const Node& node,
                                                      const string&, T*) const; \
   template Status FunctionLibraryDefinition::GetAttr(const NodeDef&,           \
                                                      const string&, T*) const;
-GET_ATTR(string)
+GET_ATTR(std::string)
 GET_ATTR(bool)
 #undef GET_ATTR
 

@@ -29,6 +29,12 @@ namespace tensorflow {
 PYBIND11_MODULE(_nn_ops, m) {
   m.def("relu",
         [](AbstractContext* ctx, AbstractTensorHandle* a, const char* name) {
+          if (ctx == nullptr) {
+            throw pybind11::type_error("relu() argument 'ctx' cannot be None");
+          }
+          if (a == nullptr) {
+            throw pybind11::type_error("relu() argument 'a' cannot be None");
+          }
           AbstractTensorHandle* output;
           if (!name) {
             name = "Relu";
@@ -41,14 +47,31 @@ PYBIND11_MODULE(_nn_ops, m) {
       "sparse_softmax_cross_entropy_with_logits",
       [](AbstractContext* ctx, AbstractTensorHandle* features,
          AbstractTensorHandle* labels, const char* name) {
+        if (ctx == nullptr) {
+          throw pybind11::type_error(
+              "sparse_softmax_cross_entropy_with_logits() argument 'ctx' "
+              "cannot be None");
+        }
+        if (features == nullptr) {
+          throw pybind11::type_error(
+              "sparse_softmax_cross_entropy_with_logits() argument 'features' "
+              "cannot be None");
+        }
+        if (labels == nullptr) {
+          throw pybind11::type_error(
+              "sparse_softmax_cross_entropy_with_logits() argument 'labels' "
+              "cannot be None");
+        }
         AbstractTensorHandle* loss;
         AbstractTensorHandle* backprop;
         if (!name) {
           name = "SparseSoftmaxCrossEntropyWithLogits";
         }
-        MaybeRaiseRegisteredFromStatus(ops::SparseSoftmaxCrossEntropyWithLogits(
-            ctx, features, labels, &loss, &backprop, name));
-        return loss;  // Only return the loss vals, not the backprop.
+        absl::Status status = ops::SparseSoftmaxCrossEntropyWithLogits(
+            ctx, features, labels, &loss, &backprop, name);
+        MaybeRaiseRegisteredFromStatus(status);
+        backprop->Unref();
+        return loss;
       });
 }
 }  // namespace tensorflow

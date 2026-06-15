@@ -510,7 +510,8 @@ TfLiteStatus Subgraph::PartitionGraph(const TfLiteIntArray* nodes_to_replace,
                                       std::vector<NodeSubset>* node_subsets) {
   const InterpreterInfo info(this);
   // Tensor preservation requires node fusion to be disabled.
-  const bool disable_node_fusion = ShouldPreserveAllTensors();
+  const bool disable_node_fusion =
+      ShouldPreserveAllTensors() || DisableDelegateNodeFusion();
   return tflite::PartitionGraphIntoIndependentNodeSubsets(
       &info, nodes_to_replace, node_subsets,
       /*greedily=*/!DisableDelegateClustering(), control_edges_,

@@ -27,11 +27,13 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -75,7 +77,7 @@ absl::StatusOr<std::unique_ptr<HloComputation>> CreateCalleeStub(
 
   std::vector<HloInstruction*> operands;
   for (const HloInstruction* parameter : callee->parameter_instructions()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         HloInstruction * cloned_parameter,
         comp_builder.AddParameter(parameter->Clone(/*suffix=*/"")));
     operands.push_back(cloned_parameter);
@@ -235,8 +237,8 @@ absl::StatusOr<std::unique_ptr<HloModuleSplit>> CreateHloModuleSplit(
       callee_replacements[caller] = callee;
       continue;
     }
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> stub,
-                        CreateCalleeStub(callee, callee_index));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> stub,
+                     CreateCalleeStub(callee, callee_index));
     VLOG(4) << "Stubbing " << stub->name() << " --> " << callee->name() << " "
             << stub->ToString();
     HloComputation* stub_raw_ptr =
@@ -287,21 +289,21 @@ absl::StatusOr<std::unique_ptr<HloModuleSplitGroup>> CreateHloModuleSplitGroup(
   absl::flat_hash_map<const HloComputation*, const HloComputation*>
       global_computation_map;
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<absl::flat_hash_set<const HloComputation*>> splits,
       GroupComputationsForSplitting(module));
 
   for (const auto& split : splits) {
-    TF_ASSIGN_OR_RETURN(auto module_split, CreateHloModuleSplit(module, split));
+    ASSIGN_OR_RETURN(auto module_split, CreateHloModuleSplit(module, split));
     module_splits.push_back(std::move(module_split));
     for (const auto* original_comp : split) {
       computation_address_book.insert(
           {original_comp, module_splits.back().get()});
     }
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         MergeMapInto(global_stub_map, module_splits.back()->stub_map));
-    TF_RETURN_IF_ERROR(MergeMapInto(global_computation_map,
-                                    module_splits.back()->computation_map));
+    RETURN_IF_ERROR(MergeMapInto(global_computation_map,
+                                 module_splits.back()->computation_map));
   }
 
   if (VLOG_IS_ON(5)) {
@@ -320,8 +322,8 @@ absl::StatusOr<std::unique_ptr<HloModuleSplitGroup>> CreateHloModuleSplitGroup(
   }
   // Compose at the end once all planned cloning operations are finished and
   // we know where each original computation ended up.
-  TF_ASSIGN_OR_RETURN(auto stub_links,
-                      ComposeMaps(global_stub_map, global_computation_map));
+  ASSIGN_OR_RETURN(auto stub_links,
+                   ComposeMaps(global_stub_map, global_computation_map));
 
   HloLinkingManifest linking_manifest{
       std::move(stub_links), module.shared_config(),

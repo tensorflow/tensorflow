@@ -21,7 +21,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -68,27 +70,81 @@ absl::StatusOr<bool> AsyncCollectiveReplacer::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    // Gather the list of all async pairs that need to be replaced.
+    // The list of all async pairs that need to be replaced.
     std::vector<std::pair<HloInstruction*, HloInstruction*>> async_pairs;
+
+    // The set of all "control_dep" custom calls that need to be erased.
+    // Consider the following HLO.
+    //
+    //     start = async-start(...)
+    //     math = dot_general(...)
+    //     done = async-done(start)
+    //     custom_call(start, math) target="control_dep"
+    //     custom_call(math, done) target="control_dep"
+    //
+    // We are replacing start and done with a single synchronous collective, so
+    // the "control_dep" custom calls cannot be preserved.
+    std::vector<HloInstruction*> control_deps_to_remove;
+
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       if (!ShouldBeReplaced(config_, inst)) {
         continue;
       }
-      if (inst->users().size() != 1) {
+
+      // Mark the async pair for replacement.
+      std::vector<HloInstruction*> real_users;
+      for (HloInstruction* user : inst->users()) {
+        if (user->opcode() == HloOpcode::kCustomCall &&
+            user->custom_call_target() == "control_dep") {
+          continue;
+        }
+        real_users.push_back(user);
+      }
+      if (real_users.size() != 1) {
         return Internal(
             "Expected exactly one user for async start op %s, but found %d",
-            inst->name(), inst->users().size());
+            inst->name(), real_users.size());
       }
-      HloInstruction* done = inst->users()[0];
-      VLOG(1) << "Replacing async start/done ops with synchronous counterpart";
-      VLOG(1) << "async start = " << inst->ToString();
-      VLOG(1) << "async done = " << done->ToString();
+      HloInstruction* done = real_users[0];
       async_pairs.push_back({inst, done});
       changed = true;
+
+      // Find any "control_dep" custom calls we need to delete.
+      //
+      // TODO(mwhittaker): We can keep some of the control_dep calls. For now,
+      // we delete all of them.
+      for (HloInstruction* user : inst->users()) {
+        if (user->opcode() == HloOpcode::kCustomCall &&
+            user->custom_call_target() == "control_dep") {
+          control_deps_to_remove.push_back(user);
+        }
+      }
+      for (HloInstruction* user : done->users()) {
+        if (user->opcode() == HloOpcode::kCustomCall &&
+            user->custom_call_target() == "control_dep") {
+          control_deps_to_remove.push_back(user);
+        }
+      }
     }
 
-    // Replace them.
-    TF_RETURN_IF_ERROR(
+    // Remove the "control_dep" custom calls.
+    absl::flat_hash_set<HloInstruction*> removed;
+    for (HloInstruction* control_dep : control_deps_to_remove) {
+      if (!removed.contains(control_dep)) {
+        RETURN_IF_ERROR(computation->RemoveInstruction(control_dep));
+        removed.insert(control_dep);
+      }
+    }
+
+    // Replace the async collectives.
+    if (VLOG_IS_ON(1)) {
+      for (auto& [inst, done] : async_pairs) {
+        VLOG(1) << "Replacing async start/done ops with synchronous op.";
+        VLOG(1) << "async start = " << inst->ToString();
+        VLOG(1) << "async done = " << done->ToString();
+      }
+    }
+    RETURN_IF_ERROR(
         ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
             computation, async_pairs));
   }

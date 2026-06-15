@@ -6,7 +6,7 @@ tf_class {
   is_instance: "<class \'collections.abc.Iterable\'>"
   member {
     name: "element_spec"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

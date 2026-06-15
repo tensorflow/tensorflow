@@ -5,7 +5,7 @@
 #   to other TF components outside of TSL.
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//xla:py_strict.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load(
     "//xla/tsl:tsl.bzl",
     "check_deps",
@@ -41,6 +41,12 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "byte_swap_array.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
         "byte_swap_array.h",
     ],
 )
@@ -49,14 +55,20 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "command_line_flags.cc",
-        "command_line_flags.h",
         "determinism.cc",
-        "determinism.h",
         "device_name_utils.cc",
-        "device_name_utils.h",
         "env_var.cc",
-        "env_var.h",
         "use_cudnn.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "command_line_flags.h",
+        "determinism.h",
+        "device_name_utils.h",
+        "env_var.h",
         "use_cudnn.h",
     ],
 )
@@ -226,6 +238,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -248,6 +261,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:test_log_proto_cc",
         "@com_google_absl//absl/status",
@@ -459,6 +473,7 @@ cc_binary(
     deps = [
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
@@ -476,7 +491,7 @@ cc_binary(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "filewrapper_testdata_generator",
     testonly = True,
     srcs = ["filewrapper_testdata_generator.py"],
@@ -545,6 +560,7 @@ cc_library(
         "//xla/tsl/platform:embedded_filesystem",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",

@@ -377,6 +377,27 @@ TEST(RuntimeShapeTest, TestCheckedFlatSizeSkipDimRejectsOverflow) {
   EXPECT_FALSE(shape.CheckedFlatSizeSkipDim(/*skip_dim=*/0, flat_size));
 }
 
+#ifndef NDEBUG
+TEST(RuntimeShapeTest, NegativeDimensionsCountInConstructor) {
+  EXPECT_DEATH(RuntimeShape shape(-1), "");
+}
+
+TEST(RuntimeShapeTest, NegativeDimensionsCountInConstructorWithValue) {
+  EXPECT_DEATH(RuntimeShape shape(-1, 0), "");
+}
+
+TEST(RuntimeShapeTest, NegativeDimensionsCountInResize) {
+  RuntimeShape shape;
+  EXPECT_DEATH(shape.Resize(-1), "");
+}
+
+TEST(RuntimeShapeTest, NegativeDimensionsCountInReplaceWith) {
+  RuntimeShape shape;
+  int32_t dims_data[] = {1, 2, 3};
+  EXPECT_DEATH(shape.ReplaceWith(-1, dims_data), "");
+}
+#endif
+
 INSTANTIATE_TEST_SUITE_P(BigSmall, RuntimeShapeTest,
                          testing::Values(kSmallSize, kBigSize),
                          [](const testing::TestParamInfo<int>& info) {

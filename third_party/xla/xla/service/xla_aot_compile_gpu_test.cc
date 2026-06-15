@@ -47,7 +47,7 @@ class XlaCompileTest : public HloPjRtTestBase {
     TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), path,
                                        &serialized_aot_result));
 
-    auto* pjrt_runner = absl::down_cast<HloRunnerPjRt*>(&test_runner());
+    auto* pjrt_runner = absl::down_cast<HloRunner*>(&test_runner());
     ASSERT_TRUE(pjrt_runner != nullptr);
     ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<OpaqueExecutable> executable,

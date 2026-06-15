@@ -154,6 +154,13 @@ class PluggableDevice::StreamGroupFactory {
     return group;
   }
 
+  // Helper method for unit tests to reset the streams. Never use in production.
+  void TestOnlyReset() {
+    mutex_lock guard(lock_);
+    streams_.clear();
+    allocated_streams_.clear();
+  }
+
   // Returns a reference to the StreamGroupFactory singleton. Note that this is
   // never destroyed, so the objects it owns are never deleted.
   static StreamGroupFactory& Global() {
@@ -198,6 +205,10 @@ PluggableDevice::PluggableDevice(
 PluggableDevice::~PluggableDevice() {
   delete pluggable_device_info_;
   device_context_->Unref();
+}
+
+void PluggableDevice::TestOnlyReset() {
+  StreamGroupFactory::Global().TestOnlyReset();
 }
 
 absl::Status PluggableDevice::Init(const SessionOptions& options,

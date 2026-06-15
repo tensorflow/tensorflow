@@ -672,10 +672,16 @@ static PyObject* EagerTensor_handle_data(EagerTensor* self, void* unused) {
 }
 
 static int EagerTensor_sethandle_data(EagerTensor* self, PyObject* value,
-                                      void* unused) {
-  Py_DECREF(self->handle_data);
+                                      void* /*unused*/) {
+  if (value == nullptr) {
+    PyErr_SetString(PyExc_AttributeError,
+                    "Cannot delete attribute '_handle_data'");
+    return -1;
+  }
+  PyObject* tmp = self->handle_data;
   Py_INCREF(value);
   self->handle_data = value;
+  Py_XDECREF(tmp);
   return 0;
 }
 
@@ -685,10 +691,16 @@ static PyObject* EagerTensor_tensor_shape(EagerTensor* self, void* unused) {
 }
 
 static int EagerTensor_settensor_shape(EagerTensor* self, PyObject* value,
-                                       void* unused) {
-  Py_DECREF(self->tensor_shape);
+                                       void* /*unused*/) {
+  if (value == nullptr) {
+    PyErr_SetString(PyExc_AttributeError,
+                    "Cannot delete attribute '_tensor_shape'");
+    return -1;
+  }
+  PyObject* tmp = self->tensor_shape;
   Py_INCREF(value);
   self->tensor_shape = value;
+  Py_XDECREF(tmp);
   return 0;
 }
 
@@ -1183,14 +1195,15 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
 }
 
 PyObject* TFE_Py_SetEagerTensorProfiler(PyObject* profiler) {
-  Py_XDECREF(eager_tensor_profiler);
+  PyObject* tmp = eager_tensor_profiler;
 
-  if (profiler == Py_None) {
+  if (profiler == Py_None || profiler == nullptr) {
     eager_tensor_profiler = nullptr;
   } else {
     eager_tensor_profiler = profiler;
     Py_INCREF(eager_tensor_profiler);
   }
+  Py_XDECREF(tmp);
   Py_RETURN_NONE;
 }
 

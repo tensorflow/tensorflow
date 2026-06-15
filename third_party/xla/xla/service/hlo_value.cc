@@ -96,8 +96,12 @@ std::string HloValue::ToString(int indent) const {
   }
   if (uses_.has_value()) {
     StrAppend(&out, indentation, " uses:\n");
-    for (const HloUse& use : GetUses()) {
-      StrAppend(&out, indentation, "  ", use.ToString(), "\n");
+    if (GetUses().empty()) {
+      StrAppend(&out, indentation, "  (none)\n");
+    } else {
+      for (const HloUse& use : GetUses()) {
+        StrAppend(&out, indentation, "  ", use.ToString(), "\n");
+      }
     }
   } else {
     StrAppend(&out, indentation, " uses are not initialized yet.\n");

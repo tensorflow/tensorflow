@@ -102,8 +102,7 @@ DeferRelocatableCompilationCompilationProvider::CompileAndLink(
 
 absl::StatusOr<int>
 DeferRelocatableCompilationCompilationProvider::GetLatestPtxIsaVersion() const {
-  return absl::UnimplementedError(
-      "GetLatestPtxIsaVersion is not implemented for " + name() + ".");
+  return delegate_->GetLatestPtxIsaVersion();
 }
 
 absl::StatusOr<Assembly>

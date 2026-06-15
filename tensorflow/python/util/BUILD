@@ -262,8 +262,10 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/compiler/tf2tensorrt:common_utils",
         "//tensorflow/compiler/tf2tensorrt:trt_parameters",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
@@ -286,6 +288,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -486,6 +489,7 @@ tf_python_pybind_extension(
         "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:mutex",
         "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//xla/tsl/platform:status",
     ] + if_static([
         ":stack_trace",
     ]),
@@ -1016,6 +1020,7 @@ py_library(
 py_library(
     name = "module_wrapper",
     srcs = ["module_wrapper.py"],
+    lazy_imports = True,
     strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [

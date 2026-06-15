@@ -113,14 +113,15 @@ class SparseConditionalAccumulator
     if (counter_ > 0) {
       int64_t accum_val_dims = accum_val_->dims();
       if (accum_val_dims != grad_val_dims) {
-        return errors::InvalidArgument("Shape mismatch: expected values rank ",
-                                       accum_val_dims, ", got ", grad_val_dims);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Shape mismatch: expected values rank ",
+                         accum_val_dims, ", got ", grad_val_dims));
       }
       for (int64_t i = 1; i < accum_val_dims; i++) {
         if (accum_val_->dim_size(i) != tensor_val->dim_size(i)) {
-          return errors::InvalidArgument("Shape mismatch: expected values dim ",
-                                         i, " to be ", accum_val_->dim_size(i),
-                                         ", got ", tensor_val->dim_size(i));
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Shape mismatch: expected values dim ", i, " to be ",
+              accum_val_->dim_size(i), ", got ", tensor_val->dim_size(i)));
         }
       }
     } else {
@@ -357,17 +358,17 @@ class SparseConditionalAccumulator
     // Checks
     OP_REQUIRES_BOOLEAN(
         ctx, TensorShapeUtils::IsVector(grad_idx_tensor->shape()),
-        errors::InvalidArgument(
-            "Input indices should be vector but received shape: ",
-            grad_idx_tensor->shape().DebugString()));
+        absl::InvalidArgumentError(
+            absl::StrCat("Input indices should be vector but received shape: ",
+                         grad_idx_tensor->shape().DebugString())));
     const int64_t nnz = grad_idx_tensor->dim_size(0);
     OP_REQUIRES_BOOLEAN(
         ctx, grad_val_tensor->dims() > 0,
-        errors::InvalidArgument("Values cannot be 0-dimensional."));
+        absl::InvalidArgumentError("Values cannot be 0-dimensional."));
     OP_REQUIRES_BOOLEAN(ctx, grad_val_tensor->dim_size(0) == nnz,
-                        errors::InvalidArgument("Expected ", nnz,
-                                                " non-empty input values, got ",
-                                                grad_val_tensor->dim_size(0)));
+                        absl::InvalidArgumentError(absl::StrCat(
+                            "Expected ", nnz, " non-empty input values, got ",
+                            grad_val_tensor->dim_size(0))));
 
     *tensor = new std::tuple<const Tensor*, const Tensor*, const Tensor*>(
         grad_idx_tensor, grad_val_tensor, grad_shape_tensor);

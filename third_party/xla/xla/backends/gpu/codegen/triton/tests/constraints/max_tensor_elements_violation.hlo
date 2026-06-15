@@ -1,0 +1,23 @@
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR-NEW
+
+// CHECK-ERROR: Tiling does not satisfy constraints.
+// CHECK-ERROR-NEW: exceeds the maximum allowed tensor size of 1048576 elements
+
+fusion {
+  p0 = f32[2048,2048] parameter(0)
+  ROOT abs = f32[2048,2048] abs(p0)
+}
+
+ENTRY main {
+  p0 = f32[2048,2048] parameter(0)
+  ROOT fusion = f32[2048,2048] fusion(p0), kind=kCustom,
+    calls=fusion, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1024", "2048"]}],
+        "num_warps":"4",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

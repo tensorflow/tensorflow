@@ -40,8 +40,9 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, "sleep_microseconds",
                                                      &sleep_microseconds));
 
-    OP_REQUIRES(ctx, sleep_microseconds >= 0,
-                errors::InvalidArgument("`sleep_microseconds` must be >= 0"));
+    OP_REQUIRES(
+        ctx, sleep_microseconds >= 0,
+        absl::InvalidArgumentError("`sleep_microseconds` must be >= 0"));
 
     *output = new Dataset(ctx, input, sleep_microseconds);
   }
@@ -148,7 +149,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
                 dataset()->sleep_microseconds_ * EnvTime::kMicrosToNanos);
         RecordStart(ctx);
         if (cancelled) {
-          return errors::Cancelled("Operation was cancelled");
+          return absl::CancelledError("Operation was cancelled");
         }
         return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
       }

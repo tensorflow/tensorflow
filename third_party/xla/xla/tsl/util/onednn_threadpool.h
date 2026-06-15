@@ -34,6 +34,12 @@ namespace tsl {
 #ifndef ENABLE_ONEDNN_OPENMP
 using dnnl::threadpool_interop::threadpool_iface;
 
+// =============================================================================
+// This threadpool is synchronous and is used only in TensorFlow.
+// XLA has a different asynchronous-eligible threadpool at:
+//   xla/backends/cpu/runtime/onednn/onednn_threadpool.h
+// =============================================================================
+
 // Divide 'n' units of work equally among 'teams' threads. If 'n' is not
 // divisible by 'teams' and has a remainder 'r', the first 'r' teams have one
 // unit of work more than the rest. Returns the range of work that belongs to
@@ -88,13 +94,19 @@ class OneDnnThreadPool : public threadpool_iface {
   bool get_in_parallel() const override {
     return (eigen_interface_->CurrentThreadId() != -1) ? true : false;
   }
-  uint64_t get_flags() const override { return ASYNCHRONOUS; }
 #ifdef ENABLE_ONEDNN_ASYNC
+  // Return 0 for synchronous execution; caller handles synchronization.
+  uint64_t get_flags() const override { return 0; }
   // wait() method for synchronous execution is basically a no-op.
   // But we need to implement it to satisfy the interface.
   // This is the requirement of the new experimental async runtime support
   // in oneDNN.
   virtual void wait() override {}
+#else
+  // Return ASYNCHRONOUS to work with current onednn version.
+  // TODO(intel-tf): remove this ifdefing block after making oneDNN v3.11 (async
+  // support) default
+  uint64_t get_flags() const override { return ASYNCHRONOUS; }
 #endif  // ENABLE_ONEDNN_ASYNC
   void parallel_for(int n, const std::function<void(int, int)>& fn) override {
     // Should never happen (handled by DNNL)
@@ -119,6 +131,23 @@ class OneDnnThreadPool : public threadpool_iface {
     const int njobs_to_schedule = use_caller_thread ? njobs - 1 : njobs;
 
     if (use_caller_thread) {
+#ifdef ENABLE_ONEDNN_ASYNC
+      // Add barriers for synchronization when ENABLE_ONEDNN_ASYNC is defined.
+      // TODO(intel-tf): remove this ifdefing block after making oneDNN v3.11
+      // (async support) default
+      absl::BlockingCounter counter(njobs_to_schedule + 1);
+      for (int i = 0; i < njobs_to_schedule; i++) {
+        eigen_interface_->ScheduleWithHint(
+            [balance, i, n, njobs, fn, &counter]() {
+              run_jobs(balance, i, n, njobs, fn);
+              counter.DecrementCount();
+            },
+            i, i + 1);
+      }
+      run_jobs(balance, njobs_to_schedule, n, njobs, fn);
+      counter.DecrementCount();
+      counter.Wait();
+#else
       for (int i = 0; i < njobs_to_schedule; i++) {
         eigen_interface_->ScheduleWithHint(
             [balance, i, n, njobs, fn]() {
@@ -127,6 +156,7 @@ class OneDnnThreadPool : public threadpool_iface {
             i, i + 1);
       }
       run_jobs(balance, njobs_to_schedule, n, njobs, fn);
+#endif  // ENABLE_ONEDNN_ASYNC
     } else {
       absl::BlockingCounter counter(njobs);
       std::function<void(int, int)> handle_range = [=, &handle_range, &counter](
@@ -138,8 +168,8 @@ class OneDnnThreadPool : public threadpool_iface {
                                              mid, mid + 1);
           last = mid;
         }
-        counter.DecrementCount();
         run_jobs(balance, first, n, njobs, fn);
+        counter.DecrementCount();
       };
 
       // Eigen avoids a thread hop by running the root of the tree on the main

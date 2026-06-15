@@ -45,6 +45,7 @@ lit_test_suite(
             "missing_main.mlir",
             "module_config.mlir",
             "module_attributes.mlir",
+            "mulhi.mlir",
             "multiple_return_tuple.mlir",
             "opaque_elements_attr.mlir",
             "ragged_dot.mlir",

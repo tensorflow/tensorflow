@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/hlo/translate/register.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
@@ -86,9 +88,9 @@ mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
 absl::StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
     const HloProto& hlo_proto) {
   const HloModuleProto& module_proto = hlo_proto.hlo_module();
-  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
-                      HloModule::CreateModuleConfigFromProto(
-                          module_proto, GetDebugOptionsFromFlags()));
+  ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                   HloModule::CreateModuleConfigFromProto(
+                       module_proto, GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(module_proto, module_config);
 }
 
@@ -108,10 +110,10 @@ absl::Status ConvertMlirHloToHloViaBuilder(
     xla::Shape shape = xla::TypeToShape(arg.getType());
 
     std::optional<OriginalValueProto> original_value_proto;
-    if (auto original_value_attr = main.getArgAttrOfType<mlir::StringAttr>(
-            num, xla::kMhloOriginalValueAttr)) {
-      original_value_proto =
-          xla::ConvertOriginalValue(original_value_attr.getValue());
+    if (auto original_value_attr =
+            main.getArgAttrOfType<mlir::mhlo::OriginalValueAttr>(
+                num, xla::kMhloOriginalValueAttr)) {
+      original_value_proto = xla::ConvertOriginalValue(original_value_attr);
     }
     xla::XlaScopedOriginalValueAssignment original_value_assignment(
         &builder, original_value_proto);
@@ -121,7 +123,7 @@ absl::Status ConvertMlirHloToHloViaBuilder(
   }
 
   std::vector<xla::XlaOp> returns(1);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       mlir::BuildHloFromMlirHlo(module, builder, xla_params, returns, options));
 
   xla::XlaOp return_value;
@@ -130,7 +132,7 @@ absl::Status ConvertMlirHloToHloViaBuilder(
   else if (returns.size() > 1)
     return_value = xla::Tuple(&builder, returns);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       xla::XlaComputation computation,
       return_value.valid() ? builder.Build(return_value) : builder.Build());
 

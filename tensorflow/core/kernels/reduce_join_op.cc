@@ -138,11 +138,12 @@ class ReduceJoinOp : public OpKernel {
           reduce_index < 0 ? reduce_index + input_dims : reduce_index;
       OP_REQUIRES(
           context, reduce_index >= -input_dims && reduce_index < input_dims,
-          errors::OutOfRange("Invalid reduction dimension ", reduce_index,
-                             " for input with ", input_dims, " dimension(s)"));
+          absl::OutOfRangeError(absl::StrCat("Invalid reduction dimension ",
+                                             reduce_index, " for input with ",
+                                             input_dims, " dimension(s)")));
       OP_REQUIRES(context, !index_is_reduced[true_reduce_index],
-                  errors::InvalidArgument("Duplicate reduction dimension ",
-                                          reduce_index));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Duplicate reduction dimension ", reduce_index)));
       index_is_reduced[true_reduce_index] = true;
     }
 

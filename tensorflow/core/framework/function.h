@@ -111,7 +111,7 @@ class FunctionDefHelper {
   struct AttrValueWrapper {
     AttrValue proto;
 
-    AttrValueWrapper() {}
+    AttrValueWrapper() = default;
 
     template <typename T>
     AttrValueWrapper(T val) {  // NOLINT(runtime/explicit)
@@ -297,7 +297,7 @@ uint64_t FunctionDefHash(const FunctionDef& fdef);
 
 class CallFrameInterface {
  public:
-  virtual ~CallFrameInterface() {}
+  virtual ~CallFrameInterface() = default;
 
   virtual size_t num_args() const = 0;
   virtual size_t num_retvals() const = 0;
@@ -730,7 +730,7 @@ struct FunctionArgIndex {
 
 class FunctionLibraryRuntime : public core::WeakRefCounted {
  public:
-  ~FunctionLibraryRuntime() override {}
+  ~FunctionLibraryRuntime() override = default;
 
   // Instantiate a function with the given "attrs".
   //
@@ -940,7 +940,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
   // In the cross-process scenario, runner isn't used for making the Async
   // RPC calls.
   struct Options {
-    Options() {}
+    Options() = default;
     explicit Options(const int64_t step_id) : step_id(step_id) {}
 
     // Choose a step ID that is guaranteed not to clash with any
@@ -1109,7 +1109,7 @@ const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;
 
 class CustomKernelCreator {
  public:
-  virtual ~CustomKernelCreator() {}
+  virtual ~CustomKernelCreator() = default;
 
   // Given a NodeDef 'node_def' and the function library runtime 'flr',
   // validate if the class supports creating such a kernel.
@@ -1139,7 +1139,7 @@ typedef absl::variant<Tensor, TensorShape> FunctionRet;
 // Used to instantiate and run functions in a distributed system.
 class DistributedFunctionLibraryRuntime {
  public:
-  virtual ~DistributedFunctionLibraryRuntime() {}
+  virtual ~DistributedFunctionLibraryRuntime() = default;
 
   // Instantiate a function on a remote target specified in `options.target`, by
   // sending the name and definition of the function to the remote worker. The
@@ -1276,7 +1276,7 @@ absl::Status GetOpGradientCreator(const std::string& op, Creator* creator);
       const Node&, const string&, T*) const;                 \
   extern template Status FunctionLibraryDefinition::GetAttr( \
       const NodeDef&, const string&, T*) const;
-GET_ATTR(string)
+GET_ATTR(std::string)
 GET_ATTR(bool)
 #undef GET_ATTR
 

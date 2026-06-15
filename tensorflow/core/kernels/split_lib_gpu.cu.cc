@@ -70,24 +70,24 @@ namespace {
 
 template <typename T>
 __global__ void SplitOpKernel(const T* __restrict__ input,
-                              int32 prefix_dim_size, int32 split_dim_size,
-                              int32 suffix_dim_size,
+                              int32_t prefix_dim_size, int32_t split_dim_size,
+                              int32_t suffix_dim_size,
                               GpuDeviceArrayStruct<T*> output_ptr_data) {
-  const int32 num_split = output_ptr_data.size;
+  const int32_t num_split = output_ptr_data.size;
   T** output_ptrs = GetGpuDeviceArrayOnDevice(&output_ptr_data);
 
   eigen_assert(blockDim.y == 1);
   eigen_assert(blockDim.z == 1);
   eigen_assert(split_dim_size % num_split == 0);
 
-  int32 size = prefix_dim_size * split_dim_size * suffix_dim_size;
-  int32 piece_size = split_dim_size / num_split;
+  int32_t size = prefix_dim_size * split_dim_size * suffix_dim_size;
+  int32_t piece_size = split_dim_size / num_split;
 
   GPU_1D_KERNEL_LOOP(offset, size) {
     // Calculate the index into input from offset.
-    int32 i = offset / (split_dim_size * suffix_dim_size);
-    int32 j = (offset % (split_dim_size * suffix_dim_size)) / suffix_dim_size;
-    int32 k = offset % suffix_dim_size;
+    int32_t i = offset / (split_dim_size * suffix_dim_size);
+    int32_t j = (offset % (split_dim_size * suffix_dim_size)) / suffix_dim_size;
+    int32_t k = offset % suffix_dim_size;
 
     // Find the output buffer that should be written to.
     T* output_ptr = output_ptrs[j / piece_size];
@@ -96,8 +96,8 @@ __global__ void SplitOpKernel(const T* __restrict__ input,
     //
     // output_ptr[i][j % piece_size][k] = input[offset];
     // Linearize (i, j % piece_size, k) into an offset.
-    int32 output_offset = i * piece_size * suffix_dim_size +
-                          (j % piece_size) * suffix_dim_size + k;
+    int32_t output_offset = i * piece_size * suffix_dim_size +
+                            (j % piece_size) * suffix_dim_size + k;
     *(output_ptr + output_offset) = ldg(input + offset);
   }
 }
@@ -169,34 +169,34 @@ __global__ void split_v_kernel(const T* __restrict__ input_ptr,
 // dimensions.  This version is likely faster due to less integer math.
 template <typename T>
 __global__ void SplitVOpKernel_fixed(const T* __restrict__ input,
-                                     int32 prefix_dim_size,
-                                     int32 suffix_dim_size,
+                                     int32_t prefix_dim_size,
+                                     int32_t suffix_dim_size,
                                      GpuDeviceArrayStruct<T*> output_ptr_data) {
-  const int32 num_split = output_ptr_data.size;
+  const int32_t num_split = output_ptr_data.size;
   T** output_ptrs = GetGpuDeviceArrayOnDevice(&output_ptr_data);
 
   eigen_assert(blockDim.y == 1);
   eigen_assert(blockDim.z == 1);
 
-  int32 size = prefix_dim_size * suffix_dim_size;
-  int32 piece_size = suffix_dim_size / num_split;
+  int32_t size = prefix_dim_size * suffix_dim_size;
+  int32_t piece_size = suffix_dim_size / num_split;
 
   GPU_1D_KERNEL_LOOP(offset, size) {
     // Calculate the index into input from offset.
-    int32 i = offset / suffix_dim_size;
-    int32 j = offset % suffix_dim_size;
+    int32_t i = offset / suffix_dim_size;
+    int32_t j = offset % suffix_dim_size;
 
     // Find the output buffer that should be written to.
     T* output_ptr = output_ptrs[j / piece_size];
-    int32 output_offset = i * piece_size + (j % piece_size);
+    int32_t output_offset = i * piece_size + (j % piece_size);
     output_ptr[output_offset] = input[offset];
   }
 }
 
 template <typename T>
 void SplitOpGPULaunch<T>::Run(const Eigen::GpuDevice& d, const T* input,
-                              int32 prefix_dim_size, int32 split_dim_size,
-                              int32 suffix_dim_size,
+                              int32_t prefix_dim_size, int32_t split_dim_size,
+                              int32_t suffix_dim_size,
                               const GpuDeviceArrayStruct<T*>& output_ptr_data) {
   GpuLaunchConfig config =
       GetGpuLaunchConfig(prefix_dim_size * split_dim_size * suffix_dim_size, d);
@@ -228,7 +228,7 @@ void SplitVOpGPULaunch<T, IntType>::Run(
     // performance crossover is less than using maximum available shared
     // memory on most processors possibly due to decreasing occupancy
     // 4096 inputs is a lot, most code will take the smem path
-    const int32 kMaxSmemBytesPerformance = 16384;
+    const int32_t kMaxSmemBytesPerformance = 16384;
     if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance) {
       TF_CHECK_OK(GpuLaunchKernel(
           split_v_kernel<T, IntType, true>, config.block_count,

@@ -154,13 +154,12 @@ TEST_F(CublasLtBackendTest,
 TEST_F(CublasLtBackendTest, GetDefaultConfig) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kCublasLtCustomCallHlo));
-
-  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BackendConfig> config,
       backend_.GetDefaultConfig(
-          (*module->entry_computation()->root_instruction()->operand(0)));
-  EXPECT_THAT(config, absl_testing::IsOk());
-  CublasLtBackendConfig config_proto;
-  ASSERT_TRUE(config.value()->UnpackTo(&config_proto));
+          *module->entry_computation()->root_instruction()->operand(0)));
+  ASSERT_TRUE(config->has_gemm());
+  CublasLtBackendConfig config_proto = config->gemm();
   EXPECT_THAT(config_proto.algorithm(), 0);
   EXPECT_THAT(config_proto.autotune_workspace_size(), 4194304);
 }
@@ -191,13 +190,13 @@ TEST_F(CublasLtBackendTest, ApplyConfig) {
   CublasLtBackendConfig config;
   config.set_algorithm(2);
   config.set_autotune_workspace_size(42);
-  google::protobuf::Any any;
-  any.PackFrom(config);
+  BackendConfig backend_config;
+  *backend_config.mutable_gemm() = config;
   TF_EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
                                          ->root_instruction()
                                          ->mutable_operands()
                                          .at(0),
-                                    any));
+                                    backend_config));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
                            R"(CHECK: (f32[100,100]{1,0}, s8[42]{0}) custom-call
                               CHECK: "selected_algorithm":"2")"),

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
@@ -81,13 +82,13 @@ CreateHostExecuteStartThunk(
   XlaComputation host_computation(
       *host_offloading_executable_proto.mutable_hlo_module());
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::cpu::NanoRtExecutable> executable,
-                      client.Compile(host_computation));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_compilation_result,
-                      client.Export(executable.get()));
+  ASSIGN_OR_RETURN(std::unique_ptr<xla::cpu::NanoRtExecutable> executable,
+                   client.Compile(host_computation));
+  ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_compilation_result,
+                   client.Export(executable.get()));
 
   xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =
-      tsl::down_cast<xla::cpu::CpuAotCompilationResult*>(
+      absl::down_cast<cpu::CpuAotCompilationResult*>(
           aot_compilation_result.get());
 
   *host_offloading_executable_proto.mutable_aot_compilation_result() =
@@ -159,8 +160,8 @@ TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   xla::Literal result_literal(ShapeUtil::MakeShape(S32, {}));
-  TF_ASSERT_OK(
-      stream->Memcpy(result_literal.untyped_data(), result, result.size()));
+  TF_ASSERT_OK(stream->Memcpy(result_literal.untyped_data(), result,
+                              ShapeUtil::ByteSizeOf(result_literal.shape())));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0<int32_t>(10),
                                      result_literal));
 }
@@ -240,14 +241,14 @@ TEST(HostExecuteStartThunkTest, MultiArgMultipleResult) {
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   xla::Literal result_literal0(ShapeUtil::MakeShape(S32, {}));
-  TF_ASSERT_OK(
-      stream->Memcpy(result_literal0.untyped_data(), result0, result0.size()));
+  TF_ASSERT_OK(stream->Memcpy(result_literal0.untyped_data(), result0,
+                              ShapeUtil::ByteSizeOf(result_literal0.shape())));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0<int32_t>(8),
                                      result_literal0));
 
   xla::Literal result_literal1(ShapeUtil::MakeShape(S32, {}));
-  TF_ASSERT_OK(
-      stream->Memcpy(result_literal1.untyped_data(), result1, result1.size()));
+  TF_ASSERT_OK(stream->Memcpy(result_literal1.untyped_data(), result1,
+                              ShapeUtil::ByteSizeOf(result_literal1.shape())));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0<int32_t>(15),
                                      result_literal1));
 }

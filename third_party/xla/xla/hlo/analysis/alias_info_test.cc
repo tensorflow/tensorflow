@@ -323,6 +323,68 @@ ENTRY test {
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
+TEST_F(GetInPlaceInputOutputPairsTest, NestedFusionBodyAliasingThroughBitcast) {
+  const char* kHlo = R"(
+HloModule test
+
+inner_fusion {
+  p0 = f32[4] parameter(0)
+  update = f32[2] parameter(1)
+  c0 = s32[] constant(0)
+  ROOT dus = f32[4] dynamic-update-slice(p0, update, c0)
+}
+
+outer_fusion {
+  p0 = f32[4] parameter(0)
+  update = f32[2] parameter(1)
+  nested = f32[4] fusion(p0, update), kind=kLoop, calls=inner_fusion
+  ROOT bitcast = f32[2,2] bitcast(nested)
+}
+
+ENTRY test {
+  p0 = f32[4] parameter(0)
+  update = f32[2] parameter(1)
+  ROOT fusion = f32[2,2] fusion(p0, update), kind=kLoop,
+      calls=outer_fusion
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(fusion);
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloOperandIndex{0, {}}, {}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
+TEST_F(GetInPlaceInputOutputPairsTest,
+       NestedFusionAnnotationNotInheritedThroughBitcast) {
+  const char* kHlo = R"(
+HloModule test
+
+copy_fusion {
+  p0 = f32[4] parameter(0)
+  ROOT copy = f32[4] copy(p0)
+}
+
+outer_fusion {
+  p0 = f32[4] parameter(0)
+  nested = f32[4] fusion(p0), kind=kLoop,
+      output_to_operand_aliasing={{}: (0, {})}, calls=copy_fusion
+  ROOT bitcast = f32[2,2] bitcast(nested)
+}
+
+ENTRY test {
+  p0 = f32[4] parameter(0)
+  ROOT fusion = f32[2,2] fusion(p0), kind=kLoop, calls=outer_fusion
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  EXPECT_THAT(alias_info_.GetInPlaceInputOutputPairs(fusion), IsEmpty());
+}
+
 // Verifies in-place behavior for nested multi-output fusions containing DUS.
 TEST_F(GetInPlaceInputOutputPairsTest, NestedMultiOutputDUSFusion) {
   const char* kHlo = R"(

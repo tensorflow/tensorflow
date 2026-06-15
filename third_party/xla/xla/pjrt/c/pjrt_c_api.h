@@ -77,6 +77,7 @@ typedef enum {
   PJRT_Extension_Type_Collectives,
   PJRT_Extension_Type_MultiSlice,
   PJRT_Extension_Type_HostMemoryAllocator,
+  PJRT_Extension_Type_XlaTransform,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
@@ -111,7 +112,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 110
+#define PJRT_API_MINOR 113
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1519,8 +1520,12 @@ struct PJRT_Device_MemoryStats_Args {
   bool pool_bytes_is_set;       // out
   int64_t peak_pool_bytes;      // out
   bool peak_pool_bytes_is_set;  // out
+
+  int64_t peak_allocated_bytes;      // out
+  bool peak_allocated_bytes_is_set;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_MemoryStats_Args, peak_pool_bytes_is_set);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_MemoryStats_Args,
+                          peak_allocated_bytes_is_set);
 
 // Device memory/allocator statistics. All returned stats except `bytes_in_use`
 // are optional and may not be returned by all platforms. Implementations may
@@ -1957,6 +1962,21 @@ struct PJRT_RecvCallbackInfo {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_RecvCallbackInfo, recv_callback);
 
+typedef void (*PJRT_HloOutputCallback)(int64_t replica_id, int64_t partition_id,
+                                       const void* data,
+                                       const int64_t* shape_dims,
+                                       size_t shape_num_dims,
+                                       PJRT_Buffer_Type shape_element_type,
+                                       int64_t operand_index, void* user_arg);
+
+typedef struct PJRT_HloOutputCallbackInfo {
+  void* user_arg;
+  PJRT_HloOutputCallback callback;
+  int64_t callback_id;
+  size_t num_operands;
+} PJRT_HloOutputCallbackInfo;
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_HloOutputCallbackInfo, num_operands);
+
 typedef struct PJRT_MultiSlice_Config PJRT_MultiSlice_Config;
 
 struct PJRT_ExecuteOptions {
@@ -2011,9 +2031,12 @@ struct PJRT_ExecuteOptions {
   // If true, transpose the array from the device native format into major to
   // minor format.
   bool use_major_to_minor_data_layout_for_callbacks;
+  // The HLO output callbacks. A single callback handles invocations across all
+  // replicas and partitions, so this is a flat span. Must outlive execution.
+  PJRT_HloOutputCallbackInfo* hlo_output_callbacks;
+  size_t num_hlo_output_callbacks;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions,
-                          use_major_to_minor_data_layout_for_callbacks);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, num_hlo_output_callbacks);
 
 struct PJRT_LoadedExecutable_Execute_Args {
   size_t struct_size;
@@ -2268,6 +2291,14 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_GetCompileOptions_Args,
 typedef PJRT_Error* PJRT_Executable_GetCompileOptions(
     PJRT_Executable_GetCompileOptions_Args* args);
 
+struct PJRT_LoadOptions {
+  size_t struct_size;
+  const int32_t* computation_origin;
+  size_t computation_origin_size;
+  PJRT_MultiSlice_Config* multi_slice_config;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadOptions, multi_slice_config);
+
 struct PJRT_Executable_DeserializeAndLoad_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -2279,9 +2310,11 @@ struct PJRT_Executable_DeserializeAndLoad_Args {
   // from the serialized executable).
   const char* overridden_serialized_compile_options;
   size_t overridden_serialized_compile_options_size;
+
+  PJRT_LoadOptions* load_options;
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_DeserializeAndLoad_Args,
-                          overridden_serialized_compile_options_size);
+                          load_options);
 
 // Deserializes an executable serialized by `PJRT_Executable_Serialize`.
 // `serialized_executable` must have been produced by the same platform and

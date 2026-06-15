@@ -2,7 +2,7 @@ path: "tensorflow.initializers.ones"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.init_ops.Ones\'>"
   is_instance: "<class \'tensorflow.python.ops.init_ops.Initializer\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'dtype\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\"], "

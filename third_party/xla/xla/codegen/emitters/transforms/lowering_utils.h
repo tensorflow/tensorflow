@@ -39,8 +39,8 @@ struct SPIRVMathOps {};
 inline auto getSPIRVMathOps() {
   return SPIRVMathOps<
       mm::AcosOp, mm::AcoshOp, mm::AsinOp, mm::AsinhOp, mm::Atan2Op, mm::AtanOp,
-      mm::AtanhOp, mm::CosOp, mm::CoshOp, mm::ExpM1Op, mm::ExpOp, mm::Log1pOp,
-      mm::LogOp, mm::SinOp, mm::SinhOp, mm::TanOp, mm::TanhOp>{};
+      mm::AtanhOp, mm::CosOp, mm::CoshOp, mm::ErfOp, mm::ExpM1Op, mm::ExpOp,
+      mm::Log1pOp, mm::LogOp, mm::SinOp, mm::SinhOp, mm::TanOp, mm::TanhOp>{};
 }
 
 template <typename Op>

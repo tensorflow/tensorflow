@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -165,6 +166,7 @@ struct LoadOptions {
 class ExecuteContext {
  public:
   virtual ~ExecuteContext() = default;
+  virtual absl::string_view kind() const { return "base"; }
 
   ffi::ExecutionContext& ffi_context() { return ffi_context_; }
   const ffi::ExecutionContext& ffi_context() const { return ffi_context_; }
@@ -221,6 +223,22 @@ struct RecvCallback {
       callback;
 };
 
+struct HloOutputCallback {
+  int64_t callback_id;
+  int num_operands;
+  // The callback for receiving reconstructed HLO output literals.
+  //
+  // Arguments:
+  // - replica_id: The ID of the replica this output corresponds to.
+  // - partition_id: The ID of the manual partition.
+  // - literals: The reconstructed tensor values produced by the HLO
+  // instruction.
+  //             Missing operands are represented by nullptr.
+  std::function<void(int64_t replica_id, int64_t partition_id,
+                     absl::Span<std::shared_ptr<const Literal> const> literals)>
+      callback;
+};
+
 struct ExecuteOptions {
   // If non-zero, identifies this execution as part of a potentially
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
@@ -248,6 +266,13 @@ struct ExecuteOptions {
   // These callbacks must outlive the execution.
   absl::Span<const std::vector<SendCallback>> send_callbacks;
   absl::Span<const std::vector<RecvCallback>> recv_callbacks;
+  // The HLO output callbacks for PjRt execution. These callbacks are used to
+  // receive reconstructed HLO instruction output literals. Unlike send/recv
+  // callbacks, this is a flat span since a single callback instance handles
+  // invocations across all replicas and partitions, with the `replica_id` and
+  // `partition_id` passed directly as arguments. These callbacks must outlive
+  // the execution.
+  absl::Span<const HloOutputCallback> hlo_output_callbacks;
 
   // If true, send callbacks are passed PjRtChunks in major-to-minor layout, and
   // recv functions should pass major-to-minor chunks to

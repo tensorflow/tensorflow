@@ -157,9 +157,9 @@ absl::StatusOr<SyclTimerProperties> SyclGetTimerProperties(int device_ordinal);
 absl::Status SyclStreamSynchronize(::sycl::queue* stream_handle)
     ABSL_ATTRIBUTE_NONNULL(1);
 
-// Retrieves the most recent SYCL event associated with the given stream,
-// if available.
-absl::StatusOr<std::optional<::sycl::event>> SyclGetRecentEventFromStream(
+// Returns a SYCL event marking the most recent operation on the given stream.
+// If the stream has no prior work, submits a barrier and returns its event.
+absl::StatusOr<::sycl::event> SyclGetRecentEventFromStream(
     ::sycl::queue* stream_handle) ABSL_ATTRIBUTE_NONNULL(1);
 
 // NOTE: Similar to standard memcpy, all SYCL memcpy functions work

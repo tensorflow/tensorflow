@@ -1,18 +1,18 @@
 path: "tensorflow.data.experimental.Reducer"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.experimental.ops.grouping.Reducer\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "finalize_func"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "init_func"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "reduce_func"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

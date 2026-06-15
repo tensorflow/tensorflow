@@ -31,6 +31,7 @@ namespace tflite {
 namespace {
 
 using ::testing::ElementsAreArray;
+using ::testing::Pointwise;
 
 class GatherNdOpModel : public SingleOpModel {
  public:
@@ -533,9 +534,9 @@ TEST(GatherNdOpTest, StringOutOfBoundsTooLarge) {
                            "M", "N", "O",  //
                            "P", "Q", "R"});
   m.SetPositions<int32_t>({0, 0, 3, 0});
-  ASSERT_EQ(m.Invoke(), kTfLiteError);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
   m.SetPositions<int32_t>({0, 0, 2, 2});
-  ASSERT_EQ(m.Invoke(), kTfLiteError);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
 TEST(GatherNdOpTest, StringOutOfBoundsNegative) {
@@ -549,12 +550,22 @@ TEST(GatherNdOpTest, StringOutOfBoundsNegative) {
                            "M", "N", "O",  //
                            "P", "Q", "R"});
   m.SetPositions<int32_t>({1, -1, 0, 0});
-  ASSERT_EQ(m.Invoke(), kTfLiteError);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(GatherNdOpTest, StringMismatchedStringCount) {
+  GatherNdOpModel m({TensorType_STRING, {3, 2, 3}}, {TensorType_INT32, {2, 2}});
+  // Populate only 3 strings, but FlatSize() is 18.
+  m.SetInput<std::string>({"A", "B", "C"});
+  // Accessing slice at index (1, 0) starting at flat index 3. FlatSize check
+  // (3 + 3 <= 18) passes, but it exceeds the populated string count (3).
+  m.SetPositions<int32_t>({0, 1, 1, 0});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
 TEST(GatherNdOpTest, EmptyParamsAndIndex) {
   GatherNdOpModel m({TensorType_FLOAT32, {1, 0}}, {TensorType_INT32, {0, 2}});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
 }
 

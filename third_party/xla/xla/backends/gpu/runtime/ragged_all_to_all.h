@@ -35,6 +35,10 @@ namespace xla::gpu {
 bool IsRaggedAllToAllKernelSupported(int64_t num_outputs,
                                      PrimitiveType element_type);
 
+// Returns true if the kernel is supported for the given element type.
+bool IsRaggedAllToAllWithSymmetricMemoryKernelSupported(
+    PrimitiveType element_type);
+
 // Input:
 //  - input_buffer: dtype[num_input_rows, num_row_elements]
 //  - input_offsets_buffer: s64[num_ranks * num_updates_per_rank]
@@ -53,9 +57,7 @@ bool IsRaggedAllToAllKernelSupported(int64_t num_outputs,
 absl::Status RunRaggedAllToAllKernel(
     se::Stream* stream, PrimitiveType element_type,
     se::DeviceAddressBase input_buffer,
-    std::variant<stream_executor::gpu::RaggedAllToAllOutputPtrs,
-                 se::DeviceAddressBase>
-        output_ptrs,
+    stream_executor::gpu::RaggedAllToAllOutputPtrs output_ptrs,
     se::DeviceAddressBase input_offsets_buffer,
     se::DeviceAddressBase send_sizes_buffer,
     se::DeviceAddressBase output_offsets_buffer, int64_t num_outputs,

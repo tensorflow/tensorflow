@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "highwayhash/arch_specific.h"
 #include "highwayhash/hh_types.h"
 #include "highwayhash/highwayhash.h"
@@ -75,8 +76,8 @@ absl::StatusOr<DeviceListRef> DeviceList::FromProto(
   absl::InlinedVector<Device*, 1> devices;
   devices.reserve(proto.device_ids_size());
   for (int device_id : proto.device_ids()) {
-    TF_ASSIGN_OR_RETURN(Device* const device,
-                        client->LookupDevice(DeviceId(device_id)));
+    ASSIGN_OR_RETURN(Device* const device,
+                     client->LookupDevice(DeviceId(device_id)));
     devices.push_back(device);
   }
   return client->MakeDeviceList(devices);

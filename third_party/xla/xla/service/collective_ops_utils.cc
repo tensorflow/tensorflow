@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -361,8 +362,8 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
   CHECK(collective->GetModule()->config().has_static_device_assignment());
   const DeviceAssignment& device_assignment =
       collective->GetModule()->config().static_device_assignment();
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
-                      GetCollectiveOpGroupMode(collective));
+  ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
+                   GetCollectiveOpGroupMode(collective));
   return GetParticipatingDevicesGroups(device_assignment,
                                        collective->replica_groups(), mode);
 }
@@ -456,9 +457,8 @@ GetParticipatingFlattenedIdGroups(
 absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
 GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
                                   const DeviceAssignment& device_assignment) {
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
-                      GetCollectiveOpGroupMode(hlo));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(CollectiveOpGroupMode mode, GetCollectiveOpGroupMode(hlo));
+  ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveDeviceListBase> collective_device_list,
       GetParticipatingFlattenedIdGroups(device_assignment, *hlo->device_list(),
                                         mode));
@@ -472,8 +472,8 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
   int replica_count = device_assignment.replica_count();
   int partition_count = device_assignment.computation_count();
 
-  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
-                      device_assignment.LogicalIdForDevice(device_id));
+  ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
+                   device_assignment.LogicalIdForDevice(device_id));
   int current_replica_id = logical_id.replica_id;
   int current_partition_id = logical_id.computation_id;
   TF_RET_CHECK(0 <= current_replica_id && current_replica_id < replica_count)
@@ -488,9 +488,9 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       // This is a cross replica operation. replica group contains replica id.
       // use current replica id to find the set of participating replicas. If
       // replica groups are empty, assume a group with all replicas.
-      TF_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
-                          GetParticipatingIDs(group_mode, current_replica_id,
-                                              replica_count, replica_groups));
+      ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
+                       GetParticipatingIDs(group_mode, current_replica_id,
+                                           replica_count, replica_groups));
 
       // The set of participating devices is the replicas from the current
       // partition.
@@ -507,9 +507,9 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION: {
       // replica_groups contain partition_id, group contains all partitions for
       // the current replica.
-      TF_ASSIGN_OR_RETURN(std::vector<int> participating_partitions,
-                          GetParticipatingIDs(group_mode, current_partition_id,
-                                              partition_count, replica_groups));
+      ASSIGN_OR_RETURN(std::vector<int> participating_partitions,
+                       GetParticipatingIDs(group_mode, current_partition_id,
+                                           partition_count, replica_groups));
       participants.reserve(participating_partitions.size());
       for (int partition_id : participating_partitions) {
         TF_RET_CHECK(0 <= partition_id && partition_id < partition_count)
@@ -524,9 +524,9 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
         COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION: {
       // replica_groups contain replica_ids. Group contains replicas for all
       // partitions.
-      TF_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
-                          GetParticipatingIDs(group_mode, current_replica_id,
-                                              replica_count, replica_groups));
+      ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
+                       GetParticipatingIDs(group_mode, current_replica_id,
+                                           replica_count, replica_groups));
       participants.reserve(participating_replicas.size() * partition_count);
       for (int replica_id : participating_replicas) {
         TF_RET_CHECK(0 <= replica_id && replica_id < replica_count)
@@ -550,7 +550,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
 
       // Find participants based on flattened id. replica_groups cannot be empty
       // so no need to pass in total_participant_count.
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           std::vector<int> participating_flattened_ids,
           GetParticipatingIDs(group_mode, current_flattened_id,
                               /*total_participant_count=*/std::nullopt,
@@ -654,12 +654,12 @@ GetReplicaGroupCountAndSize(const HloInstruction* hlo) {
     return std::make_pair(device_list->num_replica_groups(),
                           device_list->num_devices_per_group());
   }
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(hlo));
-  TF_ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
-                      GetPariticipantCountsForReplicaGroups(
-                          config.replica_count(), config.num_partitions(),
-                          device_list->replica_groups(), group_mode));
+  ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                   GetCollectiveOpGroupMode(hlo));
+  ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
+                   GetPariticipantCountsForReplicaGroups(
+                       config.replica_count(), config.num_partitions(),
+                       device_list->replica_groups(), group_mode));
   int64_t replica_group_size = participant_counts[0];
   for (int64_t participant_count : participant_counts) {
     if (participant_count != replica_group_size) {

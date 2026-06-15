@@ -21,25 +21,23 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/service/hlo_module_config.h"
-// The source_location.h is not available in open source.
-#if defined(PLATFORM_GOOGLE)
-#include "absl/types/source_location.h"
-#endif  // PLATFORM_GOOGLE
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/decision.h"
 #include "xla/service/fusion_queue.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace xla {
 
@@ -51,132 +49,12 @@ struct InPlaceFusionOptions {
   bool relax_multiple_non_elementwise_ops = false;
 };
 
-// A holder for the source location. absl::SourceLocation is not available in
-// open source, so we have a stub implementation to limit
-// #if define(PLATFORM_GOOGLE).
-class SourceLocationHolder {
- public:
-#if defined(PLATFORM_GOOGLE)
-  explicit constexpr SourceLocationHolder(
-      absl::SourceLocation source_location = absl::SourceLocation::current())
-      : source_location_(source_location) {}
-
-  std::string ToString() const {
-    return absl::StrCat(" at: ", source_location_.file_name(), ":",
-                        source_location_.line());
-  }
-
- private:
-  absl::SourceLocation source_location_;
-#else
-  SourceLocationHolder() = default;
-  std::string ToString() const { return ""; }
-#endif  // PLATFORM_GOOGLE
-};
-
-// Propagating explanation of fusion decisions: if something could not be fused,
-// explain the reason.
-class FusionDecision {
- public:
-  static FusionDecision Allow() { return FusionDecision(); }
-  FusionDecision(const FusionDecision& decision) = default;
-
-  static FusionDecision Forbid(
-      absl::string_view explanation,
-      SourceLocationHolder source_location = SourceLocationHolder()) {
-    return FusionDecision(false, explanation, source_location);
-  }
-
-  // If condition is `true` means that we CAN fuse. In that case, explanation is
-  // discarded.
-  FusionDecision(
-      bool condition, absl::string_view explanation,
-      SourceLocationHolder source_location = SourceLocationHolder()) {
-    if (!condition) {
-      explanation_ = explanation;
-      source_location_ = source_location;
-    }
-  }
-
-  explicit FusionDecision(
-      absl::Status status,
-      SourceLocationHolder source_location = SourceLocationHolder()) {
-    if (!status.ok()) {
-      explanation_ = status.message();
-      source_location_ = source_location;
-    }
-  }
-
-  // We can fuse iff. the decision is `true`. The source location indicates
-  // where an instance was created, making debugging easier without a need to
-  // provide explicit explanation.
-  FusionDecision(  // NOLINT
-      bool decision,
-      SourceLocationHolder source_location = SourceLocationHolder())
-      : FusionDecision(decision, "Not fusing", source_location) {}
-
-  // Returns whether it can be fused.
-  explicit operator bool() const { return CanFuse(); }
-
-  // Whether the fusion decision is positive.
-  bool CanFuse() const { return !explanation_.has_value(); }
-
-  // Connects two decisions with a disjunction. This is different than just
-  // picking one, as we also have to propagate both explanations if only one of
-  // them is false to show why fusion wasn't performed.
-  FusionDecision Or(const FusionDecision& decision) const {
-    if (CanFuse() || decision.CanFuse()) {
-      return Allow();
-    }
-    return Forbid(absl::StrCat(Explain(), " ; ", decision.Explain()));
-  }
-
-  // Connects two fusion decision with a conjunction. Unlike disjunction,
-  // propagates only one explanation (as it is enough to show that fusion could
-  // not be done).
-  FusionDecision And(const FusionDecision& decision) const {
-    if (CanFuse()) {
-      return decision;
-    }
-    if (decision.CanFuse()) {
-      return *this;
-    }
-    // Both conditions were violated: returning either is valid.
-    return *this;
-  }
-
-  // Appends to explanation, or turns the decision negative.
-  FusionDecision operator<<(absl::string_view explanation) const {
-    return Forbid(absl::StrCat(explanation_.value_or(""), explanation),
-                  source_location_);
-  }
-
-  // Appends to explanation, or turns the decision negative.
-  FusionDecision operator<<(int64_t explanation) const {
-    return Forbid(absl::StrCat(explanation_.value_or(""), explanation),
-                  source_location_);
-  }
-
-  // Explains why the fusion could not be performed, or that it can be.
-  std::string Explain() const {
-    if (explanation_.has_value()) {
-      return absl::StrCat(explanation_.value(), source_location_.ToString());
-    }
-    return "Actually, we can fuse it.";
-  }
-
- private:
-  // Empty IFF fusion is possible (explanation provided for negative cases).
-  std::optional<std::string> explanation_;
-  SourceLocationHolder source_location_;
-
-  FusionDecision() = default;
-};
+using FusionDecision = Decision;
 
 #define RETURN_IF_NOT_FUSIBLE(...)                   \
   do {                                               \
     ::xla::FusionDecision _decision = (__VA_ARGS__); \
-    if (TF_PREDICT_FALSE(!_decision.CanFuse())) {    \
+    if (TF_PREDICT_FALSE(_decision.IsForbidden())) { \
       return _decision;                              \
     }                                                \
   } while (0)
@@ -266,11 +144,20 @@ class InstructionFusion : public HloModulePass {
           inplace_op_fusion_decider,
       bool legality_check_only = false);
 
-  // Returns whether multi-output fusion can be applied to fuse `producer` into
-  // `consumer`. In contrast to "regular" fusion, the `producer` is not
-  // duplicated by multi-output fusion.
-  virtual FusionDecision ShouldFuseIntoMultiOutput(HloInstruction* consumer,
-                                                   int64_t operand_index) {
+  virtual FusionDecision IsConsumerSuitableForMultiOutputFusion(
+      const HloInstruction* consumer) const {
+    return FusionDecision::Forbid(
+        "multi-output fusion not supported by this pass");
+  }
+
+  // Returns whether multi-output fusion can be applied to fuse `producer` at
+  // `operand_index` into `consumer`. In contrast to "regular" fusion, the
+  // `producer` is not duplicated by multi-output fusion.
+  //
+  // This method is only called if `IsConsumerSuitableForMultiOutputFusion`
+  // returns `Allow`.
+  virtual FusionDecision ShouldFuseOperandIntoMultiOutputFusion(
+      HloInstruction* consumer, int64_t operand_index) {
     return FusionDecision::Forbid(
         "multi-output fusion not supported by this pass");
   }

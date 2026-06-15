@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
@@ -79,24 +80,24 @@ namespace {
 absl::StatusOr<std::unique_ptr<HloModule>> GetModule(
     const std::string& hlo_file) {
   std::string hlo_text;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), hlo_file, &hlo_text));
   return ParseAndReturnUnverifiedModule(hlo_text);
 }
 
 absl::Status Autotune(HloModule& module) {
-  TF_ASSIGN_OR_RETURN(std::string platform_name,
-                      PlatformUtil::CanonicalPlatformName("gpu"));
+  ASSIGN_OR_RETURN(std::string platform_name,
+                   PlatformUtil::CanonicalPlatformName("gpu"));
 
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      se::PlatformManager::PlatformWithName(
-                          absl::AsciiStrToUpper(platform_name)));
+  ASSIGN_OR_RETURN(se::Platform * platform,
+                   se::PlatformManager::PlatformWithName(
+                       absl::AsciiStrToUpper(platform_name)));
   if (platform->VisibleDeviceCount() == 0) {
     return absl::InternalError("No devices found");
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
-                      xla::Compiler::GetForPlatform(platform->id()));
+  ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+                   xla::Compiler::GetForPlatform(platform->id()));
   se::StreamExecutor* stream_executor = platform->ExecutorForDevice(0).value();
   auto* gpu_compiler = absl::down_cast<GpuCompiler*>(compiler.get());
   auto alias_info =
@@ -110,10 +111,12 @@ absl::Status Autotune(HloModule& module) {
 
   mlir::MLIRContext mlir_context;
   xla::RegisterSymbolicExprStorage(&mlir_context);
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
-                      gpu_compiler->GetAutotunerBackends(
-                          stream_executor, allocator.get(), &target_config,
-                          alias_info.get(), debug_options, &mlir_context));
+  ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<CodegenBackend>> backends,
+      AutotunerPass::GetGpuAutotunerBackends(
+          stream_executor, allocator.get(), &target_config, alias_info.get(),
+          debug_options, &mlir_context, gpu_compiler->ShapeSizeBytesFunction(),
+          gpu_compiler, platform->id()));
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuner",
                                       tsl::port::MaxParallelism());
@@ -131,7 +134,7 @@ absl::Status Autotune(HloModule& module) {
           debug_options.xla_gpu_per_fusion_autotune_cache_dir(),
           debug_options.xla_gpu_experimental_autotune_cache_mode(),
           target_config.device_description);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,
       Autotuner::Create(std::move(backends), std::move(profiler),
                         autotune_config, std::move(cache), &thread_pool));
@@ -144,7 +147,7 @@ absl::Status Autotune(HloModule& module) {
                              const HloInstruction& instruction) -> bool {
     if (!do_not_autotune_cublas_and_cudnn &&
         (instruction.opcode() == HloOpcode::kCustomCall &&
-         (IsCublasGemm(instruction) ||
+         (IsCublasLtGemm(instruction) ||
           IsCustomCallToDnnConvolution(instruction)))) {
       return true;
     }

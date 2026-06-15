@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
@@ -71,9 +72,9 @@ class Thunk {
   enum class Kind {
     kCall,
     kCollective,
-    kCopy,
     kConditional,
     kConvolution,
+    kCopy,
     kCustomCall,
     kDot,
     kFft,
@@ -83,6 +84,7 @@ class Thunk {
     kPartitionId,
     kReplicaId,
     kRngGetAndUpdateState,
+    kRngSeed,
     kSort,
     kTopK,
     kWhile,
@@ -281,6 +283,7 @@ class Thunk {
     int64_t device_ordinal = -1;  // -1 means no device ordinal is set.
     ExecuteSession session = ExecuteSession(ExecuteSession::kMaxWorkers,
                                             ExecuteSession::kSplitThreshold);
+    uint64_t rng_seed = 0;
   };
 
   // An execute event that becomes ready when all tasks are completed.
@@ -377,7 +380,7 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
   static absl::StatusOr<ThunkSequence> Of(Args&&... args) {
     static_assert(std::is_base_of_v<Thunk, T>,
                   "ThunkSequence::Of() requires `T` to be a `Thunk` subclass.");
-    TF_ASSIGN_OR_RETURN(auto thunk, T::Create(std::forward<Args>(args)...));
+    ASSIGN_OR_RETURN(auto thunk, T::Create(std::forward<Args>(args)...));
     return ThunkSequence(std::move(thunk));
   }
 

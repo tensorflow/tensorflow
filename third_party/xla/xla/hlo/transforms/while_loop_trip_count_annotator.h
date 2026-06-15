@@ -24,13 +24,27 @@ limitations under the License.
 
 namespace xla {
 
-// Pass that annotates `while` loops with known trip counts.
+// Pass that annotates `while` loops with `WhileLoopBackendConfig` metadata:
+// induction-variable tuple index, trip count, init/step, and per-position
+// init/step for any tuple slots already marked as dynamic variables.
 //
 // The annotation is stored as a backend-config on the while loop node.
 //
 // This pass should run after all passes that might semantically modify a while
 // loop, e.g. by unrolling it.  Otherwise, a loop could end up with a
-// backend-config that doesn't match its true trip-count.
+// backend-config that doesn't match its true trip-count, or with stale
+// `dynamic_variables` init/step entries for unrolled/pipelined slots.
+//
+// This pass overwrites any existing `WhileLoopBackendConfig` on a while
+// instruction. If a non-empty config is already present (e.g. set by an
+// earlier producer or by tooling), the pass logs a warning and replaces it
+// with the freshly-computed annotation. Host-offload dynamic variables are
+// discovered here via
+// `host_offload_utils::CollectDynamicVariableTupleIndices`. Keeping the config
+// off the critical path lets backends (e.g. TPU) that don't run this pass
+// avoid the proto entirely. GPU-only post-passes (e.g.
+// `DoubleBufferLoopUnrolling`) may still mutate existing fields in place to
+// track later loop transformations.
 //
 // This pass does some pattern-matching on loop bodies and conditions, so it
 // should run after most HLO simplifications and before fusion and layout
@@ -38,7 +52,7 @@ namespace xla {
 // introducing `copy` nodes.
 class WhileLoopTripCountAnnotator : public HloModulePass {
  public:
-  ~WhileLoopTripCountAnnotator() override {}
+  ~WhileLoopTripCountAnnotator() override = default;
   absl::string_view name() const override {
     return "while-loop-trip-count-annotator";
   }

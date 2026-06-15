@@ -19,7 +19,12 @@ import org.tensorflow.lite.Delegate;
 import org.tensorflow.lite.InterpreterFactoryApi;
 import org.tensorflow.lite.TensorFlowLite;
 
-/** {@link Delegate} for NNAPI inference. */
+/**
+ * {@link Delegate} for NNAPI inference.
+ *
+ * @deprecated See https://developer.android.com/ndk/guides/neuralnetworks/migration-guide.
+ */
+@Deprecated
 public class NnApiDelegate implements Delegate, AutoCloseable {
   /**
    * Interface used for implementing NnApiDelegate. This is for use only by packages in

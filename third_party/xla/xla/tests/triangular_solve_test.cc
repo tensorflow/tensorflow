@@ -46,10 +46,10 @@ namespace {
 constexpr float kNan = std::numeric_limits<float>::quiet_NaN();
 constexpr complex64 kNanC64 = complex64(kNan, kNan);
 
-using TriangularSolveTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
-using TriangularSolveLeftLookingTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using TriangularSolveTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+using TriangularSolveLeftLookingTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 Array2D<float> AValsLower() {
   return {{2, kNan, kNan, kNan},
@@ -451,7 +451,7 @@ struct TriangularSolveTestSpec {
 
 class TriangularSolveParametricTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+          HloPjRtInterpreterReferenceMixin<HloTestBase>>,
       public ::testing::WithParamInterface<TriangularSolveTestSpec> {};
 
 TEST_P(TriangularSolveParametricTest, Random) {

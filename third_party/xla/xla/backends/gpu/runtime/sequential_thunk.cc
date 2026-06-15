@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -70,8 +71,8 @@ absl::StatusOr<ThunkProto> SequentialThunk::ToProto() const {
   // empty.
   proto.mutable_sequential_thunk();
   for (const auto& thunk : executor_.thunks()) {
-    TF_ASSIGN_OR_RETURN(*proto.mutable_sequential_thunk()->add_thunks(),
-                        thunk->ToProto());
+    ASSIGN_OR_RETURN(*proto.mutable_sequential_thunk()->add_thunks(),
+                     thunk->ToProto());
   }
   return proto;
 }
@@ -81,8 +82,8 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> SequentialThunk::FromProto(
     const Deserializer& deserializer) {
   ThunkSequence thunk_sequence;
   for (const auto& sub_thunk_proto : thunk_proto.thunks()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> sub_thunk,
-                        deserializer(sub_thunk_proto));
+    ASSIGN_OR_RETURN(std::unique_ptr<Thunk> sub_thunk,
+                     deserializer(sub_thunk_proto));
     thunk_sequence.push_back(std::move(sub_thunk));
   }
 

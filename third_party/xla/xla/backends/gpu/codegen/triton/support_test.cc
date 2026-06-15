@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/service/gpu/target_constants.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -2033,6 +2034,32 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::ValuesIn(AllDevicesToTest())),
     MixedF8DotTest::ParamToString);
 
+TEST_F(DotTest, MixedFnuzF8DotIsSupportedOnRocmAndRejectedOnCuda) {
+  const std::string kHloTestTemplate = R"(
+triton_computation {
+  p0 = f8e4m3fnuz[128,256] parameter(0)
+  p1 = f8e5m2fnuz[256,512] parameter(1)
+  ROOT result = f32[128,512] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[64]}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti_rocm,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, PRIMITIVE_TYPE_INVALID,
+                                     HloOpcode::kDot));
+  RunSupportTest(std::move(ti_rocm), /*output_tile_sizes=*/{16, 32},
+                 se::GpuComputeCapability(se::RocmComputeCapability("gfx942")));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti_cuda,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, PRIMITIVE_TYPE_INVALID,
+                                     HloOpcode::kDot));
+  RunSupportTest(std::move(ti_cuda), /*output_tile_sizes=*/{16, 32},
+                 se::GpuComputeCapability(se::CudaComputeCapability::Hopper()));
+}
+
 TEST_F(DotTest, SingleBatchDim) {
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
@@ -2309,7 +2336,7 @@ ENTRY entry {
       ParseTemplateAndGetInstruction(hlo_text, F32, HloOpcode::kFusion));
   se::GpuComputeCapability cc = DefaultDeviceForTesting();
   CodegenDecision decision = IsTritonSupportedInstruction(ti.Instruction(), cc);
-  ASSERT_FALSE(decision.CanFuse());
+  ASSERT_TRUE(decision.IsForbidden());
   EXPECT_THAT(decision.Explain(),
               HasSubstr("Nested fusions are not supported"));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{64, 32}, cc);
@@ -3287,6 +3314,7 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kDynamicSlice,
     HloOpcode::kDynamicUpdateSlice,
     HloOpcode::kGather,
+    HloOpcode::kMulhi,
     HloOpcode::kRaggedDot,
     HloOpcode::kReduceWindow,
     HloOpcode::kScaledDot,

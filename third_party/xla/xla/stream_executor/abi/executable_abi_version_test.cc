@@ -70,9 +70,9 @@ TEST(ExecutableAbiVersionTest, FromDeviceDescriptionRocm) {
   ASSERT_OK_AND_ASSIGN(
       ExecutableAbiVersion executable_abi_version,
       ExecutableAbiVersion::FromDeviceDescription(device_description));
-  EXPECT_THAT(executable_abi_version.platform_name(), "ROCm");
+  EXPECT_THAT(executable_abi_version.platform_name(), "ROCM");
   EXPECT_THAT(executable_abi_version.proto(),
-              EqualsProto(R"pb(platform_name: "ROCm")pb"));
+              EqualsProto(R"pb(platform_name: "ROCM")pb"));
 }
 
 TEST(ExecutableAbiVersionTest, FromDeviceDescriptionOneAPI) {

@@ -168,3 +168,14 @@ func.func @main(%arg0: tensor<2xf32> loc("Arg_0.1"), %arg1: tensor<2xf32> loc("A
 }
 
 // CHECK: Arg_0{{.*}}, metadata={op_name="Arg_0.1"}
+
+// -----
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.add"(%arg0, %arg1) {mhlo.frontend_attributes = {xla_metadata_payload = "my_tokamax_payload:json_data", some_other_attr = "keep_me"}} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: add
+// CHECK-SAME: metadata_payload="my_tokamax_payload:json_data"

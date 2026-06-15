@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/nvshmem/nvshmem.h"   // IWYU pragma: keep
 #include "third_party/nvshmem/nvshmemx.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
@@ -71,7 +72,7 @@ NvshmemCollectives::InitializeTopology(const Topology& topology) {
 }
 
 absl::StatusOr<void*> NvshmemCollectives::Allocate(uint64_t bytes) {
-  TF_RETURN_IF_ERROR(se::gpu::nvshmem::InitializeOnce());
+  RETURN_IF_ERROR(se::gpu::nvshmem::InitializeOnce());
   VLOG(3) << absl::StreamFormat(
       "Start allocation of %s (%llu bytes) for NVSHMEM",
       tsl::strings::HumanReadableNumBytes(bytes), bytes);
@@ -85,7 +86,7 @@ absl::StatusOr<void*> NvshmemCollectives::Allocate(uint64_t bytes) {
 }
 
 absl::Status NvshmemCollectives::Deallocate(void* buffer) {
-  TF_RETURN_IF_ERROR(se::gpu::nvshmem::InitializeOnce());
+  RETURN_IF_ERROR(se::gpu::nvshmem::InitializeOnce());
   VLOG(3) << absl::StreamFormat("Start de-allocation for NVSHMEM buffer: %p",
                                 buffer);
   nvshmem_free(buffer);

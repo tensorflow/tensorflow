@@ -1454,6 +1454,95 @@ ENTRY test {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
 }
 
+// Tests verifying that grouped GEMM rewriting is skipped when
+// xla_gpu_enable_cublaslt is disabled.
+class GroupedGemmRewriteDisabledCublasLtTest
+    : public HloPjRtInterpreterReferenceMixin<GemmRewriteTestBase> {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();
+    // Explicitly disable cublaslt/hipblaslt: grouped GEMM must not be emitted.
+    debug_options.set_xla_gpu_enable_cublaslt(false);
+    debug_options.set_xla_gpu_autotune_level(0);
+    return debug_options;
+  }
+
+ protected:
+  void SetUp() override {
+    if (SkipGroupedGemmTest()) {
+      GTEST_SKIP()
+          << "Grouped GEMM is only supported on ROCm with hipBLASLt on "
+             "gfx942 or gfx950";
+    }
+  }
+};
+
+// When xla_gpu_enable_cublaslt=false the ragged-dot must NOT be rewritten into
+// a __cublas$lt$groupedMatmul custom call.
+TEST_F(GroupedGemmRewriteDisabledCublasLtTest,
+       NoGroupedGemmCustomCallWhenCublasLtDisabled) {
+  const char* hlo_text = R"(
+HloModule GroupedGemmCublasLtDisabled
+
+ENTRY AddRaggedDotsFunc {
+    p0 = f16[64,9]{1,0} parameter(0)
+    p1 = f16[2,9,8]{2,1,0} parameter(1)
+    p2 = s32[2] constant({16, 48})
+    ROOT ragged-dot = f16[64,8]{1,0} ragged-dot(p0, p1, p2),
+                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+                      lhs_ragged_dims={0}, rhs_group_dims={0}
+}
+)";
+  MatchOptimizedHlo(
+      hlo_text,
+      R"(; CHECK-NOT: custom_call_target="__cublas$lt$groupedMatmul")");
+}
+
+// Tests verifying that grouped GEMM rewriting is skipped when
+// xla_gpu_experimental_use_ragged_dot_grouped_gemm is disabled.
+class GroupedGemmRewriteDisabledFlagTest
+    : public HloPjRtInterpreterReferenceMixin<GemmRewriteTestBase> {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();
+    // Explicitly disable the grouped GEMM feature flag.
+    debug_options.set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(false);
+    debug_options.set_xla_gpu_enable_cublaslt(true);
+    debug_options.set_xla_gpu_autotune_level(0);
+    return debug_options;
+  }
+
+ protected:
+  void SetUp() override {
+    if (SkipGroupedGemmTest()) {
+      GTEST_SKIP()
+          << "Grouped GEMM is only supported on ROCm with hipBLASLt on "
+             "gfx942 or gfx950";
+    }
+  }
+};
+
+// When xla_gpu_experimental_use_ragged_dot_grouped_gemm=false the ragged-dot
+// must NOT be rewritten into a __cublas$lt$groupedMatmul custom call.
+TEST_F(GroupedGemmRewriteDisabledFlagTest,
+       NoGroupedGemmCustomCallWhenFlagDisabled) {
+  const char* hlo_text = R"(
+HloModule GroupedGemmFlagDisabled
+
+ENTRY AddRaggedDotsFunc {
+    p0 = f16[64,9]{1,0} parameter(0)
+    p1 = f16[2,9,8]{2,1,0} parameter(1)
+    p2 = s32[2] constant({16, 48})
+    ROOT ragged-dot = f16[64,8]{1,0} ragged-dot(p0, p1, p2),
+                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+                      lhs_ragged_dims={0}, rhs_group_dims={0}
+}
+)";
+  MatchOptimizedHlo(
+      hlo_text,
+      R"(; CHECK-NOT: custom_call_target="__cublas$lt$groupedMatmul")");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

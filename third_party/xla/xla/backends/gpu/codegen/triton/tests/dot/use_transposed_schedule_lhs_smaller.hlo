@@ -1,5 +1,5 @@
-// RUN: hlo_to_xtileir %s | FileCheck %s
-// RUN: triton_test_correctness --abs_error_bound=2e-4 --rel_error_bound=1e-6 %s
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false --abs_error_bound=2e-4 --rel_error_bound=1e-6 %s
 // RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=2e-4 --rel_error_bound=1e-6
 
 fusion {
@@ -11,7 +11,7 @@ fusion {
     backend_config={sizes:[32]}
 }
 // CHECK-DAG: (pid_0) -> ((pid_0 mod 2) * 16)
-// CHECK-DAG: (pid_0) -> (((pid_0 floordiv 2) mod 16) * 8)
+// CHECK-DAG: (pid_0) -> (((pid_0 / 2) mod 16) * 8)
 
 ENTRY main {
   p0 = f32[2,32,64] parameter(0)

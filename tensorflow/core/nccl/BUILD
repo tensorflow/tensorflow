@@ -133,6 +133,12 @@ filegroup(
     name = "mobile_srcs",
     srcs = [
         "collective_communicator.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs",
+    srcs = [
         "collective_communicator.h",
     ],
 )

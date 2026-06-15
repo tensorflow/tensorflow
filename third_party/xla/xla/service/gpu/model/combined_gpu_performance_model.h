@@ -50,7 +50,8 @@ class CombinedGpuPerformanceModel : public GpuPerformanceModelBase {
       HloFusionAnalysisCache& fusion_analysis_cache
           ABSL_ATTRIBUTE_LIFETIME_BOUND,
       mlir::MLIRContext& mlir_context ABSL_ATTRIBUTE_LIFETIME_BOUND,
-      HloCostAnalysis::ShapeSizeFunction shape_size);
+      HloCostAnalysis::ShapeSizeFunction shape_size,
+      bool use_experimental_tiling);
 
   // Returns runtime data analysis results of a single instruction.
   //
@@ -111,7 +112,6 @@ class CombinedGpuPerformanceModel : public GpuPerformanceModelBase {
 
   const se::DeviceDescription& device_info_;
   HloFusionAnalysisCache& fusion_analysis_cache_;
-  mlir::MLIRContext& mlir_context_;
 
   GpuPerformanceModelWithIndexingAnalysis indexing_model_;
   GpuPerformanceModel model_;

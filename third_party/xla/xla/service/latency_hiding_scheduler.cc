@@ -45,6 +45,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "re2/re2.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -127,8 +128,20 @@ bool IsNopInstruction(HloOpcode op, const HloInstruction& hlo) {
           hlo.users().front()->opcode() == HloOpcode::kWhile);
 }
 
-bool InstructionDefinesValue(const HloInstruction* instruction,
-                             const HloValue* value) {
+}  // namespace
+
+bool MemoryPressureTracker::InstructionTransitivelyDefines(
+    const HloInstruction* instruction,
+    const BufferInfoTracker::ValueInfo& buffer_value_info) const {
+  if (instruction->called_computations().empty()) {
+    return false;
+  }
+  return absl::c_linear_search(buffer_value_info.transitively_defining_calls,
+                               instruction);
+}
+
+bool MemoryPressureTracker::InstructionDefinesValue(
+    const HloInstruction* instruction, const HloValue* value) const {
   if (value->defining_instruction() == instruction) {
     return true;
   }
@@ -140,23 +153,15 @@ bool InstructionDefinesValue(const HloInstruction* instruction,
   // value. This is needed in cases, e.g., where we wrap a value-defining
   // instruction in a async call for offloading, and the async start itself will
   // effectively define the value in the current scope that the scheduler is
-  // running in.
-  if (instruction->opcode() == HloOpcode::kAsyncStart ||
-      instruction->opcode() == HloOpcode::kAsyncDone) {
-    if (instruction->async_wrapped_opcode() == HloOpcode::kCall) {
-      return instruction->async_wrapped_instruction()
-                 ->called_computations()[0]
-                 ->root_instruction() == value->defining_instruction();
-    }
-    return instruction->async_wrapped_instruction() ==
-           value->defining_instruction();
-  }
-  return false;
+  // running in. This also handles the case of a call instruction.
+  HloBuffer::Id id = hlo_alias_analysis_->GetBufferContainingValue(*value).id();
+  const auto& info = buffer_tracker_.GetBufferInfo(id);
+  return InstructionTransitivelyDefines(instruction, info);
 }
 
-bool InstructionFirstDefinesBuffer(
+bool MemoryPressureTracker::InstructionFirstDefinesBuffer(
     const HloInstruction* instruction,
-    const BufferInfoTracker::ValueInfo& buffer_value_info) {
+    const BufferInfoTracker::ValueInfo& buffer_value_info) const {
   if (buffer_value_info.first_definition == instruction) {
     return true;
   }
@@ -165,17 +170,10 @@ bool InstructionFirstDefinesBuffer(
   }
   // Similar to logic above, also check if the instruction is a call to a
   // computation that defines the value.
-  if (instruction->opcode() == HloOpcode::kAsyncStart) {
-    if (instruction->async_wrapped_opcode() == HloOpcode::kCall) {
-      return instruction->async_wrapped_instruction()
-                 ->called_computations()[0]
-                 ->root_instruction() == buffer_value_info.first_definition;
-    }
-    return instruction->async_wrapped_instruction() ==
-           buffer_value_info.first_definition;
-  }
-  return false;
+  return InstructionTransitivelyDefines(instruction, buffer_value_info);
 }
+
+namespace {
 
 bool InstructionLastUsesBuffer(
     const HloInstruction* instruction,
@@ -955,9 +953,13 @@ BufferInfoTracker::BufferInfoTracker(
   // Recursively walk the HLO graph looking inside every computation and
   // collecting buffer information. Effectively flattening the HLO schedule
   // across called computations.
-  std::function<void(const HloComputation*)> process_computation =
-      [&process_computation, module, alias_analysis, this,
-       &shape_size_bytes](const HloComputation* computation) {
+  std::function<void(const HloComputation*,
+                     const std::vector<const HloInstruction*>&)>
+      process_computation = [&process_computation, module, alias_analysis, this,
+                             &shape_size_bytes](
+                                const HloComputation* computation,
+                                const std::vector<const HloInstruction*>&
+                                    call_stack) {
         // Skip computations that don't have schedules (e.g., host computations
         // created during compute offload that are executed separately).
         // Note: We don't need to track memory usage on CPU for now. If needed,
@@ -973,7 +975,9 @@ BufferInfoTracker::BufferInfoTracker(
             if (called_computation->IsFusionComputation()) {
               continue;
             }
-            process_computation(called_computation);
+            std::vector<const HloInstruction*> next_call_stack = call_stack;
+            next_call_stack.push_back(instruction);
+            process_computation(called_computation, next_call_stack);
           }
           ShapeUtil::ForEachSubshape(
               instruction->shape(),
@@ -983,6 +987,8 @@ BufferInfoTracker::BufferInfoTracker(
                   if (buffer_infos_[buffer->id()].value == nullptr) {
                     buffer_infos_[buffer->id()] = CreateBufferInfo(
                         buffer, instruction, instruction, shape_size_bytes);
+                    buffer_infos_[buffer->id()].transitively_defining_calls =
+                        call_stack;
                   }
                 }
               });
@@ -999,7 +1005,7 @@ BufferInfoTracker::BufferInfoTracker(
           }
         }
       };
-  process_computation(module->entry_computation());
+  process_computation(module->entry_computation(), {});
 }
 
 void ModulePressureState::InitializePressureStates(
@@ -2454,7 +2460,7 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
     }());
     VLOG(2) << "Current time: " << sched_state->current_time;
     // Find the best annotated node to schedule.
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         HloGraphNode * node,
         FindAndExtractBestAnnotatedNode(
             *sched_state, scheduling_instruction_crosses_overlap_limit_,
@@ -2486,8 +2492,8 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
     sched_state->ready_set.pop_back();
 
     // Schedule the node.
-    TF_ASSIGN_OR_RETURN(sched_state->current_time,
-                        ScheduleNode(node, sched_state));
+    ASSIGN_OR_RETURN(sched_state->current_time,
+                     ScheduleNode(node, sched_state));
     num_scheduled++;
     VLOG(2) << "Scheduled annotated node (" << num_scheduled << "/"
             << annotation_size << "): " << node->GetInstr().name();
@@ -3526,12 +3532,11 @@ absl::Status DefaultSchedulerCore::SchedulingStep(
     SchedulingState* sched_state) {
   // Get the first available node for scheduling that is the node that
   // satisfies our ready heuristic the best.
-  TF_ASSIGN_OR_RETURN(HloGraphNode * node,
-                      FindAndExtractBestNodeAvailable(
-                          *sched_state, /*should_skip_node=*/nullptr));
+  ASSIGN_OR_RETURN(HloGraphNode * node,
+                   FindAndExtractBestNodeAvailable(
+                       *sched_state, /*should_skip_node=*/nullptr));
   CHECK(node != nullptr);
-  TF_ASSIGN_OR_RETURN(sched_state->current_time,
-                      ScheduleNode(node, sched_state));
+  ASSIGN_OR_RETURN(sched_state->current_time, ScheduleNode(node, sched_state));
   VLOG(2) << "Scheduled: " << node->GetInstr().name();
   XLA_VLOG_LINES(5, node->ToString());
   return absl::OkStatus();
@@ -3665,8 +3670,7 @@ absl::StatusOr<bool> DefaultSchedulerCore::TryScheduleOneAnnotationGroup(
     sched_state->ready_annotations.pop_back();
     VLOG(2) << "------- BEGIN ANNOTATION: " << annotation << " -------";
     sched_state->ongoing_annotation = annotation;
-    TF_RETURN_IF_ERROR(
-        ScheduleAnnotation(computation, annotation, sched_state));
+    RETURN_IF_ERROR(ScheduleAnnotation(computation, annotation, sched_state));
     VLOG(2) << "-------  END ANNOTATION: " << annotation << " --------";
     sched_state->ongoing_annotation = -1;
     return true;
@@ -3690,7 +3694,7 @@ DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
 
 absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
-  TF_ASSIGN_OR_RETURN(auto sched_state, MakeSchedulingState(computation));
+  ASSIGN_OR_RETURN(auto sched_state, MakeSchedulingState(computation));
   // Activate the log filter for this computation.
   ScopedVlogFilter filter_guard(computation->name(),
                                 config_.log_computation_re);
@@ -3746,7 +3750,7 @@ DefaultSchedulerCore::ScheduleComputation(
           .live_ids_at_bottom);
 
   if (graph_processing_hook_) {
-    TF_RETURN_IF_ERROR(graph_processing_hook_(&sched_state->sched_graph));
+    RETURN_IF_ERROR(graph_processing_hook_(&sched_state->sched_graph));
   }
 
   VLOG(5) << "Just built graph:";
@@ -4019,7 +4023,7 @@ LatencyHidingScheduler::LatencyHidingStatistics(
           .push_back({instr, current_time, curr_pos});
     } else if (instr_node.IsSupportedAsyncDone()) {
       const HloInstruction* start_instr = instr->operand(0);
-      // TODO(b/329731042): Handle pipelined Send/Recv in while-body, which
+      // TODO: Handle pipelined Send/Recv in while-body, which
       // is the only situation where an async done operand is not an async
       // start.
       if (scheduling_context->GetAsyncTracker()->IsSupportedAsyncStart(
@@ -4164,18 +4168,18 @@ LatencyHidingScheduler::ScheduleWithPreferences(
     HloModule* module, const std::vector<double>& preferences,
     const HloComputation* computation,
     std::shared_ptr<SchedulerCore::SchedulingState> sched_state) {
-  TF_RETURN_IF_ERROR(scheduler_core_->ResetScheduler(module));
+  RETURN_IF_ERROR(scheduler_core_->ResetScheduler(module));
   auto set_preferences = [&](HloScheduleGraph* graph) -> absl::Status {
     VLOG(3) << "Setting scheduling preferences.";
     graph->SetPreferences(preferences);
     return absl::OkStatus();
   };
-  TF_RETURN_IF_ERROR(scheduler_core_->SetGraphProcessingHook(set_preferences));
+  RETURN_IF_ERROR(scheduler_core_->SetGraphProcessingHook(set_preferences));
   absl::Cleanup clear_hook = [&] {
     scheduler_core_->SetGraphProcessingHook(nullptr).IgnoreError();
   };
-  TF_ASSIGN_OR_RETURN(auto new_schedule, scheduler_core_->ScheduleComputation(
-                                             computation, sched_state));
+  ASSIGN_OR_RETURN(auto new_schedule, scheduler_core_->ScheduleComputation(
+                                          computation, sched_state));
 
   // Save the old schedule.
   auto old_schedule = std::vector<HloInstruction*>(
@@ -4247,10 +4251,10 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
   if (computations_to_schedule_.empty()) {
     return false;
   }
-  TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
+  RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
   const auto& debug_options = module->config().debug_options();
   if (debug_options.xla_dump_latency_hiding_schedule()) {
-    TF_RETURN_IF_ERROR(scheduler_core_->CaptureScheduleProto());
+    RETURN_IF_ERROR(scheduler_core_->CaptureScheduleProto());
   }
   if (VLOG_IS_ON(1)) {
     // Log the statistics before scheduling. We batch the per-computation
@@ -4268,8 +4272,8 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
     }
   }
   for (HloComputation* computation : computations_to_schedule_) {
-    TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
-                        scheduler_core_->ScheduleComputation(computation));
+    ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
+                     scheduler_core_->ScheduleComputation(computation));
     // Update target specific states that may include altering the
     // computation.
     scheduling_context_->GetAsyncTracker()->UpdateTargetDefinedStates(
@@ -4297,11 +4301,11 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
               << " bytes, does not fit in initial limit: "
               << initial_memory_limit << ". Setting the new limit to "
               << static_cast<uint64_t>(scheduler_core_->GetMemoryLimit() * 0.9);
-    TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
+    RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
     scheduler_core_->SetMemoryLimit(scheduler_core_->GetMemoryLimit() * 0.9);
     for (HloComputation* computation : computations_to_schedule_) {
-      TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
-                          scheduler_core_->ScheduleComputation(computation));
+      ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
+                       scheduler_core_->ScheduleComputation(computation));
       scheduling_context_->GetAsyncTracker()->UpdateTargetDefinedStates(
           computation);
       module->schedule().set_sequence(computation,
@@ -4338,8 +4342,8 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
     }
   }
   if (debug_options.xla_dump_latency_hiding_schedule()) {
-    TF_ASSIGN_OR_RETURN(ScheduleProto proto,
-                        scheduler_core_->GetCapturedScheduleProto());
+    ASSIGN_OR_RETURN(ScheduleProto proto,
+                     scheduler_core_->GetCapturedScheduleProto());
     const std::string filename = absl::StrFormat("%s.schedule", module->name());
     DumpProtobufToFile(proto, debug_options, filename);
   }

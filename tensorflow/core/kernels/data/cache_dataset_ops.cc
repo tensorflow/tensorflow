@@ -116,8 +116,8 @@ class DatasetRandomAccessCache {
       TF_RETURN_IF_ERROR(
           iter_resource_->GetNext(ctx, &out_tensors, &end_of_sequence));
       if (end_of_sequence) {
-        return tensorflow::errors::OutOfRange("Index out of range [0, ",
-                                              cache_.size(), "):", index);
+        return absl::OutOfRangeError(absl::StrCat("Index out of range [0, ",
+                                                  cache_.size(), "):", index));
       }
       cache_.push_back(out_tensors);
     }
@@ -371,9 +371,9 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           if (!s.ok()) {
             LOG(ERROR) << s;
           }
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Upstream iterator is producing more than ", kMaxItems,
-              " items, which is more than the cache limit.");
+              " items, which is more than the cache limit."));
         }
 
         TF_RETURN_IF_ERROR(
@@ -384,10 +384,10 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           return absl::OkStatus();
         }
         if (out_tensors->size() != dataset()->num_tensors_) {
-          return errors::Internal(
+          return absl::InternalError(absl::StrCat(
               "Upstream iterator returned invalid number of tensors. "
               "Expected ",
-              dataset()->num_tensors_, " got: ", out_tensors->size());
+              dataset()->num_tensors_, " got: ", out_tensors->size()));
         }
         size_t tensor_index = 0;
         for (const Tensor& t : *out_tensors) {
@@ -455,7 +455,8 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &temp));
           cur_index_ = static_cast<size_t>(temp);
           if (cur_index_ != temp) {
-            return errors::Internal("Invalid value for cur_index ", temp);
+            return absl::InternalError(
+                absl::StrCat("Invalid value for cur_index ", temp));
           }
         }
 
@@ -472,7 +473,8 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kShardId, &temp));
           shard_id_ = static_cast<size_t>(temp);
           if (shard_id_ != temp) {
-            return errors::Internal("Invalid value for shard_id ", temp);
+            return absl::InternalError(
+                absl::StrCat("Invalid value for shard_id ", temp));
           }
         }
         filename_ = absl::StrCat(dataset()->filename_, "_", shard_id_);
@@ -659,11 +661,12 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
               iterator_state_reader->ReadScalar(prefix(), kCurIndex, &temp));
           cur_index_ = static_cast<size_t>(temp);
           if (cur_index_ != temp) {
-            return errors::Internal("Invalid value for cur_index ", temp);
+            return absl::InternalError(
+                absl::StrCat("Invalid value for cur_index ", temp));
           }
         }
         if (!reader_.Valid()) {
-          return errors::Internal("Error initializing BundleReader.");
+          return absl::InternalError("Error initializing BundleReader.");
         }
         reader_.Seek(dataset()->FormatName(cur_index_, 0));
         iterator_restored_ = true;
@@ -811,8 +814,8 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     if (index < 0 ||
         (cardinality != kUnknownCardinality &&
          cardinality != kInfiniteCardinality && index >= cardinality)) {
-      return errors::OutOfRange("Index out of range [0, ", cardinality,
-                                "):", index);
+      return absl::OutOfRangeError(
+          absl::StrCat("Index out of range [0, ", cardinality, "):", index));
     }
     if (!dataset_random_access_cache_) {
       dataset_random_access_cache_ =
@@ -830,8 +833,8 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     if (index < 0 ||
         (cardinality != kUnknownCardinality &&
          cardinality != kInfiniteCardinality && index >= cardinality)) {
-      return errors::OutOfRange("Index out of range [0, ", cardinality,
-                                "):", index);
+      return absl::OutOfRangeError(
+          absl::StrCat("Index out of range [0, ", cardinality, "):", index));
     }
     mutex_lock l(mu_);
     if (!iterator_random_access_cache_) {

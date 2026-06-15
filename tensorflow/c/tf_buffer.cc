@@ -18,11 +18,12 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
-#include "tensorflow/core/platform/errors.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
-#include "tensorflow/core/platform/status.h"
 
 extern "C" {
 
@@ -59,21 +60,22 @@ namespace tensorflow {
 absl::Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
                              TF_Buffer* out) {
   if (out->data != nullptr) {
-    return errors::InvalidArgument("Passing non-empty TF_Buffer is invalid.");
+    return absl::InvalidArgumentError(
+        "Passing non-empty TF_Buffer is invalid.");
   }
   const size_t proto_size = in.ByteSizeLong();
   void* buf = port::Malloc(proto_size);
   if (buf == nullptr) {
-    return tensorflow::errors::ResourceExhausted(
-        "Failed to allocate memory to serialize message of type '",
-        in.GetTypeName(), "' and size ", proto_size);
+    return absl::ResourceExhaustedError(
+        absl::StrCat("Failed to allocate memory to serialize message of type '",
+                     in.GetTypeName(), "' and size ", proto_size));
   }
   if (!in.SerializeWithCachedSizesToArray(static_cast<uint8_t*>(buf))) {
     port::Free(buf);
-    return errors::InvalidArgument(
-        "Unable to serialize ", in.GetTypeName(),
-        " protocol buffer, perhaps the serialized size (", proto_size,
-        " bytes) is too large?");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unable to serialize ", in.GetTypeName(),
+                     " protocol buffer, perhaps the serialized size (",
+                     proto_size, " bytes) is too large?"));
   }
   out->data = buf;
   out->length = proto_size;
@@ -83,9 +85,10 @@ absl::Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
 
 absl::Status BufferToMessage(const TF_Buffer* in,
                              tensorflow::protobuf::MessageLite* out) {
-  if (in == nullptr || !out->ParseFromArray(in->data, in->length)) {
-    return errors::InvalidArgument("Unparseable ", out->GetTypeName(),
-                                   " proto");
+  if (in == nullptr || in->length > std::numeric_limits<int>::max() ||
+      !out->ParseFromArray(in->data, in->length)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unparseable ", out->GetTypeName(), " proto"));
   }
   return absl::OkStatus();
 }

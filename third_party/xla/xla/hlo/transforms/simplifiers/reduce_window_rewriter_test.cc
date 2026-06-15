@@ -34,6 +34,10 @@ class ReduceWindowRewriterTest : public HloHardwareIndependentTestBase {
                                 std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(hlo, ReduceWindowRewriter{128}, expected);
   }
+  void CheckScanRewrite(absl::string_view hlo,
+                        std::optional<absl::string_view> expected) {
+    RunAndFilecheckHloRewrite(hlo, AssociativeScanRewriter{128}, expected);
+  }
 };
 
 TEST_F(ReduceWindowRewriterTest, EliminateR1) {
@@ -200,7 +204,7 @@ ENTRY entry (arg: f32[46592]) -> f32[46592] {
   ROOT result = f32[46592]{0} get-tuple-element(scan), index=0
 })";
 
-  CheckReduceWindowRewrite(hlo, R"(
+  CheckScanRewrite(hlo, R"(
 // CHECK: %add_float_rw_wrapper (carry_0: f32[], input_0: f32[]) -> f32[] {
 // CHECK-NEXT:   %input_0 = f32[] parameter(1)
 // CHECK-NEXT:   %carry_0 = f32[] parameter(0)
@@ -244,7 +248,7 @@ ENTRY entry (arg: f32[46592, 128]) -> f32[46592, 128] {
   ROOT result = f32[46592, 128]{1,0} get-tuple-element(scan), index=0
 })";
 
-  CheckReduceWindowRewrite(hlo, R"(
+  CheckScanRewrite(hlo, R"(
 // CHECK: %add_float_scalarized_rw_wrapper (carry_0: f32[], input_0: f32[]) -> f32[] {
 // CHECK-NEXT:   %input_0 = f32[] parameter(1)
 // CHECK-NEXT:   %carry_0 = f32[] parameter(0)
@@ -290,7 +294,7 @@ ENTRY entry (arg: f32[46592]) -> f32[46592] {
   ROOT result = f32[46592]{0} get-tuple-element(scan), index=0
 })";
 
-  CheckReduceWindowRewrite(hlo, std::nullopt);
+  CheckScanRewrite(hlo, std::nullopt);
 }
 
 TEST_F(ReduceWindowRewriterTest, OptimizeVariadicAssociativeScan) {
@@ -318,7 +322,7 @@ ENTRY entry (arg_0: f32[46592], arg_1: f32[46592]) -> (f32[46592], f32[46592]) {
   ROOT result = (f32[46592]{0}, f32[46592]{0}) tuple(out_0, out_1)
 })";
 
-  CheckReduceWindowRewrite(hlo, std::nullopt);
+  CheckScanRewrite(hlo, std::nullopt);
 }
 
 TEST_F(ReduceWindowRewriterTest, NoOptimizeNonAssociativeScan) {
@@ -339,7 +343,7 @@ ENTRY entry (arg: f32[46592]) -> f32[46592] {
   ROOT result = f32[46592]{0} get-tuple-element(scan), index=0
 })";
 
-  CheckReduceWindowRewrite(hlo, std::nullopt);
+  CheckScanRewrite(hlo, std::nullopt);
 }
 
 TEST_F(ReduceWindowRewriterTest, OptimizeShortScan) {
@@ -360,7 +364,7 @@ ENTRY entry (arg: f32[128]) -> f32[128] {
   ROOT result = f32[128]{0} get-tuple-element(scan), index=0
 })";
 
-  CheckReduceWindowRewrite(hlo, R"(
+  CheckScanRewrite(hlo, R"(
 // CHECK: %add_float_rw_wrapper (carry_0: f32[], input_0: f32[]) -> f32[] {
 // CHECK-NEXT:   %input_0 = f32[] parameter(1)
 // CHECK-NEXT:   %carry_0 = f32[] parameter(0)
@@ -375,48 +379,6 @@ ENTRY entry (arg: f32[128]) -> f32[128] {
 // CHECK-NEXT:   ROOT [[result:%[^ ]+]] = f32[128]{0} get-tuple-element([[tuple_1]]), index=0
 // CHECK-NEXT: }
   )");
-}
-
-// ----------------------------------------------------------------------------
-// Coverage for the DecomposeAssociativeScan() hook. A subclass that returns
-// false skips the kScan -> tree-reduce decomposition (the path TPU uses with
-// the native ScanEmitter enabled).
-// ----------------------------------------------------------------------------
-
-class ScanPreservingReduceWindowRewriter : public ReduceWindowRewriter {
- public:
-  explicit ScanPreservingReduceWindowRewriter(int64_t base_length)
-      : ReduceWindowRewriter(base_length) {}
-
- protected:
-  bool DecomposeAssociativeScan() const override { return false; }
-};
-
-using ReduceWindowRewriterScanPreserveTest = HloHardwareIndependentTestBase;
-
-TEST_F(ReduceWindowRewriterScanPreserveTest, AssociativeScanLeftIntact) {
-  // With DecomposeAssociativeScan() == false the kScan must survive the pass
-  // and the module must be returned unchanged.
-  constexpr absl::string_view kHlo = R"(
-HloModule m
-
-add_float {
-  lhs = f32[] parameter(0)
-  rhs = f32[] parameter(1)
-  add = f32[] add(lhs, rhs)
-  ROOT tuple = (f32[], f32[]) tuple(add, add)
-}
-
-ENTRY entry (arg: f32[46592]) -> f32[46592] {
-  arg = f32[46592]{0} parameter(0)
-  constant = f32[] constant(0)
-  scan = (f32[46592]{0}, f32[]) scan(f32[46592]{0} %arg, f32[] %constant), dimensions={0}, num_carries=1, to_apply=%add_float, is_associative=true
-  ROOT result = f32[46592]{0} get-tuple-element(scan), index=0
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
-  ScanPreservingReduceWindowRewriter pass{128};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
-  EXPECT_FALSE(changed);
 }
 
 }  // namespace

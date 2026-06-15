@@ -638,5 +638,36 @@ TEST(DumpPerModuleProtobufToFile, DumpsToSubfolder) {
   EXPECT_THAT(matches, Not(IsEmpty()));
 }
 
+TEST(DumpHloIfEnabled, CompactGte) {
+  HloModuleConfig config;
+  DebugOptions options = GetDebugOptionsFromFlags();
+  auto env = tsl::Env::Default();
+  std::string dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
+  options.set_xla_dump_to(dump_dir);
+  options.set_xla_dump_hlo_as_text(true);
+  options.set_xla_dump_compact_gte(true);
+  config.set_debug_options(options);
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = (f32[10], f32[20]) parameter(0)
+      gte0 = f32[10] get-tuple-element(p0), index=0
+      gte1 = f32[20] get-tuple-element(p0), index=1
+      ROOT out = (f32[10], f32[20]) tuple(gte0, gte1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  std::string dump_name = "dump";
+  auto paths = DumpHloModuleIfEnabled(*m, dump_name);
+  EXPECT_EQ(paths.size(), 2);
+  std::string data;
+  EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
+  EXPECT_FALSE(absl::StrContains(data, "get-tuple-element"));
+  EXPECT_TRUE(absl::StrContains(data, "%p0#0"));
+  EXPECT_TRUE(absl::StrContains(data, "%p0#1"));
+}
+
 }  // namespace
 }  // namespace xla

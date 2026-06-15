@@ -79,7 +79,7 @@ bool CombinationCrashesTriton(PrimitiveType lhs_type, PrimitiveType rhs_type,
 class DotTest : public SupportTestBase,
                 public ::testing::WithParamInterface<
                     std::tuple<PrimitiveType, HloOpcode>>,
-                public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+                public HloPjRtInterpreterReferenceMixin<HloTestBase> {
  protected:
   DotTest()
       : SupportTestBase(
@@ -221,7 +221,7 @@ std::string DynamicSliceTestParamToString(
 class DynamicSliceTest
     : public SupportTestBase,
       public ::testing::WithParamInterface<DynamicSliceTestParam::TupleType>,
-      public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+      public HloPjRtInterpreterReferenceMixin<HloTestBase> {
  public:
   DynamicSliceTest()
       : SupportTestBase(
@@ -292,11 +292,11 @@ ENTRY e {
   const bool is_supported_instruction =
       legacy_triton::IsTritonSupportedInstruction(*dynamic_slice,
                                                   GetComputeCapability())
-          .CanFuse();
+          .IsAllowed();
   const bool is_supported_dynamic_slice =
       legacy_triton::IsTritonSupportedDynamicSlice(
           *Cast<HloDynamicSliceInstruction>(dynamic_slice))
-          .CanFuse();
+          .IsAllowed();
   EXPECT_EQ(is_supported_instruction, is_supported_dynamic_slice);
 
   if (is_supported_instruction) {

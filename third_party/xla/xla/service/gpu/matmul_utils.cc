@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -82,13 +83,13 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
     int64_t dim = shape.layout().minor_to_major()[i];
     if (!row_dims.empty() && dim == row_dims.back()) {
       minor_to_major.push_back(1);
-      TF_RETURN_IF_ERROR(check_physically_sequential(row_dims));
+      RETURN_IF_ERROR(check_physically_sequential(row_dims));
     } else if (!col_dims.empty() && dim == col_dims.back()) {
       minor_to_major.push_back(2);
-      TF_RETURN_IF_ERROR(check_physically_sequential(col_dims));
+      RETURN_IF_ERROR(check_physically_sequential(col_dims));
     } else if (!batch_dims.empty() && (dim == batch_dims.back())) {
       minor_to_major.push_back(0);
-      TF_RETURN_IF_ERROR(check_physically_sequential(batch_dims));
+      RETURN_IF_ERROR(check_physically_sequential(batch_dims));
     } else {
       return InvalidArgument("dims not physically sequential");
     }
@@ -170,7 +171,7 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
 /*static*/ absl::StatusOr<MatrixLayout> MatrixLayout::For(
     const Shape& shape, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> row_dims, absl::Span<const int64_t> col_dims) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       Shape batch_row_col_shape,
       GetBatchRowColumnShape(shape, batch_dims, row_dims, col_dims));
   return MatrixLayout::For(batch_row_col_shape);
@@ -234,7 +235,7 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   auto contracting_dims = (operand_idx == 0)
                               ? dot_dims.lhs_contracting_dimensions()
                               : dot_dims.rhs_contracting_dimensions();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<int64_t> non_contracting_dims,
       GetNonContractingDims(transpose.shape(), batch_dims, contracting_dims));
 
@@ -285,20 +286,20 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     bool grad_y, se::gpu::ScaleMode scale_mode,
     const se::GpuComputeCapability& gpu_version) {
   absl::Span<const int64_t> lhs_col_dims = lhs_contracting_dims;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_row_dims,
       GetNonContractingDims(lhs_shape, lhs_batch_dims, lhs_col_dims));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       MatrixLayout lhs_layout,
       MatrixLayout::For(lhs_shape, lhs_batch_dims, lhs_row_dims, lhs_col_dims));
 
   absl::Span<const int64_t> rhs_row_dims = rhs_contracting_dims;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<int64_t> rhs_col_dims,
       GetNonContractingDims(rhs_shape, rhs_batch_dims, rhs_row_dims));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       MatrixLayout rhs_layout,
       MatrixLayout::For(rhs_shape, rhs_batch_dims, rhs_row_dims, rhs_col_dims));
 
@@ -318,9 +319,9 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   auto output_col_dims =
       absl::Span<const int64_t>(output_dims).last(rhs_col_dims.size());
 
-  TF_ASSIGN_OR_RETURN(MatrixLayout output_layout,
-                      MatrixLayout::For(output_shape, output_batch_dims,
-                                        output_row_dims, output_col_dims));
+  ASSIGN_OR_RETURN(MatrixLayout output_layout,
+                   MatrixLayout::For(output_shape, output_batch_dims,
+                                     output_row_dims, output_col_dims));
   Shape c_matrix_shape = c_shape;
   // hipBlasLt does not yet support the C matrix to be BF16 for fp8 matmul
   // with fp8 output. Thus only do this for CUDA side.
@@ -339,9 +340,9 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
         bias_shape_ptr != nullptr ? bias_shape_ptr->element_type() : BF16);
   }
 
-  TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,
-                      MatrixLayout::For(c_matrix_shape, output_batch_dims,
-                                        output_row_dims, output_col_dims));
+  ASSIGN_OR_RETURN(MatrixLayout c_layout,
+                   MatrixLayout::For(c_matrix_shape, output_batch_dims,
+                                     output_row_dims, output_col_dims));
 
   // TODO(cjfj): We should also check that the batch, contracting and
   // non-contracting dimensions match in size and relative physical location.
@@ -420,8 +421,8 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
 
 /*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
     const HloInstruction* gemm, const se::GpuComputeCapability& gpu_version) {
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                      gemm->backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   gemm->backend_config<GpuBackendConfig>());
   return For(gemm, gpu_config.gemm_backend_config(), gpu_version);
 }
 
@@ -445,7 +446,7 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
   Shape c_shape = has_matrix_bias ? gemm->operand(2)->shape() : output_shape;
 
   std::optional<Shape> vector_bias_shape;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       bool has_vector_bias,
       xla::gpu::gpublas_lt::EpilogueAddsVectorBias(config.epilogue()));
   if (has_vector_bias) {
@@ -502,11 +503,11 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
   }
 
   absl::Span<const int64_t> lhs_col_dims = lhs_contracting_dims;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_row_dims,
       GetNonContractingDims(lhs_shape, lhs_batch_dims, lhs_col_dims));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       MatrixLayout lhs_layout,
       MatrixLayout::For(lhs_shape, lhs_batch_dims, lhs_row_dims, lhs_col_dims));
 
@@ -517,12 +518,12 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
                               rhs_group_dimensions.begin(),
                               rhs_group_dimensions.end());
   absl::Span<const int64_t> rhs_row_dims = rhs_contracting_dims;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<int64_t> rhs_col_dims,
       GetNonContractingDims(rhs_shape, rhs_batch_group_dims, rhs_row_dims));
-  TF_ASSIGN_OR_RETURN(MatrixLayout rhs_layout,
-                      MatrixLayout::For(rhs_shape, rhs_batch_group_dims,
-                                        rhs_row_dims, rhs_col_dims));
+  ASSIGN_OR_RETURN(MatrixLayout rhs_layout,
+                   MatrixLayout::For(rhs_shape, rhs_batch_group_dims,
+                                     rhs_row_dims, rhs_col_dims));
   uint64_t num_batch_dims =
       std::max(lhs_batch_dims.size(), rhs_batch_dims.size());
 
@@ -542,14 +543,14 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
                              .subspan(num_batch_dims, lhs_row_dims.size());
   auto output_col_dims =
       absl::Span<const int64_t>(output_dims).last(rhs_col_dims.size());
-  TF_ASSIGN_OR_RETURN(MatrixLayout output_layout,
-                      MatrixLayout::For(output_shape, output_batch_dims,
-                                        output_row_dims, output_col_dims));
+  ASSIGN_OR_RETURN(MatrixLayout output_layout,
+                   MatrixLayout::For(output_shape, output_batch_dims,
+                                     output_row_dims, output_col_dims));
 
   // Create C layout to properly calculate c_stride_ragged_dim
-  TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,
-                      MatrixLayout::For(c_shape, output_batch_dims,
-                                        output_row_dims, output_col_dims));
+  ASSIGN_OR_RETURN(MatrixLayout c_layout,
+                   MatrixLayout::For(c_shape, output_batch_dims,
+                                     output_row_dims, output_col_dims));
 
   TF_RET_CHECK(output_shape.dimensions().size() ==
                num_batch_dims + lhs_row_dims.size() + rhs_col_dims.size());
@@ -683,15 +684,15 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
     }
   }
 
-  TF_ASSIGN_OR_RETURN(se::blas::DataType type_a,
-                      se::gpu::AsBlasDataType(lhs_shape.element_type()));
-  TF_ASSIGN_OR_RETURN(se::blas::DataType type_b,
-                      se::gpu::AsBlasDataType(rhs_shape.element_type()));
-  TF_ASSIGN_OR_RETURN(se::blas::DataType type_c,
-                      se::gpu::AsBlasDataType(output_shape.element_type()));
-  TF_ASSIGN_OR_RETURN(se::blas::DataType type_d,
-                      se::gpu::AsBlasDataType(output_shape.element_type()));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(se::blas::DataType type_a,
+                   se::gpu::AsBlasDataType(lhs_shape.element_type()));
+  ASSIGN_OR_RETURN(se::blas::DataType type_b,
+                   se::gpu::AsBlasDataType(rhs_shape.element_type()));
+  ASSIGN_OR_RETURN(se::blas::DataType type_c,
+                   se::gpu::AsBlasDataType(output_shape.element_type()));
+  ASSIGN_OR_RETURN(se::blas::DataType type_d,
+                   se::gpu::AsBlasDataType(output_shape.element_type()));
+  ASSIGN_OR_RETURN(
       se::blas::ComputationType compute_type,
       se::gpu::GetBlasComputationType(
           precision_algorithm, lhs_shape.element_type(),
@@ -747,8 +748,8 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
 /*static*/ absl::StatusOr<GroupedGemmConfig> GroupedGemmConfig::For(
     const HloInstruction* grouped_gemm,
     const se::GpuComputeCapability& gpu_version) {
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                      grouped_gemm->backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   grouped_gemm->backend_config<GpuBackendConfig>());
   return For(grouped_gemm, gpu_config.grouped_gemm_backend_config(),
              gpu_version);
 }
@@ -809,8 +810,8 @@ absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
   auto create_matrix_desc = [](const se::gpu::MatrixLayout& layout,
                                se::DeviceAddressBase data)
       -> absl::StatusOr<se::gpu::MatrixDescriptor> {
-    TF_ASSIGN_OR_RETURN(se::blas::DataType type,
-                        se::gpu::AsBlasDataType(layout.dtype));
+    ASSIGN_OR_RETURN(se::blas::DataType type,
+                     se::gpu::AsBlasDataType(layout.dtype));
     return se::gpu::MatrixDescriptor{
         data, layout.leading_dim_stride, layout.batch_stride, type,
         // BLAS is column-major by default.
@@ -827,23 +828,23 @@ absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
     std::swap(lhs_buf, rhs_buf);
   }
 
-  TF_ASSIGN_OR_RETURN(se::gpu::OutputMatrixDescriptor out_desc,
-                      create_matrix_desc(out, out_buf));
+  ASSIGN_OR_RETURN(se::gpu::OutputMatrixDescriptor out_desc,
+                   create_matrix_desc(out, out_buf));
   out_desc.batch_size = out.batch_size;
   out_desc.m = out.num_rows;
   out_desc.n = out.num_cols;
   out_desc.k = lhs.num_cols;
   // TODO(tdanyluk): Investigate why don't we use the actual precision (and
   // algorithm) here? Why do we use the default?
-  TF_ASSIGN_OR_RETURN(out_desc.compute_type,
-                      se::gpu::GetBlasComputationType(
-                          PrecisionConfig::ALG_UNSET, lhs.dtype, out.dtype,
-                          se::blas::kDefaultComputePrecision, gpu_version));
+  ASSIGN_OR_RETURN(out_desc.compute_type,
+                   se::gpu::GetBlasComputationType(
+                       PrecisionConfig::ALG_UNSET, lhs.dtype, out.dtype,
+                       se::blas::kDefaultComputePrecision, gpu_version));
 
-  TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor lhs_desc,
-                      create_matrix_desc(lhs, lhs_buf));
-  TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor rhs_desc,
-                      create_matrix_desc(rhs, rhs_buf));
+  ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor lhs_desc,
+                   create_matrix_desc(lhs, lhs_buf));
+  ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor rhs_desc,
+                   create_matrix_desc(rhs, rhs_buf));
 
   return DescriptorsTuple{lhs_desc, rhs_desc, out_desc, must_swap_operands};
 }
@@ -865,7 +866,7 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   PrimitiveType lhs_type = primitive_util::NativeToPrimitiveType<Input>();
   PrimitiveType output_type = primitive_util::NativeToPrimitiveType<Output>();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       se::blas::ComputationType computation_type,
       se::gpu::GetBlasComputationType(
           precision_algorithm, lhs_type, output_type, compute_precision,
@@ -951,7 +952,7 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceAddressBase lhs_buffer,
                      se::blas::ProfileResult* profile_result) {
   VLOG(2) << "Executing a GemmThunk";
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GemmConfig::DescriptorsTuple desc,
       config.GetMatrixDescriptors(
           lhs_buffer, rhs_buffer, output_buffer,
@@ -1176,7 +1177,7 @@ absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(
     contracting_size *= lhs_shape.dimensions(dim);
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_non_contracting_dims,
       GetNonContractingDims(lhs_shape, dot_dims.lhs_batch_dimensions(),
                             dot_dims.lhs_contracting_dimensions()));
@@ -1185,7 +1186,7 @@ absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(
     lhs_non_contracting_size *= lhs_shape.dimensions(dim);
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<int64_t> rhs_non_contracting_dims,
       GetNonContractingDims(rhs_shape, dot_dims.rhs_batch_dimensions(),
                             dot_dims.rhs_contracting_dimensions()));

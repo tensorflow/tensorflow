@@ -66,7 +66,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   IntArrayUniquePtr element_shape_for_tensors =
       BuildTfLiteArray(rank - 1, tensor_input->dims->data + 1);
 
-  // `element_shape_tensor` is an auxillary input shape signature which
+  // `element_shape_tensor` is an auxiliary input shape signature which
   // is to be used as the `ElementShape()` attribute of the resulting
   // `TensorArray`.
   const TfLiteTensor* element_shape_tensor;
@@ -76,8 +76,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            element_shape_tensor->dims->data[0] == rank - 1) ||
                               element_shape_tensor->dims->size == 0);
 
-  IntArrayUniquePtr element_shape_for_list =
-      TensorAsShape(*element_shape_tensor);
+  IntArrayUniquePtr element_shape_for_list;
+  TF_LITE_ENSURE_OK(context, TensorAsShape(context, *element_shape_tensor,
+                                           element_shape_for_list));
+  TF_LITE_ENSURE(context, element_shape_for_list != nullptr);
   // Check given element shape is compatible with the suffix of input tensor's
   // shape. TODO(b/257472333) consider wrapping this in `#ifndef NDEBUG`.
   if (element_shape_for_list->size > 0) {
@@ -108,9 +110,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TensorUniquePtr tensor_to_set = BuildTfLiteTensor(
         tensor_input->type, BuildTfLiteArray(*element_shape_for_tensors),
         kTfLiteDynamic);
+    TF_LITE_ENSURE(context, tensor_to_set != nullptr);
 
-    memcpy(tensor_to_set->data.raw, tensor_input->data.raw + data_offset,
-           tensor_to_set->bytes);
+    if (tensor_to_set->bytes > 0) {
+      TF_LITE_ENSURE(context, tensor_to_set->data.raw != nullptr);
+      TF_LITE_ENSURE(context, tensor_input->data.raw != nullptr);
+      memcpy(tensor_to_set->data.raw, tensor_input->data.raw + data_offset,
+             tensor_to_set->bytes);
+    }
     data_offset += tensor_to_set->bytes;
 
     TF_LITE_ENSURE(context, arr->Set(i, std::move(tensor_to_set)));

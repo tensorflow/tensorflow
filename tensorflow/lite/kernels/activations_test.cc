@@ -1611,6 +1611,28 @@ TEST_P(SoftmaxOpTest, Softmax4D) {
                               })));
 }
 
+TEST_P(SoftmaxOpTest, Softmax4DHalf) {
+  FloatActivationsOpModel<half> m(GetRegistration(), 0.1f,
+                                  {TensorType_FLOAT16, {1, 2, 1, 4}},
+                                  TensorType_FLOAT16);
+  m.SetInput({
+      half(0),
+      half(-6),
+      half(2),
+      half(4),  // depth = 0
+      half(3),
+      half(-2),
+      half(10),
+      half(1),  // depth = 1
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {.23463, .12877, .28658, .35003,  //
+                   .22528, .13664, .45365, .18443},
+                  static_cast<float>(NumericLimits<half>::epsilon()) * 10)));
+}
+
 TEST_P(SoftmaxOpTest, Softmax4DUint8) {
   QuantizedActivationsOpModel m(GetRegistration(), 0.1f,
                                 {TensorType_UINT8, {1, 2, 1, 4}, -10, 10},
@@ -2753,6 +2775,40 @@ TEST_P(PReluOpTest, PReluUInt8) {
                                           128, 64, 192,   // Row 2, Column 1
                                           128, 112, 144,  // Row 2, Column 2
                                       }));
+}
+
+TEST_P(PReluOpTest, PReluUInt8RankFive) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedPReluOpModel m({TensorType_UINT8, {1, 2, 1, 2, 2}, kMin, kMax},
+                          {TensorType_UINT8, {1, 1, 2}, kMin, kMax});
+  m.SetInput<uint8_t>({
+      0.5f,
+      0.5f,  //
+      -1.0f,
+      -1.0f,  //
+      -0.25f,
+      -0.25f,  //
+      0.0f,
+      0.0f,  //
+  });
+  m.SetAlpha<uint8_t>({0.5f, -0.5f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.5f,
+                      0.5f,  //
+                      -0.5f,
+                      0.5f,  //
+                      -0.125f,
+                      0.125f,  //
+                      0.0f,
+                      0.0f,  //
+                  },
+                  kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              ElementsAreArray({192, 192, 64, 192, 112, 144, 128, 128}));
 }
 
 TEST_P(PReluOpTest, PReluUInt8SameShapes) {

@@ -29,22 +29,25 @@ class FileSystemSetConfigurationOp : public OpKernel {
     const Tensor* scheme_tensor;
     OP_REQUIRES_OK(context, context->input("scheme", &scheme_tensor));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(scheme_tensor->shape()),
-                errors::InvalidArgument("scheme must be scalar, got shape ",
-                                        scheme_tensor->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("scheme must be scalar, got shape ",
+                                 scheme_tensor->shape().DebugString())));
     const std::string scheme = scheme_tensor->scalar<tstring>()();
 
     const Tensor* key_tensor;
     OP_REQUIRES_OK(context, context->input("key", &key_tensor));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(key_tensor->shape()),
-                errors::InvalidArgument("key must be scalar, got shape ",
-                                        key_tensor->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("key must be scalar, got shape ",
+                                 key_tensor->shape().DebugString())));
     const std::string key = key_tensor->scalar<tstring>()();
 
     const Tensor* value_tensor;
     OP_REQUIRES_OK(context, context->input("value", &value_tensor));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(value_tensor->shape()),
-                errors::InvalidArgument("value must be scalar, got shape ",
-                                        scheme_tensor->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("value must be scalar, got shape ",
+                                 scheme_tensor->shape().DebugString())));
     const std::string value = value_tensor->scalar<tstring>()();
     OP_REQUIRES_OK(context, env_->SetOption(scheme, key, value));
   }

@@ -776,10 +776,11 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   // created by the JIT compiled code.
   function->setUWTableKind(llvm::UWTableKind::Default);
 
-  // Tensorflow always flushes denormals to zero, let LLVM know that flushing
-  // denormals is safe. This allows vectorization using ARM's neon instruction
-  // set.
-  function->addFnAttr("denormal-fp-math", "preserve-sign");
+  // Optionally flush denormals to zero. This allows vectorization using ARM's
+  // NEON instruction set. Controlled by the xla_cpu_ftz flag.
+  if (module_config.debug_options().xla_cpu_ftz()) {
+    function->addFnAttr("denormal-fp-math", "preserve-sign");
+  }
 
   // Add the optimize attribute to the function if optimizing for size. This
   // controls internal behavior of some optimization passes (e.g. loop

@@ -56,6 +56,9 @@ Status ReadSignatureDefMap(const Model* model, const Metadata* metadata,
   if (!model || !metadata || !map) {
     return absl::InvalidArgumentError("Arguments must not be nullptr");
   }
+  if (metadata->buffer() >= model->buffers()->size()) {
+    return absl::InternalError("Invalid buffer index in metadata");
+  }
   const flatbuffers::Vector<uint8_t>* flatbuffer_data =
       model->buffers()->Get(metadata->buffer())->data();
   const auto signature_defs =
@@ -87,6 +90,9 @@ Status SetSignatureDefMap(const Model* model,
   const Metadata* metadata = GetSignatureDefMetadata(model);
   if (metadata) {
     buffer_id = metadata->buffer();
+    if (buffer_id >= mutable_model->buffers.size()) {
+      return absl::InternalError("Invalid buffer index in metadata");
+    }
   } else {
     auto buffer = std::make_unique<BufferT>();
     mutable_model->buffers.emplace_back(std::move(buffer));
@@ -163,6 +169,9 @@ Status ClearSignatureDefMap(const Model* model, std::string* model_data) {
     const Metadata* metadata = model->metadata()->Get(id);
     if (metadata->name()->str() == kSignatureDefsMetadataName) {
       auto* buffers = &(mutable_model->buffers);
+      if (metadata->buffer() >= buffers->size()) {
+        return absl::InternalError("Invalid buffer index in metadata");
+      }
       buffers->erase(buffers->begin() + metadata->buffer());
       mutable_model->metadata.erase(mutable_model->metadata.begin() + id);
       break;

@@ -61,8 +61,8 @@ XlaOp ConvWithHighestPrecision(const XlaOp lhs, const XlaOp rhs,
               /*batch_group_count=*/1, &precision_config);
 }
 
-using ConvolutionVariantsTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using ConvolutionVariantsTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(ConvolutionVariantsTest, Minimal) {
   XlaBuilder builder(TestName());

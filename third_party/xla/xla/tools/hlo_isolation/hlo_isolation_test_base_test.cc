@@ -17,14 +17,21 @@ limitations under the License.
 
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include <gtest/gtest-spi.h>
 #include "absl/log/check.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array2d.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -32,20 +39,24 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 #include "xla/tools/hlo_isolation/hlo_isolation_api.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace hlo_isolation {
 namespace {
 
-class HloIsolationTest
-    : public HloIsolationTestMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
+class HloIsolationTest : public HloIsolationTestMixin<
+                             HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
 
 TEST_F(HloIsolationTest, RunSimpleModule) {
   const char* hlo_text = R"(
@@ -569,6 +580,87 @@ ENTRY %main (param.0: f32[100000000]) -> f32[100000000] {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   RunAndVerifyIsolationTest(*module);
+}
+
+TEST_F(HloIsolationTest, TestDumpMiscompareFiles) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule jit_f, is_scheduled=true, entry_computation_layout={(f32[3,6]{1,0:T(4,128)})->f32[3,6]{1,0:T(4,128)}}
+
+fused_computation {
+  param_0.1 = f32[3,6]{1,0:T(4,128)S(1)} parameter(0)
+  add.0 = f32[3,6]{1,0:T(4,128)} add(param_0.1, param_0.1), metadata={op_name="jit(f)/add" stack_frame_id=13}
+  ROOT abs.0 = f32[3,6]{1,0:T(4,128)} abs(add.0), metadata={op_name="jit(f)/abs" stack_frame_id=14}
+}
+
+fused_computation.1 {
+  param_0.3 = f32[3,6]{1,0:T(4,128)} parameter(0)
+  sin.0 = f32[3,6]{1,0:T(4,128)} sine(param_0.3), metadata={op_name="jit(f)/sin" stack_frame_id=10}
+  ROOT abs.1 = f32[3,6]{1,0:T(4,128)S(1)} abs(sin.0), metadata={op_name="jit(f)/abs" stack_frame_id=11}
+}
+
+ENTRY main.1 {
+  x.1 = f32[3,6]{1,0:T(4,128)} parameter(0), metadata={op_name="x"}
+  sine_abs_fusion = f32[3,6]{1,0:T(4,128)S(1)} fusion(x.1), kind=kLoop, calls=fused_computation.1, metadata={op_name="jit(f)/abs" stack_frame_id=11}
+  ROOT add_abs_fusion = f32[3,6]{1,0:T(4,128)} fusion(sine_abs_fusion), kind=kLoop, calls=fused_computation, metadata={op_name="jit(f)/abs" stack_frame_id=14}
+}
+)hlo";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  PipelineIsolationOptions options;
+  options.module_options.run_module_fn =
+      [](std::unique_ptr<HloModule> m, HloRunnerInterface* runner,
+         absl::Span<const Literal> input_data) -> absl::StatusOr<Literal> {
+    const bool should_inject = (m->name() == "sine_abs_fusion");
+    ASSIGN_OR_RETURN(Literal output,
+                     RunModule(std::move(m), runner, input_data));
+    if (should_inject) {
+      // Flip an exponent bit in the first element to guarantee a mismatch.
+      // Using untyped_data handles all primitive types without crashing.
+      char* data_ptr = static_cast<char*>(output.untyped_data(
+          output.shape().IsTuple() ? ShapeIndex{0} : ShapeIndex{}));
+      data_ptr[2] ^= 0x80;
+    }
+    return output;
+  };
+
+  ::testing::TestPartResultArray failures;
+  {
+    ::testing::ScopedFakeTestPartResultReporter reporter(
+        ::testing::ScopedFakeTestPartResultReporter::INTERCEPT_ALL_THREADS,
+        &failures);
+    RunAndVerifyIsolationTest(*module, options);
+  }
+  // We expect 3 failures:
+  // 1. TPU_VS_DEFUSED_TPU
+  // 2. TPU_VS_INTERPRETER
+  // 3. HloIsolationTestBase expects result.state() == SUCCESS or SKIPPED.
+  EXPECT_EQ(failures.size(), 3);
+
+  const char* env_p = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  const std::string outputs_dir = env_p ? env_p : ::testing::TempDir();
+
+  // Check that the failed module file is present.
+  std::vector<std::string> module_matches;
+  EXPECT_TRUE(tsl::Env::Default()
+                  ->GetMatchingPaths(
+                      tsl::io::JoinPath(outputs_dir,
+                                        "failed-module-sine_abs_fusion.txt"),
+                      &module_matches)
+                  .ok() &&
+              !module_matches.empty());
+  // Check that the actual, expected, and mismatches files are present.
+  for (absl::string_view suffix : {"actual", "expected", "mismatches"}) {
+    std::vector<std::string> matches;
+    EXPECT_TRUE(tsl::Env::Default()
+                    ->GetMatchingPaths(
+                        tsl::io::JoinPath(
+                            outputs_dir, absl::StrCat("failed-sine_abs_fusion-",
+                                                      suffix, ".txt")),
+                        &matches)
+                    .ok() &&
+                !matches.empty());
+  }
 }
 
 }  // namespace

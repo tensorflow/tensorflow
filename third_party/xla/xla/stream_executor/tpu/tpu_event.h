@@ -16,9 +16,9 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_TPU_TPU_EVENT_H_
 
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/tpu_executor_api.h"
 
 namespace stream_executor {
 namespace tpu {
@@ -32,6 +32,9 @@ class TpuEvent : public Event {
     platform_->EraseEvent(this);
     ExecutorApiFn()->TpuEvent_FreeFn(event_);
   }
+
+  TpuEvent(const TpuEvent&) = delete;
+  TpuEvent& operator=(const TpuEvent&) = delete;
 
  private:
   SE_Event* event_;

@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/Conversion/AMDGPUToROCDL/AMDGPUToROCDL.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
+#include "mlir/Dialect/AMDGPU/IR/AMDGPUDialect.h"
 #include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -104,6 +106,9 @@ class LowerToLLVMGPUPass
             converter, patterns, mlir::gpu::amd::Runtime::Unknown,
             *maybeChipset);
         mlir::configureGpuToROCDLConversionLegality(target);
+        mlir::populateAMDGPUToROCDLConversionPatterns(converter, patterns,
+                                                      *maybeChipset);
+        target.addIllegalDialect<mlir::amdgpu::AMDGPUDialect>();
       } else if (device_spec_.IsIntelGpu()) {
         // Add sub-group-size attribute to functions.
         int32_t sub_group_size = device_spec_.gpu().threads_per_warp();

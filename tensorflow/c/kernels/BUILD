@@ -27,13 +27,16 @@ tf_kernel_library(
     name = "summary_op",
     prefix = "summary_op",
     deps = [
+        ":tensor_shape_utils",
         "//tensorflow/c:kernels",
+        "//tensorflow/c:tf_datatype_hdrs",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_tensor",
-        "//tensorflow/c/kernels:tensor_shape_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -188,11 +191,25 @@ tf_cc_test(
 filegroup(
     name = "portable_all_op_kernels",
     srcs = [
+        ":portable_all_op_kernel_hdrs",
+        ":portable_all_op_kernel_srcs",
+    ],
+)
+
+filegroup(
+    name = "portable_all_op_kernel_srcs",
+    srcs = [
         "bitcast_op.cc",
         "histogram_summary_op.cc",
         "merge_summary_op.cc",
         "summary_op.cc",
         "tensor_shape_utils.cc",
+    ],
+)
+
+filegroup(
+    name = "portable_all_op_kernel_hdrs",
+    srcs = [
         "tensor_shape_utils.h",
     ],
 )

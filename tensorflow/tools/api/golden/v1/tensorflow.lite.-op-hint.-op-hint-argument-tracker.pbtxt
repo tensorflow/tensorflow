@@ -1,7 +1,7 @@
 path: "tensorflow.lite.OpHint.OpHintArgumentTracker"
 tf_class {
   is_instance: "<class \'tensorflow.lite.python.op_hint.OpHintArgumentTracker\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'function_name\', \'unique_function_id\', \'node_name_prefix\', \'attr_name\', \'level\', \'children_inputs_mappings\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "

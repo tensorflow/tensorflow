@@ -45,7 +45,6 @@ load("//third_party/transformer_engine:workspace.bzl", transformer_engine = "rep
 load("//third_party/triton:workspace.bzl", triton = "repo")
 load("//third_party/uv:workspace.bzl", uv = "repo")
 load("//third_party/xnnpack:workspace.bzl", xnnpack = "repo")
-load("//third_party/xxd:workspace.bzl", xxd = "repo")
 
 def _third_party_ext_impl(mctx):  # @unused
     # go/keep-sorted start
@@ -94,7 +93,6 @@ def _third_party_ext_impl(mctx):  # @unused
     triton()
     uv()
     xnnpack()
-    xxd()
     # go/keep-sorted end
 
 third_party_ext = module_extension(

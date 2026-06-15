@@ -5,11 +5,11 @@ tf_class {
   is_instance: "<class \'abc.ABC\'>"
   member {
     name: "MaxShardSizePartitioner"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "description"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

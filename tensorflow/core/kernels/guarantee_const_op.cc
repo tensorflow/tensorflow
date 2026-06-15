@@ -27,7 +27,7 @@ class GuaranteeConstOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const DataType input_dtype = ctx->input_dtype(0);
     OP_REQUIRES(ctx, input_dtype != DT_RESOURCE,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Input tensor cannot be a resource variable handle."));
     const Tensor& input_tensor = ctx->input(0);
     Tensor* output = nullptr;

@@ -76,13 +76,16 @@ void OpImplementationRenderer::RenderExecutionSingleOutput() {
 
 void OpImplementationRenderer::RenderExecutionMultipleOutputs() {
   Statement("int num_retvals = $0", op_.NumOutputs());
-  Statement("AbstractTensorHandle* temp_outputs[$0]", op_.NumOutputs());
-  Statement("Status status = $0->Execute(temp_outputs, &num_retvals)",
+  Statement("AbstractTensorHandle* temp_outputs[$0] = {nullptr}",
+            op_.NumOutputs());
+  Statement("absl::Status status = $0->Execute(temp_outputs, &num_retvals)",
             op_.VariableName());
 
+  BlockOpen("if (status.ok())");
   for (const ArgView& arg : op_.Outputs()) {
     Statement("*$0 = temp_outputs[$1]", arg.VariableName(), arg.Position());
   }
+  BlockClose();
 
   Statement("return status");
 }

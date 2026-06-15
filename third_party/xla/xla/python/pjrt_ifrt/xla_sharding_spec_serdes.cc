@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -78,8 +79,8 @@ class HloShardingSpecSerDes
           absl::StrCat("Unsupported ", version_number,
                        " for HloShardingSpec deserialization"));
     }
-    TF_ASSIGN_OR_RETURN(auto xla_hlo_sharding,
-                        xla::HloSharding::FromProto(proto.xla_op_sharding()));
+    ASSIGN_OR_RETURN(auto xla_hlo_sharding,
+                     xla::HloSharding::FromProto(proto.xla_op_sharding()));
 
     return HloShardingSpec::Create(proto.num_shards(),
                                    std::move(xla_hlo_sharding));

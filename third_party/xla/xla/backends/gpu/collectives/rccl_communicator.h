@@ -22,15 +22,14 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "rocm/include/rccl/rccl.h"
 #include "rocm/rocm_config.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -42,12 +41,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/xla_data.pb.h"
-
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
 
 namespace xla::gpu {
 
@@ -80,8 +73,7 @@ class RcclCommunicator : public GpuCommunicator {
   absl::Status HealthCheck() const final;
   absl::StatusOr<size_t> NumRanks() const final;
 
-  Future<> GroupExecute(
-      absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) final;
+  Future<> GroupExecute(absl::AnyInvocable<absl::Status() &&> group) final;
 
   Future<> AllReduce(se::DeviceAddressBase send_buffer,
                      se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
@@ -119,9 +111,18 @@ class RcclCommunicator : public GpuCommunicator {
   Future<> Recv(se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                 size_t count, RankId peer, const Executor& executor) final;
 
+  absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
+      se::DeviceAddressBase addr) final;
+
   std::string ToString() const final;
 
   ncclComm_t comm() const { return comm_; }
+
+  bool IsBlocking() const { return executor_ == nullptr; }
+
+  // Polls the communicator until any pending non-blocking operations are done
+  // or aborted.
+  absl::Status PollUntilDone() const;
 
  private:
   class RcclRegisteredBufferHandle;
@@ -134,8 +135,7 @@ class RcclCommunicator : public GpuCommunicator {
     VLOG(1) << "Created RCCL communicator" << *this;
   }
 
-  absl::Status GroupStart();
-  absl::Status GroupEnd();
+  absl::Status GroupLaunch(absl::FunctionRef<absl::Status()> group);
 
   absl::Status LaunchAllReduce(se::DeviceAddressBase send_buffer,
                                se::DeviceAddressBase recv_buffer,
@@ -179,10 +179,6 @@ class RcclCommunicator : public GpuCommunicator {
                           PrimitiveType dtype, size_t count, RankId peer,
                           const Executor& executor) final;
 
-  // Polls the communicator until any pending non-blocking operations are "done"
-  // or aborted.
-  absl::Status PollUntilDone() const;
-
   // Executes f on executor_, or calls f directly if executor_ is null.
   Future<> Execute(absl::AnyInvocable<absl::Status() &&> f) const;
 
@@ -225,9 +221,6 @@ class RcclCommunicator : public GpuCommunicator {
 
   // Has comm_ been aborted?
   bool aborted_ = false;
-
-  // Nesting level of current RCCL group
-  int group_nesting_level_ = 0;
 };
 
 }  // namespace xla::gpu

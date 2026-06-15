@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <fstream>
 #include <ios>
 #include <memory>
 #include <string>
@@ -25,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -118,9 +118,9 @@ absl::StatusOr<std::string> LLVMToHSACO(mlir::ModuleOp module,
   }
 
   xla::DebugOptions debug_opts = xla::DefaultDebugOptionsIgnoringFlags();
-  TF_ASSIGN_OR_RETURN(auto compile_result,
-                      gpu::amdgpu::CompileToHsaco(llvm_module.get(),
-                                                  gpu_version, debug_opts, ""));
+  ASSIGN_OR_RETURN(auto compile_result,
+                   gpu::amdgpu::CompileToHsaco(llvm_module.get(), gpu_version,
+                                               debug_opts, ""));
 
   std::vector<std::string> tempdir_vector;
   tsl::Env::Default()->GetLocalTempDirectories(&tempdir_vector);
@@ -132,12 +132,11 @@ absl::StatusOr<std::string> LLVMToHSACO(mlir::ModuleOp module,
   std::string temp_file_path = tsl::io::JoinPath(
       tempdir_vector[0], absl::StrCat("xla_triton_", rand_num, ".hsaco"));
 
-  std::ofstream ofs(temp_file_path, std::ios::binary);
-  if (!ofs) {
-    return absl::InternalError("Failed to create an hsaco temp file!");
-  }
-  ofs.write(reinterpret_cast<const char*>(compile_result.hsaco.data()),
-            compile_result.hsaco.size());
+  RETURN_IF_ERROR(tsl::WriteStringToFile(
+      tsl::Env::Default(), temp_file_path,
+      absl::string_view(
+          reinterpret_cast<const char*>(compile_result.hsaco.data()),
+          compile_result.hsaco.size())));
   return temp_file_path;
 }
 
@@ -171,14 +170,14 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
     return absl::InvalidArgumentError("Failed to canonicalize Triton module");
   }
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       TritonToLLVM(*module_op, arch_name, num_warps, num_ctas, num_stages));
 
   int64_t shared_mem_bytes =
       (*module_op)->getAttrOfType<mlir::IntegerAttr>("ttg.shared").getInt();
 
-  TF_ASSIGN_OR_RETURN(std::string hsaco_path,
-                      LLVMToHSACO(*module_op, arch_name, num_warps));
+  ASSIGN_OR_RETURN(std::string hsaco_path,
+                   LLVMToHSACO(*module_op, arch_name, num_warps));
 
   // There is no clusters in ROCm for now.
   return CompilationResult{

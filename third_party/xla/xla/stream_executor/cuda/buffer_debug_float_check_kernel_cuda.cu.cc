@@ -72,6 +72,12 @@ __host__ __device__ static constexpr T kInfinity =
 template <>
 __host__ __device__ constexpr __nv_bfloat16 kInfinity<__nv_bfloat16> =
     absl::bit_cast<__nv_bfloat16>(kInfinity<Eigen::bfloat16>);
+// - __half lacks std::numeric_limits specialization, and Eigen::half is not a
+// literal type (non-constexpr constructors), so we construct infinity from raw
+// bits.
+template <>
+__host__ __device__ constexpr __half kInfinity<__half> =
+    absl::bit_cast<__half>(uint16_t{0x7C00});
 
 __device__ unsigned int ThreadIdx() {
   return threadIdx.z * blockDim.y * blockDim.x + threadIdx.y * blockDim.x +
@@ -86,14 +92,17 @@ __device__ unsigned int BlockIdx() {
 __device__ inline bool IsNan(float v) { return isnan(v); }
 __device__ inline bool IsNan(double v) { return isnan(v); }
 __device__ inline bool IsNan(__nv_bfloat16 v) { return __isnan(v); }
+__device__ inline bool IsNan(__half v) { return __isnan(v); }
 __device__ inline bool IsInf(float v) { return isinf(v); }
 __device__ inline bool IsInf(double v) { return isinf(v); }
 __device__ inline bool IsInf(__nv_bfloat16 v) { return __isinf(v); }
+__device__ inline bool IsInf(__half v) { return __isinf(v); }
 __device__ inline bool IsZero(float v) { return v == 0.0f; }
 __device__ inline bool IsZero(double v) { return v == 0.0; }
 __device__ inline bool IsZero(__nv_bfloat16 v) {
   return v == __nv_bfloat16(0.0f);
 }
+__device__ inline bool IsZero(__half v) { return v == __half(0.0f); }
 
 // Reduce a warp worth of values into a single one and have the 0th thread in
 // the warp return it.
@@ -353,6 +362,12 @@ se::KernelLoaderSpec GetFloatCheckF64KernelSpec(int arity) {
       "BufferDebugFloatCheckF64Kernel", arity);
 }
 
+se::KernelLoaderSpec GetFloatCheckF16KernelSpec(int arity) {
+  return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
+      absl::bit_cast<void*>(&FloatCheck<__half>),
+      "BufferDebugFloatCheckF16Kernel", arity);
+}
+
 se::KernelLoaderSpec GetReduceFloatCheckResultsKernelSpec(int arity) {
   return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
       absl::bit_cast<void*>(&ReduceFloatCheckResults),
@@ -372,6 +387,10 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     BufferDebugFloatCheckF64Kernel, se::gpu::BufferDebugFloatCheckF64Kernel,
     se::cuda::kCudaPlatformId, GetFloatCheckF64KernelSpec);
+
+GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
+    BufferDebugFloatCheckF16Kernel, se::gpu::BufferDebugFloatCheckF16Kernel,
+    se::cuda::kCudaPlatformId, GetFloatCheckF16KernelSpec);
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     BufferDebugReduceFloatCheckResultsKernel,

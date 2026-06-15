@@ -2,10 +2,10 @@ path: "tensorflow.distribute.DistributedIterator"
 tf_class {
   is_instance: "<class \'tensorflow.python.types.distribute.DistributedIteratorInterface\'>"
   is_instance: "<class \'tensorflow.python.types.distribute.Iterator\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "element_spec"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor_common.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
-#include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/tpu/tpu_topology.h"
 
 namespace tpu {
 class TpuCore;

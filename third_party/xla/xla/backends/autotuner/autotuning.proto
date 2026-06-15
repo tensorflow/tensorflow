@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package xla.autotuner;
+
+import "google/protobuf/duration.proto";
+import "xla/backends/autotuner/backends.proto";
+import "xla/backends/autotuner/backend_config.proto";
+
+option java_outer_classname = "Tuning";
+option java_multiple_files = true;
+
+enum FailureKind {
+  FAILURE_KIND_UNSPECIFIED = 0;
+  COMPILATION_FAILED = 1;
+  EXECUTION_FAILED = 2;
+  REDZONE_CHECK_FAILED = 3;
+  WRONG_RESULTS = 4;
+}
+
+message Failure {
+  FailureKind kind = 1;
+  string message = 2;
+}
+
+message Config {
+  Backend backend = 1;
+  BackendConfig backend_config = 2;
+}
+
+message ConfigProfile {
+  Config config = 1;
+  google.protobuf.Duration run_time = 2;
+  int64 scratch_bytes = 3;
+  Failure failure = 4;
+  bool is_default_config = 5;
+}
+
+message AutotuningKey {
+  string op_fingerprint = 1;
+  string device = 2;
+  // Optional user-specified version string. If provided, this is used as the
+  // version string in cache lookups, instead of a string derived from
+  // backend_versions. This is useful when strict compatibility guarantees are
+  // required and backend_versions cannot provide it.
+  string explicit_version = 3;
+  // map key is string representation of Backend enum.
+  map<string, string> backend_versions = 4;
+}
+
+message AutotuningRawProfiles {
+  AutotuningKey key = 1;
+  string hlo_text = 2;
+  repeated ConfigProfile config_profiles = 3;
+}
+
+message ConfigCacheEntry {
+  AutotuningKey key = 1;
+  Config optimal_config = 2;
+}
+
+message ConfigCache {
+  repeated ConfigCacheEntry results = 1;
+}

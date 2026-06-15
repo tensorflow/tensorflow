@@ -2,6 +2,6 @@ path: "tensorflow.types"
 tf_module {
   member {
     name: "experimental"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
 }

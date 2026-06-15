@@ -151,6 +151,17 @@ func.func @illegal_mask_out_of_bounds(%src: tensor<32xf64>, %mask: f64) -> tenso
 
 // -----
 
+func.func @scan_op(%input: tensor<10x20x30xf32>, %init: tensor<10x20xf32>) -> (tensor<10x20x30xf32>, tensor<10x20xf32>) {
+  %output, %carry = xtile.scan(%input) inits(%init) dimension = 2 {scan_dim_size = 30 : i64} : (tensor<10x20x30xf32>), (tensor<10x20xf32>) -> (tensor<10x20x30xf32>), (tensor<10x20xf32>) {
+  ^bb0(%arg0: tensor<10x20xf32>, %arg1: tensor<10x20xf32>):
+    %add = stablehlo.add %arg0, %arg1 : tensor<10x20xf32>
+    stablehlo.return %add : tensor<10x20xf32>
+  }
+  return %output, %carry : tensor<10x20x30xf32>, tensor<10x20xf32>
+}
+
+// -----
+
 // expected-error @+1 {{layout has 0 dimensions, but shape has 1}}
 func.func @memref_layout_shape_size_mismatch(%arg0: memref<1024xf32, #xtile.layout<[]>>) {
   return

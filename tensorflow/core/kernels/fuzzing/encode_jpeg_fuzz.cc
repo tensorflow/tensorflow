@@ -52,7 +52,7 @@ class FuzzEncodeJpeg : public FuzzSession {
     // from tf testing, once we have a few more fuzzers written.
     Tensor input_tensor(tensorflow::DT_UINT8,
                         TensorShape({height, width, channels}));
-    auto flat_tensor = input_tensor.flat<uint8>();
+    auto flat_tensor = input_tensor.flat<uint8_t>();
     for (size_t i = 0; i < actual_pixels; i++) {
       flat_tensor(i) = data[i];
     }

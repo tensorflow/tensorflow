@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "Eigen/Core"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/amd_detail/hip_fp16_gcc.h"
 #include "rocm/include/hipblas/hipblas.h"
 #include "rocm/rocm_config.h"
@@ -158,7 +159,6 @@ static std::string ToString(rocblas_status status) {
     XVAL(rocblas_status_invalid_size);
     XVAL(rocblas_status_memory_error);
     XVAL(rocblas_status_internal_error);
-#if TF_ROCM_VERSION >= 60000
     XVAL(rocblas_status_perf_degraded);
     XVAL(rocblas_status_size_query_mismatch);
     XVAL(rocblas_status_size_increased);
@@ -168,7 +168,6 @@ static std::string ToString(rocblas_status status) {
     XVAL(rocblas_status_check_numerics_fail);
     XVAL(rocblas_status_excluded_from_build);
     XVAL(rocblas_status_arch_mismatch);
-#endif
     default:
       return absl::StrCat("<invalid rocBLAS status: ", status, ">");
   }
@@ -183,12 +182,10 @@ bool ROCMBlas::Init() {
     return false;
   }
 
-#if TF_HIPBLASLT
   if (!blas_lt_.Init().ok()) {
     LOG(ERROR) << "Failed to initialize hipblasLt";
     return false;
   }
-#endif
 
   int dev = 0;
   hipError_t result = hipGetDevice(&dev);
@@ -203,15 +200,8 @@ bool ROCMBlas::Init() {
   return true;
 }
 
-ROCMBlas::ROCMBlas(StreamExecutor *parent)
-    : parent_(CHECK_NOTNULL(parent)),
-      blas_(nullptr)
-#if TF_HIPBLASLT
-      ,
-      blas_lt_(parent)
-#endif
-{
-}
+ROCMBlas::ROCMBlas(StreamExecutor* parent)
+    : parent_(CHECK_NOTNULL(parent)), blas_(nullptr), blas_lt_(parent) {}
 
 ROCMBlas::~ROCMBlas() {
   if (blas_ != nullptr) {
@@ -402,7 +392,7 @@ absl::Status PopulateProfileFromTimer(
     EventBasedTimer *timer, blas::AlgorithmType algorithm,
     blas::ProfileResult *output_profile_result) {
   if (output_profile_result) {
-    TF_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
+    ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
     output_profile_result->set_is_valid(true);
     output_profile_result->set_algorithm(algorithm);
     output_profile_result->set_elapsed_time_in_ms(
@@ -626,24 +616,24 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
   }
   std::unique_ptr<EventBasedTimer> timer;
   if (profile_result != nullptr) {
-    TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
-                                   profile_result->warmup_run_executed()));
+    ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+                                profile_result->warmup_run_executed()));
   }
 
   // fall back to the default implementation
   if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {
-    TF_RETURN_IF_ERROR(DoBlasGemm(stream, transa, transb, m, n, k, type_a,
-                                  alpha, a, lda, b, ldb, beta, c, ldc,
-                                  engine_options, context));
+    RETURN_IF_ERROR(DoBlasGemm(stream, transa, transb, m, n, k, type_a, alpha,
+                               a, lda, b, ldb, beta, c, ldc, engine_options,
+                               context));
 
   } else {
     MaybeLogGemmOp(GemmCallTrace::GemmType::kPlain, context,
                    m * k * DtypeSize(type_a), n * k * DtypeSize(type_a));
     CheckPreconditions(transa, transb, m, n, k, type_a, lda, ldb);
-    TF_ASSIGN_OR_RETURN(auto roc_type_a, AsRocBlasType(type_a));
-    TF_ASSIGN_OR_RETURN(auto roc_type_c, AsRocBlasType(type_c));
-    TF_ASSIGN_OR_RETURN(auto roc_comp_type,
-                        AsRocBlasComputeType(computation_type));
+    ASSIGN_OR_RETURN(auto roc_type_a, AsRocBlasType(type_a));
+    ASSIGN_OR_RETURN(auto roc_type_c, AsRocBlasType(type_c));
+    ASSIGN_OR_RETURN(auto roc_comp_type,
+                     AsRocBlasComputeType(computation_type));
 
     VLOG(1) << absl::StreamFormat(
         "doing rocBLAS GEMM with Algorithm: at=%d bt=%d m=%u n=%u "
@@ -654,7 +644,7 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
         static_cast<int>(roc_type_a), static_cast<int>(roc_type_c),
         static_cast<int>(roc_comp_type));
 
-    TF_RETURN_IF_ERROR(DoBlasInternalImpl(
+    RETURN_IF_ERROR(DoBlasInternalImpl(
         wrap::rocblas_gemm_ex, stream,
         /* pointer_mode_host = */ true,
         /* err_on_failure = */ false, ROCMBlasTranspose(transa),
@@ -664,7 +654,7 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
         roc_type_c, ldc, roc_comp_type, rocblas_gemm_algo_solution_index,
         algorithm, GemmFloat16Flags(type_a, context, use_hgemm_alt_impl_)));
   }
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       PopulateProfileFromTimer(timer.get(), algorithm, profile_result));
 
   return absl::OkStatus();
@@ -688,13 +678,13 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
   }
   std::unique_ptr<EventBasedTimer> timer;
   if (profile_result != nullptr) {
-    TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
-                                   profile_result->warmup_run_executed()));
+    ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+                                profile_result->warmup_run_executed()));
   }
 
   // fall back to the default implementation
   if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {
-    TF_RETURN_IF_ERROR(DoBlasGemmStridedBatched(
+    RETURN_IF_ERROR(DoBlasGemmStridedBatched(
         stream, transa, transb, m, n, k, type_a, alpha, a, lda, stride_a, b,
         ldb, stride_b, beta, c, ldc, stride_c, batch_count, engine_options,
         context));
@@ -712,12 +702,12 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
         static_cast<int>(type_a), static_cast<int>(type_c), stride_a, stride_b,
         stride_c, batch_count);
 
-    TF_ASSIGN_OR_RETURN(auto roc_type_a, AsRocBlasType(type_a));
-    TF_ASSIGN_OR_RETURN(auto roc_type_c, AsRocBlasType(type_c));
-    TF_ASSIGN_OR_RETURN(auto roc_comp_type,
-                        AsRocBlasComputeType(computation_type));
+    ASSIGN_OR_RETURN(auto roc_type_a, AsRocBlasType(type_a));
+    ASSIGN_OR_RETURN(auto roc_type_c, AsRocBlasType(type_c));
+    ASSIGN_OR_RETURN(auto roc_comp_type,
+                     AsRocBlasComputeType(computation_type));
 
-    TF_RETURN_IF_ERROR(DoBlasInternalImpl(
+    RETURN_IF_ERROR(DoBlasInternalImpl(
         wrap::rocblas_gemm_strided_batched_ex, stream,
         /* pointer_mode_host = */ true,
         /* err_on_failure = */ false, ROCMBlasTranspose(transa),
@@ -728,7 +718,7 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
         roc_comp_type, rocblas_gemm_algo_solution_index, algorithm,
         GemmFloat16Flags(type_a, context, use_hgemm_alt_impl_)));
   }
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       PopulateProfileFromTimer(timer.get(), algorithm, profile_result));
 
   return absl::OkStatus();
@@ -923,7 +913,7 @@ absl::Status ReorganizeMemory(Stream* stream,
     } else {
       DeviceAddressBase src_mem = DeviceAddressBase(x.src_ptr, x.size);
       DeviceAddressBase target_mem = DeviceAddressBase(x.dst_ptr, x.size);
-      TF_RETURN_IF_ERROR(stream->Memcpy(&target_mem, src_mem, x.size));
+      RETURN_IF_ERROR(stream->Memcpy(&target_mem, src_mem, x.size));
     }
     i++;
   }
@@ -970,13 +960,13 @@ absl::StatusOr<AllocateStridedResult<T>> AllocateStridedBuffer(
   if (scratch_allocator == nullptr) {
     return absl::InternalError("scratch_allocator is null");
   }
-  TF_ASSIGN_OR_RETURN(DeviceAddress<uint8_t> batch_matrix_bytes,
-                      scratch_allocator->AllocateBytes(matrix_batch_byte_size));
+  ASSIGN_OR_RETURN(DeviceAddress<uint8_t> batch_matrix_bytes,
+                   scratch_allocator->AllocateBytes(matrix_batch_byte_size));
   res.device_mem = DeviceAddress<MAPPED_T>(batch_matrix_bytes);
   res.reallocated = true;
   if (copy_data) {
-    TF_RETURN_IF_ERROR(ReorganizeMemory(stream, &res.device_mem, raw_ptrs,
-                                        batch_count, batch_stride, true));
+    RETURN_IF_ERROR(ReorganizeMemory(stream, &res.device_mem, raw_ptrs,
+                                     batch_count, batch_stride, true));
   }
   return res;
 }
@@ -1032,15 +1022,15 @@ absl::Status ROCMBlas::DoBlasGemmBatchedInternal(
   }
 
   // Make sure the temporary memory are in-scope before the function returns
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto a, AllocateStridedBuffer<T>(a_raw_ptrs, batch_count, batch_stride_a,
                                        scratch_allocator, stream, true));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto b, AllocateStridedBuffer<T>(b_raw_ptrs, batch_count, batch_stride_b,
                                        scratch_allocator, stream, true));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto c, AllocateStridedBuffer<T>(c_raw_ptrs, batch_count, batch_stride_c,
                                        scratch_allocator, stream,
                                        true));  // can disable copy if beta=0

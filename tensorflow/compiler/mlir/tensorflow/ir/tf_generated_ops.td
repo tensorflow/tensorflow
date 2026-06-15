@@ -1141,6 +1141,7 @@ to be batched.}]>:$captured_tensors,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_large_batch_splitting,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_priority_aware_batch_scheduler,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_priority_aware_batch_scheduler_resplit,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_batching_task_lazy_cancellation,
     DefaultValuedOptionalAttr<I64Attr, "0">:$num_warmup_batch_threads
   );
 
@@ -11513,6 +11514,8 @@ Send an rpc to the external service that builds rpc payload based on prediction 
     Arg<TF_Int64Tensor, [{Scalar int64 tensor representing steps.}]>:$steps,
     Arg<TF_Int64Tensor, [{Scalar int64 tensor representing the GAIA ID.}]>:$gaia_id,
     Arg<TF_Uint64Tensor, [{1-D uint64 tensor representing a list of video IDs.}]>:$video_id,
+    Arg<TF_Int64Tensor, [{Scalar int64 tensor representing the timestamp.}]>:$timestamp,
+    Arg<TF_Float32Tensor, [{1-D float tensor representing predicted video probabilities.}]>:$predicted_probability,
 
     StrAttr:$op_config
   );
@@ -15535,7 +15538,7 @@ e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_id
 With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
-for num_segments more than the expected output size, last elements are assigned 
+for num_segments more than the expected output size, last elements are assigned
 smallest possible value for the specific numeric type.
 
 For example:
@@ -15705,7 +15708,7 @@ e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_id
 With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
-for num_segments more than the expected output size, last elements are assigned 
+for num_segments more than the expected output size, last elements are assigned
 the largest possible value for the specific numeric type.
 
 For example:
@@ -15811,7 +15814,7 @@ The only difference with SegmentProd is the additional input  `num_segments`.
 This helps in evaluating the output shape in compile time.
 `num_segments` should be consistent with segment_ids.
 e.g. Max(segment_ids) - 1 should be equal to `num_segments` for a 1-d segment_ids
-With inconsistent num_segments, the op still runs. only difference is, 
+With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
 for num_segments more than the expected output size, last elements are assigned 1.

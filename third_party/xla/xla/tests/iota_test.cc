@@ -36,7 +36,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using IotaTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using IotaTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(IotaTest, IotaReshapeR1) {
   const std::string hlo_text = R"(
@@ -71,7 +71,7 @@ std::vector<T> GetR1Expected(const int64_t num_elements) {
 
 class IotaR1Test
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+          HloPjRtInterpreterReferenceMixin<HloTestBase>>,
       public ::testing::WithParamInterface<std::tuple<PrimitiveType, int>> {};
 
 TEST_P(IotaR1Test, DoIt) {
@@ -118,7 +118,7 @@ INSTANTIATE_TEST_CASE_P(
                                         /*step=*/20)));
 
 class IotaR2Test : public ClientLibraryTestRunnerMixin<
-                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+                       HloPjRtInterpreterReferenceMixin<HloTestBase>>,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
@@ -152,7 +152,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::Values(0, 1)));
 
 class IotaR3Test : public ClientLibraryTestRunnerMixin<
-                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+                       HloPjRtInterpreterReferenceMixin<HloTestBase>>,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 

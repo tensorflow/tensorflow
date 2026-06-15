@@ -59,6 +59,7 @@ struct RunHloModuleOptions {
   bool random_init_input_literals{true};
   bool force_fake_data{false};
   bool isolate_instructions{false};
+  int64_t execution_seed{0};
 };
 
 // Runs test_module on the platform with the name

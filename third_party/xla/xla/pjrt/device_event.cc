@@ -166,4 +166,184 @@ bool PjRtDeviceEventPtr::IsCompatibleWithLocalAsyncValue() const {
   return false;
 }
 
+static const PJRT_DeviceEventPromise_FunctionTable kBuiltinPromiseVtable = {
+    /*struct_size=*/sizeof(PJRT_DeviceEventPromise_FunctionTable),
+    /*instance_size=*/sizeof(PJRT_DeviceEventPromise),
+    /*extension_start=*/nullptr,
+    /*inc_ref=*/
+    +[](PJRT_DeviceEventPromise* promise) {
+      static_cast<PjRtDeviceEventPromise*>(promise)->AddRef();
+    },
+    /*dec_ref=*/
+    +[](PJRT_DeviceEventPromise* promise) {
+      static_cast<PjRtDeviceEventPromise*>(promise)->DropRef();
+    },
+    /*event=*/
+    +[](PJRT_DeviceEventPromise* promise) -> PJRT_DeviceEvent {
+      return static_cast<PjRtDeviceEventPromise*>(promise)->event().ToC();
+    },
+    /*set=*/
+    +[](PJRT_DeviceEventPromise* promise, PJRT_DeviceEvent event) {
+      static_cast<PjRtDeviceEventPromise*>(promise)->Set(
+          PjRtDeviceEventRef::TakeRef(PjRtDeviceEventPtr(event)));
+    },
+    /*set_error=*/
+    +[](PJRT_DeviceEventPromise* promise, PJRT_Error* error) {
+      static_cast<PjRtDeviceEventPromise*>(promise)->SetError(
+          pjrt::PjrtErrorToStatus(error));
+    },
+    /*set_ready=*/
+    +[](PJRT_DeviceEventPromise* promise) {
+      static_cast<PjRtDeviceEventPromise*>(promise)->SetReady();
+    }};
+
+namespace internal {
+const PJRT_DeviceEventPromise_FunctionTable*
+GetBuiltinDeviceEventPromiseCApiFunctionTable() {
+  return &kBuiltinPromiseVtable;
+}
+}  // namespace internal
+
+PjRtDeviceEventPromise::PjRtDeviceEventPromise() {
+  vtable = &kBuiltinPromiseVtable;
+}
+
+PjRtDeviceEventPromiseRef::PjRtDeviceEventPromiseRef(
+    tsl::RCReference<PjRtDeviceEventPromise> promise)
+    : promise_(promise.release()) {}
+
+PjRtDeviceEventPromiseRef PjRtDeviceEventPromiseRef::TakeRef(
+    PJRT_DeviceEventPromise* promise) {
+  return PjRtDeviceEventPromiseRef(promise);
+}
+
+PjRtDeviceEventPromiseRef PjRtDeviceEventPromiseRef::FormRef(
+    PJRT_DeviceEventPromise* promise) {
+  if (promise != nullptr) {
+    promise->vtable->inc_ref(promise);
+  }
+  return PjRtDeviceEventPromiseRef(promise);
+}
+
+PjRtDeviceEventPromiseRef::~PjRtDeviceEventPromiseRef() {
+  if (promise_ != nullptr) {
+    promise_->vtable->dec_ref(promise_);
+  }
+}
+
+PjRtDeviceEventPromiseRef::PjRtDeviceEventPromiseRef(
+    const PjRtDeviceEventPromiseRef& other)
+    : promise_(other.promise_) {
+  if (promise_ != nullptr) {
+    promise_->vtable->inc_ref(promise_);
+  }
+}
+
+PjRtDeviceEventPromiseRef& PjRtDeviceEventPromiseRef::operator=(
+    const PjRtDeviceEventPromiseRef& other) {
+  if (this != &other) {
+    if (promise_ != nullptr) {
+      promise_->vtable->dec_ref(promise_);
+    }
+    promise_ = other.promise_;
+    if (promise_ != nullptr) {
+      promise_->vtable->inc_ref(promise_);
+    }
+  }
+  return *this;
+}
+
+PjRtDeviceEventPromiseRef::PjRtDeviceEventPromiseRef(
+    PjRtDeviceEventPromiseRef&& other) noexcept
+    : promise_(other.promise_) {
+  other.promise_ = nullptr;
+}
+
+PjRtDeviceEventPromiseRef& PjRtDeviceEventPromiseRef::operator=(
+    PjRtDeviceEventPromiseRef&& other) noexcept {
+  if (this != &other) {
+    if (promise_ != nullptr) {
+      promise_->vtable->dec_ref(promise_);
+    }
+    promise_ = other.promise_;
+    other.promise_ = nullptr;
+  }
+  return *this;
+}
+
+PjRtDeviceEventPtr PjRtDeviceEventPromiseRef::event() const {
+  return PjRtDeviceEventPtr(promise_->vtable->event(promise_));
+}
+
+void PjRtDeviceEventPromiseRef::Set(PjRtDeviceEventRef event) const {
+  promise_->vtable->set(promise_, std::move(event).release().ToC());
+}
+
+void PjRtDeviceEventPromiseRef::SetError(absl::Status s) const {
+  PJRT_Error* error = pjrt::StatusToPjRtError(std::move(s));
+  promise_->vtable->set_error(promise_, error);
+}
+
+void PjRtDeviceEventPromiseRef::SetReady() const {
+  promise_->vtable->set_ready(promise_);
+}
+
+PjRtDeviceEventRefVector::~PjRtDeviceEventRefVector() { Clear(); }
+
+PjRtDeviceEventRefVector::PjRtDeviceEventRefVector(
+    const PjRtDeviceEventRefVector& other) {
+  events_.reserve(other.events_.size());
+  for (const auto& ev : other.events_) {
+    events_.push_back(PjRtDeviceEventPtr(ev).CopyRef().release().ToC());
+  }
+}
+
+PjRtDeviceEventRefVector::PjRtDeviceEventRefVector(
+    PjRtDeviceEventRefVector&& other) noexcept
+    : events_(std::move(other.events_)) {}
+
+PjRtDeviceEventRefVector& PjRtDeviceEventRefVector::operator=(
+    const PjRtDeviceEventRefVector& other) {
+  if (this != &other) {
+    Clear();
+    events_.reserve(other.events_.size());
+    for (const auto& ev : other.events_) {
+      events_.push_back(PjRtDeviceEventPtr(ev).CopyRef().release().ToC());
+    }
+  }
+  return *this;
+}
+
+PjRtDeviceEventRefVector& PjRtDeviceEventRefVector::operator=(
+    PjRtDeviceEventRefVector&& other) noexcept {
+  if (this != &other) {
+    Clear();
+    events_ = std::move(other.events_);
+  }
+  return *this;
+}
+
+PjRtDeviceEventRefVector::PjRtDeviceEventRefVector(
+    std::initializer_list<PjRtDeviceEventRef> init) {
+  events_.reserve(init.size());
+  for (const auto& ref : init) {
+    events_.push_back(ref.ptr().CopyRef().release().ToC());
+  }
+}
+
+void PjRtDeviceEventRefVector::push_back(const PjRtDeviceEventRef& value) {
+  events_.push_back(value.ptr().CopyRef().release().ToC());
+}
+
+void PjRtDeviceEventRefVector::push_back(PjRtDeviceEventRef&& value) {
+  events_.push_back(std::move(value).release().ToC());
+}
+
+void PjRtDeviceEventRefVector::Clear() {
+  for (auto& ev : events_) {
+    PjRtDeviceEventPtr(ev).DecRef();
+  }
+  events_.clear();
+}
+
 }  // namespace xla

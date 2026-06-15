@@ -60,7 +60,7 @@ std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create() {
 }
 
 std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create(
-    const unsigned char* compatibility_list_flatbuffer, int length) {
+    const unsigned char* compatibility_list_flatbuffer, size_t length) {
   if (!compatibility_list_flatbuffer ||
       !IsValidFlatbuffer(compatibility_list_flatbuffer, length)) {
     return nullptr;
@@ -127,7 +127,7 @@ TfLiteGpuDelegateOptionsV2 GPUCompatibilityList::GetBestOptionsFor(
 
 // static
 bool GPUCompatibilityList::IsValidFlatbuffer(const unsigned char* data,
-                                             int len) {
+                                             size_t len) {
   // Verify opensource db.
   flatbuffers::Verifier verifier(reinterpret_cast<const uint8_t*>(data), len);
   return tflite::acceleration::VerifyDeviceDatabaseBuffer(verifier);

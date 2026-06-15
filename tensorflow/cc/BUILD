@@ -19,7 +19,7 @@ package(
 )
 
 filegroup(
-    name = "srcs_no_runtime",
+    name = "hdrs_no_runtime",
     srcs = [
         "framework/gradients.h",
         "framework/ops.h",
@@ -128,6 +128,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -146,6 +147,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
     ],
 )
 

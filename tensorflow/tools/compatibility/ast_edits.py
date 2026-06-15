@@ -16,6 +16,7 @@
 
 import ast
 import collections
+import numbers
 import os
 import re
 import shutil
@@ -24,71 +25,93 @@ import tempfile
 import traceback
 
 import pasta
-from pasta.base import annotate as pasta_annotate
-from pasta.base import codegen as pasta_codegen
-from pasta.base import formatting as pasta_formatting
-from pasta.base import token_generator as pasta_token_generator
 
 
-def _patch_google_pasta_for_python314():
-  """Adds ast.Constant support to google-pasta on Python 3.14+."""
-  if sys.version_info < (3, 14):
-    return
+# Monkeypatch pasta to fix Python 3.14 issues with numbers in AST constants.
+try:
+  import pasta.base.annotate as pasta_annotate  # pylint: disable=g-import-not-at-top
+except ImportError:
+  pasta_annotate = None
 
-  def _annotate_constant(self, node):
-    value = node.value
-    if isinstance(value, str):
-      self.attr(
-          node, "content", [self.tokens.str], deps=("value",), default=value
-      )
-    elif isinstance(value, (int, float, complex)) and not isinstance(
-        value, bool
-    ):
-      contentargs = [
-          lambda: self.tokens.next_of_type(
-              pasta_token_generator.TOKENS.NUMBER
-          ).src
-      ]
-      peek = self.tokens.peek()
-      if peek is not None and peek.src == "-":
-        contentargs.insert(0, "-")
-      self.attr(
-          node,
-          "content",
-          contentargs,
-          deps=("value",),
-          default=str(value),
-      )
-    elif isinstance(value, bytes):
-      self.attr(
-          node, "content", [self.tokens.str], deps=("value",), default=value
-      )
-    elif value is Ellipsis:
-      self.token("...")
-    elif value in (True, False, None):
-      self.token(str(value))
-    else:
-      raise TypeError(type(value))
+if pasta_annotate:
+  def _patch_visit_constant(cls):
+    """Adds or overrides visit_Constant on cls to handle Python 3.14."""
+    original_visit_constant = getattr(cls, "visit_Constant", None)
 
-  def _print_constant(self, node):
-    self.prefix(node)
-    content = pasta_formatting.get(node, "content")
-    if content is not None:
-      self.code += content
-    elif node.value is Ellipsis:
-      self.code += "..."
-    else:
-      self.code += repr(node.value)
-    self.suffix(node)
+    def visit_Constant(self, node):  # pylint: disable=invalid-name
+      if sys.version_info >= (3, 14):
+        if isinstance(node.value, numbers.Number) and not isinstance(
+            node.value, bool
+        ):
+          if hasattr(self, "visit_Num"):
+            node.n = node.value
+            try:
+              self.visit_Num(node)
+            finally:
+              del node.n
+          else:
+            self.generic_visit(node)
+        elif isinstance(node.value, (str, bytes)):
+          node.s = node.value
+          try:
+            if isinstance(node.value, str):
+              if hasattr(self, "visit_Str"):
+                self.visit_Str(node)
+              else:
+                self.generic_visit(node)
+            else:
+              if hasattr(self, "visit_Bytes"):
+                self.visit_Bytes(node)
+              else:
+                self.generic_visit(node)
+          finally:
+            del node.s
+        elif isinstance(node.value, bool) or node.value is None:
+          if hasattr(self, "visit_NameConstant"):
+            self.visit_NameConstant(node)
+          else:
+            self.generic_visit(node)
+        elif node.value is Ellipsis:
+          if hasattr(self, "visit_Ellipsis"):
+            self.visit_Ellipsis(node)
+          else:
+            self.generic_visit(node)
+        else:
+          if original_visit_constant:
+            original_visit_constant(self, node)
+          else:
+            self.generic_visit(node)
+      else:
+        if original_visit_constant:
+          original_visit_constant(self, node)
+        else:
+          self.generic_visit(node)
 
-  pasta_annotate.BaseVisitor.visit_Constant = pasta_annotate.expression(
-      _annotate_constant
-  )
-  pasta_codegen.Printer.visit_Constant = _print_constant
+    cls.visit_Constant = visit_Constant
+    return cls
 
+  if hasattr(pasta_annotate, "get_ast_annotator"):
+    original_get_ast_annotator = pasta_annotate.get_ast_annotator
 
-_patch_google_pasta_for_python314()
+    def patched_get_ast_annotator(*args, **kwargs):
+      cls = original_get_ast_annotator(*args, **kwargs)
+      return _patch_visit_constant(cls)
 
+    pasta_annotate.get_ast_annotator = patched_get_ast_annotator
+
+  elif hasattr(pasta_annotate, "get_base_visitor"):
+    original_get_base_visitor = pasta_annotate.get_base_visitor
+
+    def patched_get_base_visitor(*args, **kwargs):
+      cls = original_get_base_visitor(*args, **kwargs)
+      return _patch_visit_constant(cls)
+
+    pasta_annotate.get_base_visitor = patched_get_base_visitor
+  else:
+    if hasattr(pasta_annotate, "BaseVisitor"):
+      _patch_visit_constant(pasta_annotate.BaseVisitor)
+    if hasattr(pasta_annotate, "AstAnnotator"):
+      _patch_visit_constant(pasta_annotate.AstAnnotator)
 
 # Some regular expressions we will need for parsing
 FIND_OPEN = re.compile(r"^\s*(\[).*$")

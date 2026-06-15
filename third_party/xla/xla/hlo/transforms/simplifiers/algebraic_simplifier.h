@@ -383,6 +383,14 @@ class AlgebraicSimplifierOptions {
     enable_hoist_transpose_of_reshape_ = value;
   }
 
+  bool enable_fold_transpose_into_scatter() const {
+    return enable_fold_transpose_into_scatter_;
+  }
+
+  void set_enable_fold_transpose_into_scatter(bool value) {
+    enable_fold_transpose_into_scatter_ = value;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -432,6 +440,7 @@ class AlgebraicSimplifierOptions {
   bool rewrite_no_op_bitcast_convert_to_bitcast_{false};
   bool enable_conditional_simplification_{false};
   bool enable_hoist_transpose_of_reshape_{false};
+  bool enable_fold_transpose_into_scatter_{false};
   Metadata metadata_;
 };
 
@@ -622,9 +631,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Allow backend constraints on tiling etc. to invalidate optimizations.
   virtual bool IsValidLayout(const Shape& shape) { return true; }
   // Allow backend targets to determine whether a layout is inefficient.
-  virtual bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) {
-    return true;
-  }
+  virtual bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo);
 
  protected:
   // A method that allows various backends to specialize the propagation of
@@ -682,6 +689,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // bitcast transpose.
   absl::Status SimplifyTransposeOfBroadcast(
       HloInstruction* transpose, absl::Span<const int64_t> dimensions);
+
+  // Folds a trailing Transpose into a Scatter operation by transposing the
+  // scatter operand and updates upfront.
+  absl::StatusOr<bool> TryFoldTransposeIntoScatter(HloInstruction* transpose);
 
   // Converts to primitive type if the input hlo is not that type, otherwise
   // returns the original hlo.

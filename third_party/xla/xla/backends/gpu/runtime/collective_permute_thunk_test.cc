@@ -15,22 +15,32 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
+#include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -47,20 +57,30 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/platform_util.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/hlo_test_base_legacy.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
+#include "xla/stream_executor/trace_command_buffer_factory.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
@@ -72,6 +92,68 @@ using Kind = Thunk::Kind;
 using ::tsl::proto_testing::EqualsProto;
 
 using GpuCollectivePermuteTest = HloTestBaseLegacy;
+
+static se::StreamExecutor* GpuExecutor() {
+  auto name =
+      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  auto* platform = se::PlatformManager::PlatformWithName(name).value();
+  return platform->ExecutorForDevice(0).value();
+}
+
+// Child command nodes (CreateChildCommand / UpdateChildCommand) require
+// CUDA 12.9+ driver and toolkit.
+static bool IsAtLeastCuda12900(const se::StreamExecutor* executor) {
+  const auto& desc = executor->GetDeviceDescription();
+  const auto* cuda_cc = desc.gpu_compute_capability().cuda_compute_capability();
+  if (cuda_cc == nullptr) {
+    return false;
+  }
+  return std::min(desc.driver_version(), desc.compile_time_toolkit_version()) >=
+         se::SemanticVersion(12, 9, 0);
+}
+
+// Test-only subclass whose ExecuteOnStream and Record both bypass NCCL so the
+// command-buffer wiring can be exercised without a live communicator. Record
+// traces a trivial memset into a nested command buffer and attaches it as a
+// child command, mirroring the structure produced by the production Record.
+class NoOpCollectivePermuteThunk : public CollectivePermuteThunk {
+ public:
+  NoOpCollectivePermuteThunk(Thunk::ThunkInfo thunk_info, P2PConfig config,
+                             std::vector<CollectiveThunk::Buffer> buffers)
+      : CollectivePermuteThunk(
+            std::move(thunk_info), config, buffers,
+            /*collectives_mode=*/DebugOptions::COLLECTIVES_PRIVATE_MEMORY,
+            /*connected_components_enabled=*/false) {}
+
+  absl::Status ExecuteOnStream(const ExecuteParams&) override {
+    return absl::OkStatus();
+  }
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const ExecuteParams& execute_params, const RecordParams&,
+      RecordAction record_action, se::CommandBuffer* command_buffer) override {
+    se::DeviceAddressBase dst =
+        execute_params.buffer_allocations->GetDeviceAddress(
+            buffers()[0].destination_buffer.slice);
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<se::CommandBuffer> nested_cmd,
+        se::TraceCommandBufferFactory::Create(
+            execute_params.stream->parent(),
+            execute_params.command_buffer_trace_stream,
+            [&](se::Stream* stream) { return stream->MemZero(&dst, 4); }));
+
+    if (auto* create = std::get_if<RecordCreate>(&record_action)) {
+      return command_buffer->CreateChildCommand(*nested_cmd,
+                                                create->dependencies);
+    }
+    if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
+      RETURN_IF_ERROR(
+          command_buffer->UpdateChildCommand(update->command, *nested_cmd));
+      return update->command;
+    }
+    return absl::InternalError("Invalid record action");
+  }
+};
 
 // Test case to verify that a CollectivePermute HLO instruction is correctly
 // converted into a sequence of command buffer commands (Start and Done).
@@ -92,15 +174,15 @@ ENTRY test_computation {
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   // Get CollectivePermute Instruction
   const HloInstruction* root_instr =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(root_instr->opcode(), HloOpcode::kCollectivePermute);
   const HloCollectivePermuteInstruction* cp_instr =
-      tensorflow::down_cast<const HloCollectivePermuteInstruction*>(root_instr);
+      absl::down_cast<const HloCollectivePermuteInstruction*>(root_instr);
   ASSERT_NE(cp_instr, nullptr);
 
   // Buffer and Allocation Setup
@@ -158,8 +240,8 @@ ENTRY test_computation {
   // Use LHS synchronization mode to append Done command
   conv_options.synchronization_mode =
       CommandExecutor::SynchronizationMode::kLHS;
-  TF_ASSERT_OK_AND_ASSIGN(CommandExecutor cb_cmd_executor,
-                          ConvertToCommands(thunk_sequence, conv_options));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor cb_cmd_executor,
+                       ConvertToCommands(thunk_sequence, conv_options));
 
   // AsyncStart inlines its nested thunk as a command, and AsyncDone
   // with no control predecessors is a no-op, so we get 1 command.
@@ -185,23 +267,23 @@ ENTRY test_computation {
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   se::StreamExecutor* executor = backend().default_stream_executor();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> compiled_module,
       backend().compiler()->RunHloPasses(module->Clone(), executor,
                                          /*device_allocator=*/nullptr));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(compiled_module), executor,
                                        /*device_allocator=*/nullptr));
   // Downcast to GPU executable
   xla::gpu::GpuExecutable* gpu_executable =
-      tensorflow::down_cast<xla::gpu::GpuExecutable*>(executable.get());
+      absl::down_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr);
 
   // Get the thunk sequence and check its size and type
@@ -277,6 +359,154 @@ TEST(CollectiveThunkTest, SyncCollective) {
       std::unique_ptr<CollectivePermuteThunk> thunk,
       CollectivePermuteThunk::FromProto(
           thunk_info, proto.collective_permute_thunk(), buffer_allocations));
+}
+
+// Builds a NoOpCollectivePermuteThunk with one F32[length] src->dst buffer
+// pair.
+static NoOpCollectivePermuteThunk MakeNoOpThunk(
+    const BufferAllocation& alloc_src, const BufferAllocation& alloc_dst,
+    int64_t length) {
+  int64_t byte_length = sizeof(float) * length;
+  ShapedSlice src_slice{BufferAllocation::Slice(&alloc_src, 0, byte_length),
+                        ShapeUtil::MakeShape(F32, {length})};
+  ShapedSlice dst_slice{BufferAllocation::Slice(&alloc_dst, 0, byte_length),
+                        ShapeUtil::MakeShape(F32, {length})};
+  CollectiveThunk::Buffer buffer{.element_count = length,
+                                 .source_buffer = src_slice,
+                                 .destination_buffer = dst_slice,
+                                 .source_memory_space = 0,
+                                 .destination_memory_space = 0};
+
+  P2PConfig config;
+  config.config.operand_element_type = {F32};
+
+  return NoOpCollectivePermuteThunk(Thunk::ThunkInfo(), config, {buffer});
+}
+
+// Records CollectivePermuteThunk into a primary command buffer (create phase)
+// and verifies that a non-null command node is returned.
+TEST(CollectivePermuteThunkTest, RecordCommandBufferCreate) {
+  se::StreamExecutor* executor = GpuExecutor();
+  if (!IsAtLeastCuda12900(executor)) {
+    GTEST_SKIP() << "Child command nodes require CUDA 12.9+";
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(float) * length;
+
+  se::DeviceAddress<float> src = executor->AllocateArray<float>(length, 0);
+  se::DeviceAddress<float> dst = executor->AllocateArray<float>(length, 0);
+
+  BufferAllocation alloc_src(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation alloc_dst(/*index=*/1, byte_length, /*color=*/0);
+
+  NoOpCollectivePermuteThunk thunk =
+      MakeNoOpThunk(alloc_src, alloc_dst, length);
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations allocations({src, dst}, 0, &allocator);
+
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecuteParams execute_params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   /*command_buffer_trace_stream=*/stream.get(),
+                                   /*collective_params=*/nullptr,
+                                   /*collective_cliques=*/nullptr,
+                                   /*collective_memory=*/nullptr);
+
+  CommandStateManager state;
+  Command::RecordParams record_params = {state};
+
+  ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* cmd,
+                       thunk.Record(execute_params, record_params,
+                                    Command::RecordCreate{/*dependencies=*/{}},
+                                    command_buffer.get()));
+  EXPECT_NE(cmd, nullptr);
+
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+}
+
+// Records CollectivePermuteThunk twice into the same command buffer: first as a
+// create, then as an update with different buffer allocations. Verifies that
+// the same command node pointer is returned on update.
+TEST(CollectivePermuteThunkTest, RecordCommandBufferUpdate) {
+  se::StreamExecutor* executor = GpuExecutor();
+  if (!IsAtLeastCuda12900(executor)) {
+    GTEST_SKIP() << "Child command nodes require CUDA 12.9+";
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(float) * length;
+
+  se::DeviceAddress<float> src1 = executor->AllocateArray<float>(length, 0);
+  se::DeviceAddress<float> dst1 = executor->AllocateArray<float>(length, 0);
+
+  se::DeviceAddress<float> src2 = executor->AllocateArray<float>(length, 0);
+  se::DeviceAddress<float> dst2 = executor->AllocateArray<float>(length, 0);
+
+  BufferAllocation alloc_src(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation alloc_dst(/*index=*/1, byte_length, /*color=*/0);
+
+  NoOpCollectivePermuteThunk thunk =
+      MakeNoOpThunk(alloc_src, alloc_dst, length);
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  ServiceExecutableRunOptions run_options;
+
+  BufferAllocations allocations1({src1, dst1}, 0, &allocator);
+  Thunk::ExecuteParams params1 =
+      Thunk::ExecuteParams::Create(run_options, allocations1, stream.get(),
+                                   /*command_buffer_trace_stream=*/stream.get(),
+                                   /*collective_params=*/nullptr,
+                                   /*collective_cliques=*/nullptr,
+                                   /*collective_memory=*/nullptr);
+
+  CommandStateManager state;
+  Command::RecordParams record_params = {state};
+
+  ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* cmd,
+                       thunk.Record(params1, record_params,
+                                    Command::RecordCreate{/*dependencies=*/{}},
+                                    command_buffer.get()));
+  ASSERT_NE(cmd, nullptr);
+
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  BufferAllocations allocations2({src2, dst2}, 0, &allocator);
+  Thunk::ExecuteParams params2 =
+      Thunk::ExecuteParams::Create(run_options, allocations2, stream.get(),
+                                   /*command_buffer_trace_stream=*/stream.get(),
+                                   /*collective_params=*/nullptr,
+                                   /*collective_cliques=*/nullptr,
+                                   /*collective_memory=*/nullptr);
+
+  std::vector<BufferAllocation::Index> updated_allocs = {0, 1};
+  Command::RecordParams record_params2 = {state, std::move(updated_allocs)};
+
+  ASSERT_OK(command_buffer->Update());
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* updated_cmd,
+      thunk.Record(params2, record_params2, Command::RecordUpdate{cmd},
+                   command_buffer.get()));
+  EXPECT_EQ(updated_cmd, cmd);
+
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 }
 
 // Helper to extract just the sorted component member lists (ignoring root keys)

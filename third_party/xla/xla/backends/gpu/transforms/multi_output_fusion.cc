@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/hlo_dfs_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -430,7 +431,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
                                     /*min_latencies_seconds=*/{},
                                     /*count_multiple_input_accesses=*/true},
                                    device_info_);
-  TF_RETURN_IF_ERROR(computation_->Accept(&cost_analysis));
+  RETURN_IF_ERROR(computation_->Accept(&cost_analysis));
   std::vector<HloInstruction*> defs_before_uses =
       computation_->MakeInstructionPostOrder();
 
@@ -438,8 +439,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
   GpuPerformanceModelCache gpu_performance_model_cache;
   HloFusionAnalysisCache fusion_analysis_cache(device_info_);
   GpuPerformanceModel gpu_performance_model(device_info_, fusion_analysis_cache,
-                                            gpu_performance_model_cache,
-                                            mlir_context_);
+                                            gpu_performance_model_cache);
   // Traverse the HLO in uses-before-defs order.
   for (auto it = defs_before_uses.rbegin(); it != defs_before_uses.rend();
        ++it) {
@@ -488,8 +488,8 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
     gpu_performance_model_cache.Invalidate(*consumer_for_fusion);
     fusion_analysis_cache.Invalidate(producer->unique_id());
     fusion_analysis_cache.Invalidate(consumer_for_fusion->unique_id());
-    TF_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(producer));
-    TF_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(consumer_for_fusion));
+    RETURN_IF_ERROR(cost_analysis.RemoveInstruction(producer));
+    RETURN_IF_ERROR(cost_analysis.RemoveInstruction(consumer_for_fusion));
 
     HloInstruction* input_fusion;
     if (HloPredicateIsOp<HloOpcode::kFusion>(consumer_for_fusion)) {
@@ -521,7 +521,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
       CHECK_EQ(0, producer->user_count());
       CHECK_OK(computation_->RemoveInstruction(producer));
     }
-    TF_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(input_fusion));
+    RETURN_IF_ERROR(cost_analysis.RevisitInstruction(input_fusion));
 
     DumpFusionState(*input_fusion,
                     absl::StrCat("Fused into |", input_fusion->name(),
@@ -548,7 +548,7 @@ absl::StatusOr<bool> MultiOutputFusion::RunImpl(
   bool changed = false;
   for (auto* computation : GetFusibleComputations(*module, execution_threads)) {
     computation_ = computation;
-    TF_ASSIGN_OR_RETURN(bool computation_changed, DoMultiOutputFusion());
+    ASSIGN_OR_RETURN(bool computation_changed, DoMultiOutputFusion());
     changed |= computation_changed;
   }
   return changed;

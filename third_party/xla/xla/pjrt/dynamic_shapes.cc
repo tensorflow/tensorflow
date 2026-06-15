@@ -15,10 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/dynamic_shapes.h"
 
-#include <algorithm>
-#include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -40,16 +37,13 @@ PjRtShapeAndMetadataTransferRequirements::Get(const xla::Shape& shape,
   PjRtShapeAndMetadataTransferRequirements requirements;
   int64_t array_size = shape.IsToken() ? 0 : xla::ShapeUtil::ArraySize(shape);
   requirements.size = array_size;
-  requirements.metadata_alignment = 1;
-  requirements.metadata_offset = 0;
-  requirements.metadata_size = 0;
+  requirements.metadata_alignment = sizeof(int32_t);
   requirements.array_offset = 0;
   requirements.array_size = array_size;
 
-  if (shape.IsToken() || shape.is_static()) {
+  if (shape.IsToken()) {
     return requirements;
   }
-
   int64_t metadata_size = 0;
 
   switch (kind) {
@@ -65,9 +59,10 @@ PjRtShapeAndMetadataTransferRequirements::Get(const xla::Shape& shape,
       break;
 
     case PjRtDynamicShapeKind::kSuffix:
-      metadata_size = sizeof(int32_t) * shape.dimensions().size();
+      if (!shape.is_static()) {
+        metadata_size = sizeof(int32_t) * shape.dimensions().size();
+      }
       requirements.size = array_size + metadata_size;
-      requirements.metadata_alignment = sizeof(int32_t);
       requirements.metadata_offset = array_size;
       requirements.metadata_size = metadata_size;
       requirements.array_offset = 0;
@@ -109,6 +104,12 @@ absl::StatusOr<xla::Shape> ReadDynamicShapeMetadata(
   }
 
   return output_shape;
+}
+
+void StripMetadataForLogicalShape(xla::Shape& shape) {
+  if (shape.has_layout()) {
+    shape.mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
+  }
 }
 
 absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataIfPresent(

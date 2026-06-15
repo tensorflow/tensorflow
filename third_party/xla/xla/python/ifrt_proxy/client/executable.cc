@@ -1,16 +1,17 @@
-// Copyright 2023 The OpenXLA Authors.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/* Copyright 2023 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
 
 #include "xla/python/ifrt_proxy/client/executable.h"
 
@@ -40,6 +41,7 @@
 #if defined(PLATFORM_GOOGLE)
 #include "third_party/gloop/strings/cord_bytestream.h"
 #endif
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
@@ -50,6 +52,7 @@
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -177,7 +180,7 @@ absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
         &tsl::port::AlignedFree);
   }
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       xla_host_callback.callback(result_ptrs.data(), operand_ptrs.data()));
 
   return result_buffer;
@@ -193,8 +196,8 @@ absl::StatusOr<uint64_t> PrepareAndExecuteLoadedHostCallback(
     uint64_t operand_handle) {
   ClientHostBufferStore* host_buffer_store =
       rpc_helper->host_buffer_store().get();
-  TF_ASSIGN_OR_RETURN(absl::Cord operands,
-                      host_buffer_store->Lookup(operand_handle).Await());
+  ASSIGN_OR_RETURN(absl::Cord operands,
+                   host_buffer_store->Lookup(operand_handle).Await());
   absl::Cleanup cleanup = [&]() {
     host_buffer_store->Delete(operand_handle).OnReady([](absl::Status status) {
       if (!status.ok()) {
@@ -203,12 +206,12 @@ absl::StatusOr<uint64_t> PrepareAndExecuteLoadedHostCallback(
     });
   };
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       absl::Cord results,
       ExecuteLoadedHostCallback(loaded_host_callback, std::move(operands)));
 
   const uint64_t result_handle = rpc_helper->NextHandle();
-  TF_RETURN_IF_ERROR(host_buffer_store->Store(result_handle, results).Await());
+  RETURN_IF_ERROR(host_buffer_store->Store(result_handle, results).Await());
   return result_handle;
 }
 
@@ -319,11 +322,10 @@ class LoadedExecutable::OutputSpecCache {
     }
     std::vector<ArraySpec> data;
     for (const auto& output : outputs) {
-      TF_ASSIGN_OR_RETURN(auto dtype, DType::FromProto(output.dtype()));
-      TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(output.shape()));
-      TF_ASSIGN_OR_RETURN(
-          auto sharding,
-          Sharding::FromProto(parent_->client(), output.sharding()));
+      ASSIGN_OR_RETURN(auto dtype, DType::FromProto(output.dtype()));
+      ASSIGN_OR_RETURN(auto shape, Shape::FromProto(output.shape()));
+      ASSIGN_OR_RETURN(auto sharding, Sharding::FromProto(parent_->client(),
+                                                          output.sharding()));
       data.push_back(ArraySpec{/*dtype=*/dtype, /*shape=*/std::move(shape),
                                /*sharding=*/std::move(sharding)});
     }
@@ -415,8 +417,8 @@ LoadedExecutable::LoadedExecutable(
       std::vector<std::shared_ptr<const xla::PjRtLayout>> layouts;
       layouts.reserve(list.layouts_size());
       for (const auto& layout_proto : list.layouts()) {
-        TF_ASSIGN_OR_RETURN(xla::Layout layout,
-                            xla::Layout::FromProto(layout_proto));
+        ASSIGN_OR_RETURN(xla::Layout layout,
+                         xla::Layout::FromProto(layout_proto));
         layouts.push_back(std::make_shared<xla::PjRtLayout>(std::move(layout)));
       }
       return layouts;
@@ -589,7 +591,7 @@ absl::StatusOr<absl::Span<const int>>
 LoadedExecutable::GetDonatableInputIndices() const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointLoadedExecutableDonatableInputIndices");
-  TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
+  ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
   return info->donatable_input_indices;
 }
 
@@ -608,7 +610,7 @@ absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
 LoadedExecutable::GetParameterLayouts() const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointLoadedExecutableGetParameterLayouts");
-  TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
+  ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
   return info->parameter_layouts;
 }
 
@@ -616,7 +618,7 @@ absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
 LoadedExecutable::GetOutputLayouts() const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointLoadedExecutableGetOutputLayouts");
-  TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
+  ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
   return info->output_layouts;
 }
 
@@ -624,7 +626,7 @@ absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 LoadedExecutable::GetOutputMemoryKinds() const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointLoadedExecutableGetOutputMemoryKinds");
-  TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
+  ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
   return info->output_memory_kinds;
 }
 
@@ -714,7 +716,7 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
   auto req = std::make_unique<LoadedExecutableExecuteRequest>();
   req->set_loaded_executable_handle(handle_);
 
-  TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
+  ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
   for (int i = 0; i < args.size(); ++i) {
     xla::ifrt::ArrayRef& arg = args[i];
     auto* array = llvm::dyn_cast_or_null<Array>(arg.get());
@@ -723,25 +725,25 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
           "Invalid IFRT array type provided to `LoadedExecutable::Execute`");
     }
     if (options.non_donatable_input_indices.contains(i)) {
-      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
-                          array->GetHandle(ArrayCopySemantics::kAlwaysCopy));
+      ASSIGN_OR_RETURN(ArrayHandle handle,
+                       array->GetHandle(ArrayCopySemantics::kAlwaysCopy));
       req->add_args_handles(handle.handle);
     } else if (!info->donatable_input_indices_set.has_value()) {
-      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
-                          array->GetHandleUnknownIfBeingDonated());
+      ASSIGN_OR_RETURN(ArrayHandle handle,
+                       array->GetHandleUnknownIfBeingDonated());
       req->add_args_handles(handle.handle);
     } else if (info->donatable_input_indices_set->contains(i)) {
-      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
-                          array->GetHandle(ArrayCopySemantics::kDonateInput));
+      ASSIGN_OR_RETURN(ArrayHandle handle,
+                       array->GetHandle(ArrayCopySemantics::kDonateInput));
       req->add_args_handles(handle.handle);
     } else {
-      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
-                          array->GetHandle(ArrayCopySemantics::kAlwaysCopy));
+      ASSIGN_OR_RETURN(ArrayHandle handle,
+                       array->GetHandle(ArrayCopySemantics::kAlwaysCopy));
       req->add_args_handles(handle.handle);
     }
   }
-  TF_RETURN_IF_ERROR(options.ToProto(*req->mutable_execute_options(),
-                                     rpc_helper_->ifrt_serdes_version()));
+  RETURN_IF_ERROR(options.ToProto(*req->mutable_execute_options(),
+                                  rpc_helper_->ifrt_serdes_version()));
   if (devices.has_value()) {
     for (const auto* device : (*devices)->devices()) {
       req->add_device_ids(device->Id().value());
@@ -818,7 +820,7 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
     return result;
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::shared_ptr<LoadedExecutableExecuteResponse> response,
       rpc_helper_->LoadedExecutableExecute(std::move(req)).Await());
   auto status = output_spec_cache_->Cache(response->outputs());
@@ -868,6 +870,12 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
   return result;
 }
 
+absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteBundleResult>
+LoadedExecutable::ExecuteBundle(absl::Span<BundleRef> args,
+                                const ExecuteOptions& options) {
+  return absl::UnimplementedError(
+      "IFRT proxy does not support LoadedExecutable::ExecuteBundle()");
+}
 std::optional<DeviceListRef> LoadedExecutable::devices() const {
   return devices_;
 }

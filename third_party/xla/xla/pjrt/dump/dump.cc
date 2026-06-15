@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/pjrt/dump/mlir.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -79,7 +80,7 @@ absl::StatusOr<std::string> GetDumpSubdirPath(absl::string_view dump_to_path,
   }
 
   std::string dump_subdir = tsl::io::JoinPath(dump_to_path, dump_subdir_name);
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(dump_subdir));
+  RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(dump_subdir));
   return dump_subdir;
 }
 
@@ -88,7 +89,7 @@ absl::Status DumpCompileInputs(absl::string_view dump_to_path,
                                mlir::ModuleOp module,
                                const xla::PjRtTopologyDescription& topology,
                                int module_id) {
-  TF_ASSIGN_OR_RETURN(std::string path, ResolveTestingDumpPath(dump_to_path));
+  ASSIGN_OR_RETURN(std::string path, ResolveTestingDumpPath(dump_to_path));
 
   // Default the name to "main" if no module name is present, mirroring
   // HloModule dump.
@@ -96,8 +97,8 @@ absl::Status DumpCompileInputs(absl::string_view dump_to_path,
                                 ? std::string(module.getName().value())
                                 : "main";
 
-  TF_ASSIGN_OR_RETURN(std::string dump_sub_dir,
-                      GetDumpSubdirPath(path, module_name, module_id));
+  ASSIGN_OR_RETURN(std::string dump_sub_dir,
+                   GetDumpSubdirPath(path, module_name, module_id));
 
   if (dump_sub_dir.empty()) {
     return absl::OkStatus();
@@ -106,7 +107,7 @@ absl::Status DumpCompileInputs(absl::string_view dump_to_path,
   // Dump module to file.
   std::string module_file_name = tsl::io::JoinPath(dump_sub_dir, "module.mlir");
   VLOG(3) << "Dumping module to " << module_file_name;
-  TF_RETURN_IF_ERROR(pjrt::MlirModuleToFile(module, module_file_name));
+  RETURN_IF_ERROR(pjrt::MlirModuleToFile(module, module_file_name));
 
   auto* debug_options =
       compile_options.executable_build_options.mutable_debug_options();
@@ -115,13 +116,13 @@ absl::Status DumpCompileInputs(absl::string_view dump_to_path,
   // Unset xla_dump_to when dumping so that reproducers don't dump by default.
   debug_options->clear_xla_dump_to();
 
-  TF_ASSIGN_OR_RETURN(auto options_proto, compile_options.ToProto());
-  TF_RETURN_IF_ERROR(WriteProtoToFile(options_proto, "compile_options",
-                                      dump_sub_dir, dump_as_binary_proto));
+  ASSIGN_OR_RETURN(auto options_proto, compile_options.ToProto());
+  RETURN_IF_ERROR(WriteProtoToFile(options_proto, "compile_options",
+                                   dump_sub_dir, dump_as_binary_proto));
 
-  TF_ASSIGN_OR_RETURN(auto topology_proto, topology.ToProto());
-  TF_RETURN_IF_ERROR(WriteProtoToFile(topology_proto, "topology", dump_sub_dir,
-                                      dump_as_binary_proto));
+  ASSIGN_OR_RETURN(auto topology_proto, topology.ToProto());
+  RETURN_IF_ERROR(WriteProtoToFile(topology_proto, "topology", dump_sub_dir,
+                                   dump_as_binary_proto));
   return absl::OkStatus();
 }
 

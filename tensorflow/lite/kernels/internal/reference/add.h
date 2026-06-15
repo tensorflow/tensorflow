@@ -23,6 +23,7 @@ limitations under the License.
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/reference/broadcast_loop.h"
 
 namespace tflite {
 
@@ -39,7 +40,7 @@ inline void Add(const ArithmeticParams& params,
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
+    output_data[i] = ActivationFunctionWithMinMax<T>(
         input1_data[i] + input2_data[i], activation_min, activation_max);
   }
 }
@@ -328,6 +329,20 @@ BroadcastAdd6DSlow(const ArithmeticParams& params,
   constexpr int kMaxBroadcastDim = 6;
   T activation_min, activation_max;
   GetActivationParams(params, &activation_min, &activation_max);
+  const int broadcast_rank = std::max(
+      output_shape.DimensionsCount(),
+      std::max(input1_shape.DimensionsCount(), input2_shape.DimensionsCount()));
+  if (broadcast_rank > kMaxBroadcastDim) {
+    ForEachBroadcastedElement(
+        input1_shape, input2_shape, output_shape,
+        [&](int output_index, int input1_index, int input2_index) {
+          output_data[output_index] = ActivationFunctionWithMinMax(
+              static_cast<T>(input1_data[input1_index] +
+                             input2_data[input2_index]),
+              activation_min, activation_max);
+        });
+    return;
+  }
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
   // col, channel), with extents (batches, height, width, depth), with the
@@ -421,6 +436,19 @@ BroadcastAdd6DSlow(const ArithmeticParams& params,
                    const RuntimeShape& input2_shape, const T* input2_data,
                    const RuntimeShape& output_shape, T* output_data) {
   constexpr int kMaxBroadcastDim = 6;
+  const int broadcast_rank = std::max(
+      output_shape.DimensionsCount(),
+      std::max(input1_shape.DimensionsCount(), input2_shape.DimensionsCount()));
+  if (broadcast_rank > kMaxBroadcastDim) {
+    ForEachBroadcastedElement(
+        input1_shape, input2_shape, output_shape,
+        [&](int output_index, int input1_index, int input2_index) {
+          AddElementwise(1, params, input1_data + input1_index,
+                         input2_data + input2_index,
+                         output_data + output_index);
+        });
+    return;
+  }
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
   // col, channel), with extents (batches, height, width, depth), with the

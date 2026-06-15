@@ -60,16 +60,22 @@ bool HasBlockLevelFusionConfig(const HloInstruction* fusion) {
              .has_block_level_fusion_config();
 }
 
-class SoftmaxRewriterTritonTest : public HloHardwareIndependentTestBase,
-                                  public ::testing::WithParamInterface<bool> {
+class SoftmaxRewriterTritonTest
+    : public HloHardwareIndependentTestBase,
+      // The parameter controls whether experimental tiling is enabled.
+      public ::testing::WithParamInterface<bool> {
  protected:
   SoftmaxRewriterTritonTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   mlir::MLIRContext mlir_context_;
   GpuAliasInfo alias_info_{device_info_};
-  SoftmaxRewriterTriton fusion_rewriter_{device_info_,
-                                         HloCostAnalysis::DefaultShapeSize,
-                                         &alias_info_, &mlir_context_};
+  SoftmaxRewriterTriton fusion_rewriter_{
+      device_info_,
+      HloCostAnalysis::DefaultShapeSize,
+      &alias_info_,
+      &mlir_context_,
+      /*only_fuse_if_profitable=*/false,
+      /*use_experimental_tiling=*/GetParam()};
 
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
@@ -468,16 +474,13 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  // Currently failing in experimental tiling due to the unsupported reshape.
-  bool expected_fuse = !GetParam();
   ASSERT_OK_AND_ASSIGN(bool fused, fusion_rewriter_.Run(module.get()));
-  EXPECT_EQ(fused, expected_fuse);
-  if (expected_fuse) {
-    EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-    EXPECT_THAT(module->entry_computation()->root_instruction(),
-                GmockMatch(m::Fusion(m::Parameter())
-                               .WithPredicate(HasBlockLevelFusionConfig)));
-  }
+  EXPECT_TRUE(fused);
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
@@ -581,7 +584,9 @@ ENTRY main {
       SoftmaxRewriterTriton(
           TestGpuDeviceInfo::RTXA6000DeviceInfo(
               se::CudaComputeCapability{se::CudaComputeCapability::kVolta, 0}),
-          HloCostAnalysis::DefaultShapeSize, &alias_info_, &mlir_context_)
+          HloCostAnalysis::DefaultShapeSize, &alias_info_, &mlir_context_,
+          /*only_fuse_if_profitable=*/false,
+          /*use_experimental_tiling=*/GetParam())
           .Run(module.get()),
       absl_testing::StatusIs(
           tsl::error::FAILED_PRECONDITION,
@@ -610,7 +615,9 @@ ENTRY main {
 
   EXPECT_TRUE(SoftmaxRewriterTriton(TestGpuDeviceInfo::AMDMI210DeviceInfo(),
                                     HloCostAnalysis::DefaultShapeSize,
-                                    &alias_info_, &mlir_context_)
+                                    &alias_info_, &mlir_context_,
+                                    /*only_fuse_if_profitable=*/false,
+                                    /*use_experimental_tiling=*/GetParam())
                   .Run(module.get())
                   .ok());
 }
@@ -695,9 +702,10 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(device_info_,
-                                        HloCostAnalysis::DefaultShapeSize,
-                                        &alias_info_, &mlir_context_);
+  SoftmaxRewriterTriton fusion_rewriter(
+      device_info_, HloCostAnalysis::DefaultShapeSize, &alias_info_,
+      &mlir_context_, /*only_fuse_if_profitable=*/false,
+      /*use_experimental_tiling=*/GetParam());
   EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
@@ -845,7 +853,8 @@ ENTRY main {
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   SoftmaxRewriterTriton softmax_rewriter_triton(
       device_info_, HloCostAnalysis::DefaultShapeSize, &alias_info_,
-      &mlir_context_);
+      &mlir_context_, /*only_fuse_if_profitable=*/false,
+      /*use_experimental_tiling=*/GetParam());
   int unmatched = 0, matched = 0;
   for (HloInstruction* instruction :
        module->entry_computation()->MakeInstructionPostOrder()) {
@@ -1100,9 +1109,12 @@ ENTRY main {
     // normalization diamond, because the row size is too large to fit in
     // registers.
     SoftmaxRewriterTriton fusion_rewriter_without_cost_model{
-        device_info_, HloCostAnalysis::DefaultShapeSize, &alias_info_,
+        device_info_,
+        HloCostAnalysis::DefaultShapeSize,
+        &alias_info_,
         &mlir_context_,
-        /*only_fuse_if_profitable=*/false};
+        /*only_fuse_if_profitable=*/false,
+        /*use_experimental_tiling=*/GetParam()};
 
     auto module = ParseAndReturnVerifiedModule(hlo_string).value();
     EXPECT_FALSE(fusion_rewriter_without_cost_model.Run(module.get()).value());
@@ -1112,9 +1124,12 @@ ENTRY main {
     // SoftmaxRewriterTriton with Cost Model will discard the normalization
     // diamond, because row size is too large.
     SoftmaxRewriterTriton fusion_rewriter_with_cost_model{
-        device_info_, HloCostAnalysis::DefaultShapeSize, &alias_info_,
+        device_info_,
+        HloCostAnalysis::DefaultShapeSize,
+        &alias_info_,
         &mlir_context_,
-        /*only_fuse_if_profitable=*/true};
+        /*only_fuse_if_profitable=*/true,
+        /*use_experimental_tiling=*/GetParam()};
 
     auto module = ParseAndReturnVerifiedModule(hlo_string).value();
     EXPECT_FALSE(fusion_rewriter_with_cost_model.Run(module.get()).value());
@@ -1148,7 +1163,11 @@ ENTRY main {
 }
 
 INSTANTIATE_TEST_SUITE_P(SoftmaxRewriterTritonTestSuite,
-                         SoftmaxRewriterTritonTest, ::testing::Bool());
+                         SoftmaxRewriterTritonTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "ExperimentalTiling"
+                                             : "SymbolicTiling";
+                         });
 
 }  // anonymous namespace
 }  // namespace gpu

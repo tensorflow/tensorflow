@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -31,7 +32,7 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/literal.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
-#include "xla/service/platform_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/platform.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -172,11 +172,17 @@ class DeterminismTest : public HloPjRtGpuTestBase {
   }
 };
 
-TEST_F(DeterminismTest, CublasDot) {
-  // This test expects to use Cublas. Disable other backends, including Triton.
+TEST_F(DeterminismTest, CublasLtDot) {
   debug_options_.clear_xla_gpu_experimental_autotune_backends();
-  debug_options_.add_xla_gpu_experimental_autotune_backends(
-      autotuner::Backend::CUBLAS);
+  if (IsRocm()) {
+    if (!HasHipblasLt()) {
+      GTEST_SKIP() << "No hipblas-lt support on this architecture!";
+    }
+  }
+  auto backend =
+      IsRocm() ? autotuner::Backend::HIPBLASLT : autotuner::Backend::CUBLASLT;
+  debug_options_.add_xla_gpu_experimental_autotune_backends(backend);
+
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f32[128,128] parameter(0)
@@ -184,15 +190,10 @@ ENTRY e {
   ROOT d = f32[128,128] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  if (IsRocm()) {
-    if (!HasHipblasLt()) {
-      GTEST_SKIP() << "No hipblas-lt support on this architecture!";
-    }
-  }
   debug_options_.set_xla_gpu_enable_triton_gemm(false);
 
-  debug_options_.set_xla_gpu_enable_cublaslt(false);
-  MatchOptimizedHlo(kHloText, R"(; CHECK: custom_call_target="__cublas$gemm")",
+  MatchOptimizedHlo(kHloText,
+                    R"(; CHECK: custom_call_target="__cublas$lt$matmul")",
                     TimerCreation::kForbidden);
   AssertDeterminism(kHloText);
 }

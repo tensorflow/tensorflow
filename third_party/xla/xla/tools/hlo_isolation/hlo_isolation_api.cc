@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "re2/re2.h"
 #include "xla/comparison_util.h"
 #include "xla/error_spec.h"
@@ -55,11 +56,13 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_decomposer.h"
+#include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 
 using ::xla::hlo_isolation::ModuleIsolationOptions;
@@ -69,6 +72,9 @@ namespace xla {
 namespace hlo_isolation {
 
 namespace {
+
+constexpr absl::string_view kResultsFilename =
+    "hlo_isolation_test_results.pbtxt";
 
 absl::Status InitIsolatorOptions(ModuleIsolationOptions& options) {
   if (!options.run_module_fn) {
@@ -91,10 +97,10 @@ absl::Status InitIsolatorOptions(ModuleIsolationOptions& options) {
       std::string filename;
       if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
         filename = tsl::io::JoinPath(
-            outdir, absl::StrCat("failed-", module.name(), ".txt"));
+            outdir, absl::StrCat("failed-module-", module.name(), ".txt"));
       } else {
         filename = tsl::io::GetTempFilename(
-            absl::StrCat("failed-", module.name(), ".txt"));
+            absl::StrCat("failed-module-", module.name(), ".txt"));
       }
       CHECK_OK(tsl::WriteStringToFile(env, filename, module.ToString()));
       LOG(INFO) << "Wrote failed HLO module to " << filename;
@@ -140,27 +146,19 @@ void WriteLiteralToTempFile(const LiteralSlice& literal,
                             const std::string& module_name,
                             const std::string& name) {
   auto* env = tsl::Env::Default();
-  std::string binary_filename;
   std::string text_filename;
   std::string outdir;
   std::string prefix = absl::StrCat(module_name, "-", name);
   if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
     std::string filename =
         tsl::io::JoinPath(outdir, absl::StrCat("failed-", prefix));
-    binary_filename = absl::StrCat(filename, ".pb");
     text_filename = absl::StrCat(filename, ".txt");
   } else {
-    binary_filename = tsl::io::GetTempFilename(absl::StrCat(prefix, ".pb"));
     text_filename = tsl::io::GetTempFilename(absl::StrCat(prefix, ".txt"));
   }
-
-  CHECK_OK(tsl::WriteBinaryProto(env, binary_filename, literal.ToProto()));
   CHECK_OK(tsl::WriteStringToFile(env, text_filename, literal.ToString()));
-  LOG(INFO) << "Wrote Literal to " << prefix << " binary: " << binary_filename
-            << " text: " << text_filename;
+  LOG(INFO) << "Wrote Literal to " << prefix << " text: " << text_filename;
 }
-
-const absl::string_view kResultsFilename = "hlo_isolation_test_results.pbtxt";
 
 void WriteResults(const std::vector<HloIsolationTestResult>& pipeline_results) {
   auto* env = tsl::Env::Default();
@@ -250,8 +248,8 @@ absl::StatusOr<Literal> RunModule(std::unique_ptr<HloModule> module,
                                   HloRunnerInterface* runner,
                                   absl::Span<const Literal> input_data,
                                   bool run_hlo_passes) {
-  TF_ASSIGN_OR_RETURN(auto executable, runner->CreateExecutable(
-                                           std::move(module), run_hlo_passes));
+  ASSIGN_OR_RETURN(auto executable,
+                   runner->CreateExecutable(std::move(module), run_hlo_passes));
   return runner->ExecuteWithExecutable(executable.get(), input_data);
 }
 
@@ -262,11 +260,11 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
   HloIsolationTestResult result;
   result.set_module_name(module.name());
 
-  TF_RETURN_IF_ERROR(InitIsolatorOptions(options));
+  RETURN_IF_ERROR(InitIsolatorOptions(options));
 
   std::vector<Literal> local_inputs;
   if (input_data.empty()) {
-    TF_ASSIGN_OR_RETURN(local_inputs, options.make_fake_arguments_fn(module));
+    ASSIGN_OR_RETURN(local_inputs, options.make_fake_arguments_fn(module));
     input_data = local_inputs;
   }
 
@@ -296,7 +294,7 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
 
   // Run defused test runner.
   std::unique_ptr<HloModule> defused_module = module.Clone("defused");
-  TF_RETURN_IF_ERROR(DefuseModule(defused_module.get()));
+  RETURN_IF_ERROR(DefuseModule(defused_module.get()));
   absl::StatusOr<Literal> defused_output =
       run_module(std::move(defused_module), test_runner, input_data);
   if (!defused_output.ok()) {
@@ -336,7 +334,7 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     std::unique_ptr<HloModule> despecialized_module =
         module.Clone("despecialized");
     Despecializer despecializer;
-    TF_RETURN_IF_ERROR(despecializer.Run(despecialized_module.get()).status());
+    RETURN_IF_ERROR(despecializer.Run(despecialized_module.get()).status());
     std::string despecialized_module_name = despecialized_module->name();
 
     // Run the reference runner.
@@ -369,10 +367,10 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
 absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
     const HloModule& input_module, HloRunnerInterface* test_runner,
     HloRunnerInterface* reference_runner, PipelineIsolationOptions options) {
-  TF_RETURN_IF_ERROR(ValidatePipelineOptions(options));
-  TF_RETURN_IF_ERROR(InitIsolatorOptions(options.module_options));
+  RETURN_IF_ERROR(ValidatePipelineOptions(options));
+  RETURN_IF_ERROR(InitIsolatorOptions(options.module_options));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<HloModule>> modules,
       DecomposeHloModule(input_module, /*deduplicate_modules=*/true));
 
@@ -470,8 +468,8 @@ absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
 absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
     const std::string& input_path, HloRunnerInterface* test_runner,
     HloRunnerInterface* reference_runner, PipelineIsolationOptions options) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> loaded_module,
-                      LoadModuleFromFile(input_path));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> loaded_module,
+                   LoadModuleFromFile(input_path));
   return RunIsolationPipeline(*loaded_module, test_runner, reference_runner,
                               options);
 }
@@ -608,8 +606,8 @@ absl::StatusOr<std::vector<NumericMismatch>> ExtractTopMismatches(
 
 absl::StatusOr<NumericMismatch> ExtractTopRelativeErrorMismatch(
     std::string error_message) {
-  TF_ASSIGN_OR_RETURN(std::vector<NumericMismatch> mismatches,
-                      ExtractTopMismatches(error_message, false));
+  ASSIGN_OR_RETURN(std::vector<NumericMismatch> mismatches,
+                   ExtractTopMismatches(error_message, false));
   if (mismatches.empty()) {
     return absl::NotFoundError(
         "Could not find top relative error mismatch in the error message.");
@@ -632,7 +630,7 @@ absl::StatusOr<std::vector<bool>> DetectReducesInModuleOutput(
   }
   std::vector<bool> reduce_in_output(num_outputs, false);
   std::unique_ptr<HloModule> defused_module = module->Clone("defused");
-  TF_RETURN_IF_ERROR(DefuseModule(defused_module.get()));
+  RETURN_IF_ERROR(DefuseModule(defused_module.get()));
 
   auto bfs = [&reduce_in_output](HloModule* module,
                                  int64_t output_index) -> void {
@@ -686,10 +684,10 @@ absl::StatusOr<std::vector<NumericMismatch>> ExtractAndEnrichTopMismatches(
   int64_t num_outputs =
       is_tuple ? module->result_shape().tuple_shapes().size() : 1;
 
-  TF_ASSIGN_OR_RETURN(std::vector<NumericMismatch> mismatches,
-                      ExtractTopMismatches(error_message, is_tuple));
-  TF_ASSIGN_OR_RETURN(std::vector<bool> reduce_in_output,
-                      DetectReducesInModuleOutput(module));
+  ASSIGN_OR_RETURN(std::vector<NumericMismatch> mismatches,
+                   ExtractTopMismatches(error_message, is_tuple));
+  ASSIGN_OR_RETURN(std::vector<bool> reduce_in_output,
+                   DetectReducesInModuleOutput(module));
   for (NumericMismatch& mismatch : mismatches) {
     int output_index = mismatch.output_shape_index();
     if (output_index >= num_outputs) {

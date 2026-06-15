@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/ops/resource_variable_ops.h"
 
-#include <cstring>
+#include <cstring>  // NOLINT
 #include <string>
 #include <vector>
 
@@ -27,11 +27,10 @@ limitations under the License.
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/tracing_utils.h"
-#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"  // NOLINT
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/errors.h"  // NOLINT
 
 using tensorflow::tracing::MaybeSetOpName;
 
@@ -45,7 +44,8 @@ namespace ops {
 absl::Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource,
                          DataType dtype, const PartialTensorShape shape,
                          const char* container, const char* shared_name,
-                         absl::Span<const std::string> allowed_devices,
+                         const char* debug_name,
+                         absl::Span<std::string const> allowed_devices,
                          const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("VarHandleOp", raw_device_name));
@@ -54,6 +54,8 @@ absl::Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource,
       op_ptr->SetAttrString("container", container, strlen(container)));
   TF_RETURN_IF_ERROR(
       op_ptr->SetAttrString("shared_name", shared_name, strlen(shared_name)));
+  TF_RETURN_IF_ERROR(
+      op_ptr->SetAttrString("debug_name", debug_name, strlen(debug_name)));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrType("dtype", dtype));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrShape("shape", shape));
   TF_RETURN_IF_ERROR(

@@ -49,6 +49,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -81,6 +82,13 @@ namespace xla {
 class HloComputation;
 class HloModule;
 class HloInstruction;
+class BackendConfigWrapper;
+class HloPayloadDeduplicator;
+struct HloProtoOptions {
+  bool deduplicate_backend_config = false;
+  bool deduplicate_metadata = true;
+  HloPayloadDeduplicator* payload_deduplicator = nullptr;
+};
 
 // A small holder that is used to keep some immutable info alongside an
 // instruction pointer in an HloComputation's list of instructions
@@ -681,7 +689,7 @@ class HloInstruction {
   // in the target replica output perspective.
   //
   // For i-th output offset, the current replica will send
-  // `input[input_offsets[i]:input_offsets[i]+input_sizes[i]]` update to
+  // `input[input_offsets[i]:input_offsets[i]+send_sizes[i]]` update to
   // `i`-th replica that will be written to
   // `output_i[output_offsets[i]:output_offsets[i]+send_sizes[i]]` in `i`-th
   // replica ``output``.
@@ -1679,6 +1687,9 @@ class HloInstruction {
 
   virtual void ToProto(HloInstructionProto* proto) const;
 
+  // Non-virtual overload that handles payload deduplication options.
+  void ToProto(HloInstructionProto* proto, HloProtoOptions options) const;
+
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
   virtual std::string ToCategory() const;
@@ -2070,7 +2081,7 @@ class HloInstruction {
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   absl::StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
-    TF_RETURN_IF_ERROR(backend_config_->GetProto(&proto));
+    RETURN_IF_ERROR(backend_config_->GetProto(&proto));
     return proto;
   }
 
@@ -2159,6 +2170,22 @@ class HloInstruction {
   const OpMetadata& metadata() const {
     OpMetadata* m = metadata_.get();
     return (m == nullptr) ? *kEmptyMetadata : *m;
+  }
+
+  bool has_metadata_payload() const {
+    if (metadata_ == nullptr || !metadata_->has_metadata_payload()) {
+      return false;
+    }
+    const auto& payload = metadata_->metadata_payload();
+    return payload.has_value() || payload.has_id();
+  }
+
+  std::string metadata_payload_string() const {
+    if (!has_metadata_payload()) {
+      return "";
+    }
+    const auto& payload = metadata_->metadata_payload();
+    return payload.has_value() ? payload.value() : "";
   }
 
   // Reconstructs the full Python call stack from HloMetadata.
@@ -2271,11 +2298,16 @@ class HloInstruction {
   HloInstruction* AddFusionOperand(HloInstruction* new_operand);
 
   // Delegates to HloFusionInstruction::MergeFusionInstruction.
-  void MergeFusionInstruction(HloInstruction* instruction_to_merge);
+  // remove_computation: when false, allows to defer the call to
+  // RemoveEmbeddedComputation to a later time.
+  void MergeFusionInstruction(HloInstruction* instruction_to_merge,
+                              bool remove_computation = true);
 
   // Delegates to HloFusionInstruction::MergeFusionInstructionIntoMultiOutput.
+  // remove_computation: when false, allows to defer the call to
+  // RemoveEmbeddedComputation to a later time.
   void MergeFusionInstructionIntoMultiOutput(
-      HloInstruction* instruction_to_merge);
+      HloInstruction* instruction_to_merge, bool remove_computation = true);
 
   // Delegates to HloFusionInstruction::FuseInstruction.
   HloInstruction* FuseInstruction(HloInstruction* instruction_to_fuse);

@@ -645,6 +645,35 @@ ENTRY main {
   EXPECT_EQ(conditional->original_value()->ToString(), R"(({"cond" {1}}))");
 }
 
+TEST_F(ConditionalSimplifierTest, NotRemoveIfWithSchedulingGroupId) {
+  absl::string_view hlo_string =
+      R"(
+HloModule module
+
+%true_comp {
+  %param = s32[] parameter(0)
+  %constant = s32[] constant(1)
+  ROOT %add = s32[] add(%param, %constant)
+}
+
+%false_comp {
+  %param.1 = s32[] parameter(0)
+  %constant.1 = s32[] constant(42)
+  ROOT %add.1 = s32[] add(%param.1, %constant.1)
+}
+
+ENTRY %entry {
+  %constant.2 = pred[] constant(false)
+  %constant.3 = s32[] constant(1)
+  %param = s32[] parameter(0)
+  ROOT %conditional = s32[] conditional(%constant.2, %constant.3, %param), true_computation=%true_comp, false_computation=%false_comp, frontend_attributes={_scheduling_group_id="0"}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, ConditionalSimplifier().Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 
 }  // namespace xla

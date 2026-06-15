@@ -150,6 +150,11 @@ static int64_t LoadBufferFromGCS(const std::string& path, size_t offset,
     TF_SetStatus(status, TF_UNKNOWN, "Could not get content-length header");
     return -1;
   }
+  if (read < 0 || read > static_cast<int64_t>(buffer_size)) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "Read length from GCS exceeds buffer size.");
+    return -1;
+  }
   // `TF_OUT_OF_RANGE` isn't considered as an error. So we clear it here.
   TF_SetStatus(status, TF_OK, "");
   VLOG(1) << absl::StrFormat("Successful read of %s @ %u of size: %u", path,
@@ -217,7 +222,7 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
     absl::MutexLock l(gcs_file->buffer_mutex);
     size_t buffer_end = gcs_file->buffer_start + gcs_file->buffer.size();
     size_t copy_size = 0;
-    if (offset < buffer_end && gcs_file->buffer_start) {
+    if (offset >= gcs_file->buffer_start && offset < buffer_end) {
       copy_size = (std::min)(n, static_cast<size_t>(buffer_end - offset));
       memcpy(buffer,
              gcs_file->buffer.data() + (offset - gcs_file->buffer_start),
@@ -714,15 +719,21 @@ void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
   int64_t read =
       tf_random_access_file::Read(&reader, 0, metadata->size(), buffer, status);
   tf_random_access_file::Cleanup(&reader);
-  if (TF_GetCode(status) != TF_OK) return;
+  if (TF_GetCode(status) != TF_OK) {
+    plugin_memory_free(buffer);
+    return;
+  }
 
   if (read > 0 && buffer) {
     region->plugin_memory_region =
         new tf_read_only_memory_region::GCSMemoryRegion(
             {buffer, static_cast<uint64_t>(read)});
     TF_SetStatus(status, TF_OK, "");
-  } else if (read == 0) {
-    TF_SetStatus(status, TF_INVALID_ARGUMENT, "File is empty");
+  } else {
+    if (read == 0) {
+      TF_SetStatus(status, TF_INVALID_ARGUMENT, "File is empty");
+    }
+    plugin_memory_free(buffer);
   }
 }
 

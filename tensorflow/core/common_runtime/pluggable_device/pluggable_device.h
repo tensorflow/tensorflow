@@ -69,6 +69,9 @@ class PluggableDevice : public LocalDevice {
 
   absl::Status Sync() override;
 
+  // Helper method for unit tests to reset the streams. Never use in production.
+  static void TestOnlyReset();
+
   Allocator* GetAllocator(AllocatorAttributes attr) override;
 
   absl::Status MakeTensorFromProto(const TensorProto& tensor_proto,

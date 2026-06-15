@@ -165,89 +165,6 @@ def _lib_name(lib, version = "", static = False):
             version = ".%s" % version
         return "lib%s.so%s" % (lib, version)
 
-def _rocm_lib_paths(repository_ctx, lib, basedir):
-    file_name = _lib_name(lib, version = "", static = False)
-    return [
-        repository_ctx.path("%s/lib64/%s" % (basedir, file_name)),
-        repository_ctx.path("%s/lib64/stubs/%s" % (basedir, file_name)),
-        repository_ctx.path("%s/lib/x86_64-linux-gnu/%s" % (basedir, file_name)),
-        repository_ctx.path("%s/lib/%s" % (basedir, file_name)),
-        repository_ctx.path("%s/lib/%s.0" % (basedir, file_name)),  # hipblaslt has this pattern
-        repository_ctx.path("%s/%s" % (basedir, file_name)),
-    ]
-
-def _batch_files_exist(repository_ctx, libs_paths, bash_bin):
-    all_paths = []
-    for row in libs_paths:
-        lib_paths = row[1]
-        for lib_path in lib_paths:
-            all_paths.append(lib_path)
-    return files_exist(repository_ctx, all_paths, bash_bin)
-
-def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
-    test_results = _batch_files_exist(repository_ctx, libs_paths, bash_bin)
-
-    libs = {}
-    i = 0
-    for row in libs_paths:
-        name = row[0]
-        lib_paths = row[1]
-        optional = (len(row) > 2 and row[2] == True)
-        selected_path = None
-        for path in lib_paths:
-            if test_results[i] and selected_path == None:
-                # For each lib select the first path that exists.
-                selected_path = path
-            i = i + 1
-        if selected_path == None:
-            if optional:
-                libs[name] = None
-                continue
-            else:
-                auto_configure_fail("Cannot find rocm library %s" % name)
-
-        libs[name] = struct(
-            file_name = selected_path.basename,
-            path = realpath(repository_ctx, selected_path, bash_bin),
-        )
-
-    return libs
-
-def _find_libs(repository_ctx, rocm_config, bash_bin):
-    """Returns the ROCm libraries on the system.
-
-    Args:
-      repository_ctx: The repository context.
-      rocm_config: The ROCm config as returned by _get_rocm_config
-      bash_bin: the path to the bash interpreter
-
-    Returns:
-      Map of library names to structs of filename and path
-    """
-    repo_path = str(repository_ctx.path(rocm_config.rocm_toolkit_path))
-    libs_paths = [
-        (name, _rocm_lib_paths(repository_ctx, name, path))
-        for name, path in [
-            ("amdhip64", repo_path),
-            ("rocblas", repo_path),
-            ("hiprand", repo_path),
-            ("MIOpen", repo_path),
-            ("rccl", repo_path),
-            ("hipsparse", repo_path),
-            ("roctracer64", repo_path),
-            ("rocsolver", repo_path),
-            ("rocsolver", repo_path),
-            ("hipsolver", repo_path),
-            ("hipfft", repo_path),
-            ("rocrand", repo_path),
-            ("hipblas", repo_path),
-            ("hipblaslt", repo_path),
-            ("rocprofiler-sdk", repo_path),
-        ]
-    ]
-
-    return _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin)
-
 def find_rocm_config(repository_ctx, rocm_path):
     """Returns ROCm config dictionary from running find_rocm_config.py
 
@@ -343,10 +260,8 @@ def _create_dummy_repository(repository_ctx):
             "%{rocm_is_configured}": "False",
             "%{gpu_is_configured}": "if_true" if enable_cuda(repository_ctx) or enable_sycl(repository_ctx) else "if_false",
             "%{cuda_or_rocm}": "if_true" if enable_cuda(repository_ctx) else "if_false",
-            "%{rocm_extra_copts}": "[]",
             "%{rocm_gpu_architectures}": "[]",
             "%{rocm_version_number}": "0",
-            "%{rocm_hipblaslt}": "False",
             "%{single_gpu_rbe_pool}": repository_ctx.os.environ.get(_TF_ROCM_RBE_SINGLE_GPU_POOL, _DEFAULT_TF_ROCM_RBE_SINGLE_GPU_POOL),
             "%{multi_gpu_rbe_pool}": repository_ctx.os.environ.get(_TF_ROCM_RBE_MULTI_GPU_POOL, _DEFAULT_TF_ROCM_RBE_MULTI_GPU_POOL),
         },
@@ -381,7 +296,6 @@ def _create_dummy_repository(repository_ctx):
         "rocm:rocm_config.h",
         {
             "%{rocm_toolkit_path}": "/opt/rocm",
-            "%{hipblaslt_flag}": "0",
         },
         "rocm/rocm_config/rocm_config.h",
     )
@@ -394,11 +308,6 @@ def _create_dummy_repository(repository_ctx):
         _DUMMY_CROSSTOOL_BZL_FILE,
     )
     repository_ctx.file("crosstool/BUILD", _DUMMY_CROSSTOOL_BUILD_FILE)
-
-def _compute_rocm_extra_copts(amdgpu_targets):
-    amdgpu_target_flags = ["--offload-arch=" +
-                           amdgpu_target for amdgpu_target in amdgpu_targets]
-    return str(amdgpu_target_flags)
 
 def _remove_root_dir(path, root_dir):
     if path.startswith(root_dir + "/"):
@@ -441,13 +350,6 @@ def _create_local_rocm_repository(repository_ctx):
     rocm_toolkit_path = _remove_root_dir(rocm_config.rocm_toolkit_path, "rocm")
 
     bash_bin = get_bash_bin(repository_ctx)
-    rocm_libs = _find_libs(repository_ctx, rocm_config, bash_bin)
-    rocm_lib_srcs = []
-    rocm_lib_outs = []
-    for lib in rocm_libs.values():
-        if lib:
-            rocm_lib_srcs.append(lib.path)
-            rocm_lib_outs.append("rocm/lib/" + lib.file_name)
 
     # Set up BUILD file for rocm/
     repository_ctx.template(
@@ -457,14 +359,10 @@ def _create_local_rocm_repository(repository_ctx):
             "%{rocm_is_configured}": "True",
             "%{gpu_is_configured}": "if_true",
             "%{cuda_or_rocm}": "if_true",
-            "%{rocm_extra_copts}": _compute_rocm_extra_copts(
-                rocm_config.amdgpu_targets,
-            ),
             "%{single_gpu_rbe_pool}": repository_ctx.os.environ.get(_TF_ROCM_RBE_SINGLE_GPU_POOL, _DEFAULT_TF_ROCM_RBE_SINGLE_GPU_POOL),
             "%{multi_gpu_rbe_pool}": repository_ctx.os.environ.get(_TF_ROCM_RBE_MULTI_GPU_POOL, _DEFAULT_TF_ROCM_RBE_MULTI_GPU_POOL),
             "%{rocm_gpu_architectures}": str(rocm_config.amdgpu_targets),
             "%{rocm_version_number}": str(rocm_version_number),
-            "%{rocm_hipblaslt}": "True",
         },
     )
 
@@ -525,6 +423,9 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hipcc_env}": _hipcc_env(repository_ctx),
             "%{rocr_runtime_library}": "hsa-runtime64",
             "%{crosstool_verbose}": "0",
+            "%{rocm_amdgpu_targets}": ",".join(
+                ["%s" % c for c in rocm_config.amdgpu_targets],
+            ),
             "%{tmpdir}": get_host_environ(
                 repository_ctx,
                 _TMPDIR,
@@ -539,14 +440,10 @@ def _create_local_rocm_repository(repository_ctx):
         "rocm/rocm_config/rocm_config.h",
         tpl_paths["rocm:rocm_config.h"],
         {
-            "%{rocm_amdgpu_targets}": ",".join(
-                ["\"%s\"" % c for c in rocm_config.amdgpu_targets],
-            ),
             "%{rocm_toolkit_path}": rocm_config.install_path,
             "%{rocm_version_number}": rocm_config.rocm_version_number,
             "%{miopen_version_number}": rocm_config.miopen_version_number,
             "%{hipruntime_version_number}": rocm_config.hipruntime_version_number,
-            "%{hipblaslt_flag}": "1",
         },
     )
 
@@ -556,14 +453,10 @@ def _create_local_rocm_repository(repository_ctx):
         "rocm/rocm_config_hermetic/rocm_config.h",
         tpl_paths["rocm:rocm_config.h"],
         {
-            "%{rocm_amdgpu_targets}": ",".join(
-                ["\"%s\"" % c for c in rocm_config.amdgpu_targets],
-            ),
             "%{rocm_toolkit_path}": str(repository_ctx.path(rocm_config.rocm_toolkit_path)),
             "%{rocm_version_number}": rocm_config.rocm_version_number,
             "%{miopen_version_number}": rocm_config.miopen_version_number,
             "%{hipruntime_version_number}": rocm_config.hipruntime_version_number,
-            "%{hipblaslt_flag}": "1",
         },
     )
 
@@ -576,9 +469,6 @@ def _create_remote_rocm_repository(repository_ctx, remote_config_repo):
             "%{rocm_is_configured}": "True",
             "%{gpu_is_configured}": "if_true",
             "%{cuda_or_rocm}": "if_true",
-            "%{rocm_extra_copts}": _compute_rocm_extra_copts(
-                [],
-            ),
         },
     )
     repository_ctx.template(

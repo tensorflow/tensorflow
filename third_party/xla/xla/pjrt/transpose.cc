@@ -96,6 +96,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/ef57.h"
 #include "xla/permutation_util.h"
 #include "xla/pjrt/transpose_kernels.h"
@@ -467,7 +468,7 @@ void TransposePlan::ExecuteChunk(int chunk_id, const void* a, void* b,
   }
 
   if (inner_kernel_is_memcpy_) {
-    DCHECK(transformation_ == Transformation::kNone);
+    CHECK(transformation_ == Transformation::kNone);
     // Memcpy-based plans all assume element size 1 (i.e., bytes).
     TransposeConstStride1(ac, bc, nodes.data());
     return;
@@ -823,7 +824,7 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   bool input_contiguity =
       o.chunk_contiguity == TransposePlan::ChunkContiguity::kInput;
 
-  TF_RETURN_IF_ERROR(ParseTilingSpecification(
+  RETURN_IF_ERROR(ParseTilingSpecification(
       ndim, o.output_tiling,
       /*nonstandard_layout=*/output_contiguity, plan->b_tiling_));
 
@@ -831,7 +832,7 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   absl::InlinedVector<int64_t, 4> temp_lda, temp_lda_tile, temp_a_tiling;
 
   // Parse the tile and stride specifications.
-  TF_RETURN_IF_ERROR(ParseTilingSpecification(
+  RETURN_IF_ERROR(ParseTilingSpecification(
       ndim, o.input_tiling,
       /*nonstandard_layout=*/o.input_striding.has_value() || input_contiguity,
       temp_a_tiling));
@@ -938,13 +939,13 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   }
   plan->chunk_contiguity_ = o.chunk_contiguity;
 
-  plan->Initialize();
+  RETURN_IF_ERROR(plan->Initialize());
   return plan;
 }
 
-void TransposePlan::Initialize() {
+absl::Status TransposePlan::Initialize() {
   if (num_elems_ == 0) {
-    return;
+    return absl::OkStatus();
   }
   // permutation maps dimensions of b to a
   // inverse_permutation maps dimensions of a to b
@@ -1004,6 +1005,11 @@ void TransposePlan::Initialize() {
   inner_kernel_is_memcpy_ = (pos_stride1b_in_a == pos_stride1a_in_a) &&
                             (stride_pos1a == elem_size_in_bytes_) &&
                             (stride_pos1b == elem_size_in_bytes_);
+
+  if (inner_kernel_is_memcpy_ && transformation_ != Transformation::kNone) {
+    return InvalidArgument(
+        "Memcpy-based plans cannot be used with transformations.");
+  }
 
   // Calculate sentinel strides.
   if (!inner_kernel_is_memcpy_) {
@@ -1189,6 +1195,7 @@ void TransposePlan::Initialize() {
   }
 
   VLOG(5) << "Final plan: " << ToString();
+  return absl::OkStatus();
 }
 
 void TransposePlan::ChooseLoopOrder(std::vector<Loop>& loop_order) const {
@@ -1599,8 +1606,8 @@ absl::StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
       key,
       [&](const TransposePlanCacheKey& key)
           -> absl::StatusOr<std::shared_ptr<TransposePlan>> {
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<TransposePlan> plan,
-                            TransposePlan::Create(o));
+        ASSIGN_OR_RETURN(std::unique_ptr<TransposePlan> plan,
+                         TransposePlan::Create(o));
         return std::shared_ptr<TransposePlan>(std::move(plan));
       });
 }

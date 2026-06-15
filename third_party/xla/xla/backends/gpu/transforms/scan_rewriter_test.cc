@@ -18,6 +18,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
@@ -46,6 +49,36 @@ ENTRY entry {
   scan = (f32[100], f32[]) scan(p0, p1), 
     dimensions={0}, num_carries=1, is_associative=true, to_apply=add
   ROOT root = f32[100] get-tuple-element(scan), index=0
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  ScanRewriter pass;
+  ASSERT_OK(pass.Run(module.get()));
+
+  // Check that the scan is rewritten.
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      ::xla::GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)));
+}
+
+TEST_F(ScanRewriterTest, SingleElementZeroInit) {
+  const char* hlo_text = R"(
+HloModule module
+
+add {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+  add = f32[1] add(p0, p1)
+  ROOT tuple = (f32[1], f32[1]) tuple(add, add)
+}
+
+ENTRY entry {
+  p0 = f32[100,1] parameter(0)
+  p1 = f32[1] constant({0})
+  scan = (f32[100,1], f32[1]) scan(p0, p1),
+    dimensions={0}, num_carries=1, is_associative=true, to_apply=add
+  ROOT root = f32[100,1] get-tuple-element(scan), index=0
 }
 )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
@@ -147,10 +180,16 @@ ENTRY entry {
   ScanRewriter pass;
   ASSERT_OK(pass.Run(module.get()));
 
-  // Check that the scan is rewritten.
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      ::xla::GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)));
+  // Check that the scan is rewritten and is layout-constrained.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, ::xla::GmockMatch(
+                        m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)));
+
+  auto* custom_call = Cast<HloCustomCallInstruction>(root->mutable_operand(0));
+  EXPECT_TRUE(custom_call->layout_constrained());
+  EXPECT_EQ(
+      custom_call->operand_shapes_with_layout()[0].layout().minor_to_major(0),
+      1);
 }
 
 }  // namespace

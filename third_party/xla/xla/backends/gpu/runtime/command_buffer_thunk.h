@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -80,6 +81,13 @@ class CommandBufferThunk : public Thunk {
   std::string ToString(int indent) const override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
+
+  // Returns whether command buffers are enabled during profiling.
+  // When this is false, and there's an active profiler session, the thunks will
+  // be evaluated as a regular thunk sequence.
+  bool IsEnabledDuringProfiling() const {
+    return enable_command_buffers_during_profiling_;
+  }
 
  private:
   // Command buffer instantiated on a `se::StreamExecutor` instance, and

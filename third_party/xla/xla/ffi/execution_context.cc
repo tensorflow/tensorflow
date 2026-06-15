@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 
@@ -59,7 +60,7 @@ void ExecutionContext::ForEach(
 absl::Status ExecutionContext::ForEachWithStatus(
     absl::FunctionRef<absl::Status(TypeId type_id, void* data)> fn) const {
   for (auto& [type_id, user_data] : user_data_) {
-    TF_RETURN_IF_ERROR(fn(type_id, user_data.get()));
+    RETURN_IF_ERROR(fn(type_id, user_data.get()));
   }
   return absl::OkStatus();
 }

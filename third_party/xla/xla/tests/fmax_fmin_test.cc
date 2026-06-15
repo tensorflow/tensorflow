@@ -27,8 +27,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using FmaxSimpleTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using FmaxSimpleTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(FmaxSimpleTest, FmaxTenValues) {
   SetFastMathDisabled(true);

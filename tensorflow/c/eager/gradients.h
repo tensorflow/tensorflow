@@ -111,6 +111,9 @@ class TapeTensor {
  public:
   explicit TapeTensor(AbstractTensorHandle* handle);
   TapeTensor(const TapeTensor& other);
+  TapeTensor& operator=(const TapeTensor& other);
+  TapeTensor(TapeTensor&& other) noexcept;
+  TapeTensor& operator=(TapeTensor&& other) noexcept;
   ~TapeTensor();
 
   int64_t GetID() const;

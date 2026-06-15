@@ -2,10 +2,10 @@ path: "tensorflow.data.experimental.ServiceOptions"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.ops.options.ServiceOptions\'>"
   is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "pinned"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

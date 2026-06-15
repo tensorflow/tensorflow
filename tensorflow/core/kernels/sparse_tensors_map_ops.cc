@@ -39,7 +39,8 @@ using sparse::SparseTensor;
 
 class SparseTensorsMap : public ResourceBase {
  public:
-  explicit SparseTensorsMap(const string& name) : name_(name), counter_(0) {}
+  explicit SparseTensorsMap(const std::string& name)
+      : name_(name), counter_(0) {}
 
   std::string DebugString() const override { return "A SparseTensorsMap"; }
 
@@ -103,7 +104,7 @@ class SparseTensorsMap : public ResourceBase {
   ~SparseTensorsMap() override {}
 
  private:
-  string name_;
+  std::string name_;
 
   mutex mu_;
   int64_t counter_ TF_GUARDED_BY(mu_);

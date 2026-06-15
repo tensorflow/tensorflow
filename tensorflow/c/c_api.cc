@@ -1855,6 +1855,7 @@ void TF_GraphImportGraphDefWithReturnOutputs(
   TF_ImportGraphDefResults results;
   mutex_lock l(graph->mu);
   GraphImportGraphDefLocked(graph, def, options, &results, status);
+  if (!status->status.ok()) return;
   DCHECK_EQ(results.return_tensors.size(), num_return_outputs);
   memcpy(return_outputs, results.return_tensors.data(),
          num_return_outputs * sizeof(TF_Output));

@@ -16,15 +16,16 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_KERNEL_ARGS_PACKING_SPEC_H_
 #define XLA_STREAM_EXECUTOR_KERNEL_ARGS_PACKING_SPEC_H_
 
-#include <array>
 #include <cstddef>
 #include <cstring>
 #include <memory>
+#include <optional>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_args_packed_vector.h"
 #include "xla/stream_executor/kernel_args_packing_spec.pb.h"
@@ -62,21 +63,21 @@ class KernelArgPackingSpec {
   absl::StatusOr<std::vector<char>> BuildArgument(
       absl::Span<const std::unique_ptr<PackedArgBase>> args) const;
 
-  // Build KernelArgPackingSpec that refer to given arg number.
+  // Builds KernelArgPackingSpec that refers to the given arg number.
   static KernelArgPackingSpec BuildArgRelocation(int argument_index);
 
-  // Build KernelArgPackingSpec that refer to the constant. The value must be
+  // Builds KernelArgPackingSpec that refers to a constant. The value must be
   // trivially copyable.
   template <typename T>
-  static KernelArgPackingSpec BuildFor(T value) {
+  static KernelArgPackingSpec BuildFor(const T& value) {
     using Packed = typename KernelArgPacking<T>::Type;
 
     static_assert(std::is_trivially_copyable_v<Packed>,
                   "The given value must be trivially copyable");
-    internal::PackedArg packed(KernelArgPacking<T>::Pack(value));
+    Packed packed = KernelArgPacking<T>::Pack(value);
 
     std::vector<char> temp_storage(sizeof(Packed));
-    std::memcpy(temp_storage.data(), packed.argument_address(), sizeof(Packed));
+    std::memcpy(temp_storage.data(), &packed, sizeof(Packed));
     return KernelArgPackingSpec(std::move(temp_storage), {});
   }
 
@@ -150,7 +151,7 @@ class KernelArgsPackingSpec {
     kernel_arguments_.push_back(std::move(spec));
   }
 
-  // Adds a an argument that only contains a pointer to the `argument_index`th
+  // Adds an argument that only contains a pointer to the `argument_index`th
   // argument.
   void AddAddressArgument(int argument_index) {
     kernel_arguments_.push_back(
@@ -158,7 +159,7 @@ class KernelArgsPackingSpec {
   }
 
   template <typename T>
-  void AddConstantArgument(T value) {
+  void AddConstantArgument(const T& value) {
     kernel_arguments_.push_back(KernelArgPackingSpec::BuildFor(value));
   }
 

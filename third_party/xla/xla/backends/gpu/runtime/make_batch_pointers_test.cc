@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
@@ -34,8 +35,8 @@ namespace {
 using ::testing::ElementsAreArray;
 
 static absl::StatusOr<stream_executor::StreamExecutor*> GpuExecutor() {
-  TF_ASSIGN_OR_RETURN(stream_executor::Platform * platform,
-                      PlatformUtil::GetDefaultPlatform());
+  ASSIGN_OR_RETURN(stream_executor::Platform * platform,
+                   PlatformUtil::GetDefaultPlatform());
   return platform->ExecutorForDevice(0);
 }
 

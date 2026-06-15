@@ -33,7 +33,7 @@ static Graph* MakeGraph(int split_dim, int num_split,
   in_shape.set_dim(split_dim, in_shape.dim_size(split_dim) * num_split);
   Tensor in(DataTypeToEnum<float>::value, in_shape);
   in.flat<float>().setRandom();
-  Tensor split_dim_tensor = test::AsScalar<int32>(split_dim);
+  Tensor split_dim_tensor = test::AsScalar<int32_t>(split_dim);
   Node* split;
   TF_CHECK_OK(NodeBuilder(g->NewName("split"), "Split")
                   .Input(test::graph::Constant(g, split_dim_tensor))

@@ -28,6 +28,7 @@
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/literal.h"
@@ -121,7 +122,7 @@ static absl::StatusOr<ifrt::LoadedExecutableRef> CompileAndLoad(
   mlir::MLIRContext context;
   auto module = xla::ParseMlirModuleString(program, context);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       xla::ifrt::DeviceListRef devices,
       client->MakeDeviceList({client->addressable_devices().at(0)}));
   auto compile_options = std::make_unique<ifrt::XlaCompileOptions>(
@@ -355,6 +356,8 @@ int main(int argc, char** argv) {
       "*LoadedExecutableImplTest.Analysis*:"
       // NanoRT does not support portable execution.
       "*LoadedExecutableImplTest.CompileAndExecutePortable*:"
+      // ExecuteBundle is not implemented.
+      "*CompileAndExecuteBundle*:"
       // Serialization is not implemented.
       "*SerializeAndLoad*";
   xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);

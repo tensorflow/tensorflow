@@ -26,7 +26,6 @@
 #     cuda:         Build with CUDA support.
 #     cuda_clang    Build with CUDA Clang support.
 #     rocm:         Build with AMD GPU support (rocm)
-#     mkl:          Enable full mkl support.
 #     nonccl:       Disable nccl support.
 #
 # PJRT Releases:
@@ -170,20 +169,6 @@ common:monolithic --define framework_shared_object=false
 common:monolithic --define tsl_protobuf_header_only=false
 common:monolithic --experimental_link_static_libraries_once=false  # b/229868128
 
-# Please note that MKL on MacOS is still not supported.
-# If you would like to use a local MKL instead of downloading, please set the
-# environment variable "TF_MKL_ROOT" every time before build.
-common:mkl --define=build_with_mkl=true --define=enable_mkl=true
-common:mkl --define=tensorflow_mkldnn_contraction_kernel=0
-common:mkl --define=build_with_openmp=true
-common:mkl -c opt
-
-# config to build OneDNN backend with a user specified threadpool.
-common:mkl_threadpool --define=build_with_mkl=true --define=enable_mkl=true
-common:mkl_threadpool --define=tensorflow_mkldnn_contraction_kernel=0
-common:mkl_threadpool --define=build_with_mkl_opensource=true
-common:mkl_threadpool -c opt
-
 # Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
 # with Eigen threadpool support
 common:mkl_aarch64_threadpool --define=build_with_mkl_aarch64=true
@@ -285,6 +270,7 @@ common:rocm_base --repo_env TF_NEED_ROCM=1
 common:rocm_base --define=using_rocm_hipcc=true
 common:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
 common:rocm_base --action_env=HIPCC_COMPILE_FLAGS_APPEND="--offload-compress"
+common:rocm_base --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a,gfx942,gfx950,gfx1030,gfx1100,gfx1101,gfx1200,gfx1201"
 
 common:rocm_clang_local --config=rocm_base
 common:rocm_clang_local --config=clang_local
@@ -299,21 +285,17 @@ common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_cuda=False
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_sycl=False
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_hermetic_cc=True
 common:rocm_clang_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
-common:rocm_clang_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS=gfx90a,gfx942
 common:rocm_clang_hermetic --strategy=CppLink=local
+common:rocm_clang_hermetic --@rules_ml_toolchain//common:static_libcxx=True
 
-# ROCm with hermetic clang but local (system) sysroot
-# Use this when ROCm libraries are built against system libstdc++ to avoid ABI mismatches
-common:rocm_clang_hermetic_local_sysroot --config=rocm_clang_hermetic
-common:rocm_clang_hermetic_local_sysroot --@rules_ml_toolchain//cc/sysroots:use_local_sysroot=True
-
-common:rocm --config=rocm_clang_hermetic_local_sysroot
+common:rocm --config=rocm_clang_hermetic
 common:rocm_ci --config=rocm
 common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 common:rocm_ci_hermetic --dynamic_mode=off
-common:rocm_ci_hermetic --config=rocm_clang_official
-common:rocm_ci_hermetic --repo_env="ROCM_DISTRO_VERSION=rocm_7.10.0_gfx90X"
+common:rocm_ci_hermetic --config=rocm_clang_hermetic
+common:rocm_ci_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a"
+common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.12.0_gfx90X"
 common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 # This config option is used for SYCL as GPU backend.
@@ -431,6 +413,9 @@ common:windows --verbose_failures
 # Work around potential issues with large command lines on windows.
 # See: https://github.com/bazelbuild/bazel/issues/5163
 common:windows --features=compiler_param_file
+
+# Disable AVX512FP16 due to crashing the MSVC compiler.
+common:windows --define=xnn_enable_avx512fp16=false
 
 # Do not risk cache corruption. See:
 # https://github.com/bazelbuild/bazel/issues/3360
@@ -564,7 +549,7 @@ common:rbe_linux_cuda --repo_env=TF_SYSROOT=
 # For Remote build execution -- GPU configuration
 common:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
 # Update UMD version when RBE CUDA driver is updated.
-common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.0.2"
+common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.1.1"
 
 common:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 common:rbe_linux_cuda_nvcc --config=cuda_nvcc

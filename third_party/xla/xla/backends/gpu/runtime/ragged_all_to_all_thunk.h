@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/device_address_handle.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/util/tied_ref.h"
@@ -67,7 +67,10 @@ struct RaggedAllToAllConfig {
   // multiple hosts connected via a fast interconnect (e.g., MNNVL).
   bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel = false;
 
-  // If set, the will be used to determine if optimized kernels that assume a
+  CollectiveThunk::CollectivesMode collectives_mode =
+      DebugOptions::COLLECTIVES_PRIVATE_MEMORY;
+
+  // If set, this will be used to determine if optimized kernels that assume a
   // fast interconnect can be used.
   std::optional<int64_t> fast_interconnect_slice_size_override = std::nullopt;
 
@@ -101,7 +104,7 @@ struct RaggedAllToAllStreamState {
       host_buffer_allocs;
 
   // Device memory buffer for output offsets.
-  se::DeviceAddressHandle output_offsets_device_buffer;
+  se::ScopedDeviceAddress<uint8_t> output_offsets_device_buffer;
 
   // MultiGpuBarrier: Device memory buffer for signal values (one per peer).
   // Peers write specific slots in this array to signal this device.
@@ -169,6 +172,8 @@ class RaggedAllToAllThunk : public CollectiveThunk {
       const HloRaggedAllToAllInstruction* instr);
 
   const CollectiveConfig& config() const override { return config_.config; }
+
+  bool CanUseSymmetricBuffer() const override { return true; }
 
   const RaggedAllToAllConfig& ragged_all_to_all_config() const {
     return config_;
@@ -254,7 +259,9 @@ absl::Status RunRaggedAllToAll(
     const std::vector<DeviceBufferPair>& original_buffers, se::Stream& stream,
     Communicator& comm, absl::Span<int64_t* const> ragged_metadata_allocs,
     const se::DeviceAddressBase& output_offsets_device_buffer,
-    bool use_symmetric_buffer);
+    CollectiveThunk::CollectivesMode collectives_mode,
+    SymmetricMemory* output_symmetric_memory = nullptr,
+    size_t output_base_offset = 0);
 
 // Executes an optimized "One-Shot" Ragged All-to-All collective.
 //

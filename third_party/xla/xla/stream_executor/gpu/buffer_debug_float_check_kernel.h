@@ -42,6 +42,15 @@ struct BufferDebugFloatCheckBf16Kernel {
                   DeviceAddress<xla::gpu::FloatCheckResult>, uint64_t>;
 };
 
+// Counts the number of NaNs, Infs and zeros in a buffer of float16s in
+// parallel, and stores partially accumulated results in the FloatCheckResult
+// array.
+struct BufferDebugFloatCheckF16Kernel {
+  using KernelType =
+      TypedKernel<DeviceAddress<Eigen::half>, uint64_t,
+                  DeviceAddress<xla::gpu::FloatCheckResult>, uint64_t>;
+};
+
 // Counts the number of NaNs, Infs and zeros in a buffer of doubles in
 // parallel, and stores partially accumulated results in the FloatCheckResult
 // array.

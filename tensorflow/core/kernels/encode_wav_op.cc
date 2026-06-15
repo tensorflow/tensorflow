@@ -33,19 +33,20 @@ class EncodeWavOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& audio = context->input(0);
-    OP_REQUIRES(context, audio.dims() == 2,
-                errors::InvalidArgument("audio must be 2-dimensional",
-                                        audio.shape().DebugString()));
+    OP_REQUIRES(
+        context, audio.dims() == 2,
+        absl::InvalidArgumentError(absl::StrCat("audio must be 2-dimensional",
+                                                audio.shape().DebugString())));
     const Tensor& sample_rate_tensor = context->input(1);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(sample_rate_tensor.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input sample_rate should be a scalar tensor, got ",
-                    sample_rate_tensor.shape().DebugString(), " instead."));
+                    sample_rate_tensor.shape().DebugString(), " instead.")));
     const int32_t sample_rate = sample_rate_tensor.scalar<int32_t>()();
     OP_REQUIRES(context,
                 FastBoundsCheck(audio.NumElements(),
                                 std::numeric_limits<int32_t>::max()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Cannot encode audio with >= max int32 elements"));
 
     const int32_t channel_count = static_cast<int32_t>(audio.dim_size(1));

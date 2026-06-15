@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -85,10 +86,10 @@ absl::StatusOr<bool> MoveParametersAndConstantsToFront(
       // we forward control predecessors to all users.
       for (HloInstruction* control_predecessor : inst->control_predecessors()) {
         for (HloInstruction* user : inst->users()) {
-          TF_RETURN_IF_ERROR(control_predecessor->AddControlDependencyTo(user));
+          RETURN_IF_ERROR(control_predecessor->AddControlDependencyTo(user));
         }
       }
-      TF_RETURN_IF_ERROR(inst->DropAllControlDeps());
+      RETURN_IF_ERROR(inst->DropAllControlDeps());
     }
   }
 

@@ -282,6 +282,108 @@ TEST(ContinuousProfiler, StopContinuousProfilingWithoutStart) {
   EXPECT_EQ(status.message(), "No continuous profiling session found.");
 }
 
+TEST(ContinuousProfiler, GetSnapshotServerSideSaving) {
+  std::string service_addr;
+  auto server =
+      StartServer(/*duration=*/absl::Milliseconds(100), &service_addr);
+
+  std::string logdir = ::testing::TempDir();
+
+  // Start continuous profiling with repository_root and emit_xspace = false.
+  ProfileRequest request;
+  request.set_session_id("continuous_profiling_session");
+  request.set_repository_root(logdir);
+  request.set_emit_xspace(false);
+  request.mutable_opts()->set_override_hostname("testhost");
+  *request.mutable_opts() = ProfilerSession::DefaultOptions();
+  // DefaultOptions overrides override_hostname, so we must set it after or
+  // merge it. Actually, let's just set it in opts.
+  request.mutable_opts()->set_override_hostname("testhost");
+
+  tensorflow::ContinuousProfilingResponse response;
+  absl::Status status =
+      ContinuousProfilingGrpc(service_addr, request, &response);
+  ASSERT_TRUE(status.ok());
+
+  // Get a snapshot.
+  tensorflow::GetSnapshotRequest snapshot_request;
+  snapshot_request.set_snapshot_session_id("continuous_profiling_session");
+  tensorflow::ProfileResponse snapshot_response;
+  status = GetSnapshotGrpc(service_addr, snapshot_request, &snapshot_response);
+  ASSERT_TRUE(status.ok());
+
+  // Since emit_xspace is false, xspace should be empty in response.
+  EXPECT_EQ(snapshot_response.xspace().planes_size(), 0);
+
+  // But the file should be saved in logdir.
+  std::string expected_filepath = ProfilerJoinPath(
+      logdir, "continuous_profiling_session", "testhost.xplane.pb");
+
+  EXPECT_TRUE(Env::Default()->FileExists(expected_filepath).ok());
+}
+
+TEST(ContinuousProfiler, GetSnapshotWithSnapshotSessionId) {
+  std::string service_addr;
+  auto server =
+      StartServer(/*duration=*/absl::Milliseconds(100), &service_addr);
+
+  std::string logdir = ::testing::TempDir();
+
+  ProfileRequest request;
+  request.set_session_id("continuous_profiling_session");
+  request.set_repository_root(logdir);
+  request.set_emit_xspace(false);
+  *request.mutable_opts() = ProfilerSession::DefaultOptions();
+  request.mutable_opts()->set_override_hostname("testhost");
+
+  tensorflow::ContinuousProfilingResponse response;
+  absl::Status status =
+      ContinuousProfilingGrpc(service_addr, request, &response);
+  ASSERT_TRUE(status.ok());
+
+  // Get a snapshot with custom snapshot_session_id.
+  tensorflow::GetSnapshotRequest snapshot_request;
+  snapshot_request.set_snapshot_session_id("custom_snapshot_name");
+  tensorflow::ProfileResponse snapshot_response;
+  status = GetSnapshotGrpc(service_addr, snapshot_request, &snapshot_response);
+  ASSERT_TRUE(status.ok());
+
+  EXPECT_EQ(snapshot_response.xspace().planes_size(), 0);
+
+  std::string expected_filepath =
+      ProfilerJoinPath(logdir, "custom_snapshot_name", "testhost.xplane.pb");
+
+  EXPECT_TRUE(Env::Default()->FileExists(expected_filepath).ok());
+}
+
+TEST(ContinuousProfiler, GetSnapshotWithIllegalSnapshotSessionId) {
+  std::string service_addr;
+  auto server =
+      StartServer(/*duration=*/absl::Milliseconds(100), &service_addr);
+
+  std::string logdir = ::testing::TempDir();
+
+  ProfileRequest request;
+  request.set_session_id("continuous_profiling_session");
+  request.set_repository_root(logdir);
+  request.set_emit_xspace(false);
+  *request.mutable_opts() = ProfilerSession::DefaultOptions();
+
+  tensorflow::ContinuousProfilingResponse response;
+  absl::Status status =
+      ContinuousProfilingGrpc(service_addr, request, &response);
+  ASSERT_TRUE(status.ok());
+
+  // Pass illegal path traversal dots
+  tensorflow::GetSnapshotRequest snapshot_request;
+  snapshot_request.set_snapshot_session_id("../escaped_folder");
+  tensorflow::ProfileResponse snapshot_response;
+  status = GetSnapshotGrpc(service_addr, snapshot_request, &snapshot_response);
+
+  // Verify that gRPC explicitly rejects it with INVALID_ARGUMENT
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl

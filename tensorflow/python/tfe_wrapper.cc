@@ -1154,7 +1154,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
              tensorflow::errors::GetPayloads(state[i].status)) {
           payloads[payload.first.c_str()] = payload.second;
         }
-        auto exception_class = py::reinterpret_steal<py::object>(
+        auto exception_class = py::reinterpret_borrow<py::object>(
             tensorflow::PyExceptionRegistry::Lookup(code));
         if (!exception_class) {
           status->status = absl::InternalError(absl::StrCat(

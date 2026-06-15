@@ -344,14 +344,14 @@ ResourceHandle MakeResourceHandle(
     const std::string& container, const std::string& name,
     const DeviceBase& device, const TypeIndex& type_index,
     const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
-    const absl::optional<ManagedStackTrace>& definition_stack_trace = {})
+    const std::optional<ManagedStackTrace>& definition_stack_trace = {})
     TF_MUST_USE_RESULT;
 
 template <typename T>
 ResourceHandle MakeResourceHandle(
     OpKernelContext* ctx, const std::string& container, const std::string& name,
     const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
-    const absl::optional<ManagedStackTrace>& definition_stack_trace = {}) {
+    const std::optional<ManagedStackTrace>& definition_stack_trace = {}) {
   return MakeResourceHandle(container.empty()
                                 ? ctx->resource_manager()->default_container()
                                 : container,
@@ -364,7 +364,7 @@ ResourceHandle MakeResourceHandle(
     OpKernelConstruction* ctx, const std::string& container,
     const std::string& name,
     const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
-    const absl::optional<ManagedStackTrace>& definition_stack_trace = {}) {
+    const std::optional<ManagedStackTrace>& definition_stack_trace = {}) {
   return MakeResourceHandle(container.empty()
                                 ? ctx->resource_manager()->default_container()
                                 : container,

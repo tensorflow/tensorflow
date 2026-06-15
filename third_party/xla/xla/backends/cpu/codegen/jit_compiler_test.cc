@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/AbsoluteSymbols.h"
@@ -131,9 +132,9 @@ TEST(JitCompilerTest, Compile) {
 
   auto add_module = [&](absl::string_view ir, absl::string_view name,
                         size_t dylib_index) -> absl::Status {
-    TF_ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
-                        ParseModule(tsc, ir, name));
-    TF_RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
+    ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
+                     ParseModule(tsc, ir, name));
+    RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
     return absl::OkStatus();
   };
 
@@ -292,6 +293,52 @@ TEST_F(JitCompilerTestFixture, TaskMemoryReleasedWhenTaskRetainedByQueue) {
   // occur when the task wrapper is eventually destroyed from the thread pool.
   EXPECT_TRUE(task_resource_freed)
       << "The Queue is keeping the Task resource alive!";
+}
+
+TEST(JitCompilerTest, CompileWithHighAlignment) {
+  auto context = std::make_unique<llvm::LLVMContext>();
+  llvm::orc::ThreadSafeContext tsc(std::move(context));
+
+  JitCompiler::Options options;
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::None,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
+      IrCompiler::CompilationHooks());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto compiler,
+      JitCompiler::Create(std::move(options), std::move(ir_compiler),
+                          /*task_runner=*/nullptr));
+
+  // An LLVM IR module requesting an 8KB alignment (which is larger than the
+  // typical 4KB page size) on a constant global variable. This tests that the
+  // ContiguousSectionMemoryManager correctly supports alignments larger than
+  // the page size.
+  constexpr absl::string_view high_align_ir = R"(
+    @aligned_constant = private constant <2048 x float> zeroinitializer, align 8192
+
+    define void @UseAligned(ptr %arg) {
+      %v0 = load <2048 x float>, ptr @aligned_constant, align 8192
+      ret void
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(llvm::orc::ThreadSafeModule tsm,
+                          ParseModule(tsc, high_align_ir, "UseAligned"));
+
+  TF_ASSERT_OK(compiler.AddModule(std::move(tsm)));
+
+  using Fn = void(float*);
+  std::vector<FunctionLibrary::Symbol> symbols = {
+      FunctionLibrary::Sym<Fn>("UseAligned")};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto function_library,
+                          Compile(std::move(compiler), symbols));
+
+  TF_ASSERT_OK_AND_ASSIGN(Fn * use_aligned,
+                          function_library->ResolveFunction<Fn>("UseAligned"));
+  EXPECT_NE(use_aligned, nullptr);
 }
 
 }  // namespace xla::cpu

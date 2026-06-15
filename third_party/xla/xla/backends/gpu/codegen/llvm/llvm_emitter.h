@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/dense_data_intermediate.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 
@@ -134,7 +135,7 @@ absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitPadToStaticLLVMIR(
 // }
 //   ```
 absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitSliceToDynamicLLVMIR(
-    const HloCustomCallInstruction* hlo, IrEmitterContext* parent_context,
+    const HloCustomCallInstruction* hlo, IrEmitterContext* ir_emitter_context,
     const emitters::KernelArguments& kernel_arguments);
 
 // Emit a kernel to increment the global state for Philox RNG
@@ -142,7 +143,7 @@ absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitSliceToDynamicLLVMIR(
 absl::StatusOr<KernelDefinition<LlvmKernelSource>>
 EmitRngGetAndUpdateStateLLVMIR(
     const HloRngGetAndUpdateStateInstruction* hlo,
-    IrEmitterContext* parent_context,
+    IrEmitterContext* ir_emitter_context,
     const emitters::KernelArguments& kernel_arguments);
 
 }  // namespace xla::gpu

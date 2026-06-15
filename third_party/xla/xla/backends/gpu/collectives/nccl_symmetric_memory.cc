@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -25,24 +27,31 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 
 // Include NCCL after XLA headers.
 #include "third_party/nccl/nccl.h"
-
-#if NCCL_VERSION_CODE >= 22900
 #include "third_party/nccl/nccl_device.h"
-#endif  // NCCL_VERSION_CODE >= 22800
+#include "xla/tsl/concurrency/executor.h"
 
 namespace xla::gpu {
 
+Future<> Execute(absl::AnyInvocable<absl::Status() &&> f,
+                 std::shared_ptr<tsl::Executor> executor) {
+  return executor ? MakeFutureOn<void>(*executor, std::move(f))
+                  : Future<>(std::move(f)());
+}
+
 NcclSymmetricMemory::NcclSymmetricMemory(
-    ncclComm_t comm, ncclWindow_t win, stream_executor::DeviceAddressBase addr)
-    : comm_(comm), win_(win), addr_(addr) {}
+    ncclComm_t comm, ncclWindow_t win, stream_executor::DeviceAddressBase addr,
+    std::shared_ptr<tsl::Executor> executor)
+    : comm_(comm), win_(win), addr_(addr), executor_(executor) {}
 
 absl::StatusOr<std::unique_ptr<NcclSymmetricMemory>>
 NcclSymmetricMemory::Create(ncclComm_t comm,
-                            stream_executor::DeviceAddressBase addr) {
+                            stream_executor::DeviceAddressBase addr,
+                            const std::shared_ptr<tsl::Executor> executor) {
   VLOG(3) << absl::StrFormat(
       "Create NCCL symmetric memory on comm=%p from: ptr=%p; size=%ld", comm,
       addr.opaque(), addr.size());
@@ -51,12 +60,24 @@ NcclSymmetricMemory::Create(ncclComm_t comm,
   XLA_NCCL_RETURN_IF_ERROR(ncclCommWindowRegister(
       comm, addr.opaque(), addr.size(), &win, NCCL_WIN_COLL_SYMMETRIC));
 
-  return absl::WrapUnique(new NcclSymmetricMemory(comm, win, addr));
+  return absl::WrapUnique(new NcclSymmetricMemory(comm, win, addr, executor));
 }
 
 NcclSymmetricMemory::~NcclSymmetricMemory() {
-  VLOG(3) << absl::StrFormat("Destroy %v", *this);
-  XLA_NCCL_LOG_IF_ERROR(ncclCommWindowDeregister(comm_, win_));
+  absl::Status status =
+      Execute(
+          [&] {
+            VLOG(3) << absl::StrFormat(
+                "Destroy %v with addr=%p, size=%ld executor=%p", *this,
+                addr_.opaque(), addr_.size(), executor_.get());
+            XLA_NCCL_LOG_IF_ERROR(ncclCommWindowDeregister(comm_, win_));
+            return absl::OkStatus();
+          },
+          executor_)
+          .Await();
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to destroy NCCL symmetric memory: " << status;
+  }
 }
 
 stream_executor::DeviceAddressBase NcclSymmetricMemory::addr() const {

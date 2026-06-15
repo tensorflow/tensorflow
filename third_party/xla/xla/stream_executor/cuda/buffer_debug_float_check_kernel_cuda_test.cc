@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs_test_matchers.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
@@ -101,23 +102,23 @@ class FloatCheckKernelTest : public ::testing::Test {
     // Load kernel
     gpu::GpuKernelRegistry registry =
         gpu::GpuKernelRegistry::GetGlobalRegistry();
-    TF_ASSIGN_OR_RETURN(auto check_kernel,
-                        registry.LoadKernel<CheckKernel>(executor_));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(auto check_kernel,
+                     registry.LoadKernel<CheckKernel>(executor_));
+    ASSIGN_OR_RETURN(
         auto reduce_kernel,
         registry
             .LoadKernel<gpu::BufferDebugAppendReducedFloatCheckResultsKernel>(
                 executor_));
 
     // Setup device buffers
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         se::DeviceAddress<InputType> device_input,
         CheckNotNull(executor_->AllocateArray<InputType>(input.size()),
                      "input"));
     auto cleanup_input =
         absl::MakeCleanup([&]() { executor_->Deallocate(&device_input); });
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         se::DeviceAddress<xla::gpu::FloatCheckResult> device_tmp,
         CheckNotNull(executor_->AllocateArray<xla::gpu::FloatCheckResult>(
                          temp_buffer_size_elements),
@@ -128,18 +129,18 @@ class FloatCheckKernelTest : public ::testing::Test {
     const se::ThreadDim thread_dim(1024, 1, 1);
 
     // Call kernel
-    TF_RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
-                                       input.size() * sizeof(input[0])));
-    TF_RETURN_IF_ERROR(check_kernel.Launch(
+    RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
+                                    input.size() * sizeof(input[0])));
+    RETURN_IF_ERROR(check_kernel.Launch(
         thread_dim, block_dim, stream_.get(), device_input,
         device_input.ElementCount(), device_tmp, device_tmp.ElementCount()));
-    TF_RETURN_IF_ERROR(reduce_kernel.Launch(
+    RETURN_IF_ERROR(reduce_kernel.Launch(
         thread_dim, se::BlockDim(1, 1, 1), stream_.get(), device_tmp,
         std::min(device_tmp.ElementCount(),
                  block_dim.x * block_dim.y * block_dim.z),
         entry_id, buffer_debug_log.GetDeviceHeader(),
         buffer_debug_log.GetDeviceEntries()));
-    TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    RETURN_IF_ERROR(stream_->BlockHostUntilDone());
 
     // The result gets stored in `buffer_debug_log`.
     return absl::OkStatus();
@@ -160,6 +161,7 @@ struct TestConfig {
 using FloatTypes = ::testing::Types<
     TestConfig<float, gpu::BufferDebugFloatCheckF32Kernel>,
     TestConfig<Eigen::bfloat16, gpu::BufferDebugFloatCheckBf16Kernel>,
+    TestConfig<Eigen::half, gpu::BufferDebugFloatCheckF16Kernel>,
     TestConfig<double, gpu::BufferDebugFloatCheckF64Kernel>>;
 
 template <typename T>

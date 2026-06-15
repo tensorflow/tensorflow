@@ -47,14 +47,19 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
 
   bool changed = false;
   for (HloScanInstruction* scan : scans) {
+    // Find single-element constant zero init value.
     const HloInstruction* init = scan->inits().front();
     while (init->opcode() == HloOpcode::kBroadcast) {
       init = init->operand(0);
     }
-    if (!init->IsConstant() || !ShapeUtil::IsScalar(init->shape()) ||
-        !init->literal().IsZero({})) {
+    if (!init->IsConstant() || ShapeUtil::ElementsIn(init->shape()) != 1) {
       continue;
     }
+    std::vector<int64_t> zero_indices(init->shape().dimensions().size(), 0);
+    if (!init->literal().IsZero(zero_indices)) {
+      continue;
+    }
+    // Check that the applied op is an inclusive add.
     const HloInstruction* root = scan->to_apply()->root_instruction();
     if (root->opcode() != HloOpcode::kTuple || root->operand_count() != 2 ||
         root->operand(0) != root->operand(1)) {
@@ -65,7 +70,13 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
       continue;
     }
 
-    const Shape& shape = scan->shape().tuple_shapes(0);
+    // Check same shape/layout for input and output.
+    HloInstruction* input = scan->mutable_operand(0);
+    const Shape& shape = input->shape();
+    if (shape != scan->shape().tuple_shapes(0)) {
+      continue;
+    }
+
     int64_t scan_dim = scan->scan_dimension();
     int64_t row_length = shape.dimensions(scan_dim);
     int64_t vector_length = 1;
@@ -89,12 +100,13 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
     // Create the custom call.
     Shape scratch_shape =
         ShapeUtil::MakeShape(U8, {0});  // Empty shape, assigned later.
-    Shape new_result_shape = ShapeUtil::MakeTupleShape({shape, scratch_shape});
+    Shape result_shape = ShapeUtil::MakeTupleShape({shape, scratch_shape});
 
+    // Create a layout-constrained custom call.
     HloInstruction* custom_call =
         computation->AddInstruction(HloInstruction::CreateCustomCall(
-            new_result_shape, absl::MakeSpan(scan->operands()).first(1),
-            kCubDeviceScanUnassignedScratchSizeTarget));
+            result_shape, {input}, kCubDeviceScanUnassignedScratchSizeTarget,
+            {shape}));
 
     CubScanOptions::Kind kind = [&]() {
       switch (binary_op) {

@@ -107,7 +107,12 @@ message TerminateRequest {
 
 message TerminateResponse {}
 
-message GetSnapshotRequest {}
+message GetSnapshotRequest {
+  // Optional. Suffix for the snapshot directory sandboxed inside
+  // repository_root. E.g. "window_001". If empty, defaults to emit_xpace=true
+  // behavior. using the timestamp folder.
+  string snapshot_session_id = 1;
+}
 
 message ContinuousProfilingResponse {}
 

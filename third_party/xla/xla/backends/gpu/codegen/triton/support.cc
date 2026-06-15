@@ -326,7 +326,8 @@ CodegenDecision CanTritonHandleReduce(
 
   bool is_triton_supported_reduction_computation = absl::c_all_of(
       reduce.to_apply()->instructions(), [&](const HloInstruction* instr) {
-        return IsTritonSupportedInstructionImpl(*instr, gpu_version).CanFuse();
+        return IsTritonSupportedInstructionImpl(*instr, gpu_version)
+            .IsAllowed();
       });
   if (!is_triton_supported_reduction_computation) {
     return CodegenDecision::Forbid(
@@ -355,7 +356,8 @@ CodegenDecision IsTritonSupportedAllReduce(
 
   bool is_triton_supported_all_reduce_computation = absl::c_all_of(
       all_reduce.to_apply()->instructions(), [&](const HloInstruction* instr) {
-        return IsTritonSupportedInstructionImpl(*instr, gpu_version).CanFuse();
+        return IsTritonSupportedInstructionImpl(*instr, gpu_version)
+            .IsAllowed();
       });
   if (!is_triton_supported_all_reduce_computation) {
     return CodegenDecision::Forbid(
@@ -555,7 +557,10 @@ CodegenDecision IsTritonSupportedDot(
            (lhs_type == compare2 && rhs_type == compare1);
   };
   // TODO(b/393299275): add support tests for mixed types.
-  if (lhs_type != rhs_type && !types_are(F8E5M2, F8E4M3FN)) {
+  const bool mixed_fp8_ok =
+      types_are(F8E5M2, F8E4M3FN) ||
+      (gpu_version.IsRocm() && types_are(F8E5M2FNUZ, F8E4M3FNUZ));
+  if (lhs_type != rhs_type && !mixed_fp8_ok) {
     return CodegenDecision::Forbid(
         "Dot operation only supports same types for lhs and rhs.");
   }
@@ -606,10 +611,6 @@ CodegenDecision IsTritonSupportedConcatenate(const HloInstruction& hlo) {
   if (hlo.shape().element_type() == S4) {
     return CodegenDecision::Forbid("S4 is not supported.");
   }
-  if (!IsInTritonNestedGemmFusion(hlo)) {
-    return CodegenDecision::Forbid(
-        "Only concatenates in nested GEMM fusions are supported.");
-  }
   return CodegenDecision::Allow();
 }
 
@@ -636,11 +637,11 @@ CodegenDecision IsTritonSupportedInstructionImpl(
         "Unsupported output data type: ", output_type_is_supported.Explain()));
   }
 
-  CodegenDecision input_types_are_supported =
+  CodegenDecision input_types_are_supported = CodegenDecision(
       absl::c_all_of(instr.operands(), [&](const HloInstruction* operand) {
         return IsTritonSupportedDataType(operand->shape().element_type(),
                                          gpu_version);
-      });
+      }));
 
   if (!input_types_are_supported) {
     return CodegenDecision::Forbid(absl::StrCat(
@@ -771,6 +772,7 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGather:
+    case HloOpcode::kMulhi:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScaledDot:
@@ -814,7 +816,7 @@ CodegenDecision IsTritonSupportedInstruction(
       IsTritonSupportedInstructionImpl(instr, gpu_version);
   VLOG(2) << absl::StrCat("IsTritonSupportedInstruction: ", instr.ToString(),
                           " ",
-                          (decision.CanFuse() ? "yes" : decision.Explain()));
+                          (decision.IsAllowed() ? "yes" : decision.Explain()));
   return decision;
 }
 

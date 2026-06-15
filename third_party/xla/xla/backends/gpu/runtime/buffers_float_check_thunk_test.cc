@@ -28,6 +28,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs_test_matchers.h"
@@ -92,6 +94,8 @@ template <>
 constexpr PrimitiveType kPrimitiveTypeOf<float> = PrimitiveType::F32;
 template <>
 constexpr PrimitiveType kPrimitiveTypeOf<Eigen::bfloat16> = PrimitiveType::BF16;
+template <>
+constexpr PrimitiveType kPrimitiveTypeOf<Eigen::half> = PrimitiveType::F16;
 
 class BuffersDebugFloatCheckThunkTest : public ::testing::Test {
  protected:
@@ -124,7 +128,8 @@ template <typename T>
 class BuffersDebugFloatCheckThunkTypedTest
     : public BuffersDebugFloatCheckThunkTest {};
 
-using FloatTypes = ::testing::Types<Eigen::bfloat16, float, double>;
+using FloatTypes =
+    ::testing::Types<Eigen::bfloat16, Eigen::half, float, double>;
 TYPED_TEST_SUITE(BuffersDebugFloatCheckThunkTypedTest, FloatTypes);
 
 TYPED_TEST(BuffersDebugFloatCheckThunkTypedTest, CalculatesNanCounts) {
@@ -761,10 +766,10 @@ TEST_F(BuffersDebugFloatCheckThunkTest,
   };
 
   auto setup_device = [this](int device_ordinal) -> absl::StatusOr<TestDevice> {
-    TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
-                        platform_->ExecutorForDevice(device_ordinal));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                        executor->CreateStream());
+    ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                     platform_->ExecutorForDevice(device_ordinal));
+    ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+                     executor->CreateStream());
     auto allocator =
         std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
             executor);

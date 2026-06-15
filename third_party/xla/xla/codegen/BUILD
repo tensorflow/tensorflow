@@ -29,6 +29,7 @@ cc_library(
     deps = [
         ":kernel_definition",
         ":kernel_source",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -125,6 +126,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -132,6 +134,8 @@ cc_library(
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -169,6 +173,7 @@ cc_library(
     hdrs = ["intrinsic_lib.h"],
     deps = [
         ":intrinsic_function",
+        "//xla:comparison_util",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:erf",
@@ -182,7 +187,9 @@ cc_library(
         "//xla/codegen/intrinsic:type",
         "//xla/codegen/intrinsic:vec_name_mangler",
         "//xla/codegen/intrinsic/cpp:_cpp_gen_intrinsics",
+        "//xla/codegen/intrinsic/cpp:_intrinsic_declarations",
         "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -190,14 +197,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Analysis",
-        "@llvm-project//llvm:ExecutionEngine",
-        "@llvm-project//llvm:IPO",
-        "@llvm-project//llvm:JITLink",
-        "@llvm-project//llvm:Linker",
-        "@llvm-project//llvm:Passes",
-        "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TransformUtils",
         "@llvm-project//llvm:ir_headers",
     ],
 )

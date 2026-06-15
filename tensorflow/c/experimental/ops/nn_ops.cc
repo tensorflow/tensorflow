@@ -4,7 +4,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+  http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/ops/nn_ops.h"
 
-#include <cstring>
+#include <cstring>  // NOLINT
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/tracing_utils.h"
-#include "xla/tsl/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/framework/types.h"  // NOLINT
+#include "tensorflow/core/platform/errors.h"  // NOLINT
 
 using tensorflow::tracing::MaybeSetOpName;
 
@@ -55,10 +55,17 @@ absl::Status SparseSoftmaxCrossEntropyWithLogits(
   TF_RETURN_IF_ERROR(op_ptr->AddInput(features));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(labels));
   int num_retvals = 2;
-  AbstractTensorHandle* temp_outputs[2];
+  AbstractTensorHandle* temp_outputs[2] = {nullptr};
   absl::Status status = op_ptr->Execute(temp_outputs, &num_retvals);
-  *loss = temp_outputs[0];
-  *backprop = temp_outputs[1];
+  TF_RETURN_IF_ERROR(status);
+  if (num_retvals != 2) {
+    return absl::InternalError(
+        "SparseSoftmaxCrossEntropyWithLogits: unexpected number of outputs");
+  }
+  if (status.ok()) {
+    *loss = temp_outputs[0];
+    *backprop = temp_outputs[1];
+  }
   return status;
 }
 
@@ -77,7 +84,12 @@ absl::Status ReluGrad(AbstractContext* ctx,
   TF_RETURN_IF_ERROR(op_ptr->AddInput(gradients));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(features));
   int num_retvals = 1;
-  return op_ptr->Execute(absl::MakeSpan(backprops, 1), &num_retvals);
+  TF_RETURN_IF_ERROR(
+      op_ptr->Execute(absl::MakeSpan(backprops, 1), &num_retvals));
+  if (num_retvals != 1) {
+    return absl::InternalError("ReluGrad: unexpected number of outputs");
+  }
+  return absl::OkStatus();
 }
 
 // Op: Relu()
@@ -96,7 +108,12 @@ absl::Status Relu(AbstractContext* ctx, AbstractTensorHandle* const features,
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(features));
   int num_retvals = 1;
-  return op_ptr->Execute(absl::MakeSpan(activations, 1), &num_retvals);
+  TF_RETURN_IF_ERROR(
+      op_ptr->Execute(absl::MakeSpan(activations, 1), &num_retvals));
+  if (num_retvals != 1) {
+    return absl::InternalError("Relu: unexpected number of outputs");
+  }
+  return absl::OkStatus();
 }
 
 // Op: BiasAdd()
@@ -117,7 +134,11 @@ absl::Status BiasAdd(AbstractContext* ctx, AbstractTensorHandle* const value,
   TF_RETURN_IF_ERROR(
       op_ptr->SetAttrString("data_format", data_format, strlen(data_format)));
   int num_retvals = 1;
-  return op_ptr->Execute(absl::MakeSpan(output, 1), &num_retvals);
+  TF_RETURN_IF_ERROR(op_ptr->Execute(absl::MakeSpan(output, 1), &num_retvals));
+  if (num_retvals != 1) {
+    return absl::InternalError("BiasAdd: unexpected number of outputs");
+  }
+  return absl::OkStatus();
 }
 
 // Op: BiasAddGrad()
@@ -138,7 +159,11 @@ absl::Status BiasAddGrad(AbstractContext* ctx,
   TF_RETURN_IF_ERROR(
       op_ptr->SetAttrString("data_format", data_format, strlen(data_format)));
   int num_retvals = 1;
-  return op_ptr->Execute(absl::MakeSpan(output, 1), &num_retvals);
+  TF_RETURN_IF_ERROR(op_ptr->Execute(absl::MakeSpan(output, 1), &num_retvals));
+  if (num_retvals != 1) {
+    return absl::InternalError("BiasAddGrad: unexpected number of outputs");
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace ops

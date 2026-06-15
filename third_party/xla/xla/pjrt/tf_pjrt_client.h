@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -339,14 +340,13 @@ class TfPjRtClient : public PjRtClient {
  private:
   // Unwraps a TfPjRtBuffer.
   PjRtBuffer* UnwrapBuffer(PjRtBuffer* buffer) const {
-    return tensorflow::down_cast<TfPjRtBuffer*>(buffer)->wrapped();
+    return absl::down_cast<TfPjRtBuffer*>(buffer)->wrapped();
   }
 
   // Unwraps a TfPjRtExecutable.
   const PjRtLoadedExecutable& UnwrapExecutable(
       const PjRtLoadedExecutable& executable) const {
-    return *tensorflow::down_cast<const TfPjRtExecutable*>(&executable)
-                ->wrapped();
+    return *absl::down_cast<const TfPjRtExecutable*>(&executable)->wrapped();
   }
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> WrapExecutable(

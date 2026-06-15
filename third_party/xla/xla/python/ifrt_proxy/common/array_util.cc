@@ -27,6 +27,7 @@
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt_proxy/common/array_util.pb.h"
@@ -104,7 +105,7 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
   // element_strides=[10,-1]).
   uint64_t last_element_byte_offset = 0;
   for (int i = 0; i < byte_strides->size(); ++i) {
-    int stride = (*byte_strides)[i];
+    int64_t stride = (*byte_strides)[i];
     if (shape.dims()[i] < 0) {
       return absl::InvalidArgumentError(
           absl::StrCat("A shape dimension is negative: ", shape));
@@ -139,7 +140,7 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromMinimalMemRegion(
   // FromZerothElementPointer() currently returns an error for any situation
   // where the zeroth_element will is not equal to the place where the minimal
   // memory region starts.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto result,
       FromZerothElementPointer(mem_region.data(), dtype, shape, byte_strides));
 

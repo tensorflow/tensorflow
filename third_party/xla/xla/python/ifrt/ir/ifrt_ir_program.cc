@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -89,8 +90,8 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
   }
 
   for (const auto& [key, value] : proto.compile_option_overrides()) {
-    TF_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
-                        xla::CompileOptions::FromProto(value));
+    ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
+                     xla::CompileOptions::FromProto(value));
     // TODO(emilyaf): XlaCompileOptions should be built with the correct
     // devices. Pass `ifrt::Client*` to `IfrtIRCompileOptions::FromProto` and
     // look up the IFRT devices corresponding to `device_ids`.
@@ -131,9 +132,9 @@ absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
             "compile_options must be XlaCompileOptions");
       }
 
-      TF_ASSIGN_OR_RETURN(CompileOptionsProto compile_options_proto,
-                          static_cast<XlaCompileOptions*>(compile_options.get())
-                              ->compile_options.ToProto());
+      ASSIGN_OR_RETURN(CompileOptionsProto compile_options_proto,
+                       static_cast<XlaCompileOptions*>(compile_options.get())
+                           ->compile_options.ToProto());
       proto.mutable_compile_option_overrides()->insert(
           {id, compile_options_proto});
     }

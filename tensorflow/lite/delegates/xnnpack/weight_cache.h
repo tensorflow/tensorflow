@@ -78,10 +78,14 @@ bool IsCompatibleCacheFile(const char* path);
 bool IsCompatibleCacheFile(FileDescriptorView fd);
 
 struct PackIdentifier {
-  enum { kNoId = SIZE_MAX };
+  enum { kNoId = SIZE_MAX, kInvalidId = SIZE_MAX - 1 };
   uint64_t pack_algorithm_id = kNoId;
   uint64_t weights_id = kNoId;
   uint64_t bias_id = kNoId;
+
+  constexpr bool HasValidBufferIds() const {
+    return weights_id != kInvalidId && bias_id != kInvalidId;
+  }
 
   friend bool operator==(const PackIdentifier& a, const PackIdentifier& b) {
     return a.pack_algorithm_id == b.pack_algorithm_id &&
@@ -358,7 +362,7 @@ class MMapWeightCacheProvider {
   bool StopBuildStep();
 
   // Creates the tensor map.
-  void MapTensorIdentifiers(
+  bool MapTensorIdentifiers(
       const TfLiteTensor* tensors, size_t size,
       const std::unordered_map<size_t, size_t>& tensor_index_to_identifier);
 
@@ -442,6 +446,9 @@ class MMapWeightCacheProvider {
   // Checks if caches misses have happened and updates the cache file stale
   // flag.
   bool WriteCacheMissFlag();
+
+  // Marks the cache file as stale.
+  bool WriteStaleFlag();
 
  private:
   struct OriginalBufferMetadata {

@@ -48,6 +48,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/descriptor.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
@@ -174,6 +175,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
     case HloOpcode::kPad:
     case HloOpcode::kPartitionId:
@@ -1814,6 +1816,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kAdd:
     case HloOpcode::kDivide:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kSubtract:
     case HloOpcode::kAtan2:
     case HloOpcode::kComplex:
@@ -4183,20 +4186,20 @@ bool HloParserImpl::ParseAxisRef(
                   "expected '(' before pre_size in sub axis")) {
     return false;
   }
-    int64_t pre_size;
-    if (!ParseInt64(&pre_size)) {
-      return false;
-    }
-    if (!ParseToken(TokKind::kRparen,
-                    "expected ')' after pre_size in sub axis")) {
-      return false;
-    }
-    int64_t size;
-    if (!ParseInt64(&size)) {
-      return false;
-    }
-    axis = AxisRef(axis_index, {pre_size, size});
-    return true;
+  int64_t pre_size;
+  if (!ParseInt64(&pre_size)) {
+    return false;
+  }
+  if (!ParseToken(TokKind::kRparen,
+                  "expected ')' after pre_size in sub axis")) {
+    return false;
+  }
+  int64_t size;
+  if (!ParseInt64(&size)) {
+    return false;
+  }
+  axis = AxisRef(axis_index, {pre_size, size});
+  return true;
 }
 
 bool HloParserImpl::ParseAxisRefList(const Mesh& mesh,
@@ -7510,6 +7513,7 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   optional<std::vector<int64_t>> profile_type;
   optional<std::string> deduplicated_name;
   optional<std::string> scheduling_name;
+  optional<std::string> metadata_payload;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
   attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
@@ -7527,6 +7531,8 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
                               &scheduling_name};
   attrs["stack_frame_id"] = {/*required=*/false, AttrTy::kInt32,
                              &stack_frame_id};
+  attrs["metadata_payload"] = {/*required=*/false, AttrTy::kString,
+                               &metadata_payload};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -7567,6 +7573,9 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   }
   if (stack_frame_id) {
     metadata.set_stack_frame_id(*stack_frame_id);
+  }
+  if (metadata_payload) {
+    metadata.mutable_metadata_payload()->set_value(*metadata_payload);
   }
   return true;
 }
@@ -8232,7 +8241,6 @@ HloParserImpl::ParseCollectiveDeviceListBaseOnly() {
   return base_list;
 }
 
-
 absl::StatusOr<Window> HloParserImpl::ParseWindowOnly() {
   lexer_.Lex();
   Window window;
@@ -8335,7 +8343,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     const HloParserOptions& options) {
   auto module = std::make_unique<HloModule>(/*name=*/"_", config);
   HloParserImpl parser(str, options);
-  TF_RETURN_IF_ERROR(parser.Run(module.get()));
+  RETURN_IF_ERROR(parser.Run(module.get()));
   return module;
 }
 
@@ -8378,7 +8386,6 @@ absl::StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
   HloParserImpl parser(str);
   return parser.ParseReplicaGroupsOnly();
 }
-
 
 absl::StatusOr<Window> ParseWindow(absl::string_view str) {
   HloParserImpl parser(str);

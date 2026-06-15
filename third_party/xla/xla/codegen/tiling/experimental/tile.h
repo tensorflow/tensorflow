@@ -19,7 +19,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <utility>
 
@@ -27,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
@@ -87,6 +87,10 @@ struct DimTile {
   //                      strides [1]
   //                      upper bounds [17 * tid0]
   SymbolicExpr upper_bound;
+
+  // Simplify expressions inside the DimTile using the actual dimension and
+  // symbol bounds.
+  void Simplify(const TilingSpace& space);
 };
 
 template <typename H>
@@ -100,8 +104,12 @@ H AbslHashValue(H h, const DimTile& dim_tile) {
 // of an HLO instruction. TiledHloInstruction associates a Tile
 // with an HLO instruction.
 class Tile {
+  // Differentiate between dimensions and replica IDs.
+  enum class DimTileType { kSpatial, kReplicaId };
+
  public:
-  Tile(const TilingSpace& tiling_space, llvm::SmallVector<DimTile> dim_tiles);
+  Tile(const TilingSpace& tiling_space, llvm::SmallVector<DimTile> dim_tiles,
+       llvm::SmallVector<DimTile> replica_ids = {});
 
   Tile(const TilingSpace& tiling_space, llvm::ArrayRef<SymbolicExpr> offsets,
        llvm::ArrayRef<SymbolicExpr> sizes, llvm::ArrayRef<SymbolicExpr> strides,
@@ -109,12 +117,21 @@ class Tile {
 
   std::string ToString(bool print_variables = true) const;
 
-  llvm::SmallVector<SymbolicExpr> offsets() const;
-  llvm::SmallVector<SymbolicExpr> sizes() const;
-  llvm::SmallVector<SymbolicExpr> strides() const;
-  llvm::SmallVector<SymbolicExpr> upper_bounds() const;
+  llvm::SmallVector<SymbolicExpr> offsets(
+      DimTileType type = DimTileType::kSpatial) const;
+  llvm::SmallVector<SymbolicExpr> sizes(
+      DimTileType type = DimTileType::kSpatial) const;
+  llvm::SmallVector<SymbolicExpr> strides(
+      DimTileType type = DimTileType::kSpatial) const;
+  llvm::SmallVector<SymbolicExpr> upper_bounds(
+      DimTileType type = DimTileType::kSpatial) const;
   llvm::ArrayRef<DimTile> dim_tiles() const { return dim_tiles_; }
+  llvm::ArrayRef<DimTile> replica_ids() const { return replica_ids_; }
+  llvm::ArrayRef<DimTile> TilesOf(DimTileType type) const {
+    return type == DimTileType::kSpatial ? dim_tiles_ : replica_ids_;
+  }
   int64_t num_dim_tiles() const { return dim_tiles_.size(); }
+  int64_t num_replica_ids() const { return replica_ids_.size(); }
 
   absl::StatusOr<llvm::SmallVector<int64_t>> GetStaticTileSizes() const;
   absl::StatusOr<llvm::SmallVector<int64_t>> GetStaticTileStrides() const;
@@ -122,13 +139,12 @@ class Tile {
   const TilingSpace& tiling_space() const { return *tiling_space_; }
   mlir::MLIRContext* mlir_context() const;
 
-  const std::optional<SymbolicExpr>& replica_id() const { return replica_id_; }
-  void set_replica_id(std::optional<SymbolicExpr> replica_id) {
-    replica_id_ = std::move(replica_id);
-  }
-
   // Replace tiling expressions with the given map.
   void Replace(const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map);
+
+  // Simplify expressions inside the tile using actual dimension and symbol
+  // bounds.
+  void Simplify();
 
   // Clone the tile with new dim tiles.
   // When we are propagating a tile to an input, we need to adjust the offsets
@@ -147,17 +163,19 @@ class Tile {
  private:
   const TilingSpace* tiling_space_;
   llvm::SmallVector<DimTile> dim_tiles_;
-  std::optional<SymbolicExpr> replica_id_;
+  // Keep replica IDs separate from the dim tiles since it does not correspond
+  // to a specific dimension on the tile. Propagating a tile to an input may add
+  // a replica ID, but does not change the number of dimensions so propagation
+  // for ops that don't have replica IDs stays the same.
+  llvm::SmallVector<DimTile> replica_ids_;
 };
 
 template <typename H>
 H AbslHashValue(H h, const Tile& tile) {
   h = H::combine(std::move(h), &tile.tiling_space());
-  for (const DimTile& dim_tile : tile.dim_tiles()) {
+  for (const DimTile& dim_tile :
+       llvm::concat<const DimTile>(tile.dim_tiles(), tile.replica_ids())) {
     h = H::combine(std::move(h), dim_tile);
-  }
-  if (tile.replica_id().has_value()) {
-    h = H::combine(std::move(h), tile.replica_id().value());
   }
   return h;
 }

@@ -23,7 +23,6 @@ import "xla/backends/gpu/runtime/collective_thunk.proto";
 import "xla/backends/gpu/runtime/convolution_filter_thunk.proto";
 import "xla/backends/gpu/runtime/copy_thunk.proto";
 import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
-import "xla/backends/gpu/runtime/nvshmem_collective_thunk.proto";
 import "xla/backends/gpu/runtime/thunk_kind.proto";
 import "xla/core/collectives/reduction_kind.proto";
 import "xla/core/host_offloading/host_offloading_executable.proto";
@@ -46,6 +45,9 @@ import "xla/xla_data.proto";
 message ThunkInfoProto {
   string profile_annotation = 1;
   int64 thunk_id = 3;
+  // Only used in kConcurrentRegions mode to determine dependencies between
+  // thunks. See Thunk::concurrent_region_id() for more details.
+  optional int64 concurrent_region_id = 4;
 }
 
 // A lightweight version of ThunkProto which only stores the thunk kind and
@@ -188,13 +190,44 @@ message DynamicSliceThunkProto {
 }
 
 message DynamicSliceFusionThunkProto {
+  // Mirrors DynamicSliceFusion::OffsetExpr.
+  message OffsetExprProto {
+    enum Kind {
+      KIND_UNKNOWN = 0;
+      CONSTANT = 1;
+      PARAMETER = 2;
+      ADD = 3;
+      SUBTRACT = 4;
+      MULTIPLY = 5;
+      COMPARE = 6;
+      SELECT = 7;
+    }
+
+    enum CompareDirection {
+      COMPARE_DIRECTION_UNKNOWN = 0;
+      EQ = 1;
+      NE = 2;
+      GE = 3;
+      GT = 4;
+      LE = 5;
+      LT = 6;
+    }
+
+    Kind kind = 1;
+    // Constant value for CONSTANT, fusion parameter number for PARAMETER.
+    int64 value = 2;
+    CompareDirection compare_direction = 3;
+    repeated OffsetExprProto operands = 4;
+  }
+
   // Mirrors DynamicSliceFusion::Offset.
   message OffsetProto {
     int64 dimension_number = 1;
-    oneof value {
-      int64 constant_offset = 2;
-      int64 runtime_parameter_number = 3;
-    }
+    OffsetExprProto offset = 4;
+
+    reserved 2, 3;
+    reserved "constant_offset";
+    reserved "runtime_parameter_number";
   }
 
   // Mirrors DynamicSliceFusion::Parameter.
@@ -254,8 +287,10 @@ message SelectKThunkProto {
 message CublasLtMatmulThunkProto {
   // For regular matmul, use gemm_config. For grouped matmul, use
   // grouped_gemm_config.
-  optional xla.GemmConfigProto gemm_config = 1;
-  optional xla.GroupedGemmConfigProto grouped_gemm_config = 19;
+  oneof impl {
+    xla.GemmConfigProto gemm_config = 1;
+    xla.GroupedGemmConfigProto grouped_gemm_config = 19;
+  }
 
   xla.BlasLtEpilogueProto epilogue = 2;
   int64 algorithm_idx = 3;
@@ -338,6 +373,7 @@ message AllGatherThunkProto {
   reserved 1;  // Was async_events_unique_id.
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
+  xla.DebugOptions.CollectivesMode collectives_mode = 4;
 }
 
 message AllReduceThunkProto {
@@ -385,6 +421,7 @@ message RaggedAllToAllThunkProto {
   bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel = 9;
   int64 fast_interconnect_slice_size_override = 10;
   bool zero_copy_in_one_shot_kernel = 11;
+  xla.DebugOptions.CollectivesMode collectives_mode = 12;
 }
 
 message CollectivePermuteThunkProto {
@@ -436,6 +473,10 @@ message SequentialThunkProto {
   repeated ThunkProto thunks = 1;
 }
 
+message RngSeedThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -482,18 +523,14 @@ message ThunkProto {
     RecvThunkProto recv_thunk = 45;
     CollectiveBroadcastThunkProto collective_broadcast_thunk = 46;
     CollectiveGroupThunkProto collective_group_thunk = 47;
-    DynamicMemcpyThunkProto dynamic_memcpy_thunk = 48;
-    NvshmemAllReduceThunkProto nvshmem_all_reduce_thunk = 52;
-    NvshmemCollectivePermuteThunkProto nvshmem_collective_permute_thunk = 53;
-    NvshmemSendThunkProto nvshmem_send_thunk = 54;
-    NvshmemRecvThunkProto nvshmem_recv_thunk = 55;
     AsyncStartThunkProto async_start_thunk = 57;
     AsyncDoneThunkProto async_done_thunk = 58;
     CollectiveKernelThunkProto collective_kernel_thunk = 59;
     DynamicSliceFusionThunkProto dynamic_slice_fusion_thunk = 60;
+    RngSeedThunkProto rng_seed_thunk = 61;
   }
 
-  reserved 10, 37, 49, 50, 51, 56;
+  reserved 10, 37, 48, 49, 50, 51, 52, 53, 54, 55, 56;
   reserved "wait_for_streams_thunk";
   reserved "nvshmem_collective_done_thunk";
   reserved "nvshmem_collective_permute_done_thunk";
@@ -501,6 +538,7 @@ message ThunkProto {
   reserved "cub_sort_thunk";
   reserved "collective_done_thunk";
   reserved "copy_done_thunk";
+  reserved "dynamic_memcpy_thunk";
   reserved "all_gather_start_thunk";
   reserved "all_reduce_start_thunk";
   reserved "all_to_all_start_thunk";
@@ -509,6 +547,10 @@ message ThunkProto {
   reserved "collective_broadcast_start_thunk";
   reserved "nvshmem_all_reduce_start_thunk";
   reserved "nvshmem_collective_permute_start_thunk";
+  reserved "nvshmem_all_reduce_thunk";
+  reserved "nvshmem_collective_permute_thunk";
+  reserved "nvshmem_send_thunk";
+  reserved "nvshmem_recv_thunk";
 }
 
 message ThunkSequenceProto {

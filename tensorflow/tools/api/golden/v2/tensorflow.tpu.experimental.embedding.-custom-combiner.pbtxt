@@ -2,10 +2,10 @@ path: "tensorflow.tpu.experimental.embedding.CustomCombiner"
 tf_class {
   is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils.CustomCombiner\'>"
   is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils._WithSlotVariables\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "CUSTOM_COMBINER_SLOT_NAME"
-    mtype: "<type \'str\'>"
+    mtype: "<class \'str\'>"
   }
   member_method {
     name: "__init__"

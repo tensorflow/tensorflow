@@ -159,6 +159,33 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestF16InPlaceInput) {
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
 
+TEST(DynamicUpdateSliceOpTest, SimpleTestBF16) {
+  DynamicUpdateSliceOpModel m({TensorType_BFLOAT16, {3, 3}},
+                              {TensorType_BFLOAT16, {2, 1}},
+                              {TensorType_INT32, {2}});
+  m.SetInput<Eigen::bfloat16>(
+      {Eigen::bfloat16(1.0f), Eigen::bfloat16(2.0f), Eigen::bfloat16(3.0f),
+       Eigen::bfloat16(4.0f), Eigen::bfloat16(5.0f), Eigen::bfloat16(6.0f),
+       Eigen::bfloat16(7.0f), Eigen::bfloat16(8.0f), Eigen::bfloat16(9.0f)});
+  m.SetUpdate<Eigen::bfloat16>(
+      {Eigen::bfloat16(-1.0f), Eigen::bfloat16(-2.0f)});
+  m.SetStartIndices<int32_t>({1, 1});
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput<Eigen::bfloat16>(),
+      ElementsAreArray(ArrayFloatNear(
+          {Eigen::bfloat16(1.0f), Eigen::bfloat16(2.0f), Eigen::bfloat16(3.0f),
+           Eigen::bfloat16(4.0f), Eigen::bfloat16(-1.0f), Eigen::bfloat16(6.0f),
+           Eigen::bfloat16(7.0f), Eigen::bfloat16(-2.0f),
+           Eigen::bfloat16(9.0f)})));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
 TEST(DynamicUpdateSliceOpTest, SimpleTestF32) {
   DynamicUpdateSliceOpModel m({TensorType_FLOAT32, {3, 3}},
                               {TensorType_FLOAT32, {2, 1}},

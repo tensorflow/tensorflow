@@ -106,7 +106,6 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -241,7 +240,6 @@ std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
   auto mlir_context = std::make_unique<mlir::MLIRContext>(
       mlir::MLIRContext::Threading::DISABLED);
   mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
-  RegisterSymbolicExprStorage(mlir_context.get());
   return mlir_context;
 }
 
@@ -369,7 +367,7 @@ MlirKernelFusion::EmitLlvmModule(const HloFusionInstruction& fusion,
       });
 }
 
-absl::StatusOr<FusionEmissionResult> MlirKernelFusion::Emit(
+AsyncThunkSequence MlirKernelFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   VLOG(4) << "Fusion: " << fusion.fused_instructions_computation()->ToString();
@@ -408,15 +406,13 @@ absl::StatusOr<FusionEmissionResult> MlirKernelFusion::Emit(
                   });
             });
       });
-  FusionEmissionResult result;
-
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       &fusion, ir_emitter_context.GetNextThunkId());
   bool kernel_cached = cached;
-  result.thunks = future_entry.Map([&fusion, thunk_info = std::move(thunk_info),
-                                    args = std::move(args), kernel_cached](
-                                       const KernelReuseCache::Entry* entry)
-                                       -> absl::StatusOr<ThunkSequence> {
+  return future_entry.Map([&fusion, thunk_info = std::move(thunk_info),
+                           args = std::move(args),
+                           kernel_cached](const KernelReuseCache::Entry* entry)
+                              -> absl::StatusOr<ThunkSequence> {
     if (kernel_cached) {
       VLOG(3) << "Reuse: " << fusion.name() << " -> " << entry->kernel_name;
     }
@@ -430,8 +426,6 @@ absl::StatusOr<FusionEmissionResult> MlirKernelFusion::Emit(
     return ThunkSequence::Of(std::make_unique<CustomKernelThunk>(
         thunk_info, std::move(custom_kernel), args, entry->use_pdl));
   });
-
-  return result;
 }
 
 xla::Future<LlvmKernelSource> MlirKernelFusion::CreateLLVMModule(
@@ -443,7 +437,6 @@ xla::Future<LlvmKernelSource> MlirKernelFusion::CreateLLVMModule(
 
   mlir_context->appendDialectRegistry(MlirKernelEmitter::GetDialectRegistry());
   mlir_context->loadAllAvailableDialects();
-  RegisterSymbolicExprStorage(mlir_context);
 
   ASSIGN_OR_RETURN(MlirKernelSource source,
                    emitter_->Emit(mlir_context, fusion, entry_function_name,
@@ -464,13 +457,13 @@ MlirKernelEmitter::CreateMLIRModule(
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
 
-  TF_ASSIGN_OR_RETURN(mlir::func::FuncOp entry_func,
-                      emitters::EmitKernelApi(
-                          *module, fusion, buffer_assignment,
-                          GetDefaultBufferAlignment(), entry_function_name));
+  ASSIGN_OR_RETURN(mlir::func::FuncOp entry_func,
+                   emitters::EmitKernelApi(*module, fusion, buffer_assignment,
+                                           GetDefaultBufferAlignment(),
+                                           entry_function_name));
   SetBackendKind(&mlir_context, entry_func, BackendKind::kGpu);
 
-  TF_RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion, mlir_context));
+  RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion, mlir_context));
   return module;
 }
 
@@ -544,8 +537,8 @@ absl::Status MlirKernelEmitter::EmitMlir(mlir::ModuleOp module,
   emitters::PartitionedComputations computations(
       fusion.fused_instructions_computation(), &mlir_context, epilogues);
 
-  TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
-                                             module, computations));
+  ASSIGN_OR_RETURN(auto call_targets,
+                   emitters::EmitPartitionedComputations(module, computations));
 
   emitters::SetIndexDataLayout(module, fusion);
 
@@ -642,6 +635,11 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(emitters::CreateExpandFloatOpsPass());
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createSCFToControlFlowPass());
+
+  if (device.gpu_compute_capability().rocm_compute_capability()) {
+    pm.addPass(CreatePromoteShuffleToDPPPass());
+  }
+
   pm.addPass(emitters::CreateLowerToLLVMGPUPass(device));
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 }

@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/command_executor.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -40,7 +43,7 @@ namespace {
 class FakeCmd : public Command {
  public:
   explicit FakeCmd(Command::BufferUses uses = {})
-      : Command(CommandType::kUnknownCmd), uses_(std::move(uses)) {}
+      : Command(Thunk::Kind::kCommand), uses_(std::move(uses)) {}
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams&, const RecordParams&, RecordAction,
@@ -67,8 +70,8 @@ TEST(CommandExecutorTest, DuplicateAllocsCollapsedToOne) {
   CommandSequence cmds;
   cmds.Emplace<FakeCmd>(Command::BufferUses{BufferUse::Read(slice, shape)});
   cmds.Emplace<FakeCmd>(Command::BufferUses{BufferUse::Write(slice, shape)});
-  TF_ASSERT_OK_AND_ASSIGN(auto executor,
-                          CommandExecutor::Create(std::move(cmds), kSerialize));
+  ASSERT_OK_AND_ASSIGN(auto executor,
+                       CommandExecutor::Create(std::move(cmds), kSerialize));
 
   // Both commands reference the same allocation index — should appear once.
   EXPECT_EQ(executor.allocs_indices().size(), 1);
@@ -91,7 +94,7 @@ TEST(CommandExecutorTest, CreateWithExtraResourcesConcurrent) {
       {ResourceUse::Write(shared_resource)},
       {ResourceUse::Read(shared_resource)},
   };
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executor,
       CommandExecutor::Create(std::move(cmds), kConcurrent, std::move(extra)));
   EXPECT_EQ(executor.size(), 2);
@@ -108,7 +111,7 @@ TEST(CommandExecutorTest, CreateWithExtraResourcesLHS) {
       {ResourceUse::Write(shared_resource)},
       {ResourceUse::Read(shared_resource)},
   };
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executor,
       CommandExecutor::Create(std::move(cmds), kLHS, std::move(extra)));
   EXPECT_EQ(executor.size(), 2);
@@ -175,10 +178,10 @@ TEST_F(CommandExecutorRendererTest, RenderSucceeds) {
   CommandSequence cmds;
   cmds.Emplace<FakeCmd>();
   cmds.Emplace<FakeCmd>();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executor, CommandExecutor::Create(std::move(cmds), kConcurrent));
+  ASSERT_OK_AND_ASSIGN(auto executor,
+                       CommandExecutor::Create(std::move(cmds), kConcurrent));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto url, executor.RenderExecutionGraph());
+  ASSERT_OK_AND_ASSIGN(auto url, executor.RenderExecutionGraph());
   EXPECT_EQ(url, "fake_graph");
   EXPECT_EQ(fake_renderer_->captured().size(), 2);
 }
@@ -189,10 +192,10 @@ TEST_F(CommandExecutorRendererTest, RenderWithoutExtraResourcesHasOneResource) {
   CommandSequence cmds;
   cmds.Emplace<FakeCmd>();
   cmds.Emplace<FakeCmd>();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executor, CommandExecutor::Create(std::move(cmds), kConcurrent));
+  ASSERT_OK_AND_ASSIGN(auto executor,
+                       CommandExecutor::Create(std::move(cmds), kConcurrent));
 
-  TF_ASSERT_OK(executor.RenderExecutionGraph().status());
+  ASSERT_OK(executor.RenderExecutionGraph().status());
   ASSERT_EQ(fake_renderer_->captured().size(), 2);
   EXPECT_EQ(fake_renderer_->captured()[0].resource_use_count, 1);
   EXPECT_EQ(fake_renderer_->captured()[1].resource_use_count, 1);
@@ -213,11 +216,11 @@ TEST_F(CommandExecutorRendererTest, RenderUsesStoredExtraResources) {
       {ResourceUse::Write(shared_resource)},
       {ResourceUse::Read(shared_resource)},
   };
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executor,
       CommandExecutor::Create(std::move(cmds), kConcurrent, std::move(extra)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto url, executor.RenderExecutionGraph());
+  ASSERT_OK_AND_ASSIGN(auto url, executor.RenderExecutionGraph());
   EXPECT_EQ(url, "fake_graph");
 
   ASSERT_EQ(fake_renderer_->captured().size(), 2);
@@ -239,11 +242,11 @@ TEST_F(CommandExecutorRendererTest, RenderUsesStoredExtraResourcesLHSMode) {
       {ResourceUse::Write(shared_resource)},
       {ResourceUse::Read(shared_resource)},
   };
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executor,
       CommandExecutor::Create(std::move(cmds), kLHS, std::move(extra)));
 
-  TF_ASSERT_OK(executor.RenderExecutionGraph().status());
+  ASSERT_OK(executor.RenderExecutionGraph().status());
   ASSERT_EQ(fake_renderer_->captured().size(), 2);
   // cmd0: Write(cmd0->token()) + Write(shared_resource) = 2.
   EXPECT_EQ(fake_renderer_->captured()[0].resource_use_count, 2);
@@ -264,14 +267,14 @@ TEST_F(CommandExecutorRendererTest, RenderIsIdempotent) {
       {ResourceUse::Write(shared_resource)},
       {ResourceUse::Read(shared_resource)},
   };
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executor,
       CommandExecutor::Create(std::move(cmds), kConcurrent, std::move(extra)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto url1, executor.RenderExecutionGraph());
+  ASSERT_OK_AND_ASSIGN(auto url1, executor.RenderExecutionGraph());
   auto captured1 = fake_renderer_->captured();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto url2, executor.RenderExecutionGraph());
+  ASSERT_OK_AND_ASSIGN(auto url2, executor.RenderExecutionGraph());
   auto captured2 = fake_renderer_->captured();
 
   EXPECT_EQ(url1, url2);

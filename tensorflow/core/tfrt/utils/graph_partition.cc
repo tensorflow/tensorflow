@@ -218,7 +218,7 @@ absl::StatusOr<Node*> BuildPartitionedCallOp(
     const std::string& device,
     const absl::flat_hash_map<std::string, NodeInfo>& input_nodes,
     const absl::flat_hash_map<std::string, NodeInfo>& output_nodes,
-    const absl::optional<std::pair<std::string, NodeInfo>>&
+    const std::optional<std::pair<std::string, NodeInfo>>&
         auxiliary_output_node,
     const std::vector<std::string>& control_outputs, Graph* subgraph,
     Graph* graph) {
@@ -271,7 +271,7 @@ absl::StatusOr<Node*> BuildPartitionedCallOp(
     }
   }
   auto control_ret_node_names =
-      [&control_ret_names](const Node* node) -> absl::optional<std::string> {
+      [&control_ret_names](const Node* node) -> std::optional<std::string> {
     if (control_ret_names.contains(node->name())) {
       return node->name();
     }

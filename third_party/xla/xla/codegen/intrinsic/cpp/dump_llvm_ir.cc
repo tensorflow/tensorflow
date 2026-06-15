@@ -21,10 +21,14 @@ limitations under the License.
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
-#include "xla/codegen/intrinsic/cpp/eigen_unary_ll.h"
+#include "xla/codegen/intrinsic/intrinsic.h"
 
 int main(int argc, char** argv) {
-  const std::string& bitcode_view = llvm_ir::kEigenUnaryLlIr;
+  xla::codegen::intrinsics::IntrinsicOptions options;
+  if (argc > 1) {
+    options.features = argv[1];
+  }
+  const std::string& bitcode_view = xla::codegen::GetCppGenIrString(options);
 
   llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> module = xla::codegen::ParseEmbeddedBitcode(

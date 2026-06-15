@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/collectives/async_collective_annotator.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
@@ -499,7 +500,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
         auto sol = SolLatencyEstimator::Create(
             config, std::move(gpu_latency_estimator), gpu_device_info,
             ShapeSizeBytesFunction(pointer_size), module.entry_computation(),
-            mlir_context, std::move(cost_analysis));
+            std::move(cost_analysis));
         if (sol.ok()) {
           base_estimator = std::move(*sol);
           VLOG(1) << "PGLE fallback: using SolLatencyEstimator";
@@ -528,8 +529,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
     VLOG(1) << "Using analytical latency estimator";
     return std::make_unique<AnalyticalLatencyEstimator>(
         config, std::move(gpu_latency_estimator), gpu_device_info,
-        ShapeSizeBytesFunction(pointer_size), module.entry_computation(),
-        mlir_context);
+        ShapeSizeBytesFunction(pointer_size), module.entry_computation());
   }
 
   if (SolLatencyEstimator::IsSupportedForModule(module, gpu_device_info)) {
@@ -552,7 +552,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
     auto sol_latency_estimator = SolLatencyEstimator::Create(
         config, std::move(gpu_latency_estimator), gpu_device_info,
         ShapeSizeBytesFunction(pointer_size), module.entry_computation(),
-        mlir_context, std::move(cost_analysis));
+        std::move(cost_analysis));
     if (sol_latency_estimator.ok()) {
       return std::move(*sol_latency_estimator);
     }
@@ -675,13 +675,11 @@ absl::Status RunLatencyHidingSchedulerPasses(
     pipeline.AddPass<PGLEAccuracyChecker>(
         dynamic_cast<ProfileGuidedLatencyEstimator&>(*estimator));
   }
-  // If overlap limit is set to be greater than 1 and the default t-short size
-  // estimator is used we will tell LHS to extend async-done intervals as much
-  // as possible to start collectives as early as possible.
-  bool prioritize_compute_over_async_start = false;
-  if (config.parallel_collective_overlap_limit > 1) {
-    prioritize_compute_over_async_start = true;
-  }
+  // It's more beneficial to prioritize compute over async start when we have
+  // more async ops in parallel.
+  bool prioritize_compute_over_async_start =
+      config.parallel_collective_overlap_limit > 1 &&
+      options.xla_gpu_experimental_collective_start_as_early_as_possible();
   auto async_tracker = std::make_unique<GpuAsyncTracker>(config);
 
   std::shared_ptr<const SchedulingContext> scheduling_context =
@@ -893,13 +891,12 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   // Run the scheduler which minimizes peak memory usage.
   // We need to run it anyway because LHS relies on it.
   // See `xla::LatencyHidingScheduler::Run`.
-  TF_RETURN_IF_ERROR(RunP2PSchedulePreparation(module));
+  RETURN_IF_ERROR(RunP2PSchedulePreparation(module));
   int64_t peak_memory_bytes;
-  TF_ASSIGN_OR_RETURN(
-      HloSchedule schedule,
-      ScheduleGpuModuleWithMemoryScheduler(module, alias_info, pointer_size,
-                                           &peak_memory_bytes));
-  TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  ASSIGN_OR_RETURN(HloSchedule schedule,
+                   ScheduleGpuModuleWithMemoryScheduler(
+                       module, alias_info, pointer_size, &peak_memory_bytes));
+  RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
 
   bool enable_latency_hiding_scheduler =
       IsLHSEnabled(*module, fingerprint, gpu_device_info);
@@ -907,7 +904,7 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   // Run Latency Hiding Scheduler (LHS). It maximizes the compute-communication
   // overlap, potentially at the cost of memory usage.
   if (enable_latency_hiding_scheduler) {
-    TF_RETURN_IF_ERROR(RunLatencyHidingSchedulerPasses(
+    RETURN_IF_ERROR(RunLatencyHidingSchedulerPasses(
         module, pointer_size, fingerprint, memory_limit, gpu_device_info,
         mlir_context, alias_info));
   }

@@ -2,7 +2,7 @@ path: "tensorflow.config.experimental.VirtualDeviceConfiguration"
 tf_class {
   is_instance: "<class \'tensorflow.python.eager.context.LogicalDeviceConfiguration\'>"
   is_instance: "<class \'tensorflow.python.eager.context.LogicalDeviceConfiguration\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "experimental_device_ordinal"
     mtype: "<class \'collections._tuplegetter\'>"
@@ -17,6 +17,10 @@ tf_class {
   }
   member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'memory_limit\', \'experimental_priority\', \'experimental_device_ordinal\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "count"

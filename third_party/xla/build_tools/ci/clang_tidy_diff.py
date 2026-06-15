@@ -48,14 +48,15 @@ class AppConfig:
   """Configuration for the ClangTidyDiffFilter application.
 
   Attributes:
-    patch: Path to the patch file containing the diff.
+    patch: Path to the patch file containing the diff or None if no diff
+      filtering should be applied.
     repo_root: Absolute path to the repository root.
     bep_file: Path to the Bazel Build Event Protocol JSON file.
     warnings_as_errors: If True, treat Clang-Tidy warnings as errors.
     fix: If True, apply fixes to the source files.
   """
 
-  patch: str
+  patch: str | None
   repo_root: str
   bep_file: str
   warnings_as_errors: bool
@@ -524,7 +525,8 @@ class ClangTidyDiffFilter:
         will be called with the path to the temp directory where the relevant
         YAML files have been staged. If None, fixes will not be applied.
     """
-    self.diff_ranges = parse_diff(config.patch)
+    self.has_diff = config.patch is not None
+    self.diff_ranges = parse_diff(config.patch) if config.patch else {}
     self.yaml_files = parse_bep(config.bep_file, config.repo_root)
     self.repo_root = config.repo_root
     self.warnings_as_errors = config.warnings_as_errors
@@ -556,7 +558,7 @@ class ClangTidyDiffFilter:
     if not data:
       return [], DiagnosticSummary(
           file_path=report_source,
-          was_skipped=True,
+          was_skipped=self.has_diff,
           total=0,
           matched=0,
       )
@@ -565,12 +567,12 @@ class ClangTidyDiffFilter:
     if main_source:
       norm_main_source = normalize_path(main_source, self.repo_root)
       self.seen_files.add(norm_main_source)
-    if report_source in self.diff_ranges:
+    if self.has_diff and report_source in self.diff_ranges:
       self.seen_files.add(report_source)
     if "Diagnostics" not in data:
       return [], DiagnosticSummary(
           file_path=report_source,
-          was_skipped=True,
+          was_skipped=self.has_diff,
           total=0,
           matched=0,
       )
@@ -583,7 +585,7 @@ class ClangTidyDiffFilter:
         continue
 
       norm_path = normalize_path(file_path, self.repo_root)
-      if norm_path not in self.diff_ranges:
+      if self.has_diff and norm_path not in self.diff_ranges:
         continue
 
       abs_path = pathlib.Path(self.repo_root) / norm_path
@@ -605,8 +607,8 @@ class ClangTidyDiffFilter:
       line_start_offset = offsets[line_num - 1]
       col_num = offset - line_start_offset + 1
 
-      lines = self.diff_ranges[norm_path]
-      if line_num in lines:
+      lines = self.diff_ranges[norm_path] if self.has_diff else set()
+      if not self.has_diff or line_num in lines:
         matched_diagnostics.append(
             Diagnostic(
                 file_path=norm_path,
@@ -621,13 +623,15 @@ class ClangTidyDiffFilter:
         )
     return matched_diagnostics, DiagnosticSummary(
         file_path=report_source,
-        was_skipped=report_source not in self.diff_ranges,
+        was_skipped=self.has_diff and report_source not in self.diff_ranges,
         total=len(data["Diagnostics"]),
         matched=len(matched_diagnostics),
     )
 
   def report_missing(self) -> None:
     """Reports any touched files that were not processed using the logger."""
+    if not self.has_diff:
+      return
     touched_files = set(self.diff_ranges.keys())
     missing_files = [
         f for f in touched_files - self.seen_files if f.endswith((".h", ".cc"))
@@ -687,7 +691,10 @@ class ClangTidyDiffFilter:
       True if the check was successful (no errors found), False if errors were
       found or running the check failed.
     """
-    if not self.diff_ranges or not self.yaml_files:
+    if self.has_diff and not self.diff_ranges:
+      _logger().error("No modified files found in patch.")
+      return False
+    if not self.yaml_files:
       _logger().error("No YAML files provided or found in BEP.")
       return False
 
@@ -729,7 +736,7 @@ def main() -> None:
   parser = argparse.ArgumentParser(
       description="Filter Clang-Tidy errors by Git diff."
   )
-  parser.add_argument("--patch", required=True, help="Path to the patch file.")
+  parser.add_argument("--patch", default=None, help="Path to the patch file.")
   parser.add_argument(
       "--repo-root", required=True, help="Absolute path to the repo root."
   )

@@ -198,7 +198,7 @@ void FullyConnected::UploadQuantizedWeights(
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
 
-  std::vector<uint8_t> data(src_depth * 4 * dst_depth * 4);
+  std::vector<uint8_t> data(static_cast<size_t>(src_depth) * 4 * dst_depth * 4);
   RearrangeFCWeightsToOIO4I4(weights, data.data());
   TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
       DataType::UINT8, TensorStorageType::TEXTURE_2D, src_depth * 4, dst_depth,

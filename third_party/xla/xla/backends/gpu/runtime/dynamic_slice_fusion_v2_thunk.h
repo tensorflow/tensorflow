@@ -17,12 +17,15 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_DYNAMIC_SLICE_FUSION_V2_THUNK_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 
 namespace xla::gpu {
@@ -47,20 +51,47 @@ namespace xla::gpu {
 // offsets (from DynamicSliceConfig) match the actual offsets computed on
 // device. This is a debugging aid and must not be enabled by default, as it
 // requires a synchronous device-to-host copy of the offset scalars.
-class DynamicSliceFusionV2Thunk : public Thunk {
+class DynamicSliceFusionV2Thunk : public Command {
  public:
+  // Args:
+  //   parameters      - Hero operand metadata from DynamicSliceFusion::
+  //                     ResolveParameters. Describes how each hero operand maps
+  //                     to a fusion parameter and how the buffer is sliced.
+  //   results         - Hero result metadata from DynamicSliceFusion::
+  //                     ResolveResults. Describes DUS output slicing.
+  //   parameter_buffers - Real buffer slices for each fusion operand, indexed
+  //                     by fusion parameter number (i.e. parameter_buffers[i]
+  //                     is the buffer for fusion parameter i).
+  //   result_buffers  - Real buffer slices for each fusion output leaf, indexed
+  //                     by leaf number in DFS order.
+  //   embedded_allocations - Synthetic BufferAllocations for the embedded thunk
+  //                     executor. The embedded thunks reference these instead
+  //                     of the real buffer assignment; at runtime
+  //                     BuildDynamicSliceBuffers fills them with
+  //                     offset-adjusted pointers into the real buffers.
+  //   embedded_thunks - Thunk sequence emitted for the hero instruction.
+  //   verify_offsets  - When true, D2H-copies offset scalars each iteration to
+  //                     verify annotated DynamicSliceConfig matches actual
+  //                     offset expressions.
   DynamicSliceFusionV2Thunk(
       ThunkInfo thunk_info,
       std::vector<DynamicSliceFusion::Parameter> parameters,
       std::vector<DynamicSliceFusion::Result> results,
       std::vector<BufferAllocation::Slice> parameter_buffers,
       std::vector<BufferAllocation::Slice> result_buffers,
-      std::vector<BufferAllocation> slice_allocations,
+      std::vector<BufferAllocation> embedded_allocations,
       ThunkSequence embedded_thunks, bool verify_offsets = false);
 
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+  bool requires_initialization() const override;
+  bool requires_update() const override;
+  bool support_loop_unroll() const override;
 
   BufferUses buffer_uses() const override;
 
@@ -73,9 +104,23 @@ class DynamicSliceFusionV2Thunk : public Thunk {
     return results_;
   }
 
+  bool verify_offsets() const { return verify_offsets_; }
+  bool HasLoopDependentOffsets() const;
+
+  absl::Status SetOrUpdateCommandBufferExecutor(
+      CommandExecutor command_executor);
+
   std::string ToString(int indent) const override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
+
+  // Verifies that every result written through a DynamicUpdateSlice aliases the
+  // fusion parameter used as the DUS target buffer.
+  static absl::Status VerifyBufferAssignment(
+      absl::Span<const DynamicSliceFusion::Result> results,
+      absl::Span<const BufferAllocation::Slice> parameter_buffers,
+      absl::Span<const BufferAllocation::Slice> result_buffers);
+
   static absl::StatusOr<std::unique_ptr<DynamicSliceFusionV2Thunk>> FromProto(
       ThunkInfo thunk_info, const DynamicSliceFusionThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations,
@@ -90,17 +135,20 @@ class DynamicSliceFusionV2Thunk : public Thunk {
       const BufferAllocations& orig_allocs,
       absl::Span<const WhileLoopState> loop_nest) const;
 
+  // Hero operand/result metadata describing slicing behavior.
   std::vector<DynamicSliceFusion::Parameter> parameters_;
   std::vector<DynamicSliceFusion::Result> results_;
 
+  // Real buffer slices indexed by fusion parameter/result number.
   std::vector<BufferAllocation::Slice> parameter_buffers_;
   std::vector<BufferAllocation::Slice> result_buffers_;
 
-  // Buffer allocations for the embedded thunks. These buffer allocations match
-  // the parameter and result slicing configs defined by the fusion.
-  std::vector<BufferAllocation> slice_allocations_;
+  // Synthetic allocations for the embedded thunk executor. Indexed by hero
+  // parameter index (first N entries) then hero result index (next M entries).
+  std::vector<BufferAllocation> embedded_allocations_;
 
   ThunkExecutor executor_;
+  std::optional<CommandExecutor> command_executor_;
 
   bool verify_offsets_;
 };

@@ -33,11 +33,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"
@@ -71,13 +71,6 @@ absl::Status Mesh::Validate() {
     if (!seen_axis_names.insert(axis_name).second) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Mesh has duplicate axis names. Duplicate axis name: ", axis_name));
-    }
-    int64_t value;
-    if (absl::SimpleAtoi(axis_name, &value)) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Mesh axis name cannot be an integer to avoid confusion "
-                       "with axis indices: ",
-                       axis_name));
     }
   }
 
@@ -170,12 +163,23 @@ MeshProto Mesh::ToProto() const {
   }
   proto.mutable_axes()->Assign(axes.begin(), axes.end());
 
+  // Serialize device IDs.
   std::optional<IotaTileAssignment> iota = device_assignment_.iota();
-  // Only add device ids for non-iota cases.
-  if (!(iota.has_value() && iota->reshape_dims().size() == 1)) {
+  if (iota.has_value() && iota->reshape_dims().size() != 1) {
+    proto.mutable_iota_transform()->mutable_reshape_dims()->Assign(
+        iota->reshape_dims().begin(), iota->reshape_dims().end());
+    for (int elem : iota.value().transpose_perm()) {
+      proto.mutable_iota_transform()->add_transpose_perm(
+          static_cast<int64_t>(elem));
+    }
+  } else if (!iota.has_value()) {
     proto.mutable_device_ids()->Assign(device_assignment_.array().begin(),
                                        device_assignment_.array().end());
   }
+  // The proto must not have defined both a device IDs list and have an
+  // iota transform, since the iota transform makes no sense in that case.
+  CHECK(!(proto.has_iota_transform() && proto.device_ids_size() != 0))
+      << "Mesh must not have an iota transform and a device ID list";
   return proto;
 }
 
@@ -204,10 +208,22 @@ Mesh Mesh::FromProto(const MeshProto& proto) {
 
   // If device ids are not specified, create a mesh with iota tiling.
   if (proto.device_ids_size() == 0) {
+    if (proto.has_iota_transform()) {
+      // Transformed iota.
+      TileAssignment device_assignment = TileAssignment(
+          IotaTileAssignment::Create(mesh_axis_sizes, proto.iota_transform()));
+      return Mesh(device_assignment, mesh_axis_names_span);
+    }
+    // Simple iota.
     TileAssignment device_assignment =
         TileAssignment(IotaTileAssignment::Create(mesh_axis_sizes));
     return Mesh(device_assignment, mesh_axis_names_span);
   }
+  // The proto must not have defined both a device IDs list and have an
+  // iota transform, since the iota transform makes no sense in this case.
+  CHECK(!proto.has_iota_transform())
+      << "Mesh must not have an iota transform and a device ID list";
+
   // Otherwise, create a mesh with the specific device id ordering.
   std::vector<int64_t> device_ids(proto.device_ids().begin(),
                                   proto.device_ids().end());
@@ -475,7 +491,7 @@ absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
     return absl::OkStatus();
   }
   for (const AxisRef& axis : axes) {
-    TF_RETURN_IF_ERROR(axis.Validate(mesh));
+    RETURN_IF_ERROR(axis.Validate(mesh));
   }
   if (!AxesCanCoexistWithoutOverlap(axes)) {
     return absl::InvalidArgumentError("Axes cannot coexist or axes overlap.");
@@ -493,12 +509,10 @@ absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
   return absl::OkStatus();
 }
 
-void SortAndMergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
+void MergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
   if (axes.empty()) {
     return;
   }
-
-  absl::c_sort(axes);
 
   auto current = axes.begin();
   for (auto next = current + 1; next != axes.end(); ++next) {
@@ -514,6 +528,15 @@ void SortAndMergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
     }
   }
   axes.erase(current + 1, axes.end());
+}
+
+void SortAndMergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
+  if (axes.empty()) {
+    return;
+  }
+
+  absl::c_sort(axes);
+  MergeAxes(axes, mesh);
 }
 
 bool TruncateAxesByRemovingOverlaps(std::vector<AxisRef>& axes,

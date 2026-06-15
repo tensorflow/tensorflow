@@ -68,6 +68,18 @@ class PjRtTestTopology : public PjRtTopologyDescription {
   }
 };
 
+// Registers a compiler to compile programs for 'platform_name' with
+// 'compiler_variant'. Takes ownership of 'compiler'.
+//
+// REQUIRES: No compiler has been registered for the platform and compiler
+// variant yet.
+void PjRtRegisterCompiler(absl::string_view platform_name,
+                          absl::string_view compiler_variant,
+                          std::unique_ptr<PjRtCompiler> compiler) {
+  CHECK_OK(PjRtCompilerRegistry::Global().RegisterCompiler(
+      platform_name, compiler_variant, std::move(compiler)));
+}
+
 TEST(PjRtCompilerTest, CompilerNotRegistered) {
   PjRtTestTopology topology;
 

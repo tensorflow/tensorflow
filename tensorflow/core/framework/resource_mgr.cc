@@ -45,7 +45,7 @@ ResourceHandle MakeResourceHandle(
     const std::string& container, const std::string& name,
     const DeviceBase& device, const TypeIndex& type_index,
     const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes,
-    const absl::optional<ManagedStackTrace>& definition_stack_trace) {
+    const std::optional<ManagedStackTrace>& definition_stack_trace) {
   ResourceHandle result;
   result.set_device(device.name());
   result.set_container(container);

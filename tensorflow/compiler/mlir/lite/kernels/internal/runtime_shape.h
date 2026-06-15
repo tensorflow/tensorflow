@@ -47,6 +47,7 @@ class RuntimeShape {
   RuntimeShape() : size_(0) {}
 
   explicit RuntimeShape(int dimensions_count) : size_(dimensions_count) {
+    TFLITE_DCHECK_GE(dimensions_count, 0);
 #ifndef TF_LITE_STATIC_MEMORY
     if (dimensions_count > kMaxSmallSize) {
       dims_pointer_ = new int32_t[dimensions_count];
@@ -58,9 +59,11 @@ class RuntimeShape {
 
 #ifndef TF_LITE_STATIC_MEMORY
   RuntimeShape(int shape_size, int32_t value) : size_(0) {
+    TFLITE_DCHECK_GE(shape_size, 0);
     Resize(shape_size);
 #else
   RuntimeShape(int shape_size, int32_t value) : size_(shape_size) {
+    TFLITE_DCHECK_GE(shape_size, 0);
     TFLITE_DCHECK_LE(shape_size, kMaxSmallSize);
 #endif  // TF_LITE_STATIC_MEMORY
     for (int i = 0; i < shape_size; ++i) {
@@ -69,6 +72,7 @@ class RuntimeShape {
   }
 
   RuntimeShape(int dimensions_count, const int32_t* dims_data) : size_(0) {
+    TFLITE_DCHECK_GE(dimensions_count, 0);
     ReplaceWith(dimensions_count, dims_data);
   }
 
@@ -132,6 +136,7 @@ class RuntimeShape {
 
 #ifndef TF_LITE_STATIC_MEMORY
   inline void Resize(int dimensions_count) {
+    TFLITE_DCHECK_GE(dimensions_count, 0);
     const int32_t old_size = size_;
     size_ = dimensions_count;
 
@@ -181,6 +186,7 @@ class RuntimeShape {
   // inputs should already be 4-D, so this function should not be needed.
   inline static RuntimeShape ExtendedShape(int new_shape_size,
                                            const RuntimeShape& shape) {
+    TFLITE_DCHECK_GE(new_shape_size, 0);
 #ifdef TF_LITE_STATIC_MEMORY
     TFLITE_DCHECK_LE(new_shape_size, kMaxSmallSize);
 #endif  // TF_LITE_STATIC_MEMORY

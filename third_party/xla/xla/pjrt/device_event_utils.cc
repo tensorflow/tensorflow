@@ -98,9 +98,28 @@ void ScopedLauncher::AddDependency(
   }
 }
 
+void ScopedLauncher::AddDependency(PjRtDeviceEventSpan dependencies) {
+  for (size_t i = 0; i < dependencies.size(); ++i) {
+    AddDependency(dependencies[i]);
+  }
+}
+
 absl::Status GetErrors(absl::Span<const PjRtDeviceEventRef> events) {
   absl::Status status;
   for (const auto& ev : events) {
+    if (ev) {
+      if (auto err = ev.GetErrorIfPresent()) {
+        status.Update(*err);
+      }
+    }
+  }
+  return status;
+}
+
+absl::Status GetErrors(PjRtDeviceEventSpan events) {
+  absl::Status status;
+  for (size_t i = 0; i < events.size(); ++i) {
+    const auto& ev = events[i];
     if (ev) {
       if (auto err = ev.GetErrorIfPresent()) {
         status.Update(*err);

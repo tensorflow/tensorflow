@@ -60,7 +60,6 @@ mlir::Attribute SymbolicMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
   if (parser.parseLess()) {
     return {};
   }
-  RegisterSymbolicExprStorage(parser.getContext());
   std::string serialized_map;
   if (parser.parseString(&serialized_map)) {
     return {};
@@ -87,7 +86,6 @@ mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
   if (parser.parseLess()) {
     return {};
   }
-  RegisterSymbolicExprStorage(parser.getContext());
   auto indexing_map = parseChainOfStringsAsIndexingMap(parser);
   if (!indexing_map.has_value() || parser.parseGreater()) {
     return {};

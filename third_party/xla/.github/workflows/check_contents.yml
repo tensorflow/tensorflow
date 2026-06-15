@@ -46,7 +46,7 @@ jobs:
       contains(github.event.pull_request.body, 'FORCE_TEST_ACTIONS')
     steps:
       - name: "Checking out repository"
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
       - name: "Fetch HEAD of main branch"
@@ -73,6 +73,9 @@ jobs:
       - name: "Check for Header Guards"
         if: always()
         run: "python3 build_tools/lint/check_header_guards.py"
+      - name: "Check for TF Status Macros"
+        if: always()
+        run: "python3 build_tools/lint/check_contents.py --path_regex '.*\\.(h|cc|cpp)' --path_regex_exclusion 'xla/tsl/.*' 'xla/python/.*' 'xla/pjrt/.*' --prohibited_regex '\\bTF_(RETURN_IF_ERROR|ASSIGN_OR_RETURN)\\b' --failure_message 'Within XLA, you can now use RETURN_IF_ERROR/ASSIGN_OR_RETURN from xla/tsl/platform/status_macros.h rather than their TSL TF_ equivalents.'"
       # ----------------Python checks----------------
       - name: "Check for python print()"
         if: always() # We want to run all checks, not just til first failure

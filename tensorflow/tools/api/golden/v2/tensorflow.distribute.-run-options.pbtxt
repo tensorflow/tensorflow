@@ -2,7 +2,7 @@ path: "tensorflow.distribute.RunOptions"
 tf_class {
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.RunOptions\'>"
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.RunOptions\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "experimental_bucketizing_dynamic_shape"
     mtype: "<class \'collections._tuplegetter\'>"
@@ -17,6 +17,10 @@ tf_class {
   }
   member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'experimental_enable_dynamic_batch_size\', \'experimental_bucketizing_dynamic_shape\', \'experimental_xla_options\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
   }
   member_method {
     name: "count"

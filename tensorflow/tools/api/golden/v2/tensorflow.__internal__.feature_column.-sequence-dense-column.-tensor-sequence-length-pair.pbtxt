@@ -1,7 +1,7 @@
 path: "tensorflow.__internal__.feature_column.SequenceDenseColumn.TensorSequenceLengthPair"
 tf_class {
   is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2.TensorSequenceLengthPair\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "dense_tensor"
     mtype: "<class \'collections._tuplegetter\'>"
@@ -12,6 +12,10 @@ tf_class {
   }
   member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__new__"
+    argspec: "args=[\'_cls\', \'dense_tensor\', \'sequence_length\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count"

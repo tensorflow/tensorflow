@@ -46,19 +46,19 @@ class FractionalMaxPoolOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("overlapping", &overlapping_));
 
     OP_REQUIRES(context, pooling_ratio_.size() == 4,
-                errors::InvalidArgument("pooling_ratio field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("pooling_ratio field must "
+                                           "specify 4 dimensions"));
     for (std::size_t i = 0; i < pooling_ratio_.size(); ++i) {
       OP_REQUIRES(context, pooling_ratio_[i] >= 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "pooling_ratio cannot be smaller than 1, got: ",
-                      pooling_ratio_[i]));
+                      pooling_ratio_[i])));
     }
 
-    OP_REQUIRES(
-        context, pooling_ratio_[0] == 1 && pooling_ratio_[3] == 1,
-        errors::Unimplemented("Fractional max pooling is not yet "
-                              "supported on the batch nor channel dimension."));
+    OP_REQUIRES(context, pooling_ratio_[0] == 1 && pooling_ratio_[3] == 1,
+                absl::UnimplementedError(
+                    "Fractional max pooling is not yet "
+                    "supported on the batch nor channel dimension."));
 
     OP_REQUIRES_OK(context, context->GetAttr("deterministic", &deterministic_));
     OP_REQUIRES_OK(context, context->GetAttr("seed", &seed_));
@@ -72,7 +72,7 @@ class FractionalMaxPoolOp : public OpKernel {
     } else {
       OP_REQUIRES(
           context, (seed_ == 0) && (seed2_ == 0),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Both seed and seed2 should be 0 if deterministic is false."));
     }
   }
@@ -87,19 +87,19 @@ class FractionalMaxPoolOp : public OpKernel {
 
     const Tensor& tensor_in = context->input(0);
     OP_REQUIRES(context, tensor_in.dims() == tensor_in_and_out_dims,
-                errors::InvalidArgument("tensor_in must be 4-dimensional"));
+                absl::InvalidArgumentError("tensor_in must be 4-dimensional"));
 
     std::vector<int> input_size(tensor_in_and_out_dims);
     std::vector<int> output_size(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       input_size[i] = tensor_in.dim_size(i);
 
-      OP_REQUIRES(
-          context, input_size[i] >= pooling_ratio_[i],
-          errors::InvalidArgument("Pooling ratio is higher than input "
-                                  "dimension size for dimension ",
-                                  i, ". Input dim size: ", input_size[i],
-                                  " pooling ratio: ", pooling_ratio_[i]));
+      OP_REQUIRES(context, input_size[i] >= pooling_ratio_[i],
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Pooling ratio is higher than input "
+                                   "dimension size for dimension ",
+                                   i, ". Input dim size: ", input_size[i],
+                                   " pooling ratio: ", pooling_ratio_[i])));
     }
     // Output size.
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
@@ -253,39 +253,41 @@ class FractionalMaxPoolGradOp : public OpKernel {
 
     // Just to make it similar to FractionalMaxPoolOp.
     constexpr int tensor_in_and_out_dims = 4;
+    OP_REQUIRES(context, tensor_in.dims() == tensor_in_and_out_dims,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "orig_input should be a tensor of rank 4, got ",
+                    tensor_in.DebugString())));
     OP_REQUIRES(
-        context, tensor_in.dims() == tensor_in_and_out_dims,
-        errors::InvalidArgument("orig_input should be a tensor of rank 4, got ",
-                                tensor_in.DebugString()));
-    OP_REQUIRES(context, tensor_in.NumElements() > 0,
-                errors::InvalidArgument("orig_input must not be empty, got ",
-                                        tensor_in.DebugString()));
+        context, tensor_in.NumElements() > 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "orig_input must not be empty, got ", tensor_in.DebugString())));
     OP_REQUIRES(context, tensor_out.dims() == tensor_in_and_out_dims,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "orig_output should be a tensor of rank 4, got ",
-                    tensor_out.DebugString()));
-    OP_REQUIRES(context, tensor_out.NumElements() > 0,
-                errors::InvalidArgument("orig_output must not be empty, got ",
-                                        tensor_out.DebugString()));
+                    tensor_out.DebugString())));
+    OP_REQUIRES(
+        context, tensor_out.NumElements() > 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "orig_output must not be empty, got ", tensor_out.DebugString())));
     OP_REQUIRES(
         context,
         height_seq_tensor.NumElements() * width_seq_tensor.NumElements() <=
             tensor_in.NumElements(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Pooling region has more elements than the input tensor. "
             "row_pooling_sequence: ",
             height_seq_tensor.DebugString(),
             "col_pooling_sequence: ", width_seq_tensor.DebugString(),
-            "orig_input: ", tensor_in.DebugString()));
+            "orig_input: ", tensor_in.DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(height_seq_tensor.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "row_pooling_sequence must be a vector, received shape ",
-                    height_seq_tensor.shape().DebugString()));
+                    height_seq_tensor.shape().DebugString())));
 
     OP_REQUIRES(context, TensorShapeUtils::IsVector(width_seq_tensor.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "col_pooling_sequence must be a vector, received shape ",
-                    width_seq_tensor.shape().DebugString()));
+                    width_seq_tensor.shape().DebugString())));
 
     //
     std::vector<int64_t> input_size(tensor_in_and_out_dims);
@@ -384,7 +386,7 @@ class FractionalMaxPoolGradOp : public OpKernel {
     for (int64_t i = 0; i < num_reshaped_cols; ++i) {
       for (int64_t j = 0; j < output_size[3]; ++j) {
         OP_REQUIRES(context, tensor_out_dup_mat(j, i) == tensor_out_mat(j, i),
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "tensor_out_dup is not the same as tensor_out"));
       }
     }
@@ -405,9 +407,9 @@ class FractionalMaxPoolGradOp : public OpKernel {
       OP_REQUIRES(
           context,
           input_backprop_index >= 0 && input_backprop_index < num_total_inputs,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Invalid input backprop index: ", input_backprop_index, ", ",
-              num_total_inputs));
+              num_total_inputs)));
       input_backprop_flat(input_backprop_index) += out_backprop_flat(index);
     }
   }

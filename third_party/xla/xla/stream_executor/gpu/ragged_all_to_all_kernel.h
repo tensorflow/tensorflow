@@ -34,11 +34,11 @@ using RaggedAllToAllOutputPtrs =
 
 // Defines a trait for the RaggedAllToAll kernel that can be used to register
 // and look up the kernel in the GPU kernel registry.
-template <typename PtrStorage, int64_t kVectorSize>
+template <int64_t kVectorSize>
 struct RaggedAllToAllKernel {
   using KernelType = stream_executor::TypedKernel<
       /*input_ptr=*/stream_executor::DeviceAddressBase,
-      /*output_ptrs=*/PtrStorage,
+      /*output_ptrs=*/RaggedAllToAllOutputPtrs,
       /*input_offsets_ptr=*/stream_executor::DeviceAddressBase,
       /*send_sizes_ptr=*/stream_executor::DeviceAddressBase,
       /*output_offsets_ptr=*/stream_executor::DeviceAddressBase,

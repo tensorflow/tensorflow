@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/instruction_fusion.h"
+#include "xla/service/decision.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -30,7 +30,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using CodegenDecision = FusionDecision;
+using CodegenDecision = Decision;
 
 // Checks that Triton officially supports the provided compute capability.
 //

@@ -21,10 +21,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -43,9 +45,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -99,7 +99,7 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
   absl::StatusOr<absl::Duration> ComputeCollectiveTime(
       const HloInstruction& instr) {
     return SolLatencyEstimator::ComputeCollectiveTime(
-        instr, gpu_device_info_, shape_size_fn_, sol_flags_, &mlir_context_,
+        instr, gpu_device_info_, shape_size_fn_, sol_flags_,
         collective_interpolator_.get());
   }
 
@@ -108,7 +108,7 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
     std::unique_ptr<SolLatencyEstimator> estimator =
         *SolLatencyEstimator::Create(
             scheduler_config_, std::make_unique<DummyLatencyEstimator>(),
-            gpu_device_info_, shape_size_fn_, computation, &mlir_context_);
+            gpu_device_info_, shape_size_fn_, computation);
     LatencyEstimator::TimeCost cost_val = estimator->NodeCost(&instr);
     return absl::Microseconds(static_cast<int64_t>(cost_val));
   }
@@ -119,7 +119,7 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
     std::unique_ptr<SolLatencyEstimator> estimator =
         *SolLatencyEstimator::Create(
             scheduler_config_, std::make_unique<DummyLatencyEstimator>(),
-            gpu_device_info_, shape_size_fn_, computation, &mlir_context_);
+            gpu_device_info_, shape_size_fn_, computation);
     LatencyEstimator::TimeCost cost_val =
         estimator->GetLatencyBetween(from, target);
     return absl::Microseconds(static_cast<int64_t>(cost_val));
@@ -130,21 +130,19 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
   const SolGPUCostModel::Config sol_flags_;
   SchedulerConfig scheduler_config_;
   std::unique_ptr<CollectiveInterpolator> collective_interpolator_;
-  mlir::MLIRContext mlir_context_;
 };
 
 TEST_P(SolLatencyEstimatorTest, TestLatencyEstimation) {
   EstimatorTestCase test_case = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(test_case.module_string));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(test_case.module_string));
 
   HloInstruction* instr = hlo_query::FindInstruction(
       module->entry_computation(), test_case.opcode_to_find);
   ASSERT_NE(instr, nullptr);
   absl::Duration actual_time_us;
   if (test_case.cost_type == CostType::kCollectiveTime) {
-    TF_ASSERT_OK_AND_ASSIGN(absl::Duration time_us,
-                            ComputeCollectiveTime(*instr));
+    ASSERT_OK_AND_ASSIGN(absl::Duration time_us, ComputeCollectiveTime(*instr));
     actual_time_us = absl::Trunc(time_us, absl::Microseconds(1));
   } else if (test_case.cost_type == CostType::kNodeCost) {
     actual_time_us = ComputeNodeCost(*instr, module->entry_computation());
@@ -660,13 +658,12 @@ TEST_F(HloHardwareIndependentTestBase, CollectiveCostModelDispatching) {
   const SolGPUCostModel::Config sol_flags = {
       absl::Microseconds(100), 100, absl::Microseconds(100),
       absl::Microseconds(100), 8,   4 * 1024 * 1024};
-  mlir::MLIRContext mlir_ctx;
   auto interpolator =
       *CollectiveInterpolator::Create(sol_flags.gpus_per_node, gpu_info,
                                       /*analysis=*/nullptr);
 
   // NVLink domain collective should use CollectiveInterpolator.
-  TF_ASSERT_OK_AND_ASSIGN(auto nvl_module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto nvl_module, ParseAndReturnVerifiedModule(R"(
 HloModule m, num_partitions=16
 ENTRY main {
   p = bf16[8,16000,1000] parameter(0)
@@ -677,17 +674,17 @@ ENTRY main {
   HloInstruction* nvl_instr = hlo_query::FindInstruction(
       nvl_module->entry_computation(), HloOpcode::kAllToAll);
   EXPECT_FALSE(SolLatencyEstimator::ComputeCollectiveTime(
-                   *nvl_instr, gpu_info, shape_size_fn, sol_flags, &mlir_ctx,
+                   *nvl_instr, gpu_info, shape_size_fn, sol_flags,
                    /*collective_interpolator=*/nullptr)
                    .ok());
-  EXPECT_TRUE(SolLatencyEstimator::ComputeCollectiveTime(
-                  *nvl_instr, gpu_info, shape_size_fn, sol_flags, &mlir_ctx,
-                  interpolator.get())
-                  .ok());
+  EXPECT_TRUE(
+      SolLatencyEstimator::ComputeCollectiveTime(
+          *nvl_instr, gpu_info, shape_size_fn, sol_flags, interpolator.get())
+          .ok());
 
   // Cross-partition collective should use S-curve model (world-level across 2
   // hosts).
-  TF_ASSERT_OK_AND_ASSIGN(auto ib_module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto ib_module, ParseAndReturnVerifiedModule(R"(
 HloModule m, num_partitions=16
 ENTRY main {
   p = bf16[16,16000,1000] parameter(0)
@@ -698,12 +695,12 @@ ENTRY main {
   HloInstruction* ib_instr = hlo_query::FindInstruction(
       ib_module->entry_computation(), HloOpcode::kAllToAll);
   EXPECT_TRUE(SolLatencyEstimator::ComputeCollectiveTime(
-                  *ib_instr, gpu_info, shape_size_fn, sol_flags, &mlir_ctx,
+                  *ib_instr, gpu_info, shape_size_fn, sol_flags,
                   /*collective_interpolator=*/nullptr)
                   .ok());
 }
 
-class IsSolLatencyEstimatorEnabledTest : public HloTestBase {
+class IsSolLatencyEstimatorEnabledTest : public HloTestBaseLegacy {
  protected:
   IsSolLatencyEstimatorEnabledTest()
       : gpu_device_info_(TestGpuDeviceInfo::RTXA6000DeviceInfo()) {}
@@ -782,8 +779,8 @@ class IsSolLatencyEstimatorEnabledTest : public HloTestBase {
         HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({2})));
     HloInstruction* call =
         entry->AddInstruction(HloInstruction::CreateCall(shape, dummy_operand));
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig new_backend_config,
-                        call->backend_config<GpuBackendConfig>());
+    ASSIGN_OR_RETURN(GpuBackendConfig new_backend_config,
+                     call->backend_config<GpuBackendConfig>());
     new_backend_config.set_device_type(DEVICE_TYPE_HOST);
     return call->set_backend_config(new_backend_config);
   }
@@ -877,7 +874,7 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledForHopperWithHostOffloaded) {
       stream_executor::CudaComputeCapability::Hopper());
 
   auto module = CreateTestModule(config);
-  TF_ASSERT_OK(AddHostOffloaded(module.get()));
+  ASSERT_OK(AddHostOffloaded(module.get()));
 
   EXPECT_FALSE(
       SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));

@@ -18,26 +18,38 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/base/const_init.h"
+#include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/host/host_stream.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace {
 
-static absl::Mutex* get_host_stream_factory_lock() {
-  static absl::Mutex host_stream_factory_lock(absl::kConstInit);
-  return &host_stream_factory_lock;
-}
+ABSL_CONST_INIT absl::Mutex host_stream_factory_lock(absl::kConstInit);
 
 struct FactoryItem {
-  std::unique_ptr<stream_executor::host::HostStreamFactory> factory;
-  int priority = -1;
+  std::shared_ptr<stream_executor::host::HostStreamFactory> factory
+      ABSL_GUARDED_BY(host_stream_factory_lock);
+  int priority ABSL_GUARDED_BY(host_stream_factory_lock) = -1;
 };
 
 FactoryItem& host_stream_factory() {
-  static FactoryItem* const factory = new FactoryItem();
+  static absl::NoDestructor<FactoryItem> factory;
   return *factory;
 }
 
+class HostStreamDefaultFactory
+    : public stream_executor::host::HostStreamFactory {
+ public:
+  ~HostStreamDefaultFactory() override = default;
+  std::unique_ptr<stream_executor::host::HostStream> CreateStream(
+      stream_executor::StreamExecutor* executor) const override {
+    return std::make_unique<stream_executor::host::HostStream>(executor);
+  }
+};
 }  // namespace
 
 namespace stream_executor {
@@ -46,28 +58,30 @@ namespace host {
 // static
 void HostStreamFactory::Register(std::unique_ptr<HostStreamFactory> factory,
                                  int priority) {
-  absl::MutexLock l(*get_host_stream_factory_lock());
+  absl::MutexLock lock(host_stream_factory_lock);
   FactoryItem& factory_item = host_stream_factory();
-  if (factory_item.factory == nullptr) {
-    factory_item.factory = std::move(factory);
-    factory_item.priority = priority;
-    return;
-  }
-  if (factory_item.priority < priority) {
+  if (factory_item.factory == nullptr || factory_item.priority < priority) {
     factory_item.factory = std::move(factory);
     factory_item.priority = priority;
   }
 }
 
 // static
-const HostStreamFactory* HostStreamFactory::GetFactory() {
-  absl::ReaderMutexLock l(*get_host_stream_factory_lock());
+std::shared_ptr<HostStreamFactory> HostStreamFactory::GetFactory() {
+  absl::ReaderMutexLock lock(host_stream_factory_lock);
   FactoryItem& factory_item = host_stream_factory();
-  return factory_item.factory.get();
+  return factory_item.factory;
+}
+
+// static
+void HostStreamFactory::ResetForTesting() {
+  absl::MutexLock lock(host_stream_factory_lock);
+  FactoryItem& factory_item = host_stream_factory();
+  factory_item.factory = std::make_shared<HostStreamDefaultFactory>();
+  factory_item.priority = 100;
 }
 
 }  // namespace host
 }  // namespace stream_executor
 
-REGISTER_HOST_STREAM_FACTORY(stream_executor::host::HostStreamDefaultFactory,
-                             100);
+REGISTER_HOST_STREAM_FACTORY(HostStreamDefaultFactory, 100);

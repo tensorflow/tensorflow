@@ -46,6 +46,7 @@ std::unique_ptr<mlir::Pass> CreatePeelLoopsPass();
 std::unique_ptr<mlir::Pass> CreateLowerXlaSharedPass();
 std::unique_ptr<mlir::Pass> CreateInsertPDLPass();
 std::unique_ptr<mlir::Pass> CreateRecoverExp2Pass();
+std::unique_ptr<mlir::Pass> CreatePromoteShuffleToDPPPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"

@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
@@ -37,6 +38,15 @@ namespace xla {
 namespace {
 
 using IntPool = ObjectPool<std::unique_ptr<int32_t>>;
+
+struct NonDefaultConstructible {
+  explicit NonDefaultConstructible(int32_t value) : value(value) {}
+
+  NonDefaultConstructible(NonDefaultConstructible&&) = default;
+  NonDefaultConstructible& operator=(NonDefaultConstructible&&) = default;
+
+  int32_t value;
+};
 
 TEST(ObjectPoolTest, GetOrCreate) {
   int32_t counter = 0;
@@ -57,6 +67,145 @@ TEST(ObjectPoolTest, GetOrCreate) {
   TF_ASSERT_OK_AND_ASSIGN(auto obj2, pool.GetOrCreate());
   ASSERT_EQ(**obj2, 1);
   ASSERT_EQ(counter, 2);
+}
+
+TEST(ObjectPoolTest, ConstructorPreallocatesWithBuilderArgs) {
+  ObjectPool<NonDefaultConstructible, int32_t> pool(
+      [&](int32_t value) { return NonDefaultConstructible(value); }, 2, 42);
+
+  EXPECT_EQ(pool.num_created(), 2);
+  EXPECT_EQ(pool.num_available(), 2);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto obj0, pool.Get());
+  TF_ASSERT_OK_AND_ASSIGN(auto obj1, pool.Get());
+  EXPECT_EQ(obj0->value, 42);
+  EXPECT_EQ(obj1->value, 42);
+  EXPECT_EQ(pool.num_available(), 0);
+}
+
+TEST(ObjectPoolTest, Preallocate) {
+  int32_t counter = 0;
+  IntPool pool([&]() -> absl::StatusOr<std::unique_ptr<int32_t>> {
+    return std::make_unique<int32_t>(counter++);
+  });
+
+  absl::Status status = pool.Preallocate(3);
+  ASSERT_TRUE(status.ok()) << status;
+  EXPECT_EQ(counter, 3);
+  EXPECT_EQ(pool.num_created(), 3);
+  EXPECT_EQ(pool.num_available(), 3);
+
+  status = pool.Preallocate(2);
+  ASSERT_TRUE(status.ok()) << status;
+  EXPECT_EQ(counter, 5);
+  EXPECT_EQ(pool.num_created(), 5);
+  EXPECT_EQ(pool.num_available(), 5);
+
+  std::vector<IntPool::BorrowedObject> borrowed;
+  std::vector<int32_t> values;
+  for (int32_t i = 0; i < 5; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(auto object, pool.Get());
+    values.push_back(**object);
+    borrowed.push_back(std::move(object));
+  }
+
+  absl::c_sort(values);
+  EXPECT_EQ(values, (std::vector<int32_t>{0, 1, 2, 3, 4}));
+  EXPECT_EQ(counter, 5);
+  EXPECT_EQ(pool.num_available(), 0);
+  EXPECT_EQ(pool.Get().status().code(), absl::StatusCode::kResourceExhausted);
+}
+
+TEST(ObjectPoolTest, PreallocateReturnsBuilderErrorWithoutChangingPool) {
+  int32_t counter = 0;
+  IntPool pool([&]() -> absl::StatusOr<std::unique_ptr<int32_t>> {
+    if (counter == 2) {
+      return absl::InternalError("failed to create object");
+    }
+    return std::make_unique<int32_t>(counter++);
+  });
+
+  absl::Status status = pool.Preallocate(1);
+  ASSERT_TRUE(status.ok()) << status;
+  EXPECT_EQ(counter, 1);
+  EXPECT_EQ(pool.num_created(), 1);
+  EXPECT_EQ(pool.num_available(), 1);
+
+  status = pool.Preallocate(3);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_EQ(counter, 2);
+  EXPECT_EQ(pool.num_created(), 1);
+  EXPECT_EQ(pool.num_available(), 1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto object, pool.Get());
+  EXPECT_EQ(**object, 0);
+  EXPECT_EQ(pool.Get().status().code(), absl::StatusCode::kResourceExhausted);
+}
+
+TEST(ObjectPoolTest, Get) {
+  int32_t counter = 0;
+  IntPool pool([&]() -> absl::StatusOr<std::unique_ptr<int32_t>> {
+    return std::make_unique<int32_t>(counter++);
+  });
+
+  EXPECT_EQ(pool.num_created(), 0);
+  EXPECT_EQ(pool.num_available(), 0);
+
+  auto empty = pool.Get();
+  EXPECT_EQ(empty.status().code(), absl::StatusCode::kResourceExhausted);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate());
+  ASSERT_EQ(**obj0, 0);
+  EXPECT_EQ(pool.num_created(), 1);
+  EXPECT_EQ(pool.num_available(), 0);
+
+  auto borrowed = pool.Get();
+  EXPECT_EQ(borrowed.status().code(), absl::StatusCode::kResourceExhausted);
+
+  auto destroy = [](IntPool::BorrowedObject obj) {};
+  destroy(std::move(obj0));
+  EXPECT_EQ(pool.num_available(), 1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto obj1, pool.Get());
+  EXPECT_EQ(**obj1, 0);
+  EXPECT_EQ(counter, 1);
+  EXPECT_EQ(pool.num_available(), 0);
+}
+
+TEST(ObjectPoolTest, BorrowedObjectMoveAssignmentReturnsPreviousObject) {
+  int32_t counter = 0;
+  IntPool pool([&]() -> absl::StatusOr<std::unique_ptr<int32_t>> {
+    return std::make_unique<int32_t>(counter++);
+  });
+
+  TF_ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate());
+  TF_ASSERT_OK_AND_ASSIGN(auto obj1, pool.GetOrCreate());
+
+  obj1 = std::move(obj0);
+  EXPECT_EQ(pool.num_available(), 1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto obj2, pool.Get());
+  EXPECT_EQ(**obj1, 0);
+  EXPECT_EQ(**obj2, 1);
+  EXPECT_EQ(counter, 2);
+}
+
+TEST(ObjectPoolTest, SupportsNonDefaultConstructibleObjects) {
+  ObjectPool<NonDefaultConstructible, int32_t> pool(
+      [](int32_t value) -> absl::StatusOr<NonDefaultConstructible> {
+        return NonDefaultConstructible(value);
+      });
+
+  TF_ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate(42));
+  EXPECT_EQ(obj0->value, 42);
+
+  auto destroy =
+      [](ObjectPool<NonDefaultConstructible, int32_t>::BorrowedObject obj) {};
+  destroy(std::move(obj0));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto obj1, pool.Get());
+  EXPECT_EQ(obj1->value, 42);
+  EXPECT_EQ(pool.num_created(), 1);
 }
 
 TEST(ObjectPoolTest, GetOrCreateUnderContention) {
@@ -162,7 +311,9 @@ BENCHMARK(BM_GetOrCreateUnderContention)
     ->ArgPair(1, 1000)
     ->ArgPair(2, 1000)
     ->ArgPair(4, 1000)
-    ->ArgPair(8, 1000);
+    ->ArgPair(8, 1000)
+    ->ArgPair(16, 1000)
+    ->ArgPair(32, 1000);
 
 }  // namespace
 }  // namespace xla

@@ -62,6 +62,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -79,8 +80,8 @@ xla_cc_test(
     deps = [
         ":fptrunc",
         ":simple_jit_runner",
+        ":type",
         "//xla:xla_data_proto_cc",
-        "//xla/codegen/intrinsic:type",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
@@ -411,6 +412,7 @@ cc_library(
     hdrs = ["tanh.h"],
     deps = [
         ":intrinsic",
+        ":type",
         "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/log",

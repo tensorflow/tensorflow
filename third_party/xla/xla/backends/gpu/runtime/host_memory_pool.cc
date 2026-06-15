@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -34,9 +35,9 @@ namespace gpu {
 
 absl::StatusOr<std::unique_ptr<HostMemoryPool>> HostMemoryPool::Create(
     se::StreamExecutor* executor, PrimitiveType type) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> allocation,
-                      executor->HostMemoryAllocate(
-                          kNumElems * primitive_util::ByteWidth(type)));
+  ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> allocation,
+                   executor->HostMemoryAllocate(
+                       kNumElems * primitive_util::ByteWidth(type)));
   return absl::WrapUnique(new HostMemoryPool(std::move(allocation), type));
 }
 

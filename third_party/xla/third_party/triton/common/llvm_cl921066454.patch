@@ -1,0 +1,17 @@
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.h
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.h
+@@ -1,10 +1,11 @@
+ #ifndef TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_TARGETINFO_H_
+ #define TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_TARGETINFO_H_
+ 
++#include <optional>
++
+ #include "Dialect/TritonAMDGPU/IR/TargetFeatures.h"
++#include "llvm/TargetParser/AMDGPUTargetParser.h"
+ #include "triton/Conversion/TritonGPUToLLVM/TargetInfoBase.h"
+-#include "llvm/TargetParser/TargetParser.h"
+-#include <optional>
+ 
+ namespace mlir::triton::AMD {
+ class TargetInfo : public mlir::triton::TargetInfoBase {
+

@@ -703,6 +703,11 @@ absl::Status ExtendRewrites(
         R"(#include "xla/backends/cpu/runtime/topk_lib.h")");
   }
 
+  if (HasThunkKind(aot_thunks->proto().thunk_sequence(),
+                   xla::cpu::ThunkProto::kRngSeedThunk)) {
+    runtime_specific_includes.push_back(R"(#include <random>)");
+  }
+
   TF_ASSIGN_OR_RETURN(
       const auto rng_thunks,
       ExtractThunksOfKind(aot_thunks->proto().thunk_sequence(),

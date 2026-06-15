@@ -181,6 +181,20 @@ void LogAccuracyReport(const AccuracyReport& report,
 std::string MakeUnaryHloModule(absl::string_view op_name, PrimitiveType type,
                                int64_t count) {
   std::string type_str = primitive_util::LowercasePrimitiveTypeName(type);
+  if (op_name == "atan") {
+    return absl::StrFormat(R"(
+HloModule atan_accuracy_test
+
+ENTRY main {
+  input = %s[%d] parameter(0)
+  constant_one = %s[] constant(1)
+  broadcast_one = %s[%d] broadcast(constant_one), dimensions={}
+  ROOT result = %s[%d] atan2(input, broadcast_one)
+}
+)",
+                           type_str, count, type_str, type_str, count, type_str,
+                           count);
+  }
   return absl::StrFormat(R"(
 HloModule %s_accuracy_test
 
@@ -227,6 +241,9 @@ struct IntrinsicAccuracyTestParam {
 std::vector<IntrinsicAccuracyTestParam> GetAccuracyTestParams() {
   namespace accuracy = ::xla::codegen::intrinsic::accuracy;
   std::vector<IntrinsicAccuracyTestParam> params = {
+      {"atan", F32, accuracy::kGoldenAtan, accuracy::kAtanF32Budget},
+      {"atan", F64, accuracy::kGoldenAtan, accuracy::kAtanF64Budget},
+
       {"tanh", F32, accuracy::kGoldenTanh, accuracy::kTanhF32Budget},
       {"tanh", F64, accuracy::kGoldenTanh, accuracy::kTanhF64Budget},
 
@@ -244,6 +261,12 @@ std::vector<IntrinsicAccuracyTestParam> GetAccuracyTestParams() {
 
       {"sqrt", F32, accuracy::kGoldenSqrt, accuracy::kSqrtF32Budget},
       {"sqrt", F64, accuracy::kGoldenSqrt, accuracy::kSqrtF64Budget},
+
+      {"sine", F32, accuracy::kGoldenSin, accuracy::kSinF32Budget},
+      {"sine", F64, accuracy::kGoldenSin, accuracy::kSinF64Budget},
+
+      {"cosine", F32, accuracy::kGoldenCos, accuracy::kCosF32Budget},
+      {"cosine", F64, accuracy::kGoldenCos, accuracy::kCosF64Budget},
 
       {"erf", F32, accuracy::kGoldenErf, accuracy::kErfF32Budget},
       {"erf", F64, accuracy::kGoldenErf, accuracy::kErfF64Budget}};
@@ -312,6 +335,10 @@ class HloIntrinsicAccuracyParamTest
     return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
   }
 
+  bool is_intel_gpu() const {
+    return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuOneAPI);
+  }
+
  private:
   template <typename T>
   void DoRunAccuracyTest(const IntrinsicAccuracyTestParam& param) {
@@ -350,10 +377,19 @@ class HloIntrinsicAccuracyParamTest
                                            result_data.size());
     LogAccuracyReport(report, ToPascalCase(param.hlo_op_name));
 
-    const UlpBudget& budget = is_cpu() ? param.budget.cpu
-                              : (is_rocm() && param.budget.rocm_gpu.has_value())
-                                  ? *param.budget.rocm_gpu
-                                  : param.budget.gpu;
+    // Select the appropriate accuracy budget based on platform
+    const UlpBudget& budget = [&]() -> const UlpBudget& {
+      if (is_cpu()) {
+        return param.budget.cpu;
+      }
+      if (is_intel_gpu() && param.budget.intel_gpu.has_value()) {
+        return *param.budget.intel_gpu;
+      }
+      if (is_rocm() && param.budget.rocm_gpu.has_value()) {
+        return *param.budget.rocm_gpu;
+      }
+      return param.budget.gpu;
+    }();
 
     EXPECT_LE(report.regular.max_ulp_error, budget.regular)
         << "Regular max ULP error " << report.regular.max_ulp_error

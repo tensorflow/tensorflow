@@ -118,15 +118,15 @@ absl::StatusOr<std::vector<std::unique_ptr<MemoryAllocation>>> AllocateBuffers(
 
 absl::StatusOr<std::vector<std::unique_ptr<xla::SymmetricMemory>>>
 CreateSymmetricMemory(
-    tsl::Executor& exec, const std::vector<ncclComm_t>& comms,
+    std::shared_ptr<tsl::Executor> exec, const std::vector<ncclComm_t>& comms,
     const std::vector<std::unique_ptr<MemoryAllocation>>& buffers) {
   int64_t num_devices = comms.size();
   std::vector<tsl::Future<std::unique_ptr<xla::gpu::NcclSymmetricMemory>>>
       symmetric_memory_futures(num_devices);
   for (int i = 0; i < num_devices; ++i) {
-    symmetric_memory_futures[i] = tsl::MakeFutureOn(exec, [&, i]() {
+    symmetric_memory_futures[i] = tsl::MakeFutureOn(*exec, [&, exec, i]() {
       return xla::gpu::NcclSymmetricMemory::Create(comms[i],
-                                                   buffers[i]->address());
+                                                   buffers[i]->address(), exec);
     });
   }
 
@@ -225,10 +225,6 @@ TEST_F(MultiGpuBarrierTest, BarrierSynchronization) {
 }
 
 TEST_F(MultiGpuBarrierTest, BarrierSynchronizationWithNccl) {
-#if NCCL_VERSION_CODE < 22800
-  GTEST_SKIP() << "Test requires NCCL 2.28.0 or later.";
-#endif  // NCCL_VERSION_CODE < 22800
-
   std::vector<std::unique_ptr<MemoryAllocator>> collective_allocators;
   for (int i = 0; i < num_devices_; ++i) {
     ASSERT_OK_AND_ASSIGN(
@@ -237,16 +233,11 @@ TEST_F(MultiGpuBarrierTest, BarrierSynchronizationWithNccl) {
     collective_allocators.push_back(std::move(allocator));
   }
 
-  // 1. Allocate Signal Buffers on each device
+  // Allocate Signal Buffers on each device.
   ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<MemoryAllocation>> signal_buffers,
       AllocateBuffers(collective_allocators, num_devices_,
                       sizeof(uint32_t) * num_devices_));
-
-  ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<MemoryAllocation>> ptr_storage,
-      AllocateBuffers(collective_allocators, num_devices_,
-                      num_devices_ * sizeof(void*)));
 
   std::vector<ncclComm_t> comms(num_devices_);
   ncclResult_t result =
@@ -254,22 +245,19 @@ TEST_F(MultiGpuBarrierTest, BarrierSynchronizationWithNccl) {
   ASSERT_EQ(result, ncclSuccess);
 
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "nccl", num_devices_);
-  tsl::Executor& exec = *pool.AsExecutor();
+  auto exec =
+      std::shared_ptr<tsl::Executor>(pool.AsExecutor(), [](tsl::Executor*) {});
 
   ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<xla::SymmetricMemory>>
                            signal_buffer_symmetric_memory,
                        CreateSymmetricMemory(exec, comms, signal_buffers));
 
-  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<xla::SymmetricMemory>>
-                           ptr_storage_symmetric_memory,
-                       CreateSymmetricMemory(exec, comms, ptr_storage));
-
-  // 2. Allocate Counters on each device
+  // Allocate Counters on each device.
   ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<MemoryAllocation>> counters,
       AllocateBuffers(collective_allocators, num_devices_, sizeof(uint32_t)));
 
-  // 4. Launch Kernel REPEATEDLY 8 times to verify auto-increment
+  // Launch Kernel REPEATEDLY 8 times to verify auto-increment.
   for (int step = 0; step < 8; ++step) {
     for (int i = 0; i < num_devices_; ++i) {
       ASSERT_OK_AND_ASSIGN(
@@ -277,12 +265,11 @@ TEST_F(MultiGpuBarrierTest, BarrierSynchronizationWithNccl) {
           (GpuKernelRegistry::GetGlobalRegistry()
                .LoadKernel<MultiGpuBarrierWithNcclKernel>(executors_[i])));
 
-      ASSERT_OK(kernel.Launch(
-          ThreadDim(num_devices_, 1, 1), BlockDim(1, 1, 1), streams_[i].get(),
-          static_cast<int64_t>(i), static_cast<int64_t>(num_devices_),
-          signal_buffer_symmetric_memory[i].get(),
-          DeviceAddress<uint32_t>(counters[i]->address()),
-          counters[i]->address(), ptr_storage_symmetric_memory[i].get()));
+      ASSERT_OK(kernel.Launch(ThreadDim(num_devices_, 1, 1), BlockDim(1, 1, 1),
+                              streams_[i].get(), static_cast<int64_t>(i),
+                              static_cast<int64_t>(num_devices_),
+                              signal_buffer_symmetric_memory[i].get(),
+                              DeviceAddress<uint32_t>(counters[i]->address())));
     }
   }
 
@@ -290,8 +277,7 @@ TEST_F(MultiGpuBarrierTest, BarrierSynchronizationWithNccl) {
     ASSERT_OK(streams_[i]->BlockHostUntilDone());
   }
 
-  // 5. Verify Counters
-  // After 8 runs, counters should be 8.
+  // Verify counters. After 8 runs, counters should be 8.
   for (int i = 0; i < num_devices_; ++i) {
     uint32_t val;
     ASSERT_OK(
@@ -300,7 +286,7 @@ TEST_F(MultiGpuBarrierTest, BarrierSynchronizationWithNccl) {
     EXPECT_EQ(val, 8) << "Counter on device " << i << " failed to increment";
   }
 
-  // 6. Verify Signal Buffers
+  // Verify Signal Buffers.
   // Each device's signal buffer is an array of size 'num_devices'.
   // By the end of step 8, every device should have written the value '8'
   // into its designated slot on every peer's buffer.
@@ -315,25 +301,6 @@ TEST_F(MultiGpuBarrierTest, BarrierSynchronizationWithNccl) {
     for (int j = 0; j < num_devices_; ++j) {
       EXPECT_EQ(host_buffer[j], 8)
           << "Signal buffer on Device " << i << " at slot " << j
-          << " (which belongs to Peer " << j << ")"
-          << " has incorrect value.";
-    }
-  }
-
-  // 7. Verify Pointer Storage
-  // Each device's pointer storage is an array of size 'num_devices'.
-  // After one execution, counter pointer should have been written to pointer
-  // storage symmetric memory.
-  for (int i = 0; i < num_devices_; ++i) {
-    // Copy the device's signal buffer back to the host
-    ASSERT_OK_AND_ASSIGN(
-        std::vector<void*> host_buffer,
-        CopyToHost<void*>(streams_[i].get(), ptr_storage[i]->address(),
-                          num_devices_));
-
-    for (int j = 0; j < num_devices_; ++j) {
-      EXPECT_EQ(host_buffer[j], counters[j]->address().opaque())
-          << "Pointer storage on Device " << i << " at slot " << j
           << " (which belongs to Peer " << j << ")"
           << " has incorrect value.";
     }

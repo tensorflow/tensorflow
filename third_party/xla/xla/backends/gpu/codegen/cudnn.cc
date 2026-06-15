@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/log/log.h"
-#include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -32,24 +32,21 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<FusionEmissionResult> CuDnnFusion::Emit(
-    IrEmitterContext& ir_emitter_context,
-    const HloFusionInstruction& fusion) const {
+AsyncThunkSequence CuDnnFusion::Emit(IrEmitterContext& ir_emitter_context,
+                                     const HloFusionInstruction& fusion) const {
   VLOG(3) << fusion.ToString();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto kernel_arguments,
       emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
                                         GetDefaultBufferAlignment(), &fusion));
-  FusionEmissionResult result;
-  result.thunks = ThunkSequence::Of(std::make_unique<CuDnnThunk>(
+  return ThunkSequence::Of(std::make_unique<CuDnnThunk>(
       emitters::GetComputationFingerprint(
           fusion.fused_instructions_computation(), {}),
       Thunk::ThunkInfo::WithProfileAnnotation(
           &fusion, ir_emitter_context.GetNextThunkId()),
       kernel_arguments.GetArgumentShapedSlices(),
       kernel_arguments.GetArgumentOutputFlags()));
-  return result;
 }
 
 }  // namespace gpu

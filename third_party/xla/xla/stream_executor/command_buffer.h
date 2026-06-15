@@ -365,6 +365,7 @@ class CommandBuffer {
   }
 
  private:
+  friend class CommandBufferTest;
   friend class TraceCommandBufferFactory;
 
   // Tracing APIs are private because they do not compose with command buffer
@@ -374,8 +375,9 @@ class CommandBuffer {
 
   // Traces `function` invocation by recording all operations on the `stream`
   // into the command buffer. Command buffer must be empty.
-  virtual absl::Status Trace(Stream* stream,
-                             absl::AnyInvocable<absl::Status()> function) = 0;
+  virtual absl::Status Trace(
+      Stream* stream,
+      absl::AnyInvocable<absl::Status(Stream* stream)> function) = 0;
 
   // We use ResourceTypeId to distinguish between different resource types.
   TSL_LIB_GTL_DEFINE_INT_TYPE(ResourceTypeId, int64_t);

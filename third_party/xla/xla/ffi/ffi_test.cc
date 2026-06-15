@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/ffi.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/executable_run_options.h"
@@ -245,7 +246,7 @@ TEST(FfiTest, RunId) {
   auto handler = Ffi::Bind().Ctx<RunId>().Ctx().To(
       [&](RunId run_id, Context context) -> absl::Status {
         EXPECT_EQ(run_id.ToInt(), 42);
-        TF_ASSIGN_OR_RETURN(RunId run_id_from_context, context.get<RunId>());
+        ASSIGN_OR_RETURN(RunId run_id_from_context, context.get<RunId>());
         EXPECT_EQ(run_id_from_context.ToInt(), 42);
         return absl::OkStatus();
       });

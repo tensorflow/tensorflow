@@ -78,7 +78,7 @@ struct PadInputWithNegativeInf<qint8> {
                           int input_pad_left, int input_pad_right,
                           typename TTypes<qint8, 4, int>::Tensor out,
                           TensorFormat format) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Explicit padding not yet supported with qint8");
   }
 };
@@ -91,28 +91,32 @@ absl::Status CheckPaddingSize(int64_t window_rows, int64_t window_cols,
                               int64_t pad_top, int64_t pad_bottom,
                               int64_t pad_left, int64_t pad_right) {
   if (!FastBoundsCheck(pad_top, window_rows)) {
-    return errors::InvalidArgument("Top padding ", pad_top,
-                                   " needs to be smaller than the "
-                                   "window size ",
-                                   window_rows);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Top padding ", pad_top,
+                     " needs to be smaller than the "
+                     "window size ",
+                     window_rows));
   }
   if (!FastBoundsCheck(pad_bottom, window_rows)) {
-    return errors::InvalidArgument("Bottom padding ", pad_bottom,
-                                   " needs to be smaller than the "
-                                   "window size ",
-                                   window_rows);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Bottom padding ", pad_bottom,
+                     " needs to be smaller than the "
+                     "window size ",
+                     window_rows));
   }
   if (!FastBoundsCheck(pad_left, window_cols)) {
-    return errors::InvalidArgument("Left padding ", pad_left,
-                                   " needs to be smaller than the "
-                                   "window size ",
-                                   window_cols);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Left padding ", pad_left,
+                     " needs to be smaller than the "
+                     "window size ",
+                     window_cols));
   }
   if (!FastBoundsCheck(pad_right, window_cols)) {
-    return errors::InvalidArgument("Right padding ", pad_right,
-                                   " needs to be smaller than the "
-                                   "window size ",
-                                   window_cols);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Right padding ", pad_right,
+                     " needs to be smaller than the "
+                     "window size ",
+                     window_cols));
   }
   return absl::OkStatus();
 }
@@ -129,9 +133,9 @@ PoolParameters::PoolParameters(OpKernelContext* context,
   // or 5 for NCHW_VECT_C.
   OP_REQUIRES(context,
               GetTensorSpatialDims(tensor_in_shape.dims(), data_format) == 2,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "tensor_in_shape must have 2 spatial dimensions. ",
-                  tensor_in_shape.dims(), " ", data_format));
+                  tensor_in_shape.dims(), " ", data_format)));
 
   this->data_format = data_format;
   depth = GetTensorDim(tensor_in_shape, data_format, 'C') *
@@ -150,7 +154,7 @@ PoolParameters::PoolParameters(OpKernelContext* context,
   // pooling, not a combination.
   OP_REQUIRES(context,
               (depth_window == 1 || (window_rows == 1 && window_cols == 1)),
-              errors::Unimplemented(
+              absl::UnimplementedError(
                   "MaxPooling supports exactly one of pooling across depth "
                   "or pooling across width/height."));
   if (padding == Padding::EXPLICIT) {
@@ -177,26 +181,26 @@ PoolParameters::PoolParameters(OpKernelContext* context,
     out_depth = depth;
   } else {
     OP_REQUIRES(context, depth_window > 0,
-                errors::InvalidArgument("depth_window must not be 0"));
+                absl::InvalidArgumentError("depth_window must not be 0"));
     // Our current version of depthwise max pooling does not support
     // any padding, and expects the depth_window to equal the
     // depth_stride (no overlapping).
     OP_REQUIRES(
         context, depth % depth_window == 0,
-        errors::Unimplemented("Depthwise max pooling requires the depth "
-                              "window to evenly divide the input depth"));
+        absl::UnimplementedError("Depthwise max pooling requires the depth "
+                                 "window to evenly divide the input depth"));
     OP_REQUIRES(
         context, depth_stride == depth_window,
-        errors::Unimplemented("Depthwise max pooling requires the depth "
-                              "window to equal the depth stride"));
+        absl::UnimplementedError("Depthwise max pooling requires the depth "
+                                 "window to equal the depth stride"));
 
     // The current version of depthwise max is only implemented on CPU.
     OP_REQUIRES(context,
                 (DeviceType(static_cast<Device*>(context->device())
                                 ->attributes()
                                 .device_type()) == DeviceType(DEVICE_CPU)),
-                errors::Unimplemented("Depthwise max pooling is currently "
-                                      "only implemented for CPU devices."));
+                absl::UnimplementedError("Depthwise max pooling is currently "
+                                         "only implemented for CPU devices."));
 
     OP_REQUIRES_OK(
         context, GetWindowedOutputSizeVerbose(
@@ -301,8 +305,8 @@ void DnnPoolingImpl(OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
       break;
     default:
       OP_REQUIRES(context, false,
-                  errors::InvalidArgument("Unsupported format: ",
-                                          ToString(data_format)));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Unsupported format: ", ToString(data_format))));
   }
 #endif
 
@@ -346,7 +350,7 @@ void DnnPoolingImpl(OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
         FastBoundsCheck(input_pad_left, std::numeric_limits<int>::max()) &&
         FastBoundsCheck(input_pad_right, std::numeric_limits<int>::max());
     if (!in_bounds) {
-      context->SetStatus(errors::InvalidArgument("Padding is too large."));
+      context->SetStatus(absl::InvalidArgumentError("Padding is too large."));
       return;
     }
 
@@ -402,10 +406,10 @@ void DnnPoolingImpl(OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
                      transformed_output.template flat<T>().size());
 
   auto* stream = context->op_device_context()->stream();
-  OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+  OP_REQUIRES(context, stream, absl::InternalError("No GPU stream available."));
   auto* dnn = stream->parent()->AsDnn();
   OP_REQUIRES(context, dnn != nullptr,
-              errors::Internal("No DNN support for stream."));
+              absl::InternalError("No DNN support for stream."));
 
 #if TENSORFLOW_USE_ROCM
   static int64 PoolingScratchSize = GetDnnWorkspaceLimit(
@@ -655,8 +659,8 @@ void DnnPoolingGradImpl(OpKernelContext* context,
       break;
     default:
       OP_REQUIRES(context, false,
-                  errors::InvalidArgument("Unsupported format: ",
-                                          ToString(data_format)));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Unsupported format: ", ToString(data_format))));
   }
 #endif  // CUDNN_VERSION < 7300
 
@@ -733,7 +737,7 @@ void DnnPoolingGradImpl(OpKernelContext* context,
         FastBoundsCheck(input_pad_left, std::numeric_limits<int>::max()) &&
         FastBoundsCheck(input_pad_right, std::numeric_limits<int>::max());
     if (!in_bounds) {
-      context->SetStatus(errors::InvalidArgument("Padding is too large."));
+      context->SetStatus(absl::InvalidArgumentError("Padding is too large."));
       return;
     }
 
@@ -800,10 +804,10 @@ void DnnPoolingGradImpl(OpKernelContext* context,
       transformed_and_padded_input_backprop.template flat<T>().size());
 
   auto* stream = context->op_device_context()->stream();
-  OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+  OP_REQUIRES(context, stream, absl::InternalError("No GPU stream available."));
   auto* dnn = stream->parent()->AsDnn();
   OP_REQUIRES(context, dnn != nullptr,
-              errors::Internal("No DNN support for stream."));
+              absl::InternalError("No DNN support for stream."));
 
 #if TENSORFLOW_USE_ROCM
   static int64 PoolingScratchSize = GetDnnWorkspaceLimit(

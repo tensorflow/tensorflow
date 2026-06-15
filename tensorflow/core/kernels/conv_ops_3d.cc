@@ -13,6 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
+#include <string>
+
+#include "absl/container/inlined_vector.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 

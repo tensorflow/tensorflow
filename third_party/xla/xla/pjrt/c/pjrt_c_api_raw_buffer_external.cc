@@ -20,16 +20,20 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/future.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_raw_buffer_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
@@ -176,6 +180,60 @@ Future<> PjRtCApiRawBuffer::CopyRawDeviceToHost(void* dst, int64_t offset,
       c_api_, c_extension_, c_buffer_, dst, offset, transfer_size);
 }
 
+absl::StatusOr<PjRtDeviceEventRef>
+PjRtCApiRawBuffer::CopyRawHostToDeviceAndReturnEvent(const void* src,
+                                                     int64_t offset,
+                                                     int64_t transfer_size) {
+  return static_cast<PjRtRawBufferInterface*>(c_buffer_)
+      ->CopyRawHostToDeviceAndReturnEvent(src, offset, transfer_size);
+}
+
+absl::StatusOr<PjRtDeviceEventRef>
+PjRtCApiRawBuffer::CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
+                                                     int64_t transfer_size) {
+  return static_cast<PjRtRawBufferInterface*>(c_buffer_)
+      ->CopyRawDeviceToHostAndReturnEvent(dst, offset, transfer_size);
+}
+
+void* PjRtCApiRawBuffer::OpaqueDeviceMemoryDataPointer() const {
+  return static_cast<PjRtRawBufferInterface*>(c_buffer_)
+      ->OpaqueDeviceMemoryDataPointer();
+}
+
+absl::StatusOr<PjRtRawBufferRef> PjRtCApiRawBuffer::Slice(int64_t offset,
+                                                          int64_t size) {
+  return absl::UnimplementedError("Slice not supported by PJRT C API");
+}
+
+absl::StatusOr<PjRtDeviceEventRef>
+PjRtCApiRawBuffer::MakeAllocationReadyEvent() {
+  return static_cast<PjRtRawBufferInterface*>(c_buffer_)
+      ->MakeAllocationReadyEvent();
+}
+
+void PjRtCApiRawBuffer::CopyTo(
+    PjRtRawBufferRef dst_raw_buffer,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise,
+    absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
+  absl::Status status =
+      absl::UnimplementedError("CopyTo not supported by PJRT C API");
+  definition_event_promise.SetError(status);
+  src_usage_event_promise.SetError(status);
+  if (allocation_event) {
+    std::move(allocation_event)(status);
+  }
+}
+
+PjRtDeviceEventPtr PjRtCApiRawBuffer::GetRawBufferAsyncValue() {
+  return static_cast<PjRtRawBufferInterface*>(c_buffer_)
+      ->GetRawBufferAsyncValue();
+}
+
+bool PjRtCApiRawBuffer::is_mutable() const {
+  return static_cast<const PjRtRawBufferInterface*>(c_buffer_)->is_mutable();
+}
+
 static std::optional<absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>>
 PjRtCApiBuffer_CreateRawAliasOfBuffer_Factory(PjRtBuffer* buffer) {
   if (auto* c_api_buffer = dynamic_cast<xla::PjRtCApiBuffer*>(buffer)) {
@@ -187,9 +245,9 @@ PjRtCApiBuffer_CreateRawAliasOfBuffer_Factory(PjRtBuffer* buffer) {
       return absl::UnimplementedError(
           "RawBuffer extension not implemented in this PJRT plugin.");
     }
-    TF_ASSIGN_OR_RETURN(PJRT_RawBuffer * raw_buffer,
-                        pjrt::PjRtCApiBuffer_CreateRawAliasOfBuffer(
-                            c_api, extension, c_api_buffer->c_buffer()));
+    ASSIGN_OR_RETURN(PJRT_RawBuffer * raw_buffer,
+                     pjrt::PjRtCApiBuffer_CreateRawAliasOfBuffer(
+                         c_api, extension, c_api_buffer->c_buffer()));
     return tsl::MakeRef<PjRtCApiRawBuffer>(
         raw_buffer, absl::down_cast<PjRtCApiClient*>(c_api_buffer->client()),
         c_api, extension);

@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform_id.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
