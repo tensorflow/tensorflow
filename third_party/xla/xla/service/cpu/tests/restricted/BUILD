@@ -2,7 +2,7 @@ load("//xla:restricted_package.bzl", "xla_restricted_allow", "xla_restricted_ver
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "tsl_copts")
 load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api")
-load("//xla/tsl/mkl:graph.bzl", "onednn_cc_test")
+load("//xla/tsl/mkl:graph.bzl", "onednn_cc_test", "onednn_graph_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -41,16 +41,21 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+onednn_graph_cc_test(
     name = "onednn_fusion_test",
     srcs = ["onednn_fusion_test.cc"],
-    local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
+    tags = [
+        "no_oss",
+        "notap",
+    ],
     deps = [
         "//xla:error_spec",
+        "//xla/backends/cpu:onednn_support",
         "//xla/service:cpu_plugin",
+        "//xla/service/cpu:onednn_util",
         "//xla/tests/restricted:hlo_test_base_legacy",
         "//xla/tsl/platform:test",
-        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:platform_port",
     ],

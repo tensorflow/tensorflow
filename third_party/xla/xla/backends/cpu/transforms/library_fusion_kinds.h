@@ -21,4 +21,13 @@ limitations under the License.
 inline constexpr absl::string_view kOneDnnFusionKind = "__onednn_fusion";
 inline constexpr absl::string_view kYnnFusionKind = "__ynn_fusion";
 
+// The maximum number of instructions allowed in a library fusion. This avoids
+// crashing libraries with too large graphs. It could break good fusions, e.g.,
+// Softmax, etc. We should deploy a smarter logic in the future.
+inline constexpr int kMaxFusionSize = 100;
+
+// TODO(intel-tf): Evaluate if there is performance benefit to increase the
+// limit.
+inline constexpr int kMaxOneDnnFusionSize = 10;
+
 #endif  // XLA_BACKENDS_CPU_TRANSFORMS_LIBRARY_FUSION_KINDS_H_

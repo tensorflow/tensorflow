@@ -39,19 +39,12 @@ limitations under the License.
 #include "xla/backends/cpu/transforms/onednn_matcher.h"
 #endif  // XLA_ONEDNN_USE_GRAPH_API
 
-
 namespace xla::cpu {
 
 // The maximum number of instructions allowed in a library fusion. This avoids
 // crashing libraries with too large graphs. It could break good fusions, e.g.,
 // Softmax, etc. We should deploy a smarter logic in the future.
 static constexpr int kMaxInstructionsInFusion = 100;
-
-enum class FusionDirection {
-  kUp,    // Traverse up (to parents).
-  kDown,  // Traverse down (to children).
-  kBoth,  // Traverse both up and down.
-};
 
 struct LibraryRewriterOptions {
   bool use_onednn = false;
