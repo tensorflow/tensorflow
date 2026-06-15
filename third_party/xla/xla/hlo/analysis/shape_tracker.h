@@ -71,6 +71,11 @@ class ShapeTracker {
   static absl::StatusOr<ShapeTracker> FromProducerConsumer(
       const HloInstruction* producer, const HloInstruction* consumer);
 
+  // Constructs a ShapeTracker representing the transformation path from one
+  // "sibling" HLO instruction to another, via their lowest common ancestor.
+  static absl::StatusOr<ShapeTracker> FromSiblings(
+      const HloInstruction* source, const HloInstruction* destination);
+
   const xla::Shape& input_shape() const { return input_shape_; }
   const xla::Shape& output_shape() const { return output_shape_; }
 

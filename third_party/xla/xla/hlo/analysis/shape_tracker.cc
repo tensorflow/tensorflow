@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -394,6 +395,51 @@ absl::StatusOr<ShapeTracker> ShapeTracker::FromProducerConsumer(
     RETURN_IF_ERROR(tracker.AppendInstruction(inst));
   }
   return tracker;
+}
+
+// To compute the tracker between two instructions which have a common ancestor,
+// build trackers from the common ancestor, and then concatenate one with
+// inverted second one.
+absl::StatusOr<ShapeTracker> ShapeTracker::FromSiblings(
+    const HloInstruction* source, const HloInstruction* destination) {
+  absl::flat_hash_set<const HloInstruction*> ancestors;
+  const HloInstruction* current = source;
+  // Build set of ancestors.
+  while (true) {
+    ancestors.insert(current);
+    if (current->operand_count() != 1) {
+      break;
+    }
+    current = current->operand(0);
+  }
+
+  const HloInstruction* lca = nullptr;
+  current = destination;
+  // First ancestor which is also an ancestor of source will be the lowest
+  // common ancestor.
+  while (true) {
+    if (ancestors.contains(current)) {
+      lca = current;
+      break;
+    }
+    if (current->operand_count() != 1) {
+      break;
+    }
+    current = current->operand(0);
+  }
+
+  if (lca == nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("No common ancestor found between ", source->name(),
+                     " and ", destination->name()));
+  }
+
+  ASSIGN_OR_RETURN(ShapeTracker tracker1, FromProducerConsumer(lca, source));
+  ASSIGN_OR_RETURN(ShapeTracker tracker2,
+                   FromProducerConsumer(lca, destination));
+  RETURN_IF_ERROR(tracker1.Invert());
+  RETURN_IF_ERROR(tracker1.ConcatenateFrom(tracker2));
+  return tracker1;
 }
 
 // Tries to transpose without introducing a copy (flattening). If transposed

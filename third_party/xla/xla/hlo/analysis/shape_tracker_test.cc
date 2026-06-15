@@ -1536,5 +1536,133 @@ TEST(ShapeTrackerTest, ZipPadProjections) {
   EXPECT_EQ(zipped.output_shape().dimensions(), (std::vector<int64_t>{6, 4}));
 }
 
+TEST(ShapeTrackerTest, FromSiblingsBasic) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto lca = HloInstruction::CreateParameter(0, shape, "lca");
+
+  auto t1 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {4, 3, 2}), lca.get(), {2, 1, 0});
+  auto r1 = HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {12, 2}),
+                                          t1.get());
+
+  auto t2 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {3, 2, 4}), lca.get(), {1, 0, 2});
+  auto r2 = HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {6, 4}),
+                                          t2.get());
+
+  auto tracker_or = ShapeTracker::FromSiblings(r1.get(), r2.get());
+  ASSERT_TRUE(tracker_or.ok());
+  ShapeTracker tracker = std::move(tracker_or).value();
+
+  EXPECT_EQ(tracker.input_shape().dimensions(), (std::vector<int64_t>{12, 2}));
+  EXPECT_EQ(tracker.output_shape().dimensions(), (std::vector<int64_t>{6, 4}));
+}
+
+TEST(ShapeTrackerTest, FromSiblingsAncestorAsSource) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto lca = HloInstruction::CreateParameter(0, shape, "lca");
+
+  auto t2 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {3, 2, 4}), lca.get(), {1, 0, 2});
+  auto r2 = HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {6, 4}),
+                                          t2.get());
+
+  auto tracker_or = ShapeTracker::FromSiblings(lca.get(), r2.get());
+  ASSERT_TRUE(tracker_or.ok());
+  ShapeTracker tracker = std::move(tracker_or).value();
+
+  EXPECT_EQ(tracker.input_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4}));
+  EXPECT_EQ(tracker.output_shape().dimensions(), (std::vector<int64_t>{6, 4}));
+}
+
+TEST(ShapeTrackerTest, FromSiblingsAncestorAsDestination) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto lca = HloInstruction::CreateParameter(0, shape, "lca");
+
+  auto t1 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {4, 3, 2}), lca.get(), {2, 1, 0});
+  auto r1 = HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {12, 2}),
+                                          t1.get());
+
+  auto tracker_or = ShapeTracker::FromSiblings(r1.get(), lca.get());
+  ASSERT_TRUE(tracker_or.ok());
+  ShapeTracker tracker = std::move(tracker_or).value();
+
+  EXPECT_EQ(tracker.input_shape().dimensions(), (std::vector<int64_t>{12, 2}));
+  EXPECT_EQ(tracker.output_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4}));
+}
+
+TEST(ShapeTrackerTest, FromSiblingsIdenticalNodes) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto lca = HloInstruction::CreateParameter(0, shape, "lca");
+
+  auto tracker_or = ShapeTracker::FromSiblings(lca.get(), lca.get());
+  ASSERT_TRUE(tracker_or.ok());
+  ShapeTracker tracker = std::move(tracker_or).value();
+
+  EXPECT_EQ(tracker.input_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4}));
+  EXPECT_EQ(tracker.output_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4}));
+}
+
+TEST(ShapeTrackerTest, FromSiblingsNoCommonAncestor) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto param1 = HloInstruction::CreateParameter(0, shape, "param1");
+  auto param2 = HloInstruction::CreateParameter(1, shape, "param2");
+
+  auto t1 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {4, 3, 2}), param1.get(), {2, 1, 0});
+  auto t2 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {3, 2, 4}), param2.get(), {1, 0, 2});
+
+  auto tracker_or = ShapeTracker::FromSiblings(t1.get(), t2.get());
+  EXPECT_FALSE(tracker_or.ok());
+  EXPECT_EQ(tracker_or.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(ShapeTrackerTest, FromSiblingsInvalidIntermediateNode) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto lca = HloInstruction::CreateParameter(0, shape, "lca");
+
+  auto t1 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {4, 3, 2}), lca.get(), {2, 1, 0});
+
+  auto dummy = HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {4, 3, 2}), "dummy");
+  auto add =
+      HloInstruction::CreateBinary(ShapeUtil::MakeShape(F32, {4, 3, 2}),
+                                   HloOpcode::kAdd, t1.get(), dummy.get());
+
+  auto r1 = HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {12, 2}),
+                                          add.get());
+
+  auto t2 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {3, 2, 4}), lca.get(), {1, 0, 2});
+
+  auto tracker_or = ShapeTracker::FromSiblings(r1.get(), t2.get());
+  EXPECT_FALSE(tracker_or.ok());
+  EXPECT_EQ(tracker_or.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(ShapeTrackerTest, FromSiblingsUnsupportedIntermediateNode) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto lca = HloInstruction::CreateParameter(0, shape, "lca");
+
+  auto negate =
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, lca.get());
+  auto r1 = HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {24}),
+                                          negate.get());
+
+  auto t2 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {3, 2, 4}), lca.get(), {1, 0, 2});
+
+  auto tracker_or = ShapeTracker::FromSiblings(r1.get(), t2.get());
+  EXPECT_FALSE(tracker_or.ok());
+  EXPECT_EQ(tracker_or.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
 }  // namespace
 }  // namespace xla
