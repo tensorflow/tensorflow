@@ -941,6 +941,7 @@ xla_test(
     size = "medium",
     srcs = ["gpu_cub_sort_test.cc"],
     backends = ["gpu"],
+    local_defines = ["XLA_CUB_TEST_NO_DEVICELESS"],
     shard_count = 15,
     tags = ["nodebug"],
     deps = [
@@ -950,6 +951,39 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/libraries/cub:cub_scratch_size_deviceless_lookup",
+        "//xla/backends/gpu/transforms:sort_rewriter",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_runner_interface",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "gpu_cub_sort_deviceless_test",
+    # This test may break when the CUB deviceless data is out of date, and we don't want to break
+    # XLA when that happens. So we mark it as enormous so that the XLA TAP skips it, but the
+    # xla_gpu_deviceless_cub TAP project still runs it.
+    size = "enormous",
+    srcs = ["gpu_cub_sort_test.cc"],
+    backends = ["gpu"],
+    local_defines = ["XLA_CUB_TEST_DEVICELESS_ONLY"],
+    shard_count = 15,
+    tags = [
+        "nodebug",
+    ],
+    deps = [
+        "//xla:error_spec",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/libraries/cub:cub_scratch_size_deviceless_lookup",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/backends/gpu/transforms:sort_rewriter",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
