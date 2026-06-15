@@ -13,6 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if !defined(__has_attribute)
+#error "DIAGNOSTIC: no __has_attribute"
+#elif !__has_attribute(ext_vector_type)
+#error "DIAGNOSTIC: no ext_vector_type"
+#endif
+
+#if !defined(__has_builtin)
+#error "DIAGNOSTIC: no __has_builtin"
+#elif !__has_builtin(__builtin_vectorelements)
+#error "DIAGNOSTIC: no __builtin_vectorelements"
+#endif
+
 #if defined(__has_attribute) && __has_attribute(ext_vector_type) && \
     defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
 
@@ -162,5 +174,6 @@ Vec4d atan_v4f64(Vec4d x) { return VectorAtan(x); }
 Vec8d atan_v8f64(Vec8d x) { return VectorAtan(x); }
 
 }  // namespace xla::codegen
-#endif  // defined(__has_attribute) && __has_attribute(vector_size) &&
-        // defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
+#else
+#error "Vector intrinsics not supported on this platform!"
+#endif

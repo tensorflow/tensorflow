@@ -58,6 +58,16 @@ llvm::Function* GetCppGenFunction(llvm::Module* module,
                                   absl::string_view name) {
   llvm::Function* func =
       module->getFunction(llvm::StringRef(name.data(), name.size()));
+  if (func == nullptr) {
+    // On Mach-O targets clang prefixes explicit asm() labels (used to name the
+    // intrinsics in eigen_unary.h) with '\01' to suppress the
+    // leading-underscore mangling, so the bitcode compiled on macOS carries
+    // that prefix while the lookup name does not. Retry with the prefix. (No-op
+    // on ELF, where the names already match.)
+    std::string prefixed = "\01";
+    prefixed.append(name.data(), name.size());
+    func = module->getFunction(prefixed);
+  }
   CHECK(func != nullptr)
       << "CppGen function '" << name
       << "' was not found in the module. Ensure the "
@@ -146,6 +156,16 @@ void CppGenIntrinsicLibrary::LinkIntoModule(llvm::Module& dst_module) const {
     if (linked_func && !linked_func->isDeclaration()) {
       linked_func->setLinkage(llvm::Function::InternalLinkage);
       linked_func->addFnAttr(llvm::Attribute::AlwaysInline);
+      // The bitcode is compiled by the host toolchain and carries host-specific
+      // codegen attributes baked into the function. On Darwin clang emits
+      // "probe-stack"="__chkstk_darwin", which makes the JIT AArch64 backend
+      // abort with "Unsupported stack probing method"; it also pins
+      // target-cpu/target-features to the build host. Strip these so the JIT
+      // TargetMachine governs codegen. These functions are AlwaysInline'd into
+      // XLA kernels and inherit the caller's attributes.
+      linked_func->removeFnAttr("probe-stack");
+      linked_func->removeFnAttr("target-cpu");
+      linked_func->removeFnAttr("target-features");
     }
   }
 }

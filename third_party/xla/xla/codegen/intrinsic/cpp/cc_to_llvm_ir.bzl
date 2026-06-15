@@ -161,7 +161,8 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
     variable_name = "k{}Ir".format(to_camel_case(base_name))
     embed_bitcode_tool = "//xla/codegen/intrinsic/cpp:embed_bitcode"
 
-    # Generate an empty bitcode file for MacOS and Windows.
+    # Generate an empty bitcode file for platforms where IR extraction is not
+    # wired up (currently Windows only).
     native.genrule(
         name = name + "_empty_bc",
         outs = [name + "_empty.bc"],
@@ -174,7 +175,9 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         selects.config_setting_group(
             name = "empty_bitcode",
             match_any = [
-                "//xla/tsl:macos",
+                # macOS clang emits *wrapped* LLVM bitcode (magic 0x0B17C0DE)
+                # from -emit-llvm; embed_bitcode parses it fine, so the real IR
+                # is embedded on Darwin. Windows still falls back to empty.
                 "//xla/tsl:windows",
             ],
         )
