@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/kernels/perception/perception_ops.h"
+
 namespace tflite {
 namespace ops {
 namespace custom {
@@ -33,9 +35,11 @@ constexpr int kOutputTensor = 0;
 
 // TODO(b/175003241): Move this logic to lite/kernels/internal when promoting
 // this op to a builtin op.
-inline void MaxUnpooling(const RuntimeShape& input_shape,
-                         const float* input_data, const int32_t* indices_data,
-                         const RuntimeShape& output_shape, float* output_data) {
+inline TfLiteStatus MaxUnpooling(const RuntimeShape& input_shape,
+                                 const float* input_data,
+                                 const int32_t* indices_data,
+                                 const RuntimeShape& output_shape,
+                                 float* output_data) {
   std::memset(output_data, 0, output_shape.FlatSize() * sizeof(float));
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int depth = MatchingDim(input_shape, 3, output_shape, 3);
@@ -45,19 +49,30 @@ inline void MaxUnpooling(const RuntimeShape& input_shape,
     for (int in_y = 0; in_y < input_shape.Dims(1); ++in_y) {
       for (int in_x = 0; in_x < input_shape.Dims(2); ++in_x) {
         for (int channel = 0; channel < depth; ++channel) {
-          const auto input_offset =
+          const int input_offset =
               Offset(input_shape, batch, in_y, in_x, channel);
           int idx = indices_data[input_offset];
+          if (idx < 0 || idx >= batch_stride) {
+            return kTfLiteError;
+          }
           output_data[batch * batch_stride + idx] = input_data[input_offset];
         }
       }
     }
   }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  auto* params =
-      reinterpret_cast<const TfLitePoolParams*>(node->custom_initial_data);
+  TF_LITE_ENSURE(context, node->custom_initial_data != nullptr);
+  TF_LITE_ENSURE(context,
+                 node->custom_initial_data_size >= sizeof(TfLitePoolParams));
+  const TfLitePoolParams* params =
+      static_cast<const TfLitePoolParams*>(node->custom_initial_data);
+  TF_LITE_ENSURE(context, params->stride_height > 0);
+  TF_LITE_ENSURE(context, params->stride_width > 0);
+  TF_LITE_ENSURE(context, params->filter_height > 0);
+  TF_LITE_ENSURE(context, params->filter_width > 0);
 
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -85,19 +100,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                        "Input and indices must have the same shape.");
   }
 
-  int batches = input->dims->data[0];
-  int height = input->dims->data[1];
-  int width = input->dims->data[2];
-  int channels_out = input->dims->data[3];
+  const int batches = input->dims->data[0];
+  const int height = input->dims->data[1];
+  const int width = input->dims->data[2];
+  const int channels_out = input->dims->data[3];
 
-  int out_width, out_height;
-  if (params->padding == kTfLitePaddingSame) {
-    out_width = width * params->stride_width;
-    out_height = height * params->stride_height;
-  } else {
-    out_width = (width - 1) * params->stride_width + params->filter_width;
-    out_height = (height - 1) * params->stride_height + params->filter_height;
-  }
+  const int out_width =
+      params->padding == kTfLitePaddingSame
+          ? width * params->stride_width
+          : (width - 1) * params->stride_width + params->filter_width;
+  const int out_height =
+      params->padding == kTfLitePaddingSame
+          ? height * params->stride_height
+          : (height - 1) * params->stride_height + params->filter_height;
 
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
   output_size->data[0] = batches;
@@ -115,9 +130,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* indices = GetInput(context, node, kIndicesTensor);
   TF_LITE_ENSURE(context, indices != nullptr);
 
-  MaxUnpooling(GetTensorShape(input), GetTensorData<float>(input),
-               GetTensorData<int32_t>(indices), GetTensorShape(output),
-               GetTensorData<float>(output));
+  TF_LITE_ENSURE_OK(
+      context,
+      MaxUnpooling(GetTensorShape(input), GetTensorData<float>(input),
+                   GetTensorData<int32_t>(indices), GetTensorShape(output),
+                   GetTensorData<float>(output)));
   return kTfLiteOk;
 }
 

@@ -19,7 +19,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/builtin_op_data.h"
-#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/perception/perception_ops.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -30,7 +29,7 @@ namespace custom {
 
 namespace {
 
-using testing::ElementsAreArray;
+using ::testing::ElementsAreArray;
 
 class MaxUnpoolingOpModel : public SingleOpModel {
  public:
@@ -42,11 +41,17 @@ class MaxUnpoolingOpModel : public SingleOpModel {
     indices_ = AddInput(indices);
     output_ = AddOutput(output);
 
-    TfLitePoolParams params{padding,      stride_width,  stride_height,
-                            filter_width, filter_height, kTfLiteActNone};
-    uint8_t* params_ptr = reinterpret_cast<uint8_t*>(&params);
-    std::vector<uint8_t> custom_option;
-    custom_option.assign(params_ptr, params_ptr + sizeof(TfLitePoolParams));
+    TfLitePoolParams params = {
+        .padding = padding,
+        .stride_width = stride_width,
+        .stride_height = stride_height,
+        .filter_width = filter_width,
+        .filter_height = filter_height,
+        .activation = kTfLiteActNone,
+    };
+    const uint8_t* params_ptr = reinterpret_cast<const uint8_t*>(&params);
+    std::vector<uint8_t> custom_option(params_ptr,
+                                       params_ptr + sizeof(TfLitePoolParams));
 
     SetCustomOp("MaxUnpooling2D", custom_option, RegisterMaxUnpooling2D);
     BuildInterpreter({GetShape(input_), GetShape(indices_)});
@@ -253,6 +258,38 @@ TEST(MaxUnpoolingOpTest, InputWithBatchAndPaddingValidTest) {
            0,  0,  0, 0,  23, 0,  0, 0,  0,  0, 0,  0,  27, 28, 0, 0,  0,  0,
            29, 0,  0, 0,  0,  0,  0, 32, 0,  0, 0,  0,  25, 26, 0, 0,  0,  0,
            0,  0,  0, 0,  0,  0,  0, 0,  0,  0, 0,  0,  31, 0}));
+}
+
+TEST(MaxUnpoolingOpTest, InvalidIndexReturnsError) {
+  // Test lower bound check (negative index)
+  {
+    MaxUnpoolingOpModel model(
+        /*input=*/{TensorType_FLOAT32, {1, 1, 2, 1}},
+        /*indices=*/{TensorType_INT32, {1, 1, 2, 1}},
+        /*stride_height=*/2, /*stride_width=*/2,
+        /*filter_height=*/2, /*filter_width=*/2,
+        /*padding=*/kTfLitePaddingSame,
+        /*output=*/{TensorType_FLOAT32, {}});
+    model.SetInput({13.0f, 4.0f});
+    model.SetIndices({-1, 6});
+    ASSERT_EQ(model.Invoke(), kTfLiteError);
+  }
+
+  // Test upper bound check (index >= batch_stride)
+  {
+    MaxUnpoolingOpModel model(
+        /*input=*/{TensorType_FLOAT32, {1, 1, 2, 1}},
+        /*indices=*/{TensorType_INT32, {1, 1, 2, 1}},
+        /*stride_height=*/2, /*stride_width=*/2,
+        /*filter_height=*/2, /*filter_width=*/2,
+        /*padding=*/kTfLitePaddingSame,
+        /*output=*/{TensorType_FLOAT32, {}});
+    model.SetInput({13.0f, 4.0f});
+    // Upper bound is batch_stride. batch_stride = 2 * 4 * 1 = 8.
+    // Index 8 is out of bounds [0, 7].
+    model.SetIndices({1, 8});
+    ASSERT_EQ(model.Invoke(), kTfLiteError);
+  }
 }
 
 }  // namespace
