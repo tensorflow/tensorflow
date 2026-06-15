@@ -191,7 +191,7 @@ PjRtCApiClient::PjRtCApiClient(
       // Example platform version string:
       //   PJRT C API
       //   TFRT TPU v2
-      //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
+      //   Built on March 4 2021 15:25:57 (1614900357) cl/360760169
       platform_version_(absl::StrCat(
           "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))),
       platform_name_(::pjrt::GetPlatformName(c_client, c_api)),
