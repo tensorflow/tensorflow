@@ -189,3 +189,43 @@ cp bazel-bin/external/xla/xla/tools/multihost_hlo_runner/hlo_runner_main \
 ```bash
 exit
 ```
+
+## Windows
+
+Building XLA on Windows natively is a CPU-only process, as CUDA is not
+supported directly on Windows; you must use WSL2 if you need CUDA support. It
+also requires specific environmental configurations, including a Bash shell, the
+Clang compiler, and Visual Studio.
+
+### Prerequisites
+
+1.  **Visual Studio:** You must install Visual Studio 2019 version 16.5 or newer
+    to set up a C++ toolchain (which provides the necessary system headers and
+    libraries).
+2.  **Bash Environment:** You must use a Bash shell (such as MSYS2 or Git Bash)
+    to build XLA on Windows.
+3.  **Clang Compiler:** XLA Windows builds use `clang-cl` rather than the
+    standard MSVC compiler. Ensure LLVM/Clang is installed.
+4.  **Python:** Python 3 must be installed and available in your system's
+    `PATH`.
+5.  **Developer Mode:** You must enable Developer Mode in Windows or run your
+    Bash shell as an Administrator. This is required because Bazel relies on
+    creating symlinks for the runfiles tree during the build process.
+
+### Building from Source
+
+To compile the CPU backend of XLA on Windows, run the following command from
+your Bash terminal. We use the `xla_windows_x86_cpu_2022` config to
+automatically set up the `clang-cl` toolchain.
+
+Note that certain targets and tags must be explicitly excluded from the Windows
+CPU build, such as GPU targets and features not yet supported on Windows:
+
+```bash
+# Note: Ensure your PATH includes Python and Bazel before running this
+bazel build \
+  --config=xla_windows_x86_cpu_2022 \
+  --keep_going \
+  --build_tag_filters=-no_oss,-oss_excluded,-gpu,-no_windows,-windows_excluded \
+  -- //xla/... -//xla/hlo/experimental/... -//xla/python_api/... -//xla/python/...
+```
