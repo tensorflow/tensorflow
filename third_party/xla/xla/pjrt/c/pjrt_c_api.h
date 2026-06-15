@@ -112,7 +112,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 112
+#define PJRT_API_MINOR 113
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1520,8 +1520,12 @@ struct PJRT_Device_MemoryStats_Args {
   bool pool_bytes_is_set;       // out
   int64_t peak_pool_bytes;      // out
   bool peak_pool_bytes_is_set;  // out
+
+  int64_t peak_allocated_bytes;      // out
+  bool peak_allocated_bytes_is_set;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_MemoryStats_Args, peak_pool_bytes_is_set);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_MemoryStats_Args,
+                          peak_allocated_bytes_is_set);
 
 // Device memory/allocator statistics. All returned stats except `bytes_in_use`
 // are optional and may not be returned by all platforms. Implementations may

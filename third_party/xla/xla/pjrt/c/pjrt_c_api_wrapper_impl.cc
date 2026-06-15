@@ -1730,8 +1730,11 @@ PJRT_Error* PJRT_Device_DefaultMemory(PJRT_Device_DefaultMemory_Args* args) {
 }
 
 PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
+  // TODO(b/374463795): Update the field in the struct after backward
+  // compatibility window.
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "PJRT_Device_MemoryStats_Args", PJRT_Device_MemoryStats_Args_STRUCT_SIZE,
+      "PJRT_Device_MemoryStats_Args",
+      PJRT_STRUCT_SIZE(PJRT_Device_MemoryStats_Args, peak_pool_bytes_is_set),
       args->struct_size));
   PJRT_ASSIGN_OR_RETURN(tsl::AllocatorStats stats,
                         args->device->device->GetAllocatorStats());
@@ -1772,6 +1775,12 @@ PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
   args->peak_pool_bytes_is_set = stats.peak_pool_bytes.has_value();
   if (stats.peak_pool_bytes) {
     args->peak_pool_bytes = *stats.peak_pool_bytes;
+  }
+
+  if (args->struct_size >= PJRT_STRUCT_SIZE(PJRT_Device_MemoryStats_Args,
+                                            peak_allocated_bytes_is_set)) {
+    args->peak_allocated_bytes_is_set = true;
+    args->peak_allocated_bytes = stats.peak_allocated_bytes;
   }
 
   return nullptr;

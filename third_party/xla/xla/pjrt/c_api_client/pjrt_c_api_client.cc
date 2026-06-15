@@ -2028,6 +2028,11 @@ absl::StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
   } else {
     result.peak_bytes_reserved = -1;
   }
+  if (args.peak_allocated_bytes_is_set) {
+    result.peak_allocated_bytes = args.peak_allocated_bytes;
+  } else {
+    result.peak_allocated_bytes = -1;
+  }
   if (args.bytes_reservable_limit_is_set) {
     result.bytes_reservable_limit = args.bytes_reservable_limit;
   }
