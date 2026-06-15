@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_VMM_DEVICE_ADDRESS_ALLOCATOR_H_
-#define XLA_STREAM_EXECUTOR_VMM_DEVICE_ADDRESS_ALLOCATOR_H_
+#ifndef XLA_STREAM_EXECUTOR_DEVICE_ADDRESS_VMM_ALLOCATOR_H_
+#define XLA_STREAM_EXECUTOR_DEVICE_ADDRESS_VMM_ALLOCATOR_H_
 
 #include <cstdint>
 #include <deque>
@@ -332,4 +332,4 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
 
 }  // namespace stream_executor
 
-#endif  // XLA_STREAM_EXECUTOR_VMM_DEVICE_ADDRESS_ALLOCATOR_H_
+#endif  // XLA_STREAM_EXECUTOR_DEVICE_ADDRESS_VMM_ALLOCATOR_H_

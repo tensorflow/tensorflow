@@ -351,9 +351,9 @@ cc_library(
 )
 
 cc_library(
-    name = "vmm_device_address_allocator",
-    srcs = ["vmm_device_address_allocator.cc"],
-    hdrs = ["vmm_device_address_allocator.h"],
+    name = "device_address_vmm_allocator",
+    srcs = ["device_address_vmm_allocator.cc"],
+    hdrs = ["device_address_vmm_allocator.h"],
     deps = [
         ":device_address",
         ":device_address_allocator",
