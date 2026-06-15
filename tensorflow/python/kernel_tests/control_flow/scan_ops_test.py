@@ -351,6 +351,66 @@ class CumprodTest(test.TestCase):
         for reverse in [True, False]:
           self._compareGradient([2, 4], axis, exclusive, reverse)
 
+  def _compareGradientWithZeros(
+      self, shape, axis, exclusive, reverse, zeros_positions, dtype=np.float64
+  ):
+    x = np.arange(1, 9).reshape(shape).astype(dtype)
+    flat_x = x.flatten()
+    for pos in zeros_positions:
+      if pos < len(flat_x):
+        flat_x[pos] = 0.0
+    x = flat_x.reshape(shape)
+    with self.cached_session():
+      t = ops.convert_to_tensor(x)
+      result = math_ops.cumprod(t, axis, exclusive, reverse)
+      jacob_t, jacob_n = gradient_checker.compute_gradient(
+          t, shape, result, shape, x_init_value=x, delta=1
+      )
+    self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
+
+  @test_util.run_deprecated_v1
+  def testGradientZeros(self):
+    for dtype in (np.float64, np.complex128):
+      for axis in (-1, 0):
+        for exclusive in [True, False]:
+          for reverse in [True, False]:
+            # Single zero at the beginning
+            self._compareGradientWithZeros(
+                [8], axis, exclusive, reverse, [0], dtype=dtype
+            )
+            # Single zero in the middle
+            self._compareGradientWithZeros(
+                [8], axis, exclusive, reverse, [4], dtype=dtype
+            )
+            # Single zero at the end
+            self._compareGradientWithZeros(
+                [8], axis, exclusive, reverse, [7], dtype=dtype
+            )
+            # Multiple zeros
+            self._compareGradientWithZeros(
+                [8], axis, exclusive, reverse, [2, 5], dtype=dtype
+            )
+            # All zeros
+            self._compareGradientWithZeros(
+                [8], axis, exclusive, reverse, list(range(8)), dtype=dtype
+            )
+
+      for axis in (-2, -1, 0, 1):
+        for exclusive in [True, False]:
+          for reverse in [True, False]:
+            self._compareGradientWithZeros(
+                [2, 4], axis, exclusive, reverse, [0], dtype=dtype
+            )
+            self._compareGradientWithZeros(
+                [2, 4], axis, exclusive, reverse, [2], dtype=dtype
+            )
+            self._compareGradientWithZeros(
+                [2, 4], axis, exclusive, reverse, [1, 5], dtype=dtype
+            )
+            self._compareGradientWithZeros(
+                [2, 4], axis, exclusive, reverse, list(range(8)), dtype=dtype
+            )
+
 
 if __name__ == "__main__":
   test.main()

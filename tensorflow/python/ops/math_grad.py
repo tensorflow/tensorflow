@@ -1982,16 +1982,54 @@ def _CumsumGrad(op: ops.Operation, grad):
 
 @ops.RegisterGradient("Cumprod")
 def _CumprodGrad(op: ops.Operation, grad):
+  """Returns the gradient of cumprod(x) with respect to its inputs."""
   x = op.inputs[0]
   axis = op.inputs[1]
   exclusive = op.get_attr("exclusive")
   reverse = op.get_attr("reverse")
 
-  prod = math_ops.cumprod(x, axis, exclusive=exclusive, reverse=reverse)
-  out = math_ops.cumsum(
-      prod * grad, axis, exclusive=exclusive, reverse=not reverse
+  is_zero = math_ops.equal(x, 0)
+  x_filled = array_ops.where_v2(is_zero, array_ops.ones_like(x), x)
+
+  if x.dtype.is_complex:
+    x = math_ops.conj(x)
+    x_filled = math_ops.conj(x_filled)
+
+  prod_filled = math_ops.cumprod(
+      x_filled, axis, exclusive=exclusive, reverse=reverse
   )
-  return [math_ops.div_no_nan(out, x), None]
+
+  zeros_count = math_ops.cumsum(
+      math_ops.cast(is_zero, dtype=dtypes.int32),
+      axis,
+      exclusive=exclusive,
+      reverse=reverse,
+  )
+
+  out_nonzero = math_ops.cumsum(
+      prod_filled
+      * math_ops.cast(math_ops.equal(zeros_count, 0), dtype=prod_filled.dtype)
+      * grad,
+      axis,
+      exclusive=exclusive,
+      reverse=not reverse,
+  )
+
+  out_zero = math_ops.cumsum(
+      prod_filled
+      * math_ops.cast(math_ops.equal(zeros_count, 1), dtype=prod_filled.dtype)
+      * grad,
+      axis,
+      exclusive=exclusive,
+      reverse=not reverse,
+  )
+
+  return [
+      array_ops.where_v2(
+          is_zero, out_zero, math_ops.div_no_nan(out_nonzero, x)
+      ),
+      None,
+  ]
 
 
 # pylint: disable=missing-function-docstring
