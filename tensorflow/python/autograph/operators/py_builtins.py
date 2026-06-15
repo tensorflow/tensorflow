@@ -18,6 +18,7 @@ List of built-in functions: https://docs.python.org/3/library/functions.html
 """
 
 import inspect
+import operator
 
 from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.autograph.utils import type_registry
@@ -372,9 +373,84 @@ def _py_max(*args, **kwargs):
 
 
 def range_(start_or_stop, stop=UNSPECIFIED, step=UNSPECIFIED):
+  """Overload of range_ that handles symbolic tensor arguments."""
   if any(tensor_util.is_tf_type(s) for s in (start_or_stop, stop, step)):
+    if any(
+        _tf_range_arg_needs_py_value(s) for s in (start_or_stop, stop, step)
+    ):
+      start_or_stop_ = _tf_type_to_py_index(start_or_stop)
+      stop_ = _tf_type_to_py_index(stop)
+      step_ = _tf_type_to_py_index(step)
+    else:
+      start_or_stop_ = stop_ = step_ = None
+    if start_or_stop_ is not None and stop_ is not None and step_ is not None:
+      return _py_range(start_or_stop_, stop_, step_)
     return _tf_range(start_or_stop, stop, step)
   return _py_range(start_or_stop, stop, step)
+
+
+def _tf_range_arg_needs_py_value(s):
+  """Checks if a symbolic tensor represents a static range index."""
+  if not isinstance(s, ops.SymbolicTensor):
+    return False
+  op = getattr(s, 'op', None)
+  if op is None or getattr(op, 'type', None) == 'Const':
+    return False
+  return _tf_type_to_py_index(s) is not None
+
+
+def _tf_type_to_py_index(s):
+  """Converts a tensor-like value to a Python index if possible."""
+  if s is UNSPECIFIED:
+    return s
+  if tensor_util.is_tf_type(s):
+    val = tensor_util.constant_value(s)
+    if val is None:
+      op = getattr(s, 'op', None)
+      if op is not None and getattr(op, 'type', None) == 'StridedSlice':
+        val = _eval_strided_slice(s)
+    s = val
+  if s is None:
+    return None
+  if hasattr(s, 'ndim') and hasattr(s, 'size') and hasattr(s, 'item'):
+    if s.size == 1:
+      s = s.item()
+  try:
+    return operator.index(s)
+  except (TypeError, ValueError):
+    return None
+
+
+def _eval_strided_slice(s):
+  """Evaluates a 1-D StridedSlice op to its constant value."""
+  op = getattr(s, 'op', None)
+  if op is None or getattr(op, 'type', None) != 'StridedSlice':
+    return None
+  try:
+    input_val = tensor_util.constant_value(op.inputs[0])
+    if input_val is None:
+      return None
+    begin = tensor_util.constant_value(op.inputs[1])
+    end = tensor_util.constant_value(op.inputs[2])
+    strides = tensor_util.constant_value(op.inputs[3])
+
+    if hasattr(input_val, 'ndim') and input_val.ndim == 1:
+      shrink_axis_mask = op.get_attr('shrink_axis_mask')
+      if shrink_axis_mask & 1:
+        if begin is not None:
+          return input_val[begin[0]]
+      else:
+        begin_val = begin[0] if begin is not None else None
+        end_val = end[0] if end is not None else None
+        strides_val = strides[0] if strides is not None else None
+        if op.get_attr('begin_mask') & 1:
+          begin_val = None
+        if op.get_attr('end_mask') & 1:
+          end_val = None
+        return input_val[begin_val:end_val:strides_val]
+  except Exception:  # pylint: disable=broad-except
+    pass
+  return None
 
 
 def _tf_range(start_or_stop, stop, step):

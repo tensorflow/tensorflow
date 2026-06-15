@@ -17,7 +17,6 @@
 import io
 import sys
 
-
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.autograph.operators import data_structures
@@ -27,6 +26,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -242,7 +242,6 @@ class PyBuiltinsTest(test.TestCase):
           constant_op.constant([6]), constant_op.constant(4),
           constant_op.constant(8))
 
-
   def test_range(self):
     self.assertListEqual(list(py_builtins.range_(3)), [0, 1, 2])
     self.assertListEqual(list(py_builtins.range_(1, 3)), [1, 2])
@@ -263,6 +262,32 @@ class PyBuiltinsTest(test.TestCase):
       self.assertAllEqual(self.evaluate(r), [])
       r = py_builtins.range_(5, constant_op.constant(2))
       self.assertAllEqual(self.evaluate(r), [])
+
+  def test_range_tensor_static_invalid_python_range_values(self):
+    r = py_builtins.range_(array_ops.identity(constant_op.constant(0.5)))
+    self.assertTrue(tensor_util.is_tf_type(r))
+    self.assertEqual(
+        py_builtins._tf_type_to_py_index(  # pylint: disable=protected-access
+            array_ops.identity(constant_op.constant([3]))
+        ),
+        3,
+    )
+    self.assertIsNone(
+        py_builtins._tf_type_to_py_index(  # pylint: disable=protected-access
+            array_ops.identity(constant_op.constant([3, 4]))
+        )
+    )
+
+  def test_range_symbolic_tensor_static_value(self):
+    @def_function.function(autograph=False)
+    def test_fn(x):
+      return constant_op.constant(
+          list(py_builtins.range_(array_ops.shape(x)[0]))
+      )
+
+    self.assertAllEqual(
+        self.evaluate(test_fn(constant_op.constant([1, 2, 3]))), [0, 1, 2]
+    )
 
   def test_enumerate(self):
     self.assertListEqual(
