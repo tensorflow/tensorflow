@@ -2391,6 +2391,48 @@ ENTRY e {
       std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(TritonScaledDotTest, FP8ScaledDotLhsKNotMinorDim) {
+  if (!GetCudaComputeCapability().IsAtLeastBlackwell()) {
+    GTEST_SKIP() << "FP8 scaled dot requires Blackwell+";
+  }
+  constexpr absl::string_view kHloTextTemplate = R"hlo(
+HloModule FP8ScaledDotLhsKNotMinorDim
+
+ENTRY e {
+  lhs = f8e4m3fn[128,64] parameter(0)
+  lhs_scale = f8e8m0fnu[4,64] parameter(1)
+  rhs = f8e4m3fn[128,256] parameter(2)
+  rhs_scale = f8e8m0fnu[4,256] parameter(3)
+  ROOT _ = bf16[64,256]{1,0} scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={0},
+    rhs_contracting_dims={0}
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
+                          GetOptimizedModule(kHloTextTemplate));
+  constexpr absl::string_view kExpectedOptimizedHLO = R"(
+    CHECK: fusion
+    CHECK: ROOT {{.*}} scaled-dot
+    CHECK: ENTRY
+    CHECK: __triton_nested_gemm_fusion
+  )";
+  EXPECT_THAT(RunFileCheck(optimized_module->ToString(), kExpectedOptimizedHLO),
+              true);
+
+  HloComputation* scaled_dot_computation = GetFirstComputationWithInstruction(
+      *optimized_module, HloOpcode::kScaledDot);
+  constexpr absl::string_view kExpectedTritonIr = R"(
+      CHECK: tt.dot_scaled
+  )";
+  EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
+                                               kExpectedTritonIr),
+              absl_testing::IsOk());
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 TEST_F(TritonScaledDotTest, ScaledDotWithBatchGetFusedAndExecutedCorrectly) {
   if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Scaled dot isn't supported by Triton for pre-Hopper GPUs.";
