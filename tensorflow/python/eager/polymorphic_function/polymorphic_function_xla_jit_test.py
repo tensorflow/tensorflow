@@ -31,6 +31,7 @@ from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -775,6 +776,18 @@ class FunctionTest(xla_test.XLATestCase):
 
       outer()
       self.assertAllClose(c.v, 3.52)
+
+  def testEmbeddingLookupWithVariableCreationInFunctionRaises(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @polymorphic_function.function(jit_compile=True)
+      def lookup(ids):
+        return embedding_ops.embedding_lookup(
+            variables.Variable([[1.0, 1.0], [1.0, 1.0], [1.0, 1.0]]), ids)
+
+      with self.assertRaisesRegex(
+          ValueError, 'tf.function only supports singleton.*embedding_lookup'):
+        lookup(constant_op.constant([0, 1], dtype=dtypes.int32))
 
   def testUpdateVariableMultipleOutputs(self):
     with ops.device('device:{}:0'.format(self.device)):
