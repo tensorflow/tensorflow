@@ -251,10 +251,20 @@ def tile(input: ragged_tensor.Ragged, multiples, name=None):  # pylint: disable=
     # to skip tiling dimensions where `multiples=1`.
     const_multiples = tensor_util.constant_value(multiples)
 
-    return ragged_tensor.RaggedTensor.from_nested_row_splits(
+    tiled = ragged_tensor.RaggedTensor.from_nested_row_splits(
         _tile_ragged_values(input, multiples, const_multiples),
         _tile_ragged_splits(input, multiples, const_multiples),
-        validate=False)
+        validate=False,
+    )
+
+    if const_multiples is not None and input.shape.ndims is not None:
+      inferred_shape = [
+          None if dim is None else dim * multiple
+          for (dim, multiple) in zip(input.shape.as_list(), const_multiples)
+      ]
+      tiled._set_shape(inferred_shape)  # pylint: disable=protected-access
+
+    return tiled
 
 
 def _tile_ragged_values(rt_input, multiples, const_multiples=None):

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged_factory_ops.constant."""
+"""Tests for tf.ragged.constant shape inference, factory ops, and helpers."""
 
 from absl.testing import parameterized
 import numpy as np
@@ -395,6 +395,31 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase,
       self.assertEqual(
           ragged.ragged_factory_ops._default_inner_shape_for_pylist(
               pylist, ragged_rank), inner_shape)
+
+  def testUniformOuterDimensionDetection(self):
+    # 3D ragged tensor with uniform outer dimensions.
+    rt_3d = ragged_factory_ops.constant([[[1], [2, 3], [4]], [[5, 6], [], [7]]])
+    self.assertEqual(rt_3d.shape.as_list(), [2, 3, None])
+
+    # 4D ragged tensor with uniform outer dimensions.
+    rt_4d = ragged_factory_ops.constant(
+        [[[[1], [2]], [[3], [4, 5]]], [[[6], []], [[7], [8]]]]
+    )
+    self.assertEqual(rt_4d.shape.as_list(), [2, 2, 2, None])
+
+    # Empty inner lists.
+    rt_empty = ragged_factory_ops.constant([[], [], []])
+    self.assertEqual(rt_empty.shape.as_list(), [3, None])
+
+    # All-ragged (non-uniform outer).
+    rt_all_ragged = ragged_factory_ops.constant([[[1], [2]], [[3]]])
+    self.assertEqual(rt_all_ragged.shape.as_list(), [2, None, None])
+
+    # Explicit ragged_rank and inner_shape.
+    rt_explicit = ragged_factory_ops.constant(
+        [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], ragged_rank=1, inner_shape=(2,)
+    )
+    self.assertEqual(rt_explicit.shape.as_list(), [2, None, 2])
 
 
 def _normalize_pylist(item):

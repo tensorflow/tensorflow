@@ -259,6 +259,56 @@ def _constant_value(
       values, dtype=dtype, shape=(len(values),) + inner_shape, name="values")
   for row_splits in reversed(nested_splits):
     values = ragged_factory(values, row_splits)
+
+  if hasattr(values, "_set_shape"):
+    # Find uniform/ragged sizes for each dimension.
+    current_depth_items = pylist
+    dims_uniform = []
+    dims_lengths = []
+
+    for _ in range(ragged_rank):
+      lengths = []
+      next_depth_items = []
+      for item in current_depth_items:
+        if isinstance(item, (list, tuple)) or np.ndim(item) != 0:
+          lengths.append(len(item))
+          for child in item:
+            next_depth_items.append(child)
+
+      if not lengths:
+        is_uniform = True
+        uniform_len = 0
+      else:
+        is_uniform = all(length == lengths[0] for length in lengths)
+        uniform_len = lengths[0] if is_uniform else None
+
+      dims_uniform.append(is_uniform)
+      dims_lengths.append(uniform_len)
+      current_depth_items = next_depth_items
+
+    # Determine the inferred shape.
+    inferred_shape = [len(pylist)]
+
+    # Truly ragged means not all ragged dimensions are uniform (dense).
+    truly_ragged = not all(dims_uniform)
+
+    # Outer ragged dimensions (axes 1 to ragged_rank - 1)
+    for i in range(ragged_rank - 1):
+      if truly_ragged and dims_uniform[i]:
+        inferred_shape.append(dims_lengths[i])
+      else:
+        inferred_shape.append(None)
+
+    # Last ragged dimension
+    if ragged_rank > 0:
+      inferred_shape.append(None)
+
+    # Remaining dimensions (inner_shape)
+    if inner_shape is not None:
+      inferred_shape.extend(inner_shape)
+
+    values._set_shape(inferred_shape)  # pylint: disable=protected-access
+
   return values
 
 
@@ -327,6 +377,9 @@ def _default_inner_shape_for_pylist(pylist, ragged_rank):
                        "requires scalar value depth greater than %d" %
                        (dim + 1, ragged_rank, ragged_rank))
     flat_values = sum((list(v) for v in flat_values), [])
+
+  if not flat_values:
+    return ()
 
   # Compute the inner shape looking only at the leftmost elements; and then
   # use check_inner_shape to verify that other elements have the same shape.

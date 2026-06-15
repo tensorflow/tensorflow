@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for StructuredTensor."""
+"""Tests for StructuredTensor APIs, promotion, and utility functions."""
 
 import textwrap
 from typing import Optional
@@ -1440,9 +1440,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
                             "new_field": [{"c": 12}]}]}])])  # pyformat: disable
   def testPromote(self, st, source_path, new_field_name, expected):
     st2 = StructuredTensor.from_pyval(st)
-    expected2 = StructuredTensor.from_pyval(expected)
     result = st2.promote(source_path, new_field_name)
-    self.assertAllEqual(result, expected2)
+    self.assertAllEqual(result, expected)
 
   def testPromoteDense(self):
     st = StructuredTensor.from_fields(

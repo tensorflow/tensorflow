@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tf.strings.reduce_join."""
+"""Tests for tf.strings.reduce_join on ragged and structured tensors."""
+
 from absl.testing import parameterized
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -38,34 +39,43 @@ class StringsReduceJoinOpTest(test_util.TensorFlowTestCase,
 
   @parameterized.parameters([
       {
-          'input_array': [[
-              b'this', b'is', b'a', b'test', b'for', b'ragged', b'tensors'
-          ], [b'please', b'do', b'not', b'panic', b'!']],
+          'input_array': [
+              [b'this', b'is', b'a', b'test', b'for', b'ragged', b'tensors'],
+              [b'please', b'do', b'not', b'panic', b'!'],
+          ],
           'axis': 0,
           'keepdims': False,
           'truth': [
-              b'thisplease', b'isdo', b'anot', b'testpanic', b'for!', b'ragged',
-              b'tensors'
+              b'thisplease',
+              b'isdo',
+              b'anot',
+              b'testpanic',
+              b'for!',
+              b'ragged',
+              b'tensors',
           ],
           'truth_shape': [7],
       },
       {
-          'input_array': [[
-              b'this', b'is', b'a', b'test', b'for', b'ragged', b'tensors'
-          ], [b'please', b'do', b'not', b'panic', b'!']],
+          'input_array': [
+              [b'this', b'is', b'a', b'test', b'for', b'ragged', b'tensors'],
+              [b'please', b'do', b'not', b'panic', b'!'],
+          ],
           'axis': 1,
           'keepdims': False,
           'truth': [b'thisisatestforraggedtensors', b'pleasedonotpanic!'],
           'truth_shape': [2],
       },
       {
-          'input_array': [[
-              b'this', b'is', b'a', b'test', b'for', b'ragged', b'tensors'
-          ], [b'please', b'do', b'not', b'panic', b'!']],
+          'input_array': [
+              [b'this', b'is', b'a', b'test', b'for', b'ragged', b'tensors'],
+              [b'please', b'do', b'not', b'panic', b'!'],
+          ],
           'axis': 1,
           'keepdims': False,
           'truth': [
-              b'this|is|a|test|for|ragged|tensors', b'please|do|not|panic|!'
+              b'this|is|a|test|for|ragged|tensors',
+              b'please|do|not|panic|!',
           ],
           'truth_shape': [2],
           'separator': '|',
@@ -79,19 +89,29 @@ class StringsReduceJoinOpTest(test_util.TensorFlowTestCase,
           'separator': '|',
       },
       {
-          'input_array': [[[[b'a', b'b', b'c'], [b'dd', b'ee']]],
-                          [[[b'f', b'g', b'h'], [b'ii', b'jj']]]],
+          'input_array': [
+              [[[b'a', b'b', b'c'], [b'dd', b'ee']]],
+              [[[b'f', b'g', b'h'], [b'ii', b'jj']]],
+          ],
           'axis': -2,
           'keepdims': False,
           'truth': [[[b'a|dd', b'b|ee', b'c']], [[b'f|ii', b'g|jj', b'h']]],
-          'truth_shape': [2, None, None],
+          'truth_shape': [2, 1, None],
           'separator': '|',
       },
       {
-          'input_array': [[[b't', b'h', b'i', b's'], [b'i', b's'], [b'a'],
-                           [b't', b'e', b's', b't']],
-                          [[b'p', b'l', b'e', b'a', b's', b'e'],
-                           [b'p', b'a', b'n', b'i', b'c']]],
+          'input_array': [
+              [
+                  [b't', b'h', b'i', b's'],
+                  [b'i', b's'],
+                  [b'a'],
+                  [b't', b'e', b's', b't'],
+              ],
+              [
+                  [b'p', b'l', b'e', b'a', b's', b'e'],
+                  [b'p', b'a', b'n', b'i', b'c'],
+              ],
+          ],
           'axis': -1,
           'keepdims': False,
           'truth': [[b'this', b'is', b'a', b'test'], [b'please', b'panic']],
@@ -99,16 +119,27 @@ class StringsReduceJoinOpTest(test_util.TensorFlowTestCase,
           'separator': '',
       },
       {
-          'input_array': [[[[b't'], [b'h'], [b'i'], [b's']], [[b'i', b's']],
-                           [[b'a', b'n']], [[b'e'], [b'r'], [b'r']]],
-                          [[[b'p'], [b'l'], [b'e'], [b'a'], [b's'], [b'e']],
-                           [[b'p'], [b'a'], [b'n'], [b'i'], [b'c']]]],
+          'input_array': [
+              [
+                  [[b't'], [b'h'], [b'i'], [b's']],
+                  [[b'i', b's']],
+                  [[b'a', b'n']],
+                  [[b'e'], [b'r'], [b'r']],
+              ],
+              [
+                  [[b'p'], [b'l'], [b'e'], [b'a'], [b's'], [b'e']],
+                  [[b'p'], [b'a'], [b'n'], [b'i'], [b'c']],
+              ],
+          ],
           'axis': -1,
           'keepdims': False,
-          'truth': [[[b't', b'h', b'i', b's'], [b'is'], [b'an'],
-                     [b'e', b'r', b'r']],
-                    [[b'p', b'l', b'e', b'a', b's', b'e'],
-                     [b'p', b'a', b'n', b'i', b'c']]],
+          'truth': [
+              [[b't', b'h', b'i', b's'], [b'is'], [b'an'], [b'e', b'r', b'r']],
+              [
+                  [b'p', b'l', b'e', b'a', b's', b'e'],
+                  [b'p', b'a', b'n', b'i', b'c'],
+              ],
+          ],
           'truth_shape': [2, None, None],
           'separator': '',
       },
