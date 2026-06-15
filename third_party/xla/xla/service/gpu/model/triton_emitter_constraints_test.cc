@@ -57,9 +57,7 @@ using ::testing::HasSubstr;
 
 class TritonEmitterConstraintsTest : public HloHardwareIndependentTestBase {
  public:
-  TritonEmitterConstraintsTest() {
-    RegisterSymbolicExprStorage(&mlir_context_);
-  }
+  TritonEmitterConstraintsTest() = default;
   std::optional<SymbolicTileAnalysis> TryAnalyzeModule(
       HloModule* module, bool with_triton_emitter_specific_constraints = true) {
     EmitterSpecificConstraintsBuilder constraints_builder = nullptr;
@@ -330,7 +328,7 @@ ENTRY entry_computation {
 
 class VerifyTritonConstraintsTest : public HloHardwareIndependentTestBase {
  protected:
-  VerifyTritonConstraintsTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+  VerifyTritonConstraintsTest() = default;
 
   Status CheckTiling(HloModule* module, absl::Span<const int64_t> tile_sizes) {
     HloInstruction* root = module->entry_computation()->root_instruction();

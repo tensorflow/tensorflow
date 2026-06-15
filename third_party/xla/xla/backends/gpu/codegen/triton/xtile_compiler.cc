@@ -100,7 +100,6 @@ limitations under the License.
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -285,7 +284,6 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
           .xla_gpu_experimental_enable_tiling_propagation();
 
   LoadMlirDialectsForTriton(mlir_context);
-  RegisterSymbolicExprStorage(&mlir_context);
 
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
