@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -45,7 +46,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/human_readable_json.h"
 
 namespace xla {
@@ -68,7 +68,7 @@ absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
 absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>>
 IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
   const SerDesVersionNumber version_number(proto.version_number());
-  if (version_number != SerDesVersionNumber(0)) {
+  if (version_number > SerDesVersionNumber(4)) {
     return absl::FailedPreconditionError(
         absl::StrCat("Unsupported ", version_number,
                      " for IfrtIRCompileOptions deserialization"));
@@ -99,7 +99,16 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
     compile_options_overrides->insert(
         {key, std::make_unique<XlaCompileOptions>(compile_options, devices)});
   }
-  return std::make_unique<IfrtIRCompileOptions>(
+  std::optional<std::vector<int>> outputs_bundle_slice_sizes;
+  if (version_number >= SerDesVersionNumber(4)) {
+    if (!proto.outputs_bundle_slice_sizes().empty()) {
+      outputs_bundle_slice_sizes.emplace(
+          proto.outputs_bundle_slice_sizes().begin(),
+          proto.outputs_bundle_slice_sizes().end());
+    }
+  }
+
+  auto options = std::make_unique<IfrtIRCompileOptions>(
       std::move(device_ids),
       absl::flat_hash_map<std::string, LoadedExecutableRef>(),
       std::move(compile_options_overrides), proto.mlir_dump_to(),
@@ -109,6 +118,8 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
       proto.dot_graph_min_executable_flops(),
       proto.dot_graph_min_per_device_transfer_size_bytes(),
       proto.strict_memory_reservation());
+  options->outputs_bundle_slice_sizes = std::move(outputs_bundle_slice_sizes);
+  return options;
 }
 
 absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
@@ -120,7 +131,11 @@ absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
   }
 
   proto.Clear();
-  proto.set_version_number(SerDesVersionNumber(0).value());
+  if (version.version_number() >= SerDesVersionNumber(4)) {
+    proto.set_version_number(SerDesVersionNumber(4).value());
+  } else {
+    proto.set_version_number(SerDesVersionNumber(0).value());
+  }
   proto.mutable_device_ids()->Reserve(device_assignments.size());
   for (const DeviceId& device_id : device_assignments) {
     proto.add_device_ids(device_id.value());
@@ -150,6 +165,16 @@ absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
   proto.set_dot_graph_min_per_device_transfer_size_bytes(
       dot_graph_min_per_device_transfer_size_bytes);
   proto.set_strict_memory_reservation(strict_memory_reservation);
+  if (outputs_bundle_slice_sizes.has_value()) {
+    if (version.version_number() < SerDesVersionNumber(4)) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported ", version.version_number(),
+                       " for IfrtIRCompileOptions serialization with "
+                       "outputs_bundle_slice_sizes"));
+    }
+    proto.mutable_outputs_bundle_slice_sizes()->Add(
+        outputs_bundle_slice_sizes->begin(), outputs_bundle_slice_sizes->end());
+  }
   return absl::OkStatus();
 }
 

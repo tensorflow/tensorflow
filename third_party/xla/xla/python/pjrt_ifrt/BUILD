@@ -45,6 +45,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_version",
         "//xla/service:computation_placer_hdr",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
