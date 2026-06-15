@@ -86,22 +86,6 @@ using absl::StrFormat;
 // commands on the other, enabling CPU/GPU overlap.
 constexpr int kNumVaReservationSets = 2;
 
-// Returns the next VA range index for the given executable and device, keyed
-// per executable so each compiled module independently alternates between VA
-// range sets, enabling CPU/GPU overlap regardless of inter-module dispatch
-// order.
-int GetNextCommandBufferVaRangeIdx(const void* executable_key,
-                                   int device_ordinal) {
-  static absl::Mutex mu(absl::kConstInit);
-  static auto* counters =
-      new absl::flat_hash_map<std::pair<const void*, int>, int>();
-  absl::MutexLock lock(mu);
-  auto key = std::make_pair(executable_key, device_ordinal);
-  int& idx = (*counters)[key];
-  int result = idx;
-  idx = (idx + 1) % kNumVaReservationSets;
-  return result;
-}
 
 // Records the arguments used to invoke a computation in an HloSnapshot proto.
 absl::Status RecordArguments(
@@ -387,8 +371,9 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
         backend->eigen_intra_op_thread_pool_device());
     options.set_device_assignment(device_assignment_ptr);
     options.set_execution_profile(profile);
-    options.set_command_buffer_va_range_idx(GetNextCommandBufferVaRangeIdx(
-        executable, stream->parent()->device_ordinal()));
+    options.set_command_buffer_va_range_idx(
+        executable->GetNextCommandBufferVaRangeIdx(
+            stream->parent()->device_ordinal(), kNumVaReservationSets));
     run_options.emplace_back(options, backend->StreamBorrowerWithPriority());
   }
 

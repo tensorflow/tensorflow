@@ -2876,8 +2876,9 @@ TEST_F(VmmTest, CommandBufferVaRemappingTwoExecutables) {
 
   // --- Assertions for VA range index cycling and command buffer separation ---
   //
-  // VA range index per-executable: GetNextCommandBufferVaRangeIdx is keyed by
-  // (executable_ptr, device_ordinal), so exec1 and exec2 cycle independently:
+  // VA range index per-executable: GetNextCommandBufferVaRangeIdx is a member
+  // of Executable, and its state is stored inside each Executable instance
+  // (keyed by device_ordinal), so exec1 and exec2 cycle independently:
   //   run 0: exec1→idx=0, exec2→idx=0
   //   run 1: exec1→idx=1, exec2→idx=1
   //   run 2: exec1→idx=0, exec2→idx=0  (wraps)

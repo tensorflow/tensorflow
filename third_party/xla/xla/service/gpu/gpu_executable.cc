@@ -2134,6 +2134,15 @@ CreateSerializableBuildOptionsProto(const ExecutableBuildOptions& options) {
   return serializable_opts.ToProto();
 }
 
+int GpuExecutable::GetNextCommandBufferVaRangeIdx(int device_ordinal,
+                                                  int num_sets) {
+  absl::MutexLock lock(&command_buffer_va_range_idx_mutex_);
+  int& idx = command_buffer_va_range_idx_[device_ordinal];
+  int result = idx;
+  idx = (idx + 1) % num_sets;
+  return result;
+}
+
 absl::Status GpuExecutable::DumpExecutableIfEnabled(
     const ExecutableBuildOptions& options,
     const DebugOptions& debug_options) const {
