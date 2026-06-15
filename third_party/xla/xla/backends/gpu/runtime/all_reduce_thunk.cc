@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
@@ -49,9 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -158,7 +155,10 @@ CollectiveOpGroupMode AllReduceThunk::GetGroupMode(
 
 absl::Status AllReduceThunk::Prepare(const PrepareParams& params) {
   RETURN_IF_ERROR(CollectiveThunk::Prepare(params));
-  return collective_kernel_thunk_->Prepare(params);
+  if (collective_kernel_thunk_ != nullptr) {
+    return collective_kernel_thunk_->Prepare(params);
+  }
+  return absl::OkStatus();
 }
 
 absl::Status AllReduceThunk::Initialize(const InitializeParams& params) {
@@ -166,12 +166,14 @@ absl::Status AllReduceThunk::Initialize(const InitializeParams& params) {
   ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, config()));
-  ASSIGN_OR_RETURN(
-      bool use_collective_kernel,
-      collective_kernel_thunk_->IsSupported(clique_key, *params.executor,
-                                            *params.collective_params));
-  if (use_collective_kernel) {
-    RETURN_IF_ERROR(collective_kernel_thunk_->Initialize(params));
+  if (collective_kernel_thunk_ != nullptr) {
+    ASSIGN_OR_RETURN(
+        bool use_collective_kernel,
+        collective_kernel_thunk_->IsSupported(clique_key, *params.executor,
+                                              *params.collective_params));
+    if (use_collective_kernel) {
+      RETURN_IF_ERROR(collective_kernel_thunk_->Initialize(params));
+    }
   }
   return absl::OkStatus();
 }
@@ -184,16 +186,16 @@ absl::Status AllReduceThunk::RunCollective(const ExecuteParams& params,
                    ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.config.operand_element_type));
 
-  ASSIGN_OR_RETURN(
-      bool use_collective_kernel,
-      collective_kernel_thunk_->IsSupported(clique_key, *stream.parent(),
-                                            *params.collective_params));
-
-  if (use_collective_kernel) {
-    return collective_kernel_thunk_->ExecuteOnStream(
-        params.WithComputeStream(&stream));
+  if (collective_kernel_thunk_ != nullptr) {
+    ASSIGN_OR_RETURN(
+        bool use_collective_kernel,
+        collective_kernel_thunk_->IsSupported(clique_key, *stream.parent(),
+                                              *params.collective_params));
+    if (use_collective_kernel) {
+      return collective_kernel_thunk_->ExecuteOnStream(
+          params.WithComputeStream(&stream));
+    }
   }
-
   return RunAllReduce(config_.reduction_kind, device_buffers, stream, comm,
                       config_.config.use_symmetric_buffer);
 }
@@ -216,7 +218,7 @@ absl::StatusOr<std::unique_ptr<AllReduceThunk>> AllReduceThunk::FromProto(
   ASSIGN_OR_RETURN(ReductionKind reduction_kind,
                    FromReductionKindProto(thunk_proto.reduction_kind()));
 
-  std::optional<LaunchDimensions> launch_dimensions = std::nullopt;
+  LaunchDimensions launch_dimensions;
   if (thunk_proto.has_launch_dimensions()) {
     ASSIGN_OR_RETURN(launch_dimensions, LaunchDimensions::FromProto(
                                             thunk_proto.launch_dimensions()));
@@ -226,13 +228,15 @@ absl::StatusOr<std::unique_ptr<AllReduceThunk>> AllReduceThunk::FromProto(
           ? std::make_optional(std::vector<uint8_t>{thunk_proto.cubin().begin(),
                                                     thunk_proto.cubin().end()})
           : std::nullopt;
-  auto kernel_thunk = std::make_unique<CollectiveKernelThunk>(
-      thunk_info, config, reduction_kind, thunk_proto.is_async(), buffers,
-      thunk_proto.collective_kernel_enabled(), thunk_proto.kernel_name(),
-      launch_dimensions, thunk_proto.shmem_bytes(),
-      thunk_proto.is_multimem_enabled(), std::move(cubin),
-      thunk_proto.use_pdl());
-
+  std::unique_ptr<CollectiveKernelThunk> kernel_thunk = nullptr;
+  if (!thunk_proto.kernel_name().empty()) {
+    kernel_thunk = std::make_unique<CollectiveKernelThunk>(
+        thunk_info, config, reduction_kind, thunk_proto.is_async(), buffers,
+        thunk_proto.collective_kernel_enabled(), thunk_proto.kernel_name(),
+        launch_dimensions, thunk_proto.shmem_bytes(),
+        thunk_proto.is_multimem_enabled(), std::move(cubin),
+        thunk_proto.use_pdl());
+  }
   return std::make_unique<AllReduceThunk>(
       std::move(thunk_info), AllReduceConfig{config, reduction_kind},
       std::move(buffers), std::move(kernel_thunk));
@@ -251,23 +255,23 @@ absl::StatusOr<ThunkProto> AllReduceThunk::ToProto() const {
   *thunk_proto->mutable_collective_config() = config_.config.ToProto();
   thunk_proto->set_reduction_kind(ToReductionKindProto(config_.reduction_kind));
 
-  thunk_proto->set_is_multimem_enabled(
-      collective_kernel_thunk_->is_multimem_enabled());
-  thunk_proto->set_shmem_bytes(collective_kernel_thunk_->shmem_bytes());
-  thunk_proto->set_kernel_name(collective_kernel_thunk_->kernel_name());
-  thunk_proto->set_collective_kernel_enabled(
-      collective_kernel_thunk_->collective_kernel_enabled());
-  thunk_proto->set_is_async(collective_kernel_thunk_->is_async());
-  if (auto launch_dimensions = collective_kernel_thunk_->launch_dimensions();
-      launch_dimensions.has_value()) {
-    *thunk_proto->mutable_launch_dimensions() = launch_dimensions->ToProto();
-  }
-  thunk_proto->set_use_pdl(collective_kernel_thunk_->use_pdl());
-  if (collective_kernel_thunk_->cubin()) {
-    *thunk_proto->mutable_cubin() =
-        std::string(reinterpret_cast<const char*>(
-                        collective_kernel_thunk_->cubin()->data()),
-                    collective_kernel_thunk_->cubin()->size());
+  if (collective_kernel_thunk_ != nullptr) {
+    thunk_proto->set_is_multimem_enabled(
+        collective_kernel_thunk_->is_multimem_enabled());
+    thunk_proto->set_shmem_bytes(collective_kernel_thunk_->shmem_bytes());
+    thunk_proto->set_kernel_name(collective_kernel_thunk_->kernel_name());
+    thunk_proto->set_collective_kernel_enabled(
+        collective_kernel_thunk_->collective_kernel_enabled());
+    thunk_proto->set_is_async(collective_kernel_thunk_->is_async());
+    *thunk_proto->mutable_launch_dimensions() =
+        collective_kernel_thunk_->launch_dimensions().ToProto();
+    thunk_proto->set_use_pdl(collective_kernel_thunk_->use_pdl());
+    if (collective_kernel_thunk_->cubin()) {
+      *thunk_proto->mutable_cubin() =
+          std::string(reinterpret_cast<const char*>(
+                          collective_kernel_thunk_->cubin()->data()),
+                      collective_kernel_thunk_->cubin()->size());
+    }
   }
 
   return proto;

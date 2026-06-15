@@ -66,14 +66,14 @@ class CollectiveKernelThunk : public Thunk {
       ::stream_executor::gpu::kMaxNumAllReduceInputPtrs;
 
   CollectiveKernelThunk(
-      ThunkInfo info, CollectiveConfig collective_config,                //
-      ReductionKind reduction_kind,                                      //
-      bool is_async,                                                     //
-      std::vector<CollectiveThunk::Buffer> buffers,                      //
-      bool is_collective_kernel_enabled,                                 //
-      absl::string_view kernel_name = "",                                //
-      std::optional<LaunchDimensions> launch_dimensions = std::nullopt,  //
-      int32_t shmem_bytes = 0,                                           //
+      ThunkInfo info, CollectiveConfig collective_config,  //
+      ReductionKind reduction_kind,                        //
+      bool is_async,                                       //
+      std::vector<CollectiveThunk::Buffer> buffers,        //
+      bool is_collective_kernel_enabled,                   //
+      absl::string_view kernel_name,                       //
+      LaunchDimensions launch_dimensions,                  //
+      int32_t shmem_bytes = 0,                             //
       bool is_multimem_enabled = false,
       std::optional<std::vector<uint8_t>> cubin = std::nullopt,
       bool use_pdl = false)
@@ -100,9 +100,7 @@ class CollectiveKernelThunk : public Thunk {
 
   bool collective_kernel_enabled() const { return collective_kernel_enabled_; }
   bool is_async() const { return is_async_; }
-  std::optional<LaunchDimensions> launch_dimensions() const {
-    return launch_dimensions_;
-  }
+  LaunchDimensions launch_dimensions() const { return launch_dimensions_; }
 
   bool use_pdl() const { return use_pdl_; }
   const std::optional<std::vector<uint8_t>>& cubin() const { return cubin_; }
@@ -201,7 +199,7 @@ class CollectiveKernelThunk : public Thunk {
   const ReductionKind reduction_kind_;
   // Launch dimensions for the kernel. Only relevant when the codegen kernel
   // is used.
-  std::optional<LaunchDimensions> launch_dimensions_;
+  LaunchDimensions launch_dimensions_;
   // Kernel name to execute. Required when Codegen/PTX kernel is used.
   // Must match the kernel name in the generated PTX kernel.
   const std::string kernel_name_;

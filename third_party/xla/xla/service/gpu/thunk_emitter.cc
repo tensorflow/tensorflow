@@ -229,7 +229,7 @@ static constexpr bool kRequiresCollectiveKernelThunk =
 // collective thunks such as AllReduceStart. So this function is only
 // responsible for emitting the collective kernel thunk and its dependencies.
 xla::Future<std::unique_ptr<CollectiveKernelThunk>> EmitCollectiveKernelThunk(
-    IrEmitterContext* ir_emitter_context, const CallGraph* call_graph,
+    IrEmitterContext* ir_emitter_context, const CallGraph& call_graph,
     Thunk::ThunkInfo thunk_info, std::vector<CollectiveThunk::Buffer> buffers,
     const HloAllReduceInstruction* instr, const AllReduceConfig& config,
     ThunkEmitter* compiler,
@@ -264,8 +264,8 @@ xla::Future<std::unique_ptr<CollectiveKernelThunk>> EmitCollectiveKernelThunk(
       [thunk_info = std::move(thunk_info), buffers = std::move(buffers), config,
        is_async = !IsGPUSyncCollective(*instr), is_collective_kernel_enabled](
           absl::string_view kernel_name, int32_t shmem_bytes,
-          std::optional<LaunchDimensions> launch_dimensions,
-          const std::vector<uint8_t>& cubin, bool use_pdl) {
+          LaunchDimensions launch_dimensions, const std::vector<uint8_t>& cubin,
+          bool use_pdl) {
         return std::make_unique<CollectiveKernelThunk>(
             thunk_info, config.config, config.reduction_kind, is_async,
             std::move(buffers), is_collective_kernel_enabled, kernel_name,
@@ -275,9 +275,11 @@ xla::Future<std::unique_ptr<CollectiveKernelThunk>> EmitCollectiveKernelThunk(
   ASSIGN_OR_RETURN(bool did_set_config, TrySetGpuBackendConfigForCollective(
                                             device_info, fusion_instr));
   if (!did_set_config) {
-    return make_thunk(/*kernel_name=*/"",
-                      /*shmem_bytes=*/0,
-                      /*launch_dimensions=*/std::nullopt, {}, false);
+    // TODO(b/522693539):
+    // Because of lack of topology information in the CollectiveKernelThunk,
+    // we cannot know during emission if we can use the collective kernel
+    // thunk or not.
+    return nullptr;
   }
   analysis_garbage_collector.push_back(
       std::make_unique<HloFusionAnalysis>(HloFusionAnalysis::Create(
@@ -1973,11 +1975,10 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
   // lifted out of the all reduce thunk.
   if constexpr (kRequiresCollectiveKernelThunk<CollectiveThunkType>) {
     thunks =
-        EmitCollectiveKernelThunk(
-            ir_emitter_context_,
-            call_graph_.get(),  // NOLINT(readability-redundant-smartptr-get)
-            thunk_info, buffers, Cast<HloAllReduceInstruction>(inst),
-            GetAllReduceConfigInst(inst), this, analysis_garbage_collector_)
+        EmitCollectiveKernelThunk(ir_emitter_context_, *call_graph_, thunk_info,
+                                  buffers, Cast<HloAllReduceInstruction>(inst),
+                                  GetAllReduceConfigInst(inst), this,
+                                  analysis_garbage_collector_)
             .Map([thunk_info = std::move(thunk_info),
                   use_memcpy_local_p2p = ir_emitter_context_->debug_options()
                                              .xla_gpu_use_memcpy_local_p2p(),
