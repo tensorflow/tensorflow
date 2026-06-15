@@ -134,6 +134,11 @@ be no pointers to `HloInstruction` or to other parts of the compiler or the
     All changes should include appropriate benchmark results as well in the
     change title to ensure the benefits are clearly understood.
 
+*   *Feature Flags*: All somewhat complicated new features should be guarded
+    with a flag first (e.g., via `DebugOptions`). This allows for easy rollback
+    of the flag flip if problems arise, and affected users can temporarily
+    set the flag themselves before a rollback is performed.
+
 *   When in doubt as to conventions within the code, it is always a good idea to
     examine pre-existing code and to try to follow the patterns already in place
     in OpenXLA.
