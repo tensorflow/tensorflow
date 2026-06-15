@@ -371,8 +371,8 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   // 6 months compatibility window.
   // TODO (b/519501636): Remove this fallback once 6 months compatibility window
   // for ifrt has passed in Nov'2026.
-  if (xla::sdy::hasFrontendMhloShardings(mlirModule) ||
-      xla::sdy::hasFrontendMeshes(mlirModule)) {
+  if (enableHloShardingV3 && (xla::sdy::hasFrontendMhloShardings(mlirModule) ||
+                              xla::sdy::hasFrontendMeshes(mlirModule))) {
     // Fallback checks for mhlo sharding is not sufficient, we need to check for
     // meshes as well to handle shard map cases.
     LOG(WARNING)
