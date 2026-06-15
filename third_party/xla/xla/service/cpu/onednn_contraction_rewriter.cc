@@ -1466,7 +1466,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
   void ReorderWeight(const dnnl::memory::desc& src_md, void* src_buf,
                      const dnnl::memory::desc& dst_md, void* dst_buf) {
     auto onednn_threadpool = std::make_unique<OneDnnThreadPool>(
-        threadpool_device_->getPool(), /*is_async=*/true);
+        threadpool_device_->getPool(), xla::cpu::kEnableOnednnAsync);
     dnnl::engine cpu_engine(dnnl::engine::kind::cpu, 0);
     auto onednn_stream = dnnl::threadpool_interop::make_stream(
         cpu_engine, onednn_threadpool.get());
@@ -1476,6 +1476,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     reorder_prim.execute(onednn_stream, src_mem, dst_mem);
     // Wait for the reorder to finish before destroying the threadpool.
     onednn_stream.wait();
+    onednn_threadpool->wait();
   }
 
  private:

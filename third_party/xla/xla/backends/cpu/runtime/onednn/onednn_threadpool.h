@@ -32,7 +32,13 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static tsl::AsyncValueRef<tsl::Chain> OkDoneEventSingleton() {
+#ifdef ENABLE_ONEDNN_ASYNC
+inline constexpr bool kEnableOnednnAsync = true;
+#else
+inline constexpr bool kEnableOnednnAsync = false;
+#endif
+
+inline tsl::AsyncValueRef<tsl::Chain> OkDoneEventSingleton() {
   static tsl::AsyncValueOwningRef<tsl::Chain>* singleton = [] {
     auto* storage = new tsl::internal::AsyncValueStorage<tsl::Chain>();
     return new tsl::AsyncValueOwningRef<tsl::Chain>(
@@ -66,27 +72,27 @@ class OneDnnThreadPool final
 
   uint64_t get_flags() const final { return is_async_ ? ASYNCHRONOUS : 0; }
 
+  // wait() is not part of the threadpool_iface interface but is implemented
+  // here so callers of the concrete OneDnnThreadPool class can synchronize.
+  void wait() {
 #ifdef ENABLE_ONEDNN_ASYNC
-  // The wait() method only exists with oneDNN's experimental support for
-  // asynchronous execution determined by the ENABLE_ONEDNN_ASYNC.
-  void wait() override {
     if (is_async_) {
       // While performing asynchronous execution, wait() method is needed to
       // notify the user that the output is ready. oneDNN will not call wait()
       // inside the library to avoid deadlock.
       tsl::BlockUntilReady(done_event_);
     }
-  }
 #endif  // ENABLE_ONEDNN_ASYNC
+  }
 
   void parallel_for(int n, const std::function<void(int, int)>& fn) final {
     if (is_async_) {
       // If we are using oneDNN with async support, we need to schedule the
       // parallel loop using the done_event_. This allows us to return
       // immediately and not block the caller thread.
-      auto parallelize = [this, n, fn](tsl::Chain) {
+      auto parallelize = [thread_pool = this->thread_pool_, n, fn](tsl::Chain) {
         return Worker::Parallelize(
-            thread_pool_, thread_pool_->NumThreads(), n,
+            thread_pool, thread_pool->NumThreads(), n,
             [fn, n](size_t i) { fn(static_cast<int>(i), n); });
       };
 

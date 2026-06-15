@@ -105,9 +105,7 @@ TEST(OneDnnThreadPoolTest, Binary) {
   // Execute compiled oneDNN graph on the CPU stream.
   compiled_partitions[0].execute(stream, {src}, {dst});
 
-#ifdef ENABLE_ONEDNN_ASYNC
-  stream.wait();
-#endif
+  threadpool.wait();
 
   for (int i = 0; i < num_elements; ++i) {
     EXPECT_NEAR(dst_data[i], std::exp(1.0f), 1e-5);
