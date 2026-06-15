@@ -461,20 +461,31 @@ struct SumOp {
   void operator()(const T& data, T& output) { output += data; }
 };
 
+// PropagateNumbers prefers the numeric operand and returns NaN only when both
+// operands are NaN, so the reduction is independent of input order. This
+// matches the GPU kernels, which use CUDA fminf/fmaxf via GpuAtomicMin/Max.
 template <typename T>
 struct MaxOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
-    output = data.cwiseMax(output);
+    Eigen::internal::scalar_max_op<T, T, Eigen::PropagateNumbers> op;
+    output = data.binaryExpr(output, op);
   }
-  void operator()(const T& data, T& output) { output = std::max(data, output); }
+  void operator()(const T& data, T& output) {
+    Eigen::internal::scalar_max_op<T, T, Eigen::PropagateNumbers> op;
+    output = op(data, output);
+  }
 };
 
 template <typename T>
 struct MinOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
-    output = data.cwiseMin(output);
+    Eigen::internal::scalar_min_op<T, T, Eigen::PropagateNumbers> op;
+    output = data.binaryExpr(output, op);
   }
-  void operator()(const T& data, T& output) { output = std::min(data, output); }
+  void operator()(const T& data, T& output) {
+    Eigen::internal::scalar_min_op<T, T, Eigen::PropagateNumbers> op;
+    output = op(data, output);
+  }
 };
 
 template <typename T>
