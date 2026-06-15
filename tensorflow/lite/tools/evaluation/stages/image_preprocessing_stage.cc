@@ -16,21 +16,26 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <ios>
 #include <iterator>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
 #include "jpeglib.h"  // from @libjpeg_turbo
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/pad.h"
 #include "tensorflow/lite/kernels/internal/reference/resize_bilinear.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
@@ -46,7 +51,7 @@ namespace evaluation {
 namespace {
 
 // We assume 3-channel RGB images.
-const int kNumChannels = 3;
+constexpr int kNumChannels = 3;
 
 // Returns the offset for the element in the raw image array based on the image
 // height/weight & coordinates of a pixel (h, w, c).
@@ -58,31 +63,46 @@ inline int ImageArrayOffset(int height, int width, int h, int w, int c) {
 struct ImageData {
   uint32_t width;
   uint32_t height;
-  std::unique_ptr<std::vector<float>> data;
+  std::vector<float> data;
 
   // GetData performs no checks.
-  float GetData(int h, int w, int c) {
-    return data->at(ImageArrayOffset(height, width, h, w, c));
+  float GetData(int h, int w, int c) const {
+    return data[ImageArrayOffset(height, width, h, w, c)];
   }
 };
 
 // Loads the raw image.
-inline void LoadImageRaw(std::string* filename, ImageData* image_data) {
-  std::ifstream stream(filename->c_str(), std::ios::in | std::ios::binary);
+inline TfLiteStatus LoadImageRaw(absl::string_view filename,
+                                 ImageData* image_data) {
+  std::ifstream stream(std::string(filename).c_str(),
+                       std::ios::in | std::ios::binary);
+  if (!stream.is_open()) {
+    ABSL_LOG(ERROR) << "Failed to open file: " << filename;
+    return kTfLiteError;
+  }
   std::vector<uint8_t> raw_data((std::istreambuf_iterator<char>(stream)),
                                 std::istreambuf_iterator<char>());
-  std::vector<float>* orig_image = new std::vector<float>();
-  orig_image->reserve(raw_data.size());
-  for (int i = 0; i < raw_data.size(); ++i) {
-    orig_image->push_back(static_cast<float>(raw_data[i]));
+  if (raw_data.size() % kNumChannels != 0) {
+    ABSL_LOG(ERROR) << "Raw image size is not a multiple of " << kNumChannels;
+    return kTfLiteError;
   }
-  image_data->data.reset(orig_image);
+  image_data->data.clear();
+  image_data->data.reserve(raw_data.size());
+  for (uint8_t val : raw_data) {
+    image_data->data.push_back(static_cast<float>(val));
+  }
+  return kTfLiteOk;
 }
 
 // Loads the jpeg image.
-inline void LoadImageJpeg(std::string* filename, ImageData* image_data) {
+inline TfLiteStatus LoadImageJpeg(absl::string_view filename,
+                                  ImageData* image_data) {
   // Reads image.
-  std::ifstream t(*filename);
+  std::ifstream t(std::string(filename).c_str());
+  if (!t.is_open()) {
+    ABSL_LOG(ERROR) << "Failed to open file: " << filename;
+    return kTfLiteError;
+  }
   std::string image_str((std::istreambuf_iterator<char>(t)),
                         std::istreambuf_iterator<char>());
   const int fsize = image_str.size();
@@ -99,21 +119,26 @@ inline void LoadImageJpeg(std::string* filename, ImageData* image_data) {
   original_image.reset(Uncompress(temp, fsize, flags, &original_width,
                                   &original_height, &original_channels,
                                   nullptr));
+  if (!original_image) {
+    ABSL_LOG(ERROR) << "Failed to decompress JPEG image: " << filename;
+    return kTfLiteError;
+  }
   // Copies the image data.
   image_data->width = original_width;
   image_data->height = original_height;
   int original_size = original_height * original_width * original_channels;
-  std::vector<float>* float_image = new std::vector<float>();
-  float_image->reserve(original_size);
+  image_data->data.clear();
+  image_data->data.reserve(original_size);
   for (int i = 0; i < original_size; ++i) {
-    float_image->push_back(static_cast<float>(original_image[i]));
+    image_data->data.push_back(static_cast<float>(original_image[i]));
   }
-  image_data->data.reset(float_image);
+  return kTfLiteOk;
 }
 
 // Central-cropping.
 inline void Crop(ImageData* image_data, const CroppingParams& crop_params) {
-  int crop_height, crop_width;
+  int crop_height = 0;
+  int crop_width = 0;
   int input_width = image_data->width;
   int input_height = image_data->height;
   if (crop_params.has_cropping_fraction()) {
@@ -131,18 +156,18 @@ inline void Crop(ImageData* image_data, const CroppingParams& crop_params) {
   }
   int start_w = static_cast<int>(round((input_width - crop_width) / 2.0));
   int start_h = static_cast<int>(round((input_height - crop_height) / 2.0));
-  std::vector<float>* cropped_image = new std::vector<float>();
-  cropped_image->reserve(crop_height * crop_width * kNumChannels);
+  std::vector<float> cropped_image;
+  cropped_image.reserve(crop_height * crop_width * kNumChannels);
   for (int in_h = start_h; in_h < start_h + crop_height; ++in_h) {
     for (int in_w = start_w; in_w < start_w + crop_width; ++in_w) {
       for (int c = 0; c < kNumChannels; ++c) {
-        cropped_image->push_back(image_data->GetData(in_h, in_w, c));
+        cropped_image.push_back(image_data->GetData(in_h, in_w, c));
       }
     }
   }
   image_data->height = crop_height;
   image_data->width = crop_width;
-  image_data->data.reset(cropped_image);
+  image_data->data = std::move(cropped_image);
 }
 
 // Performs billinear interpolation for 3-channel RGB image.
@@ -157,7 +182,8 @@ inline void ResizeBilinear(ImageData* image_data,
                                     static_cast<int>(image_data->width),
                                     kNumChannels});
   // Calculates output size.
-  int output_height, output_width;
+  int output_height = 0;
+  int output_width = 0;
   if (params.aspect_preserving()) {
     float ratio_w =
         params.target_size().width() / static_cast<float>(image_data->width);
@@ -179,13 +205,13 @@ inline void ResizeBilinear(ImageData* image_data,
   tflite::RuntimeShape output_shape(
       {1, output_height, output_width, kNumChannels});
   int output_size = output_width * output_height * kNumChannels;
-  std::vector<float>* output_data = new std::vector<float>(output_size, 0);
+  std::vector<float> output_data(output_size, 0);
   tflite::reference_ops::ResizeBilinear(
-      resize_params, input_shape, image_data->data->data(), output_size_dims,
-      output_size_data.data(), output_shape, output_data->data());
+      resize_params, input_shape, image_data->data.data(), output_size_dims,
+      output_size_data.data(), output_shape, output_data.data());
   image_data->height = output_height;
   image_data->width = output_width;
-  image_data->data.reset(output_data);
+  image_data->data = std::move(output_data);
 }
 
 // Pads the image to a pre-defined size.
@@ -193,15 +219,13 @@ inline void Pad(ImageData* image_data, const PaddingParams& params) {
   int output_width = params.target_size().width();
   int output_height = params.target_size().height();
   int pad_value = params.padding_value();
-  tflite::PadParams pad_params;
+  tflite::PadParams pad_params{};
   pad_params.left_padding_count = 4;
-  std::uninitialized_fill_n(pad_params.left_padding, 4, 0);
   pad_params.left_padding[1] =
       static_cast<int>(round((output_height - image_data->height) / 2.0));
   pad_params.left_padding[2] =
       static_cast<int>(round((output_width - image_data->width) / 2.0));
   pad_params.right_padding_count = 4;
-  std::uninitialized_fill_n(pad_params.right_padding, 4, 0);
   pad_params.right_padding[1] =
       output_height - pad_params.left_padding[1] - image_data->height;
   pad_params.right_padding[2] =
@@ -212,29 +236,33 @@ inline void Pad(ImageData* image_data, const PaddingParams& params) {
   tflite::RuntimeShape output_shape(
       {1, output_height, output_width, kNumChannels});
   int output_size = output_width * output_height * kNumChannels;
-  std::vector<float>* output_data = new std::vector<float>(output_size, 0);
-  tflite::reference_ops::Pad(pad_params, input_shape, image_data->data->data(),
-                             &pad_value, output_shape, output_data->data());
+  std::vector<float> output_data(output_size, 0);
+  tflite::reference_ops::Pad(pad_params, input_shape, image_data->data.data(),
+                             &pad_value, output_shape, output_data.data());
   image_data->height = output_height;
   image_data->width = output_width;
-  image_data->data.reset(output_data);
+  image_data->data = std::move(output_data);
 }
 
 // Normalizes the image data to a specific range with mean and scale.
-inline void Normalize(ImageData* image_data,
-                      const NormalizationParams& params) {
+inline TfLiteStatus Normalize(ImageData* image_data,
+                              const NormalizationParams& params) {
+  if (image_data->data.size() % kNumChannels != 0) {
+    ABSL_LOG(ERROR) << "Image data size is not a multiple of " << kNumChannels;
+    return kTfLiteError;
+  }
   float scale = params.scale();
-  float* data_end = image_data->data->data() + image_data->data->size();
+  float* data_end = image_data->data.data() + image_data->data.size();
   if (params.has_channelwise_mean()) {
     float mean = params.channelwise_mean();
-    for (float* data = image_data->data->data(); data < data_end; ++data) {
+    for (float* data = image_data->data.data(); data < data_end; ++data) {
       *data = (*data - mean) * scale;
     }
   } else {
     float r_mean = params.means().r_mean();
     float g_mean = params.means().g_mean();
     float b_mean = params.means().b_mean();
-    for (float* data = image_data->data->data(); data < data_end;) {
+    for (float* data = image_data->data.data(); data < data_end;) {
       *data = (*data - r_mean) * scale;
       ++data;
       *data = (*data - g_mean) * scale;
@@ -243,6 +271,7 @@ inline void Normalize(ImageData* image_data,
       ++data;
     }
   }
+  return kTfLiteOk;
 }
 }  // namespace
 
@@ -254,14 +283,42 @@ TfLiteStatus ImagePreprocessingStage::Init() {
   }
   const ImagePreprocessingParams& params =
       config_.specification().image_preprocessing_params();
-  // Validates the cropping fraction.
   for (const ImagePreprocessingStepParams& param : params.steps()) {
     if (param.has_cropping_params()) {
       const CroppingParams& crop_params = param.cropping_params();
+      if (!crop_params.has_cropping_fraction() &&
+          !crop_params.has_target_size()) {
+        ABSL_LOG(ERROR)
+            << "Cropping params must have either cropping_fraction or "
+               "target_size";
+        return kTfLiteError;
+      }
       if (crop_params.has_cropping_fraction() &&
           (crop_params.cropping_fraction() <= 0 ||
            crop_params.cropping_fraction() > 1.0)) {
         LOG(ERROR) << "Invalid cropping fraction";
+        return kTfLiteError;
+      }
+      if (crop_params.has_target_size() &&
+          (crop_params.target_size().width() <= 0 ||
+           crop_params.target_size().height() <= 0)) {
+        ABSL_LOG(ERROR) << "Invalid cropping target size";
+        return kTfLiteError;
+      }
+    } else if (param.has_resizing_params()) {
+      const ResizingParams& resizing_params = param.resizing_params();
+      if (!resizing_params.has_target_size() ||
+          resizing_params.target_size().width() <= 0 ||
+          resizing_params.target_size().height() <= 0) {
+        ABSL_LOG(ERROR) << "Invalid resizing target size";
+        return kTfLiteError;
+      }
+    } else if (param.has_padding_params()) {
+      const PaddingParams& padding_params = param.padding_params();
+      if (!padding_params.has_target_size() ||
+          padding_params.target_size().width() <= 0 ||
+          padding_params.target_size().height() <= 0) {
+        ABSL_LOG(ERROR) << "Invalid padding target size";
         return kTfLiteError;
       }
     }
@@ -281,13 +338,21 @@ TfLiteStatus ImagePreprocessingStage::Run() {
       config_.specification().image_preprocessing_params();
   int64_t start_us = profiling::time::NowMicros();
   // Loads the image from file.
-  string image_ext = image_path_->substr(image_path_->find_last_of("."));
+  std::string image_ext;
+  size_t dot_pos = image_path_->find_last_of('.');
+  if (dot_pos != std::string::npos) {
+    image_ext = image_path_->substr(dot_pos);
+  }
   absl::AsciiStrToLower(&image_ext);
   bool is_raw_image = (image_ext == ".rgb8");
-  if (image_ext == ".rgb8") {
-    LoadImageRaw(image_path_, &image_data);
+  if (is_raw_image) {
+    if (LoadImageRaw(*image_path_, &image_data) != kTfLiteOk) {
+      return kTfLiteError;
+    }
   } else if (image_ext == ".jpg" || image_ext == ".jpeg") {
-    LoadImageJpeg(image_path_, &image_data);
+    if (LoadImageJpeg(*image_path_, &image_data) != kTfLiteOk) {
+      return kTfLiteError;
+    }
   } else {
     LOG(ERROR) << "Extension " << image_ext << " is not supported";
     return kTfLiteError;
@@ -316,28 +381,28 @@ TfLiteStatus ImagePreprocessingStage::Run() {
       }
       Pad(&image_data, param.padding_params());
     } else if (param.has_normalization_params()) {
-      Normalize(&image_data, param.normalization_params());
+      TF_LITE_ENSURE_STATUS(
+          Normalize(&image_data, param.normalization_params()));
     }
   }
 
   // Converts data to output type.
   if (output_type_ == kTfLiteUInt8) {
     uint8_preprocessed_image_.clear();
-    uint8_preprocessed_image_.resize(image_data.data->size() +
+    uint8_preprocessed_image_.resize(image_data.data.size() +
                                      /*XNN_EXTRA_BYTES=*/16);
-    for (int i = 0; i < image_data.data->size(); ++i) {
-      uint8_preprocessed_image_[i] =
-          static_cast<uint8_t>(image_data.data->at(i));
+    for (size_t i = 0; i < image_data.data.size(); ++i) {
+      uint8_preprocessed_image_[i] = static_cast<uint8_t>(image_data.data[i]);
     }
   } else if (output_type_ == kTfLiteInt8) {
     int8_preprocessed_image_.clear();
-    int8_preprocessed_image_.resize(image_data.data->size() +
+    int8_preprocessed_image_.resize(image_data.data.size() +
                                     /*XNN_EXTRA_BYTES=*/16);
-    for (int i = 0; i < image_data.data->size(); ++i) {
-      int8_preprocessed_image_[i] = static_cast<int8_t>(image_data.data->at(i));
+    for (size_t i = 0; i < image_data.data.size(); ++i) {
+      int8_preprocessed_image_[i] = static_cast<int8_t>(image_data.data[i]);
     }
   } else if (output_type_ == kTfLiteFloat32) {
-    float_preprocessed_image_ = *image_data.data;
+    float_preprocessed_image_ = std::move(image_data.data);
   }
 
   latency_stats_.UpdateStat(profiling::time::NowMicros() - start_us);
