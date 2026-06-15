@@ -1329,14 +1329,20 @@ GetStreamExecutorGpuDeviceAllocator(
     const std::map<int, std::unique_ptr<LocalDeviceState>>&
         addressable_devices) {
   std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
+  const DebugOptions& debug_options = xla::GetDebugOptionsFromFlags();
   GpuAllocatorConfig::Kind effective_kind = allocator_config.kind;
-  if (GetDebugOptionsFromFlags().xla_gpu_command_buffer_update_mode() !=
+  if (debug_options.xla_gpu_command_buffer_update_mode() !=
           DebugOptions::ALWAYS_UPDATE &&
       effective_kind != GpuAllocatorConfig::Kind::kVmm) {
     LOG(WARNING) << "xla_gpu_command_buffer_update_mode requires the "
                     "VMM allocator. Overriding allocator kind to kVmm.";
     effective_kind = GpuAllocatorConfig::Kind::kVmm;
   }
+
+  // Set when a single preallocated BFC allocator serves both default and
+  // collective memory via spatial partitioning; suppresses the separate
+  // collective allocator below.
+  bool shared_collective_pool = false;
   switch (effective_kind) {
     case GpuAllocatorConfig::Kind::kCudaAsync: {
       for (const auto& ordinal_and_device : addressable_devices) {
@@ -1356,6 +1362,13 @@ GetStreamExecutorGpuDeviceAllocator(
     case GpuAllocatorConfig::Kind::kDefault:
     case GpuAllocatorConfig::Kind::kBFC: {
       LOG(INFO) << "Using BFC allocator.";
+      // With the spatial-partitioning flag enabled, preallocation lets one BFC
+      // allocator over a fixed address range serve both default (lower end) and
+      // collective (upper end) memory, so no separate collective allocator is
+      // created. Otherwise, use the separate collective allocator below.
+      shared_collective_pool =
+          allocator_config.preallocate &&
+          debug_options.xla_gpu_enable_allocator_spatial_partitioning();
       for (const auto& ordinal_and_device : addressable_devices) {
         ASSIGN_OR_RETURN(
             auto bfc_allocator,
@@ -1364,11 +1377,29 @@ GetStreamExecutorGpuDeviceAllocator(
                                allocator_config.preallocate,
                                allocator_config.gpu_system_memory_size,
                                allocator_config.sub_allocator_alloc_visitors,
-                               allocator_config.sub_allocator_free_visitors));
+                               allocator_config.sub_allocator_free_visitors,
+                               /*enable_spatial_partitioning=*/
+                               shared_collective_pool));
         allocators.push_back(
-            {std::move(bfc_allocator),
-             ordinal_and_device.second->compute_stream(),
+            {bfc_allocator, ordinal_and_device.second->compute_stream(),
              /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kDefault});
+        if (shared_collective_pool) {
+          size_t collective_memory_alignment =
+              tsl::Allocator::kAllocatorAlignment;
+          if (auto* collectives =
+                  gpu::GpuCollectives::Default(platform->Name())) {
+            collective_memory_alignment =
+                collectives->SymmetricMemoryAlignment();
+          }
+          allocators.push_back(
+              {std::move(bfc_allocator),
+               ordinal_and_device.second->compute_stream(),
+               /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kCollective,
+               /*device_ordinal=*/std::nullopt,
+               /*platform=*/nullptr,
+               /*min_alignment=*/collective_memory_alignment,
+               /*allocation_end=*/tsl::AllocationEnd::kUpper});
+        }
       }
       break;
     }
@@ -1402,18 +1433,22 @@ GetStreamExecutorGpuDeviceAllocator(
     }
   }
 
-  // Add any additional allocators for alternate memory spaces.
-  for (const auto& ordinal_and_device : addressable_devices) {
-    ASSIGN_OR_RETURN(
-        auto collective_bfc_allocator,
-        CreateCollectiveBFCAllocator(
-            ordinal_and_device.second->executor(),
-            /*memory_fraction=*/1.0 - allocator_config.memory_fraction,
-            allocator_config.collective_memory_size));
-    allocators.push_back(
-        {std::move(collective_bfc_allocator),
-         ordinal_and_device.second->compute_stream(),
-         /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kCollective});
+  // Add a separate collective allocator unless the default BFC allocator
+  // already serves collective memory from its shared, spatially partitioned
+  // pool.
+  if (!shared_collective_pool) {
+    for (const auto& ordinal_and_device : addressable_devices) {
+      ASSIGN_OR_RETURN(
+          auto collective_bfc_allocator,
+          CreateCollectiveBFCAllocator(
+              ordinal_and_device.second->executor(),
+              /*memory_fraction=*/1.0 - allocator_config.memory_fraction,
+              allocator_config.collective_memory_size));
+      allocators.push_back(
+          {std::move(collective_bfc_allocator),
+           ordinal_and_device.second->compute_stream(),
+           /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kCollective});
+    }
   }
 
   for (const auto& ordinal_and_device : addressable_devices) {
@@ -1426,7 +1461,6 @@ GetStreamExecutorGpuDeviceAllocator(
   }
 
 #if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
-  const auto& debug_options = xla::GetDebugOptionsFromFlags();
   if (debug_options.xla_gpu_temp_buffer_use_separate_color()) {
     // Add memory allocator to allocate memory buffers with persistent temp
     // memory space color.
