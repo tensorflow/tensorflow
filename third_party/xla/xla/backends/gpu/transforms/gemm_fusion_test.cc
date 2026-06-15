@@ -381,6 +381,30 @@ ENTRY e {
               GmockMatch(m::Pad(m::Bitcast(m::Fusion()), m::Constant())));
 }
 
+TEST_P(GemmFusionTestV2, PartiallySunkBitcastIsNotFusedAtRoot) {
+  // The bitcast cannot be sunk below the pad, but it and the pad are
+  // included in the search space. When it cannot tile the pad and cuts off the
+  // fusion between the bitcast & the pad, we need to make sure the bitcast
+  // is on the outside of the fusion to give the best tiling options.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[16,8] parameter(0)
+  p1 = s8[8,7] parameter(1)
+  c1 = f32[8,7] convert(p1)
+  d = f32[16,7] dot(p0, c1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  b1 = f32[112] bitcast(d)
+  n1 = f32[112] negate(b1)
+  zero = f32[] constant(0)
+  ROOT p2 = f32[128] pad(n1, zero), padding=0_16
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Pad(m::Bitcast(m::Fusion()), m::Constant())));
+}
+
 TEST_P(GemmFusionTestV2, BitcastOperandOfUserOfDotIsHoisted) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m

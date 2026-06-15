@@ -1054,6 +1054,7 @@ absl::StatusOr<bool> FusionSearchSpace::SinkBitcast(HloInstruction* instr) {
   if (auto it = fused_to_original_.find(user); it != fused_to_original_.end()) {
     HloInstruction* original_op = it->second;
     fused_to_original_[new_instr] = original_op;
+    fused_to_original_[new_bitcast] = original_op;
     original_to_fused_[original_op] = new_instr;
   }
   RETURN_IF_ERROR(user->ReplaceAllUsesWith(new_bitcast));
