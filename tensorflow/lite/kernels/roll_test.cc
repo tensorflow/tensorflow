@@ -115,6 +115,17 @@ TYPED_TEST(RollOpTest, Roll1D) {
               ElementsAreArray({7, 8, 9, 0, 1, 2, 3, 4, 5, 6}));
 }
 
+TYPED_TEST(RollOpTest, AxisOutOfRangeReturnsError) {
+  // A malformed model can supply an axis outside [0, rank(input)); the kernel
+  // must reject it rather than indexing `shift_map` out of bounds.
+  BaseRollOpModel m(
+      /*input=*/{GetTensorType<TypeParam>(), {10}, 0, 31.875},
+      /*shift=*/{3}, /*axis=*/{5},
+      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 31.875});
+  m.SetInput<TypeParam>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
 TYPED_TEST(RollOpTest, Roll3D) {
   BaseRollOpModel m(
       /*input=*/{GetTensorType<TypeParam>(), {2, 4, 4}, 0, 31.875},

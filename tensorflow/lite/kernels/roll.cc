@@ -209,6 +209,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   for (int i = 0; i < axis_data.size(); ++i) {
     int32_t axis_i = axis_data[i];
     if (axis_i < 0) axis_i += input_rank;
+    TF_LITE_ENSURE(context, axis_i >= 0 && axis_i < input_rank);
     shift_map[axis_i] += shift_data[i];
   }
 
