@@ -430,8 +430,7 @@ def stateless_random_binomial(
   between CPU and GPU), but may change between versions of TensorFlow or on
   non-CPU/GPU hardware. This consistency does not extend to XLA: running under
   `tf.function(jit_compile=True)` may produce different values from eager or
-  (non-XLA) graph execution for the same seed, even when `alg` is set to a
-  concrete algorithm.
+  (non-XLA) graph execution for the same seed.
 
   Example:
 
@@ -504,8 +503,7 @@ def stateless_random_gamma(
   but may change between versions of TensorFlow or on non-CPU/GPU hardware. This
   consistency does not extend to XLA: running under
   `tf.function(jit_compile=True)` may produce different values from eager or
-  (non-XLA) graph execution for the same seed, even when `alg` is set to a
-  concrete algorithm.
+  (non-XLA) graph execution for the same seed.
 
   A slight difference exists in the interpretation of the `shape` parameter
   between `stateless_gamma` and `gamma`: in `gamma`, the `shape` is always
@@ -607,8 +605,7 @@ def stateless_random_poisson(shape, seed, lam, dtype=dtypes.int32, name=None):
   consistent across multiple runs on the same hardware, but may change between
   versions of TensorFlow or on non-CPU/GPU hardware. This consistency does not
   extend to XLA: running under `tf.function(jit_compile=True)` may produce
-  different values from eager or (non-XLA) graph execution for the same seed,
-  even when `alg` is set to a concrete algorithm.
+  different values from eager or (non-XLA) graph execution for the same seed.
 
   A slight difference exists in the interpretation of the `shape` parameter
   between `stateless_poisson` and `poisson`: in `poisson`, the `shape` is always
@@ -784,8 +781,7 @@ def stateless_multinomial(
   CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
   hardware. This consistency does not extend to XLA: running under
   `tf.function(jit_compile=True)` may produce different values from eager or
-  (non-XLA) graph execution for the same seed, even when `alg` is set to a
-  concrete algorithm.
+  (non-XLA) graph execution for the same seed.
 
   Example:
 
@@ -828,8 +824,7 @@ def stateless_categorical(
   CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
   hardware. This consistency does not extend to XLA: running under
   `tf.function(jit_compile=True)` may produce different values from eager or
-  (non-XLA) graph execution for the same seed, even when `alg` is set to a
-  concrete algorithm.
+  (non-XLA) graph execution for the same seed.
 
 
   Example:
