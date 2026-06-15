@@ -48,7 +48,7 @@ limitations under the License.
 namespace xla::gpu {
 
 struct CompileModuleResults {
-  std::unique_ptr<LlvmKernelSource> llvm_module_constants;
+  std::vector<uint8_t> constants_binary;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::unique_ptr<ExecutionStreamAssignment> execution_stream_assignment;
   std::vector<BufferAllocation> allocations;

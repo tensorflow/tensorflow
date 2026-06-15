@@ -404,8 +404,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::make_unique<ThunkExecutor>(std::move(seq_thunk->thunks()));
 
   return std::unique_ptr<GpuExecutable>(new GpuExecutable(
-      std::move(params.debug_module), std::move(params.asm_text),
-      std::move(params.binary), std::move(params.dnn_compiled_graphs),
+      std::move(params.debug_module), std::move(params.binary),
+      std::move(params.dnn_compiled_graphs),
       std::move(params.device_description), std::move(executor),
       std::move(params.module_name), std::move(params.program_shape),
       std::move(params.mlir_allocations), std::move(params.buffer_assignment),
@@ -421,9 +421,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    std::unique_ptr<HloModule> debug_module, std::string asm_text,
-    std::vector<uint8_t> binary, BinaryMap dnn_compiled_graphs,
-    se::DeviceDescription device_description,
+    std::unique_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
+    BinaryMap dnn_compiled_graphs, se::DeviceDescription device_description,
     std::unique_ptr<ThunkExecutor> executable, std::string module_name,
     ProgramShape program_shape,
     std::optional<std::vector<BufferAllocation>> mlir_allocations,
@@ -438,7 +437,6 @@ GpuExecutable::GpuExecutable(
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
     std::optional<BufferAssignmentProto> buffer_assignment_proto)
     : Executable(std::move(debug_module)),
-      text_(std::move(asm_text)),
       binary_(std::move(binary)),
       dnn_compiled_graphs_(std::move(dnn_compiled_graphs)),
       gpu_version_(device_description.gpu_compute_capability()),
@@ -1035,7 +1033,6 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   if (!binary().empty()) {
     module_spec.AddCudaCubinInMemory(binary());
   }
-  module_spec.AddCudaPtxInMemory(text().c_str());
 
   auto globals = std::make_unique<BufferAllocToDeviceMemoryMap>();
   se::ModuleHandle module_handle;
@@ -1043,7 +1040,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   // It's okay if we skip loading in this case; if the module isn't loaded, all
   // symbol lookups will fail, just as they should for an empty module.
   if (!(executor->GetPlatform()->id() == se::cuda::kCudaPlatformId &&
-        binary().empty() && text().empty())) {
+        binary().empty())) {
     ASSIGN_OR_RETURN(module_handle, executor->LoadModule(module_spec));
   }
 
@@ -1773,7 +1770,7 @@ absl::Status GpuExecutable::ExecuteThunks(
   ScopedModuleAnnotations module_annotations(&module_annotations_);
 
   ModuleIdentifier unique_id = has_module() ? module().unique_id() : -1;
-  Thunk::ExecutableSource executable_source = {text_, binary_,
+  Thunk::ExecutableSource executable_source = {"", binary_,
                                                dnn_compiled_graphs_};
 
   se::StreamExecutor* executor = run_options->stream()->parent();
@@ -1813,7 +1810,7 @@ absl::Status GpuExecutable::ExecuteThunks(
 int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
   // Non-empty PTX but empty cubin: compilation must have failed, return
   // "unknown".
-  if (binary().empty() && !text_.empty()) {
+  if (binary().empty()) {
     return -1;
   }
   int64_t size = binary().size();
@@ -1956,7 +1953,6 @@ GpuExecutable::ConstantInfo::FromProto(
 absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
   GpuExecutableProto proto;
   proto.set_binary(binary_.data(), binary_.size());
-  proto.set_asm_text(text_);
   proto.mutable_dnn_compiled_graphs()->insert(dnn_compiled_graphs_.cbegin(),
                                               dnn_compiled_graphs_.cend());
 
@@ -2026,7 +2022,6 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
   params.debug_options = std::move(debug_options);
   params.enable_debug_info_manager =
       params.debug_options.xla_gpu_executable_embed_debug_info();
-  params.asm_text = proto.asm_text();
   const std::string& binary = proto.binary();
   params.binary.assign(binary.begin(), binary.end());
   params.buffer_assignment = nullptr;

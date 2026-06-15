@@ -498,7 +498,6 @@ TEST_F(GpuExecutableTest, ProtoConversion) {
       /*shmem_bytes=*/0, se::gpu::TmaMetadata()));
 
   GpuExecutable::Params params;
-  params.asm_text = "test_asm_text";
   params.binary = {1, 2, 3};
   params.dnn_compiled_graphs = {{"test_dnn_compiled_graph", "test_json"}};
 
@@ -521,7 +520,6 @@ TEST_F(GpuExecutableTest, ProtoConversion) {
       std::unique_ptr<GpuExecutable> reconstructed_executable,
       GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
                                debug_options));
-  EXPECT_THAT(reconstructed_executable->text(), "test_asm_text");
   EXPECT_THAT(reconstructed_executable->binary(), ElementsAre(1, 2, 3));
   EXPECT_THAT(
       reconstructed_executable->dnn_compiled_graphs(),

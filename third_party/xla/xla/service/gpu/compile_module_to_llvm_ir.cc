@@ -51,7 +51,9 @@ limitations under the License.
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/codegen/llvm_kernel_source.h"
+#include "xla/future.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -76,8 +78,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -255,12 +255,14 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-  ASSIGN_OR_RETURN(auto sequential_thunk,
-                   thunk_emitter.EmitHloEntryComputation(hlo_module));
-  results.executable = std::move(sequential_thunk);
+  xla::Future<std::unique_ptr<SequentialThunk>> future_sequential_thunk =
+      thunk_emitter.EmitHloEntryComputation(hlo_module);
 
-  results.llvm_module_constants = std::make_unique<LlvmKernelSource>(
-      thunk_emitter.ConsumeConstantsModule());
+  ASSIGN_OR_RETURN(
+      results.constants_binary,
+      compiler->CompileToPtx(thunk_emitter.ConsumeConstantsModule()).Await());
+  ASSIGN_OR_RETURN(results.executable,
+                   std::move(future_sequential_thunk).Await());
 
   // This won't record values for calls that error out (because if they error
   // out we have no way of telling how far through the process we got).

@@ -63,7 +63,7 @@ class ThunkEmitter {
   ThunkEmitter(const ThunkEmitter&) = delete;
   ThunkEmitter& operator=(const ThunkEmitter&) = delete;
 
-  absl::StatusOr<std::unique_ptr<SequentialThunk>> EmitHloEntryComputation(
+  xla::Future<std::unique_ptr<SequentialThunk>> EmitHloEntryComputation(
       const HloModule* module);
 
   llvm::Module* constants_module() { return constants_module_.get(); }
