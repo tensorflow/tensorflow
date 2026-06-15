@@ -138,7 +138,15 @@ BasicBundle::BasicBundle(Client* client, std::vector<ValueRef> values)
       values_(std::move(values)),
       user_context_(UserContextScope::current()) {}
 
-BasicBundle::~BasicBundle() { Delete(); }
+BasicBundle::~BasicBundle() {
+  std::vector<ValueRef> to_delete;
+  for (const auto& value : values_) {
+    if (value->IsUnique()) {
+      to_delete.push_back(value);
+    }
+  }
+  client_->DeleteValues(absl::MakeSpan(to_delete));
+}
 
 tsl::Future<> BasicBundle::GetReadyFuture() const {
   if (values_.empty()) {
