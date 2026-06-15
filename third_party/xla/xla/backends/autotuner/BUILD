@@ -108,6 +108,7 @@ cc_library(
         "//xla/service/gpu/autotuning:autotuner_status_key",
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/concurrency:future",
+        "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
