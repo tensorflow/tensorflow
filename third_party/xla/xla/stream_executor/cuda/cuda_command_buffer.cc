@@ -720,7 +720,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateEmptyNode(
 }
 
 absl::Status CudaCommandBuffer::Trace(
-    Stream* stream, absl::AnyInvocable<absl::Status()> function) {
+    Stream* stream, absl::AnyInvocable<absl::Status(Stream* stream)> function) {
 #if CUDA_VERSION < 12030
   return absl::UnimplementedError(
       "StreamBeginCaptureToGraph is not implemented for CUDA below version "
@@ -753,8 +753,9 @@ absl::Status CudaCommandBuffer::Trace(
             // The default mode CU_STREAM_CAPTURE_MODE_GLOBAL, will capture at
             // at a global level. That would stall everything at a driver level.
             CU_STREAM_CAPTURE_MODE_THREAD_LOCAL));
-    RETURN_IF_ERROR(function());
-    VLOG(5) << "End stream " << stream << " capture";
+    Stream* capture_stream = capture_handle.capturing_stream();
+    RETURN_IF_ERROR(function(capture_stream));
+    VLOG(5) << "End stream " << capture_stream << " capture";
     RETURN_IF_ERROR(capture_handle.EndCapture());
   }
   uint64_t end_nanos = tsl::Env::Default()->NowNanos();

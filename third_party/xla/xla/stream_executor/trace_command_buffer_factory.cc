@@ -59,8 +59,8 @@ TraceCommandBufferFactory::Create(
                    std::move(command_buffer_or));
 
   // Trace and finalize the command buffer.
-  auto trace_status =
-      command_buffer->Trace(stream, [&]() { return function(stream); });
+  absl::Status trace_status =
+      command_buffer->Trace(stream, std::move(function));
   if (!trace_status.ok()) {
     LOG(ERROR) << "Failed to trace command buffer: " << trace_status;
     return trace_status;

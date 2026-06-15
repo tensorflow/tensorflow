@@ -24,11 +24,11 @@ limitations under the License.
 #include <string>
 #include <variant>
 
+#include "absl/base/call_once.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
@@ -45,6 +45,13 @@ namespace stream_executor {
 namespace gpu {
 
 class HostCallbackRegistry;
+
+enum class CudaStreamType {
+  // Regular execution stream.
+  kDefault,
+  // Stream used for graph capture.
+  kCudaGraphCapture,
+};
 
 class CudaStream : public StreamCommon {
  public:
@@ -82,8 +89,12 @@ class CudaStream : public StreamCommon {
   }
 
   // Begins capturing the stream into the given graph.
-  // Returns a handle that can be used to end the capture.
-  // The handle must be destroyed before the stream.
+  // Returns a handle that contains the capturing stream and can be used to end
+  // the capture. The handle must be destroyed before the stream.
+  // Note that the capturing stream returned by this handle is not the same as
+  // the stream on which BeginCapture was called. This is to ensure that
+  // capturing happens on a dedicated stream that is not shared with other
+  // execution operations.
   absl::StatusOr<CaptureHandle> BeginCapture(
       CUgraph graph, const CUgraphNode* dependencies,
       const CUgraphEdgeData* dependency_data, size_t num_dependencies,
@@ -91,7 +102,8 @@ class CudaStream : public StreamCommon {
 
   static absl::StatusOr<std::unique_ptr<CudaStream>> Create(
       CudaExecutor* executor,
-      std::optional<std::variant<StreamPriority, int>> priority);
+      std::optional<std::variant<StreamPriority, int>> priority,
+      CudaStreamType type = CudaStreamType::kDefault);
 
   ~CudaStream() override;
 
@@ -116,6 +128,9 @@ class CudaStream : public StreamCommon {
     // Should be called manually to propagate errors.
     absl::Status EndCapture();
 
+    // Returns the stream that is being captured.
+    CudaStream* capturing_stream() const { return stream_; }
+
     // Forcibly ends the capture on destruction.
     ~CaptureHandle();
 
@@ -129,7 +144,7 @@ class CudaStream : public StreamCommon {
  private:
   CudaStream(CudaExecutor* executor, CudaEvent completed_event,
              std::optional<std::variant<StreamPriority, int>> priority,
-             CUstream stream_handle);
+             CUstream stream_handle, CudaStreamType type);
 
   absl::Status RecordCompletedEvent();
 
@@ -142,11 +157,11 @@ class CudaStream : public StreamCommon {
   StreamExecutor* executor_;
   CudaEvent completed_event_;
   CUstream stream_handle_;
-  // Some CUDA APIs such as cuStreamQuery cuStreamWaitEvent cuStreamSynchronize
-  // are not allowed during CUDA graph capture.
-  // To prevent such cases we maintain a capture state which is guarded by a
-  // mutex.
-  absl::Mutex capture_state_mutex_;
+  CudaStreamType type_;
+
+  absl::once_flag capture_stream_once_;
+  absl::StatusOr<std::unique_ptr<CudaStream>> capture_stream_{
+      absl::InternalError("Capture stream not initialized")};
 
   std::atomic<uint32_t> tsan_proxy_{false};
   std::unique_ptr<HostCallbackRegistry::RegistryHandle>

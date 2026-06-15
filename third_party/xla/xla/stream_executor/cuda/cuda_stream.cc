@@ -26,8 +26,8 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/base/call_once.h"
 #include "absl/base/casts.h"
-#include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
@@ -186,27 +185,37 @@ absl::Status SynchronizeStream(StreamExecutor* executor, CUstream stream) {
 }  // namespace
 
 /*static*/ absl::StatusOr<CudaStream::CaptureHandle>
-CudaStream::CaptureHandle::BeginCapture(
-    CudaStream* stream, CUgraph graph, const CUgraphNode* dependencies,
-    const CUgraphEdgeData* dependency_data, size_t num_dependencies,
-    CUstreamCaptureMode mode) ABSL_NO_THREAD_SAFETY_ANALYSIS {
-  ASSIGN_OR_RETURN(bool is_capturing,
-                   StreamIsCapturing(stream->stream_handle_));
-  if (is_capturing) {
-    return absl::FailedPreconditionError("Stream is already capturing");
+CudaStream::CaptureHandle::BeginCapture(CudaStream* stream, CUgraph graph,
+                                        const CUgraphNode* dependencies,
+                                        const CUgraphEdgeData* dependency_data,
+                                        size_t num_dependencies,
+                                        CUstreamCaptureMode mode) {
+  if (stream->type_ == CudaStreamType::kCudaGraphCapture) {
+    return absl::FailedPreconditionError(
+        "Cannot begin capture on a capture stream.");
   }
-  stream->capture_state_mutex_.lock();
-  absl::Status status = cuda::ToStatus(
-      cuStreamBeginCaptureToGraph(stream->stream_handle_, graph,
+
+  absl::call_once(stream->capture_stream_once_, [stream]() {
+    auto* executor = static_cast<CudaExecutor*>(stream->parent());
+    stream->capture_stream_ = executor->CreateStream(
+        stream->priority(), CudaStreamType::kCudaGraphCapture);
+  });
+  if (!stream->capture_stream_.ok()) {
+    return stream->capture_stream_.status();
+  }
+  CudaStream* capture_stream = stream->capture_stream_->get();
+  ASSIGN_OR_RETURN(bool is_capturing,
+                   StreamIsCapturing(capture_stream->stream_handle_));
+  if (is_capturing) {
+    return absl::FailedPreconditionError("Capture stream is already capturing");
+  }
+  RETURN_IF_ERROR(cuda::ToStatus(
+      cuStreamBeginCaptureToGraph(capture_stream->stream_handle_, graph,
                                   /*dependencies=*/dependencies,
                                   /*dependencyData=*/dependency_data,
                                   /*numDependencies=*/num_dependencies, mode),
-      "Failed to begin stream capture to graph");
-  if (!status.ok()) {
-    stream->capture_state_mutex_.unlock();
-    return status;
-  }
-  return CudaStream::CaptureHandle(stream, graph);
+      "Failed to begin stream capture to graph"));
+  return CudaStream::CaptureHandle(capture_stream, graph);
 }
 
 CudaStream::CaptureHandle::CaptureHandle(CaptureHandle&& other)
@@ -218,8 +227,6 @@ CudaStream::CaptureHandle::CaptureHandle(CaptureHandle&& other)
 absl::Status CudaStream::CaptureHandle::EndCapture() {
   if (stream_ != nullptr && graph_ != nullptr) {
     absl::Cleanup cleanup = [this] {
-      stream_->capture_state_mutex_.AssertHeld();
-      stream_->capture_state_mutex_.unlock();
       stream_ = nullptr;
       graph_ = nullptr;
     };
@@ -240,30 +247,26 @@ CudaStream::CaptureHandle::~CaptureHandle() { EndCapture().IgnoreError(); }
 CudaStream::CudaStream(
     CudaExecutor* executor, CudaEvent completed_event,
     std::optional<std::variant<StreamPriority, int>> priority,
-    CUstream stream_handle)
+    CUstream stream_handle, CudaStreamType type)
     : StreamCommon(executor, priority),
       executor_(executor),
       completed_event_(std::move(completed_event)),
       stream_handle_(stream_handle),
+      type_(type),
       callback_registry_handle_(
-          executor->GetHostCallbackRegistry()->CreateHandle(
-              /*synchronization_callback=*/
-              [this]() ABSL_NO_THREAD_SAFETY_ANALYSIS {
-                auto lock = capture_state_mutex_.try_lock_shared();
-                if (!lock) {  // return early if stream is capturing.
-                  return absl::OkStatus();
-                }
-                absl::Cleanup cleanup =
-                    [this]() ABSL_NO_THREAD_SAFETY_ANALYSIS {
-                      capture_state_mutex_.unlock_shared();
-                    };
-                return SynchronizeStream(executor_, stream_handle_);
-              },
-              /*status_callback=*/[this] { return RefreshStatus(); })) {}
+          type == CudaStreamType::kCudaGraphCapture
+              ? nullptr
+              : executor->GetHostCallbackRegistry()->CreateHandle(
+                    /*synchronization_callback=*/
+                    [this]() {
+                      return SynchronizeStream(executor_, stream_handle_);
+                    },
+                    /*status_callback=*/[this] { return RefreshStatus(); })) {}
 
 absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
     CudaExecutor* executor,
-    std::optional<std::variant<StreamPriority, int>> priority) {
+    std::optional<std::variant<StreamPriority, int>> priority,
+    CudaStreamType type) {
   int stream_priority = [&]() {
     if (priority.has_value() && std::holds_alternative<int>(priority.value())) {
       return std::get<int>(priority.value());
@@ -279,7 +282,7 @@ absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
                                      /*allow_timing=*/false));
 
   return std::unique_ptr<CudaStream>(new CudaStream(
-      executor, std::move(completed_event), priority, stream_handle));
+      executor, std::move(completed_event), priority, stream_handle, type));
 }
 
 absl::Status CudaStream::WaitFor(Stream* other) {
@@ -337,18 +340,18 @@ CudaStream::~CudaStream() {
 }
 
 absl::Status CudaStream::BlockHostUntilDone() {
+  if (type_ == CudaStreamType::kCudaGraphCapture) {
+    return absl::FailedPreconditionError(
+        "BlockHostUntilDone is not allowed on capture streams.");
+  }
+  CHECK_NE(callback_registry_handle_, nullptr);
   TraceMe trace(
       [] { return TraceMeEncode("CudaStream::BlockHostUntilDone", {}); },
       /*level=*/TraceMeLevel::kVerbose);
   // SynchronizeStream will wait for any pending host callbacks, but if the
   // stream is itself poisoned, it will fail without waiting. So we force fail
   // them to be called before returning.
-  absl::Status status;
-  {
-    // Do not allow stream to enter capture state while blocking.
-    absl::MutexLock lock(capture_state_mutex_);
-    status = SynchronizeStream(executor_, stream_handle_);
-  }
+  absl::Status status = SynchronizeStream(executor_, stream_handle_);
   if (!status.ok()) {
     callback_registry_handle_->FailAll(status);
     return status;
@@ -360,21 +363,17 @@ absl::Status CudaStream::BlockHostUntilDone() {
   return absl::OkStatus();
 }
 
-absl::Status CudaStream::RefreshStatus() ABSL_NO_THREAD_SAFETY_ANALYSIS {
+absl::Status CudaStream::RefreshStatus() {
+  if (type_ == CudaStreamType::kCudaGraphCapture) {
+    return absl::FailedPreconditionError(
+        "RefreshStatus is not allowed on capture streams.");
+  }
   TraceMe trace([] { return TraceMeEncode("CudaStream::RefreshStatus", {}); },
                 /*level=*/TraceMeLevel::kVerbose);
   std::unique_ptr<ActivateContext> activation = executor_->Activate();
-  // Stream querying is not allowed during graph capture.
-  // Errors during `StreamIsCapturing` itself means we will use cuStreamQuery
-  // after.
-  auto lock = capture_state_mutex_.try_lock_shared();
-  if (!lock) {
-    return absl::OkStatus();  // Stream is capturing, can't query status.
-  }
-  absl::Cleanup cleanup = [this]() ABSL_NO_THREAD_SAFETY_ANALYSIS {
-    capture_state_mutex_.unlock_shared();
-  };
   // Backup check in case capturing was started using raw CUDA APIs.
+  // In that case, refresh will return ok and monitoring must wait until capture
+  // has ended.
   ASSIGN_OR_RETURN(bool is_capturing, StreamIsCapturing(stream_handle_));
   if (is_capturing) {
     return absl::OkStatus();
@@ -468,6 +467,11 @@ absl::Status CudaStream::DoHostCallbackWithStatus(
 absl::Status CudaStream::DoHostCallbackWithStatus(
     absl::AnyInvocable<absl::Status() &&> callback,
     absl::AnyInvocable<void(absl::Status) &&> error_cb) {
+  if (type_ == CudaStreamType::kCudaGraphCapture) {
+    return absl::FailedPreconditionError(
+        "Host callbacks are not allowed on capture streams.");
+  }
+  CHECK_NE(callback_registry_handle_, nullptr);
   auto enqueue_cb =
       [stream_handle = stream_handle_](
           HostCallbackRegistry::RegistryHandle::DeviceCb device_cb,

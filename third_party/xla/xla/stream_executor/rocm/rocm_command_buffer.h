@@ -143,8 +143,9 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   absl::StatusOr<GraphNodeHandle> CreateEmptyNode(
       absl::Span<const GraphNodeHandle> dependencies) override;
 
-  absl::Status Trace(Stream* stream,
-                     absl::AnyInvocable<absl::Status()> function) override;
+  absl::Status Trace(
+      Stream* stream,
+      absl::AnyInvocable<absl::Status(Stream* stream)> function) override;
 
   absl::Status LaunchGraph(Stream* stream) override;
 
