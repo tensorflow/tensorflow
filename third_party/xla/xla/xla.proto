@@ -159,6 +159,9 @@ message DebugOptions {
   // Return an error if HostOffloader would have automatically offloaded some
   // compute to the host.
   optional bool xla_disable_automatic_host_compute_offload = 408;
+  // If true, GTE (get-tuple-element) instructions will be compacted when
+  // printing HLO.
+  optional bool xla_dump_compact_gte = 495;
   // Use HloShardingV3 which is a mesh and axis based sharding representation.
   optional bool xla_enable_hlo_sharding_v3 = 452;
   // Setting xla_enable_scoped_logging_timers to false will disable some of the
@@ -182,6 +185,7 @@ message DebugOptions {
   // 2: recognize dot general against constants.
   // 3: recognize dot operations with additional multiplicative factors.
   optional int32 xla_recognize_reduction_optimization_level = 463;
+
   // go/keep-sorted end
 
   //--------------------------------------------------------------------------//
@@ -1625,7 +1629,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 495
+  // Next id: 496
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

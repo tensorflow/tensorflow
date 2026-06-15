@@ -525,6 +525,7 @@ std::string HloModule::ToString() const {
       db_options.xla_syntax_sugar_async_ops());
   print_options.set_print_inline_stack_frames(
       db_options.xla_hlo_print_inline_stack_frames());
+  print_options.set_compact_gte(db_options.xla_dump_compact_gte());
   return ToString(print_options);
 }
 
