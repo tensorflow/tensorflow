@@ -34,8 +34,10 @@ limitations under the License.
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/errors.h"
@@ -84,11 +86,8 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         block_length_(block_length),
         output_types_(output_types),
         output_shapes_(output_shapes),
-        traceme_metadata_(
-            {{"block_length",
-              absl::StrFormat("%lld", static_cast<long long>(block_length))},
-             {"cycle_length",
-              absl::StrFormat("%lld", static_cast<long long>(cycle_length))}}) {
+        traceme_metadata_({{"block_length", absl::StrCat(block_length)},
+                           {"cycle_length", absl::StrCat(cycle_length)}}) {
     input_->Ref();
   }
 
@@ -424,7 +423,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
               prefix(), absl::StrCat(kArgsSize, "[", idx, "]"), args.size()));
           for (int i = 0; i < args.size(); i++) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
-                prefix(), strings::StrCat(kArgsList, "[", idx, "][", i, "]"),
+                prefix(), absl::StrCat(kArgsList, "[", idx, "][", i, "]"),
                 args[i]));
           }
         } else {
@@ -813,12 +812,20 @@ void InterleaveDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   OP_REQUIRES(
       ctx, cycle_length > 0,
       errors::InvalidArgument("cycle_length must be greater than zero."));
+  OP_REQUIRES(ctx, cycle_length <= kMaxCycleOrBlockLength,
+              absl::InvalidArgumentError(
+                  absl::StrCat("cycle_length must be less than or equal to ",
+                               kMaxCycleOrBlockLength)));
 
   int64_t block_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBlockLength, &block_length));
   OP_REQUIRES(
       ctx, block_length > 0,
       errors::InvalidArgument("block_length must be greater than zero."));
+  OP_REQUIRES(ctx, block_length <= kMaxCycleOrBlockLength,
+              absl::InvalidArgumentError(
+                  absl::StrCat("block_length must be less than or equal to ",
+                               kMaxCycleOrBlockLength)));
 
   std::unique_ptr<CapturedFunction> captured_func;
   OP_REQUIRES_OK(ctx,
