@@ -140,7 +140,7 @@ absl::Status SessionMgr::CreateSession(
     int64_t master_incarnation, StatusCallback coordination_error_callback) {
   mutex_lock l(mu_);
   if (session.empty()) {
-    return errors::InvalidArgument("Session must be non-empty.");
+    return absl::InvalidArgumentError("Session must be non-empty.");
   }
 
   // For given master task name, check if one or more `WorkerSession`s have been
@@ -322,12 +322,12 @@ absl::Status SessionMgr::UpdateSession(
         cluster_device_attributes) {
   mutex_lock l(mu_);
   if (session.empty()) {
-    return errors::InvalidArgument("Session must be non-empty.");
+    return absl::InvalidArgumentError("Session must be non-empty.");
   }
   auto it = sessions_.find(session);
   if (it == sessions_.end()) {
-    return errors::InvalidArgument("Cannot update session ", session,
-                                   " because it does not exist.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Cannot update session ", session, " because it does not exist."));
   }
   std::shared_ptr<WorkerSession> worker_session = it->second;
 
