@@ -278,6 +278,37 @@ def MaskOp : XTile_Op<"mask",
 }
 
 
+def ScanOp : XTile_Op<"scan", [Pure, AttrSizedOperandSegments, AttrSizedResultSegments]> {
+  let summary = "scan operation";
+  let description = [{
+    Mirrors HLO's kScan operation.
+  }];
+
+  let arguments = (
+    ins
+    Variadic<AnyRankedTensor>:$inputs,
+    Variadic<AnyRankedTensor>:$inits,
+    I64Attr:$dimension,
+    I64Attr:$scan_dim_size,
+    DefaultValuedAttr<BoolAttr, "false">:$is_reverse
+  );
+
+  let results = (outs
+    Variadic<AnyRankedTensor>:$outputs,
+    Variadic<AnyRankedTensor>:$carries
+  );
+
+  let regions = (region SizedRegion<1>:$body);
+
+  let assemblyFormat = [{
+    `(` $inputs `)` `inits` `(` $inits `)`
+    `dimension` `=` $dimension
+    attr-dict
+    `:` `(` type($inputs) `)` `,` `(` type($inits) `)` `->` `(` type($outputs) `)` `,` `(` type($carries) `)`
+    $body
+  }];
+}
+
 //
 // DotScaled Op
 //
