@@ -93,4 +93,25 @@ TEST(Metrics, Phase2ComilationStatusUntouchedCounterNotIncremented) {
   ASSERT_EQ(counter.Read(kMlirWithFallbackModeSuccess), 0);
 }
 
+TEST(Metrics, TFDataClientGetElementAction) {
+  CellReader<int64_t> counter(
+      "/tensorflow/data/service/client_routing_outcome");
+
+  tensorflow::metrics::RecordTFDataClientGetElementAction(
+      "success", "client_1", "worker_1", "thread_0");
+  tensorflow::metrics::RecordTFDataClientGetElementAction(
+      "skip_empty_buffer", "client_1", "worker_1", "thread_0");
+  tensorflow::metrics::RecordTFDataClientGetElementAction(
+      "skip_empty_buffer", "client_1", "worker_1", "thread_1");
+  tensorflow::metrics::RecordTFDataClientGetElementAction(
+      "skip_error", "client_2", "worker_2", "thread_0");
+
+  EXPECT_EQ(counter.Read("success", "client_1", "worker_1", "thread_0"), 1);
+  EXPECT_EQ(
+      counter.Read("skip_empty_buffer", "client_1", "worker_1", "thread_0"), 1);
+  EXPECT_EQ(
+      counter.Read("skip_empty_buffer", "client_1", "worker_1", "thread_1"), 1);
+  EXPECT_EQ(counter.Read("skip_error", "client_2", "worker_2", "thread_0"), 1);
+}
+
 }  // namespace
