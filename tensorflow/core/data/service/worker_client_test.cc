@@ -14,15 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/worker_client.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 
-#include "absl/memory/memory.h"
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
-#include "absl/types/optional.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
