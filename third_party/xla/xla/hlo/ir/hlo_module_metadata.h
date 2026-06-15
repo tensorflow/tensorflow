@@ -49,7 +49,7 @@ struct StackFrameId {
   int value = 0;  // 0 is reserved for "not present".
   bool operator==(StackFrameId other) const { return value == other.value; }
   bool operator!=(StackFrameId other) const { return value != other.value; }
-  bool valid() const { return value != 0; }
+  bool valid() const { return value > 0; }
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, StackFrameId id) {
