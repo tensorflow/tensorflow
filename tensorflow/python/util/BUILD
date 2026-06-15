@@ -489,6 +489,7 @@ tf_python_pybind_extension(
         "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:mutex",
         "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//xla/tsl/platform:status",
     ] + if_static([
         ":stack_trace",
     ]),
