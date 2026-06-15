@@ -100,17 +100,22 @@ absl::Status MergeCollectiveBackendConfig(
   ASSIGN_OR_RETURN(auto config,
                    combined->backend_config<gpu::GpuBackendConfig>());
   bool any_pipelined = false;
+  bool any_spmd_generated = false;
+
   for (const HloInstruction* inst : to_combine) {
     auto src_config = inst->backend_config<GpuBackendConfig>();
-    if (src_config.ok() &&
-        src_config->collective_backend_config().is_pipelined()) {
-      any_pipelined = true;
-      break;
+    if (src_config.ok()) {
+      any_pipelined |= src_config->collective_backend_config().is_pipelined();
     }
+    // IsSpmdGenerated checks both the frontend attribute (set by the SPMD
+    // partitioner) and the backend config field (set on earlier combines).
+    any_spmd_generated |= IsSpmdGenerated(*inst);
   }
-  if (any_pipelined) {
-    config.mutable_collective_backend_config()->set_is_pipelined(true);
-  }
+
+  config.mutable_collective_backend_config()->set_is_pipelined(any_pipelined);
+  config.mutable_collective_backend_config()->set_is_spmd_generated(
+      any_spmd_generated);
+
   return combined->set_backend_config(config);
 }
 

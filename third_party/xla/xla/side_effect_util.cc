@@ -107,4 +107,6 @@ const char kCombinerKeyAttr[] = "combiner_key";
 
 const char kXlaLoopUnrollAttr[] = "_xla_loop_unroll_strategy";
 
+const char kSpmdGeneratedAttr[] = "is_spmd_generated";
+
 }  // namespace xla

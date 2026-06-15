@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/side_effect_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -285,6 +286,18 @@ bool IsIntraNVLinkDomain(const HloModuleConfig& config, int64_t slice_size) {
   VLOG(1) << "IsIntraNVLinkDomain: device_count=" << device_count
           << " slice_size=" << slice_size << " is_intra=" << is_intra;
   return is_intra;
+}
+
+bool IsSpmdGenerated(const HloInstruction& instr) {
+  auto attr = instr.get_frontend_attribute(kSpmdGeneratedAttr);
+  if (attr.has_value() && attr.value() == "true") {
+    return true;
+  }
+  auto backend_config = instr.backend_config<GpuBackendConfig>();
+  if (!backend_config.ok()) {
+    return false;
+  }
+  return backend_config->collective_backend_config().is_spmd_generated();
 }
 
 }  // namespace gpu
