@@ -59,25 +59,26 @@ class DequantizeOp : public OpKernel {
     OP_REQUIRES(
         ctx,
         (ctx->output_type(0) == DT_FLOAT || ctx->output_type(0) == DT_BFLOAT16),
-        errors::InvalidArgument("Output type must be bfloat16 or float,"
-                                " is '" +
-                                DataTypeString(ctx->output_type(0)) + "'"));
+        absl::InvalidArgumentError("Output type must be bfloat16 or float,"
+                                   " is '" +
+                                   DataTypeString(ctx->output_type(0)) + "'"));
 
     need_cast_ = true;
     if (ctx->output_type(0) == DT_FLOAT) {
       need_cast_ = false;
-      OP_REQUIRES(ctx,
-                  (mode_string == "MIN_COMBINED" ||
-                   mode_string == "MIN_FIRST" || mode_string == "SCALED"),
-                  errors::InvalidArgument("Mode string must be 'MIN_COMBINED',"
-                                          " 'MIN_FIRST', or 'SCALED', is '" +
-                                          mode_string + "'"));
+      OP_REQUIRES(
+          ctx,
+          (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST" ||
+           mode_string == "SCALED"),
+          absl::InvalidArgumentError("Mode string must be 'MIN_COMBINED',"
+                                     " 'MIN_FIRST', or 'SCALED', is '" +
+                                     mode_string + "'"));
     } else {
       OP_REQUIRES(
           ctx, (mode_string == "MIN_COMBINED"),
-          errors::InvalidArgument("When output type is bfloat16, Mode"
-                                  " string must be 'MIN_COMBINED', is '" +
-                                  mode_string + "'"));
+          absl::InvalidArgumentError("When output type is bfloat16, Mode"
+                                     " string must be 'MIN_COMBINED', is '" +
+                                     mode_string + "'"));
     }
 
     if (mode_string == "MIN_COMBINED") {
@@ -96,27 +97,27 @@ class DequantizeOp : public OpKernel {
     const Tensor& input_min_tensor = ctx->input(1);
     const Tensor& input_max_tensor = ctx->input(2);
 
-    OP_REQUIRES(
-        ctx, axis_ < input.dims(),
-        errors::InvalidArgument("Axis must be less than input dimension(",
-                                input.dims(), "), got ", axis_));
+    OP_REQUIRES(ctx, axis_ < input.dims(),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Axis must be less than input dimension(",
+                                 input.dims(), "), got ", axis_)));
 
     int num_slices = 1;
     if (axis_ > -1) {
       num_slices = input.dim_size(axis_);
     }
     OP_REQUIRES(ctx, input_min_tensor.NumElements() == num_slices,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "input_min_tensor must have as many elements as input on "
                     "the dequantization axis (",
                     axis_, "), got ", input_min_tensor.NumElements(),
-                    ", expected ", num_slices));
+                    ", expected ", num_slices)));
     OP_REQUIRES(ctx, input_max_tensor.NumElements() == num_slices,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "input_max_tensor must have as many elements as input on "
                     "the dequantization axis (",
                     axis_, "), got ", input_max_tensor.NumElements(),
-                    ", expected ", num_slices));
+                    ", expected ", num_slices)));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
@@ -127,9 +128,10 @@ class DequantizeOp : public OpKernel {
       const float max_range = input_max_tensor.flat<float>()(0);
       DequantizeTensor(ctx, input, min_range, max_range, &float_output);
     } else {
-      OP_REQUIRES(ctx, mode_ != QUANTIZE_MODE_MIN_FIRST,
-                  errors::Unimplemented("MIN_FIRST mode is not implemented for "
-                                        "Dequantize with axis != -1."));
+      OP_REQUIRES(
+          ctx, mode_ != QUANTIZE_MODE_MIN_FIRST,
+          absl::UnimplementedError("MIN_FIRST mode is not implemented for "
+                                   "Dequantize with axis != -1."));
 
       int64_t pre_dim = 1, post_dim = 1;
       for (int i = 0; i < axis_; ++i) {
