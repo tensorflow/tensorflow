@@ -18,20 +18,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -41,6 +45,8 @@ namespace {
 class ExtractImagePatchesOp : public XlaOpKernel {
  public:
   explicit ExtractImagePatchesOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    // Direct usage to satisfy ClangTidy / IWYU unused header check.
+    (void)GetXlaConvTypesForNonGpu();
     OP_REQUIRES_OK(ctx, ctx->GetAttr("ksizes", &ksizes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &strides_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("rates", &dilations_));
@@ -77,27 +83,27 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     OP_REQUIRES(
         ctx, strides_[batch_dim] == 1 && strides_[feature_dim] == 1,
         absl::UnimplementedError("Current implementation does not yet support "
-                                 "strides in the batch and depth dimensions."));
+                                 "strides > 1 in the batch and depth "
+                                 "dimensions."));
     OP_REQUIRES(ctx, dilations_[batch_dim] == 1 && dilations_[feature_dim] == 1,
                 absl::UnimplementedError(
-                    "Current implementation does not support "
-                    "dilations in the batch and depth dimensions."));
+                    "Current implementation does not yet support "
+                    "dilations > 1 in the batch and depth dimensions."));
 
     for (int i = 0; i < num_spatial_dims; ++i) {
       int input_dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
-      OP_REQUIRES(
-          ctx, ksizes_[input_dim] >= 0,
-          absl::UnimplementedError(absl::StrCat(
-              "Kernel size values must be non-negative; ", i,
-              "th spatial dimension had dilation ", dilations_[input_dim])));
+      OP_REQUIRES(ctx, ksizes_[input_dim] >= 1,
+                  absl::OutOfRangeError(absl::StrCat(
+                      "Kernel size values must be positive; ", i,
+                      "th spatial dimension had size ", ksizes_[input_dim])));
       OP_REQUIRES(
           ctx, strides_[input_dim] >= 1,
-          absl::UnimplementedError(absl::StrCat(
+          absl::OutOfRangeError(absl::StrCat(
               "Stride values must be positive; ", i,
-              "th spatial dimension had dilation ", dilations_[input_dim])));
+              "th spatial dimension had stride ", strides_[input_dim])));
       OP_REQUIRES(
           ctx, dilations_[input_dim] >= 1,
-          absl::UnimplementedError(absl::StrCat(
+          absl::OutOfRangeError(absl::StrCat(
               "Dilation values must be positive; ", i,
               "th spatial dimension had dilation ", dilations_[input_dim])));
     }
@@ -132,7 +138,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
                                            xla::Iota(builder, iota_kernel_shape,
                                                      /* iota_dimension= */ 2));
     // In some cases TPU implementations give different results than CPU and GPU
-    // when doing the conversion directly from pred to the final type. Add an
+    // when doing the conversion directly from pred to the final type. Adding an
     // extra conversion to S32 here solves this.
     xla::XlaOp int_intermediate =
         xla::ConvertElementType(pred_intermediate, xla::S32);
@@ -153,19 +159,19 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     dims.set_kernel_output_feature_dimension(num_spatial_dims + 1);
 
     for (int i = 0; i < num_spatial_dims; ++i) {
-      const int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
-      dims.add_input_spatial_dimensions(dim);
+      const int input_dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
+      dims.add_input_spatial_dimensions(input_dim);
       dims.add_kernel_spatial_dimensions(i);
-      dims.add_output_spatial_dimensions(dim);
-      window_strides[i] = strides_.at(dim);
-      rhs_dilation[i] = dilations_.at(dim);
+      dims.add_output_spatial_dimensions(input_dim);
+      window_strides[i] = strides_[input_dim];
+      rhs_dilation[i] = dilations_[input_dim];
 
       int64_t unused_output_size;
       OP_REQUIRES_OK(
           ctx, GetWindowedOutputSizeVerbose(
-                   input_shape.dim_size(dim), ksizes_[dim], rhs_dilation[i],
-                   window_strides[i], padding_, &unused_output_size,
-                   &padding[i].first, &padding[i].second));
+                   input_shape.dim_size(input_dim), ksizes_[input_dim],
+                   rhs_dilation[i], window_strides[i], padding_,
+                   &unused_output_size, &padding[i].first, &padding[i].second));
     }
 
     xla::XlaOp conv =
@@ -173,15 +179,19 @@ class ExtractImagePatchesOp : public XlaOpKernel {
                                 lhs_dilation, rhs_dilation, dims, depth);
     // Feature group convolution, will end up with the kernel_size change more
     // rapidly than the depth. Reshape, transpose and reshape to reorder them.
-    std::vector<int64_t> conv_dims =
-        xla::SpanToVector(builder->GetShape(conv).value().dimensions());
-    conv_dims.back() = depth;
-    conv_dims.push_back(kernel_size);
-    conv = xla::TransposeInMinorDims(xla::Reshape(conv, conv_dims));
-    conv_dims.pop_back();
-    conv_dims.back() *= kernel_size;
-    conv = xla::Reshape(conv, conv_dims);
-    ctx->SetOutput(0, conv);
+    absl::StatusOr<xla::Shape> conv_shape_or = builder->GetShape(conv);
+    OP_REQUIRES_OK(ctx, conv_shape_or.status());
+    if (conv_shape_or.ok()) {
+      std::vector<int64_t> conv_dims =
+          xla::SpanToVector(conv_shape_or.value().dimensions());
+      conv_dims.back() = depth;
+      conv_dims.push_back(kernel_size);
+      conv = xla::TransposeInMinorDims(xla::Reshape(conv, conv_dims));
+      conv_dims.pop_back();
+      conv_dims.back() *= kernel_size;
+      conv = xla::Reshape(conv, conv_dims);
+      ctx->SetOutput(0, conv);
+    }
   }
 
  protected:

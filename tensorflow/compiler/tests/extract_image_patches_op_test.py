@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -139,6 +140,48 @@ class ExtractImagePatches(xla_test.XLATestCase):
         rates=[1, 1],
         padding="VALID",
         patches=patches)
+
+  def testInvalidKernelSize(self):
+    """Verifies that OutOfRangeError is raised for invalid kernel sizes (< 1)."""
+    image = np.reshape(range(120), [2, 3, 4, 5])
+    for ksizes in [[0, 2], [2, 0]]:
+      with self.assertRaises(errors.OutOfRangeError):
+        self._VerifyValues(
+            image,
+            ksizes=ksizes,
+            strides=[1, 1],
+            rates=[1, 1],
+            padding="VALID",
+            patches=None,
+        )
+
+  def testInvalidStride(self):
+    """Verifies that OutOfRangeError is raised for invalid strides (< 1)."""
+    image = np.reshape(range(120), [2, 3, 4, 5])
+    for strides in [[0, 1], [1, 0]]:
+      with self.assertRaises(errors.OutOfRangeError):
+        self._VerifyValues(
+            image,
+            ksizes=[1, 1],
+            strides=strides,
+            rates=[1, 1],
+            padding="VALID",
+            patches=None,
+        )
+
+  def testInvalidDilation(self):
+    """Verifies that OutOfRangeError is raised for invalid dilations (< 1)."""
+    image = np.reshape(range(120), [2, 3, 4, 5])
+    for rates in [[0, 1], [1, 0]]:
+      with self.assertRaises(errors.OutOfRangeError):
+        self._VerifyValues(
+            image,
+            ksizes=[1, 1],
+            strides=[1, 1],
+            rates=rates,
+            padding="VALID",
+            patches=None,
+        )
 
 
 if __name__ == "__main__":
