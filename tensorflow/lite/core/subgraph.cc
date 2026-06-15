@@ -1158,6 +1158,7 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
     TfLiteIntArrayFree(node.outputs);
     TfLiteIntArrayFree(node.intermediates);
     TfLiteIntArrayFree(node.temporaries);
+    nodes_and_registration_.pop_back();
     ReportError("Failed to initialize kernel.");
     return kTfLiteError;
   }

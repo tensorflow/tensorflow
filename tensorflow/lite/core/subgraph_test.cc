@@ -332,5 +332,31 @@ TEST_F(SubgraphResizeTensorTest,
   std::fill_n(tensor_.dims->data, tensor_.dims->size, 1);
 }
 
+TEST(SubgraphTest, AddNodeWithParametersOpInitFails) {
+  // When running this test, use the following arguments: --config=asan
+  Interpreter interpreter;
+  auto& subgraph = interpreter.primary_subgraph();
+  subgraph.AddTensors(2);
+  subgraph.SetInputs({0});
+  subgraph.SetOutputs({1});
+
+  TfLiteRegistration fail_op = {};
+  fail_op.builtin_code = 0;  // kTfLiteBuiltinCustom
+  fail_op.custom_name = "FailOp";
+  fail_op.init = [](TfLiteContext*, const char*, size_t) -> void* {
+    return TfLiteKernelInitFailed();  // Simulate failure
+  };
+
+  int node_index = -1;
+  // This call will fail because OpInit returns nullptr.
+  // The bug is that it leaves dangling pointers in nodes_and_registration_.
+  EXPECT_EQ(subgraph.AddNodeWithParameters({0}, {1}, {}, nullptr, 0, nullptr,
+                                           &fail_op, &node_index),
+            kTfLiteError);
+
+  // When 'interpreter' goes out of scope, Subgraph::~Subgraph will run
+  // and trigger the double free if the bug is present.
+}
+
 }  // namespace
 }  // namespace tflite
