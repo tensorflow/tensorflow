@@ -20,8 +20,10 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_raw_buffer_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
@@ -195,6 +198,40 @@ PjRtCApiRawBuffer::CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
 void* PjRtCApiRawBuffer::OpaqueDeviceMemoryDataPointer() const {
   return static_cast<PjRtRawBufferInterface*>(c_buffer_)
       ->OpaqueDeviceMemoryDataPointer();
+}
+
+absl::StatusOr<PjRtRawBufferRef> PjRtCApiRawBuffer::Slice(int64_t offset,
+                                                          int64_t size) {
+  return absl::UnimplementedError("Slice not supported by PJRT C API");
+}
+
+absl::StatusOr<PjRtDeviceEventRef>
+PjRtCApiRawBuffer::MakeAllocationReadyEvent() {
+  return static_cast<PjRtRawBufferInterface*>(c_buffer_)
+      ->MakeAllocationReadyEvent();
+}
+
+void PjRtCApiRawBuffer::CopyTo(
+    PjRtRawBufferRef dst_raw_buffer,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise,
+    absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
+  absl::Status status =
+      absl::UnimplementedError("CopyTo not supported by PJRT C API");
+  definition_event_promise.SetError(status);
+  src_usage_event_promise.SetError(status);
+  if (allocation_event) {
+    std::move(allocation_event)(status);
+  }
+}
+
+PjRtDeviceEventPtr PjRtCApiRawBuffer::GetRawBufferAsyncValue() {
+  return static_cast<PjRtRawBufferInterface*>(c_buffer_)
+      ->GetRawBufferAsyncValue();
+}
+
+bool PjRtCApiRawBuffer::is_mutable() const {
+  return static_cast<const PjRtRawBufferInterface*>(c_buffer_)->is_mutable();
 }
 
 static std::optional<absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>>

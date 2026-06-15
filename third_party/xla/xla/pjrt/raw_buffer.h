@@ -66,7 +66,14 @@ class PjRtRawBufferInterface : public PJRT_RawBuffer {
       void* dst, int64_t offset, int64_t transfer_size);
 
   void* OpaqueDeviceMemoryDataPointer() const;
+
+  bool is_mutable() const;
+  absl::StatusOr<PjRtDeviceEventRef> MakeAllocationReadyEvent();
+  PjRtDeviceEventPtr GetRawBufferAsyncValue();
 };
+
+class PjRtRawBuffer;
+using PjRtRawBufferRef = tsl::RCReference<PjRtRawBuffer>;
 
 // Experimental. Don't use unless you know what you're doing.
 // A raw buffer is an unsafe API for directly transferring into device
@@ -136,27 +143,6 @@ class PjRtRawBuffer : public PJRT_RawBuffer,
   virtual absl::StatusOr<PjRtDeviceEventRef> CopyRawDeviceToHostAndReturnEvent(
       void* dst, int64_t offset, int64_t transfer_size) = 0;
 
- private:
-  static const PJRT_RawBuffer_FunctionTable kRawBufferVtable;
-};
-
-class CommonPjRtRawBuffer;
-using PjRtRawBufferRef = tsl::RCReference<CommonPjRtRawBuffer>;
-
-class CommonPjRtRawBuffer : public PjRtRawBuffer {
- public:
-  // Copies the buffer to a remote device.
-  // The serialized_descriptor contains metadata about the buffer on the remote
-  // device. The on_done callback is called when the transfer is complete or
-  // on error. The transfer_dependency_avs are dependencies that must be
-  // ready before the transfer can start. The returned PjRtDeviceEventRef is
-  // ready when the transfer is complete or on error.
-  using RemoteSendCallback =
-      std::function<void(absl::Status status, bool sends_were_enqueued)>;
-  virtual absl::StatusOr<PjRtDeviceEventRef> CopyRawToRemoteDevice(
-      Future<std::string> serialized_descriptor, RemoteSendCallback on_done,
-      PjRtDeviceEventRefVector transfer_dependency_avs) = 0;
-
   // A sliced buffer is a view into the offset and range of this buffer.
   //
   // Note that the underlying driver may have requirements
@@ -206,7 +192,12 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   // TODO(parkers): This should not be needed, but some backends
   // require deleting after all events.
   virtual void DecrefAfter(PjRtDeviceEventRefVector avs);
+
+ private:
+  static const PJRT_RawBuffer_FunctionTable kRawBufferVtable;
 };
+
+using CommonPjRtRawBuffer = PjRtRawBuffer;
 
 tsl::AsyncValueRef<PjRtStagingBuffer> ToStagingBuffer(
     PjRtRawBufferRef raw_buffer, PjRtDeviceEventPromiseRef usage_promise,
