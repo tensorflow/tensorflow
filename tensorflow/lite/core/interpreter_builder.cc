@@ -375,9 +375,10 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
         init_data = reinterpret_cast<const char*>(op->custom_options()->data());
         init_data_size = op->custom_options()->size();
       } else if (op->large_custom_options_offset() > 1 && allocation_) {
-        if (op->large_custom_options_offset() +
-                op->large_custom_options_size() >
-            allocation_->bytes()) {
+        const uint64_t large_custom_offset = op->large_custom_options_offset();
+        const uint64_t large_custom_size = op->large_custom_options_size();
+        if (large_custom_size > allocation_->bytes() ||
+            large_custom_offset > allocation_->bytes() - large_custom_size) {
           TF_LITE_REPORT_ERROR(
               error_reporter_,
               "Custom Option Offset for opcode_index %d is out of bound\n",
@@ -386,8 +387,8 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
         }
         // If the custom op is storing payloads outside of flatbuffers
         init_data = reinterpret_cast<const char*>(allocation_->base()) +
-                    op->large_custom_options_offset();
-        init_data_size = op->large_custom_options_size();
+                    large_custom_offset;
+        init_data_size = large_custom_size;
       }
     } else {
       MallocDataAllocator malloc_allocator;
@@ -668,14 +669,16 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
           *buffer_data = reinterpret_cast<const char*>(array->data());
           return kTfLiteOk;
         } else if (offset > 1 && allocation_) {
-          if (offset + buffer->size() > allocation_->bytes()) {
+          const uint64_t buffer_size_val = buffer->size();
+          if (buffer_size_val > allocation_->bytes() ||
+              offset > allocation_->bytes() - buffer_size_val) {
             TF_LITE_REPORT_ERROR(
                 error_reporter_,
                 "Constant buffer %d specified an out of range offset.\n",
                 tensor->buffer());
             return kTfLiteError;
           }
-          *buffer_size = buffer->size();
+          *buffer_size = buffer_size_val;
           *buffer_data =
               reinterpret_cast<const char*>(allocation_->base()) + offset;
           return kTfLiteOk;
