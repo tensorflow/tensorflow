@@ -464,6 +464,17 @@ class HloModuleConfig {
     return !use_spmd_partitioning_;
   }
 
+  // Page size in kibibytes for usage in multi-page buffer assignment and/or
+  // lowering.
+  int64_t page_size_kib() const { return page_size_kib_; }
+
+  // Sets the page size in kibibytes for usage in multi-page buffer
+  // assignment and/or lowering. A value of 0 means no multi-page buffer
+  // assignment and/or lowering will take place.
+  void set_page_size_kib(int64_t page_size_kib) {
+    page_size_kib_ = page_size_kib;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key and the
   // HloModuleConfigProto.
@@ -641,6 +652,12 @@ class HloModuleConfig {
   // Schedule configuration, where schedule_config_.sequence is the sequence of
   // instructions to be scheduled.
   ScheduleConfig schedule_config_;
+
+  // Page size in kibibytes for usage in multi-page buffer assignment. A value
+  // of 0 means no multi-page buffer assignment and/or lowering will take place.
+  // Pages are subdivisions of the shared memory space, with the constraint that
+  // a buffer will never cross a page boundary.
+  int64_t page_size_kib_ = 0;
 
   // LINT.ThenChange(//tensorflow/compiler/xla/xla.proto)
 };
