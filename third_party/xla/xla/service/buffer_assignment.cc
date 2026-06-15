@@ -1149,7 +1149,10 @@ std::string BufferAllocation::MemoryUsageReport(const std::string& prefix,
 // Returns the largest k buffers present at the point of peak memory usage
 // across allocations as a vector of pairs with their corresponding sizes.
 std::vector<std::pair<int64_t, const HloValue*>> TopKPeakBuffers(
-    uint64_t k, const std::vector<BufferAllocation> allocations) {
+    uint64_t k, const std::vector<BufferAllocation>& allocations) {
+  if (k == 0) {
+    return {};
+  }
   absl::btree_multimap<int64_t, const HloValue*> topk;
   for (const BufferAllocation& allocation : allocations) {
     for (const HloValue* value : allocation.PeakMemoryLogicalBuffers()) {
