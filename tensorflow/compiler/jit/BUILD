@@ -75,6 +75,7 @@ cc_library(
     visibility = internal_visibility([
         ":legacy_jit_users",
         "//tensorflow/python/profiler:__pkg__",
+        "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
     ]),
     deps = [
         ":xla_cpu_device",

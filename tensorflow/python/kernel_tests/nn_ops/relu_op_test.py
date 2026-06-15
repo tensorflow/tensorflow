@@ -559,6 +559,18 @@ class SeluTest(test.TestCase):
         self._testSelu(
             np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
 
+  def testNaNPropagation(self):
+    for t in [
+        np.float16,
+        np.float32,
+        np.float64,
+        dtypes.bfloat16.as_numpy_dtype,
+    ]:
+      self._testSelu(np.array([-1, np.nan, 1, np.nan]).astype(t))
+      # Force executed on CPU in case GPU kernels are available.
+      with ops.device("/device:CPU:0"):
+        self._testSelu(np.array([-1, np.nan, 1, np.nan]).astype(t))
+
   def testGradientFloat32(self):
     with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
