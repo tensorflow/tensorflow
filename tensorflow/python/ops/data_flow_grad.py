@@ -77,7 +77,7 @@ def _DynamicStitchGrads(op, grad):
 
   values_grad = []
   num_inner_dims = array_ops.rank(grad) - 1
-  for inp, single_id in zip(inputs, ids, strict=True):
+  for inp, single_id in zip(inputs, ids):
     value_grad = array_ops.gather(grad, inp)
     winning_ids = array_ops.gather(stitched_ids, inp)
     is_winner = math_ops.equal(winning_ids, single_id)
