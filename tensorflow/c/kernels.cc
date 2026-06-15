@@ -877,7 +877,7 @@ TF_Tensor* TF_ForwardInputOrAllocateOutput(
 
   absl::Span<const int> input_indices_array(candidate_input_indices,
                                             num_candidate_input_indices);
-  tensorflow::gtl::ArraySlice<const int64_t> output_dimarray(
+  absl::Span<const int64_t> output_dimarray(
       reinterpret_cast<const int64_t*>(output_dims), output_num_dims);
   tensorflow::Tensor* output_tensor_pointer;
   absl::Status s = cc_ctx->forward_input_or_allocate_output(
