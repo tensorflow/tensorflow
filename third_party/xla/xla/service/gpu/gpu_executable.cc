@@ -47,7 +47,6 @@ limitations under the License.
 #include "riegeli/bytes/writer.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
@@ -98,7 +97,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
-#include "xla/service/logical_buffer.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/rendezvous.h"
 #include "xla/service/riegeli_dump_writer.h"
@@ -1094,9 +1092,7 @@ absl::StatusOr<se::DeviceAddressBase> GpuExecutable::BufferForAllocation(
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
     const BufferAllocation& allocation,
     se::DeviceAddressAllocator* const memory_allocator, int device_ordinal,
-    int64_t arg_idx,
-    const absl::flat_hash_map<LogicalBuffer::Color, int64_t>&
-        allocate_granularity) {
+    int64_t arg_idx) {
   if (allocation.is_thread_local()) {
     return se::DeviceAddressBase{};
   }
@@ -1128,11 +1124,6 @@ absl::StatusOr<se::DeviceAddressBase> GpuExecutable::BufferForAllocation(
   int64_t buffer_size = allocation.size();
   se::DeviceAddressBase buffer_address;
   if (buffer_size > 0) {
-    // Maybe round up buffer allocation size to the requested granularity.
-    if (auto it = allocate_granularity.find(allocation.color());
-        it != allocate_granularity.end()) {
-      buffer_size = RoundUpTo(buffer_size, it->second);
-    }
     ASSIGN_OR_RETURN(
         se::ScopedDeviceAddress<uint8_t> buffer,
         memory_allocator->Allocate(device_ordinal, buffer_size,
@@ -1164,35 +1155,6 @@ absl::Status CheckAlignment(const BufferAllocation& allocation,
   return absl::OkStatus();
 }
 
-// Resolve GpuCollectives instance that we should use for the run.
-// TODO(ezhulenev): We have almost identical method in `collective_params.cc`,
-// this one has to be removed.
-static GpuCollectives* ResolveGpuCollectives(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options) {
-  auto* gpu_options = run_options->run_options().gpu_executable_run_options();
-  if (gpu_options && gpu_options->collectives()) {
-    return gpu_options->collectives();
-  }
-
-  absl::string_view platform_name =
-      run_options->run_options().stream()->parent()->GetPlatform()->Name();
-
-  // If debug options specify a collectives implementation by name, look it up
-  // in the registry. Otherwise, use the default (highest-priority) one.
-  if (debug_options &&
-      !debug_options->xla_gpu_collectives_implementation().empty()) {
-    absl::StatusOr<Collectives*> collectives = CollectivesRegistry::Get(
-        platform_name, debug_options->xla_gpu_collectives_implementation());
-    CHECK_OK(collectives)  // Crash OK
-        << "Failed to get GPU collectives implementation: "
-        << debug_options->xla_gpu_collectives_implementation();
-    return absl::down_cast<GpuCollectives*>(*collectives);
-  }
-
-  return GpuCollectives::Default(platform_name);
-}
-
 absl::StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
     const ServiceExecutableRunOptions* run_options,
     ParameterBufferResolver get_parameter_buffer,
@@ -1201,23 +1163,6 @@ absl::StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return std::string("Build buffer allocations"); },
       tsl::profiler::TraceMeLevel::kInfo);
-
-  const DebugOptions* debug_options =
-      has_module() ? &module_config().debug_options() : nullptr;
-
-  absl::flat_hash_map<LogicalBuffer::Color, int64_t> allocate_granularity;
-  if (auto* collectives = ResolveGpuCollectives(run_options, debug_options)) {
-    // BFC allocator ignores memory alignment and always allocates 256 byte
-    // aligned buffers, however for collective memory underlying libraries
-    // require larger alignment. We conservatively round up all allocation
-    // sizes to the alignment requirement. Proper fix must be done in BFC
-    // allocator and all the other allocator adaptors that we have in XLA, but
-    // this is left as an exercise for curious reader. The raw memory allocator
-    // that backs the BFC allocator uses correct granularity and alignment.
-    static constexpr int64_t kCollectiveMemoryColor = 1;
-    allocate_granularity[kCollectiveMemoryColor] =
-        collectives->SymmetricMemoryAlignment();
-  }
 
   // Tag allocations made in this invocation as multi-device for VMM reuse.
   se::DeviceAddressVmmAllocator::DeviceAssignmentScope
@@ -1233,8 +1178,7 @@ absl::StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
     ASSIGN_OR_RETURN(
         buffers.emplace_back(),
         BufferForAllocation(get_parameter_buffer, globals, allocation,
-                            memory_allocator, device_ordinal, i,
-                            allocate_granularity));
+                            memory_allocator, device_ordinal, i));
     RETURN_IF_ERROR(CheckAlignment(allocation, buffers.back(), i));
   }
   return {{buffers, device_ordinal, memory_allocator}};
