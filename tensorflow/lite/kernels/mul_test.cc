@@ -1121,103 +1121,57 @@ void TestIntegerBroadcast(IntegerMulOpModel<IntegerType>& m,
 // TYPED_TEST macro invocation for each subshard.
 
 template <typename T>
-void TestFloatMultiDimBroadcast(int selected_subshard, int subshard_count) {
-  MulOpModel<T> m({GetTensorType<T>(), {1, 1, 1, 1, 1, 1}},
-                  {GetTensorType<T>(), {1, 1, 1, 1, 1, 1}},
+void RunFloatMultiDimBroadcastTest(int d1, int d2) {
+  const int dims_constants[] = {kDim1, kDim2, kDim3, kDim4, kDim5, kDim6};
+  std::vector<int> initial_shape1(d1, 1);
+  std::vector<int> initial_shape2(d2, 1);
+  MulOpModel<T> m({GetTensorType<T>(), initial_shape1},
+                  {GetTensorType<T>(), initial_shape2},
                   {GetTensorType<T>(), {}}, ActivationFunctionType_NONE, {}, {},
                   /*constant_tensors=*/false);
-  int iteration = 0;
-  for (uint32_t bm1 = 0;
-       bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
-    for (uint32_t bm2 = 0;
-         bm2 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm2++) {
-      if (iteration++ % subshard_count != selected_subshard) {
-        continue;  // This iteration of the loop is not part of this subshard.
+
+  for (uint32_t bm1 = 0; bm1 < (static_cast<uint32_t>(1) << d1); bm1++) {
+    for (uint32_t bm2 = 0; bm2 < (static_cast<uint32_t>(1) << d2); bm2++) {
+      std::vector<int> input1_shape(d1);
+      std::vector<int> input2_shape(d2);
+      for (int i = 0; i < d1; ++i) {
+        bool broadcast = bm1 & (1 << i);
+        input1_shape[i] = broadcast ? 1 : dims_constants[6 - d1 + i];
       }
-      const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
-      const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
-      const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
-      const bool input1_broadcast_dim4 = bm1 & (static_cast<uint32_t>(1) << 3);
-      const bool input1_broadcast_dim5 = bm1 & (static_cast<uint32_t>(1) << 4);
-      const bool input1_broadcast_dim6 = bm1 & (static_cast<uint32_t>(1) << 5);
-      const bool input2_broadcast_dim1 = bm2 & (static_cast<uint32_t>(1) << 0);
-      const bool input2_broadcast_dim2 = bm2 & (static_cast<uint32_t>(1) << 1);
-      const bool input2_broadcast_dim3 = bm2 & (static_cast<uint32_t>(1) << 2);
-      const bool input2_broadcast_dim4 = bm2 & (static_cast<uint32_t>(1) << 3);
-      const bool input2_broadcast_dim5 = bm2 & (static_cast<uint32_t>(1) << 4);
-      const bool input2_broadcast_dim6 = bm2 & (static_cast<uint32_t>(1) << 5);
-      const int input1_dim1 = input1_broadcast_dim1 ? 1 : kDim1;
-      const int input1_dim2 = input1_broadcast_dim2 ? 1 : kDim2;
-      const int input1_dim3 = input1_broadcast_dim3 ? 1 : kDim3;
-      const int input1_dim4 = input1_broadcast_dim4 ? 1 : kDim4;
-      const int input1_dim5 = input1_broadcast_dim5 ? 1 : kDim5;
-      const int input1_dim6 = input1_broadcast_dim6 ? 1 : kDim6;
-      const int input2_dim1 = input2_broadcast_dim1 ? 1 : kDim1;
-      const int input2_dim2 = input2_broadcast_dim2 ? 1 : kDim2;
-      const int input2_dim3 = input2_broadcast_dim3 ? 1 : kDim3;
-      const int input2_dim4 = input2_broadcast_dim4 ? 1 : kDim4;
-      const int input2_dim5 = input2_broadcast_dim5 ? 1 : kDim5;
-      const int input2_dim6 = input2_broadcast_dim6 ? 1 : kDim6;
-      std::vector<int> input1_full_shape{input1_dim1, input1_dim2, input1_dim3,
-                                         input1_dim4, input1_dim5, input1_dim6};
-      std::vector<int> input2_full_shape{input2_dim1, input2_dim2, input2_dim3,
-                                         input2_dim4, input2_dim5, input2_dim6};
-      for (int input1_dims = 1; input1_dims <= kMaxMulBroadcastDim;
-           ++input1_dims) {
-        for (int input2_dims = 1; input2_dims <= kMaxMulBroadcastDim;
-             ++input2_dims) {
-          std::vector<int> input1_shape(input1_dims), input2_shape(input2_dims);
-          std::copy(input1_full_shape.end() - input1_dims,
-                    input1_full_shape.end(), input1_shape.data());
-          std::copy(input2_full_shape.end() - input2_dims,
-                    input2_full_shape.end(), input2_shape.data());
-          TestFloatBroadcast<T>(m, input1_shape, input2_shape);
-          if (testing::Test::IsSkipped()) {
-            return;
-          }
-        }
+      for (int i = 0; i < d2; ++i) {
+        bool broadcast = bm2 & (1 << i);
+        input2_shape[i] = broadcast ? 1 : dims_constants[6 - d2 + i];
+      }
+      TestFloatBroadcast<T>(m, input1_shape, input2_shape);
+      if (testing::Test::IsSkipped()) {
+        return;
       }
     }
   }
 }
 
-// Should match the number of TEST or TYPED_TEST invoations for each of
-// Float32MultiDimBroadcastSubshard*,
-// IntegerMultiDimBroadcastSubshard*,
-// Int8QuantizedMultiDimBroadcastSubshard*, and
-// Uint8QuantizedMultiDimBroadcastSubshard* below.
-constexpr int kMultiDimBroadcastSubshardCount = 10;
+#define INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TEST(d1, d2) \
+  TYPED_TEST(FloatMulTest, MultiDimBroadcast_##d1##_##d2) {    \
+    RunFloatMultiDimBroadcastTest<TypeParam>(d1, d2);          \
+  }
 
-TYPED_TEST(FloatMulTest, MultiDimBroadcastSubshard0) {
-  TestFloatMultiDimBroadcast<TypeParam>(0, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(FloatMulTest, MultiDimBroadcastSubshard1) {
-  TestFloatMultiDimBroadcast<TypeParam>(1, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(FloatMulTest, MultiDimBroadcastSubshard2) {
-  TestFloatMultiDimBroadcast<TypeParam>(2, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(FloatMulTest, MultiDimBroadcastSubshard3) {
-  TestFloatMultiDimBroadcast<TypeParam>(3, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(FloatMulTest, MultiDimBroadcastSubshard4) {
-  TestFloatMultiDimBroadcast<TypeParam>(4, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(FloatMulTest, MultiDimBroadcastSubshard5) {
-  TestFloatMultiDimBroadcast<TypeParam>(5, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(FloatMulTest, MultiDimBroadcastSubshard6) {
-  TestFloatMultiDimBroadcast<TypeParam>(6, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(FloatMulTest, MultiDimBroadcastSubshard7) {
-  TestFloatMultiDimBroadcast<TypeParam>(7, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(FloatMulTest, MultiDimBroadcastSubshard8) {
-  TestFloatMultiDimBroadcast<TypeParam>(8, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(FloatMulTest, MultiDimBroadcastSubshard9) {
-  TestFloatMultiDimBroadcast<TypeParam>(9, kMultiDimBroadcastSubshardCount);
-}
+#define INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TEST_D2(d1) \
+  INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TEST(d1, 1)       \
+  INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TEST(d1, 2)       \
+  INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TEST(d1, 3)       \
+  INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TEST(d1, 4)       \
+  INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TEST(d1, 5)       \
+  INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TEST(d1, 6)
+
+#define INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TESTS() \
+  INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TEST_D2(1)    \
+  INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TEST_D2(2)    \
+  INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TEST_D2(3)    \
+  INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TEST_D2(4)    \
+  INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TEST_D2(5)    \
+  INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TEST_D2(6)
+
+INSTANTIATE_FLOAT_MUL_MULTI_DIM_BROADCAST_TESTS()
 
 template <typename T>
 class IntegerMulOpTest : public ::testing::Test {};
@@ -1233,99 +1187,59 @@ TYPED_TEST_SUITE(IntegerMulOpTest, Int16OrInt32Or64Types);
 // single shard.  So we split it into a few "subshards" and have a separate
 // TYPED_TEST macro invocation for each subshard.
 
-template <class TypeParam>
-void TestIntegerMultiDimBroadcast(int selected_subshard, int subshard_count) {
-  ASSERT_LT(selected_subshard, subshard_count);
-  IntegerMulOpModel<TypeParam> m(
-      {GetTensorType<TypeParam>(), {1, 1, 1, 1, 1, 1}},
-      {GetTensorType<TypeParam>(), {1, 1, 1, 1, 1, 1}},
-      {GetTensorType<TypeParam>(), {}}, ActivationFunctionType_NONE, {}, {},
-      /*constant_tensors=*/false);
-  int iteration = 0;
-  for (uint32_t bm1 = 0;
-       bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
-    for (uint32_t bm2 = 0;
-         bm2 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm2++) {
-      if (iteration++ % subshard_count != selected_subshard) {
-        continue;  // This iteration of the loop is not part of this subshard.
+template <typename TypeParam>
+void RunIntegerMultiDimBroadcastTest(int d1, int d2) {
+  const int dims_constants[] = {kDim1, kDim2, kDim3, kDim4, kDim5, kDim6};
+  std::vector<int> initial_shape1(d1, 1);
+  std::vector<int> initial_shape2(d2, 1);
+  IntegerMulOpModel<TypeParam> m({GetTensorType<TypeParam>(), initial_shape1},
+                                 {GetTensorType<TypeParam>(), initial_shape2},
+                                 {GetTensorType<TypeParam>(), {}},
+                                 ActivationFunctionType_NONE, {}, {},
+                                 /*constant_tensors=*/false);
+
+  for (uint32_t bm1 = 0; bm1 < (static_cast<uint32_t>(1) << d1); bm1++) {
+    for (uint32_t bm2 = 0; bm2 < (static_cast<uint32_t>(1) << d2); bm2++) {
+      std::vector<int> input1_shape(d1);
+      std::vector<int> input2_shape(d2);
+      for (int i = 0; i < d1; ++i) {
+        bool broadcast = bm1 & (1 << i);
+        input1_shape[i] = broadcast ? 1 : dims_constants[6 - d1 + i];
       }
-      const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
-      const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
-      const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
-      const bool input1_broadcast_dim4 = bm1 & (static_cast<uint32_t>(1) << 3);
-      const bool input1_broadcast_dim5 = bm1 & (static_cast<uint32_t>(1) << 4);
-      const bool input1_broadcast_dim6 = bm1 & (static_cast<uint32_t>(1) << 5);
-      const bool input2_broadcast_dim1 = bm2 & (static_cast<uint32_t>(1) << 0);
-      const bool input2_broadcast_dim2 = bm2 & (static_cast<uint32_t>(1) << 1);
-      const bool input2_broadcast_dim3 = bm2 & (static_cast<uint32_t>(1) << 2);
-      const bool input2_broadcast_dim4 = bm2 & (static_cast<uint32_t>(1) << 3);
-      const bool input2_broadcast_dim5 = bm2 & (static_cast<uint32_t>(1) << 4);
-      const bool input2_broadcast_dim6 = bm2 & (static_cast<uint32_t>(1) << 5);
-      const int input1_dim1 = input1_broadcast_dim1 ? 1 : kDim1;
-      const int input1_dim2 = input1_broadcast_dim2 ? 1 : kDim2;
-      const int input1_dim3 = input1_broadcast_dim3 ? 1 : kDim3;
-      const int input1_dim4 = input1_broadcast_dim4 ? 1 : kDim4;
-      const int input1_dim5 = input1_broadcast_dim5 ? 1 : kDim5;
-      const int input1_dim6 = input1_broadcast_dim6 ? 1 : kDim6;
-      const int input2_dim1 = input2_broadcast_dim1 ? 1 : kDim1;
-      const int input2_dim2 = input2_broadcast_dim2 ? 1 : kDim2;
-      const int input2_dim3 = input2_broadcast_dim3 ? 1 : kDim3;
-      const int input2_dim4 = input2_broadcast_dim4 ? 1 : kDim4;
-      const int input2_dim5 = input2_broadcast_dim5 ? 1 : kDim5;
-      const int input2_dim6 = input2_broadcast_dim6 ? 1 : kDim6;
-      std::vector<int> input1_full_shape{input1_dim1, input1_dim2, input1_dim3,
-                                         input1_dim4, input1_dim5, input1_dim6};
-      std::vector<int> input2_full_shape{input2_dim1, input2_dim2, input2_dim3,
-                                         input2_dim4, input2_dim5, input2_dim6};
-      for (int input1_dims = 1; input1_dims <= kMaxMulBroadcastDim;
-           ++input1_dims) {
-        for (int input2_dims = 1; input2_dims <= kMaxMulBroadcastDim;
-             ++input2_dims) {
-          std::vector<int> input1_shape(input1_dims), input2_shape(input2_dims);
-          std::copy(input1_full_shape.end() - input1_dims,
-                    input1_full_shape.end(), input1_shape.data());
-          std::copy(input2_full_shape.end() - input2_dims,
-                    input2_full_shape.end(), input2_shape.data());
-          TestIntegerBroadcast<TypeParam>(m, input1_shape, input2_shape);
-          if (testing::Test::IsSkipped()) {
-            return;
-          }
-        }
+      for (int i = 0; i < d2; ++i) {
+        bool broadcast = bm2 & (1 << i);
+        input2_shape[i] = broadcast ? 1 : dims_constants[6 - d2 + i];
+      }
+      TestIntegerBroadcast<TypeParam>(m, input1_shape, input2_shape);
+      if (testing::Test::IsSkipped()) {
+        return;
       }
     }
   }
 }
 
-TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard0) {
-  TestIntegerMultiDimBroadcast<TypeParam>(0, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard1) {
-  TestIntegerMultiDimBroadcast<TypeParam>(1, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard2) {
-  TestIntegerMultiDimBroadcast<TypeParam>(2, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard3) {
-  TestIntegerMultiDimBroadcast<TypeParam>(3, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard4) {
-  TestIntegerMultiDimBroadcast<TypeParam>(4, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard5) {
-  TestIntegerMultiDimBroadcast<TypeParam>(5, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard6) {
-  TestIntegerMultiDimBroadcast<TypeParam>(6, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard7) {
-  TestIntegerMultiDimBroadcast<TypeParam>(7, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard8) {
-  TestIntegerMultiDimBroadcast<TypeParam>(8, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard9) {
-  TestIntegerMultiDimBroadcast<TypeParam>(9, kMultiDimBroadcastSubshardCount);
-}
+#define INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TEST(d1, d2) \
+  TYPED_TEST(IntegerMulOpTest, MultiDimBroadcast_##d1##_##d2) {  \
+    RunIntegerMultiDimBroadcastTest<TypeParam>(d1, d2);          \
+  }
+
+#define INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TEST_D2(d1) \
+  INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TEST(d1, 1)       \
+  INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TEST(d1, 2)       \
+  INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TEST(d1, 3)       \
+  INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TEST(d1, 4)       \
+  INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TEST(d1, 5)       \
+  INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TEST(d1, 6)
+
+#define INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TESTS() \
+  INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TEST_D2(1)    \
+  INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TEST_D2(2)    \
+  INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TEST_D2(3)    \
+  INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TEST_D2(4)    \
+  INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TEST_D2(5)    \
+  INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TEST_D2(6)
+
+INSTANTIATE_INTEGER_MUL_MULTI_DIM_BROADCAST_TESTS()
 
 template <typename QuantizedType>
 void TestQuantizedBroadcast(
@@ -1442,130 +1356,62 @@ void TestQuantizedBroadcast(
 // single shard.  So we split it into a few "subshards" and have a separate
 // TEST macro invocation for each subshard.
 
-template <class T>
-void TestQuantizedMultiDimBroadcast(int selected_subshard, int subshard_count) {
-  ASSERT_LT(selected_subshard, subshard_count);
-  QuantizedMulOpModel<T, T> m(
-      {GetTensorType<T>(), {1, 1, 1, 1, 1, 1}, -0.5f, 0.5f},
-      {GetTensorType<T>(), {1, 1, 1, 1, 1, 1}, -0.5f, 0.5f},
-      {GetTensorType<T>(), {}, -1.f, 1.f}, ActivationFunctionType_NONE, {}, {},
-      /*constant_tensors=*/false);
-  int iteration = 0;
-  for (uint32_t bm1 = 0;
-       bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
-    for (uint32_t bm2 = 0;
-         bm2 < (static_cast<int32_t>(1) << kMaxMulBroadcastDim); bm2++) {
-      if (iteration++ % subshard_count != selected_subshard) {
-        continue;  // This iteration of the loop is not part of this subshard.
+template <typename T>
+void RunQuantizedMultiDimBroadcastTest(int d1, int d2) {
+  const int dims_constants[] = {kDim1, kDim2, kDim3, kDim4, kDim5, kDim6};
+  std::vector<int> initial_shape1(d1, 1);
+  std::vector<int> initial_shape2(d2, 1);
+  QuantizedMulOpModel<T, T> m({GetTensorType<T>(), initial_shape1, -0.5f, 0.5f},
+                              {GetTensorType<T>(), initial_shape2, -0.5f, 0.5f},
+                              {GetTensorType<T>(), {}, -1.f, 1.f},
+                              ActivationFunctionType_NONE, {}, {},
+                              /*constant_tensors=*/false);
+
+  for (uint32_t bm1 = 0; bm1 < (static_cast<uint32_t>(1) << d1); bm1++) {
+    for (uint32_t bm2 = 0; bm2 < (static_cast<uint32_t>(1) << d2); bm2++) {
+      std::vector<int> input1_shape(d1);
+      std::vector<int> input2_shape(d2);
+      for (int i = 0; i < d1; ++i) {
+        bool broadcast = bm1 & (1 << i);
+        input1_shape[i] = broadcast ? 1 : dims_constants[6 - d1 + i];
       }
-      const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
-      const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
-      const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
-      const bool input1_broadcast_dim4 = bm1 & (static_cast<uint32_t>(1) << 3);
-      const bool input1_broadcast_dim5 = bm1 & (static_cast<uint32_t>(1) << 4);
-      const bool input1_broadcast_dim6 = bm1 & (static_cast<uint32_t>(1) << 5);
-      const bool input2_broadcast_dim1 = bm2 & (static_cast<uint32_t>(1) << 0);
-      const bool input2_broadcast_dim2 = bm2 & (static_cast<uint32_t>(1) << 1);
-      const bool input2_broadcast_dim3 = bm2 & (static_cast<uint32_t>(1) << 2);
-      const bool input2_broadcast_dim4 = bm2 & (static_cast<uint32_t>(1) << 3);
-      const bool input2_broadcast_dim5 = bm2 & (static_cast<uint32_t>(1) << 4);
-      const bool input2_broadcast_dim6 = bm2 & (static_cast<uint32_t>(1) << 5);
-      const int input1_dim1 = input1_broadcast_dim1 ? 1 : kDim1;
-      const int input1_dim2 = input1_broadcast_dim2 ? 1 : kDim2;
-      const int input1_dim3 = input1_broadcast_dim3 ? 1 : kDim3;
-      const int input1_dim4 = input1_broadcast_dim4 ? 1 : kDim4;
-      const int input1_dim5 = input1_broadcast_dim5 ? 1 : kDim5;
-      const int input1_dim6 = input1_broadcast_dim6 ? 1 : kDim6;
-      const int input2_dim1 = input2_broadcast_dim1 ? 1 : kDim1;
-      const int input2_dim2 = input2_broadcast_dim2 ? 1 : kDim2;
-      const int input2_dim3 = input2_broadcast_dim3 ? 1 : kDim3;
-      const int input2_dim4 = input2_broadcast_dim4 ? 1 : kDim4;
-      const int input2_dim5 = input2_broadcast_dim5 ? 1 : kDim5;
-      const int input2_dim6 = input2_broadcast_dim6 ? 1 : kDim6;
-      std::vector<int> input1_full_shape{input1_dim1, input1_dim2, input1_dim3,
-                                         input1_dim4, input1_dim5, input1_dim6};
-      std::vector<int> input2_full_shape{input2_dim1, input2_dim2, input2_dim3,
-                                         input2_dim4, input2_dim5, input2_dim6};
-      for (int input1_dims = 1; input1_dims <= kMaxMulBroadcastDim;
-           ++input1_dims) {
-        for (int input2_dims = 1; input2_dims <= kMaxMulBroadcastDim;
-             ++input2_dims) {
-          std::vector<int> input1_shape(input1_dims), input2_shape(input2_dims);
-          std::copy(input1_full_shape.end() - input1_dims,
-                    input1_full_shape.end(), input1_shape.data());
-          std::copy(input2_full_shape.end() - input2_dims,
-                    input2_full_shape.end(), input2_shape.data());
-          TestQuantizedBroadcast<T>(m, input1_shape, input2_shape);
-          if (testing::Test::IsSkipped()) {
-            return;
-          }
-        }
+      for (int i = 0; i < d2; ++i) {
+        bool broadcast = bm2 & (1 << i);
+        input2_shape[i] = broadcast ? 1 : dims_constants[6 - d2 + i];
+      }
+      TestQuantizedBroadcast<T>(m, input1_shape, input2_shape);
+      if (testing::Test::IsSkipped()) {
+        return;
       }
     }
   }
 }
 
-TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard0) {
-  TestQuantizedMultiDimBroadcast<int8_t>(0, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard1) {
-  TestQuantizedMultiDimBroadcast<int8_t>(1, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard2) {
-  TestQuantizedMultiDimBroadcast<int8_t>(2, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard3) {
-  TestQuantizedMultiDimBroadcast<int8_t>(3, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard4) {
-  TestQuantizedMultiDimBroadcast<int8_t>(4, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard5) {
-  TestQuantizedMultiDimBroadcast<int8_t>(5, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard6) {
-  TestQuantizedMultiDimBroadcast<int8_t>(6, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard7) {
-  TestQuantizedMultiDimBroadcast<int8_t>(7, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard8) {
-  TestQuantizedMultiDimBroadcast<int8_t>(8, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard9) {
-  TestQuantizedMultiDimBroadcast<int8_t>(9, kMultiDimBroadcastSubshardCount);
-}
+#define INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TEST(T, TypeName, d1, \
+                                                           d2)              \
+  TEST(QuantizedMulOpModel,                                                 \
+       TypeName##QuantizedMultiDimBroadcast_##d1##_##d2) {                  \
+    RunQuantizedMultiDimBroadcastTest<T>(d1, d2);                           \
+  }
 
-TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard0) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(0, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard1) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(1, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard2) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(2, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard3) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(3, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard4) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(4, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard5) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(5, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard6) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(6, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard7) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(7, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard8) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(8, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard9) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(9, kMultiDimBroadcastSubshardCount);
-}
+#define INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TEST_D2(T, TypeName, d1) \
+  INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TEST(T, TypeName, d1, 1)       \
+  INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TEST(T, TypeName, d1, 2)       \
+  INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TEST(T, TypeName, d1, 3)       \
+  INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TEST(T, TypeName, d1, 4)       \
+  INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TEST(T, TypeName, d1, 5)       \
+  INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TEST(T, TypeName, d1, 6)
+
+#define INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TESTS(T, TypeName) \
+  INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TEST_D2(T, TypeName, 1)  \
+  INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TEST_D2(T, TypeName, 2)  \
+  INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TEST_D2(T, TypeName, 3)  \
+  INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TEST_D2(T, TypeName, 4)  \
+  INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TEST_D2(T, TypeName, 5)  \
+  INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TEST_D2(T, TypeName, 6)
+
+INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TESTS(int8_t, Int8)
+INSTANTIATE_QUANTIZED_MUL_MULTI_DIM_BROADCAST_TESTS(uint8_t, Uint8)
 
 }  // namespace
 }  // namespace tflite
