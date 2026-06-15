@@ -138,7 +138,7 @@ filegroup(
 py_library(
     name = "eager_pip",
     strict_deps = True,
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:private"],
     deps = [
         ":backprop",
         ":benchmarks_test_base",
