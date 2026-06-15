@@ -72,7 +72,7 @@ static GpuCollectives* ResolveCollectives(
         CollectivesRegistry::Get(platform_name, *implementation_name);
     CHECK_OK(collectives) << "Failed to get GPU collectives implementation: "
                           << *implementation_name;
-    return tsl::down_cast<GpuCollectives*>(*collectives);
+    return absl::down_cast<GpuCollectives*>(*collectives);
   }
   return GpuCollectives::Default(platform_name);
 }
