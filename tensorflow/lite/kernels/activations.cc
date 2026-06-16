@@ -1674,6 +1674,12 @@ TfLiteStatus GeluEval(TfLiteContext* context, TfLiteNode* node) {
                           params->approximate, GetTensorShape(output),
                           GetTensorData<float>(output));
       return kTfLiteOk;
+    case kTfLiteFloat16:
+      reference_ops::Gelu(GetTensorShape(input),
+                          GetTensorData<Eigen::half>(input),
+                          params->approximate, GetTensorShape(output),
+                          GetTensorData<Eigen::half>(output));
+      return kTfLiteOk;
     case kTfLiteUInt8:
       optimized_integer_ops::LookupTable(
           GetTensorData<uint8_t>(input),

@@ -4190,11 +4190,11 @@ def TFL_GeluOp: TFL_Op<"gelu", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, QI8, QUI8]>:$input,
+    TFL_TensorOf<[F32, F16, QI8, QUI8]>:$input,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$approximate
   );
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, F16, QI8, QUI8]>:$output);
 
   let hasOptions = 1;
 }
