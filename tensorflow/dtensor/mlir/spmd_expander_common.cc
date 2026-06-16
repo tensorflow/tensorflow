@@ -85,13 +85,13 @@ StatusOr<mlir::TensorType> LocalTypeFromGlobalType(
   for (int output_axis = 0; output_axis < shape.size(); ++output_axis) {
     if (shape[output_axis] != mlir::ShapedType::kDynamic) {
       if (shape[output_axis] % shard_values[output_axis] != 0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "The sharding spec for axis ", output_axis, " splits among ",
             shard_values[output_axis],
             " values, which does not evenly divide the length of that axis "
             "(",
             shape[output_axis], "). The full requested layout is ",
-            layout.ToString(), ".");
+            layout.ToString(), "."));
       }
       shape[output_axis] /= shard_values[output_axis];
     }
@@ -139,7 +139,7 @@ absl::Status CreateSplitOp(const int num_split, const int split_dimension,
     } else {
       auto shape = llvm::to_vector<4>(input_type.getShape());
       if (shape[split_dimension] % num_split != 0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             llvm::formatv(
                 "incorrect input sharding configuration received. "
                 "{0}-th dimension of the input must be evenly divisible by {1}",
@@ -218,7 +218,7 @@ StatusOr<Layout> GetBroadcastLayoutForElementWise(
     int64_t dims_to_ignore, std::vector<std::string>& to_split_a,
     std::vector<std::string>& to_split_b) {
   if (layout_a.mesh() != layout_b.mesh())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "layout_a and layout_b cannot be broadcast as they are on different "
         "meshes.");
 
@@ -531,7 +531,7 @@ StatusOr<mlir::Value> GetMeshCoordinatesFromCluster(
   // First try to find a FloorMod op with kMeshCoordinatesAttr attribute that
   // has the given mesh in it. If it exists, simply return that op's value.
   TF_ASSIGN_OR_RETURN(const auto mesh, ExtractDeviceMeshFromOp(cluster));
-  if (!mesh) return errors::InvalidArgument("missing mesh on cluster");
+  if (!mesh) return absl::InvalidArgumentError("missing mesh on cluster");
   std::string serialized_mesh = mesh->ToString();
   mlir::Value ret_val;
   auto result = cluster.walk([&](mlir::TF::FloorModOp op) -> mlir::WalkResult {
@@ -592,7 +592,7 @@ StatusOr<Mesh> GetMeshOnParentCluster(mlir::Operation* op) {
   if (mesh_attr) {
     return Mesh::FromString(mesh_attr.getValue().str());
   }
-  return errors::InvalidArgument("missing mesh attribute on cluster.");
+  return absl::InvalidArgumentError("missing mesh attribute on cluster.");
 }
 
 mlir::LogicalResult ValidateMetadataAttributes(mlir::Operation* op) {
@@ -710,9 +710,10 @@ absl::Status SetBuilderInsertionAfterValue(mlir::Value value,
     if (!new_cluster) continue;
     if (!cluster) cluster = new_cluster;
     if (cluster != new_cluster)
-      return errors::Internal("value has multiple uses in different clusters");
+      return absl::InternalError(
+          "value has multiple uses in different clusters");
   }
-  if (!cluster) return errors::Internal("value not used in any cluster");
+  if (!cluster) return absl::InternalError("value not used in any cluster");
 
   builder.setInsertionPointToStart(cluster.SingleBlock::getBody());
   return absl::OkStatus();
@@ -741,10 +742,11 @@ absl::Status ExtractConstStringVectorFromValue(
     mlir::Value value, llvm::SmallVectorImpl<std::string>& out_vector) {
   value = GetForwardedDTensorLayoutInput(value);
   if (mlir::isa<mlir::BlockArgument>(value))
-    return errors::Internal("Unable get constant value from block argument.");
+    return absl::InternalError(
+        "Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
-    return errors::Internal(
+    return absl::InternalError(
         llvm::formatv("failed to extract constant string vector from : {0}",
                       value)
             .str());
@@ -758,16 +760,17 @@ absl::Status ExtractConstStringVectorFromValue(
 StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value) {
   value = GetForwardedDTensorLayoutInput(value);
   if (mlir::isa<mlir::BlockArgument>(value))
-    return errors::Internal("Unable get constant value from block argument.");
+    return absl::InternalError(
+        "Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
-    return errors::Internal(absl::StrCat("required constant value for ",
-                                         OpName(value.getDefiningOp())));
+    return absl::InternalError(absl::StrCat("required constant value for ",
+                                            OpName(value.getDefiningOp())));
   }
   if (attr.size() != 1) {
-    return errors::Internal(absl::StrCat("expected 1 element, got ",
-                                         attr.size(), " for ",
-                                         OpName(value.getDefiningOp())));
+    return absl::InternalError(absl::StrCat("expected 1 element, got ",
+                                            attr.size(), " for ",
+                                            OpName(value.getDefiningOp())));
   }
   return std::string(*attr.getRawStringData().begin());
 }
