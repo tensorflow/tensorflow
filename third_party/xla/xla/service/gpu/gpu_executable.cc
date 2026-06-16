@@ -1752,11 +1752,6 @@ absl::Status GpuExecutable::ExecuteThunks(
 }
 
 int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
-  // Non-empty PTX but empty cubin: compilation must have failed, return
-  // "unknown".
-  if (binary().empty()) {
-    return -1;
-  }
   int64_t size = binary().size();
   for (const BufferAllocation* allocation : GetAllocations()) {
     if (allocation->is_constant()) {
