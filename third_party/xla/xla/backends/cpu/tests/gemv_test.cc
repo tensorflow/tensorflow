@@ -26,7 +26,7 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-class GemvTest : public HloPjRtInterpreterReferenceMixin<HloTestBase> {};
+class GemvTest : public HloInterpreterReferenceMixin<HloTestBase> {};
 
 TEST_F(GemvTest, BatchedGemv) {
   absl::string_view hlo_string = R"(
