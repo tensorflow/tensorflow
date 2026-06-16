@@ -21,8 +21,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/value_inference.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/primitive_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -186,6 +188,10 @@ class SegmentMin : public SegmentReduce {
     return xla::MaxFiniteValue(builder, type_);
   };
   xla::XlaOp Combine(xla::XlaOp a, xla::XlaOp b) override {
+    if (xla::primitive_util::IsFloatingPointType(type_)) {
+      return xla::Select(xla::IsNan(a), b,
+                         xla::Select(xla::IsNan(b), a, xla::Min(a, b)));
+    }
     return xla::Min(a, b);
   };
 };
@@ -206,6 +212,10 @@ class SegmentMax : public SegmentReduce {
     return xla::MinFiniteValue(builder, type_);
   };
   xla::XlaOp Combine(xla::XlaOp a, xla::XlaOp b) override {
+    if (xla::primitive_util::IsFloatingPointType(type_)) {
+      return xla::Select(xla::IsNan(a), b,
+                         xla::Select(xla::IsNan(b), a, xla::Max(a, b)));
+    }
     return xla::Max(a, b);
   };
 };

@@ -464,17 +464,23 @@ struct SumOp {
 template <typename T>
 struct MaxOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
-    output = data.cwiseMax(output);
+    output = data.template cwiseMax<Eigen::PropagateNumbers>(output);
   }
-  void operator()(const T& data, T& output) { output = std::max(data, output); }
+  void operator()(const T& data, T& output) {
+    output = Eigen::internal::scalar_max_op<T, T, Eigen::PropagateNumbers>()(
+        data, output);
+  }
 };
 
 template <typename T>
 struct MinOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
-    output = data.cwiseMin(output);
+    output = data.template cwiseMin<Eigen::PropagateNumbers>(output);
   }
-  void operator()(const T& data, T& output) { output = std::min(data, output); }
+  void operator()(const T& data, T& output) {
+    output = Eigen::internal::scalar_min_op<T, T, Eigen::PropagateNumbers>()(
+        data, output);
+  }
 };
 
 template <typename T>

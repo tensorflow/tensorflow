@@ -1211,10 +1211,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:value_inference",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 

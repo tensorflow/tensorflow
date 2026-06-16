@@ -606,6 +606,45 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
       ):
         self.evaluate(unsorted)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testOrderIndependentNaNHandling(self):
+    # MinOp and MaxOp use Eigen::PropagateNumbers, which prefers the numeric
+    # operand and returns NaN only when both operands are NaN. The reduction
+    # therefore returns the numeric min and max regardless of input order, and
+    # an all-NaN segment returns the reduction identity (the type maximum for
+    # min and the type minimum for max) rather than NaN.
+    for dtype in [np.float32, np.float64]:
+      hi = np.finfo(dtype).max
+      lo = np.finfo(dtype).min
+      # Each case is (data, segment_ids, expected_min, expected_max).
+      test_cases = [
+          # 1D inputs exercise the scalar path. Every ordering of a single NaN
+          # among the numbers {1, 3} reduces to min 1 and max 3.
+          ([1.0, np.nan, 3.0], [0, 0, 0], [1.0], [3.0]),
+          ([np.nan, 1.0, 3.0], [0, 0, 0], [1.0], [3.0]),
+          ([1.0, 3.0, np.nan], [0, 0, 0], [1.0], [3.0]),
+          ([3.0, np.nan, 1.0], [0, 0, 0], [1.0], [3.0]),
+          ([1.0, np.nan, 3.0, 2.0], [0, 0, 0, 0], [1.0], [3.0]),
+          # An all-NaN segment returns the identity: hi for min, lo for max.
+          ([np.nan, np.nan], [0, 0], [hi], [lo]),
+          # 2D inputs exercise the matrix-chip path. Column 0 reduces over
+          # {1, NaN} to 1 and column 1 reduces over {NaN, 3} to 3, for both
+          # min and max.
+          ([[1.0, np.nan], [np.nan, 3.0]], [0, 0], [[1.0, 3.0]], [[1.0, 3.0]]),
+          # All-NaN columns return the identity in every column.
+          ([[np.nan, np.nan], [np.nan, np.nan]], [0, 0],
+           [[hi, hi]], [[lo, lo]]),
+      ]
+      for data, seg_ids, expected_min, expected_max in test_cases:
+        data_np = np.array(data, dtype=dtype)
+        segment_ids = np.array(seg_ids, dtype=np.int32)
+        res_min = math_ops.unsorted_segment_min(
+            data_np, segment_ids, num_segments=1)
+        self.assertAllClose(self.evaluate(res_min), expected_min)
+        res_max = math_ops.unsorted_segment_max(
+            data_np, segment_ids, num_segments=1)
+        self.assertAllClose(self.evaluate(res_max), expected_max)
+
 
 class SparseSegmentReductionHelper(SegmentReductionHelper):
 
