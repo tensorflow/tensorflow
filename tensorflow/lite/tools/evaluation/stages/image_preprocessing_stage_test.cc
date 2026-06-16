@@ -328,6 +328,21 @@ TEST(ImagePreprocessingStage, TestPaddingTargetSmallerThanImage) {
   EXPECT_EQ(stage.Run(), kTfLiteError);
 }
 
+TEST(ImagePreprocessingStage, TestPaddingTargetTooLarge) {
+  std::string image_path(kTestImage);
+
+  ImagePreprocessingConfigBuilder builder(
+      std::string(kImagePreprocessingStageName), kTfLiteFloat32);
+  // A padding target large enough to overflow the output buffer size
+  // computation must be rejected at run time.
+  builder.AddPaddingStep(/*width=*/100000, /*height=*/100000, 0);
+  builder.AddNormalizationStep(127.5, 1.0 / 127.5);
+  ImagePreprocessingStage stage(builder.build());
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
+  stage.SetImagePath(&image_path);
+  EXPECT_EQ(stage.Run(), kTfLiteError);
+}
+
 TEST(ImagePreprocessingStage, TestInvalidRawImageSize) {
   std::string image_path = testing::TempDir() + "/invalid.rgb8";
   std::ofstream stream(image_path, std::ios::out | std::ios::binary);

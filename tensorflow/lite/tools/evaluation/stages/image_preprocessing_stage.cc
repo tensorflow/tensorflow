@@ -264,6 +264,15 @@ inline TfLiteStatus Pad(ImageData* image_data, const PaddingParams& params) {
                                     kNumChannels});
   tflite::RuntimeShape output_shape(
       {1, output_height, output_width, kNumChannels});
+  // Guards against integer overflow when computing the output buffer size for
+  // a very large target_size. output_width/height are validated > 0 and >= the
+  // image dimensions above, so the divisions are safe.
+  if (output_height > std::numeric_limits<int>::max() / output_width ||
+      output_width * output_height >
+          std::numeric_limits<int>::max() / kNumChannels) {
+    ABSL_LOG(ERROR) << "Padding output size is too large";
+    return kTfLiteError;
+  }
   int output_size = output_width * output_height * kNumChannels;
   std::vector<float> output_data(output_size, 0);
   tflite::reference_ops::Pad(pad_params, input_shape, image_data->data.data(),
