@@ -192,7 +192,7 @@ absl::StatusOr<std::vector<absl::Cord>> DeserializeStringHostBufferFromString(
 }
 
 absl::Status DeserializeFromCordIntoPreallocatedStringHostBuffer(
-    const absl::Cord& serialized_string_buffer,
+    const absl::Cord& serialized_string_buffer, int64_t num_elements,
     absl::Cord* preallocated_buffer) {
   proto::StringArrayContents string_array_proto;
 
@@ -204,6 +204,17 @@ absl::Status DeserializeFromCordIntoPreallocatedStringHostBuffer(
 #endif
     return absl::InvalidArgumentError(
         "Failed to parse serialized string buffer");
+  }
+
+  // `preallocated_buffer` was sized from the array shape, while the serialized
+  // buffer carries its own string count. Reject a mismatch before writing any
+  // element so an inconsistent buffer cannot write past the end of
+  // `preallocated_buffer`. This mirrors the element-count validation on the
+  // server-side string deserialization path.
+  if (string_array_proto.strings_size() != num_elements) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "String host buffer has ", string_array_proto.strings_size(),
+        " elements but shape requires ", num_elements, " elements"));
   }
 
   auto* current_cord = preallocated_buffer;
