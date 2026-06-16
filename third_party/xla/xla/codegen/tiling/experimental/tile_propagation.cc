@@ -87,6 +87,37 @@ DimTile GetDimTile(const TilingSpace::DimensionInfo& dim_info,
       /*upper_bound=*/CreateSymbolicConstant(dim_info.dimension_size, ctx)};
 }
 
+// Returns the constant value of the symbolic expr if it simplifies to one.
+std::optional<int64_t> TryGetConstantValue(const SymbolicExpr& expr) {
+  auto canonical = expr.Canonicalize();
+  if (canonical.GetType() == SymbolicExprType::kConstant) {
+    return canonical.GetValue();
+  }
+  return std::nullopt;
+}
+
+// Returns true if the symbolic expression simplifies to the given constant.
+bool IsConstantValue(const SymbolicExpr& expr, int64_t value) {
+  auto val = TryGetConstantValue(expr);
+  return val.has_value() && *val == value;
+}
+
+// Returns true if the tile fully covers the given dimension size.
+// This is the case if size == dim or size * stride == dim.
+bool DimIsFullyCovered(const DimTile& tile, int64_t dim) {
+  auto size_val = TryGetConstantValue(tile.size);
+  if (!size_val.has_value()) {
+    return false;
+  }
+
+  if (*size_val == dim) {
+    return true;
+  }
+
+  auto stride_val = TryGetConstantValue(tile.stride);
+  return stride_val.has_value() && (*size_val * *stride_val) == dim;
+}
+
 Tiles PropagateTileToInputForCwiseOp(const HloInstruction& hlo,
                                      const Tile& input_tile) {
   return Tiles(hlo.operand_count(), input_tile);
@@ -132,157 +163,144 @@ Tiles PropagateTileToOutputForBroadcastOp(const HloBroadcastInstruction& bcast,
   return {input_tile.CloneWithNewDims(std::move(dim_tiles))};
 }
 
-absl::StatusOr<Tiles> PropagateTileToInputForConcatenateOp(
-    TilingSpace& tiling_space, const HloConcatenateInstruction& concatenate,
-    const Tile& output_tile) {
+absl::Status VerifyConcatenateAlignment(
+    const TilingSpace& tiling_space,
+    const HloConcatenateInstruction& concatenate, const Tile& output_tile) {
+  if (tiling_space.IsSymbolic()) {
+    VLOG(2) << "Tiling space is symbolic, skipping validation for "
+            << concatenate.ToString();
+    return absl::OkStatus();
+  }
   int64_t num_operands = concatenate.operand_count();
-
-  Tiles tiles;
-  tiles.reserve(num_operands);
-
-  // For concatenate, we need to adjust the offsets and the bounds in the
-  // concatenate dimension.
   int64_t concat_dim = concatenate.concatenate_dimension();
 
-  auto offset_expr = output_tile.dim_tiles()[concat_dim].offset;
-  auto size_expr = output_tile.dim_tiles()[concat_dim].size;
+  SymbolicExpr offset_expr = output_tile.dim_tiles()[concat_dim].offset;
+  SymbolicExpr tile_size_expr = output_tile.dim_tiles()[concat_dim].size;
 
-  // We evaluate the base offset B = E(0) by setting all dimension variables to
-  // 0. If B is a constant, we accumulate operand sizes to locate the starting
-  // operand k containing index B. To prevent tiles from crossing operand
-  // boundaries, we enforce/record constraints that:
-  // 1. The variable step (offset_expr - B) is divisible by the tile size.
+  // We evaluate the base offset base_offset by setting all dimension variables
+  // to 0. Then we accumulate operand sizes to locate the operand that contains
+  // the base_offset.
+  // We enforce:
+  // 1. The variable step (offset_expr - base_offset) is divisible by the tile
+  //    size. TODO: b/491092362 - why do we need that?
   // 2. The remaining size in operand k from index B is divisible by the tile
   //    size (unless k is the last operand).
   // 3. All subsequent operand sizes are divisible by the tile size (unless
   //    they are the last operand).
+  //
+  // Illustration of the alignment checks:
+  //
+  //          accumulated_offset       |           |
+  //          |        base_offset     |           |
+  //          v        v               |           |
+  // |--------|--------|---------------|-----------| .. --------|
+  // |  Op 0  |      Op 1 (base_op)    |    Op 2   |     (last) |
+  // |--------|------------------------|-----------| .. --------|
+  //                   |<------------->|<--------->|
+  //                     remaining_size  op_size(2)
+  //
+  // Tile:             |---|---|---|---|---|---|---|---|---|---|-xx|
+  //                       |   |   |   |   |   |   |   |   |   |
+  //                       |<->| tile_size                      masked tile
+
   mlir::MLIRContext* ctx = tiling_space.mlir_context();
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> zero_map;
   for (int64_t d = 0; d < tiling_space.num_dimensions(); ++d) {
     zero_map[CreateDimExpr(d, ctx)] = CreateSymbolicConstant(0, ctx);
   }
   SymbolicExpr base_offset_expr = offset_expr.Replace(zero_map);
+  std::optional<int64_t> base_offset_val =
+      TryGetConstantValue(base_offset_expr);
+  if (!base_offset_val.has_value()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Tiling propagation rejected for ", concatenate.ToString(),
+                     ": The base offset ", base_offset_expr.ToString(),
+                     " is not a constant."));
+  }
 
-  if (base_offset_expr.GetType() == SymbolicExprType::kConstant) {
-    int64_t B = base_offset_expr.GetValue();
-    int64_t current_operand_idx = 0;
-    int64_t accumulated_offset = 0;
-    while (current_operand_idx < num_operands) {
-      int64_t op_size = concatenate.operand(current_operand_idx)
-                            ->shape()
-                            .dimensions(concat_dim);
-      if (B < accumulated_offset + op_size) {
-        break;
-      }
-      accumulated_offset += op_size;
-      ++current_operand_idx;
+  int64_t base_offset = base_offset_expr.GetValue();
+  if (base_offset < 0) {
+    // TODO: b/491092362 - tile offset might negative for all dims set to 0
+    // in some cases so it is not the best heuristic to set base_offset to E(0).
+    return absl::FailedPreconditionError(
+        absl::StrCat("Tiling propagation rejected for ", concatenate.ToString(),
+                     ": The base offset ", base_offset, " is negative."));
+  }
+  int64_t base_operand_idx = 0;
+  int64_t accumulated_offset = 0;
+  while (base_operand_idx < num_operands) {
+    int64_t op_size =
+        concatenate.operand(base_operand_idx)->shape().dimensions(concat_dim);
+    if (base_offset < accumulated_offset + op_size) {
+      break;
     }
-    if (current_operand_idx >= num_operands) {
+    accumulated_offset += op_size;
+    ++base_operand_idx;
+  }
+  if (base_operand_idx >= num_operands) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Tiling propagation rejected for ", concatenate.ToString(),
+        ": The base offset ", base_offset,
+        " falls completely outside the total concatenate dimension size ",
+        accumulated_offset));
+  }
+
+  int64_t current_op_size =
+      concatenate.operand(base_operand_idx)->shape().dimensions(concat_dim);
+  int64_t remaining_size = (accumulated_offset + current_op_size) - base_offset;
+  SymbolicExpr variable_step =
+      (offset_expr - CreateSymbolicConstant(base_offset, ctx)).Canonicalize();
+  std::optional<int64_t> tile_size_val = TryGetConstantValue(tile_size_expr);
+  if (!tile_size_val.has_value()) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Tiling propagation rejected for ", concatenate.ToString(),
+        ": The tile size ", tile_size_expr.ToString(), " is not a constant."));
+  }
+  int64_t tile_size = tile_size_expr.GetValue();
+
+  if (!variable_step.IsMultipleOf(tile_size)) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Tiling propagation rejected for ", concatenate.ToString(),
+        ": The variable step expression '", variable_step.ToString(),
+        "' must be a clean multiple of its tile size ", tile_size,
+        " to prevent correctness bugs from tiles covering multiple concat "
+        "operands."));
+  }
+
+  if (base_operand_idx < num_operands - 1) {
+    if (remaining_size % tile_size != 0) {
       return absl::FailedPreconditionError(absl::StrCat(
-          "Tiling propagation rejected for Concatenate: The base offset ", B,
-          " falls completely outside the total concatenate dimension size ",
-          accumulated_offset));
-    }
-
-    int64_t current_op_size = concatenate.operand(current_operand_idx)
-                                  ->shape()
-                                  .dimensions(concat_dim);
-    int64_t remaining_size = (accumulated_offset + current_op_size) - B;
-    SymbolicExpr variable_step =
-        (offset_expr - CreateSymbolicConstant(B, ctx)).Canonicalize();
-
-    if (size_expr.GetType() == SymbolicExprType::kConstant) {
-      int64_t T = size_expr.GetValue();
-
-      if (!variable_step.IsMultipleOf(T)) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Tiling propagation rejected for Concatenate: The variable step "
-            "expression '",
-            variable_step.ToString(),
-            "' must be a clean multiple of its tile size ", T,
-            " to prevent correctness bugs from tiles covering multiple concat "
-            "operands."));
-      }
-
-      if (current_operand_idx < num_operands - 1) {
-        if (remaining_size % T != 0) {
-          return absl::FailedPreconditionError(absl::StrCat(
-              "Tiling propagation rejected for Concatenate: The remaining "
-              "dimension size ",
-              remaining_size, " in the concatenate operand ",
-              current_operand_idx,
-              " must be a clean multiple of its tile size ", T));
-        }
-      }
-
-      for (int i = current_operand_idx + 1; i < num_operands - 1; ++i) {
-        int64_t op_size =
-            concatenate.operand(i)->shape().dimensions(concat_dim);
-        if (op_size % T != 0) {
-          return absl::FailedPreconditionError(absl::StrCat(
-              "Tiling propagation rejected for Concatenate: The operand "
-              "dimension size ",
-              op_size,
-              " in the concatenate dimension must be a clean multiple of its "
-              "tile size ",
-              T));
-        }
-      }
-    } else {
-      tiling_space.AddDivisibilityConstraint(variable_step, size_expr);
-
-      if (current_operand_idx < num_operands - 1) {
-        tiling_space.AddDivisibilityConstraint(
-            CreateSymbolicConstant(remaining_size, ctx), size_expr);
-      }
-
-      for (int i = current_operand_idx + 1; i < num_operands - 1; ++i) {
-        int64_t op_size =
-            concatenate.operand(i)->shape().dimensions(concat_dim);
-        tiling_space.AddDivisibilityConstraint(
-            CreateSymbolicConstant(op_size, ctx), size_expr);
-      }
-    }
-  } else {
-    // Fallback to strict logic starting from operand 0
-    if (size_expr.GetType() == SymbolicExprType::kConstant) {
-      int64_t T = size_expr.GetValue();
-
-      if (!offset_expr.IsMultipleOf(T)) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Tiling propagation rejected for Concatenate: The tile offset "
-            "expression '",
-            offset_expr.ToString(),
-            "' must be a clean multiple of its tile size ", T,
-            " to prevent correctness bugs from tiles covering multiple concat "
-            "operands."));
-      }
-
-      for (int i = 0; i < num_operands - 1; ++i) {
-        int64_t op_size =
-            concatenate.operand(i)->shape().dimensions(concat_dim);
-        if (op_size % T != 0) {
-          return absl::FailedPreconditionError(absl::StrCat(
-              "Tiling propagation rejected for Concatenate: The operand "
-              "dimension size ",
-              op_size,
-              " in the concatenate dimension must be a clean multiple of its "
-              "tile size ",
-              T));
-        }
-      }
-    } else {
-      tiling_space.AddDivisibilityConstraint(offset_expr, size_expr);
-
-      for (int i = 0; i < num_operands - 1; ++i) {
-        int64_t op_size =
-            concatenate.operand(i)->shape().dimensions(concat_dim);
-        tiling_space.AddDivisibilityConstraint(
-            CreateSymbolicConstant(op_size, ctx), size_expr);
-      }
+          "Tiling propagation rejected for ", concatenate.ToString(),
+          ": The remaining dimension size ", remaining_size,
+          " in the concatenate operand ", base_operand_idx,
+          " must be a clean multiple of its tile size ", tile_size));
     }
   }
 
+  for (int i = base_operand_idx + 1; i < num_operands - 1; ++i) {
+    int64_t op_size = concatenate.operand(i)->shape().dimensions(concat_dim);
+    if (op_size % tile_size != 0) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Tiling propagation rejected for ", concatenate.ToString(),
+          ": The operand dimension size ", op_size,
+          " in the concatenate dimension must be a multiple of the tile size ",
+          tile_size));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<Tiles> PropagateTileToInputForConcatenateOp(
+    TilingSpace& tiling_space, const HloConcatenateInstruction& concatenate,
+    const Tile& output_tile) {
+  RETURN_IF_ERROR(
+      VerifyConcatenateAlignment(tiling_space, concatenate, output_tile));
+  int64_t num_operands = concatenate.operand_count();
+  Tiles tiles;
+  tiles.reserve(num_operands);
+  // For concatenate, we need to adjust the offsets and the bounds in the
+  // concatenate dimension.
+  int64_t concat_dim = concatenate.concatenate_dimension();
   auto upper_bound = output_tile.upper_bounds()[concat_dim];
   int64_t offset = 0;
   for (const HloInstruction* operand : concatenate.operands()) {
@@ -753,37 +771,6 @@ NonTrivialDimInfo GetNonTrivialDimInfo(
     }
   }
   return result;
-}
-
-// Returns the constant value of the symbolic expr if it simplifies to one.
-std::optional<int64_t> TryGetConstantValue(const SymbolicExpr& expr) {
-  auto canonical = expr.Canonicalize();
-  if (canonical.GetType() == SymbolicExprType::kConstant) {
-    return canonical.GetValue();
-  }
-  return std::nullopt;
-}
-
-// Returns true if the symbolic expression simplifies to the given constant.
-bool IsConstantValue(const SymbolicExpr& expr, int64_t value) {
-  auto val = TryGetConstantValue(expr);
-  return val.has_value() && *val == value;
-}
-
-// Returns true if the tile fully covers the given dimension size.
-// This is the case if size == dim or size * stride == dim.
-bool DimIsFullyCovered(const DimTile& tile, int64_t dim) {
-  auto size_val = TryGetConstantValue(tile.size);
-  if (!size_val.has_value()) {
-    return false;
-  }
-
-  if (*size_val == dim) {
-    return true;
-  }
-
-  auto stride_val = TryGetConstantValue(tile.stride);
-  return stride_val.has_value() && (*size_val * *stride_val) == dim;
 }
 
 /// Checks whether a minimal reshape (Collapse or Expand) has a supported
