@@ -186,6 +186,20 @@ cc_library(
 )
 
 cc_library(
+    name = "scoped_allocation_trace",
+    srcs = ["scoped_allocation_trace.cc"],
+    hdrs = ["scoped_allocation_trace.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "bfc_allocator",
     srcs = [
         "allocator_retry.cc",
@@ -198,6 +212,7 @@ cc_library(
     deps = [
         ":allocator",
         ":metrics",
+        ":scoped_allocation_trace",
         ":shared_counter",
         "//xla/tsl/lib/core:bits",
         "//xla/tsl/platform:env",
@@ -226,13 +241,16 @@ tsl_cc_test(
     deps = [
         ":allocator",
         ":bfc_allocator",
+        ":scoped_allocation_trace",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/synchronization",
     ],
 )
