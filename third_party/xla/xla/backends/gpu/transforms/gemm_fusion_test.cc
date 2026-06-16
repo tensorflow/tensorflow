@@ -514,6 +514,29 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Parameter(), m::Bitcast(m::Parameter()))));
 }
 
+TEST_P(GemmFusionTestV2, HoistBitcastAcrossTransposeWithTrivialDimension) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[42,1]{1,0} parameter(0)
+  t = f32[1,42]{1,0} transpose(p0), dimensions={1,0}
+  b0 = f32[1,2,21,1]{3,2,1,0} bitcast(t)
+  b1 = f32[2,21,1]{2,1,0} bitcast(b0)
+  p1 = f32[2,1,42]{2,1,0} parameter(1)
+  ROOT d = f32[2,21,42]{2,1,0} dot(b1, p1), lhs_batch_dims={0},
+    rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  MatchHloModule(*module, R"(
+; CHECK: %fused_computation
+; CHECK-NOT: bitcast
+; CHECK: f32[2,21,1]{2,1,0} transpose({{.*}}), dimensions={0,1,2}
+; CHECK-NOT: bitcast
+; CHECK: ENTRY
+; CHECK: %[[B:.*]] = f32[2,21,1]{{.*}} bitcast
+; CHECK: fusion({{.*}}, %[[B]])
+)");
+}
+
 TEST_P(GemmFusionTestVersioned, BitcastChain) {
   // This HLO is artificial because unnecessary reshapes get optimized
   // out during compilation. It tests the ability of GemmFusion
