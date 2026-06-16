@@ -322,6 +322,7 @@ absl::Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
       const Tensor& indices, const Tensor& values, const Tensor& shape,     \
       IndexValidation index_validation)
 
+REGISTER_SPARSE_UTIL_FUNCTIONS(int16_t);
 REGISTER_SPARSE_UTIL_FUNCTIONS(int32_t);
 REGISTER_SPARSE_UTIL_FUNCTIONS(int64_t);
 REGISTER_SPARSE_UTIL_FUNCTIONS(uint8_t);

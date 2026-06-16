@@ -224,23 +224,35 @@ class SparseReduceOp : public OpKernel {
     // Each group maps one-on-one onto a value in the reduced tensor.
     // g.group() provides the coordinates of a particular reduced value.
     sp.Reorder<T>(reduction.reorder_dims);
-    for (const auto &g : sp.group(reduction.group_by_dims)) {
-      Op::template Run<T>(ctx, reduced_val, g.template values<T>());
-      OP_REQUIRES(ctx,
-                  output_strides.empty() ||
-                  (g.group().size() == output_strides.size()),
-                  absl::InternalError(absl::StrCat("Expected group size and output_strides size to match", ", but got ", g.group().size(), " and ", output_strides.size())));
-      const int64_t idx = CoordinatesToFlatIndex(g.group(), output_strides);
-      OP_REQUIRES(ctx,
-                  idx >= 0 && idx < out_flat.size(),
-                  errors::Internal(
-                      "Obtained a write index of ", idx,
-                      " which is outside of bounds of [0, ",
-                      out_flat.size(), ")"));
-      out_flat(idx) = reduced_val();
-      VLOG(2) << "coords: " << absl::StrJoin(g.group(), ",")
-              << "; idx: " << idx << "; group " << Op::Name() << ": "
-              << reduced_val();
+    auto DoReduce = [&](auto group_iter) {
+      for (const auto &g : group_iter) {
+        Op::template Run<T>(ctx, reduced_val, g.template values<T>());
+        OP_REQUIRES(ctx,
+                    output_strides.empty() ||
+                    (g.group().size() == output_strides.size()),
+                    absl::InternalError(absl::StrCat(
+                        "Expected group size and output_strides size to match",
+                        ", but got ", g.group().size(), " and ",
+                        output_strides.size())));
+        const int64_t idx = CoordinatesToFlatIndex(g.group(), output_strides);
+        OP_REQUIRES(ctx,
+                    idx >= 0 && idx < out_flat.size(),
+                    errors::Internal(
+                        "Obtained a write index of ", idx,
+                        " which is outside of bounds of [0, ",
+                        out_flat.size(), ")"));
+        out_flat(idx) = reduced_val();
+        VLOG(2) << "coords: " << absl::StrJoin(g.group(), ",")
+                << "; idx: " << idx << "; group " << Op::Name() << ": "
+                << reduced_val();
+      }
+    };
+    if (indices_t->dtype() == DT_INT16) {
+      DoReduce(sp.group<int16_t>(reduction.group_by_dims));
+    } else if (indices_t->dtype() == DT_INT32) {
+      DoReduce(sp.group<int32_t>(reduction.group_by_dims));
+    } else {
+      DoReduce(sp.group<int64_t>(reduction.group_by_dims));
     }
   }
 
@@ -250,16 +262,40 @@ class SparseReduceOp : public OpKernel {
 };
 
 #define REGISTER_KERNELS(T)                                              \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("SparseReduceSum").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      SparseReduceOp<T, SumOp>)
+  REGISTER_KERNEL_BUILDER(Name("SparseReduceSum")                        \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<T>("T")                   \
+                              .TypeConstraint<int64_t>("Tindices"),      \
+                          SparseReduceOp<T, SumOp>)                      \
+  REGISTER_KERNEL_BUILDER(Name("SparseReduceSum")                        \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<T>("T")                   \
+                              .TypeConstraint<int32_t>("Tindices"),      \
+                          SparseReduceOp<T, SumOp>)                      \
+  REGISTER_KERNEL_BUILDER(Name("SparseReduceSum")                        \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<T>("T")                   \
+                              .TypeConstraint<int16_t>("Tindices"),      \
+                          SparseReduceOp<T, SumOp>)
 TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #define REGISTER_KERNELS(T)                                              \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("SparseReduceMax").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      SparseReduceOp<T, MaxOp>)
+  REGISTER_KERNEL_BUILDER(Name("SparseReduceMax")                        \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<T>("T")                   \
+                              .TypeConstraint<int64_t>("Tindices"),      \
+                          SparseReduceOp<T, MaxOp>)                      \
+  REGISTER_KERNEL_BUILDER(Name("SparseReduceMax")                        \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<T>("T")                   \
+                              .TypeConstraint<int32_t>("Tindices"),      \
+                          SparseReduceOp<T, MaxOp>)                      \
+  REGISTER_KERNEL_BUILDER(Name("SparseReduceMax")                        \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<T>("T")                   \
+                              .TypeConstraint<int16_t>("Tindices"),      \
+                          SparseReduceOp<T, MaxOp>)
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
@@ -294,9 +330,15 @@ class SparseReduceSparseOp : public OpKernel {
     sp.Reorder<T>(reduction.reorder_dims);
     // Count nnzs in the output SparseTensor.
     int64_t nnz = 0;
-    auto iter = sp.group(reduction.group_by_dims);
-    for (auto it = iter.begin(); it != iter.end(); ++it) {
-      nnz++;
+    if (indices_t->dtype() == DT_INT16) {
+      auto iter = sp.group<int16_t>(reduction.group_by_dims);
+      for (auto it = iter.begin(); it != iter.end(); ++it) nnz++;
+    } else if (indices_t->dtype() == DT_INT32) {
+      auto iter = sp.group<int32_t>(reduction.group_by_dims);
+      for (auto it = iter.begin(); it != iter.end(); ++it) nnz++;
+    } else {
+      auto iter = sp.group<int64_t>(reduction.group_by_dims);
+      for (auto it = iter.begin(); it != iter.end(); ++it) nnz++;
     }
 
     Tensor *out_indices_t;
@@ -304,10 +346,6 @@ class SparseReduceSparseOp : public OpKernel {
                    ctx->allocate_output(
                        0, TensorShape({nnz, reduction.reduced_shape.dims()}),
                        &out_indices_t));
-    typename TTypes<int64_t>::Matrix out_indices_mat =
-        out_indices_t->matrix<int64_t>();
-    // For keep_dims. We don't explicitly set dim fields for reduced dims below.
-    out_indices_mat.setZero();
 
     Tensor *out_values_t;
     OP_REQUIRES_OK(ctx,
@@ -319,21 +357,37 @@ class SparseReduceSparseOp : public OpKernel {
                                            TensorShape({}), &tmp_reduced_val));
     auto reduced_val = tmp_reduced_val.scalar<T>();
     int64_t i = 0;
-    for (const auto &g : sp.group(reduction.group_by_dims)) {
-      Op::template Run<T>(ctx, reduced_val, g.template values<T>());
-      std::vector<int64_t> group = g.group();
-      for (int64_t j = 0; j < group.size(); j++) {
-        if (keep_dims_) {
-          out_indices_mat(i, reduction.group_by_dims[j]) = group[j];
-        } else {
-          out_indices_mat(i, j) = group[j];
+    auto DoReduceSparse = [&](auto group_iter, auto out_indices_mat) {
+      // For keep_dims, zero out dims that are not written.
+      out_indices_mat.setZero();
+      for (const auto &g : group_iter) {
+        Op::template Run<T>(ctx, reduced_val, g.template values<T>());
+        std::vector<int64_t> group = g.group();
+        using IdxType = std::decay_t<decltype(out_indices_mat(0, 0))>;
+        for (int64_t j = 0; j < static_cast<int64_t>(group.size()); j++) {
+          if (keep_dims_) {
+            out_indices_mat(i, reduction.group_by_dims[j]) =
+                static_cast<IdxType>(group[j]);
+          } else {
+            out_indices_mat(i, j) = static_cast<IdxType>(group[j]);
+          }
         }
+        out_flat(i) = reduced_val();
+        i++;
+        VLOG(2) << "coords: " << absl::StrJoin(g.group(), ",")
+                << "; group " << Op::Name() << ": "
+                << reduced_val();
       }
-      out_flat(i) = reduced_val();
-      i++;
-      VLOG(2) << "coords: " << absl::StrJoin(g.group(), ",")
-              << "; group " << Op::Name() << ": "
-              << reduced_val();
+    };
+    if (indices_t->dtype() == DT_INT16) {
+      DoReduceSparse(sp.group<int16_t>(reduction.group_by_dims),
+                     out_indices_t->matrix<int16_t>());
+    } else if (indices_t->dtype() == DT_INT32) {
+      DoReduceSparse(sp.group<int32_t>(reduction.group_by_dims),
+                     out_indices_t->matrix<int32_t>());
+    } else {
+      DoReduceSparse(sp.group<int64_t>(reduction.group_by_dims),
+                     out_indices_t->matrix<int64_t>());
     }
 
     Tensor *out_shape_t;
@@ -353,16 +407,40 @@ class SparseReduceSparseOp : public OpKernel {
 };
 
 #define REGISTER_KERNELS(T)                                                    \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("SparseReduceSumSparse").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      SparseReduceSparseOp<T, SumOp>)
+  REGISTER_KERNEL_BUILDER(Name("SparseReduceSumSparse")                        \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<T>("T")                         \
+                              .TypeConstraint<int64_t>("Tindices"),            \
+                          SparseReduceSparseOp<T, SumOp>)                      \
+  REGISTER_KERNEL_BUILDER(Name("SparseReduceSumSparse")                        \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<T>("T")                         \
+                              .TypeConstraint<int32_t>("Tindices"),            \
+                          SparseReduceSparseOp<T, SumOp>)                      \
+  REGISTER_KERNEL_BUILDER(Name("SparseReduceSumSparse")                        \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<T>("T")                         \
+                              .TypeConstraint<int16_t>("Tindices"),            \
+                          SparseReduceSparseOp<T, SumOp>)
 TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #define REGISTER_KERNELS(T)                                                    \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("SparseReduceMaxSparse").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      SparseReduceSparseOp<T, MaxOp>)
+  REGISTER_KERNEL_BUILDER(Name("SparseReduceMaxSparse")                        \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<T>("T")                         \
+                              .TypeConstraint<int64_t>("Tindices"),            \
+                          SparseReduceSparseOp<T, MaxOp>)                      \
+  REGISTER_KERNEL_BUILDER(Name("SparseReduceMaxSparse")                        \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<T>("T")                         \
+                              .TypeConstraint<int32_t>("Tindices"),            \
+                          SparseReduceSparseOp<T, MaxOp>)                      \
+  REGISTER_KERNEL_BUILDER(Name("SparseReduceMaxSparse")                        \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<T>("T")                         \
+                              .TypeConstraint<int16_t>("Tindices"),            \
+                          SparseReduceSparseOp<T, MaxOp>)
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 

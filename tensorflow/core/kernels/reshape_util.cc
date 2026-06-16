@@ -38,13 +38,13 @@ using GPUDevice = Eigen::GpuDevice;
 
 namespace functor {
 
-template <>
-struct ReshapeSparseTensorFunctor<CPUDevice> {
+template <typename Tindices>
+struct ReshapeSparseTensorFunctor<CPUDevice, Tindices> {
   absl::Status operator()(
       OpKernelContext *context, const TensorShape &input_shape,
       const TensorShape &output_shape,
-      typename TTypes<int64_t>::ConstMatrix input_indices,
-      typename TTypes<int64_t>::Matrix output_indices) const {
+      typename TTypes<Tindices>::ConstMatrix input_indices,
+      typename TTypes<Tindices>::Matrix output_indices) const {
     (void)context;  // Unused (only used in GPU implementation)
     const int64_t input_rank = input_shape.dims();
     const int64_t output_rank = output_shape.dims();
@@ -69,10 +69,10 @@ struct ReshapeSparseTensorFunctor<CPUDevice> {
     for (int i = 0; i < nnz; ++i) {
       int64_t id = 0;
       for (int j = 0; j < input_rank; ++j) {
-        id += input_indices(i, j) * input_strides[j];
+        id += static_cast<int64_t>(input_indices(i, j)) * input_strides[j];
       }
       for (int j = 0; j < output_rank; ++j) {
-        output_indices(i, j) = id / output_strides[j];
+        output_indices(i, j) = static_cast<Tindices>(id / output_strides[j]);
         id %= output_strides[j];
       }
     }
@@ -185,10 +185,25 @@ void ReshapeSparseTensor(OpKernelContext *context,
             "Input tensor has ", nnz, " non zero elements but input shape (",
             input_shape.DebugString(), ") or output shape (",
             output_shape.DebugString(), ") is empty")));
-    OP_REQUIRES_OK(context, functor::ReshapeSparseTensorFunctor<Device>()(
-                                context, input_shape, output_shape,
-                                input_indices_in.matrix<int64_t>(),
-                                result_indices->matrix<int64_t>()));
+    if (input_indices_in.dtype() == DT_INT16) {
+      OP_REQUIRES_OK(context,
+                     functor::ReshapeSparseTensorFunctor<Device, int16_t>()(
+                         context, input_shape, output_shape,
+                         input_indices_in.matrix<int16_t>(),
+                         result_indices->matrix<int16_t>()));
+    } else if (input_indices_in.dtype() == DT_INT32) {
+      OP_REQUIRES_OK(context,
+                     functor::ReshapeSparseTensorFunctor<Device, int32_t>()(
+                         context, input_shape, output_shape,
+                         input_indices_in.matrix<int32_t>(),
+                         result_indices->matrix<int32_t>()));
+    } else {
+      OP_REQUIRES_OK(context,
+                     functor::ReshapeSparseTensorFunctor<Device, int64_t>()(
+                         context, input_shape, output_shape,
+                         input_indices_in.matrix<int64_t>(),
+                         result_indices->matrix<int64_t>()));
+    }
   }
 }
 

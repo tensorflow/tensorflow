@@ -45,12 +45,13 @@ absl::Status SparseSparseMinOrMaxShapeFn(InferenceContext* c) {
 
 REGISTER_OP("SparseAddGrad")
     .Input("backprop_val_grad: T")
-    .Input("a_indices: int64")
-    .Input("b_indices: int64")
-    .Input("sum_indices: int64")
+    .Input("a_indices: Tindices")
+    .Input("b_indices: Tindices")
+    .Input("sum_indices: Tindices")
     .Output("a_val_grad: T")
     .Output("b_val_grad: T")
     .Attr("T: numbertype")
+    .Attr("Tindices: {int16, int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle a_indices;
       ShapeHandle b_indices;
@@ -62,18 +63,19 @@ REGISTER_OP("SparseAddGrad")
     });
 
 REGISTER_OP("SparseAdd")
-    .Input("a_indices: int64")
+    .Input("a_indices: Tindices")
     .Input("a_values: T")
     .Input("a_shape: int64")
-    .Input("b_indices: int64")
+    .Input("b_indices: Tindices")
     .Input("b_values: T")
     .Input("b_shape: int64")
     .Input("thresh: Treal")
-    .Output("sum_indices: int64")
+    .Output("sum_indices: Tindices")
     .Output("sum_values: T")
     .Output("sum_shape: int64")
     .Attr("T: numbertype")
     .Attr("Treal: realnumbertype")
+    .Attr("Tindices: {int16, int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle a_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &a_shape));
@@ -200,7 +202,7 @@ REGISTER_OP("SparseToDense")
     .Attr("validate_indices: bool = true")
     .Attr("T: type")
     .Output("dense: T")
-    .Attr("Tindices: {int32, int64}")
+    .Attr("Tindices: {int16, int32, int64}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
@@ -209,15 +211,16 @@ REGISTER_OP("SparseToDense")
     });
 
 REGISTER_OP("SparseConcat")
-    .Input("indices: N * int64")
+    .Input("indices: N * Tindices")
     .Input("values: N * T")
     .Input("shapes: N * int64")
-    .Output("output_indices: int64")
+    .Output("output_indices: Tindices")
     .Output("output_values: T")
     .Output("output_shape: int64")
     .Attr("concat_dim: int")
     .Attr("N: int >= 2")
     .Attr("T: type")
+    .Attr("Tindices: {int16, int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       // These accumulates the sum.
       DimensionHandle output_row_count = c->MakeDim(0ll);
@@ -318,14 +321,15 @@ REGISTER_OP("SparseCrossHashed")
 
 REGISTER_OP("SparseSplit")
     .Input("split_dim: int64")
-    .Input("indices: int64")
+    .Input("indices: Tindices")
     .Input("values: T")
     .Input("shape: int64")
-    .Output("output_indices: num_split * int64")
+    .Output("output_indices: num_split * Tindices")
     .Output("output_values:  num_split * T")
     .Output("output_shape:   num_split * int64")
     .Attr("num_split: int >= 1")
     .Attr("T: type")
+    .Attr("Tindices: {int16, int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input_shape = c->input(3);
       ShapeHandle output_indices =
@@ -347,11 +351,12 @@ REGISTER_OP("SparseSplit")
 
 REGISTER_OP("SparseSliceGrad")
     .Input("backprop_val_grad: T")
-    .Input("input_indices: int64")
+    .Input("input_indices: Tindices")
     .Input("input_start: int64")
-    .Input("output_indices: int64")
+    .Input("output_indices: Tindices")
     .Output("val_grad: T")
     .Attr("T: numbertype")
+    .Attr("Tindices: {int16, int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle indices;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &indices));
@@ -360,15 +365,16 @@ REGISTER_OP("SparseSliceGrad")
     });
 
 REGISTER_OP("SparseSlice")
-    .Input("indices: int64")
+    .Input("indices: Tindices")
     .Input("values: T")
     .Input("shape: int64")
     .Input("start: int64")
     .Input("size: int64")
-    .Output("output_indices: int64")
+    .Output("output_indices: Tindices")
     .Output("output_values: T")
     .Output("output_shape: int64")
     .Attr("T: type")
+    .Attr("Tindices: {int16, int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input_shape = c->input(2);
       ShapeHandle output_indices =
@@ -383,12 +389,13 @@ REGISTER_OP("SparseSlice")
     });
 
 REGISTER_OP("SparseReorder")
-    .Input("input_indices: int64")
+    .Input("input_indices: Tindices")
     .Input("input_values: T")
     .Input("input_shape: int64")
-    .Output("output_indices: int64")
+    .Output("output_indices: Tindices")
     .Output("output_values: T")
     .Attr("T: type")
+    .Attr("Tindices: {int16, int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle indices;
       ShapeHandle values;
@@ -404,11 +411,12 @@ REGISTER_OP("SparseReorder")
     });
 
 REGISTER_OP("SparseReshape")
-    .Input("input_indices: int64")
+    .Input("input_indices: Tindices")
     .Input("input_shape: int64")
     .Input("new_shape: int64")
-    .Output("output_indices: int64")
+    .Output("output_indices: Tindices")
     .Output("output_shape: int64")
+    .Attr("Tindices: {int16, int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle indices;
       ShapeHandle unused;
@@ -430,54 +438,58 @@ REGISTER_OP("SparseTensorDenseAdd")
     .Input("b: T")
     .Output("output: T")
     .Attr("T: numbertype")
-    .Attr("Tindices: {int32, int64}")
+    .Attr("Tindices: {int16, int32, int64}")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(3));
       return absl::OkStatus();
     });
 
 REGISTER_OP("SparseReduceMax")
-    .Input("input_indices: int64")
+    .Input("input_indices: Tindices")
     .Input("input_values: T")
     .Input("input_shape: int64")
     .Input("reduction_axes: int32")
     .Attr("keep_dims: bool = False")
     .Output("output: T")
     .Attr("T: realnumbertype")
+    .Attr("Tindices: {int16, int32, int64} = DT_INT64")
     .SetShapeFn(shape_inference::SparseReduceShapeFn);
 
 REGISTER_OP("SparseReduceMaxSparse")
-    .Input("input_indices: int64")
+    .Input("input_indices: Tindices")
     .Input("input_values: T")
     .Input("input_shape: int64")
     .Input("reduction_axes: int32")
     .Attr("keep_dims: bool = False")
-    .Output("output_indices: int64")
+    .Output("output_indices: Tindices")
     .Output("output_values: T")
     .Output("output_shape: int64")
     .Attr("T: realnumbertype")
+    .Attr("Tindices: {int16, int32, int64} = DT_INT64")
     .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("SparseReduceSum")
-    .Input("input_indices: int64")
+    .Input("input_indices: Tindices")
     .Input("input_values: T")
     .Input("input_shape: int64")
     .Input("reduction_axes: int32")
     .Attr("keep_dims: bool = False")
     .Output("output: T")
     .Attr("T: numbertype")
+    .Attr("Tindices: {int16, int32, int64} = DT_INT64")
     .SetShapeFn(shape_inference::SparseReduceShapeFn);
 
 REGISTER_OP("SparseReduceSumSparse")
-    .Input("input_indices: int64")
+    .Input("input_indices: Tindices")
     .Input("input_values: T")
     .Input("input_shape: int64")
     .Input("reduction_axes: int32")
     .Attr("keep_dims: bool = False")
-    .Output("output_indices: int64")
+    .Output("output_indices: Tindices")
     .Output("output_values: T")
     .Output("output_shape: int64")
     .Attr("T: numbertype")
+    .Attr("Tindices: {int16, int32, int64} = DT_INT64")
     .SetShapeFn(shape_inference::UnknownShape);
 
 #define SPARSE_DENSE_CWISE_SIGNATURE()                           \
@@ -600,15 +612,16 @@ REGISTER_OP("TakeManySparseFromTensorsMap")
     });
 
 REGISTER_OP("SparseFillEmptyRows")
-    .Input("indices: int64")
+    .Input("indices: Tindices")
     .Input("values: T")
     .Input("dense_shape: int64")
     .Input("default_value: T")
-    .Output("output_indices: int64")
+    .Output("output_indices: Tindices")
     .Output("output_values: T")
     .Output("empty_row_indicator: bool")
-    .Output("reverse_index_map: int64")
+    .Output("reverse_index_map: Tindices")
     .Attr("T: type")
+    .Attr("Tindices: {int16, int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input_indices = c->input(0);
       TF_RETURN_IF_ERROR(c->WithRank(input_indices, 2, &input_indices));
@@ -641,11 +654,12 @@ REGISTER_OP("SparseFillEmptyRows")
     });
 
 REGISTER_OP("SparseFillEmptyRowsGrad")
-    .Input("reverse_index_map: int64")
+    .Input("reverse_index_map: Tindices")
     .Input("grad_values: T")
     .Output("d_values: T")
     .Output("d_default_value: T")
     .Attr("T: type")
+    .Attr("Tindices: {int16, int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle reverse_index_map = c->input(0);
       TF_RETURN_IF_ERROR(c->WithRank(reverse_index_map, 1, &reverse_index_map));

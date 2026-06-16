@@ -148,9 +148,21 @@ class SparseSliceOp : public OpKernel {
 };
 
 #define REGISTER_KERNELS(type)                                          \
-  REGISTER_KERNEL_BUILDER(                                              \
-      Name("SparseSlice").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      SparseSliceOp<CPUDevice, type>)
+  REGISTER_KERNEL_BUILDER(Name("SparseSlice")                           \
+                              .Device(DEVICE_CPU)                      \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<int64_t>("Tindices"),    \
+                          SparseSliceOp<CPUDevice, type>)              \
+  REGISTER_KERNEL_BUILDER(Name("SparseSlice")                           \
+                              .Device(DEVICE_CPU)                      \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<int32_t>("Tindices"),    \
+                          SparseSliceOp<CPUDevice, type>)              \
+  REGISTER_KERNEL_BUILDER(Name("SparseSlice")                           \
+                              .Device(DEVICE_CPU)                      \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<int16_t>("Tindices"),    \
+                          SparseSliceOp<CPUDevice, type>)
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
@@ -170,14 +182,33 @@ class SparseSliceGPUOp : public AsyncOpKernel {
   }
 };
 
-#define REGISTER_KERNELS(type)                            \
-  REGISTER_KERNEL_BUILDER(Name("SparseSlice")             \
-                              .Device(DEVICE_GPU)         \
-                              .HostMemory("shape")        \
-                              .HostMemory("start")        \
-                              .HostMemory("size")         \
-                              .HostMemory("output_shape") \
-                              .TypeConstraint<type>("T"), \
+#define REGISTER_KERNELS(type)                               \
+  REGISTER_KERNEL_BUILDER(Name("SparseSlice")                \
+                              .Device(DEVICE_GPU)            \
+                              .HostMemory("shape")           \
+                              .HostMemory("start")           \
+                              .HostMemory("size")            \
+                              .HostMemory("output_shape")    \
+                              .TypeConstraint<type>("T")     \
+                              .TypeConstraint<int64_t>("Tindices"), \
+                          SparseSliceGPUOp<type>)            \
+  REGISTER_KERNEL_BUILDER(Name("SparseSlice")                \
+                              .Device(DEVICE_GPU)            \
+                              .HostMemory("shape")           \
+                              .HostMemory("start")           \
+                              .HostMemory("size")            \
+                              .HostMemory("output_shape")    \
+                              .TypeConstraint<type>("T")     \
+                              .TypeConstraint<int32_t>("Tindices"), \
+                          SparseSliceGPUOp<type>)            \
+  REGISTER_KERNEL_BUILDER(Name("SparseSlice")                \
+                              .Device(DEVICE_GPU)            \
+                              .HostMemory("shape")           \
+                              .HostMemory("start")           \
+                              .HostMemory("size")            \
+                              .HostMemory("output_shape")    \
+                              .TypeConstraint<type>("T")     \
+                              .TypeConstraint<int16_t>("Tindices"), \
                           SparseSliceGPUOp<type>)
 
 TF_CALL_POD_TYPES(REGISTER_KERNELS);

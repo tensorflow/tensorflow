@@ -17,6 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <vector>
+
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/reshape_util.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
@@ -54,48 +57,59 @@ __global__ void ReshapeSparseTensorKernel(
 
 namespace functor {
 
-template <>
-absl::Status ReshapeSparseTensorFunctor<GPUDevice>::operator()(
+namespace {
+// Uploads shape dims (int64 on host) to a GPU tensor of type Tindices.
+template <typename Tindices>
+absl::Status UploadShapeToGPU(OpKernelContext* context,
+                               const TensorShape& shape,
+                               se::Stream* stream,
+                               Tensor* gpu_shape_t) {
+  const int64_t rank = shape.dims();
+  TF_RETURN_IF_ERROR(context->allocate_temp(DataTypeToEnum<Tindices>::value,
+                                            TensorShape({rank}), gpu_shape_t));
+  // Build host-side array of Tindices shape values.
+  std::vector<Tindices> host_shape(rank);
+  for (int i = 0; i < rank; ++i) {
+    host_shape[i] = static_cast<Tindices>(shape.dim_size(i));
+  }
+  stream_executor::DeviceAddressBase gpu_mem(
+      gpu_shape_t->flat<Tindices>().data(), rank * sizeof(Tindices));
+  return stream->Memcpy(&gpu_mem, host_shape.data(), rank * sizeof(Tindices));
+}
+}  // namespace
+
+template <typename Tindices>
+absl::Status ReshapeSparseTensorFunctor<GPUDevice, Tindices>::operator()(
     OpKernelContext* context, const TensorShape& input_shape,
     const TensorShape& output_shape,
-    typename TTypes<int64_t>::ConstMatrix input_indices,
-    typename TTypes<int64_t>::Matrix output_indices) const {
+    typename TTypes<Tindices>::ConstMatrix input_indices,
+    typename TTypes<Tindices>::Matrix output_indices) const {
   const int64_t input_rank = input_shape.dims();
   const int64_t output_rank = output_shape.dims();
   const int64_t nnz = input_indices.dimension(0);
-  // We copy input_shape and output_shape to the GPU and then launch a kernel
-  // to compute output_indices.
-  Tensor input_shape_gpu_t;
-  TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT64, TensorShape({input_rank}),
-                                            &input_shape_gpu_t));
-  auto input_shape_gpu = input_shape_gpu_t.flat<int64_t>();
-  Tensor output_shape_gpu_t;
-  TF_RETURN_IF_ERROR(context->allocate_temp(
-      DT_INT64, TensorShape({output_rank}), &output_shape_gpu_t));
-  auto output_shape_gpu = output_shape_gpu_t.flat<int64_t>();
   se::Stream* stream = context->op_device_context()->stream();
   if (!stream) return absl::InternalError("No GPU stream available.");
-  stream_executor::DeviceAddressBase input_shape_gpu_mem(
-      input_shape_gpu.data(), input_rank * sizeof(int64_t));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&input_shape_gpu_mem,
-                                    input_shape.dim_sizes().data(),
-                                    input_rank * sizeof(int64_t)));
-  stream_executor::DeviceAddressBase output_shape_gpu_mem(
-      output_shape_gpu.data(), output_rank * sizeof(int64_t));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&output_shape_gpu_mem,
-                                    output_shape.dim_sizes().data(),
-                                    output_rank * sizeof(int64_t)));
+  Tensor input_shape_gpu_t, output_shape_gpu_t;
+  TF_RETURN_IF_ERROR(
+      UploadShapeToGPU<Tindices>(context, input_shape, stream, &input_shape_gpu_t));
+  TF_RETURN_IF_ERROR(
+      UploadShapeToGPU<Tindices>(context, output_shape, stream, &output_shape_gpu_t));
   const GPUDevice& device = context->template eigen_device<GPUDevice>();
   auto config = GetGpuLaunchConfig(nnz, device);
-  return GpuLaunchKernel(ReshapeSparseTensorKernel<int64_t>, config.block_count,
-                         config.thread_per_block, 0, device.stream(), nnz,
-                         /*input_rank=*/input_rank,
-                         /*output_rank=*/output_rank,
-                         /*input_shape=*/input_shape_gpu.data(),
-                         /*output_shape=*/output_shape_gpu.data(),
-                         /*input_indices=*/input_indices.data(),
-                         /*output_indices=*/output_indices.data());
+  return GpuLaunchKernel(ReshapeSparseTensorKernel<Tindices>, config.block_count,
+                         config.thread_per_block, 0, device.stream(),
+                         static_cast<Tindices>(nnz),
+                         static_cast<Tindices>(input_rank),
+                         static_cast<Tindices>(output_rank),
+                         input_shape_gpu_t.flat<Tindices>().data(),
+                         output_shape_gpu_t.flat<Tindices>().data(),
+                         input_indices.data(),
+                         output_indices.data());
 }
+
+template struct ReshapeSparseTensorFunctor<GPUDevice, int16_t>;
+template struct ReshapeSparseTensorFunctor<GPUDevice, int32_t>;
+template struct ReshapeSparseTensorFunctor<GPUDevice, int64_t>;
 
 }  // namespace functor
 
