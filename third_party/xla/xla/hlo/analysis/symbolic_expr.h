@@ -206,10 +206,6 @@ namespace llvm {
 // SymbolicExpr hash just like pointers
 template <>
 struct DenseMapInfo<xla::SymbolicExpr> {
-  static xla::SymbolicExpr getEmptyKey() {
-    auto* pointer = llvm::DenseMapInfo<void*>::getEmptyKey();
-    return xla::SymbolicExpr(static_cast<xla::SymbolicExprStorage*>(pointer));
-  }
   static unsigned getHashValue(xla::SymbolicExpr val) {
     return hash_value(val);
   }

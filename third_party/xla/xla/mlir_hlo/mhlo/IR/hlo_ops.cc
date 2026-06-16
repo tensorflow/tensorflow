@@ -7218,10 +7218,6 @@ enum NonSpatialDim : int64_t {
 };
 
 struct DenseMapInfoNonSpatialDim {
-  static inline NonSpatialDim getEmptyKey() {
-    return NonSpatialDim(DenseMapInfo<int64_t>::getEmptyKey());
-  }
-
   static unsigned getHashValue(const NonSpatialDim& key) {
     return DenseMapInfo<int64_t>::getHashValue(key);
   }

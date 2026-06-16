@@ -141,12 +141,6 @@ ResourceHandleValueAndId GetResourceHandleValueAndIdBase(
 namespace llvm {
 template <>
 struct DenseMapInfo<mlir::TF::ResourceHandle> {
-  static mlir::TF::ResourceHandle getEmptyKey() {
-    return {/*container=*/"", /*name=*/"", /*device=*/"",
-            /*op=*/DenseMapInfo<mlir::Operation*>::getEmptyKey()};
-  }
-
-
   static unsigned getHashValue(
       const mlir::TF::ResourceHandle& resource_handle) {
     return mlir::TF::hash_value(resource_handle);
