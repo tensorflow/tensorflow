@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/data/optional_ops.h"
