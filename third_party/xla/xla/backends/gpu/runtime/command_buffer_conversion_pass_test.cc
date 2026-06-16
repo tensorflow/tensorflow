@@ -165,8 +165,9 @@ std::unique_ptr<DeviceToDeviceCopyThunk> CreateCopyThunk(
       ShapedSlice{slice0, shape}, 1024);
 }
 
-DynamicSliceConfig CreateDsfConfig(std::optional<int64_t> loop_index,
-                                   int64_t byte_offset, int64_t byte_stride) {
+DynamicSliceConfig CreateDynamicSliceConfig(std::optional<int64_t> loop_index,
+                                            int64_t byte_offset,
+                                            int64_t byte_stride) {
   DynamicSliceConfig config;
   if (loop_index.has_value()) {
     config.set_loop_index(*loop_index);
@@ -399,8 +400,8 @@ TEST(CommandBufferConversionPassTest,
   BufferAllocation dst_alloc(1, sizeof(int32_t) * 4, 0);
   thunks.push_back(CreateDynamicSliceFusionV2Thunk(
       src_alloc, dst_alloc,
-      CreateDsfConfig(/*loop_index=*/std::nullopt, /*byte_offset=*/0,
-                      /*byte_stride=*/0)));
+      CreateDynamicSliceConfig(/*loop_index=*/std::nullopt, /*byte_offset=*/0,
+                               /*byte_stride=*/0)));
 
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_graph_min_graph_size(1);
@@ -433,8 +434,8 @@ TEST(CommandBufferConversionPassTest,
   BufferAllocation dst_alloc(1, sizeof(int32_t) * 4, 0);
   thunks.push_back(CreateDynamicSliceFusionV2Thunk(
       src_alloc, dst_alloc,
-      CreateDsfConfig(/*loop_index=*/std::nullopt, /*byte_offset=*/0,
-                      /*byte_stride=*/0)));
+      CreateDynamicSliceConfig(/*loop_index=*/std::nullopt, /*byte_offset=*/0,
+                               /*byte_stride=*/0)));
 
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_graph_min_graph_size(1);
@@ -462,8 +463,8 @@ TEST(CommandBufferConversionPassTest,
   BufferAllocation dst_alloc(1, sizeof(int32_t) * 4, 0);
   thunks.push_back(CreateDynamicSliceFusionV2Thunk(
       src_alloc, dst_alloc,
-      CreateDsfConfig(/*loop_index=*/std::nullopt, /*byte_offset=*/0,
-                      /*byte_stride=*/0),
+      CreateDynamicSliceConfig(/*loop_index=*/std::nullopt, /*byte_offset=*/0,
+                               /*byte_stride=*/0),
       /*verify_offsets=*/true));
 
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
@@ -492,8 +493,8 @@ TEST(CommandBufferConversionPassTest,
   BufferAllocation dst_alloc(1, sizeof(int32_t) * 4, 0);
   thunks.push_back(CreateDynamicSliceFusionV2Thunk(
       src_alloc, dst_alloc,
-      CreateDsfConfig(/*loop_index=*/0, /*byte_offset=*/0,
-                      /*byte_stride=*/sizeof(int32_t) * 4)));
+      CreateDynamicSliceConfig(/*loop_index=*/0, /*byte_offset=*/0,
+                               /*byte_stride=*/sizeof(int32_t) * 4)));
 
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_graph_min_graph_size(1);
@@ -953,8 +954,8 @@ TEST(CommandBufferConversionPassTest,
   BufferAllocation dst_alloc(1, sizeof(int32_t) * 4, 0);
   body_thunks.push_back(CreateDynamicSliceFusionV2Thunk(
       src_alloc, dst_alloc,
-      CreateDsfConfig(/*loop_index=*/0, /*byte_offset=*/0,
-                      /*byte_stride=*/sizeof(int32_t) * 4)));
+      CreateDynamicSliceConfig(/*loop_index=*/0, /*byte_offset=*/0,
+                               /*byte_stride=*/sizeof(int32_t) * 4)));
 
   BufferAllocation condition_result_alloc(2, 1024, 0);
   thunks.push_back(CreateWhileThunk(std::move(condition_thunks),
@@ -1007,8 +1008,8 @@ TEST(CommandBufferConversionPassTest,
   BufferAllocation dst_alloc(1, sizeof(int32_t) * 4, 0);
   body_thunks.push_back(CreateDynamicSliceFusionV2Thunk(
       src_alloc, dst_alloc,
-      CreateDsfConfig(/*loop_index=*/0, /*byte_offset=*/0,
-                      /*byte_stride=*/sizeof(int32_t) * 4)));
+      CreateDynamicSliceConfig(/*loop_index=*/0, /*byte_offset=*/0,
+                               /*byte_stride=*/sizeof(int32_t) * 4)));
 
   BufferAllocation condition_result_alloc(2, 1024, 0);
   thunks.push_back(CreateWhileThunk(std::move(condition_thunks),
