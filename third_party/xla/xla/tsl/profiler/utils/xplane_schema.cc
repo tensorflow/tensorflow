@@ -413,7 +413,9 @@ const StatTypeMap& GetStatTypeMap() {
        {"hbm_energy_nj", kHbmEnergy},
        {"hbm_power_events", kHbmPowerEvents},
        {"transaction_with_chip_core_id", kTransactionWithChipCoreId},
-       {"program_counter", kProgramCounter}});
+       {"program_counter", kProgramCounter},
+       {"hlo_opcode", kHloOpcode},
+       {"hlo_unique_id", kHloUniqueId}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }
