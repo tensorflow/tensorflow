@@ -189,9 +189,9 @@ class SkipgramOp : public OpKernel {
       ++corpus_size_;
     }
     if (corpus_size_ < window_size_ * 10) {
-      return errors::InvalidArgument(
-          "The text file ", filename,
-          " contains too little data: ", corpus_size_, " words");
+      return absl::InvalidArgumentError(
+          absl::StrCat("The text file ", filename,
+                       " contains too little data: ", corpus_size_, " words"));
     }
     typedef std::pair<std::string, int32_t> WordFreq;
     std::vector<WordFreq> ordered;
@@ -263,19 +263,19 @@ class NegTrainOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     Tensor w_in = ctx->mutable_input(0, false);
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(w_in.shape()),
-                errors::InvalidArgument("Must be a matrix"));
+                absl::InvalidArgumentError("Must be a matrix"));
     Tensor w_out = ctx->mutable_input(1, false);
     OP_REQUIRES(ctx, w_in.shape() == w_out.shape(),
-                errors::InvalidArgument("w_in.shape == w_out.shape"));
+                absl::InvalidArgumentError("w_in.shape == w_out.shape"));
     const Tensor& examples = ctx->input(2);
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(examples.shape()),
-                errors::InvalidArgument("Must be a vector"));
+                absl::InvalidArgumentError("Must be a vector"));
     const Tensor& labels = ctx->input(3);
     OP_REQUIRES(ctx, examples.shape() == labels.shape(),
-                errors::InvalidArgument("examples.shape == labels.shape"));
+                absl::InvalidArgumentError("examples.shape == labels.shape"));
     const Tensor& learning_rate = ctx->input(4);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(learning_rate.shape()),
-                errors::InvalidArgument("Must be a scalar"));
+                absl::InvalidArgumentError("Must be a scalar"));
 
     auto Tw_in = w_in.matrix<float>();
     auto Tw_out = w_out.matrix<float>();
@@ -285,9 +285,10 @@ class NegTrainOp : public OpKernel {
     const int64_t vocab_size = w_in.dim_size(0);
     const int64_t dims = w_in.dim_size(1);
     const int64_t batch_size = examples.dim_size(0);
-    OP_REQUIRES(ctx, vocab_size == sampler_->num(),
-                errors::InvalidArgument("vocab_size mismatches: ", vocab_size,
-                                        " vs. ", sampler_->num()));
+    OP_REQUIRES(
+        ctx, vocab_size == sampler_->num(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "vocab_size mismatches: ", vocab_size, " vs. ", sampler_->num())));
 
     // Gradient accumulator for v_in.
     Tensor buf(DT_FLOAT, TensorShape({dims}));
