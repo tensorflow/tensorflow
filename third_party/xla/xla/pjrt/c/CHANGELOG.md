@@ -287,7 +287,7 @@
 * Added new host buffer semantics enum
   ``PJRT_HostBufferSemantics_kMutableZeroCopy``
 
-## 0.47 (Mar 29, 2024)
+## 0.47 (March 29, 2024)
 
 * Added ``PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner``.
 * Renamed host buffer semantics enum from ``PJRT_HostBufferSemantics_kZeroCopy``
