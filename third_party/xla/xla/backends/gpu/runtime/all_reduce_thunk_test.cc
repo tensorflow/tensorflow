@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
-#include "xla/backends/gpu/runtime/scratch_memory_requests.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
@@ -615,10 +614,9 @@ TEST(AllReduceThunkTest, RecordCommandBufferCreateUpdateAsyncCollectiveKernel) {
 
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations1);
-  ScratchMemoryRequests scratch_memory_requests;
-  Thunk::PrepareParams prepare_params{
-      &collective_params,       &clique_requests, &memory_requests,
-      &scratch_memory_requests, executor,         &allocations1};
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &memory_requests, executor,
+                                      &allocations1};
   ASSERT_OK(thunk.Prepare(prepare_params));
 
   Thunk::InitializeParams initialize_params;

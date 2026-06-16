@@ -29,9 +29,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/collectives/nccl_types.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
@@ -66,6 +68,8 @@ struct NcclCapabilities {
 
 // XLA collectives communicator wrapping an NCCL communicator.
 class NcclCommunicator : public GpuCommunicator {
+  friend class NcclDeviceCommunicator;
+
  public:
   // Creates a NCCL communicator.
   //
@@ -95,7 +99,8 @@ class NcclCommunicator : public GpuCommunicator {
   absl::StatusOr<size_t> NumRanks() const final;
 
   PlatformCommunicatorHandle platform_comm() const final {
-    return PlatformCommunicatorHandle{comm_};
+    absl::MutexLock lock(comm_->mutex);
+    return PlatformCommunicatorHandle{comm_->comm};
   }
 
   bool SupportsDeviceComm() const final;
@@ -159,7 +164,7 @@ class NcclCommunicator : public GpuCommunicator {
 
   std::string ToString() const final;
 
-  ncclComm_t comm() const { return comm_; }
+  std::shared_ptr<NcclCommState> comm_state() const { return comm_; }
 
   se::StreamExecutor* stream_executor() const final { return stream_executor_; }
 
@@ -172,7 +177,8 @@ class NcclCommunicator : public GpuCommunicator {
   absl::Status PollUntilDone() const;
 
  private:
-  NcclCommunicator(se::StreamExecutor* stream_executor, ncclComm_t comm,
+  NcclCommunicator(se::StreamExecutor* stream_executor,
+                   std::shared_ptr<NcclCommState> comm,
                    std::unique_ptr<tsl::Executor> executor,
                    std::shared_ptr<CancellationToken> cancel);
 
@@ -255,7 +261,7 @@ class NcclCommunicator : public GpuCommunicator {
   se::StreamExecutor* stream_executor_;
 
   // Underlying NCCL communicator.
-  ncclComm_t comm_;
+  std::shared_ptr<NcclCommState> comm_;
 
   // If not null, used to execute methods.
   //
@@ -310,12 +316,12 @@ class NcclDeviceCommunicator : public GpuDeviceCommunicator {
   se::PackedKernelArg PackKernelArg() const final;
 
  private:
-  NcclDeviceCommunicator(ncclComm_t parent_comm,
+  NcclDeviceCommunicator(std::shared_ptr<NcclCommState> parent_comm,
                          se::StreamExecutor* stream_executor,
                          std::shared_ptr<tsl::Executor> executor,
                          ncclDevComm dev_comm);
 
-  ncclComm_t parent_comm_;
+  std::shared_ptr<NcclCommState> parent_comm_;
   se::StreamExecutor* stream_executor_;
   std::shared_ptr<tsl::Executor> executor_;
   ncclDevComm dev_comm_;

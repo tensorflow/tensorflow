@@ -27,10 +27,11 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_LOWERPDLWAITPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 struct LowerPdlWaitPattern
     : public mlir::OpRewritePattern<xla::gpu::PdlWaitOp> {
@@ -57,10 +58,6 @@ class LowerPdlWaitPass : public impl::LowerPdlWaitPassBase<LowerPdlWaitPass> {
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateLowerPdlWaitPass() {
-  return std::make_unique<LowerPdlWaitPass>();
-}
 
 }  // namespace emitters
 }  // namespace xla

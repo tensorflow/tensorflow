@@ -730,14 +730,14 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
       if (!tiled_computation.ok()) {
         // TODO: b/511080616 - GetValidTilings() must return only tilings that
         // can be tiled and we should treat all errors here as a failure.
-        VLOG(1) << "Tiling failed for " << absl::StrJoin(tiling, ",")
+        VLOG(2) << "Tiling failed for " << absl::StrJoin(tiling, ",")
                 << " with error: " << tiled_computation.status().message();
         continue;
       }
       if (const Decision valid = experimental::VerifyTritonConstraints(
               *tiled_computation, *device_info_);
           !valid) {
-        VLOG(1) << "Triton constraints violated for tiling " << valid.Explain();
+        VLOG(2) << "Triton constraints violated for tiling " << valid.Explain();
         continue;
       }
 
@@ -760,6 +760,9 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
 
     if (const auto* fusion_decision =
             std::get_if<FusionDecision>(&analysis_or_error)) {
+      VLOG(2)
+          << "TryFindTopKBestTilingsForFusion SymbolicTileAnalysis rejected: "
+          << fusion_decision->Explain();
       return *fusion_decision;
     }
 

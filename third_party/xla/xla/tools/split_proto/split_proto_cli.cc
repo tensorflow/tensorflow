@@ -57,7 +57,8 @@ Subcommands:
                      manifest.
   pack:              Converts a standard protobuf (text or binary) into a split
                      proto. Requires `--proto_type` to identify the message type
-
+  diff:              Compares two split proto files and prints differences to
+                     stdout.
 
 Usage:
   # Convert an AOT binary into a textproto, so that you can inspect the
@@ -72,6 +73,9 @@ Usage:
 
   # Unpack a split proto into a standard proto (text or binary).
   split-proto-cli unpack aot_binary.riegeli
+
+  # Compare two split proto files and print differences.
+  split-proto-cli diff <file1> <file2>
 
 Input/Output:
   If the input file is omitted or '-', it reads from stdin.
@@ -123,15 +127,20 @@ absl::Status RunMain(int argc, char** argv) {
   std::string subcommand = argv[1];
 
   std::unique_ptr<riegeli::Reader> reader;
-  if (argc < 3 || std::string(argv[2]) == "-") {
-    LOG(INFO) << "Reading input from stdin";
-    reader = riegeli::Maker<riegeli::StdIn>();
-  } else {
-    LOG(INFO) << "Reading input from file: " << argv[2];
-    reader = CreateRiegeliFileReader(argv[2]);
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        reader->status(), absl::StrCat("Failed to open input file: ", argv[2]));
-    RETURN_IF_ERROR(reader->status());
+  if (subcommand != "diff") {
+    if (argc < 3 || std::string(argv[2]) == "-") {
+      LOG(INFO) << "Reading input from stdin";
+      reader = riegeli::Maker<riegeli::StdIn>();
+    } else {
+      LOG(INFO) << "Reading input from file: " << argv[2];
+      reader = CreateRiegeliFileReader(argv[2]);
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          reader->status(),
+          absl::StrCat("Failed to open input file: ", argv[2]));
+    }
+  } else if (argc != 4) {
+    return absl::InvalidArgumentError(
+        "Usage: split-proto-cli diff <file1> <file2>");
   }
 
   std::unique_ptr<riegeli::Writer> writer;
@@ -182,6 +191,10 @@ absl::Status RunMain(int argc, char** argv) {
     RETURN_IF_ERROR(parse_format(output_format_str, &options.output_format));
 
     status = UnpackAot(std::move(reader), std::move(writer), options);
+  } else if (subcommand == "diff") {
+    LOG(INFO) << "Reading input from file: " << argv[2] << " and " << argv[3];
+    status = Diff(CreateRiegeliFileReader(argv[2]),
+                  CreateRiegeliFileReader(argv[3]), std::move(writer));
   } else {
     return absl::InvalidArgumentError(
         absl::StrCat("Unknown subcommand: ", subcommand));
