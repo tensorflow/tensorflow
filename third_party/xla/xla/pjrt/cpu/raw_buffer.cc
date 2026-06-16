@@ -24,7 +24,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
