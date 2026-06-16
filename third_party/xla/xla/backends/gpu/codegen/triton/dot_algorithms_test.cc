@@ -76,8 +76,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class AlgorithmTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+class AlgorithmTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
