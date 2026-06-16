@@ -87,7 +87,7 @@ HloInstruction* GetNonBitcastRoot(const HloComputation* computation) {
   return root;
 }
 
-class TritonTest : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+class TritonTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  public:
   TritonTest() = default;
   DebugOptions GetDebugOptionsForTest() const override {
