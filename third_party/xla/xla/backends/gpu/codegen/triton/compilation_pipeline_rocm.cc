@@ -114,10 +114,6 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   }
   pm->addPass(mlir::createTritonAMDGPUConvertToTensorOps());
   pm->addPass(mlir::createCanonicalizerPass());
-  if (schedule_hint != "none") {
-    pm->addPass(
-        mt::createTritonAMDGPUInsertInstructionSchedHintsPass({schedule_hint}));
-  }
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUReduceDataDuplication());
   if (is_in_thread_transpose_enabled(rocm_cc)) {
@@ -179,10 +175,6 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
-  if (/*(instruction_sched_variant=="none") == */ /* DISABLES CODE */ (false)) {
-    pm->addPass(mt::createTritonAMDGPULowerInstructionSchedHintsPass(
-        rocm_cc.gfx_version(), num_stages));
-  }
   pm->addPass(mt::createConvertBuiltinFuncToLLVMPass(rocm_cc.gfx_version(),
                                                      /*ftz=*/true));
 
