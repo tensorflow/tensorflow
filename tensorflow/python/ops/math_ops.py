@@ -3634,6 +3634,17 @@ def matmul(
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
     b_shape = b._shape_tuple()  # pylint: disable=protected-access
 
+    if a_shape is not None and len(a_shape) < 2:
+      raise ValueError(
+          f"Argument `a` passed to `tf.matmul` must be at least rank 2. "
+          f"Received shape: {a_shape} of rank {len(a_shape)}."
+      )
+    if b_shape is not None and len(b_shape) < 2:
+      raise ValueError(
+          f"Argument `b` passed to `tf.matmul` must be at least rank 2. "
+          f"Received shape: {b_shape} of rank {len(b_shape)}."
+      )
+
     output_may_have_non_empty_batch_shape = (
         (a_shape is None or len(a_shape) > 2) or
         (b_shape is None or len(b_shape) > 2))
