@@ -13,8 +13,11 @@
 // limitations under the License.
 
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -22,112 +25,140 @@
 namespace tflite {
 namespace {
 
+using ::testing::ElementsAre;
+
 template <typename T>
-tflite::TensorType GetTTEnum();
+TensorType GetTTEnum();
 
 template <>
-tflite::TensorType GetTTEnum<float>() {
-  return tflite::TensorType_FLOAT32;
+TensorType GetTTEnum<float>() {
+  return TensorType_FLOAT32;
 }
 
 template <>
-tflite::TensorType GetTTEnum<double>() {
-  return tflite::TensorType_FLOAT64;
+TensorType GetTTEnum<double>() {
+  return TensorType_FLOAT64;
 }
 
 template <>
-tflite::TensorType GetTTEnum<int32_t>() {
-  return tflite::TensorType_INT32;
+TensorType GetTTEnum<int32_t>() {
+  return TensorType_INT32;
 }
 
-class SignModel : public tflite::SingleOpModel {
+class SignModel : public SingleOpModel {
  public:
-  SignModel(tflite::TensorData x,
-            tflite::TensorData output) {
+  SignModel(const TensorData& x, const TensorData& output) {
     x_ = AddInput(x);
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_SIGN, BuiltinOptions_NONE, 0);
     BuildInterpreter({GetShape(x_)});
   }
 
-  int x_;
-  int output_;
-
   template <typename T>
-  std::vector<T> GetOutput(const std::vector<T>& x) {
+  std::vector<T> RunAndGetOutput(const std::vector<T>& x) {
     PopulateTensor<T>(x_, x);
     Invoke();
     return ExtractVector<T>(output_);
   }
+
+ private:
+  int x_;
+  int output_;
 };
 
 template <typename Float>
-class SignTestFloat : public ::testing::Test {
+class SignTestFloat : public testing::Test {
  public:
   using FloatType = Float;
 };
 
-using TestTypes = ::testing::Types<float, double>;
+using TestTypes = testing::Types<float, double>;
 
 TYPED_TEST_SUITE(SignTestFloat, TestTypes);
 
 TYPED_TEST(SignTestFloat, TestScalarFloat) {
   using Float = typename TestFixture::FloatType;
-  tflite::TensorData x = {GetTTEnum<Float>(), {}};
-  tflite::TensorData output = {GetTTEnum<Float>(), {}};
+  TensorData x = {GetTTEnum<Float>(), {}};
+  TensorData output = {GetTTEnum<Float>(), {}};
   SignModel m(x, output);
-  auto got = m.GetOutput<Float>({0.0});
+  std::vector<Float> got = m.RunAndGetOutput<Float>({Float(0.0)});
   ASSERT_EQ(got.size(), 1);
-  EXPECT_FLOAT_EQ(got[0], 0.0);
+  EXPECT_FLOAT_EQ(got[0], Float(0.0));
 
-  ASSERT_FLOAT_EQ(m.GetOutput<Float>({5.0})[0], 1.0);
-  ASSERT_FLOAT_EQ(m.GetOutput<Float>({-3.0})[0], -1.0);
+  std::vector<Float> got_pos = m.RunAndGetOutput<Float>({Float(5.0)});
+  ASSERT_EQ(got_pos.size(), 1);
+  EXPECT_FLOAT_EQ(got_pos[0], Float(1.0));
+
+  std::vector<Float> got_neg = m.RunAndGetOutput<Float>({Float(-3.0)});
+  ASSERT_EQ(got_neg.size(), 1);
+  EXPECT_FLOAT_EQ(got_neg[0], Float(-1.0));
+}
+
+TYPED_TEST(SignTestFloat, TestNaNFloat) {
+  using Float = typename TestFixture::FloatType;
+  TensorData x = {GetTTEnum<Float>(), {}};
+  TensorData output = {GetTTEnum<Float>(), {}};
+  SignModel m(x, output);
+  std::vector<Float> got =
+      m.RunAndGetOutput<Float>({std::numeric_limits<Float>::quiet_NaN()});
+  ASSERT_EQ(got.size(), 1);
+  EXPECT_TRUE(std::isnan(got[0]));
 }
 
 TYPED_TEST(SignTestFloat, TestBatchFloat) {
   using Float = typename TestFixture::FloatType;
-  tflite::TensorData x = {GetTTEnum<Float>(), {4, 2, 1}};
-  tflite::TensorData output = {GetTTEnum<Float>(), {4, 2, 1}};
+  TensorData x = {GetTTEnum<Float>(), {4, 2, 1}};
+  TensorData output = {GetTTEnum<Float>(), {4, 2, 1}};
   SignModel m(x, output);
 
-  std::vector<Float> x_data = {0.8, -0.7, 0.6, -0.5, 0.4, -0.3, 0.2, 0.0};
+  std::vector<Float> x_data = {Float(0.8), Float(-0.7), Float(0.6), Float(-0.5),
+                               Float(0.4), Float(-0.3), Float(0.2), Float(0.0)};
 
-  auto got = m.GetOutput<Float>(x_data);
+  std::vector<Float> got = m.RunAndGetOutput<Float>(x_data);
 
-  EXPECT_EQ(got, std::vector<Float>(
-      {1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, 0.0}));
+  EXPECT_THAT(got,
+              ElementsAre(Float(1.0), Float(-1.0), Float(1.0), Float(-1.0),
+                          Float(1.0), Float(-1.0), Float(1.0), Float(0.0)));
 }
 
 template <typename Int>
-class SignTestInt : public ::testing::Test {
+class SignTestInt : public testing::Test {
  public:
   using IntType = Int;
 };
-using TestTypesInt = ::testing::Types<int32_t>;
+using TestTypesInt = testing::Types<int32_t>;
 
 TYPED_TEST_SUITE(SignTestInt, TestTypesInt);
 
 TYPED_TEST(SignTestInt, TestScalarInt) {
   using Int = typename TestFixture::IntType;
-  tflite::TensorData x = {GetTTEnum<Int>(), {}};
-  tflite::TensorData output = {GetTTEnum<Int>(), {}};
+  TensorData x = {GetTTEnum<Int>(), {}};
+  TensorData output = {GetTTEnum<Int>(), {}};
   SignModel m(x, output);
-  auto got = m.GetOutput<Int>({0});
+  std::vector<Int> got = m.RunAndGetOutput<Int>({Int(0)});
   ASSERT_EQ(got.size(), 1);
-  EXPECT_EQ(got[0], 0);
+  EXPECT_EQ(got[0], Int(0));
 
-  ASSERT_EQ(m.GetOutput<Int>({5})[0], 1);
-  ASSERT_EQ(m.GetOutput<Int>({-3})[0], -1);
+  std::vector<Int> got_pos = m.RunAndGetOutput<Int>({Int(5)});
+  ASSERT_EQ(got_pos.size(), 1);
+  EXPECT_EQ(got_pos[0], Int(1));
+
+  std::vector<Int> got_neg = m.RunAndGetOutput<Int>({Int(-3)});
+  ASSERT_EQ(got_neg.size(), 1);
+  EXPECT_EQ(got_neg[0], Int(-1));
 }
 
 TYPED_TEST(SignTestInt, TestBatchInt) {
   using Int = typename TestFixture::IntType;
-  tflite::TensorData x = {GetTTEnum<Int>(), {4, 2, 1}};
-  tflite::TensorData output = {GetTTEnum<Int>(), {4, 2, 1}};
+  TensorData x = {GetTTEnum<Int>(), {4, 2, 1}};
+  TensorData output = {GetTTEnum<Int>(), {4, 2, 1}};
   SignModel m(x, output);
 
-  EXPECT_EQ(m.GetOutput<Int>({0, -7, 6, -5, 4, -3, 2, 1}),
-            std::vector<Int>({0, -1, 1, -1, 1, -1, 1, 1}));
+  std::vector<Int> got = m.RunAndGetOutput<Int>(
+      {Int(0), Int(-7), Int(6), Int(-5), Int(4), Int(-3), Int(2), Int(1)});
+
+  EXPECT_THAT(got, ElementsAre(Int(0), Int(-1), Int(1), Int(-1), Int(1),
+                               Int(-1), Int(1), Int(1)));
 }
 
 }  // namespace
