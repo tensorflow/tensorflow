@@ -542,9 +542,8 @@ TEST_F(BufferAssignmentTest, Basic) {
   module->AddEntryComputation(builder.Build());
 
   auto buffers_orig = RunBufferAssignment(module.get());
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BufferAssignment> buffers,
-      ConvertToProtoAndBack(buffers_orig.get(), module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffers,
+                       ConvertToProtoAndBack(buffers_orig.get(), module.get()));
 
   // Distinct input buffers were assigned for parameters.
   BufferAllocation paramscalar_buffer =
@@ -610,9 +609,8 @@ TEST_F(BufferAssignmentTest, BasicToFromProto) {
   auto buffers_orig = RunBufferAssignment(module.get());
 
   // Dump the original buffer assignment into a proto and read it back.
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BufferAssignment> buffers_from_proto,
-      ConvertToProtoAndBack(buffers_orig.get(), module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffers_from_proto,
+                       ConvertToProtoAndBack(buffers_orig.get(), module.get()));
 
   EXPECT_EQ(buffers_from_proto->GetStats().parameter_allocation_bytes, 804);
   EXPECT_EQ(buffers_from_proto->GetStats().maybe_live_out_allocation_bytes,
@@ -719,9 +717,8 @@ TEST_F(BufferAssignmentTest, AddCannotReuse) {
   module->AddEntryComputation(builder.Build());
 
   auto buffers_orig = RunBufferAssignmentNoBuffersReuseForAdd(module.get());
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BufferAssignment> buffers,
-      ConvertToProtoAndBack(buffers_orig.get(), module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffers,
+                       ConvertToProtoAndBack(buffers_orig.get(), module.get()));
 
   // Distinct input buffers were assigned for parameters.
   BufferAllocation paramscalar_buffer =
@@ -1039,9 +1036,8 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
   auto buffers_orig = RunBufferAssignmentWithPresetAssignments(
       module.get(), std::move(preset_assignments));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BufferAssignment> buffers,
-      ConvertToProtoAndBack(buffers_orig.get(), module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffers,
+                       ConvertToProtoAndBack(buffers_orig.get(), module.get()));
 
   // All assigned buffers are aliased so they should have the same offset and
   // size.
@@ -1085,9 +1081,8 @@ TEST_F(BufferAssignmentTest, MultipleUsersForNode) {
 
   auto buffers_orig = RunBufferAssignment(module.get());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BufferAssignment> buffers,
-      ConvertToProtoAndBack(buffers_orig.get(), module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffers,
+                       ConvertToProtoAndBack(buffers_orig.get(), module.get()));
 
   // Input buffers were assigned for parameters.
   BufferAllocation paramscalar_buffer =
@@ -1420,7 +1415,7 @@ TEST_F(BufferAssignmentTest, NoReuseLiveBuffer) {
   module->AddEntryComputation(builder.Build());
   auto assignment_orig = RunBufferAssignment(module.get());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> assignment,
       ConvertToProtoAndBack(assignment_orig.get(), module.get()));
 
@@ -1461,7 +1456,7 @@ TEST_F(BufferAssignmentTest, NoReuseAliasedBuffer) {
   module->AddEntryComputation(builder.Build());
   auto assignment_orig = RunBufferAssignment(module.get());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> assignment,
       ConvertToProtoAndBack(assignment_orig.get(), module.get()));
 
@@ -1874,8 +1869,8 @@ TEST_F(BufferAssignmentTest, CustomCallAliasedBuffer) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(kModuleString));
   std::unique_ptr<BufferAssignment> assignment =
       RunBufferAssignment(module.get());
   HloInstruction* custom_call = module->entry_computation()->root_instruction();
@@ -2025,7 +2020,7 @@ TEST_F(BufferAssignmentTest, TupleBufferNotReused) {
   module->AddEntryComputation(builder.Build());
   auto assignment_orig = RunBufferAssignment(module.get());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> assignment,
       ConvertToProtoAndBack(assignment_orig.get(), module.get()));
 
@@ -2368,7 +2363,7 @@ ENTRY test_module {
   ROOT negate = s32[] negate(gte)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto assignment = RunBufferAssignmentWithSequentialOrdering(module.get());
   const BufferAllocation& buffer =
       GetTopLevelAllocation(*assignment, FindInstruction(module.get(), "copy"));
@@ -2405,7 +2400,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
   HloInstruction* parameter =
       m->entry_computation()->GetInstructionWithName("get-tuple-element.4");
   HloInstruction* dus1 =
@@ -2449,7 +2444,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
   HloInstruction* constant_1 =
       m->entry_computation()->GetInstructionWithName("constant.1.1");
   HloInstruction* constant_2 =
@@ -2602,8 +2597,8 @@ TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
   EXPECT_EQ(assignment->GetUniqueSlice(weights1, {}).value(),
             assignment->GetUniqueSlice(while1, {1}).value());
 
-  TF_ASSERT_OK_AND_ASSIGN(Shape shape,
-                          assignment->GetShapeForUniqueSlice(while1, {1}));
+  ASSERT_OK_AND_ASSIGN(Shape shape,
+                       assignment->GetShapeForUniqueSlice(while1, {1}));
   EXPECT_EQ(shape, data_shape_);
 }
 
@@ -2647,7 +2642,7 @@ ENTRY %test_module {
   ROOT %bcast = s32[1024,1024]{1,0} broadcast(s32[] %while.1), dimensions={}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   // Run CopyInsertion and check if the graph constructed above doesn't need
   // any copies inserted for BufferAssignment to run.
@@ -2669,12 +2664,11 @@ ENTRY %test_module {
 
   // Run buffer assignment.
   auto assignment = RunBufferAssignment(m.get());
-  TF_ASSERT_OK_AND_ASSIGN(auto slice_param,
-                          assignment->GetUniqueSlice(param, {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto slice_while0,
-                          assignment->GetUniqueSlice(while0, {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto slice_while1,
-                          assignment->GetUniqueSlice(while1, {}));
+  ASSERT_OK_AND_ASSIGN(auto slice_param, assignment->GetUniqueSlice(param, {}));
+  ASSERT_OK_AND_ASSIGN(auto slice_while0,
+                       assignment->GetUniqueSlice(while0, {}));
+  ASSERT_OK_AND_ASSIGN(auto slice_while1,
+                       assignment->GetUniqueSlice(while1, {}));
 
   // The parameter slice is part of the while0's colocation set (init value),
   // but not merged into the while1's colocation set.
@@ -2715,7 +2709,7 @@ ENTRY %test_module {
   ROOT %bcast = s32[1024,1024]{1,0} broadcast(s32[] %while.1), dimensions={}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   // Run CopyInsertion and check if the graph constructed above doesn't need
   // any copies inserted for BufferAssignment to run.
@@ -2737,12 +2731,12 @@ ENTRY %test_module {
 
   // Run buffer assignment.
   auto assignment = RunBufferAssignment(m.get());
-  TF_ASSERT_OK_AND_ASSIGN(auto slice_constant,
-                          assignment->GetUniqueSlice(constant, {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto slice_while0,
-                          assignment->GetUniqueSlice(while0, {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto slice_while1,
-                          assignment->GetUniqueSlice(while1, {}));
+  ASSERT_OK_AND_ASSIGN(auto slice_constant,
+                       assignment->GetUniqueSlice(constant, {}));
+  ASSERT_OK_AND_ASSIGN(auto slice_while0,
+                       assignment->GetUniqueSlice(while0, {}));
+  ASSERT_OK_AND_ASSIGN(auto slice_while1,
+                       assignment->GetUniqueSlice(while1, {}));
 
   // The constant slice is part of the while0's colocation set (init value), but
   // not merged into the while1's colocation set.
@@ -2837,7 +2831,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   // Create a sequential order among all the instructions in the entry
   // computation, since the issue this test stresses depends on the order the
   // nodes are traversed during BufferAssignment.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape(),
@@ -2850,7 +2844,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
 
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<SequentialHloOrdering>(schedule),
@@ -2858,21 +2852,21 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
           [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
 
   // The result tuple elements must be assigned with different buffers.
-  TF_ASSERT_OK_AND_ASSIGN(auto slice0, assignment->GetUniqueSlice(tuple, {0}));
-  TF_ASSERT_OK_AND_ASSIGN(auto slice1, assignment->GetUniqueSlice(tuple, {1}));
+  ASSERT_OK_AND_ASSIGN(auto slice0, assignment->GetUniqueSlice(tuple, {0}));
+  ASSERT_OK_AND_ASSIGN(auto slice1, assignment->GetUniqueSlice(tuple, {1}));
   EXPECT_NE(slice0, slice1);
 
   // while0 and while1 result buffers must be equal to slice1.
-  TF_ASSERT_OK_AND_ASSIGN(auto slice_while0,
-                          assignment->GetUniqueSlice(while0, {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto slice_while1,
-                          assignment->GetUniqueSlice(while1, {}));
+  ASSERT_OK_AND_ASSIGN(auto slice_while0,
+                       assignment->GetUniqueSlice(while0, {}));
+  ASSERT_OK_AND_ASSIGN(auto slice_while1,
+                       assignment->GetUniqueSlice(while1, {}));
   EXPECT_EQ(slice1, slice_while0);
   EXPECT_EQ(slice1, slice_while1);
 
   // while2 result buffer must be equal to slice0.
-  TF_ASSERT_OK_AND_ASSIGN(auto slice_while2,
-                          assignment->GetUniqueSlice(while2, {}));
+  ASSERT_OK_AND_ASSIGN(auto slice_while2,
+                       assignment->GetUniqueSlice(while2, {}));
   EXPECT_EQ(slice0, slice_while2);
 }
 
@@ -2952,7 +2946,7 @@ TEST_F(BufferAssignmentTest, TwoCalls) {
 
   {
     FlattenCallGraph flatten;
-    TF_ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module.get()));
     EXPECT_TRUE(result);
     std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   }
@@ -2984,8 +2978,7 @@ ENTRY Main {
 
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text, config));
 
   auto buffers = RunBufferAssignment(m.get());
 
@@ -3041,7 +3034,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
 
   auto buffers = RunBufferAssignmentWithSequentialOrdering(m.get());
 
@@ -3098,7 +3091,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
 
   auto colorer = [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
     for (const HloBuffer& buffer : alias_analysis->buffers()) {
@@ -3208,7 +3201,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
 
   auto colorer = [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
     for (const HloBuffer& buffer : alias_analysis->buffers()) {
@@ -3308,8 +3301,7 @@ TEST_F(BufferAssignmentTest, AsyncCallImplicitSharding) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto buffers = RunBufferAssignmentWithSequentialOrdering(module.get());
 
@@ -3340,7 +3332,7 @@ ENTRY %main (a: f32[4096]) -> f32[4096] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
   auto buffers = RunBufferAssignmentWithSequentialOrdering(m.get());
 
   HloInstruction* neg_0 = FindInstruction(m.get(), "neg_0");
@@ -3364,7 +3356,7 @@ ENTRY %main (a: f32[4096]) -> f32[4096] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
   auto buffers = RunBufferAssignmentWithSequentialOrdering(m.get());
 
   HloInstruction* neg_0 = FindInstruction(m.get(), "neg_0");
@@ -3392,7 +3384,7 @@ ENTRY %test_module {
   ROOT add3 = s32[4,1024]{1,0} add(add2, bcast1)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   // First run buffer assignment as usual.
   std::unique_ptr<BufferAssignment> nonisolation_assignment =
@@ -3500,7 +3492,7 @@ ENTRY %test_module {
 4,"<4 bcast @0>",0,4194304,4,5,0,"",""
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   HloInstruction* const param0 = FindInstruction(m.get(), "param.0");
   HloInstruction* const param1 = FindInstruction(m.get(), "param.1");
   HloInstruction* const mul = FindInstruction(m.get(), "mul");
@@ -3562,7 +3554,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
 
   {
     FlattenCallGraph flatten;
-    TF_ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module.get()));
     EXPECT_TRUE(result);
   }
 
@@ -3746,9 +3738,8 @@ TEST(BufferAllocationSliceProtoTest, RoundTripProto) {
                                          /*size=*/100);
 
   // Convert to proto
-  TF_ASSERT_OK_AND_ASSIGN(
-      xla::buffer_assignment::BufferAllocationSliceProto proto,
-      original_slice.ToProto());
+  ASSERT_OK_AND_ASSIGN(xla::buffer_assignment::BufferAllocationSliceProto proto,
+                       original_slice.ToProto());
 
   // Convert back from proto
   std::vector<BufferAllocation> allocations_for_from_proto = {
@@ -3756,7 +3747,7 @@ TEST(BufferAllocationSliceProtoTest, RoundTripProto) {
       original_alloc,
       BufferAllocation(/*index=*/2, /*size=*/600, /*color=*/0),
   };
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       BufferAllocation::Slice round_tripped_slice,
       BufferAllocation::Slice::FromProto(proto, allocations_for_from_proto));
 
@@ -3903,7 +3894,7 @@ TEST(ComputePeakMemoryTest, SimpleAllocation) {
   event2->set_buffer_id(0);
   event2->set_kind(HeapSimulatorTrace::Event::FREE);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ComputePeakMemorySizes(proto, hlo));
+  ASSERT_OK_AND_ASSIGN(auto result, ComputePeakMemorySizes(proto, hlo));
   EXPECT_EQ(result.padded, 10);
   EXPECT_EQ(result.unpadded, 10);
   EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 10);
@@ -3927,7 +3918,7 @@ TEST(ComputePeakMemoryTest, PaddedAllocation) {
   event2->set_buffer_id(0);
   event2->set_kind(HeapSimulatorTrace::Event::FREE);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ComputePeakMemorySizes(proto, hlo));
+  ASSERT_OK_AND_ASSIGN(auto result, ComputePeakMemorySizes(proto, hlo));
   EXPECT_THAT(result, FieldsAre(64, 36));
   EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 64);
 }
@@ -3970,7 +3961,7 @@ TEST(ComputePeakMemoryTest, MultipleBuffersSomePadded) {
   event4->set_buffer_id(buffer1->id());
   event4->set_kind(HeapSimulatorTrace::Event::FREE);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ComputePeakMemorySizes(proto, hlo));
+  ASSERT_OK_AND_ASSIGN(auto result, ComputePeakMemorySizes(proto, hlo));
   EXPECT_THAT(result, FieldsAre(84, 56));
   EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 84);
 }
@@ -4545,8 +4536,8 @@ TEST(ComputeLogicalBufferUnpaddedSizesTest, Basic) {
   buffer1->set_size(456);
   SetUnpaddedSize(computation, /*id=*/11, /*size=*/400);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto sizes,
-                          ComputeLogicalBufferUnpaddedSizes(hlo, proto));
+  ASSERT_OK_AND_ASSIGN(auto sizes,
+                       ComputeLogicalBufferUnpaddedSizes(hlo, proto));
 
   EXPECT_EQ(sizes.size(), 2);
   EXPECT_EQ(sizes[0], 100);
@@ -4847,7 +4838,7 @@ TEST_F(BufferAssignmentTest, FastMergeFallbackWithZeroMemoryLimit) {
       buffer_assignment::BufferAssignmentAlgorithmProto::FAST_SPLIT;
   opts.color_memory_limit = [](LogicalBuffer::Color) -> int64_t { return 0; };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
@@ -4875,7 +4866,7 @@ TEST_F(BufferAssignmentTest, FastMergeFallbackWithLowMemoryLimit) {
   // memory limit is 0.
   opts.color_memory_limit = [](LogicalBuffer::Color) -> int64_t { return 100; };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
@@ -4947,7 +4938,7 @@ TEST_F(BufferAssignmentTest, MultiPage) {
   opts.allocate_buffers_for_constants = true;
   opts.colorer = BufferAssigner::DefaultColorer();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::BufferAssignment> buffers,
       BufferAssigner::Run(
           module.get(),
