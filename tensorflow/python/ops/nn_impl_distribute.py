@@ -67,6 +67,44 @@ def scale_regularization_loss(regularization_loss):
   return math_ops.reduce_sum(regularization_loss) / num_replicas
 
 
+def _get_num_replicas_in_sync():
+  """Return number of in-sync replicas, robust to XLA tracing context.
+
+  Under XLA/jit_compile=True the thread-local strategy_stack may be hidden,
+  but the per-thread ReplicaContext is still accessible. Query it first before
+  falling back to the strategy stack.
+
+  Returns:
+    A positive Python int representing the number of replicas in sync.
+
+  Raises:
+    ValueError: if the resolved replica count is not a positive Python int.
+  """
+  replica_ctx = distribute_lib.get_replica_context()
+  if replica_ctx is not None:
+    n = replica_ctx.num_replicas_in_sync
+    if not isinstance(n, int) or n < 1:
+      raise ValueError(
+          "ReplicaContext.num_replicas_in_sync must be a positive Python int; "
+          f"got {n!r} (type {type(n).__name__}). This is a bug in the active "
+          "distribution strategy."
+      )
+    return n
+
+  if distribute_lib.has_strategy():
+    strategy = distribute_lib.get_strategy()
+    n = strategy.num_replicas_in_sync
+    if not isinstance(n, int) or n < 1:
+      raise ValueError(
+          "Strategy.num_replicas_in_sync must be a positive Python int; "
+          f"got {n!r} (type {type(n).__name__}). This is a bug in the active "
+          "distribution strategy."
+      )
+    return n
+
+  return 1
+
+
 @tf_export("nn.compute_average_loss")
 @dispatch.add_dispatch_support
 def compute_average_loss(
@@ -123,7 +161,7 @@ def compute_average_loss(
             "while it was expected to be called in replica context."
         )
 
-      num_replicas = distribute_lib.get_strategy().num_replicas_in_sync
+      num_replicas = _get_num_replicas_in_sync()
       per_replica_batch_size = array_ops.shape_v2(per_example_loss)[0]
       global_batch_size = per_replica_batch_size * num_replicas
 
