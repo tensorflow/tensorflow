@@ -476,6 +476,44 @@ ENTRY e {
 )");
 }
 
+TEST_P(GemmFusionTestV2, DoNotHoistBitcastOverParameterWithMultipleUsers) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = bf16[32,12] parameter(0)
+  t1 = bf16[12,32] transpose(p0), dimensions={1,0}
+  b1 = bf16[32,3,4] bitcast(p0)
+  t2 = bf16[32,4,3] transpose(b1), dimensions={0,2,1}
+  ROOT d = bf16[12,4,3] dot(t1, t2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter())));
+}
+
+TEST_P(GemmFusionTestV2, HoistBitcastOverMultipleEqualBitcasts) {
+  // This is an example of when a single bitcast turns into 2 different bitcasts
+  // due to hoisting over a binary operation, but then they come from the same
+  // parameter, and should still get hoisted.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = bf16[32,12] parameter(0)
+  e = bf16[32,12] exponential(p0)
+  c = bf16[] constant(7)
+  b = bf16[32,12] broadcast(c), dimensions={}
+  m = bf16[32,12] multiply(p0, b)
+  a = bf16[32,12] add(e, m)
+  bc = bf16[12,32] bitcast(a)
+  p1 = bf16[32,3] parameter(1)
+  ROOT d = bf16[12,3] dot(bc, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Bitcast(m::Parameter()))));
+}
+
 TEST_P(GemmFusionTestVersioned, BitcastChain) {
   // This HLO is artificial because unnecessary reshapes get optimized
   // out during compilation. It tests the ability of GemmFusion
