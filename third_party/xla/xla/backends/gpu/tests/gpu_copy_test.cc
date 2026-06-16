@@ -35,8 +35,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class GpuCopyTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
+class GpuCopyTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
 
 // The GPU backend should not emit a copy kernel for the kCopy instruction in
 // this test. Instead, it should generate a CopyThunk which invokes cuMemcpy at
