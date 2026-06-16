@@ -174,6 +174,27 @@ LocalDeviceState::~LocalDeviceState() {
 
   // 2. Clear streams and stream pools to trigger all pending
   // callbacks/finalizations.
+  // Drain the callback thread before touching compute_events_.
+  //
+  // After SynchronizeAllActivity() above, all GPU host-callbacks registered
+  // via hipLaunchHostFunc / ThenExecuteCallback have been *invoked*, which
+  // means every callback_thread_->Schedule() call they contain has already
+  // been issued.  Those closures (e.g. the AndThen that calls
+  // compute_events_.pop_front()) may still be sitting in the queue or
+  // actively executing.
+  //
+  // Because compute_events_ is declared *after* callback_thread_ in the
+  // class, C++ destroys it *before* callback_thread_'s destructor joins the
+  // worker thread — creating a window where pop_front() runs on an
+  // already-destroyed deque (undefined behaviour / use-after-free).
+  //
+  // Draining the thread here closes that window: every closure enqueued
+  // before this point completes before we touch compute_events_.
+  callback_thread_->Drain();
+
+  // Explicitly delete all the streams and events to ensure that their callbacks
+  // are executed before the destruction of the LocalDeviceState and its
+  // callback threads.
   external_ready_event_streams_.clear();
   fixed_size_pool_usage_streams_.clear();
   device_to_device_streams_.clear();

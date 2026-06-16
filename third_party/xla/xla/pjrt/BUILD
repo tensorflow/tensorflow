@@ -51,6 +51,18 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "worker_thread_test",
+    srcs = ["worker_thread_test.cc"],
+    deps = [
+        ":worker_thread",
+        "//xla/hlo/testlib:test",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "pjrt_c_api_client",
     hdrs = ["pjrt_c_api_client.h"],
