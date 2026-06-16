@@ -251,8 +251,13 @@ class SparseReduceOp : public OpKernel {
       DoReduce(sp.group<int16_t>(reduction.group_by_dims));
     } else if (indices_t->dtype() == DT_INT32) {
       DoReduce(sp.group<int32_t>(reduction.group_by_dims));
-    } else {
+    } else if (indices_t->dtype() == DT_INT64) {
       DoReduce(sp.group<int64_t>(reduction.group_by_dims));
+    } else {
+      OP_REQUIRES(ctx, false,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Unsupported index dtype: ",
+                      DataTypeString(indices_t->dtype()))));
     }
   }
 
@@ -336,9 +341,14 @@ class SparseReduceSparseOp : public OpKernel {
     } else if (indices_t->dtype() == DT_INT32) {
       auto iter = sp.group<int32_t>(reduction.group_by_dims);
       for (auto it = iter.begin(); it != iter.end(); ++it) nnz++;
-    } else {
+    } else if (indices_t->dtype() == DT_INT64) {
       auto iter = sp.group<int64_t>(reduction.group_by_dims);
       for (auto it = iter.begin(); it != iter.end(); ++it) nnz++;
+    } else {
+      OP_REQUIRES(ctx, false,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Unsupported index dtype: ",
+                      DataTypeString(indices_t->dtype()))));
     }
 
     Tensor *out_indices_t;
@@ -385,9 +395,14 @@ class SparseReduceSparseOp : public OpKernel {
     } else if (indices_t->dtype() == DT_INT32) {
       DoReduceSparse(sp.group<int32_t>(reduction.group_by_dims),
                      out_indices_t->matrix<int32_t>());
-    } else {
+    } else if (indices_t->dtype() == DT_INT64) {
       DoReduceSparse(sp.group<int64_t>(reduction.group_by_dims),
                      out_indices_t->matrix<int64_t>());
+    } else {
+      OP_REQUIRES(ctx, false,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Unsupported index dtype: ",
+                      DataTypeString(indices_t->dtype()))));
     }
 
     Tensor *out_shape_t;

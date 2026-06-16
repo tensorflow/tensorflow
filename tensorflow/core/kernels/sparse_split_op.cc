@@ -111,9 +111,13 @@ void SparseSplitOpImpl(OpKernelContext* context, int num_split,
     } else if (input_indices.dtype() == DT_INT32) {
       validate_status = sparse_utils::ValidateSparseTensor<int32_t>(
           input_indices, input_values, input_shape, index_val);
-    } else {
+    } else if (input_indices.dtype() == DT_INT64) {
       validate_status = sparse_utils::ValidateSparseTensor<int64_t>(
           input_indices, input_values, input_shape, index_val);
+    } else {
+      validate_status = absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported index dtype for SparseSplit: ",
+          DataTypeString(input_indices.dtype())));
     }
     OP_REQUIRES_OK_ASYNC(context, validate_status, done);
   }

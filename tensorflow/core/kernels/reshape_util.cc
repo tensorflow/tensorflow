@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/reshape_util.h"
 
 #include <algorithm>
+#include <limits>
 #include <numeric>
 #include <unordered_map>
 #include <utility>
@@ -46,6 +47,24 @@ struct ReshapeSparseTensorFunctor<CPUDevice, Tindices> {
       typename TTypes<Tindices>::ConstMatrix input_indices,
       typename TTypes<Tindices>::Matrix output_indices) const {
     (void)context;  // Unused (only used in GPU implementation)
+    const int64_t max_index =
+        static_cast<int64_t>(std::numeric_limits<Tindices>::max());
+    for (int d = 0; d < input_shape.dims(); ++d) {
+      if (input_shape.dim_size(d) > max_index) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Input shape dimension ", d, " (", input_shape.dim_size(d),
+            ") exceeds the maximum value representable by the index type (",
+            max_index, ")"));
+      }
+    }
+    for (int d = 0; d < output_shape.dims(); ++d) {
+      if (output_shape.dim_size(d) > max_index) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Output shape dimension ", d, " (", output_shape.dim_size(d),
+            ") exceeds the maximum value representable by the index type (",
+            max_index, ")"));
+      }
+    }
     const int64_t input_rank = input_shape.dims();
     const int64_t output_rank = output_shape.dims();
     const int64_t nnz = input_indices.dimension(0);
@@ -197,12 +216,17 @@ void ReshapeSparseTensor(OpKernelContext *context,
                          context, input_shape, output_shape,
                          input_indices_in.matrix<int32_t>(),
                          result_indices->matrix<int32_t>()));
-    } else {
+    } else if (input_indices_in.dtype() == DT_INT64) {
       OP_REQUIRES_OK(context,
                      functor::ReshapeSparseTensorFunctor<Device, int64_t>()(
                          context, input_shape, output_shape,
                          input_indices_in.matrix<int64_t>(),
                          result_indices->matrix<int64_t>()));
+    } else {
+      OP_REQUIRES(context, false,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Unsupported index dtype for SparseReshape: ",
+                      DataTypeString(input_indices_in.dtype()))));
     }
   }
 }

@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <limits>
 #include <vector>
 
 #include "tensorflow/core/framework/types.h"
@@ -65,6 +66,16 @@ absl::Status UploadShapeToGPU(OpKernelContext* context,
                                se::Stream* stream,
                                Tensor* gpu_shape_t) {
   const int64_t rank = shape.dims();
+  const int64_t max_index =
+      static_cast<int64_t>(std::numeric_limits<Tindices>::max());
+  for (int i = 0; i < rank; ++i) {
+    if (shape.dim_size(i) > max_index) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Shape dimension ", i, " (", shape.dim_size(i),
+          ") exceeds the maximum value representable by the index type (",
+          max_index, ")"));
+    }
+  }
   TF_RETURN_IF_ERROR(context->allocate_temp(DataTypeToEnum<Tindices>::value,
                                             TensorShape({rank}), gpu_shape_t));
   // Build host-side array of Tindices shape values.
