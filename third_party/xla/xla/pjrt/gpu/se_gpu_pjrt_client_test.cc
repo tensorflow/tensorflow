@@ -2117,10 +2117,7 @@ ENTRY main.5 {
         auto raw_buffer,
         xla::PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
 
-    // TODO(b/b/482307468) Switch to absl::down_cast after upgrade.
-    [[deprecated("remove after absl upgrade")]] auto* opaque_ptr =
-        absl::down_cast<CommonPjRtRawBuffer*>(raw_buffer.get())
-            ->OpaqueDeviceMemoryDataPointer();
+    auto* opaque_ptr = raw_buffer->OpaqueDeviceMemoryDataPointer();
     if (opaque_ptr == last_opaque_ptr) {
       clobbered = true;
     }

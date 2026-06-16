@@ -447,14 +447,13 @@ class PreparedTransfer {
  public:
   StreamExecutorGpuClient* client_;
   gpu::GpuCliqueKey clique_key_;
-  tsl::RCReference<PjRtRawBuffer> raw_buffer_;
+  PjRtRawBufferRef raw_buffer_;
   tsl::AsyncValueRef<BufferSequencingEvent> transfer_event_;
   AcquiredCliqueAndCommunicator clique_and_communicator_;
   bool is_sender_;
 
   PreparedTransfer(StreamExecutorGpuClient* client,
-                   gpu::GpuCliqueKey clique_key,
-                   tsl::RCReference<PjRtRawBuffer> raw_buffer,
+                   gpu::GpuCliqueKey clique_key, PjRtRawBufferRef raw_buffer,
                    tsl::AsyncValueRef<BufferSequencingEvent> transfer_event,
                    AcquiredCliqueAndCommunicator clique_and_communicator,
                    bool is_sender)
@@ -555,8 +554,7 @@ absl::StatusOr<AcquiredCliqueAndCommunicator> AcquireCliqueAndCommunicator(
 absl::StatusOr<PreparedTransfer> PrepareTransfer(
     StreamExecutorGpuClient* client, gpu::GpuCollectives* gpu_collectives,
     se::Stream* stream, GlobalDeviceId src_global_device_id,
-    GlobalDeviceId dst_global_device_id,
-    tsl::RCReference<PjRtRawBuffer> raw_buffer,
+    GlobalDeviceId dst_global_device_id, PjRtRawBufferRef raw_buffer,
     gpu::AcquiredCliquesMap& acquired_cliques_map,
     tsl::AsyncValueRef<BufferSequencingEvent> transfer_event, bool is_sender) {
   GlobalDeviceId src_device(src_global_device_id.value());
@@ -813,8 +811,8 @@ void StreamExecutorGpuClient::ScheduleTransfersOnLocalDevice(
          se::Stream* stream) -> absl::Status {
     for (PreparedTransfer& prepared_transfer : prepared_transfers) {
       // Launch the transfer.
-      auto mem = tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(
-                     prepared_transfer.raw_buffer_.get())
+      auto mem = prepared_transfer.raw_buffer_
+                     ->down_cast<PjRtStreamExecutorRawBuffer>()
                      ->device_buffer();
 
       // We always set `peer` to RankId(1) if we are the sender, and RankId(0)
@@ -996,14 +994,11 @@ void StreamExecutorGpuClient::ScheduleRemoteSend(
                  *std::move(serialized_descriptor)]() mutable {
               auto status = [&]() -> absl::Status {
                 RETURN_IF_ERROR(GetErrors(definition_events));
-                auto* local_device =
-                    tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(
-                        raw_buffer.get())
-                        ->local_device();
+                auto* se_raw_buffer =
+                    raw_buffer->down_cast<PjRtStreamExecutorRawBuffer>();
+                auto* local_device = se_raw_buffer->local_device();
                 auto* stream = local_device->GetDeviceToDeviceStream();
-                auto mem = tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(
-                               raw_buffer.get())
-                               ->device_buffer();
+                auto mem = se_raw_buffer->device_buffer();
                 CliqueId clique_id(serialized_descriptor);
 
                 // Create a communicator.
@@ -1078,8 +1073,7 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
       ASSIGN_OR_RETURN(CliqueId clique_id,
                        gpu_collectives->CreateUniqueCliqueId());
       auto mem =
-          tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(raw_buffer.get())
-              ->device_buffer();
+          raw_buffer->down_cast<PjRtStreamExecutorRawBuffer>()->device_buffer();
 
       // Notify the caller with the CliqueId. They will send the id to the
       // sender.
@@ -2095,8 +2089,8 @@ StreamExecutorGpuClient::RunAsync(
         } else {
           param_no = allocation.parameter_number();
         }
-        buffer = tensorflow::down_cast<const xla::PjRtStreamExecutorRawBuffer*>(
-                     flat_arguments[param_no].get())
+        buffer = flat_arguments[param_no]
+                     ->down_cast<const xla::PjRtStreamExecutorRawBuffer>()
                      ->device_buffer()
                      ->mem();
         if (buffer.is_null() && buffer.size() > 0) {
@@ -2147,15 +2141,15 @@ StreamExecutorGpuClient::RunAsync(
         << "Looking at: allocation " << output_info.allocation_index
         << " @ index: " << index.ToString();
 
-    auto buf =
-        tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(results[i].get())
-            ->device_buffer();
+    auto buf = results[i]
+                   .get()
+                   ->down_cast<PjRtStreamExecutorRawBuffer>()
+                   ->device_buffer();
     if (output_info.alias_config) {
-      auto input = tensorflow::down_cast<xla::PjRtStreamExecutorRawBuffer*>(
-                       flat_arguments[parameter_is_tupled_arguments
-                                          ? allocation->param_shape_index()[0]
-                                          : allocation->parameter_number()]
-                           .get())
+      auto input = flat_arguments[parameter_is_tupled_arguments
+                                      ? allocation->param_shape_index()[0]
+                                      : allocation->parameter_number()]
+                       ->down_cast<PjRtStreamExecutorRawBuffer>()
                        ->device_buffer();
       bool is_donated = input == buf;
       if (output_info.alias_config->must_alias() && !is_donated) {

@@ -343,7 +343,7 @@ class CommonPjRtClient : public PjRtClient {
   // be ready before the receive can complete. Returns a vector of definition
   // events that will be fulfilled once the receive operation completes.
   virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
-      absl::Span<const tsl::RCReference<PjRtRawBuffer>> buffers,
+      absl::Span<const PjRtRawBufferRef> buffers,
       PjRtCrossHostRecvNotifier notifier,
       PjRtDeviceEventSpan transfer_dependency_avs) {
     return absl::UnimplementedError(
@@ -371,7 +371,7 @@ class CommonPjRtClient : public PjRtClient {
   struct CrossHostTransferSpec {
     GlobalDeviceId src_global_device_id;
     GlobalDeviceId dst_global_device_id;
-    tsl::RCReference<PjRtRawBuffer> raw_buffer;
+    PjRtRawBufferRef raw_buffer;
   };
 
   virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
@@ -829,7 +829,7 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   Future<> LazyToLiteral(
       absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override;
 
-  absl::StatusOr<tsl::RCReference<PjRtRawBuffer>> CreateRawAliasOfBuffer();
+  absl::StatusOr<PjRtRawBufferRef> CreateRawAliasOfBuffer();
 
   absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;

@@ -442,10 +442,13 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
         std::move(allocation_event)(absl::OkStatus());
       }
 
-      auto dst_buffer =
-          tensorflow::down_cast<const PjRtStreamExecutorRawBuffer*>(
-              dst_raw_buffer.get())
-              ->device_buffer();
+      auto* dst_cpp_buffer =
+          dst_raw_buffer->down_cast<const PjRtStreamExecutorRawBuffer>();
+      if (dst_cpp_buffer == nullptr) {
+        return absl::InvalidArgumentError(
+            "Destination buffer is not a StreamExecutor raw buffer");
+      }
+      auto dst_buffer = dst_cpp_buffer->device_buffer();
       auto dst_buffer_mem = dst_buffer->mem();
       RETURN_IF_ERROR(client->WaitForAllocation(stream, *src_raw_buffer));
       RETURN_IF_ERROR(client->WaitForAllocation(stream, *dst_raw_buffer));

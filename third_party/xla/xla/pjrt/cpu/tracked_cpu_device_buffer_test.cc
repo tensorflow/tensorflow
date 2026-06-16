@@ -77,8 +77,7 @@ TEST(TrackedCpuDeviceBufferTest, Basic) {
   ABSL_ASSERT_OK(tracked_buffer.BlockForOperationsToComplete(memory_space));
 
   auto result =
-      absl::down_cast<CpuRawBuffer*>(tracked_buffer.raw_buffer().get())
-          ->buffer();
+      tracked_buffer.raw_buffer()->down_cast<CpuRawBuffer>()->buffer();
   ASSERT_TRUE(result.IsAvailable());
   EXPECT_EQ(std::string(static_cast<const char*>(result->untyped_data()),
                         result->size_bytes()),
@@ -133,8 +132,7 @@ TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
       std::move(definition_events), true);
 
   auto result =
-      absl::down_cast<CpuRawBuffer*>(tracked_buffer.raw_buffer().get())
-          ->buffer();
+      tracked_buffer.raw_buffer()->down_cast<CpuRawBuffer>()->buffer();
   ASSERT_FALSE(result.IsAvailable());
   ASSERT_EQ(tracked_buffer.raw_buffer()->GetOnDeviceSizeInBytes(),
             expected.size());

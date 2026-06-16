@@ -73,13 +73,16 @@ typedef struct PJRT_RawBuffer_FunctionTable {
                                             PJRT_DeviceEvent* event);
   // Returns true if the buffer is mutable.
   bool (*is_mutable)(const PJRT_RawBuffer* raw_buffer);
+  // Slices the buffer.
+  PJRT_Error* (*slice)(PJRT_RawBuffer* raw_buffer, int64_t offset,
+                       int64_t slice_size, PJRT_RawBuffer** sliced_buffer);
 } PJRT_RawBuffer_FunctionTable;
 
 struct PJRT_RawBuffer {
   const PJRT_RawBuffer_FunctionTable* vtable;
 };
 
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer_FunctionTable, is_mutable);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer_FunctionTable, slice);
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer, vtable);
 
 struct PJRT_RawBuffer_CreateRawAliasOfBuffer_Args {

@@ -448,7 +448,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       size_t size, PjRtMemorySpace* memory_space) override;
 
   absl::Status WaitForAllocation(se::Stream* stream,
-                                 const PjRtRawBuffer& raw_buffer);
+                                 const PjRtRawBufferInterface& raw_buffer);
 
   void LaunchOnDevice(PjRtDevice* device,
                       absl::AnyInvocable<void()> execute_fn) const override;

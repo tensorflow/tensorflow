@@ -1074,7 +1074,7 @@ CommonPjRtClient::MakeCrossHostReceiveBuffers(
 
   ASSIGN_OR_RETURN(auto memory_space, pjrt_device->default_memory_space());
 
-  std::vector<tsl::RCReference<PjRtRawBuffer>> raw_buffers;
+  std::vector<PjRtRawBufferRef> raw_buffers;
   PjRtDeviceEventRefVector transfer_dependency_events;
   std::vector<xla::Shape> dst_shapes;
   raw_buffers.reserve(shapes.size());
@@ -1112,12 +1112,9 @@ CommonPjRtClient::MakeCrossHostReceiveBuffers(
   std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   buffers.reserve(shapes.size());
   for (int i = 0; i < raw_buffers.size(); ++i) {
-    CommonPjRtRawBuffer* common_raw_buffer =
-        absl::down_cast<CommonPjRtRawBuffer*>(raw_buffers[i].get());
     ASSIGN_OR_RETURN(
         std::unique_ptr<PjRtBuffer> output_buffer,
-        DefineBuffer(std::move(dst_shapes[i]), memory_space,
-                     tsl::FormRef(common_raw_buffer),
+        DefineBuffer(std::move(dst_shapes[i]), memory_space, raw_buffers[i],
                      {PjRtDeviceEventPtr(definition_events[i]).CopyRef()}));
     buffers.push_back(std::move(output_buffer));
   }
@@ -1174,7 +1171,7 @@ absl::StatusOr<std::vector<Future<>>> CommonPjRtClient::CrossHostSendBuffers(
 
   // Extract the raw buffers and definition events for each of the input send
   // buffers.
-  std::vector<tsl::RCReference<PjRtRawBuffer>> raw_buffers;
+  std::vector<PjRtRawBufferRef> raw_buffers;
   raw_buffers.reserve(buffers.size());
 
   PjRtDeviceEventRefVector transfer_dependencies;
@@ -2643,7 +2640,7 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
   return result;
 }
 
-absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>
+absl::StatusOr<PjRtRawBufferRef>
 CommonPjRtBufferImpl::CreateRawAliasOfBuffer() {
   PjRtRawBufferRef raw_buffer;
   RETURN_IF_ERROR(AcquireScopedRawBuffer(
@@ -2657,7 +2654,7 @@ CommonPjRtBufferImpl::CreateRawAliasOfBuffer() {
   return raw_buffer;
 }
 
-static std::optional<absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>>
+static std::optional<absl::StatusOr<PjRtRawBufferRef>>
 CommonPjRtBufferImpl_CreateRawAliasOfBuffer(PjRtBuffer* buffer) {
   if (auto* common_buffer = dynamic_cast<CommonPjRtBufferImpl*>(buffer)) {
     return common_buffer->CreateRawAliasOfBuffer();

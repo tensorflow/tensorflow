@@ -202,7 +202,11 @@ void* PjRtCApiRawBuffer::OpaqueDeviceMemoryDataPointer() const {
 
 absl::StatusOr<PjRtRawBufferRef> PjRtCApiRawBuffer::Slice(int64_t offset,
                                                           int64_t size) {
-  return absl::UnimplementedError("Slice not supported by PJRT C API");
+  ASSIGN_OR_RETURN(
+      auto result,
+      static_cast<PjRtRawBufferInterface*>(c_buffer_)->Slice(offset, size));
+  return tsl::MakeRef<PjRtCApiRawBuffer>(result.release(), client_, c_api_,
+                                         c_extension_);
 }
 
 absl::StatusOr<PjRtDeviceEventRef>
@@ -234,7 +238,7 @@ bool PjRtCApiRawBuffer::is_mutable() const {
   return static_cast<const PjRtRawBufferInterface*>(c_buffer_)->is_mutable();
 }
 
-static std::optional<absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>>
+static std::optional<absl::StatusOr<PjRtRawBufferRef>>
 PjRtCApiBuffer_CreateRawAliasOfBuffer_Factory(PjRtBuffer* buffer) {
   if (auto* c_api_buffer = dynamic_cast<xla::PjRtCApiBuffer*>(buffer)) {
     auto* c_api = c_api_buffer->pjrt_c_api();
