@@ -119,10 +119,13 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
  protected:
   ~BufferAssignmentTest() override = default;
 
-  std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
-                                                        int64_t alignment = 1) {
+  std::unique_ptr<BufferAssignment> RunBufferAssignment(
+      HloModule* module, int64_t alignment = 1,
+      BufferAssigner::CanUseAllocation can_use_allocation =
+          BufferAssigner::DefaultCanUseAllocation()) {
     BufferAssigner::Options opts;
     opts.allocate_buffers_for_constants = true;
+    opts.can_use_allocation = std::move(can_use_allocation);
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
                &BufferSizeBytes, &alias_info_,
@@ -207,11 +210,15 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithInstructionSequence(
       HloModule* module, absl::Span<HloInstruction* const> instruction_sequence,
-      int64_t alignment = 1) {
+      int64_t alignment = 1,
+      BufferAssigner::CanUseAllocation can_use_allocation =
+          BufferAssigner::DefaultCanUseAllocation()) {
     HloSchedule schedule(module);
     schedule.set_sequence(module->entry_computation(), instruction_sequence);
+    CHECK_OK(schedule.Update());
     BufferAssigner::Options opts;
     opts.allocate_buffers_for_constants = true;
+    opts.can_use_allocation = std::move(can_use_allocation);
     return BufferAssigner::Run(
                module, std::make_unique<SequentialHloOrdering>(schedule),
                &BufferSizeBytes, &alias_info_,
@@ -664,24 +671,24 @@ TEST_F(BufferAssignmentTest, AliasedParamCanBeReused) {
   //    |                           |
   //    + -------- Aliased ---------+
 
-  auto builder = HloComputation::Builder(TestName());
+  const char* const hlo_text = R"(
+HloModule test, input_output_alias={ {}: (0, {}, may-alias) }
 
-  auto param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32vec100_, "p0"));
-  auto neg_1 = builder.AddInstruction(
-      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param));
-  auto neg_2 = builder.AddInstruction(
-      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, neg_1));
+ENTRY main {
+  p0 = f32[100]{0} parameter(0)
+  neg1 = f32[100]{0} negate(p0)
+  ROOT neg2 = f32[100]{0} negate(neg1)
+}
+)";
 
-  auto module = CreateNewVerifiedModule();
-  module->AddEntryComputation(builder.Build());
-
-  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({}, 0, {}));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  HloInstruction* param = FindInstruction(module.get(), "p0");
+  HloInstruction* neg_1 = FindInstruction(module.get(), "neg1");
+  HloInstruction* neg_2 = FindInstruction(module.get(), "neg2");
 
   auto buffers_orig = RunBufferAssignment(module.get());
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BufferAssignment> buffers,
-      ConvertToProtoAndBack(buffers_orig.get(), module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffers,
+                       ConvertToProtoAndBack(buffers_orig.get(), module.get()));
 
   BufferAllocation param_buffer = GetAssignedInputAllocation(*buffers, param);
   BufferAllocation neg_1_buffer = GetAllocation(*buffers, neg_1, {});
@@ -690,6 +697,177 @@ TEST_F(BufferAssignmentTest, AliasedParamCanBeReused) {
   // Everything use one buffer.
   EXPECT_EQ(param_buffer.index(), neg_1_buffer.index());
   EXPECT_EQ(neg_2_buffer.index(), neg_1_buffer.index());
+}
+
+TEST_F(BufferAssignmentTest, CanUseAllocationDoesNotMixInputOutputColors) {
+  // Even when a backend allows S(0) temps to be assigned to S(1) temp
+  // allocations, input/output allocations must match raw colors. They are
+  // caller-provided or live-out storage, so buffer assignment cannot strengthen
+  // their runtime allocation requirements after the fact.
+  //
+  // p0 S(1) -X- (neg1 S(0)) -- (neg2 S(1))
+  //    |                                   |
+  //    + -------------- Aliased -----------+
+
+  const char* const hlo_text = R"(
+HloModule test, input_output_alias={ {}: (0, {}, may-alias) }
+
+ENTRY main {
+  p0 = f32[100]{0:S(1)} parameter(0)
+  neg1 = f32[100]{0} negate(p0)
+  ROOT neg2 = f32[100]{0:S(1)} negate(neg1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  std::unique_ptr<BufferAssignment> buffers =
+      RunBufferAssignment(module.get(), /*alignment=*/1,
+                          BufferAssigner::AllowCrossColorReuse(0, 1));
+
+  HloInstruction* param = FindInstruction(module.get(), "p0");
+  HloInstruction* neg_1 = FindInstruction(module.get(), "neg1");
+  HloInstruction* neg_2 = FindInstruction(module.get(), "neg2");
+
+  BufferAllocation param_buffer = GetAssignedInputAllocation(*buffers, param);
+  BufferAllocation neg_1_buffer = GetAllocation(*buffers, neg_1, {});
+  BufferAllocation neg_2_buffer = GetAllocation(*buffers, neg_2, {});
+
+  EXPECT_TRUE(param_buffer.is_entry_computation_parameter());
+  EXPECT_TRUE(param_buffer.is_parameter_aliased_with_output());
+  EXPECT_EQ(param_buffer.color(), 1);
+  EXPECT_EQ(buffers->dataflow_analysis().GetUniqueValueAt(neg_1, {}).color(),
+            0);
+
+  EXPECT_NE(param_buffer.index(), neg_1_buffer.index());
+  EXPECT_EQ(param_buffer.index(), neg_2_buffer.index());
+}
+
+TEST_F(BufferAssignmentTest, CanUseAllocationReusesCrossColorTempAllocation) {
+  // AllowCrossColorReuse enables directional temp reuse: an S(0) temp may be
+  // placed in already-free space inside an S(1) temp allocation, while keeping
+  // its raw HLO color and without increasing the S(1) allocation size.
+
+  const char* const hlo_text = R"(
+HloModule test
+
+add_s {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[2048]{0} parameter(0)
+  p1 = f32[1024]{0} parameter(1)
+  neg0 = f32[2048]{0:S(1)} negate(p0)
+  zero = f32[] constant(0)
+  r1 = f32[] reduce(neg0, zero), dimensions={0}, to_apply=add_s
+  neg1 = f32[1024]{0} negate(p1)
+  r0 = f32[] reduce(neg1, zero), dimensions={0}, to_apply=add_s
+  ROOT out = f32[] add(r1, r0)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloInstruction* p1 = FindInstruction(module.get(), "p1");
+  HloInstruction* neg0 = FindInstruction(module.get(), "neg0");
+  HloInstruction* zero = FindInstruction(module.get(), "zero");
+  HloInstruction* r1 = FindInstruction(module.get(), "r1");
+  HloInstruction* neg1 = FindInstruction(module.get(), "neg1");
+  HloInstruction* r0 = FindInstruction(module.get(), "r0");
+  HloInstruction* out = FindInstruction(module.get(), "out");
+
+  std::vector<HloInstruction*> sequence = {p0, p1,   neg0, zero,
+                                           r1, neg1, r0,   out};
+  auto assignment = RunBufferAssignmentWithInstructionSequence(
+      module.get(), sequence, /*alignment=*/1,
+      BufferAssigner::AllowCrossColorReuse(0, 1));
+
+  const HloValue& neg0_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(neg0, {});
+  const HloValue& neg1_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(neg1, {});
+  const BufferAllocation& neg0_allocation =
+      GetAllocation(*assignment, neg0, {});
+  const BufferAllocation& neg1_allocation =
+      GetAllocation(*assignment, neg1, {});
+
+  // The S(0) buffer is placed inside the S(1) allocation, which keeps its S(1)
+  // color and is not grown to make room.
+  EXPECT_EQ(neg0_value.color(), 1);
+  EXPECT_EQ(neg1_value.color(), 0);
+  EXPECT_EQ(neg0_allocation.index(), neg1_allocation.index());
+  EXPECT_EQ(neg0_allocation.color(), 1);
+  EXPECT_TRUE(neg0_allocation.IsPreallocatedTempBuffer());
+  EXPECT_EQ(neg0_allocation.size(), BufferSizeBytes(neg0_value));
+  EXPECT_TRUE(neg0_allocation.assigned_buffers().contains(&neg1_value));
+
+  // The S(0) buffer is reported as a cross-color reuse on the S(1) allocation
+  // (informational only); the allocation's own S(1) buffer is not.
+  EXPECT_THAT(neg0_allocation.CrossColorBuffers(),
+              ::testing::Contains(&neg1_value));
+  EXPECT_THAT(neg0_allocation.CrossColorBuffers(),
+              ::testing::Not(::testing::Contains(&neg0_value)));
+}
+
+TEST_F(BufferAssignmentTest,
+       CanUseAllocationDoesNotGrowCrossColorTempAllocation) {
+  // Cross-color reuse is opportunistic. If an S(0) temp does not fit in the
+  // existing S(1) allocation, it remains in an S(0) allocation instead of
+  // increasing the S(1) allocation size.
+
+  const char* const hlo_text = R"(
+HloModule test
+
+add_s {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[1024]{0} parameter(0)
+  p1 = f32[2048]{0} parameter(1)
+  neg0 = f32[1024]{0:S(1)} negate(p0)
+  zero = f32[] constant(0)
+  r1 = f32[] reduce(neg0, zero), dimensions={0}, to_apply=add_s
+  neg1 = f32[2048]{0} negate(p1)
+  r0 = f32[] reduce(neg1, zero), dimensions={0}, to_apply=add_s
+  ROOT out = f32[] add(r1, r0)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloInstruction* p1 = FindInstruction(module.get(), "p1");
+  HloInstruction* neg0 = FindInstruction(module.get(), "neg0");
+  HloInstruction* zero = FindInstruction(module.get(), "zero");
+  HloInstruction* r1 = FindInstruction(module.get(), "r1");
+  HloInstruction* neg1 = FindInstruction(module.get(), "neg1");
+  HloInstruction* r0 = FindInstruction(module.get(), "r0");
+  HloInstruction* out = FindInstruction(module.get(), "out");
+
+  std::vector<HloInstruction*> sequence = {p0, p1,   neg0, zero,
+                                           r1, neg1, r0,   out};
+  auto assignment = RunBufferAssignmentWithInstructionSequence(
+      module.get(), sequence, /*alignment=*/1,
+      BufferAssigner::AllowCrossColorReuse(0, 1));
+
+  const HloValue& neg0_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(neg0, {});
+  const BufferAllocation& neg0_allocation =
+      GetAllocation(*assignment, neg0, {});
+  const BufferAllocation& neg1_allocation =
+      GetAllocation(*assignment, neg1, {});
+
+  EXPECT_NE(neg0_allocation.index(), neg1_allocation.index());
+  EXPECT_EQ(neg0_allocation.color(), 1);
+  EXPECT_EQ(neg0_allocation.size(), BufferSizeBytes(neg0_value));
+  EXPECT_EQ(neg1_allocation.color(), 0);
 }
 
 TEST_F(BufferAssignmentTest, AddCannotReuse) {
