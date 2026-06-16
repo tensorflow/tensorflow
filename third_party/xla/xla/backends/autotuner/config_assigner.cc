@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/hlo_extractor.h"
+#include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/autotuner/tuner.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -107,7 +108,19 @@ absl::StatusOr<std::unique_ptr<ConfigAssigner>> ConfigAssigner::Create(
     Options options,
     std::unique_ptr<AutotunerCacheInterface> absl_nonnull cache,
     std::unique_ptr<CodegenOrchestrator> absl_nonnull orchestrator,
-    std::unique_ptr<Tuner> tuner) {
+    std::unique_ptr<Profiler> absl_nullable profiler) {
+  std::unique_ptr<Tuner> tuner = nullptr;
+  if (profiler != nullptr) {
+    Tuner::Options tuner_options;
+    tuner_options.check_buffers = options.check_buffers;
+    tuner_options.relative_tolerance = options.relative_tolerance;
+    tuner_options.crash_on_check_failure = options.crash_on_check_failure;
+    tuner_options.scratch_bytes_window_size_us =
+        options.scratch_bytes_window_size_us;
+    tuner_options.dump_logs_to = options.dump_logs_to;
+    ASSIGN_OR_RETURN(tuner, Tuner::Create(std::move(profiler),
+                                          orchestrator.get(), tuner_options));
+  }
   return absl::WrapUnique(
       new ConfigAssigner(std::move(options), std::move(cache),
                          std::move(orchestrator), std::move(tuner)));

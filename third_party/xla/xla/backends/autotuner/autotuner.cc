@@ -55,21 +55,6 @@ absl::StatusOr<std::unique_ptr<Autotuner>> Autotuner::Create(
                                           std::move(codegen_backends),
                                           orchestrator_options, thread_pool));
 
-  std::unique_ptr<Tuner> tuner = nullptr;
-  if (profiler != nullptr) {
-    Tuner::Options tuner_options;
-    tuner_options.check_buffers = autotune_config.check_buffers;
-    tuner_options.relative_tolerance = autotune_config.relative_tolerance;
-    tuner_options.crash_on_check_failure =
-        autotune_config.crash_on_check_failure;
-    tuner_options.scratch_bytes_window_size_us =
-        autotune_config.scratch_bytes_window_size_us;
-    tuner_options.dump_logs_to = autotune_config.dump_logs_to;
-
-    ASSIGN_OR_RETURN(tuner, Tuner::Create(std::move(profiler),
-                                          orchestrator.get(), tuner_options));
-  }
-
   if (cache == nullptr) {
     cache = std::make_unique<NoOpAutotunerCache>();
   }
@@ -81,10 +66,18 @@ absl::StatusOr<std::unique_ptr<Autotuner>> Autotuner::Create(
       autotune_config.expect_all_instructions_in_cache;
   assigner_options.dump_hlos = autotune_config.dump_hlos;
 
+  assigner_options.check_buffers = autotune_config.check_buffers;
+  assigner_options.relative_tolerance = autotune_config.relative_tolerance;
+  assigner_options.crash_on_check_failure =
+      autotune_config.crash_on_check_failure;
+  assigner_options.scratch_bytes_window_size_us =
+      autotune_config.scratch_bytes_window_size_us;
+  assigner_options.dump_logs_to = autotune_config.dump_logs_to;
+
   ASSIGN_OR_RETURN(
       auto assigner,
       ConfigAssigner::Create(assigner_options, std::move(cache),
-                             std::move(orchestrator), std::move(tuner)));
+                             std::move(orchestrator), std::move(profiler)));
 
   return absl::WrapUnique(new Autotuner(std::move(assigner)));
 }
