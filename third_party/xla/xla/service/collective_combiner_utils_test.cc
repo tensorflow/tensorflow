@@ -114,7 +114,7 @@ TEST(CollectiveCombinerUtilsTest, MergeFrontendAttributesSortedValues) {
       p1 = f32[4,64] parameter(1)
       p2 = f32[16,16] parameter(2)
       ag0 = f32[8,32] all-gather(p0), dimensions={0},
-            replica_groups={}, frontend_attributes={key="zebra"}
+            replica_groups={}, frontend_attributes={key="zucchini"}
       ag1 = f32[4,64] all-gather(p1), dimensions={1},
             replica_groups={}, frontend_attributes={key="apple"}
       ag2 = f32[16,16] all-gather(p2), dimensions={1},
@@ -135,7 +135,7 @@ TEST(CollectiveCombinerUtilsTest, MergeFrontendAttributesSortedValues) {
   FrontendAttributes result = MergeFrontendAttributes(instructions);
 
   // Values are sorted by btree_set.
-  EXPECT_EQ(result.map().at("key"), "apple,mango,zebra");
+  EXPECT_EQ(result.map().at("key"), "apple,mango,zucchini");
 }
 
 TEST(CollectiveCombinerUtilsTest, MergeMetadataEmpty) {
