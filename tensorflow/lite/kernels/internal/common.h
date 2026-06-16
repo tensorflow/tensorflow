@@ -78,6 +78,7 @@ bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
       if (!broadcast_input1) {
         broadcast_input1 = true;
         broadcast_input2 = false;
+        if (num_compressed_dims >= MAX_DIM) return false;
         num_compressed_dims++;
         if (num_compressed_dims > MAX_DIM) {
           return false;
@@ -89,6 +90,7 @@ bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
       if (!broadcast_input2) {
         broadcast_input1 = false;
         broadcast_input2 = true;
+        if (num_compressed_dims >= MAX_DIM) return false;
         num_compressed_dims++;
         if (num_compressed_dims > MAX_DIM) {
           return false;
@@ -101,6 +103,7 @@ bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
       if (broadcast_input1 || broadcast_input2 || first_nonunit) {
         broadcast_input1 = false;
         broadcast_input2 = false;
+        if (num_compressed_dims >= MAX_DIM) return false;
         num_compressed_dims++;
         if (num_compressed_dims > MAX_DIM) {
           return false;
@@ -114,6 +117,7 @@ bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
   }
   if (num_input1_dims > num_input2_dims) {
     if (!broadcast_input2) {
+      if (num_compressed_dims >= MAX_DIM) return false;
       num_compressed_dims++;
       if (num_compressed_dims > MAX_DIM) {
         return false;
@@ -129,6 +133,7 @@ bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
     }
   } else if (num_input2_dims > num_input1_dims) {
     if (!broadcast_input1) {
+      if (num_compressed_dims >= MAX_DIM) return false;
       num_compressed_dims++;
       if (num_compressed_dims > MAX_DIM) {
         return false;
