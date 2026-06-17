@@ -141,11 +141,14 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       allocator_config.kind = xla::GpuAllocatorConfig::Kind::kCudaAsync;
     } else if (allocator_name == "vmm") {
       allocator_config.kind = xla::GpuAllocatorConfig::Kind::kVmm;
+    } else if (allocator_name == "address") {
+      allocator_config.kind = xla::GpuAllocatorConfig::Kind::kAddress;
     } else {
       return StatusToPjRtError(absl::UnimplementedError(absl::StrFormat(
           "Allocator %s not supported for PJRT GPU plugin. Supported "
           "allocator "
-          "options are: 'default', 'platform', 'bfc', 'cuda_async' and 'vmm'.",
+          "options are: 'default', 'platform', 'bfc', 'cuda_async', 'vmm' and "
+          "'address'.",
           allocator_name)));
     }
   }
