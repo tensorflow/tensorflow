@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/debug_options_flags.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -54,10 +55,13 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/shape.h"
@@ -1096,6 +1100,34 @@ TEST_F(GpuExecutableTest, BufferAssignment) {
   // But we still have the buffer assignment proto.
   EXPECT_THAT(reconstructed_executable->buffer_assignment_proto(),
               Optional(EqualsProto(reference_buffer_assignment->ToProto())));
+}
+
+TEST_F(GpuExecutableTest, RejectNonIotaExecutionDeviceAssignment) {
+  GpuExecutable::Params params;
+  params.module_name = "test_module";
+  params.executable = std::make_unique<ThunkExecutor>(ThunkSequence{});
+  SetDummyBufferAssignment(params);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       GpuExecutable::Create(std::move(params)));
+
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/2);
+  device_assignment(0, 0) = 1;
+  device_assignment(0, 1) = 0;
+
+  ExecutableRunOptions run_options;
+  run_options.set_device_assignment(&device_assignment);
+  ServiceExecutableRunOptions service_run_options(run_options);
+
+  std::vector<ExecutionInput> arguments;
+  auto status_or = executable->ExecuteAsyncOnStream(&service_run_options,
+                                                    std::move(arguments));
+
+  EXPECT_FALSE(status_or.ok());
+  EXPECT_THAT(
+      status_or.status().message(),
+      ::testing::HasSubstr("XLA:GPU only supports iota device assignment"));
 }
 
 }  // namespace

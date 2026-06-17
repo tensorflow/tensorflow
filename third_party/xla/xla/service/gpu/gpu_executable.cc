@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/runtime/hang_watchdog.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
@@ -1007,6 +1008,26 @@ absl::StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
 absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     const ServiceExecutableRunOptions* run_options,
     VariantArguments arguments) {
+  if (has_module() && module_config().has_static_device_assignment()) {
+    const DeviceAssignment& static_device_assignment =
+        module_config().static_device_assignment();
+    if (!static_device_assignment.IsIota()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("XLA:GPU only supports iota device assignment. Got: ",
+                       static_device_assignment.ToString()));
+    }
+  }
+
+  if (run_options->run_options().device_assignment() != nullptr) {
+    const DeviceAssignment& runtime_device_assignment =
+        *run_options->run_options().device_assignment();
+    if (!runtime_device_assignment.IsIota()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("XLA:GPU only supports iota device assignment. Got: ",
+                       runtime_device_assignment.ToString()));
+    }
+  }
+
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuExecutable::ExecuteAsyncOnStreamImpl(", module_name_, ")"));
   se::DeviceAddressAllocator* const memory_allocator = run_options->allocator();

@@ -68,6 +68,10 @@ class DeviceAssignment : public Array2D<int64_t> {
   absl::flat_hash_map<GlobalDeviceId, LogicalID> GetDeviceToLogicalIdMap()
       const;
 
+  // Returns true if the device assignment is iota.
+  // Iota means assignment(r, c) == r * computation_count() + c.
+  bool IsIota() const;
+
   // Protocol buffer serialization and deserialization.
   void Serialize(DeviceAssignmentProto* proto) const;
 
