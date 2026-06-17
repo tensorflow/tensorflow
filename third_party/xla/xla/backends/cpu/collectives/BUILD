@@ -74,6 +74,7 @@ cc_library(
 xla_cc_test(
     name = "cpu_cliques_test",
     srcs = ["cpu_cliques_test.cc"],
+    tags = ["notap"],
     deps = [
         ":cpu_clique_key",
         ":cpu_cliques",

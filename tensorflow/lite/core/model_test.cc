@@ -491,19 +491,43 @@ TEST(BasicFlatBufferModel, TestBuildFromNullAllocation) {
   TestErrorReporter reporter;
   std::unique_ptr<Allocation> model_allocation;
 
-  auto model =
-      FlatBufferModel::BuildFromAllocation(std::move(model_allocation));
-  ASSERT_FALSE(model);
+  std::unique_ptr<FlatBufferModel> model = FlatBufferModel::BuildFromAllocation(
+      std::move(model_allocation), &reporter);
+  EXPECT_FALSE(model);
+  EXPECT_EQ(reporter.num_calls(), 1);
+  EXPECT_PRED_FORMAT2(testing::IsSubstring,
+                      "The model allocation is null/empty",
+                      reporter.error_messages());
 }
 
 TEST(BasicFlatBufferModel, TestBuildFromInvalidAllocation) {
   TestErrorReporter reporter;
-  std::unique_ptr<Allocation> model_allocation(
-      new MemoryAllocation(nullptr, 0, nullptr));
+  auto model_allocation =
+      std::make_unique<MemoryAllocation>(nullptr, 0, &reporter);
 
-  auto model =
-      FlatBufferModel::BuildFromAllocation(std::move(model_allocation));
-  ASSERT_FALSE(model);
+  std::unique_ptr<FlatBufferModel> model = FlatBufferModel::BuildFromAllocation(
+      std::move(model_allocation), &reporter);
+  EXPECT_FALSE(model);
+  EXPECT_EQ(reporter.num_calls(), 1);
+  EXPECT_PRED_FORMAT2(testing::IsSubstring,
+                      "The model allocation is null/empty",
+                      reporter.error_messages());
+}
+
+TEST(BasicFlatBufferModel, TestBuildFromCorruptedAllocation) {
+  TestErrorReporter reporter;
+  alignas(16)
+      const char corrupted_data[] = {0, 0, 0, 0, 'T', 'F', 'L', '3', 0, 0};
+  auto model_allocation = std::make_unique<MemoryAllocation>(
+      corrupted_data, sizeof(corrupted_data), &reporter);
+
+  std::unique_ptr<FlatBufferModel> model = FlatBufferModel::BuildFromAllocation(
+      std::move(model_allocation), &reporter);
+  EXPECT_FALSE(model);
+  EXPECT_EQ(reporter.num_calls(), 1);
+  EXPECT_PRED_FORMAT2(testing::IsSubstring,
+                      "The model is not a valid Flatbuffer buffer",
+                      reporter.error_messages());
 }
 
 // Test reading the minimum runtime string from metadata in a Model flatbuffer.

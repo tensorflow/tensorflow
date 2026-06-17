@@ -260,10 +260,14 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
  }
  
  LogicalResult AllReduceOp::inferReturnTypeComponents(
-@@ -3724,10 +3770,6 @@
-     return NonSpatialDim(DenseMapInfo<int64_t>::getEmptyKey());
-   }
+@@ -3720,14 +3766,6 @@
+ };
  
+ struct DenseMapInfoNonSpatialDim {
+-  static inline NonSpatialDim getEmptyKey() {
+-    return NonSpatialDim(DenseMapInfo<int64_t>::getEmptyKey());
+-  }
+-
 -  static inline NonSpatialDim getTombstoneKey() {
 -    return NonSpatialDim(DenseMapInfo<int64_t>::getTombstoneKey());
 -  }

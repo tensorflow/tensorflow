@@ -104,6 +104,7 @@ class CollectionRegistry {
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -489,14 +490,68 @@ class Exporter {
 
 namespace exporter_registration {
 
+// This class is a helper class that registers an exporter with the collection
+// registry globally.
+//
+// In order to avoid issues with static initialization order, your program must
+// explicitly call `StartExporters` from the appropriate place in
+// your main function (e.g. after flags have been parsed).
+//
+// Example usage:
+//
+// Register your exporter:
+// REGISTER_TF_METRICS_EXPORTER(YourExporterClass);
+//
+// Call Start() in main():
+// int main() {
+//   ...
+//   ExporterRegistration::StartExporters();
+//   ...
+// }
 class ExporterRegistration {
  public:
-  explicit ExporterRegistration(Exporter* exporter) : exporter_(exporter) {
-    exporter_->PeriodicallyExportMetrics();
-  }
+  // Starts the periodic export of metrics for all registered exporters.
+  //
+  // This should be called after the program has finished initialization.
+  static void StartExporters();
+
+  static ExporterRegistration* Get();
+
+  // Registers an exporter with the collection registry.
+  //
+  // The exporter will be added to the list of exporters and start exporting
+  // metrics after ExporterRegistration::StartExporters() is called.
+  void Register(Exporter* exporter) ABSL_LOCKS_EXCLUDED(exporters_mu_);
 
  private:
-  Exporter* exporter_;
+  friend class absl::NoDestructor<ExporterRegistration>;
+
+  ExporterRegistration() = default;
+  ~ExporterRegistration() = default;
+  ExporterRegistration(const ExporterRegistration&) = delete;
+  ExporterRegistration& operator=(const ExporterRegistration&) = delete;
+  ExporterRegistration(ExporterRegistration&&) = delete;
+  ExporterRegistration& operator=(ExporterRegistration&&) = delete;
+
+  void StartExportersImpl() ABSL_LOCKS_EXCLUDED(exporters_mu_);
+
+  absl::Mutex exporters_mu_;
+  std::vector<Exporter*> exporters_ ABSL_GUARDED_BY(exporters_mu_);
+  bool start_exporters_called_ ABSL_GUARDED_BY(exporters_mu_) = false;
+};
+
+// Helper class to register an exporter with the collection registry using
+// the macro REGISTER_TF_METRICS_EXPORTER.
+class ExporterRegistrar {
+ public:
+  explicit ExporterRegistrar(Exporter* exporter) {
+    ExporterRegistration::Get()->Register(exporter);
+  }
+
+  ExporterRegistrar(const ExporterRegistrar&) = delete;
+  ExporterRegistrar& operator=(const ExporterRegistrar&) = delete;
+  ExporterRegistrar(ExporterRegistrar&&) = delete;
+  ExporterRegistrar& operator=(ExporterRegistrar&&) = delete;
 };
 
 }  // namespace exporter_registration
@@ -507,9 +562,9 @@ class ExporterRegistration {
 #define REGISTER_TF_METRICS_EXPORTER_UNIQ_HELPER(ctr, exporter) \
   REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)
 
-#define REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)                \
-  static ::tsl::monitoring::exporter_registration::ExporterRegistration \
-      exporter_registration_##ctr(new exporter())
+#define REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)                  \
+  ABSL_ATTRIBUTE_UNUSED static ::tsl::monitoring::exporter_registration:: \
+      ExporterRegistrar exporter_registrar_##ctr(new exporter())
 
 }  // namespace monitoring
 }  // namespace tsl

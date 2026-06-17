@@ -114,7 +114,6 @@ class KernelSpecs {
       return llvm::hash_combine_range(val.begin(), val.end());
     }
     static bool isEqual(Signature LHS, Signature RHS) {
-      if (RHS == getEmptyKey()) return LHS == getEmptyKey();
       if (LHS.size() != RHS.size()) return false;
       for (auto arg : llvm::zip(LHS, RHS)) {
         if (std::get<0>(arg) != std::get<1>(arg)) return false;
