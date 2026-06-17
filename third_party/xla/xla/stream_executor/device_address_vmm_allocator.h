@@ -267,6 +267,9 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   static absl::Status PopulateDevices(DeviceAddressVmmAllocator* allocator,
                                       absl::Span<const DeviceConfig> devices);
 
+  // Drains pending stream-ordered allocator operations for all devices.
+  absl::Status SynchronizeAllPendingOperations();
+
   // Validates device capabilities and initializes timeline fields
   // (pinned_timeline, timeline_dev_ptr, allocation_granularity) in state.
   // state.executor, state.stream, and state.pa_budget are already set.

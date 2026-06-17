@@ -125,41 +125,22 @@ absl::Status DeviceAddressVmmAllocator::PopulateDevices(
 }
 
 DeviceAddressVmmAllocator::~DeviceAddressVmmAllocator() {
+  absl::Status status = SynchronizeAllPendingOperations();
+  CHECK(status.ok()) << status;
+
   for (auto& [ordinal, state] : per_device_) {
-    // Briefly acquire the lock to read the last pending seqno.
-    uint64_t last_seqno = 0;
-    {
-      absl::MutexLock lock(state->mu);
-      if (!state->pending_deallocations.empty()) {
-        last_seqno = state->pending_deallocations.back().seqno;
-      }
-    }
-
-    // Spin-wait for any pending GPU work to complete before freeing physical
-    // memory. pinned_timeline is not ABSL_GUARDED_BY and last_seqno is a local.
-    if (state->pinned_timeline != nullptr && last_seqno > 0) {
-      while (LoadTimeline(state->pinned_timeline) < last_seqno) {
-        absl::SleepFor(kGpuTimelinePollInterval);
-      }
-    }
-
-    {
-      absl::MutexLock lock(state->mu);
-      for (auto& pending : state->pending_deallocations) {
-        if (pending.kind == PendingDeallocationKind::kAllocate) {
-          DoDeallocate(*state, pending.mem);
-        } else {
-          DoUnMap(*state, pending.mem);
-        }
-      }
-      state->pending_deallocations.clear();
-    }
-
     // Free platform-specific per-device resources (e.g. pinned timeline).
     if (state->destroy_fn) {
       state->destroy_fn();
     }
   }
+}
+
+absl::Status DeviceAddressVmmAllocator::SynchronizeAllPendingOperations() {
+  for (auto& [ordinal, state] : per_device_) {
+    RETURN_IF_ERROR(SynchronizePendingOperations(ordinal));
+  }
+  return absl::OkStatus();
 }
 
 DeviceAddressVmmAllocator::PerDeviceState*
