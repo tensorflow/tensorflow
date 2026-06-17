@@ -1052,6 +1052,13 @@ cc_library(
     alwayslink = True,  # This library registers test cases at static initialization time.
 )
 
+genrule(
+    name = "generate_load_execpath_flags",
+    srcs = ["test_autotune_cache.textproto"],
+    outs = ["load_execpath_flags.txt"],
+    cmd = "echo --xla_gpu_load_autotune_results_from=$(rootpath test_autotune_cache.textproto) > $@",
+)
+
 # This shows that tests can load an autotune cache.
 #
 # If the GPU used for running the test is different from the one in the cache, then the cache will
@@ -1061,9 +1068,11 @@ xla_test(
     srcs = [],
     backends = ["gpu"],
     # Data dependency must be declared for the cache.
-    data = ["test_autotune_cache.textproto"],
-    env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=" +
-                        "$(execpath test_autotune_cache.textproto)"},
+    data = [
+        "load_execpath_flags.txt",
+        "test_autotune_cache.textproto",
+    ],
+    env = {"XLA_FLAGS": "$(rootpath load_execpath_flags.txt)"},
     deps = [
         ":simple_optimization_test",
         "//xla/tests:xla_internal_test_main",
@@ -1082,10 +1091,11 @@ xla_test(
     srcs = [],
     backends = ["gpu"],
     # Data dependency must be declared for the cache.
-    data = ["test_autotune_cache.textproto"],
-    env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=TEST_WORKSPACE/" +
-                        package_name() +
-                        "/test_autotune_cache.textproto"},
+    data = [
+        "load_autotune_flags.txt",
+        "test_autotune_cache.textproto",
+    ],
+    env = {"XLA_FLAGS": "$(rootpath load_autotune_flags.txt)"},
     deps = [
         ":simple_optimization_test",
         "//xla/tests:xla_internal_test_main",
@@ -1101,8 +1111,8 @@ xla_test(
     name = "dump_autotune_results_to_test_outputs_test",
     srcs = [],
     backends = ["gpu"],
-    env = {"XLA_FLAGS": "--xla_gpu_dump_autotune_results_to=" +
-                        "TEST_UNDECLARED_OUTPUTS_DIR/autotune_cache.textproto"},
+    data = ["dump_autotune_flags.txt"],
+    env = {"XLA_FLAGS": "$(rootpath dump_autotune_flags.txt)"},
     # Sharding must be disabled to correctly dump the autotune cache for all test.
     shard_count = 1,
     deps = [

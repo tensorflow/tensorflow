@@ -566,21 +566,31 @@ xla_cc_test(
     srcs = ["tuple_points_to_analysis_test.cc"],
     deps = [
         ":tuple_points_to_analysis",
-        "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
-        "//xla/hlo/testlib:test_helpers",
         "//xla/service:logical_buffer",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:logging",
-        "@tsl//tsl/platform:statusor",
-        "@tsl//tsl/platform:test",
+    ],
+)
+
+xla_cc_test(
+    name = "logical_buffer_analysis_test",
+    srcs = ["logical_buffer_analysis_test.cc"],
+    deps = [
+        ":logical_buffer_analysis",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/service:logical_buffer",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
