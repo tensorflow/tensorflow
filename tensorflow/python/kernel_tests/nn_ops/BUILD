@@ -923,3 +923,14 @@ py_library(
         "//third_party/py/numpy",
     ],
 )
+
+cuda_py_strict_test(
+    name = "convolutional_transpose_validation_test",
+    size = "small",
+    srcs = ["//tensorflow/python/keras/layers:convolutional_transpose_validation_test.py"],
+    deps = [
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/layers:convolutional",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
