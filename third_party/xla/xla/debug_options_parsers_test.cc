@@ -447,6 +447,37 @@ TEST(ParseRepeatedEnumFlagsTest, CommandBufferCmdType) {
   EXPECT_THAT(enabled_types, IsEmpty());
 }
 
+TEST(ParseRepeatedEnumFlagsTest, CollectivesCommandBufferFilter) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+
+  const auto& filter =
+      debug_options.xla_gpu_enable_collectives_command_buffer_filter();
+  ASSERT_EQ(filter.size(), 1);
+  ASSERT_THAT(filter, ElementsAre(DebugOptions::ALLCOLLECTIVES));
+
+  std::vector<tsl::Flag> flag_objects;
+  MakeDebugOptionsFlags(&flag_objects, &debug_options);
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_enable_collectives_command_buffer_filter=-allcollectives");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_THAT(filter, IsEmpty());
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_enable_collectives_command_buffer_filter=+allreduce,+"
+      "allgather");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(filter.size(), 2);
+  EXPECT_THAT(filter,
+              ElementsAre(DebugOptions::ALLREDUCE, DebugOptions::ALLGATHER));
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_enable_collectives_command_buffer_filter=reducescatter");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(filter.size(), 1);
+  EXPECT_THAT(filter, ElementsAre(DebugOptions::REDUCESCATTER));
+}
+
 // Common function to test oneDNN and XNN fusion type.
 void TestLibraryFusionType(absl::string_view lib) {
   DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();

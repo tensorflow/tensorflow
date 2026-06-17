@@ -258,6 +258,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::DYNAMIC_SLICE_FUSION);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  opts.add_xla_gpu_enable_collectives_command_buffer_filter(
+      DebugOptions::ALLCOLLECTIVES);
   opts.set_xla_gpu_graph_min_graph_size(5);
   opts.set_xla_gpu_command_buffer_scheduling_mode(DebugOptions::LHS);
   opts.set_xla_gpu_command_buffer_unroll_loops(false);
@@ -1944,6 +1946,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       " can either be a list of command types or a list of command types with"
       " + and - as prefix, which indicate adding or removing a command type"
       " to/from the default list."));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_collectives_command_buffer_filter",
+      SetterForRepeatedEnum<DebugOptions::CollectiveOpType>(
+          "xla_gpu_enable_collectives_command_buffer_filter",
+          /*enum_prefix=*/"", &DebugOptions::CollectiveOpType_Parse,
+          debug_options
+              ->mutable_xla_gpu_enable_collectives_command_buffer_filter()),
+      collective_op_types_to_string(
+          debug_options->xla_gpu_enable_collectives_command_buffer_filter()),
+      "Only collectives specified in this filter will be executed in a "
+      "command buffer. Default is ALLCOLLECTIVES."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_graph_min_graph_size",

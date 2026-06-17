@@ -663,6 +663,12 @@ message DebugOptions {
 
   optional bool xla_gpu_enable_approx_costly_collectives = 305;
 
+  // Filter for collectives to be executed in a command buffer.
+  // Only collectives specified in this filter will be executed in a command
+  // buffer. Default is ALLCOLLECTIVES.
+  repeated CollectiveOpType xla_gpu_enable_collectives_command_buffer_filter =
+      497;
+
   // Determine the types of commands that are recorded into command buffers.
   repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
 
@@ -1633,7 +1639,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 497
+  // Next id: 498
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

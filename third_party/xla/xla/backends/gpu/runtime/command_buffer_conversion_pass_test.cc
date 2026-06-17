@@ -1317,6 +1317,79 @@ TEST(CommandBufferConversionPassTest,
                                     Thunk::kAsyncDone));
 }
 
+TEST(CommandBufferConversionPassTest,
+     CollectivesFilterAllowsMatchingCollective) {
+  ThunkSequence thunks;
+  BufferAllocation alloc0(1, 16 * 4, 0);
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  thunks.push_back(WrapInAsyncStartThunk(CreateAllGatherThunk(alloc0, alloc1)));
+  thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
+
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+  debug_options.clear_xla_gpu_enable_collectives_command_buffer_filter();
+  debug_options.add_xla_gpu_enable_collectives_command_buffer_filter(
+      DebugOptions::ALLGATHER);
+
+  se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+  FakeErrorAllocator allocator;
+  CommandBufferConversionPass pass("test");
+  ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
+                       device_info, allocator),
+              IsOkAndHolds(true));
+  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
+}
+
+TEST(CommandBufferConversionPassTest,
+     CollectivesFilterBlocksNonMatchingCollective) {
+  ThunkSequence thunks;
+  BufferAllocation alloc0(1, 16 * 4, 0);
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  thunks.push_back(WrapInAsyncStartThunk(CreateAllGatherThunk(alloc0, alloc1)));
+  thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
+
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+  debug_options.clear_xla_gpu_enable_collectives_command_buffer_filter();
+  // Filter only allows ALLREDUCE, so ALLGATHER should be blocked.
+  debug_options.add_xla_gpu_enable_collectives_command_buffer_filter(
+      DebugOptions::ALLREDUCE);
+
+  se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+  FakeErrorAllocator allocator;
+  CommandBufferConversionPass pass("test");
+  ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
+                       device_info, allocator),
+              IsOkAndHolds(false));
+  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kAsyncStart, Thunk::kAsyncDone));
+}
+
+TEST(CommandBufferConversionPassTest, CollectivesFilterDefaultsToAll) {
+  ThunkSequence thunks;
+  BufferAllocation alloc0(1, 16 * 4, 0);
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  thunks.push_back(WrapInAsyncStartThunk(CreateAllGatherThunk(alloc0, alloc1)));
+  thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
+
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+  // Default filter should contain ALLCOLLECTIVES, enabling the conversion.
+
+  se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+  FakeErrorAllocator allocator;
+  CommandBufferConversionPass pass("test");
+  ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
+                       device_info, allocator),
+              IsOkAndHolds(true));
+  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
