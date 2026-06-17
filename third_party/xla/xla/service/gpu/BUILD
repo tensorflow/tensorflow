@@ -694,8 +694,14 @@ bool_flag(
 
 cc_library(
     name = "gpu_executable",
-    srcs = ["gpu_executable.cc"],
-    hdrs = ["gpu_executable.h"],
+    srcs = [
+        "gpu_executable.cc",
+        "gpu_module_globals.cc",
+    ],
+    hdrs = [
+        "gpu_executable.h",
+        "gpu_module_globals.h",
+    ],
     deps = [
         ":alias_info",
         ":backend_configs_cc",
