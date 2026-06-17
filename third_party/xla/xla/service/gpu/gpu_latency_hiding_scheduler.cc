@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
+#include "xla/backends/gpu/transforms/dynamic_slice_copy.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -68,7 +69,6 @@ static constexpr int64_t kNumAsyncCollectivesP2P = 4;
 
 // Number of async memcpy operations that can be in flight at the same time.
 static constexpr int64_t kNumAsyncMemcpy = std::numeric_limits<int>::max();
-;
 
 // Classifies `hlo` instruction as noop or not.
 bool IsNopInstruction(const HloInstruction& hlo) {
@@ -140,7 +140,8 @@ bool ShapeHasHostMemorySpace(const Shape& shape) {
 bool IsSlicingMemcpy(const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kFusion) {
     return ShapeHasHostMemorySpace(hlo.shape()) ||
-           ShapeHasHostMemorySpace(hlo.operand(0)->shape());
+           ShapeHasHostMemorySpace(hlo.operand(0)->shape()) ||
+           IsDynamicSliceCopyFusion(&hlo);
   }
   return false;
 }
@@ -165,10 +166,16 @@ bool IsMemcpyAsyncDoneOp(const HloInstruction& hlo) {
   return IsSlicingMemcpy(*hlo.async_wrapped_instruction());
 }
 
+bool IsDynamicSliceCopyFusionAsyncOp(const HloInstruction& hlo) {
+  return (hlo.opcode() == HloOpcode::kAsyncStart ||
+          hlo.opcode() == HloOpcode::kAsyncDone) &&
+         IsDynamicSliceCopyFusion(hlo.async_wrapped_instruction());
+}
+
 // Marks async start operations to be scheduled as early as possible.
 // It allows maximum overlap of operations while respecting dependencies.
-// Besides async collectives, copy-start is async memcpy D2H/H2D, the beginning
-// of a host offloading segment.
+// Besides async collectives, copy-start and dynamic-slice copy fusions are
+// async memcpy operations.
 bool IsGpuAsyncStart(const HloInstruction& hlo) {
   return (hlo_query::IsAsyncCollectiveStartOp(&hlo,
                                               /*include_send_recv=*/true) &&
@@ -435,7 +442,15 @@ ResourcesVector GpuAsyncTracker::GetResourcesFromInstructionImpl(
     ResourceUsageType usage;
     GpuResourceType resource;
 
-    if (IsAnnotatedForGpuAsyncStreamCollectivesP2P(instr)) {
+    // Keep existing copy-start/copy-done and host-memory slicing fusions on the
+    // async-compute resource path. Only dynamic-slice memcpy async wrappers use
+    // the dedicated memcpy resource added for D2D copy overlap.
+    if (IsDynamicSliceCopyFusionAsyncOp(instr)) {
+      resource = GpuResourceType::kGpuAsyncStreamMemcpy;
+      usage = op.outer == HloOpcode::kAsyncStart
+                  ? ResourceUsageType::kResourceRelease
+                  : ResourceUsageType::kResourceOccupy;
+    } else if (IsAnnotatedForGpuAsyncStreamCollectivesP2P(instr)) {
       resource = GpuResourceType::kGpuAsyncStreamCollectivesP2P;
       usage = op.outer == HloOpcode::kAsyncStart
                   ? ResourceUsageType::kResourceRelease
@@ -508,7 +523,6 @@ int64_t GpuAsyncTracker::GetNumAvailableResources(int64_t resource_type) const {
 
   if (resource_type ==
       ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamMemcpy)) {
-    constexpr int64_t kNumAsyncMemcpy = std::numeric_limits<int>::max();
     return kNumAsyncMemcpy;
   }
 
@@ -537,6 +551,8 @@ absl::string_view GpuAsyncTracker::GetResourceName(
       return "kGpuAsyncStreamCollectives";
     case GpuResourceType::kGpuAsyncStreamComputes:
       return "kGpuAsyncStreamComputes";
+    case GpuResourceType::kGpuAsyncStreamMemcpy:
+      return "kGpuAsyncStreamMemcpy";
     default:
       return "kUnsupportedResource";
   }
