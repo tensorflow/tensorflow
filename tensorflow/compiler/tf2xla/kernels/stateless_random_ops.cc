@@ -96,25 +96,21 @@ std::pair<xla::XlaOp, xla::XlaOp> MixSeedsForEagerCompatibility(
   xla::XlaOp s0 = xla::BitcastConvertType(seed0, xla::U32);
   xla::XlaOp s1 = xla::BitcastConvertType(seed1, xla::U32);
   xla::XlaOp zero_u32 = xla::ConstantR0WithType(builder, xla::U32, 0);
-
-  // counter = [seed0, 0, seed1, 0]  (matches eager counter[0..3])
+// counter = [seed0, 0, seed1, 0]  (matches eager counter[0..3])
   xla::XlaOp counter_vec = xla::ConcatInDim(
       builder,
       {xla::Reshape(s0, {1}), xla::Reshape(zero_u32, {1}),
        xla::Reshape(s1, {1}), xla::Reshape(zero_u32, {1})},
       /*dimension=*/0);  // shape: [4] x U32
-
-  // ── Step 2: build the fixed Philox key from the eager constants ──
   xla::XlaOp k0 = xla::ConstantR0WithType(builder, xla::U32, 0x3ec8f720);
   xla::XlaOp k1 = xla::ConstantR0WithType(builder, xla::U32, 0x02461e29);
   xla::XlaOp key_vec = xla::ConcatInDim(
       builder,
       {xla::Reshape(k0, {1}), xla::Reshape(k1, {1})},
+  xla::XlaOp key_vec = xla::ConcatInDim(
+      builder,
+      {xla::Reshape(k0, {1}), xla::Reshape(k1, {1})},
       /*dimension=*/0);  // shape: [2] x U32
-
-  // ── Step 3: run one Philox-4x32-10 mixing round ──
-  // RngBitGenerator expects a state vector whose layout for PHILOX is:
-  //   [key_lo_u64, key_hi_u64, counter_lo_u64, counter_hi_u64]  (all U64)
   // We pack our U32 words into U64 pairs (little-endian word order).
   auto pack_u32_to_u64 = [&](xla::XlaOp lo, xla::XlaOp hi) -> xla::XlaOp {
     xla::XlaOp lo64 = xla::ConvertElementType(lo, xla::U64);
