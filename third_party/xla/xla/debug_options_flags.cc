@@ -502,7 +502,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier(true);
   opts.set_xla_gpu_ragged_all_to_all_mode(
       DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
-  opts.set_xla_gpu_experimental_ragged_all_to_all_zero_copy(true);
   opts.set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(true);
   opts.set_xla_gpu_native_emitter_tune_unroll_factor_for_loops(false);
   opts.set_xla_gpu_experimental_use_ragged_dot_fusion(false);
@@ -3114,14 +3113,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 "Memory mode for ragged-all-to-all: private, symmetric, peer. "
                 "In symmetric mode, the put/signal path is used. "
                 "See CollectivesMode for details."));
-  // TODO: b/482045400 - Remove double-copy approach once testing is complete.
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_ragged_all_to_all_zero_copy",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_experimental_ragged_all_to_all_zero_copy),
-      debug_options->xla_gpu_experimental_ragged_all_to_all_zero_copy(),
-      "If true, use the Symmetric Memory mode for "
-      "MultiGpuBarrierWithNcclKernel"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_use_ragged_dot_grouped_gemm",
       bool_setter_for(

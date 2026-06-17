@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/base/casts.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -61,8 +62,6 @@ limitations under the License.
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/backends/cpu/target_machine_options.h"
-#include "xla/backends/gpu/autotuner/block_level_emitter.h"
-#include "xla/backends/gpu/autotuner/native_emitter.h"
 #include "xla/backends/gpu/codegen/cubin_custom_kernel_compiler.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
@@ -226,7 +225,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/zero_sized_hlo_elimination.h"
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
-#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/all_reduce_promotion.h"
@@ -328,14 +326,12 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -348,7 +344,6 @@ limitations under the License.
 #include "xla/util/split_proto/split_proto_reader.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/path.h"
@@ -2273,8 +2268,8 @@ bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
   if (is_nccl_buffers_used && IsCollective(user)) {
     return true;
   }
-  // Handle one-shot zero-copy RaggedAllToAll
-  if (IsOneShotZeroCopyRaggedAllToAllEnabled(opts)) {
+  // Handle one-shot RaggedAllToAll with NCCL enabled.
+  if (IsOneShotRaggedAllToAllWithNcclEnabled(opts)) {
     // User is RA2A or AsyncStart(RA2A). Used by operand 1 (output).
     if ((IsRaggedAllToAllOrAsyncStartRaggedAllToAll(user)) &&
         use.operand_number == 1) {
@@ -2317,8 +2312,8 @@ bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts) {
   if (is_nccl_buffers_used && IsCollective(def)) {
     return true;
   }
-  // Handle one-shot zero-copy RaggedAllToAll
-  if (IsOneShotZeroCopyRaggedAllToAllEnabled(opts)) {
+  // Handle one-shot RaggedAllToAll with NCCL enabled.
+  if (IsOneShotRaggedAllToAllWithNcclEnabled(opts)) {
     // Defining Instruction is RA2A or AsyncDone(RA2A)
     if (IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(def)) {
       return true;

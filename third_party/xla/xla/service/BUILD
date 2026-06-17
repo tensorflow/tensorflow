@@ -5688,6 +5688,7 @@ cc_library(
     deps = [
         ":collective_permute_cycle",
         ":computation_placer",
+        ":hlo_module_config",
         ":pattern_matcher",
         ":source_target_pairs",
         "//xla:executable_run_options",
@@ -5702,7 +5703,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/runtime:device_id",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",

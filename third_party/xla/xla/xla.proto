@@ -1621,9 +1621,9 @@ message DebugOptions {
   optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl =
       462;
 
-  // TODO: b/482045400 - Remove double-copy approach once testing is complete.
-  // If true, use Symmetric Memory mode for MultiGpuBarrierWithNcclKernel
-  optional bool xla_gpu_experimental_ragged_all_to_all_zero_copy = 480;
+  // DEPRECATED: This flag is a no-op.
+  optional bool xla_gpu_experimental_ragged_all_to_all_zero_copy = 480
+      [deprecated = true];
 
   // If true, enable experimental tiling propagation.
   optional bool xla_gpu_experimental_enable_tiling_propagation = 456;

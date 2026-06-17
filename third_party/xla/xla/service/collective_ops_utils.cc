@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
@@ -45,11 +46,11 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -808,9 +809,8 @@ bool IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(
           instruction->async_wrapped_opcode() == HloOpcode::kRaggedAllToAll);
 }
 
-bool IsOneShotZeroCopyRaggedAllToAllEnabled(const DebugOptions& opts) {
-  return opts.xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl() &&
-         opts.xla_gpu_experimental_ragged_all_to_all_zero_copy();
+bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts) {
+  return opts.xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl();
 }
 
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
