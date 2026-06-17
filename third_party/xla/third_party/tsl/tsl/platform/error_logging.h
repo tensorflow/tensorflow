@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,14 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_ERROR_LOGGING_H_
 #define TENSORFLOW_TSL_PLATFORM_ERROR_LOGGING_H_
 
-#include "absl/status/status.h"
-#include "absl/strings/string_view.h"
-
-namespace tsl::error_logging {
-
-absl::Status Log(absl::string_view component, absl::string_view subcomponent,
-                 absl::string_view error_msg);
-
-}
+#include "xla/tsl/platform/error_logging.h"
 
 #endif  // TENSORFLOW_TSL_PLATFORM_ERROR_LOGGING_H_

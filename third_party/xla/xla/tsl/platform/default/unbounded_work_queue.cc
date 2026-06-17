@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
-#include "tsl/platform/numa.h"
+#include "xla/tsl/platform/numa.h"
 
 namespace tsl {
 

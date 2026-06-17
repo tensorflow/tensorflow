@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/human_readable_json.h"
+#include "xla/tsl/platform/human_readable_json.h"
 
 #include <string>
 #include <utility>

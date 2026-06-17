@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,22 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_LOAD_LIBRARY_H_
 #define TENSORFLOW_TSL_PLATFORM_LOAD_LIBRARY_H_
 
-#include <string>
-
-#include "absl/status/status.h"
-
-namespace tsl {
-
-namespace internal {
-
-absl::Status LoadDynamicLibrary(const char* library_filename, void** handle);
-absl::Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
-                                  void** symbol);
-std::string FormatLibraryFileName(const std::string& name,
-                                  const std::string& version);
-
-}  // namespace internal
-
-}  // namespace tsl
+#include "xla/tsl/platform/load_library.h"
 
 #endif  // TENSORFLOW_TSL_PLATFORM_LOAD_LIBRARY_H_

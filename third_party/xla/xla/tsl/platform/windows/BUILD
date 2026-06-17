@@ -154,7 +154,6 @@ cc_library(
 cc_library(
     name = "load_library",
     srcs = ["load_library.cc"],
-    hdrs = ["@tsl//tsl/platform:load_library.h"],
     tags = [
         "manual",
         "no_oss",
@@ -163,15 +162,13 @@ cc_library(
     deps = [
         ":wide_char",
         "@com_google_absl//absl/status",
+        "@tsl//tsl/platform:load_library_hdrs_lib",
     ],
 )
 
 cc_library(
     name = "net",
     srcs = ["net.cc"],
-    hdrs = [
-        "@tsl//tsl/platform:net.h",
-    ],
     linkopts = ["-DEFAULTLIB:ws2_32.lib"],
     tags = [
         "manual",
@@ -185,6 +182,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@tsl//tsl/platform:net_hdrs_lib",
     ],
 )
 
@@ -193,17 +191,7 @@ cc_library(
     srcs = [
         "port.cc",
         "//xla/tsl/platform:numa_noop.cc",
-        "@tsl//tsl/platform:cpu_info.cc",
-    ],
-    hdrs = [
-        "@tsl//tsl/platform:cpu_info.h",
-        "@tsl//tsl/platform:demangle.h",
-        "@tsl//tsl/platform:host_info.h",
-        "@tsl//tsl/platform:init_main.h",
-        "@tsl//tsl/platform:macros.h",
-        "@tsl//tsl/platform:mem.h",
-        "@tsl//tsl/platform:numa.h",
-        "@tsl//tsl/platform:snappy.h",
+        "//xla/tsl/platform/default:cpu_info.cc",
     ],
     copts = tsl_copts(),
     defines = ["TF_USE_SNAPPY"],
@@ -226,6 +214,7 @@ cc_library(
         "@snappy",
         "@tsl//tsl/platform",
         "@tsl//tsl/platform:macros",
+        "@tsl//tsl/platform:platform_port_hdrs_lib",
     ],
 )
 
@@ -247,7 +236,6 @@ cc_library(
 cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
-    hdrs = ["@tsl//tsl/platform:stacktrace_handler.h"],
     tags = [
         "manual",
         "no_oss",
@@ -258,6 +246,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:stacktrace",
+        "@tsl//tsl/platform:stacktrace_handler_hdrs_lib",
     ],
 )
 

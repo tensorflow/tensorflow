@@ -301,6 +301,12 @@ filegroup(
 )
 
 cc_library(
+    name = "tracing_hdrs_lib",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["tracing.h"],
+)
+
+cc_library(
     name = "tracing",
     textual_hdrs = ["tracing.h"],
     deps = tf_platform_deps("tracing"),
@@ -692,6 +698,12 @@ filegroup(
 )
 
 cc_library(
+    name = "net_hdrs_lib",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["net.h"],
+)
+
+cc_library(
     name = "net",
     textual_hdrs = ["net.h"],
     deps = tf_windows_aware_platform_deps("net") + [
@@ -704,6 +716,20 @@ cc_library(
     name = "platform",
     hdrs = ["platform.h"],
     compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "platform_port_hdrs_lib",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = [
+        "cpu_info.h",
+        "demangle.h",
+        "host_info.h",
+        "init_main.h",
+        "mem.h",
+        "numa.h",
+        "snappy.h",
+    ],
 )
 
 cc_library(
@@ -1021,6 +1047,12 @@ tsl_cc_test(
 )
 
 cc_library(
+    name = "cuda_root_path_hdrs_lib",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["cuda_root_path.h"],
+)
+
+cc_library(
     name = "cuda_root_path",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["cuda_root_path.h"],
@@ -1211,6 +1243,15 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["context.h"],
     deps = tf_platform_deps("context"),
+)
+
+cc_library(
+    name = "load_library_hdrs_lib",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["load_library.h"],
+    deps = [
+        "@xla//xla/tsl/platform:status",
+    ],
 )
 
 cc_library(

@@ -16,32 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_CONTEXT_H_
 #define TENSORFLOW_TSL_PLATFORM_CONTEXT_H_
 
-#include "tsl/platform/platform.h"
-
-namespace tsl {
-
-enum class ContextKind {
-  // Initial state with default (empty) values.
-  kDefault,
-  // Initial state inherited from the creating or scheduling thread.
-  kThread,
-};
-
-// Context is a container for request-specific information that should be passed
-// to threads that perform related work. The default constructor should capture
-// all relevant context.
-class Context;
-
-// Scoped object that sets the current thread's context until the object is
-// destroyed.
-class WithContext;
-
-}  // namespace tsl
-
-#if defined(PLATFORM_GOOGLE)
-#include "xla/tsl/platform/google/context.h"  // IWYU pragma: export
-#else
-#include "xla/tsl/platform/default/context.h"  // IWYU pragma: export
-#endif
+#include "xla/tsl/platform/context.h"
 
 #endif  // TENSORFLOW_TSL_PLATFORM_CONTEXT_H_
