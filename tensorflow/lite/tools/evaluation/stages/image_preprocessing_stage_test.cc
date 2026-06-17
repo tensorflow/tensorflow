@@ -305,7 +305,7 @@ TEST(ImagePreprocessingStage, TestCropTargetLargerThanImage) {
       std::string(kImagePreprocessingStageName), kTfLiteFloat32);
   // A crop target larger than the image would produce negative start offsets
   // and read out of bounds. It must be rejected at run time.
-  builder.AddCroppingStep(/*width=*/100000, /*height=*/100000);
+  builder.AddCroppingStep(/*width=*/100000U, /*height=*/100000U);
   builder.AddNormalizationStep(127.5, 1.0 / 127.5);
   ImagePreprocessingStage stage(builder.build());
   EXPECT_EQ(stage.Init(), kTfLiteOk);
