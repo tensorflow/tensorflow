@@ -173,9 +173,8 @@ class FlatBufferModelBase {
   /// `error_reporter` and must ensure its lifetime is longer than the
   /// FlatBufferModelBase instance.
   /// Returns a nullptr in case of failure.
-  /// NOTE: this validates the base Flatbuffer buffer structure. Use
-  /// VerifyAndBuildFromBuffer if an additional TfLiteVerifier check is
-  /// required.
+  /// NOTE: this does NOT validate the buffer so it should NOT be called on
+  /// invalid/untrusted input. Use VerifyAndBuildFromBuffer in that case
   static std::unique_ptr<T> BuildFromBuffer(
       const char* caller_owned_buffer, size_t buffer_size,
       ErrorReporter* error_reporter = T::GetDefaultErrorReporter()) {
@@ -343,21 +342,6 @@ class FlatBufferModelBase {
 
 #endif
 
- private:
-  // Internal helper to build a model from an allocation without running base
-  // verification.
-  static std::unique_ptr<T> BuildFromAllocationInternal(
-      std::unique_ptr<Allocation> allocation, ErrorReporter* error_reporter) {
-    std::unique_ptr<T> model(new T(std::move(allocation), error_reporter));
-    if (!model->initialized()) {
-      model.reset();
-    } else {
-      model->ValidateModelBuffers(model->error_reporter());
-    }
-    return model;
-  }
-
- public:
   /// Builds a model directly from an allocation.
   /// Ownership of the allocation is passed to the model, but the caller
   /// retains ownership of `error_reporter` and must ensure its lifetime is
@@ -366,9 +350,14 @@ class FlatBufferModelBase {
   static std::unique_ptr<T> BuildFromAllocation(
       std::unique_ptr<Allocation> allocation,
       ErrorReporter* error_reporter = T::GetDefaultErrorReporter()) {
-    return VerifyAndBuildFromAllocation(std::move(allocation),
-                                        /*extra_verifier=*/nullptr,
-                                        error_reporter);
+    std::unique_ptr<T> model(
+        new T(std::move(allocation), ValidateErrorReporter(error_reporter)));
+    if (!model->initialized()) {
+      model.reset();
+    } else {
+      model->ValidateModelBuffers(error_reporter);
+    }
+    return model;
   }
 
   /// Verifies whether the content of the allocation is legit, then builds a
@@ -416,7 +405,7 @@ class FlatBufferModelBase {
       }
     }
 
-    return BuildFromAllocationInternal(std::move(allocation), error_reporter);
+    return BuildFromAllocation(std::move(allocation), error_reporter);
   }
 
   /// Builds a model directly from a flatbuffer pointer
