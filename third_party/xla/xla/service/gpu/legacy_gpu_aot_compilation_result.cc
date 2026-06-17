@@ -45,13 +45,15 @@ namespace gpu {
 absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
 LegacyGpuAotCompilationResult::FromModule(
     const HloModule* hlo_module, BufferAssignmentProto buffer_assignment_proto,
-    absl::string_view asm_text, absl::Span<const uint8_t> binary,
-    const BinaryMap& dnn_compiled_graphs, int pointer_size,
-    Compiler* compiler) {
+    std::string buffer_allocations_debug_summary, absl::string_view asm_text,
+    absl::Span<const uint8_t> binary, const BinaryMap& dnn_compiled_graphs,
+    int pointer_size, Compiler* compiler) {
   tsl::profiler::TraceMe traceme("ResultFromModule");
   GpuExecutableProto proto;
   *proto.mutable_hlo_module_with_config() = hlo_module->ToProtoWithConfig();
   *proto.mutable_buffer_assignment() = std::move(buffer_assignment_proto);
+  proto.set_buffer_allocations_debug_summary(
+      std::move(buffer_allocations_debug_summary));
   proto.set_asm_text(asm_text);
   proto.set_binary(binary.data(), binary.size());
   proto.mutable_dnn_compiled_graphs()->insert(dnn_compiled_graphs.cbegin(),

@@ -271,6 +271,8 @@ std::unique_ptr<Executable> RegisterSpillingExecutable(int spilled = 8) {
   gpu::GpuExecutable::Params params;
   params.executable =
       std::make_unique<gpu::ThunkExecutor>(gpu::ThunkSequence{});
+  params.buffer_assignment_proto = BufferAssignmentProto();
+  params.buffer_allocations_debug_summary = "dummy";
   KernelStats kernel_stats;
   kernel_stats.store_bytes_spilled = spilled;
   kernel_stats.load_bytes_spilled = spilled;

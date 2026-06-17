@@ -2986,11 +2986,18 @@ GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                                           gpu_topology, compile_options,
                                           nullptr, borrowed_context->get()));
 
+  std::unique_ptr<GpuAliasInfo> alias_info =
+      GetAliasInfo(gpu_topology.gpu_target_config().device_description);
+  std::string buffer_assignment_debug_summary =
+      res.compile_module_results.buffer_assignment->ToVerboseString(
+          alias_info.get(),
+          options.debug_options().xla_debug_buffer_assignment_show_max());
   std::vector<std::unique_ptr<CompiledModule>> results;
   ASSIGN_OR_RETURN(results.emplace_back(),
                    LegacyGpuAotCompilationResult::FromModule(
                        hlo_module.get(),
                        res.compile_module_results.buffer_assignment->ToProto(),
+                       std::move(buffer_assignment_debug_summary),
                        res.backend_result.asm_text, res.backend_result.binary,
                        {}, pointer_size_, this));
 
@@ -3016,11 +3023,17 @@ absl::StatusOr<std::unique_ptr<CompiledModule>> GpuCompiler::Export(
     ASSIGN_OR_RETURN(GpuExecutableProto proto, gpu_executable->ToProto());
     return GpuAotCompilationResult::FromProto(std::move(proto));
   }
-
+  std::string buffer_assignment_debug_summary =
+      gpu_executable->buffer_assignment()->ToVerboseString(
+          gpu_executable->alias_info(),
+          gpu_executable->module()
+              .config()
+              .debug_options()
+              .xla_debug_buffer_assignment_show_max());
   return LegacyGpuAotCompilationResult::FromModule(
       &gpu_executable->module(), gpu_executable->buffer_assignment()->ToProto(),
-      "", gpu_executable->binary(), gpu_executable->dnn_compiled_graphs(),
-      pointer_size_, this);
+      std::move(buffer_assignment_debug_summary), "", gpu_executable->binary(),
+      gpu_executable->dnn_compiled_graphs(), pointer_size_, this);
 }
 
 absl::Status GpuCompiler::RunPreSchedulingPasses(
@@ -3405,7 +3418,7 @@ GpuCompiler::LoadExecutableFromAotResult(
         /*executable_abi_version=*/executable_abi_version,
         /*cpu_target_machine_options=*/std::move(cpu_target_machine_options),
         /*buffer_assignment_proto=*/std::move(buffer_assignment_proto),
-    });
+        proto.buffer_allocations_debug_summary()});
   }
 }
 

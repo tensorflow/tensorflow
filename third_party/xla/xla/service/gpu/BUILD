@@ -2556,6 +2556,7 @@ xla_cc_test(
     ]) + if_rocm_is_configured([
         ":amdgpu_compiler_impl",
     ]) + [
+        ":gpu_executable",
         ":gpu_transfer_manager",
         "//xla:literal",
         "//xla:literal_util",
