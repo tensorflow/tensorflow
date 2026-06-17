@@ -85,10 +85,10 @@ absl::Status EagerOperation::SetAttrShape(const char* attr_name,
                                           const int64_t* dims,
                                           const int num_dims) {
   if (num_dims > TensorShape::MaxDimensions()) {
-    return errors::InvalidArgument("Value specified for `", attr_name, "` has ",
-                                   num_dims,
-                                   " dimensions which is over the limit of ",
-                                   TensorShape::MaxDimensions(), ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Value specified for `", attr_name, "` has ", num_dims,
+                     " dimensions which is over the limit of ",
+                     TensorShape::MaxDimensions(), "."));
   }
 
   TensorShapeProto proto;
@@ -150,7 +150,7 @@ absl::Status EagerOperation::SetAttrFloatList(const char* attr_name,
                                               const float* values,
                                               int num_values) {
   MutableAttrs()->Set(attr_name,
-                      gtl::ArraySlice<const float>(values, num_values));
+                      absl::Span<const const float>(values, num_values));
   return absl::OkStatus();
 }
 
@@ -158,7 +158,7 @@ absl::Status EagerOperation::SetAttrIntList(const char* attr_name,
                                             const int64_t* values,
                                             int num_values) {
   MutableAttrs()->Set(
-      attr_name, gtl::ArraySlice<const int64_t>(
+      attr_name, absl::Span<const const int64_t>(
                      reinterpret_cast<const int64_t*>(values), num_values));
   return absl::OkStatus();
 }
@@ -167,7 +167,7 @@ absl::Status EagerOperation::SetAttrTypeList(const char* attr_name,
                                              const DataType* values,
                                              int num_values) {
   MutableAttrs()->Set(attr_name,
-                      gtl::ArraySlice<const DataType>(values, num_values));
+                      absl::Span<const const DataType>(values, num_values));
   return absl::OkStatus();
 }
 
@@ -179,7 +179,7 @@ absl::Status EagerOperation::SetAttrBoolList(const char* attr_name,
     b[i] = values[i];
   }
   MutableAttrs()->Set(attr_name,
-                      gtl::ArraySlice<const bool>(b.get(), num_values));
+                      absl::Span<const const bool>(b.get(), num_values));
   return absl::OkStatus();
 }
 
@@ -192,7 +192,7 @@ absl::Status EagerOperation::SetAttrShapeList(const char* attr_name,
     const auto num_dims_i = num_dims[i];
 
     if (num_dims_i > TensorShape::MaxDimensions()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           strings::StrCat("Value specified for `", attr_name, "` has ",
                           num_dims_i, " dimensions which is over the limit of ",
                           TensorShape::MaxDimensions(), "."));
@@ -222,7 +222,7 @@ absl::Status EagerOperation::SetAttrFunctionList(
     value_operation->Attrs().FillAttrValueMap(funcs[i].mutable_attr());
   }
   MutableAttrs()->Set(
-      attr_name, gtl::ArraySlice<const NameAttrList>(funcs.get(), num_values));
+      attr_name, absl::Span<const const NameAttrList>(funcs.get(), num_values));
   return absl::OkStatus();
 }
 
@@ -246,7 +246,8 @@ absl::Status EagerOperation::InputLength(const char* input_name, int* length) {
       NameRangesForNode(AttrSlice(&attrs), *op_def, &name_ranges, nullptr));
   auto iter = name_ranges.find(input_name);
   if (iter == name_ranges.end()) {
-    return errors::InvalidArgument("Input '", input_name, "' not found");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Input '", input_name, "' not found"));
   }
   *length = iter->second.second - iter->second.first;
   return absl::OkStatus();
@@ -274,7 +275,8 @@ absl::Status EagerOperation::OutputLength(const char* output_name,
       NameRangesForNode(AttrSlice(&attrs), *op_def, nullptr, &name_ranges));
   auto iter = name_ranges.find(output_name);
   if (iter == name_ranges.end()) {
-    return errors::InvalidArgument("Output '", output_name, "' not found");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Output '", output_name, "' not found"));
   }
   *length = iter->second.second - iter->second.first;
   return absl::OkStatus();
@@ -309,8 +311,8 @@ absl::Status EagerOperation::AddInputList(
 absl::Status EagerOperation::SetInput(size_t index,
                                       ImmediateExecutionTensorHandle* input) {
   if (index >= inputs_.size()) {
-    return errors::InvalidArgument("Index >= inputs.size: %d >= %d", index,
-                                   inputs_.size());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Index >= inputs.size: %d >= %d", index, inputs_.size()));
   }
   auto* previous = inputs_[index];
   if (CustomDeviceTensorHandle::classof(previous)) {
@@ -418,7 +420,7 @@ void EagerOperation::InferMixedTypeInputListAttrs(
       inference_attrs_.end()) {
     MutableAttrs()->Set(
         input_def.type_list_attr(),
-        gtl::ArraySlice<const DataType>(dtypes.data(), dtypes.size()));
+        absl::Span<const const DataType>(dtypes.data(), dtypes.size()));
     inference_attrs_.insert(input_def.type_list_attr());
   }
 }
@@ -445,7 +447,7 @@ absl::Status EagerOperation::InferInputListAttrs(int num_inputs) {
       inference_attrs_.insert(input_def.number_attr());
     }
   } else {
-    return errors::InvalidArgument("Invalid input list definition");
+    return absl::InvalidArgumentError("Invalid input list definition");
   }
   return absl::OkStatus();
 }
@@ -457,7 +459,8 @@ absl::Status EagerOperation::TensorHandleInputs(
         &inputs_);
     return absl::OkStatus();
   } else {
-    return errors::Internal("The operation unexpectedly had custom devices.");
+    return absl::InternalError(
+        "The operation unexpectedly had custom devices.");
   }
 }
 
@@ -468,7 +471,8 @@ absl::Status EagerOperation::MutableTensorHandleInputs(
         reinterpret_cast<absl::InlinedVector<TensorHandle*, 4>*>(&inputs_);
     return absl::OkStatus();
   } else {
-    return errors::Internal("The operation unexpectedly had custom devices.");
+    return absl::InternalError(
+        "The operation unexpectedly had custom devices.");
   }
 }
 
@@ -476,8 +480,9 @@ absl::Status EagerOperation::SetDeviceName(const char* c_name) {
   std::string name(c_name != nullptr ? c_name : "");
   if (name != last_set_device_name_) {
     if (!DeviceNameUtils::ParseFullName(name, &device_parsed_name_)) {
-      return errors::InvalidArgument("Malformed device specification '", name,
-                                     "' in eager op: ", DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Malformed device specification '", name,
+                       "' in eager op: ", DebugString()));
     }
     last_set_device_name_ = name;
     device_name_ = DeviceNameUtils::ParsedNameToString(device_parsed_name_);
