@@ -343,7 +343,7 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
     ASSIGN_OR_RETURN(insertion_idx, dims[i].InsertDimension(
                                         DotOperandDims::kBatch, k_incices[i],
                                         split_k, insertion_idx));
-    RETURN_IF_ERROR(dims[i].UpdateShape(operands[i]->shape()));
+    RETURN_IF_ERROR(dims[i].SetShape(operands[i]->shape()));
   }
 
   ASSIGN_OR_RETURN(DotDimensionNumbers new_dnums,
