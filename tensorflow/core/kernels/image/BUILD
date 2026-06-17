@@ -199,7 +199,10 @@ tf_kernel_library(
     name = "colorspace_op",
     gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "colorspace_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
