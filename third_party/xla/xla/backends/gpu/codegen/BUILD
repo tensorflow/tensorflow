@@ -285,6 +285,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/runtime:object_pool",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:target_constants",
