@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/dynamic_shapes.h"
@@ -365,14 +366,13 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
 // the transfer after the definition events are enqueued (instead of until after
 // they are complete).
 void PjRtStreamExecutorRawBuffer::ScheduleCopyTo(
-    AsyncWorkRunner* async_work_runner,
     PjRtDeviceEventRefVector transfer_dependency_events,
     PjRtRawBufferRef dst_raw_buffer,
     PjRtDeviceEventPromiseRef definition_event_promise,
     PjRtDeviceEventPromiseRef src_usage_event_promise,
     absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
   if (dst_raw_buffer->memory_space()->client() == memory_space()->client()) {
-    async_work_runner->Schedule(
+    client_->async_work_runner()->Schedule(
         [this_ref = tsl::FormRef(this),
          transfer_dependency_events = std::move(transfer_dependency_events),
          dst_raw_buffer = std::move(dst_raw_buffer),
@@ -386,10 +386,10 @@ void PjRtStreamExecutorRawBuffer::ScheduleCopyTo(
         });
     return;
   }
-  CommonPjRtRawBuffer::ScheduleCopyTo(
-      async_work_runner, std::move(transfer_dependency_events),
-      std::move(dst_raw_buffer), std::move(definition_event_promise),
-      std::move(src_usage_event_promise), std::move(allocation_event));
+  CommonPjRtRawBufferImpl::ScheduleCopyTo(
+      std::move(transfer_dependency_events), std::move(dst_raw_buffer),
+      std::move(definition_event_promise), std::move(src_usage_event_promise),
+      std::move(allocation_event));
 }
 
 void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(

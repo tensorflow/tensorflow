@@ -116,7 +116,6 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
       absl::AnyInvocable<void(absl::Status) &&> allocation_event) override;
 
   void ScheduleCopyTo(
-      AsyncWorkRunner* async_work_runner,
       PjRtDeviceEventRefVector transfer_dependency_events,
       PjRtRawBufferRef dst_raw_buffer,
       PjRtDeviceEventPromiseRef definition_event_promise,
