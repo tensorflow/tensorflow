@@ -6,7 +6,10 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "is_rocm_configured",
 )
-load("//xla:xla.default.bzl", "xla_cc_test", "xla_py_strict_test")
+load(
+    "//xla:xla.default.bzl",
+    "xla_cc_test",
+)
 load("//xla/tests:plugin.bzl", "plugins")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl:tsl.bzl", "if_google")
@@ -550,4 +553,56 @@ def generate_backend_suites(backends = []):  # buildifier: disable=unnamed-macro
             tags = ["xla_%s" % backend, "-broken", "manual"],
         )
 
-xla_py_test = xla_py_strict_test
+# copybara:comment_begin(oss-only)
+def _xla_py_test(name, deps = None, data = None, env = None, need_cuda_libs = False, **kwargs):
+    """A wrapper around py_strict_test that adds XLA-specific dependencies. OSS-only version.
+
+    Args:
+      name: The name of the test.
+      deps: The dependencies of the test.
+      data: The data dependencies of the test.
+      env: The environment variables to set for the test.
+      need_cuda_libs: Whether to add CUDA libraries as data dependencies.
+      **kwargs: Other arguments to pass to the test.
+    """
+    deps = deps or []
+    data = data or []
+    env = env or {}
+
+    if need_cuda_libs:
+        library_target = "_{}_libs".format(name)
+        lib_dir = paths.join(
+            native.package_name(),
+            library_target,
+        )
+
+        # If the python tests needs to have CUDA libraries as data dependencies, we symlink
+        # them into a directory inside the runfiles directory that the test can access and add
+        # that directory to the LD_LIBRARY_PATH and CUDA_HOME environment variables.
+        _symlink_dynamic_libs_rule(
+            name = library_target,
+            lib_dir = lib_dir,
+            deps = if_cuda_is_configured(
+                [
+                    "//xla/stream_executor/cuda:all_runtime",
+                ],
+            ),
+            testonly = True,
+            visibility = ["//visibility:private"],
+        )
+
+        data = data + [library_target]
+        env = dicts.add(env, {
+            "CUDA_HOME": lib_dir,
+            "LD_LIBRARY_PATH": lib_dir,
+        })
+
+    py_strict_test(
+        name = name,
+        deps = deps + xla_py_test_deps(),
+        data = data,
+        env = env,
+        **kwargs
+    )
+
+# copybara:comment_end
