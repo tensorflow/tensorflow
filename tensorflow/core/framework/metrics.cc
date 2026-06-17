@@ -271,6 +271,15 @@ auto* tf_data_service_client_routing_outcome_counter =
         "success, skip_empty_buffer, or skip_error, broken down by client ID, "
         "worker address, and thread ID.",
         "outcome", "client_id", "worker_address", "thread_id");
+
+auto* tf_data_prefetch_residence_time_usecs_histogram =
+    tsl::monitoring::Sampler<1>::New(
+        {"/tensorflow/data/prefetch_residence_time_usecs",
+         "Microseconds a specific element spent waiting in the prefetch buffer "
+         "before being consumed.",
+         "node_name"},
+        {tsl::monitoring::Buckets::Exponential(1000, 2, 30)});
+
 auto* tf_data_service_optimal_number_of_workers =
     monitoring::Gauge<int64_t, 0>::New(
         "/tensorflow/data/service/optimal_number_of_workers",
@@ -681,6 +690,12 @@ void RecordTFDataClientGetElementAction(const std::string& action,
   tf_data_service_client_routing_outcome_counter
       ->GetCell(action, client_id, worker_address, thread_id)
       ->IncrementBy(1);
+}
+
+void RecordTFDataPrefetchResidenceTime(const std::string& node_name,
+                                       int64_t duration_us) {
+  tf_data_prefetch_residence_time_usecs_histogram->GetCell(node_name)->Add(
+      duration_us);
 }
 
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit) {
