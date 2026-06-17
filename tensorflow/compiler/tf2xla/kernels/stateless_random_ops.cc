@@ -107,10 +107,7 @@ std::pair<xla::XlaOp, xla::XlaOp> MixSeedsForEagerCompatibility(
   xla::XlaOp key_vec = xla::ConcatInDim(
       builder,
       {xla::Reshape(k0, {1}), xla::Reshape(k1, {1})},
-  xla::XlaOp key_vec = xla::ConcatInDim(
-      builder,
-      {xla::Reshape(k0, {1}), xla::Reshape(k1, {1})},
-      /*dimension=*/0);  // shape: [2] x U32
+      /*dimension=*/0);  // shape: [2] x U32 
   // We pack our U32 words into U64 pairs (little-endian word order).
   auto pack_u32_to_u64 = [&](xla::XlaOp lo, xla::XlaOp hi) -> xla::XlaOp {
     xla::XlaOp lo64 = xla::ConvertElementType(lo, xla::U64);
