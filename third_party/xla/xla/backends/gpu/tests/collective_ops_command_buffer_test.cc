@@ -135,12 +135,12 @@ TEST_F(CollectiveOpsCommandBufferPeerAccessTest, RaggedAllToAll_Simple) {
       DebugOptions::COLLECTIVES);
   config.mutable_debug_options().set_xla_gpu_graph_min_graph_size(1);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   CHECK_OK(PreprocessModuleForTestRunner(module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> executable,
-                          CreateExecutable(std::move(module), run_hlo_passes));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> executable,
+                       CreateExecutable(std::move(module), run_hlo_passes));
 
   // Execute compiled module multiple times to exercise warm-up, create, and
   // update paths. Last run uses new arguments to encourage device buffer
@@ -155,9 +155,9 @@ TEST_F(CollectiveOpsCommandBufferPeerAccessTest, RaggedAllToAll_Simple) {
   // Multiple executions to Warm-up (may run thunks) and
   // Create (record and execute command buffer)
   for (int i = 0; i < 3; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                            test_runner().ExecuteReplicatedWithExecutable(
-                                executable.get(), options));
+    ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                         test_runner().ExecuteReplicatedWithExecutable(
+                             executable.get(), options));
 
     ASSERT_EQ(results.size(), kNumReplicas);
     EXPECT_TRUE(LiteralTestUtil::Equal(
@@ -172,7 +172,7 @@ TEST_F(CollectiveOpsCommandBufferPeerAccessTest, RaggedAllToAll_Simple) {
   auto arg2 = LiteralUtil::CreateR1<float>({7., 6., 5., 4., 3., 2., 1., 0.});
   options.arguments = {&arg2};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       test_runner().ExecuteReplicatedWithExecutable(executable.get(), options));
 
@@ -222,12 +222,12 @@ TEST_F(CollectiveOpsCommandBufferTest, SendRecv_Simple) {
       DebugOptions::COLLECTIVES);
   config.mutable_debug_options().set_xla_gpu_graph_min_graph_size(1);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   CHECK_OK(PreprocessModuleForTestRunner(module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> executable,
-                          CreateExecutable(std::move(module), run_hlo_passes));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> executable,
+                       CreateExecutable(std::move(module), run_hlo_passes));
 
   // Execute compiled module multiple times to exercise warm-up, create, and
   // update paths. Last run uses new arguments to encourage device buffer
@@ -242,9 +242,9 @@ TEST_F(CollectiveOpsCommandBufferTest, SendRecv_Simple) {
   // Multiple executions to Warm-up (may run thunks) and
   // Create (record and execute command buffer)
   for (int i = 0; i < 3; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                            test_runner().ExecuteReplicatedWithExecutable(
-                                executable.get(), options));
+    ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                         test_runner().ExecuteReplicatedWithExecutable(
+                             executable.get(), options));
 
     ASSERT_EQ(results.size(), kNumReplicas);
     EXPECT_TRUE(LiteralTestUtil::Equal(
@@ -257,7 +257,7 @@ TEST_F(CollectiveOpsCommandBufferTest, SendRecv_Simple) {
   auto arg2 = LiteralUtil::CreateR1<uint32_t>({14, 16});
   options.arguments = {&arg2};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       test_runner().ExecuteReplicatedWithExecutable(executable.get(), options));
 
