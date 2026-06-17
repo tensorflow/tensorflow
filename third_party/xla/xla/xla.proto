@@ -1269,6 +1269,10 @@ message DebugOptions {
   // same device with the same build of XLA.
   optional bool xla_disable_all_hlo_passes = 104;
 
+  // Run HLO passes starting from the pass with this name. All prior passes
+  // in the pipeline will be skipped. If empty, no passes are skipped.
+  optional string xla_run_hlo_passes_starting_from = 496;
+
   // Numerical optimization level for the XLA compiler backend; the specific
   // interpretation of this value is left to the backends.
   optional int32 xla_backend_optimization_level = 31;
@@ -1629,7 +1633,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 496
+  // Next id: 497
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -1243,6 +1243,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "over time. The only 'guarantee', such as it is, is that if you compile "
       "XLA and dump the optimized HLO for some graph, you should be able to "
       "run it again on the same device with the same build of XLA."));
+  flag_list->push_back(tsl::Flag(
+      "xla_run_hlo_passes_starting_from",
+      string_setter_for(&DebugOptions::set_xla_run_hlo_passes_starting_from),
+      debug_options->xla_run_hlo_passes_starting_from(),
+      "Run HLO passes starting from the pass with this name. All prior "
+      "passes in the pipeline will be skipped."));
   flag_list->push_back(
       tsl::Flag("xla_embed_ir_in_executable",
                 bool_setter_for(&DebugOptions::set_xla_embed_ir_in_executable),
