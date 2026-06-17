@@ -692,6 +692,50 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "riegeli_file_reader_factory",
+    hdrs = ["riegeli_file_reader_factory.h"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+        "@riegeli//riegeli/bytes:reader",
+    ] + if_google(
+        [":riegeli_file_reader_factory_google"],
+        [":riegeli_file_reader_factory_oss"],
+    ),
+)
+
+cc_library(
+    name = "riegeli_file_reader_factory_google",
+    srcs = [
+        "riegeli_file_reader_factory.h",
+        "riegeli_file_reader_factory_google.cc",
+    ],
+    tags = ["manual"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+        # copybara:uncomment "@riegeli//riegeli/bytes:file_reader",
+        "@riegeli//riegeli/bytes:reader",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "riegeli_file_reader_factory_oss",
+    srcs = [
+        "riegeli_file_reader_factory.h",
+        "riegeli_file_reader_factory_oss.cc",
+    ],
+    tags = ["manual"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+        "@riegeli//riegeli/bytes:fd_reader",
+        "@riegeli//riegeli/bytes:reader",
+    ],
+    alwayslink = 1,
+)
+
 xla_cc_test(
     name = "dump_test",
     srcs = ["dump_test.cc"],

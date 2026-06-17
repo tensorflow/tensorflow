@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "riegeli/base/maker.h"
-#include "riegeli/bytes/fd_reader.h"
 #include "riegeli/bytes/reader.h"
 #include "riegeli/bytes/std_io.h"
 #include "riegeli/bytes/writer.h"
+#include "xla/service/riegeli_file_reader_factory.h"
 #include "xla/service/riegeli_file_writer_factory.h"
 #include "xla/tools/split_proto/split_proto_cli_lib.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -102,8 +102,7 @@ absl::Status RunMain(int argc, char** argv) {
   if (argc < 3 || std::string(argv[2]) == "-") {
     reader = riegeli::Maker<riegeli::StdIn>();
   } else {
-    // TOOD(b/524111154): Use reader that can understand google file paths.
-    reader = riegeli::Maker<riegeli::FdReader>(argv[2]);
+    reader = CreateRiegeliFileReader(argv[2]);
     if (!reader->ok()) {
       std::cerr << "Failed to open input file: " << reader->status().ToString()
                 << "\n";
