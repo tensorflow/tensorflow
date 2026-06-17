@@ -30,31 +30,6 @@ cc_library(
 )
 
 cc_library(
-    name = "autotuner",
-    srcs = ["autotuner.cc"],
-    hdrs = ["autotuner.h"],
-    deps = [
-        ":autotuner_cache_interface",
-        ":codegen_backend",
-        ":codegen_orchestrator",
-        ":config_assigner",
-        ":hlo_extractor",
-        ":profiler",
-        ":tuner",
-        "//xla/hlo/ir:hlo",
-        "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:status_macros",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@tsl//tsl/platform:path",
-    ],
-)
-
-cc_library(
     name = "hlo_extractor",
     srcs = ["hlo_extractor.cc"],
     hdrs = ["hlo_extractor.h"],
@@ -127,14 +102,16 @@ cc_library(
     ],
 )
 
+# TODO(b/519057668): Move unit tests to their respective cc_library targets.
 xla_cc_test(
-    name = "autotuner_test",
-    srcs = ["autotuner_test.cc"],
+    name = "config_assigner_test",
+    srcs = ["config_assigner_test.cc"],
     deps = [
-        ":autotuner",
         ":autotuner_cache_interface",
         ":backends_proto_cc",
         ":codegen_backend",
+        ":codegen_orchestrator",
+        ":config_assigner",
         ":profiler",
         "//xla:autotune_results_proto_cc",
         "//xla:autotuning_proto_cc",
