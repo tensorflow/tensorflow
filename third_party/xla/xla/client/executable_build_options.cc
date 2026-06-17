@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
@@ -225,7 +226,14 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
     *output.mutable_comp_envs() = std::move(*comp_envs);
   }
   if (input.has_debug_options()) {
-    *output.mutable_debug_options() = input.debug_options();
+    const char* xla_flags = std::getenv("XLA_FLAGS");
+    if (xla_flags != nullptr && *xla_flags != '\0') {
+      DebugOptions debug_options = input.debug_options();
+      *output.mutable_debug_options() =
+          GetDebugOptionsFromProtoAndFlags(&debug_options);
+    } else {
+      *output.mutable_debug_options() = input.debug_options();
+    }
   }
   output.set_num_replicas(input.num_replicas());
   output.set_num_partitions(input.num_partitions());

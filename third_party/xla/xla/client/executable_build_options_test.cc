@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/parse_flags_from_env.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
@@ -118,6 +119,22 @@ TEST(ExecutableBuildOptionsTest, SerializationFailsOnNonSerializableFields) {
     EXPECT_THAT(options.ToProto(),
                 absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   }
+}
+
+TEST(ExecutableBuildOptionsTest, UpdateDebugOptionsWithXlaFlags) {
+  ExecutableBuildOptionsProto p;
+  p.mutable_debug_options()->set_xla_cpu_enable_fast_math(false);
+
+  int* pargc;
+  std::vector<char*>* pargv;
+  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+  tsl::setenv("XLA_FLAGS", "--xla_cpu_enable_fast_math=true", /*overwrite=*/1);
+
+  TF_ASSERT_OK_AND_ASSIGN(const ExecutableBuildOptions options,
+                          ExecutableBuildOptionsFromProto(p));
+  EXPECT_TRUE(options.debug_options().xla_cpu_enable_fast_math());
+
+  tsl::setenv("XLA_FLAGS", "", 1);
 }
 
 }  // namespace

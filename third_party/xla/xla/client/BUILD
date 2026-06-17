@@ -86,6 +86,7 @@ xla_cc_test(
     srcs = ["executable_build_options_test.cc"],
     deps = [
         ":executable_build_options",
+        "//xla:parse_flags_from_env",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt/proto:compile_options_proto_cc",
