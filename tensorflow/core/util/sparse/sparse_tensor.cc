@@ -300,11 +300,6 @@ absl::Status SparseTensor::IndicesValid() const {
                           : IndicesValidHelper<false, int32_t>();
   }
 
-  // int64 path (original logic preserved):
-  if (shape_.size() == 1 && IndicesValidVectorFastPath()) {
-    return absl::OkStatus();
-  }
-
   bool standard_order = true;
   for (size_t i = 0; i < order_.size(); ++i) {
     if (order_[i] < 0) {
@@ -334,6 +329,8 @@ absl::Status SparseTensor::IndicesValid() const {
 }
 
 // Explicit instantiations for IndicesValidHelper.
+// KEEP IN SYNC with the index dtypes handled in DispatchIndexDtype()
+// (sparse_tensor.h). Adding a new dtype there requires a matching pair here.
 template absl::Status SparseTensor::IndicesValidHelper<true, int64_t>() const;
 template absl::Status SparseTensor::IndicesValidHelper<false, int64_t>() const;
 template absl::Status SparseTensor::IndicesValidHelper<true, int32_t>() const;

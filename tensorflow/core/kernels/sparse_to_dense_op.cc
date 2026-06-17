@@ -182,6 +182,7 @@ class SparseToDense : public OpKernel {
                           SparseToDense<type, index_type>);
 
 #define REGISTER_KERNELS_ALL(type) \
+  REGISTER_KERNELS(type, int16);   \
   REGISTER_KERNELS(type, int32);   \
   REGISTER_KERNELS(type, int64_t);
 
@@ -269,6 +270,7 @@ class SparseToDenseGPU : public AsyncOpKernel {
                           SparseToDenseGPU<type, index_type>);
 
 #define REGISTER_GPU_KERNELS_ALL(type) \
+  REGISTER_GPU_KERNELS(type, int16);   \
   REGISTER_GPU_KERNELS(type, int32);   \
   REGISTER_GPU_KERNELS(type, int64_t);
 

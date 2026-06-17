@@ -224,35 +224,35 @@ class SparseReduceOp : public OpKernel {
     // Each group maps one-on-one onto a value in the reduced tensor.
     // g.group() provides the coordinates of a particular reduced value.
     sp.Reorder<T>(reduction.reorder_dims);
-    auto DoReduce = [&](auto group_iter) {
+    auto DoReduce = [&](auto group_iter) -> absl::Status {
       for (const auto &g : group_iter) {
         Op::template Run<T>(ctx, reduced_val, g.template values<T>());
-        OP_REQUIRES(ctx,
-                    output_strides.empty() ||
-                    (g.group().size() == output_strides.size()),
-                    absl::InternalError(absl::StrCat(
-                        "Expected group size and output_strides size to match",
-                        ", but got ", g.group().size(), " and ",
-                        output_strides.size())));
+        if (!(output_strides.empty() ||
+              g.group().size() == output_strides.size())) {
+          return absl::InternalError(absl::StrCat(
+              "Expected group size and output_strides size to match",
+              ", but got ", g.group().size(), " and ",
+              output_strides.size()));
+        }
         const int64_t idx = CoordinatesToFlatIndex(g.group(), output_strides);
-        OP_REQUIRES(ctx,
-                    idx >= 0 && idx < out_flat.size(),
-                    errors::Internal(
-                        "Obtained a write index of ", idx,
-                        " which is outside of bounds of [0, ",
-                        out_flat.size(), ")"));
+        if (idx < 0 || idx >= out_flat.size()) {
+          return errors::Internal(
+              "Obtained a write index of ", idx,
+              " which is outside of bounds of [0, ", out_flat.size(), ")");
+        }
         out_flat(idx) = reduced_val();
         VLOG(2) << "coords: " << absl::StrJoin(g.group(), ",")
                 << "; idx: " << idx << "; group " << Op::Name() << ": "
                 << reduced_val();
       }
+      return absl::OkStatus();
     };
     if (indices_t->dtype() == DT_INT16) {
-      DoReduce(sp.group<int16_t>(reduction.group_by_dims));
+      OP_REQUIRES_OK(ctx, DoReduce(sp.group<int16_t>(reduction.group_by_dims)));
     } else if (indices_t->dtype() == DT_INT32) {
-      DoReduce(sp.group<int32_t>(reduction.group_by_dims));
+      OP_REQUIRES_OK(ctx, DoReduce(sp.group<int32_t>(reduction.group_by_dims)));
     } else if (indices_t->dtype() == DT_INT64) {
-      DoReduce(sp.group<int64_t>(reduction.group_by_dims));
+      OP_REQUIRES_OK(ctx, DoReduce(sp.group<int64_t>(reduction.group_by_dims)));
     } else {
       OP_REQUIRES(ctx, false,
                   absl::InvalidArgumentError(absl::StrCat(

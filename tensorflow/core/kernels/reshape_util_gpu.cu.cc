@@ -32,7 +32,7 @@ namespace {
 
 template <typename Tindex>
 __global__ void ReshapeSparseTensorKernel(
-    const Tindex nnz, const Tindex input_rank, const Tindex output_rank,
+    const int64_t nnz, const int32_t input_rank, const int32_t output_rank,
     const Tindex* __restrict__ input_shape,
     const Tindex* __restrict__ output_shape,
     const Tindex* __restrict__ input_indices,
@@ -40,7 +40,7 @@ __global__ void ReshapeSparseTensorKernel(
   GPU_1D_KERNEL_LOOP(sparse_index, nnz) {
     const Tindex* input_index = &input_indices[sparse_index * input_rank];
     Tindex* output_index = &output_indices[sparse_index * output_rank];
-    int64_t dense_index = 0;  // int64 to avoid overflow if Tindex is int32
+    int64_t dense_index = 0;  // int64 to avoid overflow if Tindex is int32/int16
     // Flatten input index from slowest- to fastest-changing dimension.
     for (int i = 0; i < input_rank; ++i) {
       dense_index = dense_index * input_shape[i] + input_index[i];
@@ -109,9 +109,9 @@ absl::Status ReshapeSparseTensorFunctor<GPUDevice, Tindices>::operator()(
   auto config = GetGpuLaunchConfig(nnz, device);
   return GpuLaunchKernel(ReshapeSparseTensorKernel<Tindices>, config.block_count,
                          config.thread_per_block, 0, device.stream(),
-                         static_cast<Tindices>(nnz),
-                         static_cast<Tindices>(input_rank),
-                         static_cast<Tindices>(output_rank),
+                         nnz,
+                         static_cast<int32_t>(input_rank),
+                         static_cast<int32_t>(output_rank),
                          input_shape_gpu_t.flat<Tindices>().data(),
                          output_shape_gpu_t.flat<Tindices>().data(),
                          input_indices.data(),

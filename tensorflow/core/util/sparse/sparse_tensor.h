@@ -52,7 +52,10 @@ decltype(auto) DispatchIndexDtype(DataType dtype, Fn&& fn) {
   switch (dtype) {
     case DT_INT16: return std::forward<Fn>(fn)(int16_t{});
     case DT_INT32: return std::forward<Fn>(fn)(int32_t{});
-    default:       return std::forward<Fn>(fn)(int64_t{});
+    case DT_INT64: return std::forward<Fn>(fn)(int64_t{});
+    default:
+      LOG(FATAL) << "Unsupported index dtype: " << dtype;
+      return std::forward<Fn>(fn)(int64_t{});  // unreachable
   }
 }
 
