@@ -1,0 +1,11 @@
+path: "tensorflow.app"
+tf_module {
+  member {
+    name: "flags"
+    mtype: "<class \'module\'>"
+  }
+  member_method {
+    name: "run"
+    argspec: "args=[\'main\', \'argv\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

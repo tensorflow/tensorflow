@@ -1,0 +1,84 @@
+// Protocol buffers for saved tensor slices. It's used for the brain tensor
+// ops checkpoints and the V3 checkpoints in dist_belief.
+
+// A checkpoint file is an sstable. The value for each record is a serialized
+// SavedTensorSlices message (defined below).
+//
+// Each checkpoint file has a record with the empty key (""), which corresponds
+// to a SavedTensorSlices message that contains a "meta", that serves as a
+// table of contents on all the tensor slices saved in this file. Since the key
+// is "", it's always the first record in each file.
+//
+// Each of the rest of the records in a checkpoint stores the raw data of a
+// particular tensor slice, in SavedSlice format. The corresponding key is an
+// ordered code that encodes the name of the tensor and the slice
+// information. The name is also stored in the SaveSlice message for ease of
+// debugging and manual examination.
+
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+option java_outer_classname = "SavedTensorSliceProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.util";
+
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/tensor_slice.proto";
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/framework/versions.proto";
+
+// Metadata describing the set of slices of the same tensor saved in a
+// checkpoint file.
+message SavedSliceMeta {
+  // Name of the tensor.
+  string name = 1;
+
+  // Shape of the tensor
+  TensorShapeProto shape = 2;
+
+  // Type of the tensor
+  DataType type = 3;
+
+  // Explicit list of slices saved in the checkpoint file.
+  repeated TensorSliceProto slice = 4;
+};
+
+// Metadata describing the set of tensor slices saved in a checkpoint file.
+// It is always stored at the beginning of each checkpoint file.
+message SavedTensorSliceMeta {
+  // Each SavedSliceMeta describes the slices for one tensor.
+  repeated SavedSliceMeta tensor = 1;
+
+  // Compatibility version of this checkpoint.  See core/public/version.h
+  // for version history.
+  VersionDef versions = 2;
+};
+
+// Saved tensor slice: it stores the name of the tensors, the slice, and the
+// raw data.
+message SavedSlice {
+  // Name of the tensor that this slice belongs to. This must be identical to
+  // the name used to encode the key for this record.
+  string name = 1;
+
+  // Extent of the slice.  Must have one entry for each of the dimension of the
+  // tensor that this slice belongs to.
+  TensorSliceProto slice = 2;
+
+  // The raw data of the slice is stored as a TensorProto. Only raw data are
+  // stored (we don't fill in fields such as dtype or tensor_shape).
+  TensorProto data = 3;
+};
+
+// Each record in a v3 checkpoint file is a serialized SavedTensorSlices
+// message.
+message SavedTensorSlices {
+  // This is only present at the first item of each checkpoint file and serves
+  // as a table of contents, listing all the tensor slices saved in this file.
+  SavedTensorSliceMeta meta = 1;
+
+  // This exists in all but the first item of each checkpoint file.
+  SavedSlice data = 2;
+};

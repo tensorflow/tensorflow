@@ -1,0 +1,35 @@
+op {
+  graph_op_name: "CheckNumerics"
+  attr {
+    name: "message"
+    description: <<END
+Prefix of the error message.
+END
+  }
+  summary: "Checks a tensor for NaN and Inf values."
+  description: <<END
+When run, reports an `InvalidArgument` error if `tensor` has any values
+that are not a number (NaN) or infinity (Inf). Otherwise, returns the input
+tensor.
+
+Example usage:
+
+``` python
+a = tf.Variable(1.0)
+tf.debugging.check_numerics(a, message='')
+
+b = tf.Variable(np.nan)
+try:
+  tf.debugging.check_numerics(b, message='Checking b')
+except Exception as e:
+  assert "Checking b : Tensor had NaN values" in e.message
+
+c = tf.Variable(np.inf)
+try:
+  tf.debugging.check_numerics(c, message='Checking c')
+except Exception as e:
+  assert "Checking c : Tensor had Inf values" in e.message
+```
+
+END
+}

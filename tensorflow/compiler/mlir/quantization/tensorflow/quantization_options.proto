@@ -1,0 +1,246 @@
+syntax = "proto3";
+
+package tensorflow.quantization;
+
+import "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.proto";
+import "tensorflow/core/framework/tensor.proto";
+
+// This file contains the definition of TF GraphDef-level mixed-precision
+// quantization configuration. The configuration will be used in the
+// quantization path to determine the following factors:
+// 1) What will be the quantization method for the model.
+// 2) What will be the default quantization precision for the model.
+// 3) What will be the quantization precision for each unit (nodes / ops) in the
+//    model.
+
+// Model quantization method for optimization.
+//
+// Various techniques for model quantization are defined within this message
+// along with a field that specifies a method to be used for a particular
+// quantization request.
+// NEXT ID: 5
+message QuantizationMethod {
+  // Preset quantization specification.
+  // NEXT ID: 5
+  enum PresetMethod {
+    // This should never be used. Using this will generally result in an error.
+    METHOD_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
+
+    // No quantization. The model can still get benefits from other
+    // optimizations in the pipeline.
+    METHOD_NO_QUANTIZE = 1;
+
+    // Static range quantization. Quantized tensor values' ranges are statically
+    // determined. The activation and weight are quantized to INT8 while bias is
+    // quantized to INT32.
+    METHOD_STATIC_RANGE_INT8 = 2;
+
+    // Dynamic range quantization. Quantized tensor values' ranges are
+    // determined in the graph executions. The weights are quantized during
+    // conversion.
+    METHOD_DYNAMIC_RANGE_INT8 = 3;
+
+    // Weight-only quantization. Only weights are quantized during conversion.
+    METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8 = 4;
+  }
+
+  // Preset quantization specification.
+  PresetMethod preset_method = 4;
+
+  // Define quantization specification for each component. Note that, if set,
+  // this field will override the `preset_method`.
+  repeated QuantizationComponentSpec quantization_component_specs = 3;
+
+  reserved 1 to 2;
+}
+
+// Component spec for quantization.
+
+// Defines tensor type of the component. If the combination is not supported,
+// an error will be raised.
+// NEXT ID: 3
+message QuantizationComponentSpec {
+  // NEXT ID: 4
+  enum QuantizationComponent {
+    COMPONENT_UNSPECIFIED = 0;
+    COMPONENT_ACTIVATION = 1;
+    COMPONENT_WEIGHT = 2;
+    COMPONENT_BIAS = 3;
+  }
+
+  // NEXT ID: 4
+  enum TensorType {
+    TENSORTYPE_UNSPECIFIED = 0;
+    TENSORTYPE_INT_4 = 1;
+    TENSORTYPE_INT_8 = 2;
+    TENSORTYPE_INT_32 = 3;
+  }
+
+  // Defines target component.
+  QuantizationComponent quantization_component = 1;
+
+  // Defines the target tensor type.
+  TensorType tensor_type = 2;
+}
+
+// Unit-wise (op type and node name at this moment) quantization spec. It
+// contains the scope of the unit, and the quantization method for each unit.
+// NEXT ID: 7
+message UnitWiseQuantizationSpec {
+  // Quantization unit granularity.
+  // NEXT ID: 4
+  message QuantizationUnit {
+    // Type of the op, ex: Conv2D, MatMul, Einsum... The node_name field can
+    // be omitted if it is intended to match all nodes with this type.
+    string op_type = 1;
+
+    // Name of the node. This field accepts re2 regex format. If the node name
+    // has enough granularity, the op_type field can be omitted.
+    string node_name = 2;
+
+    // The function scope. If set, only ops and nodes under specified functions
+    // are matched. Note that, Uniqueness of node name isn't guaranteed across
+    // functions. But within each function, uniqueness is guaranteed. If users
+    // do not need to guarantee the uniqueness, func_name can be omitted. This
+    // field accepts re2 regex format.
+    string func_name = 3;
+  }
+
+  repeated QuantizationUnit unit = 5;
+
+  // Quantization option information for the current unit.
+  QuantizationMethod quantization_method = 6;
+
+  reserved 1 to 4;
+}
+
+// List of supported opsets to deploy the quantized model.
+// The quantized model contains different set of ops depending on the opset.
+// NEXT ID: 5
+enum OpSet {
+  OP_SET_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
+
+  // Uses TF ops that mimic quantization behavior. Used when the corresponding
+  // integer op is not yet present.
+  TF = 1;
+
+  // Uses TF XLA ops
+  XLA = 2;
+
+  // Uses TF Uniform Quantized ops
+  UNIFORM_QUANTIZED = 3;
+
+  // Uses the StableHLO Quantizer. StableHLO Quantizer will be available as
+  // an option in the TF Quantizer in StableHLO Quantizer v1.
+  STABLEHLO = 4;
+}
+
+// The data format of each sample in the representative dataset.
+message RepresentativeDataSample {
+  map<string, TensorProto> tensor_proto_inputs = 2;
+}
+
+// Specifies the type and path to the representative dataset.
+// NEXT ID: 2
+message RepresentativeDatasetFile {
+  // Only TfRecord file is supported at the moment but defining this field
+  // as oneof so it can be easily extended to support other types.
+  oneof dataset_file {
+    string tfrecord_file_path = 1;
+  }
+}
+
+// Defines various options to specify and control the behavior of the quantizer.
+// It consists of
+// 1) Model-wise quantization configuration as a default configuration. If it is
+// None, the default configuration is "do not quantize the model".
+// 2) A set of supported operations.
+// 3) Unit wise quantization precision.
+// 4) Target hardware name.
+// NEXT ID: 18
+message QuantizationOptions {
+  // The default quantization configuration for the model. If the below
+  // unit-wise configuration does not exist, we use this quantization
+  // configuration for the entire model. For each method, default configuration
+  // is:
+  // 1) STATIC_RANGE
+  //    - COMPONENT_ACTIVATION: INT_8
+  //    - COMPONENT_WEIGHT: INT_8
+  //    - COMPONENT_BIAS: INT_32
+  // 2) WEIGHT_ONLY
+  //    - COMPONENT_WEIGHT: INT_8
+  // 3) DYNAMIC_RANGE
+  //    - COMPONENT_ACTIVATION: INT_8
+  //    - COMPONENT_WEIGHT: INT_8
+  //    - COMPONENT_BIAS: INT_32
+  // And different spec can be specified with quantization_component_specs.
+  // If the below unit-wise configuration exists, this default one will become
+  // the quantization configuration for units that are not specified in
+  // unit-wise configurations.
+  QuantizationMethod quantization_method = 1;
+  OpSet op_set = 2;  // If not specified, it defaults to `XLA`.
+
+  // Quantization spec for each unit. This quantization spec will override the
+  // `quantization_method` for matching nodes and ops. If there are conflicts
+  // or ambiguity in this unit-wise precision, our quantizer will raise an
+  // error.
+  repeated UnitWiseQuantizationSpec unit_wise_quantization_specs = 17;
+
+  // (TF1 SavedModel only) Collection of tags identifying the MetaGraphDef
+  // within the SavedModel to analyze. If not specified, ["serve"] is used.
+  repeated string tags = 5;
+
+  // Sequence of keys identifying SignatureDef containing inputs and outputs.
+  // If not specified, ["serving_default"] is used.
+  repeated string signature_keys = 6;
+
+  // A map from signature keys to the corresponding representative dataset.
+  map<string, RepresentativeDatasetFile> representative_datasets = 7;
+
+  // Minimum number of weight elements to apply quantization. Currently only
+  // supported for Post-training Dynamic Range Quantization. By default, it is
+  // set to 1024. To disable this, set the value to -1 explicitly.
+  int64 min_num_elements_for_weights = 8;
+
+  // When set to `true`, freezes all variables in the model into constants.
+  // When set to `false` the model's large constants are converted to variables.
+  // Setting this to `false` is an experimental feature and quantization may
+  // fail. To quantize models larger than 2 GiB, this should be set to `false`.
+  // If not set, it defaults to `true`.
+  optional bool freeze_all_variables = 9;
+
+  // Enables channel-wise quantization. By default, channel-wise quantization is
+  // not applied regardless of the op support. Currently, it is supported for
+  // XLA opset for SRQ on weight tensors (not activation),
+  // and Uniform Quantized opset .
+  optional bool enable_per_channel_quantization = 10;
+
+  // Enables two inputs of an operation to be both tensors.
+  // Currently supports MatMul and BatchMatMul ops for XLA.
+  // TODO(b/263528090): Check the condition when this feature is beneficial.
+  bool enable_two_input_tensors = 11;
+
+  // Supports TPU model quantization. If the target model for the quantization
+  // is already converted for TPU, this flag may be helpful. Note that this
+  // feature may be unstable as it is under the experimental stage.
+  bool experimental_enable_tpu_model_support = 12;
+
+  // Produces legacy weight-only graph where the qconst op(containing quantized
+  // values) is followed by a dequantization op. This flag will be deprecated.
+  bool enable_legacy_weight_only = 13;
+
+  // If set to true, it forces calibration in graph model instead of eager mode
+  // when the context is in eager mode. This will be forcibly set to true when
+  // using DebuggerOptions.
+  bool force_graph_mode_calibration = 14;
+
+  // Defines calibration options for quantization. This option is only used for
+  // activation of static range quantization (SRQ). Quantization calibration
+  // method is set to MIN_MAX by default.
+  stablehlo.quantization.CalibrationOptions calibration_options = 15;
+
+  // Configuration related to quantization debugger.
+  stablehlo.quantization.DebuggerConfig debugger_config = 16;
+
+  reserved 3;
+}

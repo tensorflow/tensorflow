@@ -1,0 +1,15 @@
+op {
+  name: "UpdateTaskIdAndGlobalCoreArray"
+  input_arg {
+    name: "tpu_task_id_to_shard_id"
+    type: DT_INT32
+    number_attr: "task_count"
+  }
+  attr {
+    name: "task_count"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}

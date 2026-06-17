@@ -1,0 +1,52 @@
+path: "tensorflow.LogMessage"
+tf_proto {
+  descriptor {
+    name: "LogMessage"
+    field {
+      name: "level"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.LogMessage.Level"
+    }
+    field {
+      name: "message"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    enum_type {
+      name: "Level"
+      value {
+        name: "UNKNOWN"
+        number: 0
+      }
+      value {
+        name: "DEBUGGING"
+        number: 10
+      }
+      value {
+        name: "INFO"
+        number: 20
+      }
+      value {
+        name: "WARN"
+        number: 30
+      }
+      value {
+        name: "ERROR"
+        number: 40
+      }
+      value {
+        name: "FATAL"
+        number: 50
+      }
+      options {
+        deprecated: true
+      }
+    }
+    options {
+      deprecated: true
+    }
+  }
+}

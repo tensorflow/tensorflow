@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package tensorflow;
+
+option cc_enable_arenas = true;
+option java_outer_classname = "DebugProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
+// Option for watching a node in TensorFlow Debugger (tfdbg).
+message DebugTensorWatch {
+  // Name of the node to watch.
+  // Use "*" for wildcard. But note: currently, regex is not supported in
+  // general.
+  string node_name = 1;
+
+  // Output slot to watch.
+  // The semantics of output_slot == -1 is that all outputs of the node
+  // will be watched (i.e., a wildcard).
+  // Other negative values of output_slot are invalid and will lead to
+  // errors currently.
+  int32 output_slot = 2;
+
+  // Name(s) of the debugging op(s).
+  // One or more than one probes on a tensor.
+  // e.g., {"DebugIdentity", "DebugNanCount"}
+  repeated string debug_ops = 3;
+
+  // URL(s) for debug targets(s).
+  //
+  // Supported URL formats are:
+  //   - file:///foo/tfdbg_dump: Writes out Event content to file
+  //     /foo/tfdbg_dump.  Assumes all directories can be created if they don't
+  //     already exist.
+  //   - grpc://localhost:11011: Sends an RPC request to an EventListener
+  //     service running at localhost:11011 with the event.
+  //   - memcbk:///event_key: Routes tensors to clients using the
+  //     callback registered with the DebugCallbackRegistry for event_key.
+  //
+  // Each debug op listed in debug_ops will publish its output tensor (debug
+  // signal) to all URLs in debug_urls.
+  //
+  // N.B. Session::Run() supports concurrent invocations of the same inputs
+  // (feed keys), outputs and target nodes. If such concurrent invocations
+  // are to be debugged, the callers of Session::Run() must use distinct
+  // debug_urls to make sure that the streamed or dumped events do not overlap
+  // among the invocations.
+  // TODO(cais): More visible documentation of this in g3docs.
+  repeated string debug_urls = 4;
+
+  // Do not error out if debug op creation fails (e.g., due to dtype
+  // incompatibility). Instead, just log the failure.
+  bool tolerate_debug_op_creation_failures = 5;
+}
+
+// Options for initializing DebuggerState in TensorFlow Debugger (tfdbg).
+message DebugOptions {
+  // Debugging options
+  repeated DebugTensorWatch debug_tensor_watch_opts = 4;
+
+  // Caller-specified global step count.
+  // Note that this is distinct from the session run count and the executor
+  // step count.
+  int64 global_step = 10;
+
+  // Whether the total disk usage of tfdbg is to be reset to zero
+  // in this Session.run call. This is used by wrappers and hooks
+  // such as the local CLI ones to indicate that the dumped tensors
+  // are cleaned up from the disk after each Session.run.
+  bool reset_disk_byte_usage = 11;
+}
+
+message DebuggedSourceFile {
+  // The host name on which a source code file is located.
+  string host = 1;
+
+  // Path to the source code file.
+  string file_path = 2;
+
+  // The timestamp at which the source code file is last modified.
+  int64 last_modified = 3;
+
+  // Byte size of the file.
+  int64 bytes = 4;
+
+  // Line-by-line content of the source code file.
+  repeated string lines = 5;
+}
+
+message DebuggedSourceFiles {
+  // A collection of source code files.
+  repeated DebuggedSourceFile source_files = 1;
+}

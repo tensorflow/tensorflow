@@ -1,0 +1,139 @@
+path: "tensorflow.initializers"
+tf_module {
+  member {
+    name: "Constant"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "GlorotNormal"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "GlorotUniform"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "HeNormal"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "HeUniform"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Identity"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Initializer"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "LecunNormal"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "LecunUniform"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Ones"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Orthogonal"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "RandomNormal"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "RandomUniform"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "TruncatedNormal"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "VarianceScaling"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Zeros"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "constant"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "glorot_normal"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "glorot_uniform"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "he_normal"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "he_uniform"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "identity"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "lecun_normal"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "lecun_uniform"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "ones"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "orthogonal"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "random_normal"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "random_uniform"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "truncated_normal"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "variance_scaling"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "zeros"
+    mtype: "<class \'type\'>"
+  }
+  member_method {
+    name: "deserialize"
+    argspec: "args=[\'config\', \'custom_objects\', \'use_legacy_format\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "get"
+    argspec: "args=[\'identifier\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "serialize"
+    argspec: "args=[\'initializer\', \'use_legacy_format\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+}

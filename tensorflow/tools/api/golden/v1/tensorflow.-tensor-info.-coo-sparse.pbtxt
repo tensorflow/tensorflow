@@ -1,0 +1,24 @@
+path: "tensorflow.TensorInfo.CooSparse"
+tf_proto {
+  descriptor {
+    name: "CooSparse"
+    field {
+      name: "values_tensor_name"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "indices_tensor_name"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "dense_shape_tensor_name"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+  }
+}

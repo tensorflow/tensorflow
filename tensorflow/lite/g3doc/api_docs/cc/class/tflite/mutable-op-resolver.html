@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+
+<html devsite="">
+<head>
+<title>tflite::MutableOpResolver Class Reference</title>
+<meta name="page_type" value="reference"/>
+<meta content="reference" name="page_type"/></head>
+<body><div id="top"><!-- do not remove this div --></div><h1>tflite::<wbr/>MutableOpResolver</h1><code>#include &lt;mutable_op_resolver.h&gt;</code><p>An <a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a> that is mutable, also used as the op in gen_op_registration. </p><h2>Summary</h2><p>A typical usage: <a href="/lite/api_docs/cc/class/tflite/mutable-op-resolver.html#classtflite_1_1_mutable_op_resolver">MutableOpResolver</a> resolver; resolver.AddBuiltin(BuiltinOperator_ADD, Register_ADD()); resolver.AddCustom("CustomOp", Register_CUSTOM_OP()); InterpreterBuilder(model, resolver)(&amp;interpreter); </p><h3>Inheritance</h3>Inherits from: <a href="/lite/api_docs/cc/class/tflite/op-resolver">tflite::OpResolver</a><table class="properties responsive">
+<tr>
+<th colspan="2">
+<h3>Protected attributes</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_mutable_op_resolver_1af5172db0315823b3a2660c50007d682e">delegate_creators_</a></code>
+</td>
+<td>
+<div>
+<code>TfLiteDelegateCreators</code>
+</div>
+<div>A vector of delegate creators to create optional delegates for resolving and handling ops in the flatbuffer model. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_mutable_op_resolver_1a64e217c827d1e46e93d43f7f43dd4bfe">may_directly_contain_user_defined_ops_</a> = false</code>
+</td>
+<td>
+<div>
+<code>bool</code>
+</div>
+<div>True if this <a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a> itself (as opposed to chained op resolvers registed with ChainOpResolver) may contain user defined ops. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_mutable_op_resolver_1a2cdfa779ceb472fe4ee44dddc95ac4cb">opaque_delegate_creators_</a></code>
+</td>
+<td>
+<div>
+<code>TfLiteOpaqueDelegateCreators</code>
+</div>
+<div>A vector of opaque delegate creators to create optional opaque delegates for resolving and handling ops in the flatbuffer model. </div>
+</td>
+</tr>
+</table><table class="methods responsive">
+<tr>
+<th colspan="2">
+<h3>Public functions</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_mutable_op_resolver_1aa5db2f00250d50a200cb11ef86da04de">AddAll</a>(const <a href="/lite/api_docs/cc/class/tflite/mutable-op-resolver.html#classtflite_1_1_mutable_op_resolver">MutableOpResolver</a> &amp; other)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>Registers all operator versions supported by another <a href="/lite/api_docs/cc/class/tflite/mutable-op-resolver.html#classtflite_1_1_mutable_op_resolver">MutableOpResolver</a>. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_mutable_op_resolver_1ad323b1664b50a74a6b06d9b8bb150a67">AddBuiltin</a>(tflite::BuiltinOperator op, const TfLiteRegistration *registration, int version)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>Registers the specified <code>version</code> of the specified builtin operator <code>op</code>. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_mutable_op_resolver_1afb9598566ed817f14e5bce63911087c4">AddBuiltin</a>(tflite::BuiltinOperator op, const TfLiteRegistration *registration, int min_version, int max_version)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>Registers the specified version range (versions <code>min_version</code> to <code>max_version</code>, inclusive) of the specified builtin operator <code>op</code>. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_mutable_op_resolver_1a9c304aaaea9b949b7124adb8b91340c5">AddCustom</a>(const char *name, const TfLiteRegistration *registration, int version)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>Registers the specified <code>version</code> of the specified builtin operator <code>op</code>. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_mutable_op_resolver_1a7154c1bad3d50421668d9d463dd8445b">AddCustom</a>(const char *name, const TfLiteRegistration *registration, int min_version, int max_version)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>Registers the specified version range (versions <code>min_version</code> to <code>max_version</code>, inclusive) of the specified custom operator <code>name</code>. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_mutable_op_resolver_1aa594a32832292ae14993cbca04d8e8a4">FindOp</a>(tflite::BuiltinOperator op, int version) const override</code>
+</td>
+<td>
+<div>
+<code>virtual const TfLiteRegistration *</code>
+</div>
+<div>Finds the op registration for a builtin operator by enum code. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_mutable_op_resolver_1a8e5f9c21c7706f2ad899cc2e9f2d75d2">FindOp</a>(const char *op, int version) const override</code>
+</td>
+<td>
+<div>
+<code>virtual const TfLiteRegistration *</code>
+</div>
+<div>Finds the op registration of a custom operator by op name. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_mutable_op_resolver_1a1173e86e8a3244c39dc3de1ff657a8c1">GetDelegateCreators</a>() const final</code>
+</td>
+<td>
+<div>
+<code>virtual OpResolver::TfLiteDelegateCreators</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_mutable_op_resolver_1ad7d6cf93ab0a5cfdde30f2f7e691707e">GetOpaqueDelegateCreators</a>() const final</code>
+</td>
+<td>
+<div>
+<code>virtual OpResolver::TfLiteOpaqueDelegateCreators</code>
+</div>
+</td>
+</tr>
+</table><table class="methods responsive">
+<tr>
+<th colspan="2">
+<h3>Protected functions</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_mutable_op_resolver_1aadfe56e199481e8d1546a38ee770488b">ChainOpResolver</a>(const <a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a> *other)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>Registers all operator versions supported by another <a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a>, except any already registered in this <a href="/lite/api_docs/cc/class/tflite/mutable-op-resolver.html#classtflite_1_1_mutable_op_resolver">MutableOpResolver</a>. </div>
+</td>
+</tr>
+</table><h2>Protected attributes</h2><div id="classtflite_1_1_mutable_op_resolver_1af5172db0315823b3a2660c50007d682e">
+<h3>delegate_creators_</h3>
+<pre class="prettyprint">TfLiteDelegateCreators delegate_creators_</pre>
+<div>
+<p>A vector of delegate creators to create optional delegates for resolving and handling ops in the flatbuffer model. </p>
+<p>This may be used in addition to the standard TfLiteRegistration lookup for graph resolution. </p>
+</div>
+</div><div id="classtflite_1_1_mutable_op_resolver_1a64e217c827d1e46e93d43f7f43dd4bfe">
+<h3>may_directly_contain_user_defined_ops_</h3>
+<pre class="prettyprint">bool may_directly_contain_user_defined_ops_ = false</pre>
+<div>
+<p>True if this <a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a> itself (as opposed to chained op resolvers registed with ChainOpResolver) may contain user defined ops. </p>
+<p>By "user defined" ops, we mean any op definitions other than those contained in tflite::ops::builtin::BuiltinOpResolver. </p>
+</div>
+</div><div id="classtflite_1_1_mutable_op_resolver_1a2cdfa779ceb472fe4ee44dddc95ac4cb">
+<h3>opaque_delegate_creators_</h3>
+<pre class="prettyprint">TfLiteOpaqueDelegateCreators opaque_delegate_creators_</pre>
+<div>
+<p>A vector of opaque delegate creators to create optional opaque delegates for resolving and handling ops in the flatbuffer model. </p>
+<p>This may be used in addition to the standard TfLiteRegistration lookup for graph resolution. This is used for TF Lite in Google Play Services. </p>
+</div>
+</div><h2>Public functions</h2><div id="classtflite_1_1_mutable_op_resolver_1aa5db2f00250d50a200cb11ef86da04de">
+<h3>AddAll</h3>
+<pre class="prettyprint">void AddAll(
+  const <a href="/lite/api_docs/cc/class/tflite/mutable-op-resolver.html#classtflite_1_1_mutable_op_resolver">MutableOpResolver</a> &amp; other
+)</pre>
+<div>
+<p>Registers all operator versions supported by another <a href="/lite/api_docs/cc/class/tflite/mutable-op-resolver.html#classtflite_1_1_mutable_op_resolver">MutableOpResolver</a>. </p>
+<p>Replaces any previous registrations for the same operator versions, except that registrations made with <code>AddBuiltin</code> or <code>AddCustom</code> always take precedence over registrations made with <code>ChainOpResolver</code>. </p>
+</div>
+</div><div id="classtflite_1_1_mutable_op_resolver_1ad323b1664b50a74a6b06d9b8bb150a67">
+<h3>AddBuiltin</h3>
+<pre class="prettyprint">void AddBuiltin(
+  tflite::BuiltinOperator op,
+  const TfLiteRegistration *registration,
+  int version
+)</pre>
+<div>
+<p>Registers the specified <code>version</code> of the specified builtin operator <code>op</code>. </p>
+<p>Replaces any previous registration for the same operator version. </p>
+</div>
+</div><div id="classtflite_1_1_mutable_op_resolver_1afb9598566ed817f14e5bce63911087c4">
+<h3>AddBuiltin</h3>
+<pre class="prettyprint">void AddBuiltin(
+  tflite::BuiltinOperator op,
+  const TfLiteRegistration *registration,
+  int min_version,
+  int max_version
+)</pre>
+<div>
+<p>Registers the specified version range (versions <code>min_version</code> to <code>max_version</code>, inclusive) of the specified builtin operator <code>op</code>. </p>
+<p>Replaces any previous registration for the same operator version. </p>
+</div>
+</div><div id="classtflite_1_1_mutable_op_resolver_1a9c304aaaea9b949b7124adb8b91340c5">
+<h3>AddCustom</h3>
+<pre class="prettyprint">void AddCustom(
+  const char *name,
+  const TfLiteRegistration *registration,
+  int version
+)</pre>
+<div>
+<p>Registers the specified <code>version</code> of the specified builtin operator <code>op</code>. </p>
+<p>Replaces any previous registration for the same operator version. </p>
+</div>
+</div><div id="classtflite_1_1_mutable_op_resolver_1a7154c1bad3d50421668d9d463dd8445b">
+<h3>AddCustom</h3>
+<pre class="prettyprint">void AddCustom(
+  const char *name,
+  const TfLiteRegistration *registration,
+  int min_version,
+  int max_version
+)</pre>
+<div>
+<p>Registers the specified version range (versions <code>min_version</code> to <code>max_version</code>, inclusive) of the specified custom operator <code>name</code>. </p>
+<p>Replaces any previous registration for the same operator version. </p>
+</div>
+</div><div id="classtflite_1_1_mutable_op_resolver_1aa594a32832292ae14993cbca04d8e8a4">
+<h3>FindOp</h3>
+<pre class="prettyprint">virtual const TfLiteRegistration * FindOp(
+  tflite::BuiltinOperator op,
+  int version
+) const override</pre>
+<div>
+<p>Finds the op registration for a builtin operator by enum code. </p>
+</div>
+</div><div id="classtflite_1_1_mutable_op_resolver_1a8e5f9c21c7706f2ad899cc2e9f2d75d2">
+<h3>FindOp</h3>
+<pre class="prettyprint">virtual const TfLiteRegistration * FindOp(
+  const char *op,
+  int version
+) const override</pre>
+<div>
+<p>Finds the op registration of a custom operator by op name. </p>
+</div>
+</div><div id="classtflite_1_1_mutable_op_resolver_1a1173e86e8a3244c39dc3de1ff657a8c1">
+<h3>GetDelegateCreators</h3>
+<pre class="prettyprint">virtual OpResolver::TfLiteDelegateCreators GetDelegateCreators() const final</pre>
+<div></div>
+</div><div id="classtflite_1_1_mutable_op_resolver_1ad7d6cf93ab0a5cfdde30f2f7e691707e">
+<h3>GetOpaqueDelegateCreators</h3>
+<pre class="prettyprint">virtual OpResolver::TfLiteOpaqueDelegateCreators GetOpaqueDelegateCreators() const final</pre>
+<div></div>
+</div><h2>Protected functions</h2><div id="classtflite_1_1_mutable_op_resolver_1aadfe56e199481e8d1546a38ee770488b">
+<h3>ChainOpResolver</h3>
+<pre class="prettyprint">void ChainOpResolver(
+  const <a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a> *other
+)</pre>
+<div>
+<p>Registers all operator versions supported by another <a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a>, except any already registered in this <a href="/lite/api_docs/cc/class/tflite/mutable-op-resolver.html#classtflite_1_1_mutable_op_resolver">MutableOpResolver</a>. </p>
+<p><code>other</code> must point to an <a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a> whose lifetime is at least as long as the lifetime of the <a href="/lite/api_docs/cc/class/tflite/mutable-op-resolver.html#classtflite_1_1_mutable_op_resolver">MutableOpResolver</a> pointed to by <code>this</code>. The <a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a> pointed to by <code>other</code> should not be modified during the lifetime of this <a href="/lite/api_docs/cc/class/tflite/mutable-op-resolver.html#classtflite_1_1_mutable_op_resolver">MutableOpResolver</a>. </p>
+</div>
+</div></body>
+</html>

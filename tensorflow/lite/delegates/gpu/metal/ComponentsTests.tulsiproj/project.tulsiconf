@@ -1,0 +1,14 @@
+{
+  "configDefaults" : {
+    "optionSet" : {
+      "ProjectGenerationPlatformConfiguration" : {
+        "p" : "ios_arm64"
+      }
+    }
+  },
+  "packages" : [
+    "tensorflow/lite/delegates/gpu/metal"
+  ],
+  "projectName" : "ComponentsTests",
+  "workspaceRoot" : "../../../../../.."
+}

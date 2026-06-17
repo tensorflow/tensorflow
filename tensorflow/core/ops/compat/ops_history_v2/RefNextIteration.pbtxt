@@ -1,0 +1,17 @@
+op {
+  name: "RefNextIteration"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+    is_ref: true
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}

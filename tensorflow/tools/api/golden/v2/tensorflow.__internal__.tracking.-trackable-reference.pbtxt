@@ -1,0 +1,17 @@
+path: "tensorflow.__internal__.tracking.TrackableReference"
+tf_class {
+  is_instance: "<class \'tensorflow.python.trackable.base.TrackableReference\'>"
+  is_instance: "<class \'object\'>"
+  member {
+    name: "name"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "ref"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'name\', \'ref\'], varargs=None, keywords=None, defaults=None"
+  }
+}

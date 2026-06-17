@@ -1,0 +1,34 @@
+edition = "2023";
+
+package xla.ifrt;
+
+import "xla/python/ifrt/ir/ifrt_ir_compile_options.proto";
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+
+// Larger sections of a serialized IFRT IR loaded executable are stored after
+// the metadata  and this location is used to access them.
+message SerializedObjectLocation {
+  int64 offset = 1;
+  int64 size = 2;
+}
+
+// Serialized metadata for an IFRT IR atom executable.
+message SerializedIfrtIrAtomExecutableMetadata {
+  string name = 1;
+
+  // Logical device ids in IFRT IR MLIR module that the atom executable is used
+  // on. This is used to map to the device assignments in IFRT Program
+  repeated int32 logical_device_ids = 2;
+  SerializedObjectLocation executable_location = 3;
+}
+
+// Serialized metadata for an IFRT IR executable.
+message SerializedIfrtIrExecutableMetadata {
+  // Serialization and deserialization version.
+  int32 version_number = 1;
+  SerializedObjectLocation ifrt_ir_program_location = 2;
+  xla.ifrt.IfrtIrCompileOptionsProto compile_options = 3;
+  repeated SerializedIfrtIrAtomExecutableMetadata atom_program_executables = 5;
+}

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "IFFT3D"
+  endpoint {
+    name: "signal.Ifft3d"
+  }
+}

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "MaxPoolGradWithArgmax"
+  endpoint {
+    name: "nn.MaxPoolGradWithArgmax"
+  }
+}

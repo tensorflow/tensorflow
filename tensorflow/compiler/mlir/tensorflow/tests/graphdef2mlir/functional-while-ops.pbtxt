@@ -1,0 +1,346 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=iter,val -tf-input-data-types=DT_INT32,DT_FLOAT -tf-input-shapes=':' -tf-output-arrays=StatefulWhile:1,StatelessWhile:1,WhileWithOutputShapes:1 -o - -mlir-print-debuginfo -mlir-print-local-scope | FileCheck %s
+
+# Verify that TensorFlow While and StatelessWhile ops are mapped to the
+# composite While op in MLIR with is_stateless attribute set accordingly to
+# distinguish between them.
+
+# CHECK-DAG: "tf.While"{{.*}} is_stateless = false{{.*}} loc(fused["While:", "StatefulWhile"])
+# CHECK-DAG: "tf.While"{{.*}} is_stateless = true{{.*}} loc(fused["StatelessWhile:", "StatelessWhile"])
+# CHECK-DAG: "tf.While"{{.*}} is_stateless = false{{.*}} shape_invariant{{.*}} -> (tensor<i32>, tensor<*xf32>) loc(fused["While:", "WhileWithOutputShapes"])
+
+node {
+  name: "StatefulWhile"
+  op: "While"
+  input: "iter"
+  input: "val"
+  attr {
+    key: "T"
+    value {
+      list {
+        type: DT_INT32
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "body"
+    value {
+      func {
+        name: "body"
+      }
+    }
+  }
+  attr {
+    key: "cond"
+    value {
+      func {
+        name: "cond"
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "StatelessWhile"
+  op: "StatelessWhile"
+  input: "iter"
+  input: "val"
+  attr {
+    key: "T"
+    value {
+      list {
+        type: DT_INT32
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "body"
+    value {
+      func {
+        name: "body"
+      }
+    }
+  }
+  attr {
+    key: "cond"
+    value {
+      func {
+        name: "cond"
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "WhileWithOutputShapes"
+  op: "While"
+  input: "iter"
+  input: "val"
+  attr {
+    key: "T"
+    value {
+      list {
+        type: DT_INT32
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "body"
+    value {
+      func {
+        name: "body"
+      }
+    }
+  }
+  attr {
+    key: "cond"
+    value {
+      func {
+        name: "cond"
+      }
+    }
+  }
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+        shape {
+        }
+        shape {
+          unknown_rank: true
+        }
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "main"
+  op: "_Retval"
+  input: "StatefulWhile:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "main1"
+  op: "_Retval"
+  input: "StatelessWhile:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "main2"
+  op: "_Retval"
+  input: "WhileWithOutputShapes:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 2
+    }
+  }
+}
+node {
+  name: "iter"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "val"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  experimental_debug_info {
+  }
+}
+library {
+  function {
+    signature {
+      name: "cond"
+      input_arg {
+        name: "cond"
+        type: DT_INT32
+      }
+      input_arg {
+        name: "cond1"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "cond2"
+        type: DT_BOOL
+      }
+    }
+    node_def {
+      name: "Const"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 0
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Const"
+      }
+    }
+    node_def {
+      name: "tf.Greater"
+      op: "Greater"
+      input: "cond"
+      input: "Const:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_INT32
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "tf.Greater"
+      }
+    }
+    ret {
+      key: "cond2"
+      value: "tf.Greater:z:0"
+    }
+  }
+  function {
+    signature {
+      name: "body"
+      input_arg {
+        name: "body"
+        type: DT_INT32
+      }
+      input_arg {
+        name: "body1"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "body2"
+        type: DT_INT32
+      }
+      output_arg {
+        name: "body3"
+        type: DT_FLOAT
+      }
+    }
+    node_def {
+      name: "Const"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 1
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Const"
+      }
+    }
+    node_def {
+      name: "tf.Sub"
+      op: "Sub"
+      input: "body"
+      input: "Const:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_INT32
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "tf.Sub"
+      }
+    }
+    node_def {
+      name: "tf.Add"
+      op: "Add"
+      input: "body1"
+      input: "body1"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "tf.Add"
+      }
+    }
+    ret {
+      key: "body2"
+      value: "tf.Sub:z:0"
+    }
+    ret {
+      key: "body3"
+      value: "tf.Add:z:0"
+    }
+  }
+}
+versions {
+  producer: 115
+  min_consumer: 12
+}
+

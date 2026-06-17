@@ -1,0 +1,19 @@
+op {
+  name: "TensorMapHasKey"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "key"
+    type_attr: "key_dtype"
+  }
+  output_arg {
+    name: "has_key"
+    type: DT_BOOL
+  }
+  attr {
+    name: "key_dtype"
+    type: "type"
+  }
+}

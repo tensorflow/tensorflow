@@ -1,0 +1,8 @@
+op {
+  name: "DisableCopyOnRead"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}

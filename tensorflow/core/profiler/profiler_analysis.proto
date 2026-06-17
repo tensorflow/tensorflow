@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+package tensorflow.dummy;
+
+import public "tsl/profiler/protobuf/profiler_analysis.proto";

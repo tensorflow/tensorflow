@@ -1,0 +1,52 @@
+library 	 {
+  function {
+    signature {
+      name: "func_no_args_no_results"
+    }
+  }
+  function {
+    signature {
+      name: "func_no_args"
+      output_arg {
+        name: "ret1"
+        type: DT_INT32
+      }
+    }
+    node_def {
+      name: "c"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+              dim {
+                size: 1
+              }
+            }
+          }
+        }
+      }
+    }
+    ret {
+      key: "ret1"
+      value: "c:output:0"
+    }
+  }
+  function {
+    signature {
+      name: "func_no_results"
+      input_arg {
+        name: "arg"
+        type: DT_INT32
+      }
+    }
+  }
+}

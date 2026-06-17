@@ -1,0 +1,11 @@
+op {
+  graph_op_name: "OutfeedEnqueue"
+  visibility: HIDDEN
+  in_arg {
+    name: "input"
+    description: <<END
+A tensor that will be inserted into the outfeed queue.
+END
+  }
+  summary: "Enqueue a Tensor on the computation outfeed."
+}

@@ -1,0 +1,35 @@
+path: "tensorflow.__internal__.nest"
+tf_module {
+  member_method {
+    name: "flatten_up_to"
+    argspec: "args=[\'shallow_tree\', \'input_tree\', \'check_types\', \'expand_composites\'], varargs=None, keywords=None, defaults=[\'True\', \'False\'], "
+  }
+  member_method {
+    name: "get_traverse_shallow_structure"
+    argspec: "args=[\'traverse_fn\', \'structure\', \'expand_composites\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "is_attrs"
+    argspec: "args=[\'obj\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_mapping"
+    argspec: "args=[\'obj\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "list_to_tuple"
+    argspec: "args=[\'structure\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "map_structure_up_to"
+    argspec: "args=[\'shallow_tree\', \'func\'], varargs=inputs, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "sequence_like"
+    argspec: "args=[\'instance\', \'args\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "yield_flat_paths"
+    argspec: "args=[\'nest\', \'expand_composites\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+}

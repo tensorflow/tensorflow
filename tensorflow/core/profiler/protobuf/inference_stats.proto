@@ -1,0 +1,6 @@
+// This proto is used for inference-specific analysis.
+syntax = "proto2";
+
+package tensorflow.profiler;
+
+import public "plugin/xprof/protobuf/inference_stats.proto";

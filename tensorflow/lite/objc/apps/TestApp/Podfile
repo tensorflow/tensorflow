@@ -1,0 +1,5 @@
+platform :ios, '9.0'
+
+target 'TestApp' do
+  pod 'TensorFlowLiteObjC'
+end

@@ -1,0 +1,87 @@
+op {
+  name: "EncodeJpeg"
+  input_arg {
+    name: "image"
+    type: DT_UINT8
+  }
+  output_arg {
+    name: "contents"
+    type: DT_STRING
+  }
+  attr {
+    name: "format"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    allowed_values {
+      list {
+        s: ""
+        s: "grayscale"
+        s: "rgb"
+      }
+    }
+  }
+  attr {
+    name: "quality"
+    type: "int"
+    default_value {
+      i: 95
+    }
+  }
+  attr {
+    name: "progressive"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "optimize_size"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "chroma_downsampling"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "density_unit"
+    type: "string"
+    default_value {
+      s: "in"
+    }
+    allowed_values {
+      list {
+        s: "in"
+        s: "cm"
+      }
+    }
+  }
+  attr {
+    name: "x_density"
+    type: "int"
+    default_value {
+      i: 300
+    }
+  }
+  attr {
+    name: "y_density"
+    type: "int"
+    default_value {
+      i: 300
+    }
+  }
+  attr {
+    name: "xmp_metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}

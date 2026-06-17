@@ -1,0 +1,5 @@
+syntax = "proto2";
+
+package tflite.proto;
+
+import public "tensorflow/lite/acceleration/configuration/configuration.proto";

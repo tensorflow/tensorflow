@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Sub"
+  endpoint {
+    name: "math.Sub"
+  }
+}

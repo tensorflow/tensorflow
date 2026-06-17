@@ -1,0 +1,12 @@
+path: "tensorflow.distribute.cluster_resolver.KubernetesExecutableLocation"
+tf_class {
+  is_instance: "<enum \'ExecutableLocation\'>"
+  member {
+    name: "OFF_CLUSTER"
+    mtype: "<enum \'ExecutableLocation\'>"
+  }
+  member {
+    name: "WITHIN_CLUSTER"
+    mtype: "<enum \'ExecutableLocation\'>"
+  }
+}

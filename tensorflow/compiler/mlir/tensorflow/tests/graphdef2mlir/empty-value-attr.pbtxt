@@ -1,0 +1,85 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
+
+node {
+  name: "_tf.PartitionedCall"
+  op: "PartitionedCall"
+  attr {
+    key: "Tin"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "f"
+    value {
+      func {
+        name: "foo"
+      }
+    }
+  }
+}
+library {
+  function {
+    signature {
+      name: "foo"
+      output_arg {
+        name: "constant"
+        type: DT_FLOAT
+      }
+    }
+    node_def {
+      name: "X"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+            }
+            float_val: 7
+          }
+        }
+      }
+    }
+    ret {
+      key: "constant"
+      value: "X:output:0"
+    }
+    # This should be modeled as unit attribute
+    attr {
+      key: "_input_shapes"
+      value {
+      }
+    }
+  }
+}
+versions {
+  producer: 85
+  min_consumer: 12
+}
+
+# Match partitioned call in main and capture the callee name.
+# CHECK-LABEL: func @main
+# CHECK: tf.PartitionedCall
+# CHECK-SAME: f = @[[FUNCTION:[a-zA-Z0-9_]*]]
+
+# Verify that callee has the unit attribute tf._input_shapes.
+# CHECK: func private @[[FUNCTION]]
+# CHECK: attributes
+# CHECK-SAME: tf._input_shapes{{[,}]}}

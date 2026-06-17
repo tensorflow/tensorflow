@@ -1,0 +1,50 @@
+path: "tensorflow.__internal__.tracking.TrackableDataStructure"
+tf_class {
+  is_instance: "<class \'tensorflow.python.trackable.data_structures.TrackableDataStructure\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
+  is_instance: "<class \'object\'>"
+  member {
+    name: "layers"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "losses"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "non_trainable_variables"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "non_trainable_weights"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "trainable"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "trainable_variables"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "trainable_weights"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "updates"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "variables"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "weights"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

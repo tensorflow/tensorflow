@@ -1,0 +1,48 @@
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+// This file is a macro metaprogramming file for dealing with OpAttrType in a
+// generic way.
+
+// To use this file, #define the OP_ATTR_TYPE macro and include the file.
+// The first argument provided is the TFRT enum name for the attribute type,
+// the second is the corresponding TF DataType.
+
+// Add more attribute types as necessary.
+OP_ATTR_TYPE(BOOL, DT_BOOL)
+OP_ATTR_TYPE(UI8, DT_UINT8)
+OP_ATTR_TYPE(I8, DT_INT8)
+OP_ATTR_TYPE(I16, DT_INT16)
+OP_ATTR_TYPE(UI16, DT_UINT16)
+OP_ATTR_TYPE(I32, DT_INT32)
+OP_ATTR_TYPE(UI32, DT_UINT32)
+OP_ATTR_TYPE(I64, DT_INT64)
+OP_ATTR_TYPE(UI64, DT_UINT64)
+OP_ATTR_TYPE(BF16, DT_BFLOAT16)
+OP_ATTR_TYPE(F16, DT_HALF)
+OP_ATTR_TYPE(F32, DT_FLOAT)
+OP_ATTR_TYPE(F64, DT_DOUBLE)
+OP_ATTR_TYPE(COMPLEX64, DT_COMPLEX64)
+OP_ATTR_TYPE(COMPLEX128, DT_COMPLEX128)
+OP_ATTR_TYPE(CHAR, DT_STRING)
+OP_ATTR_TYPE(UNSUPPORTED_QUI8, DT_QUINT8)
+OP_ATTR_TYPE(UNSUPPORTED_QUI16, DT_QUINT16)
+OP_ATTR_TYPE(UNSUPPORTED_QI8, DT_QINT8)
+OP_ATTR_TYPE(UNSUPPORTED_QI16, DT_QINT16)
+OP_ATTR_TYPE(UNSUPPORTED_QI32, DT_QINT32)
+OP_ATTR_TYPE(UNSUPPORTED_RESOURCE, DT_RESOURCE)
+OP_ATTR_TYPE(UNSUPPORTED_VARIANT, DT_VARIANT)
+
+#undef OP_ATTR_TYPE

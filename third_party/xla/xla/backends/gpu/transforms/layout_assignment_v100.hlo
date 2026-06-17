@@ -1,0 +1,17 @@
+// RUN: hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/v100.txtpb --split-input-file | FileCheck %s
+
+// CHECK: %wrapped_transpose_computation
+// CHECK-NEXT: f16[3,3,16,32]{3,2,1,0} parameter(0)
+// CHECK-NEXT: f16[32,3,3,16]{3,2,1,0} transpose
+// CHECK-SAME: dimensions={3,0,1,2}
+// CHECK: (f16[1,64,64,32]{3,2,1,0}, u8[0]{0}) custom-call
+// CHECK-SAME: window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForward
+
+HloModule ConvCuDNN
+
+ENTRY main {
+  Arg_0.1 = f16[1,64,64,16]{3,2,1,0} parameter(0), sharding={replicated}
+  Arg_1.2 = f16[3,3,16,32]{3,2,1,0} parameter(1), sharding={replicated}
+  ROOT convolution.3 = f16[1,64,64,32]{3,2,1,0} convolution(Arg_0.1, Arg_1.2),
+    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
+}

@@ -1,0 +1,56 @@
+# RUN: tf_tfl_translate -tf-input-arrays=input -tf-input-shapes=4 -tf-input-data-types=DT_INT32 -tf-output-arrays=output %s -o - --output-mlir | FileCheck %s
+
+node {
+  name: "default"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "input"
+  op: "Identity"
+  input: "default"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "output"
+  op: "Identity"
+  input: "input"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 27
+}
+
+# CHECK-LABEL: func @main
+# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<4xi32>) -> tensor<4xi32>
+# CHECK-SAME:  control_outputs = ""
+# CHECK-SAME:  inputs = "input"
+# CHECK-SAME:  outputs = "output"
+# CHECK-NEXT:    return %[[ARG_0]] : tensor<4xi32>
+# CHECK-NEXT:  }

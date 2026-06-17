@@ -1,0 +1,95 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false -mlir-print-debuginfo -mlir-print-local-scope %s -o - | FileCheck %s
+
+# Check that we correctly import the node locations.
+
+node {
+  name: "node_outside_function"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "fused_node_outside_function"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 2
+      }
+    }
+  }
+  experimental_debug_info {
+    original_node_names: "n1"
+    original_node_names: "n2"
+    original_func_names: "f1"
+    original_func_names: "f2"
+  }
+}
+node {
+  name: "unnamed1"
+  op: "foo"
+  experimental_debug_info {
+  }
+}
+library {
+  function {
+    signature {
+      name: "foo"
+    }
+    node_def {
+      name: "node_inside_function"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 1
+          }
+        }
+      }
+      experimental_debug_info {
+      }
+    }
+  }
+}
+
+# TODO(b/142400497): What is the semantic contract for locations?
+# CHECK: "tf.Const"{{.*}}value = dense<2>{{.*}}loc(fused["Const:",  "n1@f1", "n2@f2", "fused_node_outside_function"])
+# CHECK: "tf.Const"{{.*}}value = dense<0>{{.*}}loc(fused["Const:", "node_outside_function"])
+# CHECK: "tf.Const"{{.*}}value = dense<1>{{.*}}loc(fused["Const:", "node_inside_function@foo"])

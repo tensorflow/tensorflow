@@ -1,0 +1,47 @@
+HloModule thunk_coverage
+
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+ENTRY main {
+  param0 = f32[4,128,128,8]{3,2,1,0} parameter(0)
+  param1 = f32[2,2,8,4]{3,2,1,0} parameter(1)
+  param2 = c64[4]{0} parameter(2)
+  param3 = f32[4]{0} parameter(3)
+  param4 = f32[4]{0} parameter(4)
+
+  // 1. Convolution
+  conv = f32[4,127,127,4]{3,2,1,0} convolution(param0, param1),
+    window={size=2x2},
+    dim_labels=b01f_01io->b01f
+
+  // 2. FFT
+  fft = c64[4]{0} fft(param2), fft_type=FFT, fft_length={4}
+
+  // 3. CustomCall
+  custom_call = f32[4,127,127,4]{3,2,1,0} custom-call(conv, param3, param4), 
+      custom_call_target="__onednn$layernorm", backend_config=
+          "{\"onednn_layer_norm_config\":{\"rescale\":\"SCALE_AND_SHIFT\"}}"
+
+  // 4. AllReduce (Collective)
+  all_reduce = f32[4]{0} all-reduce(param3), replica_groups={}, 
+      to_apply=add_computation
+
+  // 5. PartitionId
+  pid = u32[] partition-id()
+
+  // 6. ReplicaId
+  rid = u32[] replica-id()
+
+  // 7. RngGetAndUpdateState
+  rng_state = u64[2]{0} rng-get-and-update-state(), delta=1
+
+  // Root of the computation returns available results
+  ROOT tuple = (f32[4,127,127,4]{3,2,1,0}, c64[4]{0}, f32[4,127,127,4]{3,2,1,0},
+                f32[4]{0}, u32[], u32[], u64[2]{0})
+               tuple(conv, fft, custom_call, all_reduce, pid, rid, rng_state)
+}
+

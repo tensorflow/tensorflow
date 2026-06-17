@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "BatchMatrixInverse"
+  description: <<END
+DEPRECATED: This operation is deprecated and will be removed in a future version.
+Use tf.linalg.inv instead.
+
+Computes the inverse of one or more square invertible matrices or their
+adjoints (conjugate transposes).
+END
+}

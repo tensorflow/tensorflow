@@ -1,0 +1,45 @@
+op {
+  graph_op_name: "MaxPoolV2"
+  in_arg {
+    name: "input"
+    description: <<END
+4-D input to pool over.
+END
+  }
+  in_arg {
+    name: "ksize"
+    description: <<END
+The size of the window for each dimension of the input tensor.
+END
+  }
+  in_arg {
+    name: "strides"
+    description: <<END
+The stride of the sliding window for each dimension of the
+input tensor.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The max pooled output tensor.
+END
+  }
+  attr {
+    name: "padding"
+    description: <<END
+The type of padding algorithm to use.
+END
+  }
+  attr {
+    name: "data_format"
+    description: <<END
+Specify the data format of the input and output data. With the
+default format "NHWC", the data is stored in the order of:
+    [batch, in_height, in_width, in_channels].
+Alternatively, the format could be "NCHW", the data storage order of:
+    [batch, in_channels, in_height, in_width].
+END
+  }
+  summary: "Performs max pooling on the input."
+}

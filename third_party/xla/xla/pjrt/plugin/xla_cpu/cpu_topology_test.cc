@@ -1,0 +1,67 @@
+/* Copyright 2024 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
+
+#include <memory>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology.pb.h"
+#include "xla/runtime/device_id.h"
+#include "tsl/platform/protobuf.h"
+
+namespace xla {
+namespace {
+
+TEST(CpuTopology, FromProto) {
+  CpuTopologyProto msg;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        cpu_devices:
+        [ { process_index: 2, local_hardware_id: 3 }]
+        target_machine_options { features: "+x86_64,+Intel" }
+      )pb",
+      &msg));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const CpuTopology> cpu_topology,
+                       CpuTopology::FromProto(msg));
+  EXPECT_EQ(cpu_topology->devices().size(), 1);
+  EXPECT_EQ(cpu_topology->devices()[0].process_id, 2);
+  EXPECT_EQ(cpu_topology->devices()[0].local_device_id, 3);
+  EXPECT_EQ(cpu_topology->target_machine_options().GetTargetMachineFeatures(),
+            "+Intel,+x86_64");
+}
+
+TEST(CpuTopology, ToProto) {
+  CpuTopology cpu_topology({{2, 3}},
+                           cpu::TargetMachineOptions("", "", "+ab,+cd"));
+  CpuTopologyProto msg = cpu_topology.ToProto();
+  EXPECT_EQ(msg.cpu_devices_size(), 1);
+  EXPECT_EQ(msg.cpu_devices(0).process_index(), 2);
+  EXPECT_EQ(msg.cpu_devices(0).local_hardware_id(), 3);
+  EXPECT_EQ(msg.target_machine_options().features(), "+ab,+cd");
+}
+
+TEST(PackCpuDeviceId, PackAndUnpack) {
+  GlobalDeviceId device_id = PackCpuDeviceId(2, 3);
+  EXPECT_EQ(UnpackCpuProcessIndex(device_id), 2);
+  EXPECT_EQ(UnpackCpuLocalDeviceId(device_id), 3);
+}
+
+}  // namespace
+}  // namespace xla

@@ -1,0 +1,111 @@
+syntax = "proto3";
+
+package tensorflow.data.experimental;
+
+import "tensorflow/core/protobuf/data_service.proto";
+
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
+// Configuration for a tf.data service DispatchServer.
+// Next id: 13
+message DispatcherConfig {
+  // The port for the dispatcher to bind to. A value of 0 indicates that the
+  // dispatcher may bind to any available port.
+  int64 port = 1;
+  // The protocol for the dispatcher to use when connecting to workers.
+  string protocol = 2;
+  // A work directory to use for storing dispatcher state, and for recovering
+  // during restarts. The empty string indicates not to use any work directory.
+  string work_dir = 3;
+  // Whether to run in fault tolerant mode, where dispatcher state is saved
+  // across restarts. Requires that `work_dir` is nonempty.
+  bool fault_tolerant_mode = 4;
+  // (Optional.) If the job uses auto-sharding, it needs to specify a fixed list
+  // of worker addresses that will register with the dispatcher. The worker
+  // addresses should be in the format "host" or "host:port", where "port" is an
+  // integer, named port, or %port% to match any port.
+  repeated string worker_addresses = 7;
+  // (Optional.) tf.data service deployment mode. Supported values are "REMOTE",
+  // "COLOCATED", and "HYBRID". If unspecified, it is assumed to be "REMOTE".
+  DeploymentMode deployment_mode = 9;
+  // How often the dispatcher should scan through to delete old and unused
+  // jobs. A value of 0 indicates that the decision should be left up to the
+  // runtime.
+  int64 job_gc_check_interval_ms = 5;
+  // How long a job needs to be unused before it becomes a candidate for garbage
+  // collection. A value of -1 indicates that jobs should never be garbage
+  // collected. A value of 0 indicates that the decision should be left up to
+  // the runtime. Note: This does not apply to dynamic sharding unless users
+  // explicitly opt-in by enabling `gc_dynamic_sharding_jobs` below.
+  int64 job_gc_timeout_ms = 6;
+  // Whether dynamically sharded jobs should be eligible for garbage collection.
+  // These jobs are not garbage collected by default, since if a job is garbage
+  // collected and then re-created, it will revisit all data from the start. If
+  // revisiting data is acceptible and you want automatic reclamation of
+  // iterator memory, set `gc_dynamic_sharding_jobs` to `true`.
+  bool gc_dynamic_sharding_jobs = 11;
+  // How long to wait before garbage-collecting a client that hasn't
+  // heartbeated to the dispatcher. A value of 0 indicates that the timeout
+  // should be left to the runtime.
+  int64 client_timeout_ms = 8;
+  // How long to wait for a worker to heartbeat before considering it missing.
+  // A value of 0 indicates that the timeout should be left to the runtime.
+  int64 worker_timeout_ms = 10;
+  // The maximum number of snapshots that a worker can concurrently process at a
+  // given point in time. This is a tradeoff between worker resource usage and
+  // snapshot wall time. A value of 0 indicates that the decision should be left
+  // up to the runtime.
+  int64 worker_max_concurrent_snapshots = 12;
+}
+
+// Configuration for a tf.data service WorkerServer.
+// Next id: 14
+message WorkerConfig {
+  // The port for the worker to bind to. A value of 0 indicates that the
+  // worker may bind to any available port.
+  int64 port = 1;
+  // The protocol for the worker to use when connecting to the dispatcher.
+  string protocol = 2;
+  // The address of the dispatcher to register with.
+  string dispatcher_address = 3;
+  // The address of the worker server. The substring "%port%", if specified,
+  // will be replaced with the worker's bound port. This is useful when the port
+  // is set to `0`.
+  string worker_address = 4;
+  // Tags attached to the worker. This allows reading from selected workers.
+  // For example, by applying a "COLOCATED" tag, tf.data service is able to read
+  // from the local tf.data worker if one exists, then from off-TF-host workers,
+  // to avoid cross-TF-host reads.
+  repeated string worker_tags = 10;
+  // How often the worker should heartbeat to the master. A value of 0 indicates
+  // that the decision should be left up to the runtime.
+  int64 heartbeat_interval_ms = 5;
+  // How long to retry requests to the dispatcher before giving up and reporting
+  // an error. A value of 0 indicates that the decision should be left up to the
+  // runtime.
+  int64 dispatcher_timeout_ms = 6;
+  // If set, the name of an alternative data transfer protocol for which the
+  // worker starts an additional server ("data transfer server"); the trainer
+  // can then get data from this server. If not set, no such server is started,
+  // and the trainer can only get data from the regular worker server over
+  // `protocol`.
+  string data_transfer_protocol = 7;
+  // If `data_transfer_protocol` is set, the port to which the data transfer
+  // server binds. If set to `0`, the server binds to any available port.
+  int64 data_transfer_port = 13;
+  // If `data_transfer_protocol` is set, the address of the data transfer
+  // server. The substring "%dts_port%" can be used to represent -- and is
+  // replaced with -- the bound port of the data transfer server; this is useful
+  // when `data_transfer_port` is set to `0`.
+  string data_transfer_address = 8;
+  // Maximum size of the cross-trainer cache in bytes. If enabled, make sure
+  // your training job provides sufficient memory resources.
+  int64 cross_trainer_cache_size_bytes = 11;
+  // The maximum size of a distributed snapshot chunk file. A value of 0
+  // indicates that the decision should be left up to the runtime.
+  int64 snapshot_max_chunk_size_bytes = 12;
+  // When shutting down a worker, how long to wait for the gRPC server to
+  // process the final requests. This is used to achieve clean shutdown in unit
+  // tests.
+  int64 shutdown_quiet_period_ms = 9;
+}

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Relu6"
+  endpoint {
+    name: "nn.Relu6"
+  }
+}

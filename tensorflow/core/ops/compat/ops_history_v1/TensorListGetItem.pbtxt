@@ -1,0 +1,23 @@
+op {
+  name: "TensorListGetItem"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "element_shape"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "item"
+    type_attr: "element_dtype"
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+}

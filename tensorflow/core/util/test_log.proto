@@ -1,0 +1,6 @@
+// Protocol messages for describing the results of benchmarks and unit tests.
+syntax = "proto3";
+
+package tensorflow.dummy;
+
+import public "xla/tsl/protobuf/test_log.proto";

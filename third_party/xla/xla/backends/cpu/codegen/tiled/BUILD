@@ -1,0 +1,94 @@
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
+
+py_test(
+    name = "tiled_kernel_test",
+    srcs = ["tiled_kernel_test.py"],
+    main = "tiled_kernel_test.py",
+    strict_deps = True,
+    tags = [
+        "no_oss",
+    ],
+    deps = [
+        "//third_party/py/numpy",
+        "//xla/backends/cpu/testlib",
+        "//xla/codegen/testlib",
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+cc_library(
+    name = "tiled_fusion_emitter",
+    srcs = ["tiled_fusion_emitter.cc"],
+    hdrs = ["tiled_fusion_emitter.h"],
+    visibility = [
+        "//xla/backends/cpu/codegen:__pkg__",
+        "//xla/service/cpu:__pkg__",
+    ],
+    deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/codegen:kernel_api_ir_builder",
+        "//xla/codegen:kernel_definition",
+        "//xla/codegen:kernel_spec",
+        "//xla/codegen:mlir_kernel_source",
+        "//xla/codegen/emitters:kernel_api_builder",
+        "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/codegen/tiling:tiled_hlo_computation",
+        "//xla/codegen/tiling:tiling_specification",
+        "//xla/codegen/tiling/experimental:tile",
+        "//xla/codegen/tiling/experimental:tiled_hlo",
+        "//xla/codegen/xtile/codegen:emitter_helpers",
+        "//xla/codegen/xtile/codegen:fusion_emitter",
+        "//xla/codegen/xtile/codegen:tiled_emitter_constraints",
+        "//xla/codegen/xtile/ir:xtile",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
+        "//xla/runtime:work_dimensions",
+        "//xla/service:buffer_assignment",
+        "//xla/service:instruction_fusion",
+        "//xla/service/cpu:cpu_options",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "tiled_fusion_emitter_test",
+    srcs = ["tiled_fusion_emitter_test.cc"],
+    deps = [
+        ":tiled_fusion_emitter",
+        "//xla/backends/cpu/codegen:fusion_compiler",
+        "//xla/codegen/tiling/experimental:tile",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_ordering",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:buffer_assignment",
+        "//xla/service:buffer_value",
+        "//xla/service:logical_buffer",
+        "//xla/service/cpu:cpu_executable",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

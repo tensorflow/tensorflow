@@ -1,0 +1,430 @@
+upper_tabs:
+- name: "Install"
+  lower_tabs:
+    guides:
+    - include: /install/_toc.yaml
+
+- name: "Learn"
+  path: /learn/
+  is_default: true
+  menu:
+  - include: /learn/_menu_toc.yaml
+  lower_tabs:
+
+    # Subsite tabs
+    other:
+
+    - name: "Guide"
+      contents:
+      - title: "Overview"
+        path: /lite/guide
+      - title: "Running ML models"
+        path: /lite/guide/inference
+
+      - heading: "Libraries and tools"
+      - title: "Task Library"
+        section:
+        - title: "Overview"
+          path: /lite/inference_with_metadata/task_library/overview
+        - title: "ImageClassifier"
+          path: /lite/inference_with_metadata/task_library/image_classifier
+        - title: "ObjectDetector"
+          path: /lite/inference_with_metadata/task_library/object_detector
+        - title: "ImageSegmenter"
+          path: /lite/inference_with_metadata/task_library/image_segmenter
+        - title: "ImageEmbedder"
+          path: /lite/inference_with_metadata/task_library/image_embedder
+        - title: "ImageSearcher"
+          path: /lite/inference_with_metadata/task_library/image_searcher
+        - title: "NLClassifier"
+          path: /lite/inference_with_metadata/task_library/nl_classifier
+        - title: "BertNLClassifier"
+          path: /lite/inference_with_metadata/task_library/bert_nl_classifier
+        - title: "BertQuestionAnswerer"
+          path: /lite/inference_with_metadata/task_library/bert_question_answerer
+        - title: "TextEmbedder"
+          path: /lite/inference_with_metadata/task_library/text_embedder
+        - title: "TextSearcher"
+          path: /lite/inference_with_metadata/task_library/text_searcher
+        - title: "AudioClassifier"
+          path: /lite/inference_with_metadata/task_library/audio_classifier
+        - title: "Customized API"
+          path: /lite/inference_with_metadata/task_library/customized_task_api
+
+      - heading: "Hardware acceleration"
+      - title: "Delegates"
+        path: /lite/performance/delegates
+      - title: "GPU delegates"
+        path: /lite/performance/gpu
+      - title: "Implementing a delegate"
+        path: /lite/performance/implementing_delegate
+        status: experimental
+
+      - heading: "Build TensorFlow Lite"
+      - title: "Build for Android"
+        path: /lite/android/lite_build
+      - title: "Build for iOS"
+        path: /lite/guide/build_ios
+      - title: "Build for ARM"
+        path: /lite/guide/build_arm
+      - title: "Build with CMake"
+        path: /lite/guide/build_cmake
+        section:
+        - title: "Cross compilation for ARM"
+          path: /lite/guide/build_cmake_arm
+      - title: "Build Python Wheel"
+        path: /lite/guide/build_cmake_pip
+      - title: "Reduce binary size"
+        path: /lite/guide/reduce_binary_size
+        status: experimental
+
+      - heading: "Resources"
+      - title: "FAQ"
+        path: /lite/guide/faq
+
+
+    - name: "Android"
+      contents:
+      - title: "Overview"
+        path: /lite/android/index
+      - title: "Quickstart"
+        path: /lite/android/quickstart
+      - title: "Google Play services runtime"
+        path: /lite/android/play_services
+        section:
+        - title: "Java API"
+          path: /lite/android/java.md
+        - title: "C API"
+          path: /lite/android/native.md
+          status: experimental
+      - title: "Development tools"
+        path: /lite/android/development
+
+      - heading: "Images & video"
+      - title: "Object detection"
+        path: /lite/android/tutorials/object_detection
+      - title: "Image classification"
+        path: https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/
+        status: external
+      - title: "Optical character recognition"
+        path: https://codelabs.developers.google.com/codelabs/digit-classifier-tflite/
+        status: external
+
+      - heading: "Text"
+      - title: "Text classification"
+        path: /lite/android/tutorials/text_classification
+      - title: "Question answering"
+        path: /lite/android/tutorials/question_answer
+      - title: "Smart reply"
+        path: https://github.com/tensorflow/examples/tree/master/lite/examples/smart_reply/android
+        status: external
+      - title: "Autocomplete"
+        path: https://github.com/tensorflow/examples/tree/master/lite/examples/generative_ai/android
+        status: external
+
+      - heading: "Audio"
+      - title: "Sound and word recognition"
+        path: /lite/android/tutorials/audio_classification
+
+      - heading: "Hardware acceleration"
+      - title: "Acceleration service"
+        path: /lite/android/acceleration_service
+        status: experimental
+      - title: "GPU delegate"
+        section:
+        - title: "Interpreter API"
+          path: /lite/android/delegates/gpu.md
+        - title: "Task library API"
+          path: /lite/android/delegates/gpu_task.md
+        - title: "C/C++ API"
+          path: /lite/android/delegates/gpu_native.md
+      - title: "NNAPI delegate"
+        path: /lite/android/delegates/nnapi
+        status: deprecated
+      - title: "Hexagon delegate"
+        path: /lite/android/delegates/hexagon
+        status: deprecated
+
+      - heading: "Models with metadata"
+      - title: "Overview"
+        path: /lite/inference_with_metadata/overview
+      - title: "Generate model interfaces"
+        path: /lite/inference_with_metadata/codegen
+      - title: "Customize data input and output"
+        path: /lite/inference_with_metadata/lite_support
+
+
+    - name: "iOS"
+      contents:
+      - title: "Quickstart"
+        path: /lite/guide/ios
+
+      - heading: "Images & video"
+      - title: "Object detection"
+        path: https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/ios
+        status: external
+      - title: "Image classification"
+        path: https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-ios/
+        status: external
+
+      - heading: "Text"
+      - title: "Text classification"
+        path: https://github.com/tensorflow/examples/tree/master/lite/examples/text_classification/android
+        status: external
+      - title: "Classification by retrieval"
+        path: https://github.com/tensorflow/examples/tree/master/lite/examples/classification_by_retrieval/ios
+        status: external
+
+      - heading: "Audio"
+      - title: "Voice commands"
+        path: https://github.com/tensorflow/examples/tree/master/lite/examples/speech_commands/ios
+        status: external
+      - title: "Sound classification"
+        path: https://github.com/tensorflow/examples/tree/master/lite/examples/sound_classification/ios
+        status: external
+
+      - heading: "Hardware acceleration"
+      - title: "Core ML delegate"
+        path: /lite/performance/coreml_delegate
+      - title: "GPU delegate"
+        path: /lite/ios/delegates/gpu
+
+
+    - name: "Other Edge"
+      contents:
+      - heading: "Quickstart"
+      - title: "Linux-based devices"
+        path: /lite/guide/python
+
+      - heading: "Images & video"
+      - title: "Object detection"
+        path: https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/raspberry_pi/
+        status: external
+      - title: "Image classification"
+        path: https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/raspberry_pi/
+        status: external
+      - title: "Video classification"
+        path: https://github.com/tensorflow/examples/blob/master/lite/examples/video_classification/raspberry_pi/
+        status: external
+
+      - heading: "Audio"
+      - title: "Sound classification"
+        path: https://github.com/tensorflow/examples/tree/master/lite/examples/sound_classification/raspberry_pi
+        status: external
+
+      - heading: "Microcontrollers"
+      - title: "Overview"
+        path: /lite/microcontrollers
+      - title: "Get started"
+        path: /lite/microcontrollers/get_started_low_level
+      - title: "Hotword detection"
+        path: https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0
+        status: external
+      - title: "Understand the C++ library"
+        path: /lite/microcontrollers/library
+      - title: "Build and convert models"
+        path: /lite/microcontrollers/build_convert
+
+
+    - name: "Models"
+      contents:
+      - title: "Overview"
+        path: /lite/models
+
+      - heading: "Use trained models"
+      - title: "Guide"
+        path: /lite/models/trained/index
+
+      - heading: "Modify models"
+      - title: "Model Maker"
+        status: experimental
+        section:
+        - title: "Overview"
+          path: /lite/models/modify/model_maker
+        - heading: "Images & video"
+        - title: "Image classification"
+          path: /lite/models/modify/model_maker/image_classification
+        - title: "Object detection"
+          path: /lite/models/modify/model_maker/object_detection
+
+        - heading: "Text"
+        - title: "Text classification"
+          path: /lite/models/modify/model_maker/text_classification
+        - title: "BERT question & answer"
+          path: /lite/models/modify/model_maker/question_answer
+        - title: "Text search"
+          path: /lite/models/modify/model_maker/text_searcher
+          status: New
+        - heading: "Audio"
+        - title: "Audio classification"
+          path: /lite/models/modify/model_maker/audio_classification
+        - title: "Speech recognition"
+          path: /lite/models/modify/model_maker/speech_recognition
+
+      - heading: "Design and build models"
+      - title: "Overview"
+        path: /lite/models/build/
+      - title: "Performance best practices"
+        path: /lite/performance/best_practices
+      - title: "Performance measurement"
+        path: /lite/performance/measurement
+      - title: "On-device training"
+        path: /lite/examples/on_device_training/overview
+
+      - heading: "Convert models"
+      - title: "Overview"
+        path: /lite/models/convert/
+      - title: "Add Signatures"
+        path: /lite/guide/signatures
+        status: experimental
+      - title: "Get started"
+        section:
+        - title: "Convert TensorFlow models"
+          path: /lite/models/convert/convert_models
+        - title: "Convert JAX models"
+          path: /lite/examples/jax_conversion/overview
+          status: nightly
+        - title: "Colab for JAX to TFLite"
+          path: /lite/examples/jax_conversion/jax_to_tflite
+          status: nightly
+      - title: "Model compatibility"
+        section:
+        - title: "Overview"
+          path: /lite/guide/ops_compatibility
+        - title: "Select operators"
+          path: /lite/guide/ops_select
+        - title: "Select operators Allowlist"
+          path: /lite/guide/op_select_allowlist
+        - title: "Advanced"
+          section:
+          - title: "Custom operators"
+            path: /lite/guide/ops_custom
+          - title: "Fused operators"
+            path: /lite/models/convert/operation_fusion
+          - title: "Operator versions"
+            path: /lite/guide/ops_version
+            status: experimental
+          - title: "RNN models"
+            path: /lite/models/convert/rnn
+      - title: "Optimize models"
+        section:
+        - title: "Overview"
+          path: /lite/performance/model_optimization
+        - title: "Post-training quantization"
+          path: /lite/performance/post_training_quantization
+        - title: "Post-training dynamic range quantization"
+          path: /lite/performance/post_training_quant
+        - title: "Post-training integer quantization"
+          path: /lite/performance/post_training_integer_quant
+        - title: "Post-training float16 quantization"
+          path: /lite/performance/post_training_float16_quant
+        - title: "Post-training integer quantization with int16 activations"
+          path: /lite/performance/post_training_integer_quant_16x8
+          status: experimental
+        - title: "Quantization specification"
+          path: /lite/performance/quantization_spec
+        - title: "Inspecting quantization errors"
+          path: /lite/performance/quantization_debugger
+          status: nightly
+      - title: "Add model metadata"
+        section:
+        - title: "Overview"
+          path: /lite/models/convert/metadata
+        - title: "Metadata Writer API"
+          path: /lite/models/convert/metadata_writer_tutorial
+      - title: "Conversion tools"
+        section:
+        - title: "Model Analyzer"
+          path: /lite/guide/model_analyzer
+          status: experimental
+        - title: "Authoring tool"
+          path: /lite/guide/authoring
+          status: experimental
+
+
+    - name: "Examples"
+      contents:
+      - title: "Overview"
+        path: /lite/examples/
+
+      - heading: "Vision"
+      - title: "Image classification"
+        path: /lite/examples/image_classification/overview
+      - title: "Video classification"
+        path: /lite/examples/video_classification/overview
+      - title: "Object detection"
+        path: /lite/examples/object_detection/overview
+      - title: "Pose estimation"
+        section:
+        - title: "Overview"
+          path: /lite/examples/pose_estimation/overview
+        - title: "Body pose tutorial"
+          path: /lite/tutorials/pose_classification
+      - title: "Segmentation"
+        path: /lite/examples/segmentation/overview
+      - title: "Style transfer"
+        path: /lite/examples/style_transfer/overview
+      - title: "Super resolution"
+        path: /lite/examples/super_resolution/overview
+      - title: "Optical character recognition"
+        path: /lite/examples/optical_character_recognition/overview
+
+      - heading: "Text"
+      - title: "BERT question & answer"
+        path: /lite/examples/bert_qa/overview
+      - title: "Smart reply"
+        path: /lite/examples/smart_reply/overview
+      - title: "Autocomplete"
+        path: /lite/examples/auto_complete/overview
+      - title: "Text classification"
+        path: /lite/examples/text_classification/overview
+      - heading: "Audio"
+      - title: "Audio classification"
+        path: /lite/examples/audio_classification/overview
+
+      - heading: "Others"
+      - title: "Recommendation"
+        path: /lite/examples/recommendation/overview
+      - title: "Reinforcement learning"
+        path: /lite/examples/reinforcement_learning/overview
+
+
+    - name: "API"
+      skip_translation: true
+      contents:
+      - title: "API Reference"
+        path: /lite/api_docs/
+      - title: "Python"
+        style: accordion
+        section:
+        - include: /lite/api_docs/python/tf/lite/_toc.yaml
+        - include: /lite/api_docs/python/tflite_model_maker/_toc.yaml
+        - include: /lite/api_docs/python/tflite_support/_toc.yaml
+      - title: "Android (Java)"
+        platform: android
+        style: accordion
+        section:
+        - include: /lite/api_docs/java/_toc.yaml
+      - title: "Swift"
+        platform: ios
+        style: accordion
+        section:
+        - include: /lite/api_docs/swift/_toc.yaml
+      - title: "C++"
+        platform: cpp
+        style: accordion
+        section:
+        - title: "Overview"
+          path: /lite/api_docs/cc/
+        - include: /lite/api_docs/cc/_doxygen.yaml
+      - title: "C"
+        platform: cpp
+        style: accordion
+        section:
+        - title: "Overview"
+          path: /lite/api_docs/c/
+        - include: /lite/api_docs/c/_doxygen.yaml
+
+- include: /api_docs/_upper_tabs_api.yaml
+- include: /resources/_upper_tabs_resources.yaml
+- include: /_upper_tabs_right.yaml

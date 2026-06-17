@@ -1,0 +1,418 @@
+# RUN: tf_tfl_translate -tf-input-arrays=input -tf-input-shapes=1,1,1,256 -tf-input-data-types=DT_FLOAT -tf-inference-type=DT_QINT8  -tf-input-min-values='-33.614346' -tf-input-max-values='21.54917' -tf-output-arrays=output %s -o - --output-mlir 2>&1 | FileCheck --check-prefix=MLIR %s
+
+node {
+  name: "input"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 1
+        }
+        dim {
+          size: 1
+        }
+        dim {
+          size: 1
+        }
+        dim {
+          size: 256
+        }
+      }
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/ClassPredictor/weights"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 1
+          }
+          dim {
+            size: 1
+          }
+          dim {
+            size: 256
+          }
+          dim {
+            size: 186
+          }
+        }
+        float_val: 1.0
+      }
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/ClassPredictor/weights/read"
+  op: "Identity"
+  input: "BoxPredictor_4/ClassPredictor/weights"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@BoxPredictor_4/ClassPredictor/weights"
+      }
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/ClassPredictor/weights_quant/min"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 186
+          }
+        }
+        tensor_content: "\217\245\177\301\005@d\276C\030x\276S\320\177\276.\227q\277\260]\223\276j\016\250\276\305\017\202\276\200+\201\276\275\377\177\276\310&\202\276\314\210k\276\3178W\277\335\356_\276\332GG\276`\200>\276o_c\276\312\224k\2767\033S\276M=\376\300y-\271\276\225\021g\276\272lZ\276\353r\251\276\025\354G\276\357\220\\\2765j0\2765Q(\276\013>0\276Y\r\'\276\224\013\"\276G=\377\300\022\211E\276\344\035O\276\242\220l\276w\307\020\2773`\376\276\331\377\202\276\374\016Y\276\224\273^\2767`~\276V\016>\276\226\333g\276*\241K\276\224g\177\276\320\315(\276t\376\177\276B\025B\276@\214\226\276\377s\376\276\373\365\377\277\343\211~\276\205\320b\276\213\236\377\2763\0136\276u\237:\276\325\373~\276\344\r\037\276>\035(\276\247\364!\276\2613%\276\207]!\276\320S\376\301\354 _\276\337PT\276\342\226[\276\304\307\177\276\360\"x\276\312\023\200\276Wfp\2768$W\276\235\014\202\276\230\210m\2761\342L\276b\234\013\277\362XM\276QPL\276\006Va\276\3168>\276\262\367t\276x\252k\276\266\225\231\276z@B\276\244\340?\276>8]\276\214v\206\276\316\210Z\276\275\343U\276\366\0321\276b\2128\276\310\2611\276\340n/\276\312\272\'\276\207\274\207\276tl\034\276\214[\357\275\020\345@\276\1778\376\275\264~#\276\326U*\276\374g\003\276\377\013\000\276\361\375T\276\246\330\007\276\365\203~\276\311\367\033\276\261\240\177\2768`\"\276i\364 \276\321\365\363\275\0241~\276\005\365\376\275S\303\035\277\203\003\020\276\264\322\377\276$\241\177\276\264d\t\276H\000C\276\360/~\276\352\301\377\275\037\300\n\276\0000\033\276r|\377\275\025\004\002\276\276\021\262\276\343\245M\2763\302\351\276LE\005\276\n\"~\276\341q\341\276\265\022~\276\322^\036\276\206\216\031\276\306\n\310\276\322_T\276\367\037w\276\374\227A\276\010\272G\276T&\022\276y\217>\276\275H\033\276\002=\376\276\232x0\276\322C~\276\032\350\212\276\234\322\036\2762%\376\276\266\345#\276.1\021\276\302,\351\276\025x&\276\354\363.\276\362\210\025\276\035\032\036\276\267X\014\276zc\177\300\336L_\276\274,k\276{\266\203\276\366\266~\277\225F\211\276\302~\243\276\253.\214\2765\241l\276g\021\214\276\347\376\177\276H\026T\276\305\220\377\276\000\\Y\276\334\332>\276\224\2459\276\334ja\276\260\313p\276\024\026\\\2769\334\177\301\334\330\222\276\347\376e\276\014\230W\276\253P\252\276i\300C\276\340\261Y\276721\276#k)\276\035.#\276R(0\276\224\336!\276"
+      }
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/ClassPredictor/weights_quant/max"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 186
+          }
+        }
+        tensor_content: "\217\245\177A\005@d>C\030x>S\320\177>.\227q?\260]\223>j\016\250>\305\017\202>\200+\201>\275\377\177>\310&\202>\314\210k>\3178W?\335\356_>\332GG>`\200>>o_c>\312\224k>7\033S>M=\376@y-\271>\225\021g>\272lZ>\353r\251>\025\354G>\357\220\\>5j0>5Q(>\013>0>Y\r\'>\224\013\">G=\377@\022\211E>\344\035O>\242\220l>w\307\020?3`\376>\331\377\202>\374\016Y>\224\273^>7`~>V\016>>\226\333g>*\241K>\224g\177>\320\315(>t\376\177>B\025B>@\214\226>\377s\376>\373\365\377?\343\211~>\205\320b>\213\236\377>3\0136>u\237:>\325\373~>\344\r\037>>\035(>\247\364!>\2613%>\207]!>\320S\376A\354 _>\337PT>\342\226[>\304\307\177>\360\"x>\312\023\200>Wfp>8$W>\235\014\202>\230\210m>1\342L>b\234\013?\362XM>QPL>\006Va>\3168>>\262\367t>x\252k>\266\225\231>z@B>\244\340?>>8]>\214v\206>\316\210Z>\275\343U>\366\0321>b\2128>\310\2611>\340n/>\312\272\'>\207\274\207>tl\034>\214[\357=\020\345@>\1778\376=\264~#>\326U*>\374g\003>\377\013\000>\361\375T>\246\330\007>\365\203~>\311\367\033>\261\240\177>8`\">i\364 >\321\365\363=\0241~>\005\365\376=S\303\035?\203\003\020>\264\322\377>$\241\177>\264d\t>H\000C>\360/~>\352\301\377=\037\300\n>\0000\033>r|\377=\025\004\002>\276\021\262>\343\245M>3\302\351>LE\005>\n\"~>\341q\341>\265\022~>\322^\036>\206\216\031>\306\n\310>\322_T>\367\037w>\374\227A>\010\272G>T&\022>y\217>>\275H\033>\002=\376>\232x0>\322C~>\032\350\212>\234\322\036>2%\376>\266\345#>.1\021>\302,\351>\025x&>\354\363.>\362\210\025>\035\032\036>\267X\014>zc\177@\336L_>\274,k>{\266\203>\366\266~?\225F\211>\302~\243>\253.\214>5\241l>g\021\214>\347\376\177>H\026T>\305\220\377>\000\\Y>\334\332>>\224\2459>\334ja>\260\313p>\024\026\\>9\334\177A\334\330\222>\347\376e>\014\230W>\253P\252>i\300C>\340\261Y>721>#k)>\035.#>R(0>\224\336!>"
+      }
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/ClassPredictor/weights_quant/FakeQuantWithMinMaxVarsPerChannel"
+  op: "FakeQuantWithMinMaxVarsPerChannel"
+  input: "BoxPredictor_4/ClassPredictor/weights/read"
+  input: "BoxPredictor_4/ClassPredictor/weights_quant/min"
+  input: "BoxPredictor_4/ClassPredictor/weights_quant/max"
+  attr {
+    key: "narrow_range"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "num_bits"
+    value {
+      i: 8
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/ClassPredictor/Conv2D"
+  op: "Conv2D"
+  input: "input"
+  input: "BoxPredictor_4/ClassPredictor/weights_quant/FakeQuantWithMinMaxVarsPerChannel"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+  attr {
+    key: "dilations"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "explicit_paddings"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "padding"
+    value {
+      s: "SAME"
+    }
+  }
+  attr {
+    key: "strides"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/ClassPredictor/biases"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 186
+          }
+        }
+        tensor_content: "\324\202\223\276\337\210\375\275\351\212\374\275p@\346\275HD\364\275W\236\362\275i\222\001\276\'\370\365\275:\250\345\275\244\214\373\275}\373\025\276^\351\000\2767_\017\276\362\t\322\2751%\376\275\364\020\324\275,\352\323\275\233\350\365\275\3777\014\276\371\022\277\2745{\366\275\270\207\366\275b\215\010\276\332\252\"\276\273\313\332\275\354\237\361\275\365W9\276o\364B\276\236HD\276$\250B\276CRC\276K\265\246\275f5\016\276[I\017\276\206\346\r\276\306\307\032\276\267\323\375\275\222\377\002\276\037\231\030\276\346W\001\2762F\004\276\021/\034\276\273\215\357\275\014m5\276\307[\021\276K\r\022\276Xv\365\275\312L\372\275A4\026\276\210[\024\276\254\242\003\276\207f\000\276\\C\023\276\322\233\000\276\266\0018\276\233\225\370\275\243\030\004\276]\201C\276\374j:\276\361\257@\276\017z<\276P?A\276a:\375\276\023\220\342\275W\026\377\275qD\005\276\'\271\371\275\342\207\n\276\273\221\003\276\372\205\363\275Ok\334\275\306\233\023\276y\271\"\276\313\345\n\276UH\"\276\233j\366\275\0026\377\275O\263\341\275\005\340\365\275,$\n\276\222\030\010\276\243\020\346\275\301\322\007\276n\252\374\275\325\251\007\276\325\033,\276\352\217\345\275\234\334\t\276\024\241@\276\256\365H\276zbA\276\262\361A\276\275C>\276\353Z\005>\2050&\276\035\222&\276\2457%\276\377/\'\276^\263\037\276\202\341%\276}\312\034\276&\2520\276Y\313,\276\232C*\276\233\375\032\276\212\250%\276\020\362\034\276\212\213-\276\211\211\030\276P\256\"\276\260\307\027\276?\332$\276\213\326\025\2761\243\023\276L\335\034\276\375\034\035\276L\2112\276\016\3571\276\224]\036\276\r\3165\276\232\340&\276?\2315\276^\342,\276\360{2\276\314\031\274=s\363\r\276C\227\035\276\332`\037\276\236\332\031\276Kj0\276$\034\035\276\227\262\033\276\231\260\033\2764\213\035\276\021\363$\276y\372&\276m`/\276<\272\027\276\267l\025\276\034x\031\276\202\313\034\276\026\363\027\276\307(\014\276<\332\005\276\231\316!\276\022\355\027\276-\251\037\2764\203+\276c \032\276\006#\036\276\22064\276\27450\2768O3\276\013\2321\276\31143\276a\367\n\2763\347\362\275?\037\003\276\241\375\001\276\340\003\332\275e\342\357\275\022\226\376\275\214\206\366\275\220\303\311\275\360\342\374\275\246\361\016\276\234\227\351\275\227\306\023\276\234\252\325\275\200\002\001\276\\\243\317\275\302\233\311\275\177\024\002\276\325\027\002\276\'\351\236=\316q\366\275\243>\010\276\203\204\373\275\365F/\276\225\323\346\275\250,\375\275E\0048\276\306\340?\276[/<\276\212\025B\276\251\264?\276"
+      }
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/ClassPredictor/biases/read"
+  op: "Identity"
+  input: "BoxPredictor_4/ClassPredictor/biases"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@BoxPredictor_4/ClassPredictor/biases"
+      }
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/ClassPredictor/BiasAdd"
+  op: "BiasAdd"
+  input: "BoxPredictor_4/ClassPredictor/Conv2D"
+  input: "BoxPredictor_4/ClassPredictor/biases/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/ClassPredictor/act_quant/min"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: -14.066669
+      }
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/ClassPredictor/act_quant/min/read"
+  op: "Identity"
+  input: "BoxPredictor_4/ClassPredictor/act_quant/min"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@BoxPredictor_4/ClassPredictor/act_quant/min"
+      }
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/ClassPredictor/act_quant/max"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 9.810242
+      }
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/ClassPredictor/act_quant/max/read"
+  op: "Identity"
+  input: "BoxPredictor_4/ClassPredictor/act_quant/max"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@BoxPredictor_4/ClassPredictor/act_quant/max"
+      }
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/ClassPredictor/act_quant/FakeQuantWithMinMaxVars"
+  op: "FakeQuantWithMinMaxVars"
+  input: "BoxPredictor_4/ClassPredictor/BiasAdd"
+  input: "BoxPredictor_4/ClassPredictor/act_quant/min/read"
+  input: "BoxPredictor_4/ClassPredictor/act_quant/max/read"
+  attr {
+    key: "narrow_range"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "num_bits"
+    value {
+      i: 8
+    }
+  }
+}
+node {
+  name: "BoxPredictor_4/Reshape_1/shape"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 3
+          }
+        }
+        tensor_content: "\001\000\000\000\377\377\377\377\037\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "output"
+  op: "Reshape"
+  input: "BoxPredictor_4/ClassPredictor/act_quant/FakeQuantWithMinMaxVars"
+  input: "BoxPredictor_4/Reshape_1/shape"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+
+# MLIR-LABEL: func @main
+# MLIR-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<1x1x1x256x!quant.uniform<i8:f32, 0.21632751372549019:27>>) -> tensor<1x6x31x!quant.uniform<i8:f32, 0.09363494573854933:22>>
+# MLIR-SAME:  control_outputs = ""
+# MLIR-SAME:  inputs = "input"
+# MLIR-SAME:  outputs = "output"
+# MLIR:         %[[shape:.*]] = arith.constant dense<[1, -1, 31]> : tensor<3xi32>
+# MLIR:         %[[bias:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<186x!quant.uniform<i32:f32:0
+# MLIR:         %[[weight:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<186x1x1x256x!quant.uniform<i8<-127:127>:f32:0, {0.12581039038230116,
+# MLIR:         %[[conv:.*]] = "tfl.conv_2d"(%[[ARG_0]], %[[weight]], %[[bias]]) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}
+# MLIR:         %[[reshape:.*]] = "tfl.reshape"(%[[conv]], %[[shape]]) : (tensor<1x1x1x186x!quant.uniform<i8:f32, 0.09363494573854933:22>>, tensor<3xi32>)
+# MLIR:         return %[[reshape]] : tensor<1x6x31x!quant.uniform<i8:f32, 0.09363494573854933:22>>
+# MLIR:       }

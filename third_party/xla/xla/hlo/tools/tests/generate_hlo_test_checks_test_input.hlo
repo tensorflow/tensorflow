@@ -1,0 +1,90 @@
+// The next line of the output file should be a comment, but not a "DIRECTIVE:".
+// RUN: hlo-opt %s --split-input-file --passes=logistic-expander,reshape-mover | FileCheck %s
+// The next two lines of the output file should be [empty line, comment line].
+
+
+// The next line of the output file should be an HloModule declaration.
+HloModule TestRemovalOfOldFileCheckLines
+
+// CHECK: Preexisting "CHECK:" lines should be removed.
+// CHECK-COUNT: Preexisting "CHECK-COUNT:" lines should be removed.
+// CHECK-DAG: Preexisting "CHECK-DAG:" lines should be removed.
+// CHECK-EMPTY: Preexisting "CHECK-EMPTY:" lines should be removed.
+// CHECK-LABEL: Preexisting "CHECK-LABEL:" lines should be removed.
+// CHECK-NEXT: Preexisting "CHECK-NEXT:" lines should be removed.
+// CHECK-NOT: Preexisting "CHECK-NOT:" lines should be removed.
+// CHECK-SAME: Preexisting "CHECK-SAME:" lines should be removed.
+// COM: Preexisting "COM:" lines should be removed.
+// RUN: echo 'Preexisting "RUN:" lines should be moved to the top of the file.'
+
+ENTRY no_op {
+  ROOT no_op = () tuple()
+}
+
+// -----
+
+HloModule TestBasicFunctionality
+
+ENTRY test_case {
+  foo = u8[] parameter(0)
+  bar = u8[] parameter(1)
+  baz = u8[] parameter(2)
+  qux = u8[] parameter(3)
+  foobar = u8[] add(foo, bar)
+  bazqux = u8[] add(baz, qux)
+  ROOT foobarbazqux = u8[] add(foobar, bazqux)
+}
+
+// -----
+
+HloModule TestWithRelevantOptimizationPasses
+
+ENTRY test_case {
+  reshape0 = f32[8,7] reshape(f32[1,8,1,7] parameter(0))
+  reshape1 = f32[8,7] reshape(f32[1,8,1,7] parameter(1))
+  logistic = f32[8,7] logistic(reshape0)
+  ROOT add = f32[8,7] add(logistic, reshape1)
+}
+
+// -----
+
+// RUN: echo "Test the tool's handling of a weirdly placed RUN line."
+HloModule TestRunDirectivesInMiddleOfTestFile
+
+// RUN: echo "Another weirdly placed RUN line."
+
+ENTRY no_op {
+  ROOT no_op = () tuple()
+}
+
+// -----
+
+// Test the tool's ability to disambiguate symbols with extremely similar names.
+HloModule TestSymbolNameDisambiguation
+
+// Check generated functions (whose names end with ".<line>") using "CHECK".
+foo.bar.baz.0 {
+  foo_bar.baz.0 = f32[] parameter(0)
+  foo.bar_baz.0 = f32[] parameter(1)
+  foo_bar_baz.0 = f32[] multiply(foo_bar.baz.0, foo.bar_baz.0)
+  ROOT foobarbaz = f32[] add(foo_bar.baz.0, foo_bar_baz.0)
+}
+
+// Check explicitly named functions (no ".<line>" suffixes) using "CHECK-LABEL".
+foo.bar.baz_0 {
+  foo_bar.baz_0 = f32[] parameter(0)
+  foo.bar_baz_0 = f32[] parameter(1)
+  foo_bar_baz_0 = f32[] add(foo_bar.baz_0, foo.bar_baz_0)
+  ROOT foobarbaz = f32[] multiply(foo_bar.baz_0, foo_bar_baz_0)
+}
+
+// Check explicitly named functions (no ".<line>" suffixes) using "CHECK-LABEL".
+ENTRY foobarbaz {
+  constant.0 = f32[4] constant({1.2, 3.4, 5.6, 7.8})
+  constant_0 = f32[4] constant({8.7, 6.5, 4.3, 2.1})
+  call-foo.bar.baz.0 = f32[] call(f32[4] constant.0, f32[4] constant_0), to_apply=foo.bar.baz.0
+  call-foo.bar.baz_0 = f32[] call(f32[4] constant_0, f32[4] constant.0), to_apply=foo.bar.baz_0
+  ROOT sum = f32[] add(f32[] call-foo.bar.baz.0, f32[] call-foo.bar.baz.0)
+}
+
+// RUN: echo "Yet another weirdly placed RUN line."

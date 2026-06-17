@@ -1,0 +1,144 @@
+diff --git a/plugin/common/checkMacrosPlugin.h b/plugin/common/checkMacrosPlugin.h
+index 2cff9f8..a803765 100644
+--- a/plugin/common/checkMacrosPlugin.h
++++ b/plugin/common/checkMacrosPlugin.h
+@@ -16,7 +16,7 @@
+ #ifndef CHECK_MACROS_PLUGIN_H
+ #define CHECK_MACROS_PLUGIN_H
+ 
+-#include "NvInfer.h"
++#include "third_party/tensorrt/NvInfer.h"
+ #include <sstream>
+ 
+ #ifndef TRT_CHECK_MACROS_H
+diff --git a/plugin/common/kernels/common.cu b/plugin/common/kernels/common.cu.cc
+similarity index 87%
+rename from plugin/common/kernels/common.cu
+rename to plugin/common/kernels/common.cu.cc
+index 7c8922a..9818a30 100755
+--- a/plugin/common/kernels/common.cu
++++ b/plugin/common/kernels/common.cu.cc
+@@ -18,7 +18,6 @@
+ #include "cublas_v2.h"
+ #include <cub/cub.cuh>
+ #include <stdint.h>
+-#include "kernel.h"
+ #include "bboxUtils.h"
+ 
+ #define CUDA_MEM_ALIGN 256
+@@ -26,28 +25,7 @@
+ // HASH
+ unsigned int hash(const void* array_, size_t size)
+ {
+-    // Apply hashing only when debugging RPN codes.
+-    if (DEBUG_ENABLE)
+-    {
+-        const char* array_const;
+-        char* array;
+-        cudaMallocHost((void**) &array, size);
+-        cudaMemcpy(array, array_, size, cudaMemcpyDeviceToHost);
+-        array_const = array;
+-        unsigned int hash = 45599;
+-        for (size_t i = 0; i < size; i++)
+-        {
+-            unsigned int value = array_const[i];
+-            hash = hash * 1487 + value;
+-            hash = hash * 317;
+-            hash = hash % 105359;
+-        }
+-        return hash;
+-    }
+-    else
+-    {
+-        return 0;
+-    }
++    return 0;
+ }
+ 
+ // ALIGNPTR
+diff --git a/plugin/common/plugin.h b/plugin/common/plugin.h
+index 27a1fb7..f056255 100644
+--- a/plugin/common/plugin.h
++++ b/plugin/common/plugin.h
+@@ -17,7 +17,7 @@
+ #define TRT_PLUGIN_H
+ #include "checkMacrosPlugin.h"
+ 
+-#include "NvInferPlugin.h"
++#include "third_party/tensorrt/NvInferPlugin.h"
+ #include <cstring>
+ #include <cuda_runtime.h>
+ #include <iostream>
+diff --git a/plugin/efficientNMSPlugin/efficientNMSInference.cu b/plugin/efficientNMSPlugin/efficientNMSInference.cu.cc
+similarity index 99%
+rename from plugin/efficientNMSPlugin/efficientNMSInference.cu
+rename to plugin/efficientNMSPlugin/efficientNMSInference.cu.cc
+index f02a2f8..44fa20b 100644
+--- a/plugin/efficientNMSPlugin/efficientNMSInference.cu
++++ b/plugin/efficientNMSPlugin/efficientNMSInference.cu.cc
+@@ -18,7 +18,7 @@
+ #include "cub/cub.cuh"
+ #include "cuda_runtime_api.h"
+ 
+-#include "efficientNMSInference.cuh"
++#include "efficientNMSInference.cu.h"
+ #include "efficientNMSInference.h"
+ 
+ using namespace nvinfer1;
+diff --git a/plugin/efficientNMSPlugin/efficientNMSInference.cuh b/plugin/efficientNMSPlugin/efficientNMSInference.cu.h
+similarity index 100%
+rename from plugin/efficientNMSPlugin/efficientNMSInference.cuh
+rename to plugin/efficientNMSPlugin/efficientNMSInference.cu.h
+diff --git a/plugin/efficientNMSPlugin/efficientNMSPlugin.cpp b/plugin/efficientNMSPlugin/efficientNMSPlugin.cpp
+index 2d05c5c..acda183 100644
+--- a/plugin/efficientNMSPlugin/efficientNMSPlugin.cpp
++++ b/plugin/efficientNMSPlugin/efficientNMSPlugin.cpp
+@@ -31,11 +31,6 @@ const char* EFFICIENT_NMS_ONNX_PLUGIN_VERSION{"1"};
+ const char* EFFICIENT_NMS_ONNX_PLUGIN_NAME{"EfficientNMS_ONNX_TRT"};
+ } // namespace
+ 
+-PluginFieldCollection EfficientNMSPluginCreator::mFC{};
+-PluginFieldCollection EfficientNMSONNXPluginCreator::mFC{};
+-std::vector<PluginField> EfficientNMSPluginCreator::mPluginAttributes;
+-std::vector<PluginField> EfficientNMSONNXPluginCreator::mPluginAttributes;
+-
+ EfficientNMSPlugin::EfficientNMSPlugin(EfficientNMSParameters param)
+     : mParam(param)
+ {
+@@ -386,7 +381,7 @@ EfficientNMSPluginCreator::EfficientNMSPluginCreator()
+     mPluginAttributes.emplace_back(PluginField("max_output_boxes", nullptr, PluginFieldType::kINT32, 1));
+     mPluginAttributes.emplace_back(PluginField("background_class", nullptr, PluginFieldType::kINT32, 1));
+     mPluginAttributes.emplace_back(PluginField("score_activation", nullptr, PluginFieldType::kINT32, 1));
+-    mPluginAttributes.emplace_back(PluginField("box_coding", nullptr, PluginFieldType::kINT32, 1));
++    mPluginAttributes.emplace_back(PluginField("box_coding", nullptr, PluginFieldType::kINT32, 1));    
+     mFC.nbFields = mPluginAttributes.size();
+     mFC.fields = mPluginAttributes.data();
+ }
+diff --git a/plugin/efficientNMSPlugin/efficientNMSPlugin.h b/plugin/efficientNMSPlugin/efficientNMSPlugin.h
+index b342b09..84d5e69 100644
+--- a/plugin/efficientNMSPlugin/efficientNMSPlugin.h
++++ b/plugin/efficientNMSPlugin/efficientNMSPlugin.h
+@@ -85,9 +85,9 @@ public:
+         const char* name, const void* serialData, size_t serialLength) noexcept override;
+ 
+ protected:
+-    static PluginFieldCollection mFC;
++    PluginFieldCollection mFC;
+     EfficientNMSParameters mParam;
+-    static std::vector<PluginField> mPluginAttributes;
++    std::vector<PluginField> mPluginAttributes;
+     std::string mPluginName;
+ };
+ 
+@@ -107,9 +107,9 @@ public:
+         const char* name, const void* serialData, size_t serialLength) noexcept override;
+ 
+ protected:
+-    static PluginFieldCollection mFC;
++    PluginFieldCollection mFC;
+     EfficientNMSParameters mParam;
+-    static std::vector<PluginField> mPluginAttributes;
++    std::vector<PluginField> mPluginAttributes;
+     std::string mPluginName;
+ };
+ 

@@ -1,0 +1,90 @@
+op {
+  graph_op_name: "FractionalAvgPool"
+  in_arg {
+    name: "value"
+    description: <<END
+4-D with shape `[batch, height, width, channels]`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+output tensor after fractional avg pooling.
+END
+  }
+  out_arg {
+    name: "row_pooling_sequence"
+    description: <<END
+row pooling sequence, needed to calculate gradient.
+END
+  }
+  out_arg {
+    name: "col_pooling_sequence"
+    description: <<END
+column pooling sequence, needed to calculate gradient.
+END
+  }
+  attr {
+    name: "pooling_ratio"
+    description: <<END
+Pooling ratio for each dimension of `value`, currently only
+supports row and col dimension and should be >= 1.0. For example, a valid
+pooling ratio looks like [1.0, 1.44, 1.73, 1.0]. The first and last elements
+must be 1.0 because we don't allow pooling on batch and channels
+dimensions. 1.44 and 1.73 are pooling ratio on height and width dimensions
+respectively.
+END
+  }
+  attr {
+    name: "pseudo_random"
+    description: <<END
+When set to True, generates the pooling sequence in a
+pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
+Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for
+difference between pseudorandom and random.
+END
+  }
+  attr {
+    name: "overlapping"
+    description: <<END
+When set to True, it means when pooling, the values at the boundary
+of adjacent pooling cells are used by both cells. For example:
+
+`index  0  1  2  3  4`
+
+`value  20 5  16 3  7`
+
+If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
+The result would be [41/3, 26/3] for fractional avg pooling.
+END
+  }
+  attr {
+    name: "deterministic"
+    description: <<END
+When set to True, a fixed pooling region will be used when
+iterating over a FractionalAvgPool node in the computation graph. Mainly used
+in unit test to make FractionalAvgPool deterministic.
+END
+  }
+  attr {
+    name: "seed"
+    description: <<END
+If either seed or seed2 are set to be non-zero, the random number
+generator is seeded by the given seed.  Otherwise, it is seeded by a
+random seed.
+END
+  }
+  attr {
+    name: "seed2"
+    description: <<END
+An second seed to avoid seed collision.
+END
+  }
+  summary: "Performs fractional average pooling on the input."
+  description: <<END
+Fractional average pooling is similar to Fractional max pooling in the pooling
+region generation step. The only difference is that after pooling regions are
+generated, a mean operation is performed instead of a max operation in each
+pooling region.
+END
+}

@@ -1,0 +1,25 @@
+op {
+  graph_op_name: "IFFT3D"
+  in_arg {
+    name: "input"
+    description: <<END
+A complex tensor.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A complex tensor of the same shape as `input`. The inner-most 3
+  dimensions of `input` are replaced with their inverse 3D Fourier transform.
+
+@compatibility(numpy)
+Equivalent to np.fft.ifftn with 3 dimensions.
+@end_compatibility
+END
+  }
+  summary: "Inverse 3D fast Fourier transform."
+  description: <<END
+Computes the inverse 3-dimensional discrete Fourier transform over the
+inner-most 3 dimensions of `input`.
+END
+}

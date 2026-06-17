@@ -1,0 +1,23 @@
+op {
+  name: "XlaRecvTPUEmbeddingActivations"
+  input_arg {
+    name: "deduplication_data"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+    number_attr: "num_tables"
+  }
+  attr {
+    name: "num_tables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}

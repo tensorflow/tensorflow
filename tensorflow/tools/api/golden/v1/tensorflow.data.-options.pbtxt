@@ -1,0 +1,70 @@
+path: "tensorflow.data.Options"
+tf_class {
+  is_instance: "<class \'tensorflow.python.data.ops.options.Options\'>"
+  is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
+  is_instance: "<class \'object\'>"
+  member {
+    name: "autotune"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "dataset_name"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "deterministic"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "experimental_deterministic"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "experimental_distribute"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "experimental_external_state_policy"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "experimental_optimization"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "experimental_service"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "experimental_slack"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "experimental_symbolic_checkpoint"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "experimental_threading"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "experimental_warm_start"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "framework_type"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "threading"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "merge"
+    argspec: "args=[\'self\', \'options\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -1,0 +1,189 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/stream_executor/sycl/sycl_executor.h"
+
+#include <cstdint>
+#include <fstream>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/compiler.h"
+#include "xla/service/executable.h"
+#include "xla/service/gpu/gpu_executable.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+
+namespace stream_executor::sycl {
+namespace {
+
+using testing::IsEmpty;
+using testing::Not;
+using ::tsl::testing::IsOk;
+using ::tsl::testing::IsOkAndHolds;
+using ::tsl::testing::StatusIs;
+
+constexpr size_t kMemoryAllocationSize = 1024;
+
+class SyclExecutorTest : public xla::gpu::HloPjRtGpuTestBase {};
+
+TEST_F(SyclExecutorTest, GetSyclKernel) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Platform * platform,
+      stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+
+  std::string hlo_text = R"(
+    ENTRY e {
+      p0 = u32[4] parameter(0)
+      c1 = u32[4] constant(1)
+      ROOT res = u32[4] add(p0, c1)
+    })";
+
+  xla::HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::HloModule> hlo_module,
+      xla::ParseAndReturnUnverifiedModule(hlo_text, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      hlo_module, compiler()->RunHloPasses(std::move(hlo_module), executor,
+                                           /*device_allocator=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::Executable> exec,
+      compiler()->RunBackend(std::move(hlo_module), executor,
+                             /*device_allocator=*/nullptr));
+
+  auto* gpu_exec = static_cast<xla::gpu::GpuExecutable*>(exec.get());
+  ASSERT_NE(gpu_exec, nullptr);
+
+  const xla::gpu::ThunkExecutor& thunk_exec = gpu_exec->thunk_executor();
+  EXPECT_EQ(thunk_exec.thunks().size(), 1);
+
+  const xla::gpu::Thunk* thunk = thunk_exec.thunks().at(0).get();
+  ASSERT_NE(thunk, nullptr);
+  EXPECT_EQ(thunk->kind(), xla::gpu::Thunk::Kind::kCustomKernel);
+
+  const auto* kernel_thunk =
+      dynamic_cast<const xla::gpu::CustomKernelThunk*>(thunk);
+  ASSERT_NE(kernel_thunk, nullptr);
+
+  // Load the SPIR-V binary and get the symbols for the constants to verify
+  // that they are correctly loaded.
+  std::vector<uint8_t> spv_bin(gpu_exec->binary());
+  MultiModuleLoaderSpec module_spec;
+  ModuleHandle module_handle;
+  module_spec.AddCudaCubinInMemory(spv_bin);
+  TF_ASSERT_OK_AND_ASSIGN(module_handle, executor->LoadModule(module_spec));
+  auto global_consts = gpu_exec->constants();
+  EXPECT_EQ(global_consts.size(), 1);
+  for (auto& const_info : global_consts) {
+    absl::StatusOr<DeviceAddressBase> global_status;
+    TF_ASSERT_OK_AND_ASSIGN(
+        global_status,
+        executor->GetSymbol(const_info.symbol_name, module_handle));
+  }
+
+  // The per-fusion kernel binary is stored inside the CustomKernel's loader
+  // spec. Load the kernel directly from that spec.
+  const KernelLoaderSpec& kernel_spec =
+      kernel_thunk->custom_kernel().kernel_spec();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
+                          executor->LoadKernel(kernel_spec));
+
+  auto sycl_executor = dynamic_cast<SyclExecutor*>(executor);
+  ASSERT_NE(sycl_executor, nullptr);
+  EXPECT_THAT(sycl_executor->GetSyclKernel(kernel.get()),
+              IsOkAndHolds(kernel.get()));
+
+  sycl_executor->UnloadKernel(kernel.get());
+  EXPECT_THAT(sycl_executor->GetSyclKernel(kernel.get()),
+              StatusIs(absl::StatusCode::kNotFound));
+
+  EXPECT_THAT(sycl_executor->GetSyclKernel(nullptr),
+              StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST_F(SyclExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          stream_executor::PlatformManager::PlatformWithId(
+                              stream_executor::sycl::kSyclPlatformId));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<MemoryAllocator> allocator,
+      executor->CreateMemoryAllocator(MemoryType::kUnified));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          allocator->Allocate(kMemoryAllocationSize));
+  EXPECT_NE(allocation->opaque(), nullptr);
+  EXPECT_EQ(allocation->size(), kMemoryAllocationSize);
+  allocation.reset();
+}
+
+TEST_F(SyclExecutorTest, CreateHostMemoryAllocatorWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          stream_executor::PlatformManager::PlatformWithId(
+                              stream_executor::sycl::kSyclPlatformId));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocator> allocator,
+                          executor->CreateMemoryAllocator(MemoryType::kHost));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          allocator->Allocate(kMemoryAllocationSize));
+  EXPECT_NE(allocation->opaque(), nullptr);
+  EXPECT_EQ(allocation->size(), kMemoryAllocationSize);
+  allocation.reset();
+}
+
+TEST_F(SyclExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          stream_executor::PlatformManager::PlatformWithId(
+                              stream_executor::sycl::kSyclPlatformId));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<MemoryAllocator> allocator,
+      executor->CreateMemoryAllocator(MemoryType::kCollective));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          allocator->Allocate(kMemoryAllocationSize));
+  EXPECT_NE(allocation->opaque(), nullptr);
+  EXPECT_EQ(allocation->size(), kMemoryAllocationSize);
+  allocation.reset();
+}
+
+TEST_F(SyclExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          stream_executor::PlatformManager::PlatformWithId(
+                              stream_executor::sycl::kSyclPlatformId));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+  EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
+              Not(IsOk()));
+}
+
+}  // namespace
+}  // namespace stream_executor::sycl

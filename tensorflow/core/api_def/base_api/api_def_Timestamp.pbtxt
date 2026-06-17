@@ -1,0 +1,17 @@
+op {
+  graph_op_name: "Timestamp"
+  summary: "Provides the time since epoch in seconds."
+  description: <<END
+Returns the timestamp as a `float64` for seconds since the Unix epoch.
+
+Common usages include:
+* Logging
+* Providing a random number seed
+* Debugging graph execution
+* Generating timing information, mainly through comparison of timestamps
+
+Note: In graph mode, the timestamp is computed when the op is executed,
+not when it is added to the graph.  In eager mode, the timestamp is computed
+when the op is eagerly executed.
+END
+}

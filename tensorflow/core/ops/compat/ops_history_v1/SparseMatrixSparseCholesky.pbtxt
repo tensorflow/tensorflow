@@ -1,0 +1,27 @@
+op {
+  name: "SparseMatrixSparseCholesky"
+  input_arg {
+    name: "input"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "permutation"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+// === First, we dump the debug options to a temporary directory ===
+// RUN: hlo-opt --xla_dump_to=%t_dump_dir --xla_dump_hlo_pass_re=".*" --xla_gpu_dot_merger_threshold_mb=3253 --xla_dump_large_constants=true --passes=dce,algsimp %s 
+
+// === Then, we parse the debug options from the temporary directory ===
+// RUN: hlo-opt --xla_dump_to=%t_dump_dir2 --debug_options_file=$(echo %t_dump_dir/module_0000.m.*debug_options) --passes="dce,algsimp" %s
+// RUN: cat %t_dump_dir2/module_0000.m.*after_optimization.txt | FileCheck %s --check-prefix="MODULE_WITH_LARGE_CONSTANTS"
+// RUN: cat %t_dump_dir2/module_0000.m.*debug_options | FileCheck %s --check-prefix="DEBUG_OPTIONS_DUMP"
+
+// === Then, we override the debug options with the command line ===
+// RUN: hlo-opt --xla_dump_to=%t_dump_dir3 --debug_options_file=$(echo %t_dump_dir/module_0000.m.*debug_options) --xla_gpu_dot_merger_threshold_mb=1000 --passes="dce,algsimp" %s
+// RUN: cat %t_dump_dir3/module_0000.m.*after_optimization.txt | FileCheck %s --check-prefix="MODULE_WITH_LARGE_CONSTANTS"
+// RUN: cat %t_dump_dir3/module_0000.m.*debug_options | FileCheck %s --check-prefix="DEBUG_OPTIONS_DUMP_OVERRIDES"
+
+// === Then, we override the debug options via XLA_FLAGS ===
+// RUN: XLA_FLAGS="--xla_gpu_dot_merger_threshold_mb=1000" hlo-opt --xla_dump_to=%t_dump_dir4 --debug_options_file=$(echo %t_dump_dir/module_0000.m.*debug_options) --passes="dce,algsimp" %s
+// RUN: cat %t_dump_dir4/module_0000.m.*after_optimization.txt | FileCheck %s --check-prefix="MODULE_WITH_LARGE_CONSTANTS"
+// RUN: cat %t_dump_dir4/module_0000.m.*debug_options | FileCheck %s --check-prefix="DEBUG_OPTIONS_DUMP_OVERRIDES"
+
+// === We also test that command line flags override XLA_FLAGS ===
+// RUN: XLA_FLAGS="--xla_gpu_dot_merger_threshold_mb=1000" hlo-opt --xla_dump_to=%t_dump_dir5 --debug_options_file=$(echo %t_dump_dir/module_0000.m.*debug_options) --xla_gpu_dot_merger_threshold_mb=4578 --passes="dce,algsimp" %s
+// RUN: cat %t_dump_dir5/module_0000.m.*after_optimization.txt | FileCheck %s --check-prefix="MODULE_WITH_LARGE_CONSTANTS"
+// RUN: cat %t_dump_dir5/module_0000.m.*debug_options | FileCheck %s --check-prefix="DEBUG_OPTIONS_DUMP_OVERRIDES_XLA_FLAGS"
+
+// MODULE_WITH_LARGE_CONSTANTS: %c2 = s32[12]{0} constant({10, 6, 3, 2, 5, 3, 7, 4, 2, 3, 1, 0})
+
+// DEBUG_OPTIONS_DUMP: xla_gpu_dot_merger_threshold_mb: 3253
+// DEBUG_OPTIONS_DUMP-NEXT: xla_dump_to:
+// DEBUG_OPTIONS_DUMP-NEXT: xla_dump_hlo_pass_re:
+// DEBUG_OPTIONS_DUMP-NEXT: xla_dump_large_constants: true
+
+// DEBUG_OPTIONS_DUMP_OVERRIDES: xla_gpu_dot_merger_threshold_mb: 1000
+// DEBUG_OPTIONS_DUMP_OVERRIDES-NEXT: xla_dump_to:
+// DEBUG_OPTIONS_DUMP_OVERRIDES-NEXT: xla_dump_hlo_pass_re:
+// DEBUG_OPTIONS_DUMP_OVERRIDES-NEXT: xla_dump_large_constants: true
+
+// DEBUG_OPTIONS_DUMP_OVERRIDES_XLA_FLAGS: xla_gpu_dot_merger_threshold_mb: 4578
+// DEBUG_OPTIONS_DUMP_OVERRIDES_XLA_FLAGS-NEXT: xla_dump_to:
+// DEBUG_OPTIONS_DUMP_OVERRIDES_XLA_FLAGS-NEXT: xla_dump_hlo_pass_re:
+// DEBUG_OPTIONS_DUMP_OVERRIDES_XLA_FLAGS-NEXT: xla_dump_large_constants: true
+
+HloModule m
+test {
+    p0 = s32[12] parameter(0)
+    c1 = s32[12] constant({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11})
+    c2 = s32[12] constant({10, 6, 3, 2, 5, 3, 7, 4, 2, 3, 1, 0})
+    x = s32[12] multiply(p0, c1)
+    ROOT y = s32[12] add(x, c2)
+}

@@ -1,0 +1,46 @@
+# Copyright 2026 The OpenXLA Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from collections.abc import Sequence
+
+from ._hlo import OpSharding_Type, ProgramShape, Shape, XlaComputation
+
+class FrontendAttributes:
+  def __init__(self) -> None: ...
+  def __setitem__(self, arg0: str, arg1: str, /) -> None: ...
+
+class XlaOp:
+  pass
+
+class XlaBuilder:
+  def __init__(self, arg: str, /) -> None: ...
+  def Build(self, root: XlaOp | None = ...) -> XlaComputation:
+    """Builds a computation from the contents of the builder."""
+
+  def GetShape(self, arg: XlaOp, /) -> Shape: ...
+  def build(self, root: XlaOp | None = ...) -> XlaComputation:
+    """Builds a computation from the contents of the builder."""
+
+  def clear_op_metadata(self) -> None: ...
+  def get_shape(self, arg: XlaOp, /) -> Shape: ...
+  def get_program_shape(self, root: XlaOp | None = ...) -> ProgramShape: ...
+  def is_constant(self, arg: XlaOp, /) -> bool: ...
+  def set_op_metadata(self, arg: object, /) -> None: ...
+  def set_sharding(self, arg: OpSharding_Type, /) -> None: ...
+  def clear_sharding(self) -> None: ...
+  def set_frontend_attributes(self, arg: FrontendAttributes, /) -> None: ...
+  def clear_frontend_attributes(self) -> None: ...
+  def setup_alias(
+      self, arg0: Sequence[int], arg1: int, arg2: Sequence[int], /
+  ) -> None: ...

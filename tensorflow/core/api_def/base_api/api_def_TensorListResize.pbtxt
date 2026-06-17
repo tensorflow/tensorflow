@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "TensorListResize"
+  summary: "Resizes the list."
+  description: <<END
+
+input_handle: the input list
+size: size of the output list
+
+END
+}

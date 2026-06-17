@@ -1,0 +1,210 @@
+// Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+namespace tflite.gpu.data;
+
+table Int4 {
+  x:int32;
+  y:int32;
+  z:int32;
+  w:int32;
+}
+
+table Int3 {
+  x:int32;
+  y:int32;
+  z:int32;
+}
+
+table Int2 {
+  x:int32;
+  y:int32;
+}
+
+enum AccessType : byte {
+  READ = 0,
+  WRITE = 1,
+  READ_WRITE = 2,
+}
+
+table StateVariable {
+  key:string;
+  value:string;
+}
+
+table GPUObjectDescriptor {
+  state_vars:[StateVariable];
+  access_type:AccessType;
+}
+
+table IntValue {
+  name:string;
+  value:int32;
+  active:bool;
+}
+
+table FloatValue {
+  name:string;
+  value:float;
+  active:bool;
+}
+
+table HalfValue {
+  name:string;
+  value:float;
+  active:bool;
+}
+
+enum DataType : byte {
+  UNKNOWN = 0,
+  FLOAT16 = 1,
+  FLOAT32 = 2,
+  FLOAT64 = 3,
+  UINT8 = 4,
+  INT8 = 5,
+  UINT16 = 6,
+  INT16 = 7,
+  UINT32 = 8,
+  INT32 = 9,
+  UINT64 = 10,
+  INT64 = 11,
+  BOOL = 12,
+}
+
+enum MemoryType : byte {
+  GLOBAL = 0,
+  CONSTANT = 1,
+  LOCAL = 2,
+}
+
+table BufferDescriptor {
+  base_obj:GPUObjectDescriptor;
+  element_type:DataType;
+  element_size:int32;
+  memory_type:MemoryType;
+  attributes:[string];
+  size:int32;
+  data:[uint8];
+}
+
+enum TensorStorageType : byte {
+  UNKNOWN = 0,
+  BUFFER = 1,
+  IMAGE_BUFFER = 2,
+  TEXTURE_2D = 3,
+  TEXTURE_3D = 4,
+  TEXTURE_ARRAY = 5,
+  SINGLE_TEXTURE_2D = 6,
+}
+
+enum Layout : byte {
+  UNKNOWN = 0,
+  HWC = 1,
+  BHWC = 2,
+  HWDC = 3,
+  BHWDC = 4,
+  LINEAR = 5,
+  HW = 6,
+}
+
+table BHWDC {
+  b:int32;
+  h:int32;
+  w:int32;
+  d:int32;
+  c:int32;
+}
+
+table TensorDescriptor {
+  base_obj:GPUObjectDescriptor;
+  data_type:DataType;
+  storage_type:TensorStorageType;
+  layout:Layout;
+  shape:BHWDC;
+  data:[uint8];
+  use_buffer_for_write_only_2d_texture:bool;
+  use_buffer_for_write_only_image_buffer:bool;
+}
+
+table BufferDescriptorMapValue {
+  key:string;
+  value:BufferDescriptor;
+}
+
+table TensorDescriptorMapValue {
+  key:string;
+  value:TensorDescriptor;
+}
+
+table Arguments {
+  int_values:[IntValue];
+  float_values:[FloatValue];
+  half_values:[HalfValue];
+
+  buffer_refs:[BufferDescriptorMapValue];
+  tensor_refs:[TensorDescriptorMapValue];
+
+  buffer_objects:[BufferDescriptorMapValue];
+  tensor_objects:[TensorDescriptorMapValue];
+}
+
+enum CalculationsPrecision : byte {
+  F32 = 0,
+  F32_F16 = 1,
+  F16 = 2,
+}
+
+enum TensorToGrid : byte {
+  CUSTOM = 0,
+  WB_TO_X_HD_TO_Y_S_TO_Z = 1,
+  WB_TO_X_HD_TO_Y_Z_IS_1 = 2,
+  WB_TO_X_H_TO_Y_D_TO_Z = 3,
+  B_TO_X_Y_IS_1_Z_IS_1 = 4,
+}
+
+enum CompilerOptions : byte {
+  ADRENO_FULL_SIMD_LINE = 0,
+  ADRENO_MORE_WAVES = 1,
+  CL_FAST_RELAXED_MATH = 2,
+  CL_OPT_DISABLE = 3,
+  CL_2_0 = 4,
+  CL_3_0 = 5,
+  CL_REGISTER_ALLOCATION_64 = 6,
+}
+
+table OperationDef {
+  precision:CalculationsPrecision;
+  src_tensors:[TensorDescriptor];
+  dst_tensors:[TensorDescriptor];
+}
+
+table CompilerOption {
+  option:CompilerOptions;
+}
+
+table GPUOperation {
+  arguments:Arguments;
+  code:string;
+  work_group_size:Int3;
+  compiler_options:[CompilerOption];
+  tensor_to_grid:TensorToGrid;
+  flops:uint64;
+  definition:OperationDef;
+  grid_dimension:int32;
+  work_group_launch_order:Int3;
+  grid_size:Int3;
+  src_tensors_names:[string];
+  dst_tensors_names:[string];
+  work_groups_count:Int3;
+}

@@ -1,0 +1,104 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla;
+
+import "xla/stream_executor/blas.proto";
+import "xla/xla_data.proto";
+
+message GemmConfigProto {
+  message MatrixLayout {
+    enum Order {
+      ORDER_UNKNOWN = 0;
+      ORDER_ROW_MAJOR = 1;
+      ORDER_COLUMN_MAJOR = 2;
+    }
+    Order order = 1;
+    int64 num_rows = 2;
+    int64 num_cols = 3;
+    int64 batch_size = 4;
+    int64 leading_dim_stride = 5;
+    int64 batch_stride = 6;
+    xla.BlasTransposeProto transpose = 7;
+    xla.PrimitiveType dtype = 8;
+  }
+  MatrixLayout lhs_layout = 1;
+  MatrixLayout rhs_layout = 2;
+  MatrixLayout c_layout = 3;
+  MatrixLayout output_layout = 4;
+  double alpha_real = 5;
+  double alpha_imag = 6;
+  double beta = 7;
+  int64 compute_precision = 8;
+  xla.PrecisionConfig.Algorithm precision_algorithm = 9;
+  optional int64 algorithm = 10;
+  bool grad_x = 11;
+  bool grad_y = 12;
+  xla.BlasComputationTypeProto compute_type = 13;
+  int32 scale_mode = 14;
+}
+
+message GroupedGemmConfigProto {
+  uint64 m = 1;
+  uint64 n = 2;
+  uint64 k = 3;
+  uint64 batch_count = 4;
+  uint64 group_count = 5;
+  int64 lhs_leading_dim_stride = 6;
+  int64 rhs_leading_dim_stride = 7;
+  int64 c_leading_dim_stride = 8;
+  int64 output_leading_dim_stride = 9;
+  xla.BlasTransposeProto trans_a = 10;
+  xla.BlasTransposeProto trans_b = 11;
+  bool must_swap_operands = 12;
+  double alpha_real = 13;
+  double alpha_imag = 14;
+  double beta = 15;
+  xla.PrimitiveType type_a = 16;
+  xla.PrimitiveType type_b = 17;
+  xla.PrimitiveType type_c = 18;
+  xla.PrimitiveType type_d = 19;
+  int64 stride_ragged_dim = 20;
+  int64 stride_group_dim = 21;
+  int64 c_stride_ragged_dim = 27;
+  int64 output_stride_ragged_dim = 22;
+  xla.PrecisionConfig.Algorithm precision_algorithm = 23;
+  int64 compute_precision = 24;
+  RaggedDotModeProto ragged_mode = 25;
+  xla.BlasComputationTypeProto compute_type = 26;
+}
+
+enum BlasLtEpilogueProto {
+  EPILOGUE_DEFAULT = 0;
+  EPILOGUE_RELU = 1;
+  EPILOGUE_BIAS = 2;
+  EPILOGUE_BIAS_THEN_RELU = 3;
+  EPILOGUE_GELU = 4;
+  EPILOGUE_SILU = 5;
+  EPILOGUE_SILU_WITH_AUX = 6;
+  EPILOGUE_GELU_WITH_AUX = 7;
+  EPILOGUE_BIAS_THEN_GELU = 8;
+  EPILOGUE_BIAS_THEN_SILU = 9;
+  EPILOGUE_BIAS_THEN_GELU_WITH_AUX = 10;
+  EPILOGUE_BIAS_THEN_SILU_WITH_AUX = 11;
+}
+
+enum RaggedDotModeProto {
+  RAGGED_NON_CONTRACTING = 0;
+  RAGGED_CONTRACTING = 1;
+  RAGGED_BATCH = 2;
+}

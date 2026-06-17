@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Snapshot"
+  summary: "Returns a copy of the input tensor."
+}

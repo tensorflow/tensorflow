@@ -1,0 +1,27 @@
+op {
+  graph_op_name: "Maximum"
+  endpoint {
+    name: "math.maximum"
+  }
+  endpoint {
+    name: "maximum"
+  }
+  description: <<END
+Example:
+
+>>> x = tf.constant([0., 0., 0., 0.])
+>>> y = tf.constant([-2., 0., 2., 5.])
+>>> tf.math.maximum(x, y)
+<tf.Tensor: shape=(4,), dtype=float32, numpy=array([0., 0., 2., 5.], dtype=float32)>
+
+Note that `maximum` supports [broadcast semantics](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html) for `x` and `y`.
+
+>>> x = tf.constant([-5., 0., 0., 0.])
+>>> y = tf.constant([-3.])
+>>> tf.math.maximum(x, y)
+<tf.Tensor: shape=(4,), dtype=float32, numpy=array([-3., 0., 0., 0.], dtype=float32)>
+
+The reduction version of this elementwise operation is `tf.math.reduce_max`
+
+END
+}

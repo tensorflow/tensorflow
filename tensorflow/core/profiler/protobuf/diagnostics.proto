@@ -1,0 +1,7 @@
+// This proto describes the diagnostics for debugging profiling issues of
+// the TensorFlow profiler.
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+import public "plugin/xprof/protobuf/diagnostics.proto";

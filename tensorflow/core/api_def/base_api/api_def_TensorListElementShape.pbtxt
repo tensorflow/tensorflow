@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "TensorListElementShape"
+  summary: "The shape of the elements of the given list, as a tensor."
+  description: <<END
+  input_handle: the list
+  element_shape: the shape of elements of the list
+END
+}

@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "TensorArraySizeV2"
+  visibility: SKIP
+  summary: "Deprecated. Use TensorArraySizeV3"
+}

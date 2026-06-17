@@ -1,0 +1,20 @@
+--- a/python/triton/experimental/gsan/src/GSanLibrary.cu
++++ b/python/triton/experimental/gsan/src/GSanLibrary.cu
+@@ -6,11 +6,12 @@ extern "C" GSAN_DEVICE void __assertfail(const char *assertion,
+                                          const char *function,
+                                          __SIZE_TYPE__ charSize);
+ 
+-static GSAN_DEVICE inline void __assert_fail(const char *assertion,
+-                                             const char *file, unsigned line,
+-                                             const char *function) {
+-  __assertfail(assertion, file, line, function, sizeof(char));
+-}
++// Collides with __clang_cuda_runtime_wrapper.h's definition
++// static GSAN_DEVICE inline void __assert_fail(const char *assertion,
++//                                              const char *file, unsigned line,
++//                                              const char *function) {
++//   __assertfail(assertion, file, line, function, sizeof(char));
++// }
+ 
+ namespace gsan {
+ 

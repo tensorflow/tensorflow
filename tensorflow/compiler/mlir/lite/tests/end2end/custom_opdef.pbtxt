@@ -1,0 +1,47 @@
+# RUN: tf_tfl_translate -tf-input-arrays=input0,input1 -tf-input-shapes=4:4 -tf-input-data-types=DT_INT32,DT_INT32 -tf-output-arrays=output %s -o - --output-mlir -tf-custom-opdefs="name: 'BannaPotatoSaladWithColeslaw' input_arg: { name: 'a' type: DT_INT32 } input_arg: { name: 'b' type: DT_INT32 } output_arg: { name: 'c' type: DT_INT32 }" | FileCheck %s
+
+node {
+  name: "output"
+  op: "BannaPotatoSaladWithColeslaw"
+  input: "input0"
+  input: "input1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input0"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input1"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 27
+}
+
+# CHECK-LABEL: func @main(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<*xi32>
+# CHECK: attributes {tf.entry_function = {control_outputs = "", inputs = "input0,input1", outputs = "output"}} {
+# CHECK-NEXT: %[[CUSTOM:.*]] = "tfl.custom_tf"(%arg0, %arg1) ({
+# CHECK-NEXT: ^bb0(%arg2: tensor<4xi32>, %arg3: tensor<4xi32>):
+# CHECK-NEXT:   %[[OUTPUTS:.*]] = "tf.BannaPotatoSaladWithColeslaw"(%arg2, %arg3) {T = i32, device = ""} : (tensor<4xi32>, tensor<4xi32>) -> tensor<*xi32>
+# CHECK-NEXT:   "tfl.yield"(%[[OUTPUTS]]) : (tensor<*xi32>) -> ()
+# CHECK-NEXT: }) {T = i32, device = ""} : (tensor<4xi32>, tensor<4xi32>) -> tensor<*xi32>
+# CHECK-NEXT: return %[[CUSTOM]] : tensor<*xi32>
+# CHECK-NEXT: }

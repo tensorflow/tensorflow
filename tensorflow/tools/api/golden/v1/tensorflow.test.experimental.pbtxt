@@ -1,0 +1,7 @@
+path: "tensorflow.test.experimental"
+tf_module {
+  member_method {
+    name: "sync_devices"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+}

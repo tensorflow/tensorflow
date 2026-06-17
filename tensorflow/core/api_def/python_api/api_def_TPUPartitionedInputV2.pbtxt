@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "TPUPartitionedInputV2"
+  visibility: HIDDEN
+}

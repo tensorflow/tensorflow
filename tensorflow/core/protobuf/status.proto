@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+// Add a dummy package name. Having no package like
+// core/lib/core/error_codes.proto, or having tensorflow like
+// tsl/protobuf/error_codes.proto, results in name collision errors in generated
+// code for some users that use JS through J2CL.
+package tensorflow.dummy;
+
+import public "xla/tsl/protobuf/status.proto";
+
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";

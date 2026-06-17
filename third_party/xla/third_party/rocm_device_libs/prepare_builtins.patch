@@ -1,0 +1,19 @@
+diff --git a/utils/prepare-builtins/prepare-builtins.cpp b/utils/prepare-builtins/prepare-builtins.cpp
+index 3f60dcd..82c23a1 100644
+--- a/utils/prepare-builtins/prepare-builtins.cpp
++++ b/utils/prepare-builtins/prepare-builtins.cpp
+@@ -73,6 +73,14 @@ int main(int argc, char **argv) {
+     return 1;
+   }
+
++  // Strip the OpenCL version metadata. There are a lot of linked
++  // modules in the library build, each spamming the same
++  // version. This may also report a different version than the user
++  // program is using. This should probably be uniqued when linking.
++  if (NamedMDNode *OCLVersion = M->getNamedMetadata("opencl.ocl.version"))
++      M->eraseNamedMetadata(OCLVersion);
++
++
+   if (OutputFilename.empty()) {
+     errs() << "no output file\n";
+     return 1;

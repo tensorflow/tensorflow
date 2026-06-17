@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "CheckPinned"
+  summary: "Checks whether a tensor is located in host memory pinned for GPU."
+  description: <<END
+When run:
+- Reports an `InvalidArgument` error if `tensor` is not in pinned memory.
+- Reports a `FailedPrecondition` error if not built with CUDA.
+END
+}

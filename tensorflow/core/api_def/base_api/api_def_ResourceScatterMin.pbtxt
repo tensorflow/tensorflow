@@ -1,0 +1,43 @@
+op {
+  graph_op_name: "ResourceScatterMin"
+  in_arg {
+    name: "resource"
+    description: <<END
+Should be from a `Variable` node.
+END
+  }
+  in_arg {
+    name: "indices"
+    description: <<END
+A tensor of indices into the first dimension of `ref`.
+END
+  }
+  in_arg {
+    name: "updates"
+    description: <<END
+A tensor of updated values to add to `ref`.
+END
+  }
+  summary: "Reduces sparse updates into the variable referenced by `resource` using the `min` operation."
+  description: <<END
+This operation computes
+
+    # Scalar indices
+    ref[indices, ...] = min(ref[indices, ...], updates[...])
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] = min(ref[indices[i], ...], updates[i, ...])
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] = min(ref[indices[i, ..., j], ...], updates[i, ..., j, ...])
+
+Duplicate entries are handled correctly: if multiple `indices` reference
+the same location, their contributions are combined.
+
+Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src='https://www.tensorflow.org/images/ScatterAdd.png' alt>
+</div>
+END
+}

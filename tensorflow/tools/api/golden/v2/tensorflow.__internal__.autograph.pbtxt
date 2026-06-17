@@ -1,0 +1,11 @@
+path: "tensorflow.__internal__.autograph"
+tf_module {
+  member_method {
+    name: "control_status_ctx"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "tf_convert"
+    argspec: "args=[\'f\', \'ctx\', \'convert_by_default\', \'user_requested\'], varargs=None, keywords=None, defaults=[\'True\', \'False\'], "
+  }
+}

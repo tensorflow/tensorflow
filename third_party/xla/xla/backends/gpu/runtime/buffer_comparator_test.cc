@@ -1,0 +1,411 @@
+/* Copyright 2018 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/gpu/runtime/buffer_comparator_test.h"
+
+#include <cmath>
+#include <complex>
+#include <cstdint>
+#include <limits>
+#include <memory>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/cleanup/cleanup.h"
+#include "absl/log/check.h"
+#include "Eigen/Core"
+#include "xla/backends/gpu/runtime/buffer_comparator.h"
+#include "xla/primitive_util.h"
+#include "xla/service/gpu/stream_executor_util.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_handle.h"
+#include "xla/stream_executor/stream.h"
+#include "tsl/platform/ml_dtypes.h"
+
+namespace xla {
+namespace gpu {
+namespace {
+
+TEST_F(BufferComparatorTest, TestComplex) {
+  EXPECT_FALSE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {6, 7}}));
+  EXPECT_TRUE(CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}},
+                                         {{0.1, 0.2}, {2.2, 3.3}}));
+  EXPECT_TRUE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {2, 3}}));
+
+  EXPECT_FALSE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {6, 3}}));
+
+  EXPECT_FALSE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {6, 7}}));
+
+  EXPECT_FALSE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 6}, {2, 3}}));
+  EXPECT_TRUE(CompareEqualComplex<double>({{0.1, 0.2}, {2, 3}},
+                                          {{0.1, 0.2}, {2.2, 3.3}}));
+  EXPECT_FALSE(
+      CompareEqualComplex<double>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {2, 7}}));
+}
+
+TEST_F(BufferComparatorTest, TestScalar) {
+  EXPECT_TRUE(CompareEqualScalar<std::complex<double>>({1, 1}, {1, 1}));
+  EXPECT_FALSE(CompareEqualScalar<std::complex<double>>({1, 1}, {1, 2}));
+  EXPECT_FALSE(CompareEqualScalar<std::complex<double>>({1, 1}, {2, 1}));
+  EXPECT_TRUE(CompareEqualScalar<std::complex<float>>({1, 1}, {1, 1}));
+  EXPECT_FALSE(CompareEqualScalar<std::complex<float>>({1, 1}, {1, 2}));
+  EXPECT_FALSE(CompareEqualScalar<std::complex<float>>({1, 1}, {2, 1}));
+  EXPECT_TRUE(CompareEqualScalar<float>(1, 1));
+  EXPECT_FALSE(CompareEqualScalar<float>(1, 2));
+  EXPECT_TRUE(CompareEqualScalar<double>(1, 1));
+  EXPECT_FALSE(CompareEqualScalar<double>(1, 2));
+  EXPECT_TRUE(CompareEqualScalar<bool>(true, true));
+  EXPECT_TRUE(CompareEqualScalar<bool>(false, false));
+  EXPECT_FALSE(CompareEqualScalar<bool>(true, false));
+  EXPECT_TRUE(CompareEqualScalar<int8_t>(1, 1));
+  EXPECT_FALSE(CompareEqualScalar<int8_t>(1, 2));
+  EXPECT_TRUE(CompareEqualScalar<int32_t>(1, 1));
+  EXPECT_FALSE(CompareEqualScalar<int32_t>(1, 2));
+}
+
+TEST_F(BufferComparatorTest, TestPred) {
+  EXPECT_TRUE(CompareEqualBuffers<bool>({false, true}, {false, true}, 0.0));
+  EXPECT_FALSE(CompareEqualBuffers<bool>({false, true}, {false, false}, 0.0));
+  EXPECT_FALSE(CompareEqualBuffers<bool>({false, true}, {true, true}, 0.0));
+  EXPECT_FALSE(CompareEqualBuffers<bool>({false, true}, {true, false}, 0.0));
+}
+
+TEST_F(BufferComparatorTest, TestNaNs) {
+  EXPECT_TRUE(
+      CompareEqualFloatBuffers<Eigen::half>({std::nanf("")}, {std::nanf("")}));
+  // NaN values with different bit patterns should compare equal.
+  EXPECT_TRUE(CompareEqualFloatBuffers<Eigen::half>({std::nanf("")},
+                                                    {std::nanf("1234")}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>({std::nanf("")}, {1.}));
+
+  EXPECT_TRUE(
+      CompareEqualFloatBuffers<float>({std::nanf("")}, {std::nanf("")}));
+  // NaN values with different bit patterns should compare equal.
+  EXPECT_TRUE(
+      CompareEqualFloatBuffers<float>({std::nanf("")}, {std::nanf("1234")}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({std::nanf("")}, {1.}));
+
+  EXPECT_TRUE(
+      CompareEqualFloatBuffers<double>({std::nanf("")}, {std::nanf("")}));
+  // NaN values with different bit patterns should compare equal.
+  EXPECT_TRUE(
+      CompareEqualFloatBuffers<double>({std::nanf("")}, {std::nanf("1234")}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({std::nanf("")}, {1.}));
+}
+
+TEST_F(BufferComparatorTest, TestInfs) {
+  const auto inf = std::numeric_limits<float>::infinity();
+  EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>({inf}, {std::nanf("")}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<Eigen::half>({inf}, {inf}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<Eigen::half>({inf}, {65504}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<Eigen::half>({-inf}, {-65504}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>({inf}, {-65504}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>({-inf}, {65504}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>({inf}, {20}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>({inf}, {-20}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>({-inf}, {20}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>({-inf}, {-20}));
+
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({inf}, {std::nanf("")}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<float>({inf}, {inf}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({inf}, {65504}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({-inf}, {-65504}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({inf}, {-65504}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({-inf}, {65504}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({inf}, {20}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({inf}, {-20}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({-inf}, {20}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({-inf}, {-20}));
+
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({inf}, {std::nanf("")}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<double>({inf}, {inf}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({inf}, {65504}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({-inf}, {-65504}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({inf}, {-65504}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({-inf}, {65504}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({inf}, {20}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({inf}, {-20}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({-inf}, {20}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({-inf}, {-20}));
+
+  EXPECT_TRUE(
+      CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {std::nanf("")}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {inf}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {-inf}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {448}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {-448}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {20}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {-20}));
+
+  EXPECT_FALSE(
+      CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {std::nanf("")}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {inf}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {-inf}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {57344}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({-inf}, {-57344}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {20}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {-20}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({-inf}, {20}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({-inf}, {-20}));
+}
+
+TEST_F(BufferComparatorTest, TestNumbers) {
+  EXPECT_TRUE(CompareEqualFloatBuffers<Eigen::half>({20}, {20.1}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>({20}, {23.0}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<Eigen::half>({20}, {23.0}, 0.2));
+  EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>({20}, {26.0}, 0.2));
+  EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>({0}, {1}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<Eigen::half>({0.9}, {1}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<Eigen::half>({9}, {10}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<Eigen::half>({10}, {9}));
+
+  EXPECT_TRUE(CompareEqualFloatBuffers<float>({20}, {20.1}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({20}, {23.0}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<float>({20}, {23.0}, 0.2));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({20}, {26.0}, 0.2));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({0}, {1}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<float>({0.9}, {1}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<float>({9}, {10}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<float>({10}, {9}));
+
+  EXPECT_TRUE(CompareEqualFloatBuffers<double>({20}, {20.1}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({20}, {23.0}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<double>({20}, {23.0}, 0.2));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({20}, {26.0}, 0.2));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({0}, {1}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<double>({0.9}, {1}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<double>({9}, {10}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<double>({10}, {9}));
+
+  EXPECT_TRUE(CompareEqualFloatBuffers<int8_t>({100}, {101}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<int8_t>({100}, {120}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<int8_t>({100}, {120}, 0.2));
+  EXPECT_FALSE(CompareEqualFloatBuffers<int8_t>({90}, {120}, 0.2));
+  EXPECT_FALSE(CompareEqualFloatBuffers<int8_t>({0}, {10}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<int8_t>({9}, {10}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<int8_t>({90}, {100}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<int8_t>({100}, {90}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<int8_t>({-128}, {127}));
+
+  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({20}, {20.1}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({20}, {23.0}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({20}, {23.0}, 0.2));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({20}, {26.0}, 0.2));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({0}, {1}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({0.9}, {1}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({9}, {10}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({9}, {10}));
+
+  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({20}, {20.1}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({20}, {23.0}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({20}, {23.0}, 0.2));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({20}, {30.0}, 0.2));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({0}, {1}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({0.9}, {1}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({11}, {12}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({12}, {11}));
+
+  // Rerunning tests with increased relative tolerance
+  const double tol = 0.001;
+  EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>({0.9}, {1}, tol));
+  EXPECT_TRUE(CompareEqualFloatBuffers<Eigen::half>({0.9}, {0.901}, tol));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({10}, {10.1}, tol));
+  EXPECT_TRUE(CompareEqualFloatBuffers<float>({10}, {10.01}, tol));
+  EXPECT_FALSE(CompareEqualFloatBuffers<int8_t>({100}, {101}, tol));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({20}, {20.1}, tol));
+  EXPECT_TRUE(CompareEqualFloatBuffers<double>({20}, {20.01}, tol));
+}
+
+TEST_F(BufferComparatorTest, TestMultiple) {
+  {
+    EXPECT_TRUE(CompareEqualFloatBuffers<Eigen::half>(
+        {20, 30, 40, 50, 60}, {20.1, 30.1, 40.1, 50.1, 60.1}));
+    std::vector<float> lhs(200);
+    std::vector<float> rhs(200);
+    for (int i = 0; i < 200; i++) {
+      EXPECT_TRUE(CompareEqualFloatBuffers<Eigen::half>(lhs, rhs))
+          << "should be the same at index " << i;
+      lhs[i] = 3;
+      rhs[i] = 5;
+      EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>(lhs, rhs))
+          << "should be the different at index " << i;
+      lhs[i] = 0;
+      rhs[i] = 0;
+    }
+  }
+
+  {
+    EXPECT_TRUE(CompareEqualFloatBuffers<float>(
+        {20, 30, 40, 50, 60}, {20.1, 30.1, 40.1, 50.1, 60.1}));
+    std::vector<float> lhs(200);
+    std::vector<float> rhs(200);
+    for (int i = 0; i < 200; i++) {
+      EXPECT_TRUE(CompareEqualFloatBuffers<float>(lhs, rhs))
+          << "should be the same at index " << i;
+      lhs[i] = 3;
+      rhs[i] = 5;
+      EXPECT_FALSE(CompareEqualFloatBuffers<float>(lhs, rhs))
+          << "should be the different at index " << i;
+      lhs[i] = 0;
+      rhs[i] = 0;
+    }
+  }
+
+  {
+    EXPECT_TRUE(CompareEqualFloatBuffers<double>(
+        {20, 30, 40, 50, 60}, {20.1, 30.1, 40.1, 50.1, 60.1}));
+    std::vector<float> lhs(200);
+    std::vector<float> rhs(200);
+    for (int i = 0; i < 200; i++) {
+      EXPECT_TRUE(CompareEqualFloatBuffers<double>(lhs, rhs))
+          << "should be the same at index " << i;
+      lhs[i] = 3;
+      rhs[i] = 5;
+      EXPECT_FALSE(CompareEqualFloatBuffers<double>(lhs, rhs))
+          << "should be the different at index " << i;
+      lhs[i] = 0;
+      rhs[i] = 0;
+    }
+  }
+
+  {
+    EXPECT_TRUE(CompareEqualFloatBuffers<int8_t>({20, 30, 40, 50, 60},
+                                                 {21, 31, 41, 51, 61}));
+    std::vector<float> lhs(200);
+    std::vector<float> rhs(200);
+    for (int i = 0; i < 200; i++) {
+      EXPECT_TRUE(CompareEqualFloatBuffers<int8_t>(lhs, rhs))
+          << "should be the same at index " << i;
+      lhs[i] = 3;
+      rhs[i] = 5;
+      EXPECT_FALSE(CompareEqualFloatBuffers<int8_t>(lhs, rhs))
+          << "should be the different at index " << i;
+      lhs[i] = 0;
+      rhs[i] = 0;
+    }
+  }
+  {
+    EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>(
+        {20, 30, 40, 50, 60}, {20.1, 30.1, 40.1, 50.1, 60.1}));
+    std::vector<float> lhs(200);
+    std::vector<float> rhs(200);
+    for (int i = 0; i < 200; i++) {
+      EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>(lhs, rhs))
+          << "should be the same at index " << i;
+      lhs[i] = 3;
+      rhs[i] = 5;
+      EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>(lhs, rhs))
+          << "should be the different at index " << i;
+      lhs[i] = 0;
+      rhs[i] = 0;
+    }
+  }
+
+  {
+    EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>(
+        {20, 30, 40, 50, 60}, {20.1, 30.1, 40.1, 50.1, 60.1}));
+    std::vector<float> lhs(200);
+    std::vector<float> rhs(200);
+    for (int i = 0; i < 200; i++) {
+      EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>(lhs, rhs))
+          << "should be the same at index " << i;
+      lhs[i] = 3;
+      rhs[i] = 5;
+      EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>(lhs, rhs))
+          << "should be the different at index " << i;
+      lhs[i] = 0;
+      rhs[i] = 0;
+    }
+  }
+}
+
+TEST_F(BufferComparatorTest, BF16) {
+  const int element_count = 3123;
+  int64_t rng_state = 0;
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                       stream_exec_->CreateStream());
+
+  se::DeviceAddressHandle lhs(
+      stream_exec_,
+      stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
+  InitializeBuffer(stream.get(), BF16, &rng_state, lhs.address());
+
+  se::DeviceAddressHandle rhs(
+      stream_exec_,
+      stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
+  InitializeBuffer(stream.get(), BF16, &rng_state, rhs.address());
+
+  BufferComparator comparator(ShapeUtil::MakeShape(BF16, {element_count}));
+  ASSERT_OK_AND_ASSIGN(
+      bool equal,
+      comparator.CompareEqual(stream.get(), lhs.address(), rhs.address()));
+  EXPECT_FALSE(equal);
+}
+
+TEST_F(BufferComparatorTest, VeryLargeArray) {
+  constexpr PrimitiveType number_type = U8;
+  using NT = primitive_util::PrimitiveTypeToNative<number_type>::type;
+
+  // Set non-power-of-two element count on purpose, use aligned buffer size.
+  int64_t n_elems = (1LL << 32) - 11,
+          // Buffer size must be 4-bytes aligned for Memset32.
+      buf_size = (((n_elems + 1) * sizeof(NT)) + 3) & ~3;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                       stream_exec_->CreateStream());
+
+  auto base = stream_exec_->Allocate(buf_size);
+  EXPECT_TRUE(!base.is_null());
+  auto cleanup =
+      absl::MakeCleanup([this, &base] { stream_exec_->Deallocate(&base); });
+
+  // We use overlapping lhs and rhs arrays to reduce memory usage, also this
+  // serves as an extra test for possible pointer aliasing problems.
+  se::DeviceAddressBase lhs(base.opaque(), n_elems * sizeof(NT)),
+      rhs(static_cast<NT*>(base.opaque()) + 1, lhs.size());
+
+  constexpr uint32_t pattern = 0xABABABAB;
+  CHECK_OK(stream->Memset32(&lhs, pattern, buf_size));
+
+  // First we do "positive" test to make sure lhs and rhs are indeed equal:
+  // disable host comparison here since it could take a while for ~4GB array
+  BufferComparator comparator(ShapeUtil::MakeShape(number_type, {n_elems}),
+                              /*tolerance*/ 0.1, /* verbose */ false,
+                              /*run_host_compare*/ false);
+  ASSERT_OK_AND_ASSIGN(bool equal1,
+                       comparator.CompareEqual(stream.get(), lhs, rhs));
+  EXPECT_TRUE(equal1);
+
+  se::DeviceAddressBase last_word(
+      static_cast<uint8_t*>(base.opaque()) + (n_elems & ~3), sizeof(uint32_t));
+  // Change only the very last entry of rhs to verify that the whole arrays are
+  // compared (if the grid dimensions are not computed correctly, this might
+  // not be the case).
+  CHECK_OK(stream->Memset32(&last_word, 0x11223344, last_word.size()));
+  ASSERT_OK_AND_ASSIGN(bool equal2,
+                       comparator.CompareEqual(stream.get(), lhs, rhs));
+  EXPECT_FALSE(equal2);
+}
+
+}  // namespace
+}  // namespace gpu
+}  // namespace xla

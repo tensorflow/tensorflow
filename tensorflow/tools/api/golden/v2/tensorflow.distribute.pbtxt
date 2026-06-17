@@ -1,0 +1,119 @@
+path: "tensorflow.distribute"
+tf_module {
+  member {
+    name: "CrossDeviceOps"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "DistributedDataset"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "DistributedIterator"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "DistributedValues"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "HierarchicalCopyAllReduce"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "InputContext"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "InputOptions"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "InputReplicationMode"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
+    name: "MirroredStrategy"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "MultiWorkerMirroredStrategy"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "NcclAllReduce"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "OneDeviceStrategy"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "ParameterServerStrategy"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "ReduceOp"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
+    name: "ReductionToOneDevice"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "ReplicaContext"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "RunOptions"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Server"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Strategy"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "StrategyExtended"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "TPUStrategy"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "cluster_resolver"
+    mtype: "<class \'module\'>"
+  }
+  member {
+    name: "coordinator"
+    mtype: "<class \'module\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<class \'module\'>"
+  }
+  member_method {
+    name: "experimental_set_strategy"
+    argspec: "args=[\'strategy\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_replica_context"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_strategy"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "has_strategy"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "in_cross_replica_context"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+}

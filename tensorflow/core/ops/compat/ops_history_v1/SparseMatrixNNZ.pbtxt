@@ -1,0 +1,11 @@
+op {
+  name: "SparseMatrixNNZ"
+  input_arg {
+    name: "sparse_matrix"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "nnz"
+    type: DT_INT32
+  }
+}
