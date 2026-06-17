@@ -2117,14 +2117,12 @@ absl::StatusOr<XlaOp> XlaBuilder::TupleInternal(
         xla::internal::XlaBuilderFriend::GetInstruction(elements[i]);
     if (element_instr->has_original_value()) {
       has_original_value = true;
-      auto element_original_value =
-          xla::OriginalValue::FromProto(element_instr->original_value());
-      original_value->mutable_tree()
-          ->CopySubtreeFrom(/*other*/
-                            xla::OriginalValue::FromProto(
-                                element_instr->original_value())
-                                ->tree(),
-                            /*src_index=*/{}, /*dst_index=*/{i});
+      ASSIGN_OR_RETURN(
+          auto element_original_value,
+          xla::OriginalValue::FromProto(element_instr->original_value()));
+      original_value->mutable_tree()->CopySubtreeFrom(
+          /*other*/ element_original_value->tree(),
+          /*src_index=*/{}, /*dst_index=*/{i});
     }
   }
   std::optional<OriginalValueProto> original_value_proto;
@@ -2164,7 +2162,8 @@ absl::StatusOr<XlaOp> XlaBuilder::GetTupleElementInternal(const Shape& shape,
 
   std::optional<OriginalValueProto> original_value_proto = original_value();
   if (original_value_proto.has_value()) {
-    auto original_value = xla::OriginalValue::FromProto(*original_value_proto);
+    ASSIGN_OR_RETURN(auto original_value,
+                     xla::OriginalValue::FromProto(*original_value_proto));
     auto subtree = original_value->tree().Subtree({index});
     if (subtree.ok()) {
       auto element_original_value =

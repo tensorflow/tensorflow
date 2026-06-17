@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -77,7 +78,7 @@ class OriginalValue {
 
   std::string ToString() const;
   OriginalValueProto ToProto() const;
-  static std::shared_ptr<OriginalValue> FromProto(
+  static absl::StatusOr<std::shared_ptr<OriginalValue>> FromProto(
       const xla::OriginalValueProto& original_value_proto);
   static std::shared_ptr<OriginalValue> CreateFromInstruction(
       const HloInstruction* instruction, absl::string_view prefix = "");
