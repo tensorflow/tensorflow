@@ -2112,6 +2112,15 @@ TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateFromArray(
                              : shape().dimensions(dim);
     CHECK_EQ(values.dim(dim), shape_size);
   }
+  if (LayoutUtil::IsMonotonicWithDim0Major(shape().layout()) &&
+      !shape().is_dynamic() && shape().layout().tiles().empty() &&
+      shape().layout().element_size_in_bits() == 0 &&
+      shape().layout().split_configs().empty() &&
+      shape().layout().tail_padding_alignment_in_elements() <= 1) {
+    std::memcpy(this->data<NativeT>().data(), values.begin(),
+                values.num_elements() * sizeof(NativeT));
+    return;
+  }
   values.Each([this](absl::Span<const int64_t> indices, NativeT value) {
     this->Set(indices, value);
   });
