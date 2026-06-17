@@ -160,8 +160,9 @@ inline TfLiteStatus Crop(ImageData* image_data,
   // (possible with target_size, since the image dimensions come from the
   // decoded input) would make the start offsets negative and cause
   // GetData to read out of bounds.
-  if (crop_width > input_width || crop_height > input_height) {
-    ABSL_LOG(ERROR) << "Cropping size is larger than the image size";
+  if (crop_width <= 0 || crop_height <= 0 || crop_width > input_width ||
+      crop_height > input_height) {
+    ABSL_LOG(ERROR) << "Cropping size is invalid or larger than the image size";
     return kTfLiteError;
   }
   int start_w = static_cast<int>(round((input_width - crop_width) / 2.0));
@@ -265,12 +266,13 @@ inline TfLiteStatus Pad(ImageData* image_data, const PaddingParams& params) {
   tflite::RuntimeShape output_shape(
       {1, output_height, output_width, kNumChannels});
   // Guards against integer overflow when computing the output buffer size for
-  // a very large target_size. output_width/height are validated > 0 and >= the
-  // image dimensions above, so the divisions are safe.
-  if (output_height > std::numeric_limits<int>::max() / output_width ||
+  // a very large target_size. The explicit > 0 checks keep the divisions safe
+  // and self-contained, matching ResizeBilinear.
+  if (output_width <= 0 || output_height <= 0 ||
+      output_height > std::numeric_limits<int>::max() / output_width ||
       output_width * output_height >
           std::numeric_limits<int>::max() / kNumChannels) {
-    ABSL_LOG(ERROR) << "Padding output size is too large";
+    ABSL_LOG(ERROR) << "Padding output size is invalid or too large";
     return kTfLiteError;
   }
   int output_size = output_width * output_height * kNumChannels;
