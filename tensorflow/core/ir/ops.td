@@ -594,7 +594,7 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
     ::mlir::ValueRange $cppClass::getSuccessorInputs(
         ::mlir::RegionSuccessor successor) {
-      if (successor.isParent()) return getOuts();
+      if (successor.isOperation()) return getOuts();
       return {};
     }
     void $cppClass::getEntrySuccessorRegions(
@@ -719,7 +719,7 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
     ::mlir::ValueRange $cppClass::getSuccessorInputs(
         ::mlir::RegionSuccessor successor) {
-      if (successor.isParent()) return getOuts();
+      if (successor.isOperation()) return getOuts();
       return {};
     }
     void $cppClass::getEntrySuccessorRegions(
@@ -889,7 +889,7 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
     ::mlir::ValueRange $cppClass::getSuccessorInputs(
         ::mlir::RegionSuccessor successor) {
-      if (successor.isParent()) return getOuts();
+      if (successor.isOperation()) return getOuts();
       return GetLoopRegionDataArgs(*successor.getSuccessor());
     }
 
