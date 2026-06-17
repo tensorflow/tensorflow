@@ -817,6 +817,8 @@ cc_library(
         ":all_reduce_kernel_rocm",
         ":amdhipblaslt_plugin",
         ":buffer_comparator_kernel_rocm",
+        ":buffer_debug_float_check_kernel_rocm",
+        ":buffer_debug_xor_checksum_kernel_rocm",
         ":collective_signal_rocm",
         ":cub_scan_kernel_rocm",
         ":cub_sort_kernel_rocm",
@@ -1631,4 +1633,51 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+rocm_library(
+    name = "buffer_debug_float_check_kernel_rocm",
+    srcs = [
+        "buffer_debug_float_check_kernel_rocm.cu.cc",
+        "//xla/stream_executor/gpu:buffer_debug_float_check_kernel_lib.cu.h",
+    ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":rocm_platform",
+        ":rocm_platform_id",
+        "//xla:util",
+        "//xla/backends/gpu/runtime:buffer_debug_log_structs",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:buffer_debug_float_check_kernel",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "@com_google_absl//absl/base",
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+    alwayslink = True,
+)
+
+rocm_library(
+    name = "buffer_debug_xor_checksum_kernel_rocm",
+    srcs = [
+        "buffer_debug_xor_checksum_kernel_rocm.cu.cc",
+        "//xla/stream_executor/gpu:buffer_debug_xor_checksum_kernel_lib.cu.h",
+    ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":rocm_platform",
+        ":rocm_platform_id",
+        "//xla/backends/gpu/runtime:buffer_debug_log_structs",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:buffer_debug_xor_checksum_kernel",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "@com_google_absl//absl/base",
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+    alwayslink = True,
 )

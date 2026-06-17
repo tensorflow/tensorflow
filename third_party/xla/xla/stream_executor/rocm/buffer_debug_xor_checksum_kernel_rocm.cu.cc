@@ -13,30 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cassert>
+#include <hip/hip_runtime.h>
+
 #include <cstdint>
 
 #include "absl/base/casts.h"
-#include "third_party/gpus/cuda/include/cuda/atomic"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/buffer_debug_xor_checksum_kernel.h"
 #include "xla/stream_executor/gpu/buffer_debug_xor_checksum_kernel_lib.cu.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
 
 namespace stream_executor::gpu {
 
 __device__ inline uint32_t AtomicIncSystem(uint32_t* write_idx) {
-#if __CUDA_ARCH__ >= 600
-  ::cuda::atomic_ref<uint32_t, ::cuda::thread_scope_system> log_write_idx(
-      *write_idx);
-  return log_write_idx.fetch_add(1);
-#else
-  // Our toolchains generate a fetch_add PTX instructions with system scope,
-  // which is not supported on pre-Pascal architectures.
-  assert(false);
-  return ~0u;
-#endif
+  return atomicAdd_system(write_idx, 1);
 }
 
 }  // namespace stream_executor::gpu
@@ -44,7 +35,7 @@ __device__ inline uint32_t AtomicIncSystem(uint32_t* write_idx) {
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     BufferDebugXorChecksumKernel,
     stream_executor::gpu::BufferDebugXorChecksumKernel,
-    stream_executor::cuda::kCudaPlatformId, ([](int arity) {
+    stream_executor::rocm::kROCmPlatformId, ([](int arity) {
       return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(
           absl::bit_cast<void*>(&stream_executor::gpu::AppendChecksum),
           "BufferDebugXorChecksumKernel", arity);
