@@ -634,7 +634,7 @@ EXPORTS
  ?SetDimWithStatus@?$TensorShapeBase@VPartialTensorShape@tensorflow@@@tensorflow@@QEAA?AVStatus@lts_20260107@absl@@H_J@Z
  ?SetFullType@tensorflow@@YAXPEAUTF_Graph@@PEAUTF_Operation@@PEBUTF_Buffer@@@Z
  ?SetHandleShapeAndType@tensorflow@@YAXPEAUTF_Graph@@UTF_Output@@PEBX_KPEAUTSL_Status@@@Z
- ?SetIsStateful@OpDefBuilder@tensorflow@@QEAAAEAV12@XZ
+ ?SetIsStateful@OpDefBuilder@tensorflow@@QEAAAEAV12@_N@Z
  ?SetIteratorElementLayouts@dtensor@tensorflow@@YAXPEAUTFE_Context@@PEAUTFE_TensorHandle@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@PEAXPEAUTSL_Status@@@Z
  ?SetNumWarmupSteps@Cluster@grappler@tensorflow@@QEAAXH@Z
  ?SetPayload@StatusRep@status_internal@lts_20260107@absl@@QEAAXV?$basic_string_view@DU?$char_traits@D@std@@@std@@VCord@34@@Z
