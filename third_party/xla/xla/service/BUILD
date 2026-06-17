@@ -418,7 +418,6 @@ cc_library(
         ":constant_value",
         ":hlo_value",
         "//xla:comparison_util",
-        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",
