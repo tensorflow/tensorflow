@@ -285,6 +285,12 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // registered. No lock needed — per_device_ is read-only after construction.
   PerDeviceState* GetPerDeviceState(int device_ordinal) const;
 
+  // Validates a caller-owned reservation slice and returns the corresponding
+  // DeviceAddressBase.
+  absl::StatusOr<DeviceAddressBase> ValidateReservationRange(
+      MemoryReservation* reservation, uint64_t reservation_offset,
+      uint64_t size) const;
+
   absl::StatusOr<DeviceAddressBase> AllocateWithBudget(PerDeviceState& state,
                                                        uint64_t size)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
