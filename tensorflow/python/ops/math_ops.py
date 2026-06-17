@@ -3636,13 +3636,19 @@ def matmul(
 
     if a_shape is not None and len(a_shape) < 2:
       raise ValueError(
-          f"Argument `a` passed to `tf.matmul` must be at least rank 2. "
-          f"Received shape: {a_shape} of rank {len(a_shape)}."
+          f"Argument `a` passed to `tf.linalg.matmul` must be at least rank 2."
+          f" Received `a` with shape {a_shape} (rank {len(a_shape)})."
+          f" To fix this, consider using `tf.expand_dims(a, axis=0)` to add a"
+          f" batch dimension, or `tf.reshape(a, [...])` to reshape it into a"
+          f" 2-D (or higher-rank) matrix before calling `tf.linalg.matmul`."
       )
     if b_shape is not None and len(b_shape) < 2:
       raise ValueError(
-          f"Argument `b` passed to `tf.matmul` must be at least rank 2. "
-          f"Received shape: {b_shape} of rank {len(b_shape)}."
+          f"Argument `b` passed to `tf.linalg.matmul` must be at least rank 2."
+          f" Received `b` with shape {b_shape} (rank {len(b_shape)})."
+          f" To fix this, consider using `tf.expand_dims(b, axis=-1)` to add a"
+          f" column dimension, or `tf.reshape(b, [...])` to reshape it into a"
+          f" 2-D (or higher-rank) matrix before calling `tf.linalg.matmul`."
       )
 
     output_may_have_non_empty_batch_shape = (
