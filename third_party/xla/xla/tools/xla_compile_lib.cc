@@ -401,6 +401,22 @@ static void InitializeTargets() {
 
 }  // namespace internal
 
+static absl::StatusOr<std::unique_ptr<HloModuleConfig>> LoadModuleConfig(
+    absl::string_view config_file) {
+  HloModuleConfigProto config_proto;
+  std::string file_content;
+  RETURN_IF_ERROR(tsl::ReadFileToString(
+      tsl::Env::Default(), std::string(config_file), &file_content));
+  google::protobuf::TextFormat::Parser parser;
+  parser.AllowUnknownField(true);
+  if (!parser.ParseFromString(file_content, &config_proto)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to parse HloModuleConfigProto from ", config_file));
+  }
+
+  return HloModuleConfig::CreateFromProto(config_proto);
+}
+
 absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   absl::call_once(internal::targets_init, &internal::InitializeTargets);
   std::unique_ptr<HloModule> hlo_module;
@@ -428,6 +444,27 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
     gpu_cfg = std::move(*ReadTargetConfigFromModule(mod.get(), backend));
   } else {
     ASSIGN_OR_RETURN(hlo_module, LoadModule(options.module_path));
+  }
+
+  // Override partitioning parameters with values from HloModuleConfig if it is
+  // provided.
+  int num_partitions = options.num_partitions;
+  int num_replicas = options.num_replicas;
+  bool use_shardy_partitioner = options.use_shardy_partitioner;
+  if (!options.module_config_path.empty()) {
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> loaded_config,
+                     LoadModuleConfig(options.module_config_path));
+    if (!loaded_config->has_entry_computation_layout() &&
+        hlo_module->config().has_entry_computation_layout()) {
+      loaded_config->SetComputationLayoutIfExists(
+          hlo_module->config()
+              .entry_computation_layout()
+              .ComputeProgramShape());
+    }
+    hlo_module->set_config(*loaded_config);
+    num_partitions = loaded_config->num_partitions();
+    num_replicas = loaded_config->replica_count();
+    use_shardy_partitioner = loaded_config->use_shardy_partitioner();
   }
 
   bool found_autotune = false;
@@ -495,7 +532,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
     cpu_cfg =
         std::make_optional<Compiler::CpuTargetConfig>(target_machine_options);
   }
-  if (options.use_shardy_partitioner) {
+  if (use_shardy_partitioner) {
     hlo_module->mutable_config().set_use_shardy_partitioner(true);
   }
   if (options.force_auto_layout) {
@@ -525,7 +562,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
 
   auto result = CompileExecutable(
       std::move(hlo_module), backend, std::move(gpu_cfg), std::move(cpu_cfg),
-      options.num_partitions, options.num_replicas, compilation_result,
+      num_partitions, num_replicas, compilation_result,
       options.gpu_options.target_platform_version,
       options.gpu_options.use_attached_device);
   *compilation_result.mutable_status() = tsl::StatusToProto(result.status());
