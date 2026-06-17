@@ -16,21 +16,24 @@
 
 import tensorflow.compat.v2 as tf
 
-from tf_keras.layers import Conv1DTranspose
-from tf_keras.testing_infra import test_combinations
+from tensorflow.python.keras.layers import Conv1DTranspose
+from tensorflow.python.keras.layers import Conv2DTranspose
+from tensorflow.python.keras.layers import Conv3DTranspose
+from tensorflow.python.keras.testing_infra import test_combinations
 
 
 @test_combinations.run_all_keras_modes
 class ConvTransposeValidationTest(test_combinations.TestCase):
-    def test_conv1d_transpose_invalid_parameters(self):
-        with self.assertRaisesRegex(
-            ValueError,
-            "if any value of `strides` is > 1, then all values of "
-            "`dilation_rate` must be 1.",
-        ):
-            Conv1DTranspose(
-                filters=1, kernel_size=3, strides=2, dilation_rate=2
-            )
+    def test_conv_transpose_invalid_parameters(self):
+        for layer_cls in [Conv1DTranspose, Conv2DTranspose, Conv3DTranspose]:
+            with self.assertRaisesRegex(
+                ValueError,
+                "if any value of `strides` is > 1, then all values of "
+                "`dilation_rate` must be 1.",
+            ):
+                layer_cls(
+                    filters=1, kernel_size=3, strides=2, dilation_rate=2
+                )
 
 
 if __name__ == "__main__":
