@@ -92,7 +92,6 @@ xla::BitGeneratorTy GetBitGeneratorForDevice(
 // UniformFloatingPointDistribution / NormalFloatingPointDistribution.
 std::pair<xla::XlaOp, xla::XlaOp> MixSeedsForEagerCompatibility(
     xla::XlaBuilder* builder, xla::XlaOp seed0, xla::XlaOp seed1) {
-  // ── Step 1: build the initial Philox counter from the two S32 seeds ──
   // Reinterpret each S32 seed as U32 (bit-identical, no value change).
   xla::XlaOp s0 = xla::BitcastConvertType(seed0, xla::U32);
   xla::XlaOp s1 = xla::BitcastConvertType(seed1, xla::U32);
