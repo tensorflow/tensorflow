@@ -283,13 +283,17 @@ class TestGetNumReplicasInSync(test_lib.TestCase):
     strategy.num_replicas_in_sync = 8
     with (
         mock.patch.object(
-            nn_impl_distribute.distribute_lib, "get_replica_context", return_value=replica_ctx
+            nn_impl_distribute.distribute_lib,
+            "get_replica_context",
+            return_value=replica_ctx,
         ),
         mock.patch.object(
             nn_impl_distribute.distribute_lib, "has_strategy", return_value=True
         ),
         mock.patch.object(
-            nn_impl_distribute.distribute_lib, "get_strategy", return_value=strategy
+            nn_impl_distribute.distribute_lib,
+            "get_strategy",
+            return_value=strategy,
         ),
     ):
       self.assertEqual(nn_impl_distribute._get_num_replicas_in_sync(), 4)
