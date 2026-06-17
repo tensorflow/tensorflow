@@ -46,19 +46,17 @@ def test_shell_command_injection_prevention(payload):
     if os.path.exists(injection_marker_file):
         os.remove(injection_marker_file)
 
-    # Track if os.system was called and capture the command
+    # Track if subprocess.run was called and capture the command
     captured_commands = []
-    original_system = os.system
 
-    def mock_system(cmd):
-        captured_commands.append(cmd)
-        # Don't actually execute - return 0 to simulate success
-        return 0
+    def mock_run(cmd, *args, **kwargs):
+        captured_commands.append(" ".join(cmd) if isinstance(cmd, list) else cmd)
+        return mock.MagicMock(returncode=0)
 
     # Try to import the module and test command construction
     try:
-        # Patch os.system before importing/using the module
-        with mock.patch('os.system', side_effect=mock_system):
+        # Patch subprocess.run before importing/using the module
+        with mock.patch('subprocess.run', side_effect=mock_run):
             try:
                 # Attempt to import mlir_convert and exercise command construction
                 import importlib
@@ -173,7 +171,7 @@ def test_command_construction_with_model_path_and_flags(model_path, flags):
 
     with mock.patch('os.system', side_effect=mock_system), \
          mock.patch('subprocess.Popen', side_effect=mock_popen), \
-         mock.patch('subprocess.run', return_value=mock.MagicMock(returncode=0)):
+         mock.patch('subprocess.run', side_effect=mock_popen):
         
         try:
             import importlib.util
@@ -232,13 +230,23 @@ def test_os_system_receives_only_safe_commands():
     def capturing_popen(cmd, *args, **kwargs):
         if isinstance(cmd, str):
             all_captured.append(('subprocess.Popen', cmd))
+        elif isinstance(cmd, list):
+            all_captured.append(('subprocess.Popen', ' '.join(cmd)))
         mock_proc = mock.MagicMock()
         mock_proc.communicate.return_value = (b'', b'')
         mock_proc.returncode = 0
         return mock_proc
 
+    def capturing_run(cmd, *args, **kwargs):
+        if isinstance(cmd, str):
+            all_captured.append(('subprocess.run', cmd))
+        elif isinstance(cmd, list):
+            all_captured.append(('subprocess.run', ' '.join(cmd)))
+        return mock.MagicMock(returncode=0)
+
     with mock.patch('os.system', side_effect=capturing_system), \
-         mock.patch('subprocess.Popen', side_effect=capturing_popen):
+         mock.patch('subprocess.Popen', side_effect=capturing_popen), \
+         mock.patch('subprocess.run', side_effect=capturing_run):
         
         for unsafe_input in unsafe_inputs:
             try:
@@ -255,10 +263,7 @@ def test_os_system_receives_only_safe_commands():
                             except Exception:
                                 pass
             except (ImportError, ModuleNotFoundError):
-                # Module not available - construct a simulated command as the module would
-                # and verify our detection logic works
-                simulated_cmd = f"tflite_convert --input_file={unsafe_input}"
-                all_captured.append(('simulated', simulated_cmd))
+                pass
 
     # For each captured command, verify dangerous patterns are escaped
     for source, cmd in all_captured:

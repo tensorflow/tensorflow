@@ -178,27 +178,29 @@ def mlir_convert_file(graph_def_filename,
 
     input_types = ",".join([x[2] for x in input_tensors])
 
-    quant_flags = ""
+    quant_args = []
     if quantization_params is not None:
       min_vals = ",".join([str(val) for val in quantization_params[1]])
       max_vals = ",".join([str(val) for val in quantization_params[2]])
-      quant_flags = ("-tf-inference-type=" + quantization_params[0] +
-                     " -tf-input-min-values='" + min_vals +
-                     "' -tf-input-max-values='" + max_vals + "' " +
-                     "-emit-quant-adaptor-ops ")
-    cmd = ("%s -tf-input-arrays=%s -tf-input-data-types=%s -tf-input-shapes=%s "
-           "-tf-output-arrays=%s " + quant_flags + additional_flags +
-           "%s -o %s")
-    cmd = cmd % (
+      quant_args = [
+          f"-tf-inference-type={quantization_params[0]}",
+          f"-tf-input-min-values={min_vals}",
+          f"-tf-input-max-values={max_vals}",
+          "-emit-quant-adaptor-ops",
+      ]
+
+    additional_args = shlex.split(additional_flags) if additional_flags else []
+
+    args = [
         bin_path,
-        ",".join([x[0] for x in input_tensors]),
-        input_types,
-        input_shapes_str,
-        ",".join(output_tensors),
-        graph_def_filename,
-        output_file.name,
-    )
-    exit_code = subprocess.run(shlex.split(cmd), shell=False).returncode
+        f"-tf-input-arrays={','.join([x[0] for x in input_tensors])}",
+        f"-tf-input-data-types={input_types}",
+        f"-tf-input-shapes={input_shapes_str}",
+        f"-tf-output-arrays={','.join(output_tensors)}",
+    ] + quant_args + additional_args + [graph_def_filename, "-o", output_file.name]
+
+    cmd = " ".join(shlex.quote(a) for a in args)
+    exit_code = subprocess.run(args, shell=False).returncode
     log = (
         cmd + "exited with code %d" % exit_code + "\n------------------\n" +
         stdout_file.read())
