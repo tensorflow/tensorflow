@@ -476,7 +476,7 @@ ENTRY e {
 )");
 }
 
-TEST_P(GemmFusionTestV2, DoNotHoistBitcastOverParameterWithMultipleUsers) {
+TEST_P(GemmFusionTestV2, DoNotHoistBitcastOverParameterWithNonBitcastUsers) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 ENTRY e {
   p0 = bf16[32,12] parameter(0)
@@ -507,6 +507,26 @@ ENTRY e {
   p1 = bf16[32,3] parameter(1)
   ROOT d = bf16[12,3] dot(bc, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Bitcast(m::Parameter()))));
+}
+
+TEST_P(GemmFusionTestV2, HoistBitcastOverParameterWithMultipleBitcastUsers) {
+  // Regression test for b/524943134.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[32,3] parameter(0)
+  p1 = f32[8,28] parameter(1)
+  b1 = f32[32,7] bitcast(p1)
+  b2 = f32[32,7] bitcast(p1)
+  add = f32[32,7] add(b1, b2)
+  ROOT d = f32[3,7] dot(p0, add),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
   ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(

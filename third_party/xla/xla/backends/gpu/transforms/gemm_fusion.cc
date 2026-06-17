@@ -918,7 +918,10 @@ absl::StatusOr<bool> FusionSearchSpace::HoistBitcast(HloInstruction* instr) {
       CopyElementType(operand->shape(), &new_shape);
 
       *operand->mutable_shape() = new_shape;
-      for (HloInstruction* user : operand->users()) {
+      // Copy users to a new vector to avoid invalidating the iterator.
+      std::vector<HloInstruction*> users(operand->users().begin(),
+                                         operand->users().end());
+      for (HloInstruction* user : users) {
         RETURN_IF_ERROR(user->ReplaceAllUsesWith(operand));
         RETURN_IF_ERROR(
             user->parent()->RemoveInstructionAndUnusedOperands(user));
