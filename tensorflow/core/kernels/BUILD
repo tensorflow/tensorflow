@@ -1102,6 +1102,8 @@ tf_kernel_library(
     prefix = "identity_n_op",
     deps = ARRAY_DEPS + [
         "//tensorflow/core:core_cpu_internal",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -8169,7 +8171,10 @@ cc_library(
     visibility = [
         "//tensorflow:__subpackages__",
     ] + LOOSE_HEADER_VISIBILITY,
-    deps = ["@com_google_absl//absl/status"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 # Deleted deps
