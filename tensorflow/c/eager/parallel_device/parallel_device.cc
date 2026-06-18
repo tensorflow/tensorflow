@@ -168,7 +168,7 @@ std::optional<std::vector<MaybeParallelTensorOwned>> ExecuteWithSpecialOps(
         std::unique_ptr<ParallelTensor> parallel_tensor(
             parallel_device.CopyToParallelDevice(
                 context, absl::get<TFE_TensorHandle*>(input), status));
-        if (TF_GetCode(status) != TF_OK) return absl::nullopt;
+        if (TF_GetCode(status) != TF_OK) return std::nullopt;
         parallel_inputs.push_back(parallel_tensor.get());
         implicitly_broadcast_tensors.emplace_back(std::move(parallel_tensor));
       } else {
@@ -181,7 +181,7 @@ std::optional<std::vector<MaybeParallelTensorOwned>> ExecuteWithSpecialOps(
                 " as input to a parallel operation. First pack non-parallel "
                 "tensors for each device into a parallel tensor explicitly.")
                 .c_str());
-        return absl::nullopt;
+        return std::nullopt;
       }
     } else {
       parallel_inputs.push_back(absl::get<ParallelTensor*>(input));
