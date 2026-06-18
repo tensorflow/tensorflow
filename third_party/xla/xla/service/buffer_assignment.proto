@@ -131,6 +131,16 @@ message BufferAssignmentAlgorithmProto {
   optional Value fallback_algorithm = 1;
 }
 
+// The algorithm to use for assigning buffers for computations without a
+// sequential ordering.
+message AssignmentAlgorithmForComputationsWithoutOrderingProto {
+  enum Value {
+    // If DEFAULT, performs a linear scan over tracked allocations to reuse the
+    // smallest fitting buffer.
+    DEFAULT = 0;
+  }
+}
+
 message BufferAllocationSliceProto {
   int64 offset = 1;
   int64 size = 2;

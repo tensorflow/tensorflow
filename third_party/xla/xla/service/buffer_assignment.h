@@ -96,6 +96,11 @@ class BufferAllocation {
         maybe_live_out_(false),
         is_constant_(false) {}
 
+  BufferAllocation(const BufferAllocation&) = default;
+  BufferAllocation& operator=(const BufferAllocation&) = default;
+  BufferAllocation(BufferAllocation&&) = default;
+  BufferAllocation& operator=(BufferAllocation&&) = default;
+
   // Returns the index of this allocation.
   Index index() const { return index_; }
 
@@ -208,6 +213,11 @@ class BufferAllocation {
           size_(size),
           element_type_(element_type) {}
 
+    Slice(const Slice&) = default;
+    Slice& operator=(const Slice&) = default;
+    Slice(Slice&&) = default;
+    Slice& operator=(Slice&&) = default;
+
     const BufferAllocation* allocation() const { return allocation_; }
     Index index() const { return allocation_->index(); }
     int64_t offset() const { return offset_; }
@@ -270,6 +280,8 @@ class BufferAllocation {
     }
 
    private:
+    // The BufferAllocation that this slice is a part of. The allocation object
+    // is not owned by this slice and must outlive it.
     const BufferAllocation* allocation_ = nullptr;
     int64_t offset_ = 0;
     int64_t size_ = 0;
@@ -666,6 +678,7 @@ class BufferAssignment {
  private:
   // Only BufferAssigner can build or modify BufferAssignments.
   friend class BufferAssigner;
+  friend class DefaultBufferAllocationsManagerForComputationsWithoutOrdering;
 
   BufferAssignment(const HloModule* module,
                    std::unique_ptr<HloOrdering> hlo_ordering,
@@ -747,6 +760,8 @@ class BufferAssignment {
   absl::flat_hash_map<const HloValue*, BufferAllocation::Index>
       allocation_index_for_value_;
 
+  // Points to the associated HloModule. The module is not owned by this class
+  // and must outlive this BufferAssignment.
   const HloModule* module_;
 
   std::unique_ptr<HloOrdering> hlo_ordering_;
@@ -767,6 +782,57 @@ class BufferAssignment {
 
   BufferAssignment(const BufferAssignment&) = delete;
   BufferAssignment& operator=(const BufferAssignment&) = delete;
+  BufferAssignment(BufferAssignment&&) = delete;
+  BufferAssignment& operator=(BufferAssignment&&) = delete;
+};
+
+// An interface for tracking physical memory blocks (BufferAllocations) across
+// computations without a sequential ordering. It defines the strategy for
+// reusing these existing blocks for new HloBuffers. Because these computations
+// lack a strict 1D timeline, reuse relies on interference analysis (checking if
+// the dependency graph allows two buffers to be alive at the same time) rather
+// than simple time-interval packing.
+//
+// Note: This API uses BufferAllocation::Index to identify allocations.
+// Implementations of this interface typically require a reference to the
+// central BufferAssignment object to resolve these indices into actual
+// BufferAllocation objects.
+class BufferAllocationsManagerForComputationsWithoutOrdering {
+ public:
+  BufferAllocationsManagerForComputationsWithoutOrdering() = default;
+  virtual ~BufferAllocationsManagerForComputationsWithoutOrdering() = default;
+
+  BufferAllocationsManagerForComputationsWithoutOrdering(
+      const BufferAllocationsManagerForComputationsWithoutOrdering&) = delete;
+  BufferAllocationsManagerForComputationsWithoutOrdering& operator=(
+      const BufferAllocationsManagerForComputationsWithoutOrdering&) = delete;
+  BufferAllocationsManagerForComputationsWithoutOrdering(
+      BufferAllocationsManagerForComputationsWithoutOrdering&&) = delete;
+  BufferAllocationsManagerForComputationsWithoutOrdering& operator=(
+      BufferAllocationsManagerForComputationsWithoutOrdering&&) = delete;
+
+  // Registers an aliased entry computation parameter allocation, allowing its
+  // memory to be tracked and reused by subsequent buffers.
+  virtual void RegisterAliasedEntryParameterAllocation(
+      BufferAllocation::Index index) = 0;
+
+  // Attempts to assign `hlo_buffer` to an existing physical `BufferAllocation`
+  // tracked by this manager. Implementations must ensure safe reuse by
+  // verifying that `hlo_buffer` does not interfere with any logical buffers
+  // already assigned to that allocation (e.g., via
+  // `BufferAssigner::MaybeAssignBuffer`).
+  //
+  // Returns true if successfully assigned, false if no existing allocation
+  // could be used. Returns a non-OK status on failure.
+  virtual absl::StatusOr<bool> TryAssignToExistingAllocation(
+      const HloBuffer* hlo_buffer, int64_t required_size) = 0;
+
+  // Registers a newly created physical allocation (identified by `index`) to be
+  // tracked by this manager. This allows the manager to consider this
+  // allocation for future reuse. `hlo_buffer` is the logical buffer that
+  // initially triggered the creation of this allocation.
+  virtual void RegisterNewAllocation(const HloBuffer* hlo_buffer,
+                                     BufferAllocation::Index index) = 0;
 };
 
 // A class which constructs a buffer assignment.
@@ -825,6 +891,14 @@ class BufferAssigner {
         heap_buffer_interval_compare;
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options;
     std::optional<BufferValue::Color> temp_buffer_color;
+
+    // The algorithm to use for assigning buffers for computations without a
+    // sequential ordering.
+    buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
+        Value assignment_algorithm_for_computations_without_ordering =
+            buffer_assignment::
+                AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT;
+
     BufferOrder buffer_order = BufferOrder::kBiggestFirst;
 
     buffer_assignment::BufferAssignmentAlgorithmProto::Value
@@ -887,6 +961,8 @@ class BufferAssigner {
       LogicalBuffer::AlignmentFunction color_alignment, Options options);
 
  private:
+  friend class DefaultBufferAllocationsManagerForComputationsWithoutOrdering;
+
   BufferAssigner(const AliasInfo* alias_info, Options opts)
       : alias_info_(alias_info), opts_(std::move(opts)) {}
   virtual ~BufferAssigner() = default;
@@ -907,7 +983,10 @@ class BufferAssigner {
       absl::flat_hash_map<const HloComputation*,
                           absl::flat_hash_set<const HloValue*>>*
           buffers_to_assign_sequentially,
-      BufferAssignment* assignment);
+      BufferAssignment* assignment,
+      buffer_assignment::
+          AssignmentAlgorithmForComputationsWithoutOrderingProto::Value
+              algorithm);
 
   // Returns true if buffer's live range interferences with buffer2's.
   bool LiveRangeInterferes(const HloValue* buffer1,
@@ -922,13 +1001,31 @@ class BufferAssigner {
       absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
       BufferAssignment* assignment);
 
+  // Assigns HloBuffers that require dedicated allocations upfront (constants,
+  // entry parameters, thread-local, tuples).
+  absl::StatusOr<bool> AssignSpecialHloBuffer(
+      const HloBuffer* hlo_buffer, bool is_thread_local,
+      BufferAllocationsManagerForComputationsWithoutOrdering*
+          allocation_manager,
+      BufferAssignment* assignment);
+
   // Assigns a single hlo buffer to an HLO allocation.
   absl::Status AssignSingleHloBuffer(
       const HloBuffer* hlo_buffer, bool is_thread_local,
       absl::flat_hash_map<const HloComputation*,
                           absl::flat_hash_set<const HloValue*>>*
           buffers_to_assign_sequentially,
-      std::vector<BufferAllocation::Index>* allocation_indices,
+      BufferAllocationsManagerForComputationsWithoutOrdering*
+          allocation_manager,
+      BufferAssignment* assignment);
+
+  // Delays assignment of temp buffers if all computations in the buffer have a
+  // sequential instruction ordering. Returns true if assignment was delayed.
+  bool DelayTemporaryBufferAssignment(
+      const HloBuffer* hlo_buffer,
+      absl::flat_hash_map<const HloComputation*,
+                          absl::flat_hash_set<const HloValue*>>*
+          buffers_to_assign_sequentially,
       BufferAssignment* assignment);
 
   // Assigns 'buffers_to_assign_sequentially' using heap simulation, assuming
@@ -1015,6 +1112,8 @@ class BufferAssigner {
 
   BufferAssigner(const BufferAssigner&) = delete;
   BufferAssigner& operator=(const BufferAssigner&) = delete;
+  BufferAssigner(BufferAssigner&&) = delete;
+  BufferAssigner& operator=(BufferAssigner&&) = delete;
 };
 
 struct PeakMemorySizes {

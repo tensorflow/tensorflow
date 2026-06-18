@@ -5139,5 +5139,32 @@ TEST_F(BufferAssignmentTest, MultiPage) {
               UnorderedElementsAre(Pair(0, 2800), Pair(1, 400)));
 }
 
+// Verifies that BufferAssignment builds successfully when using a dependency
+// ordering, which triggers
+// DefaultBufferAllocationsManagerForComputationsWithoutOrdering.
+TEST_F(BufferAssignmentTest,
+       BufferAssignmentBuildsSuccessfullyWithDependencyOrdering) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec4_, "param"));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, param, param));
+  std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> assignment,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+  EXPECT_NE(assignment, nullptr);
+  EXPECT_TRUE(assignment->HasTopLevelAllocation(param));
+  EXPECT_TRUE(assignment->HasTopLevelAllocation(add));
+}
+
 }  // namespace
 }  // namespace xla
