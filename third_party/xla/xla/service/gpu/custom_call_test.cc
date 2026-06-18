@@ -96,7 +96,7 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
 class CustomCallTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+                           HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   std::string PlatformName() {
     if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuCuda)) {
