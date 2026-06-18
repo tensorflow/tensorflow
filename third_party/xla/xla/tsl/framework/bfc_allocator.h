@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/allocator_retry.h"
+#include "xla/tsl/framework/scoped_allocation_trace.h"
 #include "xla/tsl/framework/shared_counter.h"
 #include "xla/tsl/lib/core/bits.h"
 #include "xla/tsl/platform/logging.h"
@@ -326,6 +327,10 @@ class BFCAllocator : public Allocator {
     // gap is kCentralGap; interior free holes keep their tag until they
     // rejoin the gap.
     ChunkTag tag = ChunkTag::kCentralGap;
+
+    // Snapshot of the thread-local allocation annotation stack captured when
+    // this chunk became in-use. Cleared when the chunk is freed.
+    std::optional<ScopedAllocationTrace::Snapshot> allocation_annotation;
 
     bool in_use() const { return allocation_id != -1; }
 
