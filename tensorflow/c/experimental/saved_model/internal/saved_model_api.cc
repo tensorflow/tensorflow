@@ -50,7 +50,7 @@ TF_SavedModel* TF_LoadSavedModel(const char* dirname, TFE_Context* ctx,
   } else {
     std::unique_ptr<tensorflow::TFSavedModelAPI> saved_model;
     status->status = tensorflow::TFSavedModelAPI::Load(
-        dirname, absl::nullopt,
+        dirname, std::nullopt,
         absl::down_cast<tensorflow::EagerContext*>(tensorflow::unwrap(ctx)),
         &saved_model);
     result = std::move(saved_model);
