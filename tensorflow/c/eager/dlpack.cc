@@ -155,7 +155,7 @@ absl::optional<std::string> DeviceNameFromDlContext(const DLDevice& ctx,
     case DLDeviceType::kDLROCM:
       return absl::StrCat("GPU:", ctx.device_id);
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
