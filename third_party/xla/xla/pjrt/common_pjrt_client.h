@@ -130,6 +130,13 @@ class CommonPjRtClient : public PjRtClient {
     return false;
   }
 
+  virtual absl::StatusOr<PjRtExecutableLoadState::DeviceAndAssignment>
+  LookupDeviceAndAssignment(
+      const ExecuteOptions& options, int replica, int partition,
+      PjRtDevice* device,
+      const std::shared_ptr<DeviceAssignment>& device_assignment,
+      PjRtExecutableLoadState* load_state) const;
+
   absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override;
 
@@ -816,10 +823,6 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   };
 
   using DeviceAndAssignment = PjRtExecutableLoadState::DeviceAndAssignment;
-
-  virtual absl::StatusOr<DeviceAndAssignment> LookupDeviceAndAssignment(
-      const ExecuteOptions& options, int replica, int partition,
-      PjRtDevice* device) const;
 
   virtual absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>>
   LoadRawExecutable(const ExecuteOptions& options, size_t host_callback_idx,
