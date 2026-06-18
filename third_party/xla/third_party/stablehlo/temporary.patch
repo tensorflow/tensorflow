@@ -2529,7 +2529,7 @@ diff --ruN a/stablehlo/stablehlo/tests/interpret/chlo/mulhi.mlir b/stablehlo/sta
 diff --ruN a/stablehlo/stablehlo/tests/interpret/chlo/scan.mlir b/stablehlo/stablehlo/tests/interpret/chlo/scan.mlir
 --- stablehlo/stablehlo/tests/interpret/chlo/scan.mlir
 +++ stablehlo/stablehlo/tests/interpret/chlo/scan.mlir
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,82 @@
 +// RUN: stablehlo-opt --chlo-legalize-to-stablehlo --split-input-file %s > %t.mlir
 +// RUN: stablehlo-translate --interpret --split-input-file %t.mlir
 +
@@ -2592,6 +2592,24 @@ diff --ruN a/stablehlo/stablehlo/tests/interpret/chlo/scan.mlir b/stablehlo/stab
 +  check.expect_eq_const %0#1, dense<[0, 0, 2, 2, 4]> : tensor<5xi32>
 +  check.expect_eq_const %0#2, dense<5> : tensor<i32>
 +  check.expect_eq_const %0#3, dense<4> : tensor<i32>
++  func.return
++}
++
++// -----
++
++// Reverse cumulative sum (suffix sums) via chlo.scan with is_reverse: the scan
++// runs from the end, so %0#0 is output[i] = sum(input[i:]) and %0#1 is the
++// total carry.
++func.func @scan_cumsum_reverse() {
++  %input = stablehlo.constant dense<[1, 2, 3, 4]> : tensor<4xi32>
++  %init = stablehlo.constant dense<0> : tensor<i32>
++  %0:2 = chlo.scan(%input) inits(%init) dimension=0 attributes {is_reverse = true} {
++  ^bb0(%scan_arg0: tensor<i32>, %scan_arg1: tensor<i32>):
++    %1 = stablehlo.add %scan_arg0, %scan_arg1 : tensor<i32>
++    stablehlo.return %1, %1 : tensor<i32>, tensor<i32>
++  } : (tensor<4xi32>, tensor<i32>) -> (tensor<4xi32>, tensor<i32>)
++  check.expect_eq_const %0#0, dense<[10, 9, 7, 4]> : tensor<4xi32>
++  check.expect_eq_const %0#1, dense<10> : tensor<i32>
 +  func.return
 +}
 diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
@@ -3264,7 +3282,61 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
  
        SmallVector<int64_t> resultShape;
        for (int64_t d = 0; d < rank; ++d) {
-@@ -2939,11 +3089,10 @@
+@@ -2860,7 +3010,8 @@
+   static void createBodyRegion(ConversionPatternRewriter& rewriter,
+                                Location loc, mlir::chlo::ScanOp op,
+                                WhileOp whileOp, ValueRange inputs, int64_t dim,
+-                               const SmallVector<Type>& whileTypes) {
++                               const SmallVector<Type>& whileTypes,
++                               Value scanDimSize, bool isReverse) {
+     OpBuilder::InsertionGuard guard(rewriter);
+     Block* bodyBlock = rewriter.createBlock(&whileOp.getBody());
+     for (Type t : whileTypes) bodyBlock->addArgument(t, loc);
+@@ -2868,6 +3019,18 @@
+     Value index = bodyBlock->getArgument(0);
+     size_t numCarries = op.getInits().size();
+     size_t numScanOutputs = op.getNumResults() - numCarries;
++
++    // For a reverse scan the loop counter still runs 0..N-1, but each step
++    // reads and writes position (N-1) - counter.
++    Value posIndex = index;
++    if (isReverse) {
++      Value one = ConstantOp::create(
++          rewriter, loc,
++          DenseIntElementsAttr::get(
++              RankedTensorType::get({}, rewriter.getI64Type()), {1LL}));
++      Value lastIndex = SubtractOp::create(rewriter, loc, scanDimSize, one);
++      posIndex = SubtractOp::create(rewriter, loc, lastIndex, index);
++    }
+ 
+     // Args: index (1), accs (numCarries), outputs (numScanOutputs)
+     size_t offset = 1;
+@@ -2875,9 +3038,9 @@
+     offset += numCarries;
+     auto argOutputs = bodyBlock->getArguments().slice(offset, numScanOutputs);
+ 
+-    // Slice inputs.
++    // Slice inputs (at the reverse-adjusted position).
+     SmallVector<Value> slicedInputs =
+-        sliceInputs(rewriter, loc, dim, index, inputs);
++        sliceInputs(rewriter, loc, dim, posIndex, inputs);
+ 
+     // Inline Body.
+     Block& scanBody = op.getBody().front();
+@@ -2900,9 +3063,9 @@
+     auto newOutputElements = ArrayRef(bodyResults).take_front(numScanOutputs);
+     auto newAccs = ArrayRef(bodyResults).take_back(numCarries);
+ 
+-    // Update Outputs.
+-    SmallVector<Value> updatedOutputs =
+-        updateOutputs(rewriter, loc, dim, index, argOutputs, newOutputElements);
++    // Update Outputs (at the reverse-adjusted position).
++    SmallVector<Value> updatedOutputs = updateOutputs(
++        rewriter, loc, dim, posIndex, argOutputs, newOutputElements);
+ 
+     Value oneIndex = ConstantOp::create(
+         rewriter, loc,
+@@ -2939,11 +3102,10 @@
          *scanDimSizeOrError);
  
      // 2. Initial values.
@@ -3280,6 +3352,16 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
  
      // 3. Create WhileOp.
      SmallVector<Type> whileTypes;
+@@ -2955,7 +3117,8 @@
+     createConditionRegion(rewriter, loc, whileOp, scanDimSize, whileTypes);
+ 
+     // 5. Body Region.
+-    createBodyRegion(rewriter, loc, op, whileOp, inputs, dim, whileTypes);
++    createBodyRegion(rewriter, loc, op, whileOp, inputs, dim, whileTypes,
++                     scanDimSize, op.getIsReverse());
+ 
+     // 6. Extract Results.
+     SmallVector<Value> replacements;
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
