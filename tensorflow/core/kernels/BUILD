@@ -1086,6 +1086,7 @@ tf_kernel_library(
     name = "gather_op",
     prefix = "gather_op",
     deps = ARRAY_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
