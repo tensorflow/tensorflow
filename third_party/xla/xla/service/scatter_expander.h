@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_SCATTER_EXPANDER_H_
 #define XLA_SERVICE_SCATTER_EXPANDER_H_
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
 namespace xla {
