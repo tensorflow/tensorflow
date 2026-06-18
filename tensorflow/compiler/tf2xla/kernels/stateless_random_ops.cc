@@ -1,18 +1,3 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
-
 #include <cstdint>
 #include <string>
 #include <tuple>
@@ -59,13 +44,11 @@ xla::BitGeneratorTy GetBitGeneratorForDevice(
       xla::XlaBuilder* builder = key.builder();
       xla::XlaOp zero_u64 = xla::ConstantR0WithType(builder, xla::U64, 0);
       xla::XlaOp philox_state = xla::ConcatInDim(
-          builder, 
-          {xla::Reshape(key, {1}), 
-           xla::Reshape(zero_u64, {1}),
-           xla::Reshape(state, {1})}, 
+          builder, {xla::Reshape(key, {1}), xla::Reshape(zero_u64, {1}),
+                    xla::Reshape(state, {1})},
           0);
-      xla::XlaOp result = xla::RngBitGenerator(xla::RandomAlgorithm::RNG_PHILOX,
-                                               philox_state, shape);
+      xla::XlaOp result = xla::RngBitGenerator(
+          xla::RandomAlgorithm::RNG_PHILOX, philox_state, shape);
       return xla::RngOutput{/*value=*/xla::GetTupleElement(result, 1),
                             /*state=*/xla::GetTupleElement(result, 0)};
     };
@@ -85,7 +68,7 @@ xla::BitGeneratorTy GetBitGeneratorForDevice(
 // The eager path uses fixed key constants {0x3ec8f720, 0x02461e29}, places
 // the two user seeds into a 128-bit counter, runs one Philox-4x32-10 round to
 // mix them, then uses the four mixed words as the real key (words 0-1) and
-// counter (words 2-3).  Without this step the XLA and eager paths produce
+// counter (words 2-3). Without this step the XLA and eager paths produce
 // different outputs for the same seed, violating the stateless RNG contract.
 //
 // Returns {key, initial_state} as U64 scalars ready to pass to
@@ -96,18 +79,10 @@ std::pair<xla::XlaOp, xla::XlaOp> MixSeedsForEagerCompatibility(
   xla::XlaOp s0 = xla::BitcastConvertType(seed0, xla::U32);
   xla::XlaOp s1 = xla::BitcastConvertType(seed1, xla::U32);
   xla::XlaOp zero_u32 = xla::ConstantR0WithType(builder, xla::U32, 0);
-// counter = [seed0, 0, seed1, 0]  (matches eager counter[0..3])
-  xla::XlaOp counter_vec = xla::ConcatInDim(
-      builder,
-      {xla::Reshape(s0, {1}), xla::Reshape(zero_u32, {1}),
-       xla::Reshape(s1, {1}), xla::Reshape(zero_u32, {1})},
-      /*dimension=*/0);  // shape: [4] x U32
+
   xla::XlaOp k0 = xla::ConstantR0WithType(builder, xla::U32, 0x3ec8f720);
   xla::XlaOp k1 = xla::ConstantR0WithType(builder, xla::U32, 0x02461e29);
-  xla::XlaOp key_vec = xla::ConcatInDim(
-      builder,
-      {xla::Reshape(k0, {1}), xla::Reshape(k1, {1})},
-      /*dimension=*/0);  // shape: [2] x U32 
+
   // We pack our U32 words into U64 pairs (little-endian word order).
   auto pack_u32_to_u64 = [&](xla::XlaOp lo, xla::XlaOp hi) -> xla::XlaOp {
     xla::XlaOp lo64 = xla::ConvertElementType(lo, xla::U64);
@@ -122,19 +97,18 @@ std::pair<xla::XlaOp, xla::XlaOp> MixSeedsForEagerCompatibility(
   // Philox state layout: [key(1 x U64), counter(2 x U64)] = 3 x U64
   xla::XlaOp philox_state = xla::ConcatInDim(
       builder,
-      {xla::Reshape(key_u64, {1}),
-       xla::Reshape(ctr_lo_u64, {1}),
+      {xla::Reshape(key_u64, {1}), xla::Reshape(ctr_lo_u64, {1}),
        xla::Reshape(ctr_hi_u64, {1})},
-      /*dimension=*/0);  // shape: [3] x U64
+      /*dimension=*/0);
 
   // Generate 4 x U32 mixed output words via one Philox round.
   xla::Shape mix_shape = xla::ShapeUtil::MakeShape(xla::U32, {4});
   xla::XlaOp mix_result =
-      xla::RngBitGenerator(xla::RandomAlgorithm::RNG_PHILOX,
-                           philox_state, mix_shape);
-  xla::XlaOp mixed = xla::GetTupleElement(mix_result, 1);  // [4] x U32
+      xla::RngBitGenerator(xla::RandomAlgorithm::RNG_PHILOX, philox_state,
+                           mix_shape);
+  xla::XlaOp mixed = xla::GetTupleElement(mix_result, 1);
 
-  // ── Step 4: reassemble mixed words into key and counter U64 values ──
+  // Reassemble mixed words into key and counter U64 values.
   // Mirrors the eager GenerateKey() post-mix assignment:
   //   key[0]     = mix[0];  key[1]     = mix[1]
   //   counter[2] = mix[2];  counter[3] = mix[3]
@@ -147,8 +121,7 @@ std::pair<xla::XlaOp, xla::XlaOp> MixSeedsForEagerCompatibility(
   xla::XlaOp mix2 = slice_scalar(2);
   xla::XlaOp mix3 = slice_scalar(3);
 
-  xla::XlaOp final_key   = pack_u32_to_u64(mix0, mix1);
-  // counter[0]=0, counter[1]=0, counter[2]=mix2, counter[3]=mix3
+  xla::XlaOp final_key = pack_u32_to_u64(mix0, mix1);
   xla::XlaOp final_state = pack_u32_to_u64(mix2, mix3);
 
   return {final_key, final_state};
@@ -182,7 +155,7 @@ xla::XlaOp StatelessRngUniform(absl::string_view device_type_string,
 
   // Mix the seeds using the same Philox scrambling that the eager/graph kernel
   // performs in GenerateKey() so that XLA produces identical outputs to eager
-  // for the same (seed, shape) pair.  See tensorflow/core/kernels/
+  // for the same (seed, shape) pair. See tensorflow/core/kernels/
   // stateless_random_ops.cc for the reference implementation.
   auto [key, initial_state] =
       MixSeedsForEagerCompatibility(builder, seed0, seed1);
