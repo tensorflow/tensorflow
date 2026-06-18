@@ -17,6 +17,7 @@ limitations under the License.
 #include <linux/limits.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -44,7 +45,9 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/WalkResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_ops.h"
@@ -52,6 +55,47 @@ limitations under the License.
 namespace tensorflow {
 namespace mlrt_compiler {
 namespace {
+
+std::optional<llvm::APInt> GetConstantValue(
+    mlir::Value value, const mlir::SymbolTable& symbol_table) {
+  if (!value) return std::nullopt;
+
+  if (auto const_op =
+          llvm::dyn_cast_or_null<mlir::TF::ConstOp>(value.getDefiningOp())) {
+    llvm::APInt val;
+    if (mlir::matchPattern(const_op.getOperation(),
+                           mlir::m_ConstantInt(&val))) {
+      return val;
+    }
+  }
+
+  if (auto get_resource_op =
+          llvm::dyn_cast_or_null<mlir::TF::_TfrtGetResourceOp>(
+              value.getDefiningOp())) {
+    auto indices_attr = get_resource_op.getIndices();
+    if (indices_attr.size() != 1) return std::nullopt;
+    int64_t index = llvm::cast<mlir::IntegerAttr>(indices_attr[0]).getInt();
+
+    auto init_func =
+        symbol_table.lookup<mlir::func::FuncOp>("_tfrt_resource_init");
+    if (!init_func) return std::nullopt;
+
+    mlir::TF::_TfrtSetResourceOp set_resource_op;
+    init_func.walk([&](mlir::TF::_TfrtSetResourceOp op) {
+      if (op.getIndex() == index) {
+        set_resource_op = op;
+        return mlir::WalkResult::interrupt();
+      }
+      return mlir::WalkResult::advance();
+    });
+
+    if (set_resource_op) {
+      return GetConstantValue(set_resource_op.getArg(), symbol_table);
+    }
+  }
+
+  return std::nullopt;
+}
 
 void RemoveIdentityOp(mlir::func::FuncOp func) {
   auto &block = func.getBody().front();
@@ -204,7 +248,8 @@ class WhileToMapFnPass
                                          loop_info)) &&
           mlir::succeeded(
               MatchBody(while_op.getBodyAttr(), symbol_table, loop_info)) &&
-          mlir::succeeded(MatchInputSource(while_op, loop_info)) &&
+          mlir::succeeded(
+              MatchInputSource(while_op, symbol_table, loop_info)) &&
           mlir::succeeded(MatchOutputUse(while_op, loop_info))) {
         // Input, predicate function, body function and output are all following
         // patterns, we can convert it to tf_mlrt.map_fn.
@@ -271,12 +316,15 @@ class WhileToMapFnPass
   // array is thread safe; (b) loop_counter and element_index starts with 0.
   // Also may identify source of max_iterations.
   mlir::LogicalResult MatchInputSource(mlir::TF::WhileOp while_op,
-                                       LoopInfo &loop_info) {
+                                       const mlir::SymbolTable& symbol_table,
+                                       LoopInfo& loop_info) {
     // Element index and loop counter should start from 0.
-    if (!mlir::matchPattern(while_op.getOperand(loop_info.loop_counter),
-                            mlir::m_Zero()) ||
-        !mlir::matchPattern(while_op.getOperand(loop_info.element_index),
-                            mlir::m_Zero())) {
+    std::optional<llvm::APInt> loop_counter_val = GetConstantValue(
+        while_op.getOperand(loop_info.loop_counter), symbol_table);
+    std::optional<llvm::APInt> element_index_val = GetConstantValue(
+        while_op.getOperand(loop_info.element_index), symbol_table);
+    if (!loop_counter_val.has_value() || !loop_counter_val->isZero() ||
+        !element_index_val.has_value() || !element_index_val->isZero()) {
       return mlir::failure();
     }
 
@@ -306,12 +354,11 @@ class WhileToMapFnPass
         if (tensor_list_reserve_size != max_iterations) {
           // if tensor list is not reserved by max_iteration variable, then
           // another acceptable case is that both contain same constant values.
-          llvm::APInt reserved_cst;
-          if (!mlir::matchPattern(tensor_list_reserve_size,
-                                  mlir::m_ConstantInt(&reserved_cst)) ||
+          std::optional<llvm::APInt> reserved_cst = GetConstantValue(
+              tensor_list_reserve.getNumElements(), symbol_table);
+          if (!reserved_cst.has_value() ||
               !loop_info.max_iterations_value.has_value() ||
-              reserved_cst.getZExtValue() !=
-                  loop_info.max_iterations_value.value()) {
+              *reserved_cst != loop_info.max_iterations_value.value()) {
             return mlir::failure();
           }
         }
@@ -325,12 +372,11 @@ class WhileToMapFnPass
         if (tensor_array_size != max_iterations) {
           // if tensor array is not reserved by max_iteration variable, then
           // another acceptable case is that both contain same constant values.
-          llvm::APInt reserved_cst;
-          if (!mlir::matchPattern(tensor_array_size,
-                                  mlir::m_ConstantInt(&reserved_cst)) ||
+          std::optional<llvm::APInt> reserved_cst =
+              GetConstantValue(tensor_array.getOperand(), symbol_table);
+          if (!reserved_cst.has_value() ||
               !loop_info.max_iterations_value.has_value() ||
-              reserved_cst.getZExtValue() !=
-                  loop_info.max_iterations_value.value()) {
+              *reserved_cst != loop_info.max_iterations_value.value()) {
             return mlir::failure();
           }
         }
@@ -473,12 +519,12 @@ class WhileToMapFnPass
       }
     } else {
       // If upper bound is not passed in, it has to be a constant
-      llvm::APInt value;
-      if (!mlir::matchPattern(less_ops[0]->getOperand(1).getDefiningOp(),
-                              mlir::m_ConstantInt(&value))) {
+      std::optional<llvm::APInt> value =
+          GetConstantValue(less_ops[0]->getOperand(1), symbol_table);
+      if (!value.has_value()) {
         return mlir::failure();
       }
-      max_iter_value_from_counter = value.getZExtValue();
+      max_iter_value_from_counter = value->getZExtValue();
     }
 
     // Identify element_index
@@ -508,12 +554,12 @@ class WhileToMapFnPass
       }
     } else {
       // If upper bound is not passed in, it has to be a constant
-      llvm::APInt value;
-      if (!mlir::matchPattern(less_ops[1]->getOperand(1).getDefiningOp(),
-                              mlir::m_ConstantInt(&value))) {
+      std::optional<llvm::APInt> value =
+          GetConstantValue(less_ops[1]->getOperand(1), symbol_table);
+      if (!value.has_value()) {
         return mlir::failure();
       }
-      max_iter_value_from_element = value.getZExtValue();
+      max_iter_value_from_element = value->getZExtValue();
     }
 
     // Loop_counter is always available.
@@ -569,7 +615,8 @@ class WhileToMapFnPass
   // return %update_loop_counter, %updated_element_index,
   // %tensor_array_list, %max_iterations, %other_args
   mlir::LogicalResult MatchLoopCounterElementIndexInBody(
-      mlir::func::FuncOp while_body_func, LoopInfo &loop_info) {
+      mlir::func::FuncOp while_body_func, const mlir::SymbolTable& symbol_table,
+      LoopInfo& loop_info) {
     mlir::Block &block = while_body_func.getBlocks().front();
 
     // Verify argument loop_counter is +1 and returned at the same location.
@@ -579,10 +626,12 @@ class WhileToMapFnPass
         GetUsersIgnoringIdentityOp(loop_counter);
     if (loop_counter_users.size() != 1 ||
         !llvm::isa<mlir::TF::AddOp, mlir::TF::AddV2Op>(
-            loop_counter_users.front()) ||
-        !mlir::matchPattern(
-            loop_counter_users.front()->getOperand(1).getDefiningOp(),
-            mlir::m_One())) {
+            loop_counter_users.front())) {
+      return mlir::failure();
+    }
+    std::optional<llvm::APInt> loop_counter_add_val = GetConstantValue(
+        loop_counter_users.front()->getOperand(1), symbol_table);
+    if (!loop_counter_add_val.has_value() || *loop_counter_add_val != 1) {
       return mlir::failure();
     }
 
@@ -602,9 +651,9 @@ class WhileToMapFnPass
       if (llvm::isa<mlir::TF::AddOp, mlir::TF::AddV2Op>(element_index_use)) {
         // One use of element_index is +1 and then returned at the same
         // location.
-        if (!mlir::matchPattern(
-                element_index_use->getOperand(1).getDefiningOp(),
-                mlir::m_One()) ||
+        std::optional<llvm::APInt> element_index_add_val =
+            GetConstantValue(element_index_use->getOperand(1), symbol_table);
+        if (!element_index_add_val.has_value() || *element_index_add_val != 1 ||
             element_index_use !=
                 GetDefiningOpIgnoringIdentityOp(GetReturnedOperand(
                     while_body_func, loop_info.element_index))) {
@@ -668,15 +717,15 @@ class WhileToMapFnPass
         symbol_table.lookup<mlir::func::FuncOp>(
             while_body_func_name.getValue());
 
-    if (mlir::failed(
-            MatchLoopCounterElementIndexInBody(while_body_func, loop_info))) {
+    if (mlir::failed(MatchLoopCounterElementIndexInBody(
+            while_body_func, symbol_table, loop_info))) {
       // Swap the order of loop_counter and element_index in the current
       // hypothesis and try again
       int swap = loop_info.loop_counter;
       loop_info.loop_counter = loop_info.element_index;
       loop_info.element_index = swap;
-      if (mlir::failed(
-              MatchLoopCounterElementIndexInBody(while_body_func, loop_info))) {
+      if (mlir::failed(MatchLoopCounterElementIndexInBody(
+              while_body_func, symbol_table, loop_info))) {
         return mlir::failure();
       }
     }
