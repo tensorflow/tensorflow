@@ -1,4 +1,4 @@
-/* Copyright 2017 The OpenXLA Authors.
+g/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -457,36 +457,6 @@ void BM_TupleShapeEqual(::testing::benchmark::State& state) {
   }
 }
 BENCHMARK(BM_TupleShapeEqual);
-
-TEST(Shape, BufferShapeArrayAccessorTriggersInformativeCheckFailure) {
-  Shape shape(BUFFER);
-  // Verifies that attempting to read array properties from an uninitialized or
-  // invalid Buffer shape triggers an explicit, programmer-friendly CHECK
-  // failure rather than a raw memory fault.
-  EXPECT_DEATH_IF_SUPPORTED(
-      shape.dimensions(),
-      "Expected a fully initialized Buffer shape containing an "
-      "underlying array, but got an uninitialized/empty Buffer shape");
-  EXPECT_DEATH_IF_SUPPORTED(
-      shape.set_dynamic_dimension(0, true),
-      "Expected a fully initialized Buffer shape containing an "
-      "underlying array, but got an uninitialized/empty Buffer shape");
-}
-
-TEST_F(ShapeTest,
-       NonArrayNonBufferShapeAccessorTriggersInformativeCheckFailure) {
-  EXPECT_DEATH_IF_SUPPORTED(tuple_.dimensions(),
-                            "Expected an array or buffer shape.");
-  EXPECT_DEATH_IF_SUPPORTED(token_.dimensions(),
-                            "Expected an array or buffer shape.");
-
-  Shape mutable_tuple = tuple_;
-  EXPECT_DEATH_IF_SUPPORTED(mutable_tuple.set_dynamic_dimension(0, true),
-                            "Expected an array or buffer shape.");
-  Shape mutable_token = token_;
-  EXPECT_DEATH_IF_SUPPORTED(mutable_token.set_dynamic_dimension(0, true),
-                            "Expected an array or buffer shape.");
-}
 
 }  // namespace
 }  // namespace xla

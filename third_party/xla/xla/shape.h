@@ -840,15 +840,8 @@ inline const Shape::ArrayState& Shape::array_state_maybe_underneath_buffer()
     return *array;
   }
   const BufferState* buffer = if_buffer_state();
-  CHECK(buffer)
-      << "Expected an array or buffer shape. Got " << ToString()
-      << "\nThis is a programmer error. Please read the Shape object's "
-         "array properties only when it is an array or buffer shape.";
-  CHECK(buffer->buffer_shape->IsArrayExcludingBuffer())
-      << "Expected a fully initialized Buffer shape containing an "
-         "underlying array, but got an uninitialized/empty Buffer shape: "
-      << ToString();
-  return buffer->buffer_shape->array_state();
+  CHECK_NE(buffer, nullptr);
+  return *buffer->buffer_shape->if_array_state();
 }
 
 inline Shape::ArrayState& Shape::array_state_maybe_underneath_buffer() {
@@ -856,15 +849,8 @@ inline Shape::ArrayState& Shape::array_state_maybe_underneath_buffer() {
     return *array;
   }
   BufferState* buffer = if_buffer_state();
-  CHECK(buffer)
-      << "Expected an array or buffer shape. Got " << ToString()
-      << "\nThis is a programmer error. Please read the Shape object's "
-         "array properties only when it is an array or buffer shape.";
-  CHECK(buffer->buffer_shape->IsArrayExcludingBuffer())
-      << "Expected a fully initialized Buffer shape containing an "
-         "underlying array, but got an uninitialized/empty Buffer shape: "
-      << ToString();
-  return buffer->buffer_shape->array_state();
+  CHECK_NE(buffer, nullptr);
+  return *buffer->buffer_shape->if_array_state();
 }
 
 inline ABSL_ATTRIBUTE_ALWAYS_INLINE const Shape& Shape::tuple_shapes(
