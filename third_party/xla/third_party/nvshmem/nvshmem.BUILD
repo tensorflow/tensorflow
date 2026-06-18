@@ -89,24 +89,6 @@ copy_file(
     out = "src/include/non_abi/device/pt-to-pt/transfer_device.cuh",
 )
 
-cc_library(
-    name = "nvshmem_lib",
-    hdrs = glob([
-        "src/include/**",
-    ]) + [
-        ":nvshmem_build_options_h",
-        ":nvshmem_transfer_device_cuh",
-        ":nvshmem_version_h",
-    ],
-    include_prefix = "third_party/nvshmem",
-    includes = ["src/include"],
-    strip_include_prefix = "src/include",
-    visibility = ["//visibility:public"],
-    deps = [
-        "@xla//xla/tsl/cuda:nvshmem_stub",
-    ],
-)
-
 # This additional header allows us to determine the configured NVSHMEM version
 # without including the rest of NVSHMEM.
 write_file(
