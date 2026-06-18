@@ -49,7 +49,7 @@ class CTCDecoder {
         batch_size_(batch_size),
         merge_repeated_(merge_repeated) {}
 
-  virtual ~CTCDecoder() {}
+  virtual ~CTCDecoder() = default;
 
   // Dimensionality of the input/output is expected to be:
   //  - seq_len[b] - b = 0 to batch_size_

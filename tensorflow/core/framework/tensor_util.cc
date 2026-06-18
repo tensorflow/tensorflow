@@ -279,14 +279,12 @@ inline bool PackedValuesNotEqual(const std::complex<RealType>& a,
 }
 
 // Integer can't be negative zero.
-template <typename T,
-          typename std::enable_if<std::is_integral<T>::value>::type* = nullptr>
+template <typename T, std::enable_if_t<std::is_integral_v<T>>* = nullptr>
 static bool IsNegativeZero(T value) {
   return false;
 }
 
-template <typename T,
-          typename std::enable_if<!std::is_integral<T>::value>::type* = nullptr>
+template <typename T, std::enable_if_t<!std::is_integral_v<T>>* = nullptr>
 static bool IsNegativeZero(T value) {
   return value == T(0) && std::signbit(value);
 }

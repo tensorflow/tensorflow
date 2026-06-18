@@ -265,8 +265,7 @@ class TensorProtoHelper<std::string> : public std::true_type {
 };
 
 template <typename Type, typename IterType>
-typename std::enable_if<internal::TensorProtoHelper<Type>::value,
-                        TensorProto>::type
+std::enable_if_t<internal::TensorProtoHelper<Type>::value, TensorProto>
 CreateTensorProto(IterType values_begin, IterType values_end,
                   const size_t values_size,
                   const absl::Span<const size_t> shape) {
@@ -294,8 +293,7 @@ CreateTensorProto(IterType values_begin, IterType values_end,
 // compiler can't infer it:
 //   auto proto = CreateTensorProtoSpan<float>(my_array, shape);
 template <typename Type>
-typename std::enable_if<internal::TensorProtoHelper<Type>::value,
-                        TensorProto>::type
+std::enable_if_t<internal::TensorProtoHelper<Type>::value, TensorProto>
 CreateTensorProtoSpan(const absl::Span<const Type> values,
                       const absl::Span<const size_t> shape) {
   return internal::CreateTensorProto<Type>(values.begin(), values.end(),
@@ -306,8 +304,7 @@ CreateTensorProtoSpan(const absl::Span<const Type> values,
 // which case Type can automatically be inferred:
 //   auto proto = CreateTensorProto(my_vector, shape);
 template <typename Type>
-typename std::enable_if<internal::TensorProtoHelper<Type>::value,
-                        TensorProto>::type
+std::enable_if_t<internal::TensorProtoHelper<Type>::value, TensorProto>
 CreateTensorProto(const std::vector<Type>& values,
                   const absl::Span<const size_t> shape) {
   // This awkward iterator passing is essentially just to support vector<bool>,
