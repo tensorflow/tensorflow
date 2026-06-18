@@ -1866,7 +1866,7 @@ cc_library(
         "//xla/service:call_inliner",
         "//xla/service:collective_ops_utils",
         "//xla/service:collective_permute_decomposer",
-        "//xla/service:collective_pipeliner",
+        "//xla/service:collective_pipeliner",  # buildcleaner: keep
         "//xla/service:collective_pipeliner_utils",
         "//xla/service:collective_utils",
         "//xla/service:compilation_stats",
