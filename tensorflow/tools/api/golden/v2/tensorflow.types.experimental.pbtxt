@@ -1,0 +1,43 @@
+path: "tensorflow.types.experimental"
+tf_module {
+  member {
+    name: "AtomicFunction"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "Callable"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "ConcreteFunction"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "FunctionType"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "GenericFunction"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "PolymorphicFunction"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "SupportsTracingProtocol"
+    mtype: "<class \'typing._ProtocolMeta\'>"
+  }
+  member {
+    name: "TensorLike"
+    mtype: "typing.Union"
+  }
+  member {
+    name: "TraceType"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "distributed"
+    mtype: "<class \'module\'>"
+  }
+}

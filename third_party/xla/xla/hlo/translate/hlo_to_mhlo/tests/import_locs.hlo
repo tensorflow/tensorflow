@@ -1,0 +1,9 @@
+// RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo -hlo-flatten-computation-args-result=false -hlo-import-all-computations -mlir-print-debuginfo %s -o - | FileCheck %s
+// CHECK-LABEL: func.func @main(
+// CHECK-SAME: %arg0: tensor<32xi32> loc("hello"),
+// CHECK-SAME: %arg1: tensor<32xi32> loc("world")
+ENTRY param_metadata {
+  param_0 = s32[32]{0} parameter(0), metadata={op_name="hello"}
+  param_1 = s32[32]{0} parameter(1), metadata={op_name="world"}
+  ROOT custom-call.0 = s32[32]{0} custom-call(param_0, param_1), custom_call_target="Sharding"
+}

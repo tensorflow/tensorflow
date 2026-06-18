@@ -1,0 +1,35 @@
+op {
+  name: "RefEnter"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+    is_ref: true
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "frame_name"
+    type: "string"
+  }
+  attr {
+    name: "is_constant"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "parallel_iterations"
+    type: "int"
+    default_value {
+      i: 10
+    }
+  }
+}

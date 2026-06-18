@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "MapIncompleteSize"
+  summary: "Op returns the number of incomplete elements in the underlying container."
+}

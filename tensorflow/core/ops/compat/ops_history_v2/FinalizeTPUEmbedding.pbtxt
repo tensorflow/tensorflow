@@ -1,0 +1,12 @@
+op {
+  name: "FinalizeTPUEmbedding"
+  input_arg {
+    name: "common_config"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "memory_config"
+    type: DT_STRING
+  }
+  is_stateful: true
+}

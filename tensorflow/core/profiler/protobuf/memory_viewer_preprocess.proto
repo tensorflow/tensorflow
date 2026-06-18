@@ -1,0 +1,9 @@
+// Protobuf definitions for communicating the results of the memory
+// visualization analysis subprocess (written in C++) to the outer script which
+// renders HTML from Python.
+
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+import public "plugin/xprof/protobuf/memory_viewer_preprocess.proto";

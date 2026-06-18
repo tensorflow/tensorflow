@@ -1,0 +1,26 @@
+// RUN: hlo-translate -hlo-to-mlir -emit-mhlo -split-input-file %s -o - | FileCheck %s
+
+// CHECK-LABEL: func.func @main({{[^{,)]*}} {mhlo.layout_mode = "auto"}, {{[^{,)]*}}) -> ({{[^{,)]*}}, {{[^{,)]*}} {mhlo.layout_mode = "auto"})
+HloModule t1, entry_computation_layout={(bf16[4096,6144], s4[6144,4608]{1,0})->
+  (bf16[4096,4608]{1,0}, bf16[4096,4608])}
+
+ENTRY main {
+ p0 = bf16[4096,6144] parameter(0)
+ p1 = s4[6144,4608] parameter(1)
+ dot = bf16[4096,4608] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+ ROOT out = (bf16[4096,4608], bf16[4096,4608]) tuple(dot, dot)
+}
+
+// -----
+
+// CHECK-LABEL: func.func @main
+// CHECK-NOT: mhlo.layout_mode
+// CHECK-SAME: {
+HloModule t2
+
+ENTRY main {
+ p0 = bf16[4096,6144] parameter(0)
+ p1 = s4[6144,4608] parameter(1)
+ dot = bf16[4096,4608] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+ ROOT out = (bf16[4096,4608], bf16[4096,4608]) tuple(dot, dot)
+}

@@ -1,0 +1,98 @@
+// Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+namespace debug_metadata;
+
+table DictItem {
+  key: string;
+  val: string;
+}
+
+table CallSiteLoc {
+  callee_index: uint32;
+  caller_index: uint32;
+}
+
+table FileLineColLoc {
+  filename: string;
+  line: uint32;
+  column: uint32;
+}
+
+table FusedLoc {
+  // List of locations.
+  location_indexes: [uint32];
+}
+
+table NameLoc {
+  name: string;
+  // Nested location for hierarchical naming.
+  child_index: uint32;
+}
+
+table OpaqueLoc {
+  identifier: string;
+  fallback_location_index: uint32;
+}
+
+table UnknownLoc {
+  // No fields needed.
+}
+
+union LocationType {
+  CallSiteLoc,
+  FileLineColLoc,
+  FusedLoc,
+  NameLoc,
+  OpaqueLoc,
+  UnknownLoc
+}
+
+table Location {
+  location: LocationType;
+}
+
+union Attribute {
+  Location,
+  DictItem,
+}
+
+table OperatorDebugMetadata {
+  // Top-level location metadata index of this operator.
+  attribute_metadata_indexes: [uint32];
+}
+
+table SubgraphDebugMetadata {
+  // Debug metadata of all the operators.
+  // This list should be append-only.
+  operators_debug_metadata:[OperatorDebugMetadata];
+}
+
+table ConversionDebugMetadata {
+  // Debug metadata of all the subgraphs.
+  // This list should be append-only.
+  subgraphs_debug_metadata:[SubgraphDebugMetadata];
+
+  attributes: [Attribute];
+}
+
+union DebugMetadataType {
+  ConversionDebugMetadata,
+}
+
+table DebugMetadata {
+  debug_metadata: [DebugMetadataType];
+}
+
+root_type DebugMetadata;

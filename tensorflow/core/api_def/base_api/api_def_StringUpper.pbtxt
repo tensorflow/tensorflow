@@ -1,0 +1,24 @@
+op {
+  graph_op_name: "StringUpper"
+  in_arg {
+    name: "input"
+    description: <<END
+The input to be upper-cased.
+END
+  }
+  attr {
+    name: "encoding"
+    description: <<END
+Character encoding of `input`. Allowed values are '' and 'utf-8'.
+Value '' is interpreted as ASCII.
+END
+  }
+  summary: "Converts all lowercase characters into their respective uppercase replacements."
+  description: <<END
+Example:
+
+>>> tf.strings.upper("CamelCase string and ALL CAPS")
+<tf.Tensor: shape=(), dtype=string, numpy=b'CAMELCASE STRING AND ALL CAPS'>
+
+END
+}

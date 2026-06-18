@@ -1,0 +1,123 @@
+/* Copyright 2024 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef XLA_SERVICE_LEGALIZE_SCHEDULING_ANNOTATIONS_H_
+#define XLA_SERVICE_LEGALIZE_SCHEDULING_ANNOTATIONS_H_
+
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/scheduling_annotations_util.h"
+#include "xla/util.h"
+
+namespace xla {
+
+// Legalizer pass for scheduling annotations (to be used in
+//  LatencyHidingScheduler).
+class LegalizeSchedulingAnnotations : public HloModulePass {
+ public:
+  struct Config {
+    HloPredicate keep_sync_annotation = HloPredicateTrue;
+    HloPredicate keep_trivial_sync_annotation = HloPredicateTrue;
+    bool propagate_annotation = false;
+    bool check_start_done_annotation_consistency = true;
+    bool remove_loop_iteration_annotation_only = false;
+    bool run_verification = false;
+    bool keep_start_annotation = true;
+    bool deannotate_unsupported_groups = false;
+    bool check_gap_only = false;
+    bool check_non_mitigatable_gap_only = false;
+    bool skip_opt_barriers = false;
+    std::string debug_str;
+  };
+
+  explicit LegalizeSchedulingAnnotations(Config config)
+      : config_(std::move(config)) {}
+  absl::string_view name() const override {
+    return "legalize-scheduling-annotations";
+  }
+
+  // Propagates the annotation to fill the gaps between instructions with the
+  // same annotation ID. If dry_run is true, it will only check if the
+  // propagation is possible without actually annotating the instructions.
+  static absl::StatusOr<bool> PropagateAnnotations(
+      const HloComputation* computation,
+      const absl::btree_map<Annotation, std::vector<HloInstruction*>>&
+          annotation_to_instruction,
+      bool dry_run = false);
+
+  // Checks if there are gaps between annotated instructions that are along the
+  // same path (for the same annotation ID). If a gap is found, returns an error
+  // and prints the path from the annotated source instruction to the annotated
+  // destination instruction. This function is configurable to skip over
+  // optimization barriers and simple tuples, because they sometimes introduce
+  // false positives.
+  absl::Status CheckGapBetweenAnnotatedInstructions(
+      const absl::flat_hash_map<
+          Annotation,
+          absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>&
+          annotation_to_instruction,
+      const absl::flat_hash_map<HloInstruction*, Annotation>&
+          instruction_to_annotation);
+
+  absl::Status Verify(HloModule* module);
+
+  void LogConfig(int64_t level);
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  bool KeepSchedulingAnnotation(HloInstruction* instr);
+  bool RemoveTrivialGroups(
+      const absl::flat_hash_map<
+          Annotation,
+          absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>&
+          annotation_to_instruction);
+  Config config_;
+};
+
+// This pass only checks that there are no direct data dependencies between
+// instructions with scheduling annotations. If there are any indirect data
+// dependencies(i.e. gaps), it will detected by the
+// LegalizeSchedulingAnnotations pass.
+class CheckNoDataDependencyInSchedulingAnnotations : public HloModulePass {
+ public:
+  absl::string_view name() const override {
+    return "check-no-data-dependency-in-scheduling-annotations";
+  }
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+};
+
+}  // namespace xla
+
+#endif  // XLA_SERVICE_LEGALIZE_SCHEDULING_ANNOTATIONS_H_

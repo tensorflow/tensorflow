@@ -1,0 +1,50 @@
+toc:
+- title: TensorFlowLiteSwift
+  section:
+  - title: Classes
+    path: /lite/api_docs/swift/Classes.html
+    section:
+    - title: CoreMLDelegate
+      path: /lite/api_docs/swift/Classes/CoreMLDelegate.html
+    - title: – EnabledDevices
+      path: /lite/api_docs/swift/Classes/CoreMLDelegate/EnabledDevices.html
+    - title: – Options
+      path: /lite/api_docs/swift/Classes/CoreMLDelegate/Options.html
+    - title: Interpreter
+      path: /lite/api_docs/swift/Classes/Interpreter.html
+    - title: – Options
+      path: /lite/api_docs/swift/Classes/Interpreter/Options.html
+    - title: MetalDelegate
+      path: /lite/api_docs/swift/Classes/MetalDelegate.html
+    - title: – Options
+      path: /lite/api_docs/swift/Classes/MetalDelegate/Options.html
+  - title: Enumerations
+    path: /lite/api_docs/swift/Enums.html
+    section:
+    - title: InterpreterError
+      path: /lite/api_docs/swift/Enums/InterpreterError.html
+    - title: Runtime
+      path: /lite/api_docs/swift/Enums/Runtime.html
+    - title: ThreadWaitType
+      path: /lite/api_docs/swift/Enums/ThreadWaitType.html
+  - title: Protocols
+    path: /lite/api_docs/swift/Protocols.html
+    section:
+    - title: Delegate
+      path: /lite/api_docs/swift/Protocols/Delegate.html
+  - title: Structures
+    path: /lite/api_docs/swift/Structs.html
+    section:
+    - title: QuantizationParameters
+      path: /lite/api_docs/swift/Structs/QuantizationParameters.html
+    - title: Tensor
+      path: /lite/api_docs/swift/Structs/Tensor.html
+    - title: – DataType
+      path: /lite/api_docs/swift/Structs/Tensor/DataType.html
+    - title: – Shape
+      path: /lite/api_docs/swift/Structs/Tensor/Shape.html
+  - title: Type Aliases
+    path: /lite/api_docs/swift/Typealiases.html
+    section:
+    - title: InterpreterOptions
+      path: /lite/api_docs/swift/Typealiases.html#/s:19TensorFlowLiteSwift18InterpreterOptionsa

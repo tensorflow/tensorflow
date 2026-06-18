@@ -1,0 +1,31 @@
+path: "tensorflow.lite"
+tf_module {
+  member {
+    name: "Interpreter"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "OpsSet"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
+    name: "Optimize"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
+    name: "RepresentativeDataset"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "TFLiteConverter"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "TargetSpec"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<class \'module\'>"
+  }
+}

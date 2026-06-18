@@ -1,0 +1,17 @@
+op {
+  graph_op_name: "IsBoostedTreesEnsembleInitialized"
+  visibility: HIDDEN
+  in_arg {
+    name: "tree_ensemble_handle"
+    description: <<END
+Handle to the tree ensemble resource.
+END
+  }
+  out_arg {
+    name: "is_initialized"
+    description: <<END
+output boolean on whether it is initialized or not.
+END
+  }
+  summary: "Checks whether a tree ensemble has been initialized."
+}

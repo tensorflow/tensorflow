@@ -1,0 +1,32 @@
+load("@rules_python//python:proto.bzl", "py_proto_library")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//tensorflow/dtensor:dtensor-internal",
+        "//tensorflow/dtensor:dtensor-users",
+    ],
+    licenses = ["notice"],
+)
+
+tf_proto_library(
+    name = "layout_proto",
+    srcs = ["layout.proto"],
+    create_go_proto = False,
+    create_java_proto = False,
+)
+
+# copybara:comment_begin(oss only)
+alias(
+    name = "layout_proto_py_pb2",
+    actual = ":layout_proto_py",
+)
+# copybara:comment_end
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "layout_proto_py_pb2",
+#     deps = [":layout_proto"],
+# )
+# copybara:uncomment_end

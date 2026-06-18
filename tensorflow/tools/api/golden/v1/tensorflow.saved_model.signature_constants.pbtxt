@@ -1,0 +1,47 @@
+path: "tensorflow.saved_model.signature_constants"
+tf_module {
+  member {
+    name: "CLASSIFY_INPUTS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "CLASSIFY_METHOD_NAME"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "CLASSIFY_OUTPUT_CLASSES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "CLASSIFY_OUTPUT_SCORES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "DEFAULT_SERVING_SIGNATURE_DEF_KEY"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "PREDICT_INPUTS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "PREDICT_METHOD_NAME"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "PREDICT_OUTPUTS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "REGRESS_INPUTS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "REGRESS_METHOD_NAME"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "REGRESS_OUTPUTS"
+    mtype: "<class \'str\'>"
+  }
+}

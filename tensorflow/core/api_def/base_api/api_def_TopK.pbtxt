@@ -1,0 +1,50 @@
+op {
+  graph_op_name: "TopK"
+  in_arg {
+    name: "input"
+    description: <<END
+1-D or higher with last dimension at least `k`.
+END
+  }
+  out_arg {
+    name: "values"
+    description: <<END
+The `k` largest elements along each last dimensional slice.
+END
+  }
+  out_arg {
+    name: "indices"
+    description: <<END
+The indices of `values` within the last dimension of `input`.
+END
+  }
+  attr {
+    name: "k"
+    description: <<END
+Number of top elements to look for along the last dimension (along each
+row for matrices).
+END
+  }
+  attr {
+    name: "sorted"
+    description: <<END
+If true the resulting `k` elements will be sorted by the values in
+descending order.
+END
+  }
+  summary: "Finds values and indices of the `k` largest elements for the last dimension."
+  description: <<END
+If the input is a vector (rank-1), finds the `k` largest entries in the vector
+and outputs their values and indices as vectors.  Thus `values[j]` is the
+`j`-th largest entry in `input`, and its index is `indices[j]`.
+
+For matrices (resp. higher rank input), computes the top `k` entries in each
+row (resp. vector along the last dimension).  Thus,
+
+    values.shape = indices.shape = input.shape[:-1] + [k]
+
+If two elements are equal, the lower-index element appears first.
+
+If `k` varies dynamically, use `TopKV2` below.
+END
+}

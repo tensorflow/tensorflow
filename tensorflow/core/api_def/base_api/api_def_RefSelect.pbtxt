@@ -1,0 +1,22 @@
+op {
+  graph_op_name: "RefSelect"
+  in_arg {
+    name: "index"
+    description: <<END
+A scalar that determines the input that gets selected.
+END
+  }
+  in_arg {
+    name: "inputs"
+    description: <<END
+A list of ref tensors, one of which will be forwarded to `output`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The forwarded tensor.
+END
+  }
+  summary: "Forwards the `index`th element of `inputs` to `output`."
+}

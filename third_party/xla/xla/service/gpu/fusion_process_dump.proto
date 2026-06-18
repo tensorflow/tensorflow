@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package xla.gpu;
+
+import "xla/stream_executor/device_description.proto";
+
+message FusionStep {
+  message Fusion {
+    // Name of the resulting fusion. Can be the same as producer or consumer.
+    string fusion_name = 1;
+
+    // Name of the producer instruction before fusion.
+    string producer_name = 2;
+
+    // Name of the consumer instruction before fusion.
+    string consumer_name = 3;
+  }
+
+  message UpdatePriority {
+    // The name of the producer whose priority was updated.
+    string producer_name = 1;
+    // The names of all of the producers' consumers.
+    repeated string consumer_names = 2;
+
+    // The time to execute the epilogue of each consumer (consisting of the
+    // producer's HLO) and read the producer's inputs from each consumer.
+    float us_fused = 3;
+    // The time to execute the producer and read the producer's outputs from
+    // the consumers when unfused.
+    float us_unfused = 4;
+  }
+
+  message ProducerIneligible {
+    // The name of the producer.
+    string producer_name = 1;
+    // The reason why this producer cannot be fused.
+    string reason = 2;
+  }
+
+  oneof step {
+    Fusion fusion = 4;
+    ProducerIneligible producer_ineligible = 5;
+    UpdatePriority update_priority = 6;
+  }
+
+  reserved 1 to 3;
+}
+
+message FusionProcessDumpProto {
+  repeated FusionStep fusion_steps = 1;
+
+  stream_executor.GpuDeviceInfoProto gpu_device_info = 2;
+
+  // HLO module before fusion in short parsable string format. The string
+  // represantation is compacter than HloModuleProto in this case, especially
+  // when the fusion process dump is stored as text proto.
+  //
+  // TODO: Consider using base64 or gzip to decrease the size of the string.
+  string hlo_module_before_fusion = 3;
+}

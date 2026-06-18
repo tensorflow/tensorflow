@@ -1,0 +1,19 @@
+op {
+  name: "CollateTPUEmbeddingMemory"
+  input_arg {
+    name: "memory_configs"
+    type: DT_STRING
+    number_attr: "N"
+  }
+  output_arg {
+    name: "merged_memory_config"
+    type: DT_STRING
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}

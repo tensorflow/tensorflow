@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/protobuf/meta_graph.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "SavedModelProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
+// SavedModel is the high level serialization format for TensorFlow Models.
+// See [todo: doc links, similar to session_bundle] for more information.
+message SavedModel {
+  // The schema version of the SavedModel instance. Used for versioning when
+  // making future changes to the specification/implementation. Initial value
+  // at release will be 1.
+  int64 saved_model_schema_version = 1;
+
+  // One or more MetaGraphs.
+  repeated MetaGraphDef meta_graphs = 2;
+}

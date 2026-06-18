@@ -1,0 +1,14 @@
+func.func @ReluGrad_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %arg1: tensor<*xelem_type>) -> tensor<*xoutput_type> attributes {llvm.emit_c_interface, tf_entry} {
+  %0 = shape.shape_of %arg0 : tensor<*xelem_type> -> tensor<?xindex>
+  %1 = shape.shape_of %arg1 : tensor<*xelem_type> -> tensor<?xindex>
+  %2 = shape.any %0, %1 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
+  %3 = shape.num_elements %2 : tensor<?xindex> -> index
+  %from_elements = tensor.from_elements %3 : tensor<1xindex>
+  %4 = tensor.reshape %arg0(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+  %5 = tensor.reshape %arg1(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+  %6 = "chlo.constant_like"(%5) {value = 0.000000e+00 : elem_type} : (tensor<?xelem_type>) -> tensor<?xelem_type>
+  %7 = mhlo.compare  GT, %5, %6 : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xi1>
+  %8 = mhlo.select %7, %4, %6 : tensor<?xi1>, tensor<?xelem_type>
+  %9 = tensor.reshape %8(%0) : (tensor<?xelem_type>, tensor<?xindex>) -> tensor<*xelem_type>
+  return %9 : tensor<*xelem_type>
+}

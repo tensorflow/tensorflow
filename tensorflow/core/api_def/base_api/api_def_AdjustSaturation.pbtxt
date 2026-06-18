@@ -1,0 +1,30 @@
+op {
+  graph_op_name: "AdjustSaturation"
+  in_arg {
+    name: "images"
+    description: <<END
+Images to adjust.  At least 3-D.
+END
+  }
+  in_arg {
+    name: "scale"
+    description: <<END
+A float scale to add to the saturation.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The hue-adjusted image or images.
+END
+  }
+  summary: "Adjust the saturation of one or more images."
+  description: <<END
+`images` is a tensor of at least 3 dimensions.  The last dimension is
+interpreted as channels, and must be three.
+
+The input image is considered in the RGB colorspace. Conceptually, the RGB
+colors are first mapped into HSV. A scale is then applied all the saturation
+values, and then remapped back to RGB colorspace.
+END
+}

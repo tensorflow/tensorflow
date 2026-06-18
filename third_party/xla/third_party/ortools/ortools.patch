@@ -1,0 +1,35 @@
+diff --git a/ortools/base/file.cc b/ortools/base/file.cc
+--- a/ortools/base/file.cc
++++ b/ortools/base/file.cc
+@@ -223,7 +223,7 @@ absl::Status GetContents(absl::string_view filename, std::string* output,
+   }
+ #endif  // _MSC_VER
+
+-  file->Close(options).IgnoreError();  // Even if ReadToString() fails!
++  static_cast<void>(file->Close(options));  // Even if ReadToString() fails!
+   return absl::Status(absl::StatusCode::kInvalidArgument,
+                       absl::StrCat("Could not read from '", filename, "'."));
+ }
+diff --git a/ortools/linear_solver/BUILD.bazel b/ortools/linear_solver/BUILD.bazel
+--- a/ortools/linear_solver/BUILD.bazel
++++ b/ortools/linear_solver/BUILD.bazel
+@@ -201,7 +201,6 @@ cc_library(
+         "//conditions:default": [],
+     }) + select({
+         ":use_scip": [
+-            "lpi_glop.cpp",
+             "scip_callback.cc",
+             "scip_interface.cc",
+         ],
+diff --git a/ortools/port/proto_utils.h b/ortools/port/proto_utils.h
+--- a/ortools/port/proto_utils.h
++++ b/ortools/port/proto_utils.h
+@@ -58,7 +58,7 @@ std::string ProtoEnumToString(ProtoEnumType enum_value) {
+         "Invalid enum value of: ", enum_value, " for enum type: ",
+         google::protobuf::GetEnumDescriptor<ProtoEnumType>()->name());
+   }
+-  return enum_value_descriptor->name();
++  return std::string(enum_value_descriptor->name());
+ #endif  // !defined(__PORTABLE_PLATFORM__)
+ }
+

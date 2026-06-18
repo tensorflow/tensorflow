@@ -1,0 +1,102 @@
+// LINT: LEGACY_NAMES
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+// Protocol messages for describing parameters of convolution-related
+// operations.
+
+// For Google-internal use only.
+syntax = "proto3";
+
+package tensorflow;
+
+import "xla/tsl/protobuf/dnn.proto";
+import "tensorflow/core/framework/types.proto";
+
+// LINT.IfChange
+
+// This is the underlying data structure of class ConvParameters, which are used
+// as the keys in cuDNN autotuning maps for retrieving corresponding cuDNN
+// algorithms. This is used as a serialization format for saving/loading
+// autotuning databases.
+message ConvParametersProto {
+  // This stores the information for fused convolution operations where an
+  // activation and a side input might follow the convolution.
+  message Fusion {
+    // If true, this proto corresponds to a FusedConvBiasActivation operation
+    // implemented in the contrib library, otherwise this proto corresponds to
+    // the FusedConv operation implemented in the core library.
+    // Compared with FusedConv, FusedConvBiasActivation supports more types of
+    // activation function (including no activation) as well as the side_input.
+    // For now they have same type of keys in autotune maps, but the semantics
+    // of some fields (like padding) are different. So we add this field to
+    // distinguish them.
+    // TODO(b/177365158) Remove this field once these two operations are merged.
+    bool is_contrib = 1;
+    stream_executor.dnn.ActivationMode activation_mode = 2;
+    double conv_scale = 3;
+    double side_input_scale = 4;
+  }
+  int64 batch = 1;
+  int64 in_depths = 2;
+  int64 out_depths = 3;
+  repeated int64 in = 4;
+  // data_format corresponds to type TensorFormat in
+  // third_party/tensorflow/core/util/tensor_format.h.
+  int32 data_format = 5;
+  repeated int64 filter = 6;
+  repeated int64 dilation = 7;
+  repeated int64 stride = 8;
+  repeated int64 padding = 9;
+  tensorflow.DataType dtype = 10;
+  int32 group_count = 11;
+  // A string uniquely identifying a particular GPU model, e.g. V100 vs RTX
+  // 2080.
+  string device_identifier = 12;
+  Fusion fusion = 13;
+  // The version number of ConvParameters class. Offline autotune results
+  // whose version number is different from the runtime's version number
+  // (defined in ConvParameters::kVersion) will be rejected and ignored by
+  // LoadSerializedAutotuneMaps. This ensures that we will not load out-of-date
+  // autotune results.
+  int32 version = 14;
+}
+
+//  LINT.ThenChange(
+//  "conv_parameters.h:conv_parameters_version"
+//  )
+
+// LINT.IfChange
+
+message MatmulParametersProto {
+  tensorflow.DataType ab_dtype = 1;
+  tensorflow.DataType c_dtype = 2;
+  bool trans_a = 3;
+  bool trans_b = 4;
+  uint64 m = 5;
+  uint64 n = 6;
+  uint64 k = 7;
+  int64 lda = 8;
+  int64 ldb = 9;
+  int64 ldc = 10;
+  stream_executor.dnn.ActivationMode activation_mode = 11;
+
+  string device_identifier = 12;
+  int32 version = 14;
+}
+
+//  LINT.ThenChange(
+//  "conv_parameters.h:matmul_parameters_version"
+//  )

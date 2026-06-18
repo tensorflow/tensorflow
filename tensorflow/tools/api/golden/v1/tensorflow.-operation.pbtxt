@@ -1,0 +1,73 @@
+path: "tensorflow.Operation"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.ops.Operation\'>"
+  is_instance: "<class \'tensorflow.python.client._pywrap_tf_session.PyOperation\'>"
+  is_instance: "<class \'object\'>"
+  member {
+    name: "control_inputs"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "device"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "graph"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "inputs"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "node_def"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "op_def"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "outputs"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "traceback"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "type"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "colocation_groups"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_set_type"
+    argspec: "args=[\'self\', \'type_proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_node_def"
+    argspec: "args=[\'cls\', \'node_def\', \'g\', \'inputs\', \'output_types\', \'control_inputs\', \'input_types\', \'original_op\', \'op_def\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "get_attr"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "run"
+    argspec: "args=[\'self\', \'feed_dict\', \'session\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "values"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

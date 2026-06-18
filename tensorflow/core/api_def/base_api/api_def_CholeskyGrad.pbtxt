@@ -1,0 +1,30 @@
+op {
+  graph_op_name: "CholeskyGrad"
+  in_arg {
+    name: "l"
+    description: <<END
+Output of batch Cholesky algorithm l = cholesky(A). Shape is `[..., M, M]`.
+Algorithm depends only on lower triangular part of the innermost matrices of
+this tensor.
+END
+  }
+  in_arg {
+    name: "grad"
+    description: <<END
+df/dl where f is some scalar function. Shape is `[..., M, M]`.
+Algorithm depends only on lower triangular part of the innermost matrices of
+this tensor.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Symmetrized version of df/dA . Shape is `[..., M, M]`
+END
+  }
+  summary: "Computes the reverse mode backpropagated gradient of the Cholesky algorithm."
+  description: <<END
+For an explanation see "Differentiation of the Cholesky algorithm" by
+Iain Murray http://arxiv.org/abs/1602.07527.
+END
+}

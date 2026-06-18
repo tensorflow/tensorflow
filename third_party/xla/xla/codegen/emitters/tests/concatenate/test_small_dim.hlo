@@ -1,0 +1,14 @@
+// RUN: gpu_fusion_to_mlir %s | FileCheck %s
+fusion {
+  param0 = f32[16,16000] parameter(0)
+  param2 = f32[1,16000] parameter(1)
+  ROOT concat = f32[17,16000] concatenate(param0, param2), dimensions={0}
+}
+// Should have 2 loops with no chunking (s0) or unrolling (s1).
+// I.e check that there is no symbols.
+// CHECK: xla.loop ({{.*}})[] ->
+// CHECK-SAME: th_x in [0, 127]
+// CHECK-SAME: bl_x in [0, 1999]
+// CHECK: xla.loop ({{.*}})[] ->
+// CHECK-SAME: th_x in [0, 127]
+// CHECK-SAME: bl_x in [0, 124]

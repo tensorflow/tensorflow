@@ -1,0 +1,9 @@
+path: "tensorflow.__internal__.distribute.multi_process_runner.UnexpectedSubprocessExitError"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.multi_process_runner.UnexpectedSubprocessExitError\'>"
+  is_instance: "<class \'RuntimeError\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'msg\', \'mpr_result\'], varargs=None, keywords=None, defaults=None"
+  }
+}

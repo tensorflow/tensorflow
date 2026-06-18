@@ -1,0 +1,39 @@
+path: "tensorflow.optimizers.schedules"
+tf_module {
+  member {
+    name: "CosineDecay"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "CosineDecayRestarts"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "ExponentialDecay"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "InverseTimeDecay"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "LearningRateSchedule"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "PiecewiseConstantDecay"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "PolynomialDecay"
+    mtype: "<class \'type\'>"
+  }
+  member_method {
+    name: "deserialize"
+    argspec: "args=[\'config\', \'custom_objects\', \'use_legacy_format\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "serialize"
+    argspec: "args=[\'learning_rate_schedule\', \'use_legacy_format\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+}

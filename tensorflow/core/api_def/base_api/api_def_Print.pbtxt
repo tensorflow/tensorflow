@@ -1,0 +1,43 @@
+op {
+  graph_op_name: "Print"
+  in_arg {
+    name: "input"
+    description: <<END
+The tensor passed to `output`
+END
+  }
+  in_arg {
+    name: "data"
+    description: <<END
+A list of tensors to print out when op is evaluated.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The unmodified `input` tensor
+END
+  }
+  attr {
+    name: "message"
+    description: <<END
+A string, prefix of the error message.
+END
+  }
+  attr {
+    name: "first_n"
+    description: <<END
+Only log `first_n` number of times. -1 disables logging.
+END
+  }
+  attr {
+    name: "summarize"
+    description: <<END
+Only print this many entries of each tensor.
+END
+  }
+  summary: "Prints a list of tensors."
+  description: <<END
+Passes `input` through to `output` and prints `data` when evaluating.
+END
+}

@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/framework/graph.proto";
+
+// Tensor Tracer Report proto gives information about the trace including:
+// - TensorTracerConfig: version, device, num replicas, trace mode.
+// - Graphdef, e.g., list of operations, tensors
+// - TracedTensorDef:
+//    * Name of the tensor
+//    * Tracepoint name if provided.
+//    * Index of the tensor in the compact cache if traced.
+//    * Explanation for why the tensor is traced or not.
+message TensorTracerReport {
+  TensorTracerConfig config = 1;
+
+  // Tensorflow graph.
+  tensorflow.GraphDef graphdef = 2;
+
+  // A map from tensor name to its TracedTensorDef.
+  map<string, TracedTensorDef> tensordef = 3;
+
+  // The fingerprint of the TensorTracerReport (fingerprint calculation excludes
+  // this field and graphdef).
+  string fingerprint = 4;
+
+  // The function_name passed to the function_callback
+  // that produced this TensorTracerReport
+  string concrete_function_name = 5;
+
+  // The index of the last stack frame where the stack traces for all output
+  // operations in the graph have the same value.
+  int32 last_common_frame_no = 6;
+
+  // List of names of output tensors of the function being traced.
+  repeated string outputs = 7;
+
+  // Information about the number of tensors traced and skipped.
+  TracingStats tracing_stats = 8;
+
+  message TensorTracerConfig {
+    // Tensor tracer version, e.g. hostcall, outside compilation.
+    string version = 1;
+    // Traced device, CPU, TPU...
+    string device = 2;
+
+    // Trace mode, norm, summary, full-trace.
+    string trace_mode = 3;
+
+    // Number of cores, e.g. TPU cores, in the system.
+    int32 num_cores = 4;
+
+    // Number of hosts, e.g. compute nodes in the system.
+    int32 num_hosts = 5;
+
+    // Keep submode as string for backward compatibility.
+    string submode = 6;
+
+    // Keep num cores per host for backward compatibility.
+    int32 num_cores_per_host = 7;
+
+    // Id of the included cores, if a subset of cores are traced.
+    repeated int32 included_cores = 8;
+
+    // The names of the signatures corresponding to the cache indices.
+    repeated string signatures = 9;
+  }
+
+  message TracingStats {
+    // The total number of tensors in the function.
+    int32 total_tensors = 1;
+    // The number of traced tensors in the function.
+    int32 traced_tensors = 2;
+    // Counts of traced tensors by op type.
+    map<string, int32> traced_tensor_types = 3;
+    // The number of tensors added by Tensor Tracer.
+    int32 added_tensors = 4;
+  }
+
+  message TracedTensorDef {
+    // Name of the tensor as appears in tf graph.
+    string name = 1;
+    // Cache index of the tensor. This may be different than topological index.
+    int32 cache_index = 2;
+    // If trace points are provided, corresponding tracepoint name of the
+    // tensor. Trace points are placed on the edges (tensors) in the tensorflow
+    // graph, and they force tensor tracer to trace the corresponding tensor.
+    // Tracepoints can be added using the programatic interface
+    // tensor_tracer.tensor_tracepoint(tensor, trace_point_name) function.
+    // This will add a trace point with the given trace_point_name for the given
+    // tensor. If a trace_point is provided for the tensor,
+    // trace_point name will be used for the rest of the analysis instead of
+    // tensor names. One can use trace_point_name's to compare two models with
+    // arbitrary tensor names by providing the same trace point name for the
+    // tensors that are comparable.
+    string trace_point_name = 3;
+    // Whether the tensor is traced or not.
+    bool is_traced = 4;
+    // Detailed explanation why the tensor is traced or not.
+    string explanation = 5;
+    // Detailed stack of operation
+    Stack op_stack_info = 6;
+
+    message Stack {
+      // Function names from stack
+      repeated string stack_fn_names = 1;
+      // Line in stack
+      repeated string stack_lines = 2;
+      // Filenames from stack
+      repeated string stack_filenames = 3;
+      // Line number in file from stack
+      repeated int32 stack_linenos = 4;
+    }
+  }
+}

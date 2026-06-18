@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "ComputeBatchSize"
+  visibility: HIDDEN
+  summary: "Computes the static batch size of a dataset sans partial batches."
+}

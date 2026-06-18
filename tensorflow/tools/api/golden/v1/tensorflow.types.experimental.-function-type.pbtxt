@@ -1,0 +1,9 @@
+path: "tensorflow.types.experimental.FunctionType"
+tf_class {
+  is_instance: "<class \'tensorflow.python.types.core.FunctionType\'>"
+  is_instance: "<class \'inspect.Signature\'>"
+  member_method {
+    name: "from_callable"
+    argspec: "args=[\'cls\', \'obj\', \'follow_wrapped\'], varargs=None, keywords=None, defaults=[\'True\'], "
+  }
+}

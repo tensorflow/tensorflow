@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+import public "plugin/xprof/protobuf/pod_stats.proto";

@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+
+<html devsite="">
+<head>
+<title>tflite Namespace</title>
+<meta name="page_type" value="reference"/>
+<meta content="reference" name="page_type"/></head>
+<body>
+<div id="top"><!-- do not remove this div --></div>
+<h1>tflite</h1>
+<p>\file </p>
+<h2>Summary</h2>
+<p>For documentation, see <a href="/lite/api_docs/cc/other/core-2interpreter.h-source.html#core_2interpreter_8h_source">tensorflow/lite/core/interpreter.h</a>.</p>
+<p>Memory management for TF Lite.</p>
+<p>This provides a few C++ helpers that are useful for manipulating C structures in C++.</p>
+<p>Main abstraction controlling the tflite interpreter. Do NOT include this file directly, instead include third_party/tensorflow/lite/interpreter.h See third_party/tensorflow/lite/c/common.h for the API for defining operations (TfLiteRegistration).</p>
+<p>Provides functionality to construct an interpreter for a model.</p>
+<p>WARNING: Users of TensorFlow Lite should not include this file directly, but should instead include "third_party/tensorflow/lite/interpreter_builder.h". Only the TensorFlow Lite implementation itself should include this file directly.</p>
+<p>Deserialization infrastructure for tflite. Provides functionality to go from a serialized tflite model in flatbuffer format to an in-memory representation of the model.</p>
+<p>WARNING: Users of TensorFlow Lite should not include this file directly, but should instead include "third_party/tensorflow/lite/model_builder.h". Only the TensorFlow Lite implementation itself should include this file directly. </p>
+<table class="properties responsive">
+<tr>
+<th colspan="2">
+<h3>Typedefs</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#namespacetflite_1a707add49caebb2ff2ef4c95c43eb2415">FlatBufferModel</a></code>
+</td>
+<td>using<div>
+<code>impl::FlatBufferModel</code>
+</div></td>
+</tr>
+<tr>
+<td>
+<code><a href="#namespacetflite_1a2d6d829bce5eba5b241987ca5b4f0f40">Interpreter</a></code>
+</td>
+<td>typedef<div>
+<code>::tflite::impl::Interpreter</code>
+</div><div>An interpreter for a graph of nodes that input and output from tensors. </div></td>
+</tr>
+<tr>
+<td>
+<code><a href="#namespacetflite_1a7be86dcd93a5c9d5542ae31a62506cd4">InterpreterBuilder</a></code>
+</td>
+<td>using<div>
+<code>impl::InterpreterBuilder</code>
+</div><div>Build an interpreter capable of interpreting <code>model</code>. </div></td>
+</tr>
+</table>
+<table class="methods responsive">
+<tr>
+<th colspan="2">
+<h3>Functions</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#namespacetflite_1ab1655269407e5a89665b91334eb61361">DefaultErrorReporter</a>()</code>
+</td>
+<td>
+<div>
+<code><a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#namespacetflite_1af8154a8f9b2b80e90f3a4fc76e0256f7">GetRegistrationFromOpCode</a>(const OperatorCode *opcode, const <a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a> &amp; op_resolver, <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter, const TfLiteRegistration **registration)</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+</td>
+</tr>
+</table>
+<table class="nested-classes responsive">
+<tr>
+<th colspan="2">
+<h3>Classes</h3>
+</th>
+</tr>
+<tr>
+<td>
+<a href="/lite/api_docs/cc/class/tflite/allocation">tflite::<wbr/>Allocation</a>
+</td>
+<td>
+<p>A memory allocation handle. This could be a mmap or shared memory. </p>
+</td>
+</tr>
+<tr>
+<td>
+<a href="/lite/api_docs/cc/class/tflite/error-reporter">tflite::<wbr/>ErrorReporter</a>
+</td>
+<td>
+<p>A functor that reports error to supporting system. </p>
+</td>
+</tr>
+<tr>
+<td>
+<a href="/lite/api_docs/cc/class/tflite/file-copy-allocation">tflite::<wbr/>FileCopyAllocation</a>
+</td>
+<td></td>
+</tr>
+<tr>
+<td>
+<a href="/lite/api_docs/cc/class/tflite/m-m-a-p-allocation">tflite::<wbr/>MMAPAllocation</a>
+</td>
+<td>
+<p>Note that not all platforms support MMAP-based allocation. </p>
+</td>
+</tr>
+<tr>
+<td>
+<a href="/lite/api_docs/cc/class/tflite/memory-allocation">tflite::<wbr/>MemoryAllocation</a>
+</td>
+<td></td>
+</tr>
+<tr>
+<td>
+<a href="/lite/api_docs/cc/class/tflite/mutable-op-resolver">tflite::<wbr/>MutableOpResolver</a>
+</td>
+<td>
+<p>An <a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a> that is mutable, also used as the op in gen_op_registration. </p>
+</td>
+</tr>
+<tr>
+<td>
+<a href="/lite/api_docs/cc/class/tflite/op-resolver">tflite::<wbr/>OpResolver</a>
+</td>
+<td>
+<p>Abstract interface that returns TfLiteRegistrations given op codes or custom op names. </p>
+</td>
+</tr>
+<tr>
+<td>
+<a href="/lite/api_docs/cc/class/tflite/tf-lite-int-array-view">tflite::<wbr/>TfLiteIntArrayView</a>
+</td>
+<td>
+<p>Provides a range iterable wrapper for TfLiteIntArray* (C lists) that TfLite C api uses. </p>
+</td>
+</tr>
+</table>
+<table class="constants responsive">
+<tr>
+<th colspan="2">
+<h3>Structs</h3>
+</th>
+</tr>
+<tr>
+<td>
+<a href="/lite/api_docs/cc/struct/tflite/stderr-reporter">tflite::<wbr/>StderrReporter</a>
+</td>
+<td></td>
+</tr>
+</table>
+<table class="constants responsive">
+<tr>
+<th colspan="2">
+<h3>Namespaces</h3>
+</th>
+</tr>
+<tr>
+<td>
+<a href="/lite/api_docs/cc/namespace/tflite/impl">tflite::<wbr/>impl</a>
+</td>
+<td>
+<p>An RAII object that represents a read-only tflite model, copied from disk, or mmapped. </p>
+</td>
+</tr>
+<tr>
+<td>
+<a href="/lite/api_docs/cc/namespace/tflite/op-resolver-hasher">tflite::<wbr/>op_resolver_hasher</a>
+</td>
+<td></td>
+</tr>
+</table>
+<h2>Typedefs</h2>
+<div id="namespacetflite_1a707add49caebb2ff2ef4c95c43eb2415">
+<h3>FlatBufferModel</h3>
+<pre class="prettyprint">impl::FlatBufferModel FlatBufferModel</pre>
+<div></div>
+</div>
+<div id="namespacetflite_1a2d6d829bce5eba5b241987ca5b4f0f40">
+<h3>Interpreter</h3>
+<pre class="prettyprint">::tflite::impl::Interpreter Interpreter</pre>
+<div>
+<p>An interpreter for a graph of nodes that input and output from tensors. </p>
+<p>Each node of the graph processes a set of input tensors and produces a set of output Tensors. All inputs/output tensors are referenced by index.</p>
+<p>Usage:</p>
+<p>
+<pre class="prettyprint"><code>
+// Create model from file. Note that the model instance must outlive the
+// interpreter instance.
+auto model = tflite::FlatBufferModel::BuildFromFile(...);
+if (model == nullptr) {
+  // Return error.
+}
+// Create an Interpreter with an InterpreterBuilder.
+std::unique_ptr<tflite::interpreter> interpreter;
+tflite::ops::builtin::BuiltinOpResolver resolver;
+if (InterpreterBuilder(*model, resolver)(&amp;interpreter) != kTfLiteOk) {
+  // Return failure.
+}
+if (interpreter-&gt;AllocateTensors() != kTfLiteOk) {
+  // Return failure.
+}</tflite::interpreter></code></pre>
+</p>
+<p>
+<pre class="prettyprint"><code>auto input = interpreter-&gt;typed_tensor<float>(0);
+for (int i = 0; i &lt; input_size; i++) {
+  input[i] = ...;  interpreter-&gt;Invoke();
+</float></code></pre>
+</p>
+<p>Note: For nearly all practical use cases, one should not directly construct an Interpreter object, but rather use the InterpreterBuilder.</p>
+<p>\warning This class is <i>not</i> thread-safe. The client is responsible for ensuring serialized interaction to avoid data races and undefined behavior. </p>
+</div>
+</div>
+<div id="namespacetflite_1a7be86dcd93a5c9d5542ae31a62506cd4">
+<h3>InterpreterBuilder</h3>
+<pre class="prettyprint">impl::InterpreterBuilder InterpreterBuilder</pre>
+<div>
+<p>Build an interpreter capable of interpreting <code>model</code>. </p>
+<p>
+<ul>
+<li><code>model</code>: A model whose lifetime must be at least as long as any interpreter(s) created by the builder. In principle multiple interpreters can be made from a single model.</li>
+<li><code>op_resolver</code>: An instance that implements the <code><a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a></code> interface, which maps custom op names and builtin op codes to op registrations. The lifetime of the provided <code>op_resolver</code> object must be at least as long as the <code>InterpreterBuilder</code>; unlike <code>model</code> and <code>error_reporter</code>, the <code>op_resolver</code> does not need to exist for the duration of any created <code>Interpreter</code> objects.</li>
+<li><code>error_reporter</code>: a functor that is called to report errors that handles printf var arg semantics. The lifetime of the <code>error_reporter</code> object must be greater than or equal to the <code>Interpreter</code> created by <code>operator()</code>.</li>
+<li><code>options_experimental</code>: Options that can change behavior of interpreter. WARNING: this parameter is an experimental API and is subject to change.</li>
+</ul>
+</p>
+<p>Returns a kTfLiteOk when successful and sets interpreter to a valid Interpreter. Note: The user must ensure the lifetime of the model (and error reporter, if provided) is at least as long as interpreter's lifetime, and a single model instance may safely be used with multiple interpreters. </p>
+</div>
+</div>
+<h2>Functions</h2>
+<div id="namespacetflite_1ab1655269407e5a89665b91334eb61361">
+<h3>DefaultErrorReporter</h3>
+<pre class="prettyprint"><a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> * DefaultErrorReporter()</pre>
+<div></div>
+</div>
+<div id="namespacetflite_1af8154a8f9b2b80e90f3a4fc76e0256f7">
+<h3>GetRegistrationFromOpCode</h3>
+<pre class="prettyprint">TfLiteStatus GetRegistrationFromOpCode(
+  const OperatorCode *opcode,
+  const <a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a> &amp; op_resolver,
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter,
+  const TfLiteRegistration **registration
+)</pre>
+<div></div>
+</div>
+</body>
+</html>

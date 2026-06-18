@@ -1,0 +1,66 @@
+# Test that we round-trip correctly a negative zero.
+node {
+  name: "float"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: -0
+      }
+    }
+  }
+}
+node {
+  name: "half"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_HALF
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_HALF
+        tensor_shape {
+        }
+        half_val: 0x8000 # -0.0 in half precision
+      }
+    }
+  }
+}
+node {
+  name: "complex"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_COMPLEX64
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_COMPLEX64
+        tensor_shape {
+        }
+        scomplex_val: -0
+        scomplex_val: -0
+      }
+    }
+  }
+}
+

@@ -1,0 +1,80 @@
+path: "tensorflow.OptimizerOptions"
+tf_proto {
+  descriptor {
+    name: "OptimizerOptions"
+    field {
+      name: "do_common_subexpression_elimination"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "do_constant_folding"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "max_folded_constant_in_bytes"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "do_function_inlining"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "opt_level"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.OptimizerOptions.Level"
+    }
+    field {
+      name: "global_jit_level"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.OptimizerOptions.GlobalJitLevel"
+    }
+    field {
+      name: "cpu_global_jit"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    enum_type {
+      name: "Level"
+      value {
+        name: "L1"
+        number: 0
+      }
+      value {
+        name: "L0"
+        number: -1
+      }
+    }
+    enum_type {
+      name: "GlobalJitLevel"
+      value {
+        name: "DEFAULT"
+        number: 0
+      }
+      value {
+        name: "OFF"
+        number: -1
+      }
+      value {
+        name: "ON_1"
+        number: 1
+      }
+      value {
+        name: "ON_2"
+        number: 2
+      }
+    }
+  }
+}

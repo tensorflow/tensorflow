@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TfLiteQuantization Struct Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TfLiteQuantization</h1>
+  <code>#include &lt;common.h&gt;</code>
+  <p>Structure specifying the quantization used by the tensor, if-any. </p>
+  <h2>Summary</h2>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Public attributes</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_quantization_1ab108c61c41594a7c51e727ace335d388">params</a></code>
+      </td>
+      <td>
+        <div>
+          <code>void *</code>
+        </div>
+        <div>Holds an optional reference to a quantization param structure. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_quantization_1abf88d8c9d94c2788b69928e2727fd56b">type</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/common.html#group__common_1ga9a7dad0b2e1bc9afe44b055915cbddb8">TfLiteQuantizationType</a></code>
+        </div>
+        <div>The type of quantization held by params. </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Public attributes</h2>
+  <div id="struct_tf_lite_quantization_1ab108c61c41594a7c51e727ace335d388">
+    <h3>params</h3>
+    <pre class="prettyprint">void * TfLiteQuantization::params</pre>
+    <div>
+      <p>Holds an optional reference to a quantization param structure. </p>
+      <p>The actual type depends on the value of the <code>type</code> field (see the comment there for the values and corresponding types). </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_quantization_1abf88d8c9d94c2788b69928e2727fd56b">
+    <h3>type</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/common.html#group__common_1ga9a7dad0b2e1bc9afe44b055915cbddb8">TfLiteQuantizationType</a> TfLiteQuantization::type</pre>
+    <div>
+      <p>The type of quantization held by params. </p>
+    </div>
+  </div>
+</body>
+</html>

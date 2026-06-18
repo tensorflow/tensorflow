@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html devsite>
+  <head>
+    <title>TensorFlowLiteSwift Framework Reference</title>
+    <link rel="stylesheet" href="../../css/jazzy.css" />
+    <meta charset='utf-8'>
+  </head>
+  <body>
+    <div class="content-wrapper">
+      <article class="main-content">
+        <section>
+          <section class="section">
+            <h1>Options</h1>
+              <div class="declaration">
+                <div class="language">
+                  <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">Options</span> <span class="p">:</span> <span class="kt">Equatable</span><span class="p">,</span> <span class="kt">Hashable</span></code></pre>
+
+                </div>
+              </div>
+            <p>Undocumented</p>
+
+          </section>
+          <section class="section task-group-section">
+            <div class="task-group">
+              <ul>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift14CoreMLDelegateC7OptionsV14enabledDevicesAC07EnabledI0Ovp"></a>
+                    <a name="//apple_ref/swift/Property/enabledDevices" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift14CoreMLDelegateC7OptionsV14enabledDevicesAC07EnabledI0Ovp">enabledDevices</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>A type indicating which devices the Core ML delegate should be enabled for. The default
+value is <code>.neuralEngine</code> indicating that the delegate is enabled for Neural Engine devices
+only.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="k">var</span> <span class="nv">enabledDevices</span><span class="p">:</span> <span class="kt"><a href="../../Classes/CoreMLDelegate/EnabledDevices.html">EnabledDevices</a></span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift14CoreMLDelegateC7OptionsV13coreMLVersionSivp"></a>
+                    <a name="//apple_ref/swift/Property/coreMLVersion" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift14CoreMLDelegateC7OptionsV13coreMLVersionSivp">coreMLVersion</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Target Core ML version for the model conversion. When it&rsquo;s not set, Core ML version will
+be set to highest available version for the platform.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="k">var</span> <span class="nv">coreMLVersion</span><span class="p">:</span> <span class="kt">Int</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift14CoreMLDelegateC7OptionsV22maxDelegatedPartitionsSivp"></a>
+                    <a name="//apple_ref/swift/Property/maxDelegatedPartitions" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift14CoreMLDelegateC7OptionsV22maxDelegatedPartitionsSivp">maxDelegatedPartitions</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The maximum number of Core ML delegate partitions created. Each graph corresponds to one
+delegated node subset in the TFLite model. The default value is <code>0</code> indicating that all
+possible partitions are delegated.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="k">var</span> <span class="nv">maxDelegatedPartitions</span><span class="p">:</span> <span class="kt">Int</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift14CoreMLDelegateC7OptionsV20minNodesPerPartitionSivp"></a>
+                    <a name="//apple_ref/swift/Property/minNodesPerPartition" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift14CoreMLDelegateC7OptionsV20minNodesPerPartitionSivp">minNodesPerPartition</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The minimum number of nodes per partition to be delegated by the Core ML delegate. The
+default value is <code>2</code>.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="k">var</span> <span class="nv">minNodesPerPartition</span><span class="p">:</span> <span class="kt">Int</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift14CoreMLDelegateC7OptionsVAEycfc"></a>
+                    <a name="//apple_ref/swift/Method/init()" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift14CoreMLDelegateC7OptionsVAEycfc">init()</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Creates a new instance with the default values.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="nf">init</span><span class="p">()</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+              </ul>
+            </div>          </section>
+        </section>
+      </article>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+path: "tensorflow.saved_model.experimental.VariablePolicy"
+tf_class {
+  is_instance: "<enum \'VariablePolicy\'>"
+  member {
+    name: "EXPAND_DISTRIBUTED_VARIABLES"
+    mtype: "<enum \'VariablePolicy\'>"
+  }
+  member {
+    name: "NONE"
+    mtype: "<enum \'VariablePolicy\'>"
+  }
+  member {
+    name: "SAVE_VARIABLE_DEVICES"
+    mtype: "<enum \'VariablePolicy\'>"
+  }
+}

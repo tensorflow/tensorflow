@@ -1,0 +1,107 @@
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+#include "tensorflow/c/experimental/ops/gen/common/case_format.h"
+
+#include <string>
+
+#include "absl/strings/ascii.h"
+#include "tensorflow/core/platform/types.h"
+
+namespace tensorflow {
+namespace generator {
+
+namespace {
+
+enum CaseFormatType {
+  LOWER_CAMEL,
+  UPPER_CAMEL,
+  LOWER_SNAKE,
+  UPPER_SNAKE,
+};
+
+std::string FormatStringCase(const std::string& str, CaseFormatType to,
+                             const char delimiter = '_') {
+  const bool from_snake = (str == absl::AsciiStrToUpper(str)) ||
+                          (str == absl::AsciiStrToLower(str));
+  const bool toUpper = (to == UPPER_CAMEL || to == UPPER_SNAKE);
+  const bool toSnake = (to == LOWER_SNAKE || to == UPPER_SNAKE);
+
+  std::string result;
+
+  bool inputStart = true;
+  bool wordStart = true;
+  for (const char c : str) {
+    // Find a word start.
+    if (c == delimiter) {
+      // Repeated cases of wordStart means explicit delimiter usage.
+      if (wordStart) {
+        result.push_back(delimiter);
+      }
+      wordStart = true;
+      continue;
+    }
+    if (!from_snake && absl::ascii_isupper(c)) {
+      wordStart = true;
+    }
+
+    // add delimiter
+    if (wordStart && toSnake && !inputStart) {
+      result.push_back(delimiter);
+    }
+
+    // add the next letter from the input string (choosing upper/lower case)
+    const bool shouldCapIfSnake = toUpper;
+    const bool shouldCapIfCamel = wordStart && (toUpper || !inputStart);
+    if ((toSnake && shouldCapIfSnake) || (!toSnake && shouldCapIfCamel)) {
+      result += absl::ascii_toupper(c);
+    } else {
+      result += absl::ascii_tolower(c);
+    }
+
+    // at this point we are no longer at the start of a word:
+    wordStart = false;
+    // .. or the input:
+    inputStart = false;
+  }
+
+  if (wordStart) {
+    // This only happens with a trailing delimiter, which should remain.
+    result.push_back(delimiter);
+  }
+
+  return result;
+}
+
+}  // namespace
+
+//
+// Public interface
+//
+
+std::string toLowerCamel(const std::string& s, const char delimiter) {
+  return FormatStringCase(s, LOWER_CAMEL, delimiter);
+}
+std::string toLowerSnake(const std::string& s, const char delimiter) {
+  return FormatStringCase(s, LOWER_SNAKE, delimiter);
+}
+std::string toUpperCamel(const std::string& s, const char delimiter) {
+  return FormatStringCase(s, UPPER_CAMEL, delimiter);
+}
+std::string toUpperSnake(const std::string& s, const char delimiter) {
+  return FormatStringCase(s, UPPER_SNAKE, delimiter);
+}
+
+}  // namespace generator
+}  // namespace tensorflow

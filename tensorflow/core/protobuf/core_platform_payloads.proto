@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package tensorflow.core.platform;
+
+option cc_enable_arenas = true;
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
+// If included as a payload, this message contains the error source information
+// where the error was raised.
+// URI: "type.googleapis.com/tensorflow.core.platform.ErrorSourceProto"
+message ErrorSourceProto {
+  enum ErrorSource {
+    UNKNOWN = 0;
+    TPU_COMPILE_OP = 1;
+    // Old bridge.
+    TF_XLA_BRIDGE = 2;
+    // TPUBridge.
+    MLIR_BRIDGE_PHASE_1 = 3;
+    // LegalizeToHlo.
+    MLIR_BRIDGE_PHASE_2 = 4;
+    // eager::RemoteMgr.
+    EAGER_REMOTE_MGR = 5;
+  }
+  ErrorSource error_source = 1;
+}

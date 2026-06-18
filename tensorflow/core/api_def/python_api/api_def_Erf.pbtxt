@@ -1,0 +1,19 @@
+op {
+  graph_op_name: "Erf"
+  endpoint {
+    name: "math.erf"
+  }
+  endpoint {
+    name: "erf"
+    deprecation_version: 2
+  }
+  description: <<END
+For example:
+
+>>> tf.math.erf([[1.0, 2.0, 3.0], [0.0, -1.0, -2.0]])
+<tf.Tensor: shape=(2, 3), dtype=float32, numpy=
+array([[ 0.8427007,  0.9953223,  0.999978 ],
+       [ 0.       , -0.8427007, -0.9953223]], dtype=float32)>
+
+END
+}

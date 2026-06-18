@@ -1,0 +1,35 @@
+path: "tensorflow.tpu.experimental"
+tf_module {
+  member {
+    name: "DeviceAssignment"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "DeviceOrderMode"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
+    name: "HardwareFeature"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "TPUSystemMetadata"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Topology"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "embedding"
+    mtype: "<class \'module\'>"
+  }
+  member_method {
+    name: "initialize_tpu_system"
+    argspec: "args=[\'cluster_resolver\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "shutdown_tpu_system"
+    argspec: "args=[\'cluster_resolver\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

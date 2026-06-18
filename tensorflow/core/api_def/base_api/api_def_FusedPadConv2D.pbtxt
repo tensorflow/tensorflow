@@ -1,0 +1,50 @@
+op {
+  graph_op_name: "FusedPadConv2D"
+  in_arg {
+    name: "input"
+    description: <<END
+4-D with shape `[batch, in_height, in_width, in_channels]`.
+END
+  }
+  in_arg {
+    name: "paddings"
+    description: <<END
+A two-column matrix specifying the padding sizes. The number of
+rows must be the same as the rank of `input`.
+END
+  }
+  in_arg {
+    name: "filter"
+    description: <<END
+4-D with shape
+`[filter_height, filter_width, in_channels, out_channels]`.
+END
+  }
+  attr {
+    name: "strides"
+    description: <<END
+1-D of length 4.  The stride of the sliding window for each dimension
+of `input`. Must be in the same order as the dimension specified with format.
+END
+  }
+  attr {
+    name: "padding"
+    description: <<END
+The type of padding algorithm to use.
+END
+  }
+  summary: "Performs a padding as a preprocess during a convolution."
+  description: <<END
+Similar to FusedResizeAndPadConv2d, this op allows for an optimized
+implementation where the spatial padding transformation stage is fused with the
+im2col lookup, but in this case without the bilinear filtering required for
+resizing. Fusing the padding prevents the need to write out the intermediate
+results as whole tensors, reducing memory pressure, and we can get some latency
+gains by merging the transformation calculations.
+The data_format attribute for Conv2D isn't supported by this op, and 'NHWC'
+order is used instead.
+Internally this op uses a single per-graph scratch buffer, which means that it
+will block if multiple versions are being run in parallel. This is because this
+operator is primarily an optimization to minimize memory usage.
+END
+}

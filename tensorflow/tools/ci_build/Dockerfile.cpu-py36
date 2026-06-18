@@ -1,0 +1,30 @@
+FROM ubuntu:16.04
+
+LABEL maintainer="Rama Ketineni <rama.ketineni@intel.com>"
+
+# Copy and run the install scripts.
+COPY install/*.sh /install/
+RUN /install/install_bootstrap_deb_packages.sh
+RUN add-apt-repository -y ppa:openjdk-r/ppa && \
+   add-apt-repository -y ppa:george-edison55/cmake-3.x
+RUN /install/install_deb_packages.sh
+
+# Install gcc 7
+RUN add-apt-repository ppa:ubuntu-toolchain-r/test
+RUN apt update
+RUN apt -y install gcc-7 g++-7
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 700 \
+                         --slave /usr/bin/g++ g++ /usr/bin/g++-7
+
+# The following line installs the Python 3.6 cross-compilation toolchain.
+RUN /install/install_pi_python3x_toolchain.sh "3.6"
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.6 0
+RUN python3 -V
+
+RUN /install/install_bazel.sh
+RUN /install/install_proto3.sh
+RUN /install/install_buildifier.sh
+RUN /install/install_auditwheel.sh
+RUN /install/install_golang.sh
+# Set up the master bazelrc configuration file.
+COPY install/.bazelrc /etc/bazel.bazelrc

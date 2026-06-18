@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package xla.megascale.runtime;
+
+option java_multiple_files = true;
+option java_outer_classname = "Runtime";
+
+message DCNTopology {
+  // SymmetricTree represents a simple network topology with symmetric
+  // splitting at each level.
+  message SymmetricTree {
+    // The length of branching_per_layer is the depth (number of distinct
+    // layers) of the network topology. The values give the branching factor at
+    // each layer. Index 0 holds the uppermost level in the topology. For
+    // example: a 24 slice topology, in three groups of two subgroups of four
+    // slices would be represented as: branching_per_layer =
+    // [3, 2, 4] slice_ids are not explicitly specified and are assumed to be
+    // contiguously assigned. i.e. slice_id = branching_per_layer[0] * 8  +
+    // branching_per_layer[1] * 4 + branching_per_layer[2]
+    repeated int32 branching_per_layer = 1;
+  }
+
+  // Node recursively defines a fully specified tree. The tree is expected to
+  // be balanced but allowed to be asymmetric.
+  message TreeNode {
+    // Contiguous range of slices in half-open interval [slice_id_start,
+    // slice_id_end). The contiguous nature has no special signficance beyond
+    // compactly represent large number of slices. e.g. SliceRange{0, 10} and
+    // SliceRange{20, 30} all have the same connectivity between them.
+    message SliceRange {
+      int32 slice_id_start = 1;
+      // Ignored when slice_id_end <= slice_id_start.
+      int32 slice_id_end = 2;
+    }
+
+    // Optional label for readability.
+    optional string label = 1;
+
+    // We expect the Topology to be a balanced asymmetric tree. This implies
+    // that at any level we should either have nodes OR slice_ranges.
+    repeated TreeNode nodes = 2;
+    repeated SliceRange slice_ranges = 3;
+
+    // Specifies the degree to which egress from this node to higher layers in
+    // topology is constrained. Valid range [0.0, 1.0]. 0.0 -> no
+    // constraint, 1.0 -> never use. When egress_constraint for a node is higher
+    // than other nodes with which it performas a reduction, it is assigned
+    // shards for reduction with less probability. This will result in fewer
+    // transfers out of these nodes to higher layers in topology.
+    optional float egress_constraint = 4;
+
+    // Whether to perform the ring algorithm instead of the shuffle algorithm
+    // between the children. The ring order is the order of the children.
+    bool ring_transfers = 5;
+  }
+
+  oneof representation {
+    // Simple representation of a symmetric hierarchical network.
+    SymmetricTree symmetric_tree = 1;
+    // Fully specified tree with no assumptions on symmetry and slice id
+    // mappings.
+    TreeNode tree = 2;
+  }
+}

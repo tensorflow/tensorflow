@@ -1,0 +1,19 @@
+op {
+  graph_op_name: "ConsumeMutexLock"
+  in_arg {
+    name: "mutex_lock"
+    description: <<END
+A tensor returned by `MutexLock`.
+END
+  }
+  summary: "This op consumes a lock created by `MutexLock`."
+  description: <<END
+This op exists to consume a tensor created by `MutexLock` (other than
+direct control dependencies).  It should be the only that consumes the tensor,
+and will raise an error if it is not.  Its only purpose is to keep the
+mutex lock tensor alive until it is consumed by this op.
+
+**NOTE**: This operation must run on the same device as its input.  This may
+be enforced via the `colocate_with` mechanism.
+END
+}

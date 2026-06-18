@@ -1,0 +1,23 @@
+path: "tensorflow.VarLenFeature"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.parsing_config.VarLenFeature\'>"
+  is_instance: "<class \'tensorflow.python.ops.parsing_config.VarLenFeature\'>"
+  is_instance: "<class \'tuple\'>"
+  member {
+    name: "dtype"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "__new__"
+    argspec: "args=[\'_cls\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

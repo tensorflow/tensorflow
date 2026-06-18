@@ -1,0 +1,12 @@
+op {
+  name: "OutfeedEnqueue"
+  input_arg {
+    name: "input"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  is_stateful: true
+}

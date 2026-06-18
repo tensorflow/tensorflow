@@ -1,0 +1,214 @@
+/* Copyright 2024 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/Visitors.h"
+#include "mlir/InitAllDialects.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/TypeID.h"
+#include "mlir/Support/WalkResult.h"
+#include "shardy/dialect/sdy/ir/compatibility.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
+#include "google/protobuf/repeated_ptr_field.h"
+#include "stablehlo/dialect/Register.h"
+#include "stablehlo/dialect/Serialization.h"
+#include "stablehlo/dialect/Version.h"
+#include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
+#include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/ir/transforms/passes.h"
+#include "xla/python/ifrt/ir/transforms/utils.h"
+#include "tsl/platform/protobuf.h"
+
+namespace vhlo = ::mlir::vhlo;
+
+namespace xla {
+namespace ifrt {
+
+namespace {
+
+class IfrtAtomProgramsToVhloPass
+    : public mlir::PassWrapper<IfrtAtomProgramsToVhloPass,
+                               mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  explicit IfrtAtomProgramsToVhloPass(
+      tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs,
+      std::string vhlo_target_version, std::string sdy_target_version)
+      : atom_programs_(atom_programs),
+        vhlo_target_version_(std::move(vhlo_target_version)),
+        sdy_target_version_(std::move(sdy_target_version)) {}
+
+  llvm::StringRef getArgument() const override {
+    return "ifrt-atom-programs-to-vhlo";
+  }
+
+  llvm::StringRef getDescription() const override {
+    return "Populates a map from unique atom program name VHLO bytecode.";
+  }
+
+  void getDependentDialects(::mlir::DialectRegistry& registry) const override {
+    mlir::stablehlo::registerAllDialects(registry);
+  }
+
+  void runOnOperation() override;
+
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(IfrtAtomProgramsToVhloPass);
+
+ private:
+  tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs_;
+  std::string vhlo_target_version_;
+  std::string sdy_target_version_;
+};
+
+void IfrtAtomProgramsToVhloPass::runOnOperation() {
+  mlir::SymbolTableCollection symbol_table;
+  mlir::MLIRContext& context = getContext();
+  mlir::OpBuilder builder(&context);
+  mlir::ModuleOp module = getOperation();
+
+  // Create a new context and register the dialects that are loaded in the
+  // current context. This context will be used to temporarily clone atom
+  // programs into, and run the to VHLO conversion passes. It is necessary to
+  // do this because these passes change all the types in the context.
+  mlir::MLIRContext tmp_context;
+  // Keeps track of the atom programs that have already been serialized.
+  absl::flat_hash_set<std::string> converted_atom_program_names;
+
+  // Walk the module and convert each atom program to VHLO.
+  auto result = module.walk([&](CallOp call_op) -> mlir::WalkResult {
+    mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
+    if (callee == nullptr) {
+      call_op->emitOpError()
+          << "can't find callee `" << call_op.getCalleeAttr() << "`";
+      return mlir::WalkResult::interrupt();
+    }
+    auto stablehlo_module = llvm::cast<mlir::ModuleOp>(callee->getParentOp());
+    if (stablehlo_module == module) {
+      call_op->emitOpError() << "callee `" << call_op.getCalleeAttr()
+                             << "` has not been outlined to a module";
+      return mlir::WalkResult::interrupt();
+    }
+    // Verify that the atom program is a top-level IFRT IR module. Nested atom
+    // programs are not supported in IFRT IR. Moreover, it would difficult
+    // to exactly reconstruct the IFRT IR program post atom program DCE.
+    // For example, in the example below, DCE would remove the entire module
+    // @outer, which would not be possible to reconstruct on deserialization.
+    // module @outer {
+    //  module @atom_program1 {}
+    //  module @atom_program2 {}
+    // }
+    if (call_op.getCalleeAttr().getNestedReferences().size() > 1) {
+      call_op->emitOpError() << "nested atom programs are not supported "
+                             << call_op.getCalleeAttr();
+      return mlir::WalkResult::interrupt();
+    }
+    if (!stablehlo_module.getSymNameAttr()) {
+      call_op->emitOpError()
+          << "callee `" << call_op.getCalleeAttr()
+          << "` has not been outlined to a module with a `sym_name`";
+      return mlir::WalkResult::interrupt();
+    }
+    std::string atom_program_name = stablehlo_module.getSymNameAttr().str();
+    if (!converted_atom_program_names.insert(atom_program_name).second) {
+      // Skip if the atom program has already been serialized.
+      return mlir::WalkResult::advance();
+    }
+
+    // Clone the module into a tmp context.
+    absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> tmp_module =
+        CloneModuleIntoContext(stablehlo_module, tmp_context);
+    if (!tmp_module.ok()) {
+      stablehlo_module->emitOpError()
+          << "failed to clone module into tmp context";
+      return mlir::WalkResult::interrupt();
+    }
+
+    // Convert the tmp module as VHLO.
+    if (auto unstable_dialect =
+            FindPotentiallyUnstableDialects(tmp_module->get())) {
+      stablehlo_module->emitOpError()
+          << "unapproved dialect for serialization to VHLO: "
+          << *unstable_dialect;
+      return mlir::WalkResult::interrupt();
+    }
+    IfrtIrAtomProgramProto* atom_program_proto = atom_programs_->Add();
+    atom_program_proto->set_name(atom_program_name);
+    atom_program_proto->set_version(vhlo_target_version_);
+    llvm::raw_string_ostream os(*atom_program_proto->mutable_program());
+    // We need to pass `allowOtherDialects=true` if
+    // `stablehlo_version >= 1.11.0`, since the lowered module from JAX can
+    // have a mix of StableHLO and Shardy dialects.
+    vhlo::Version mixed_serialization_ok = vhlo::Version(1, 11, 0);
+    bool allow_other_dialects = mixed_serialization_ok <=
+                                vhlo::Version::fromString(vhlo_target_version_);
+    if (allow_other_dialects) {
+      mlir::FailureOr<mlir::sdy::SdyDialectVersion> sdy_target_version =
+          mlir::sdy::SdyDialectVersion::fromString(sdy_target_version_);
+      if (mlir::failed(sdy_target_version)) {
+        stablehlo_module->emitOpError()
+            << "failed to parse SDY target version " << sdy_target_version_;
+        return mlir::WalkResult::interrupt();
+      }
+      if (mlir::failed(mlir::sdy::downgradeModule(tmp_module->get(),
+                                                  *sdy_target_version))) {
+        stablehlo_module->emitOpError()
+            << "failed to downgrade the module to use the SDY target version "
+               "requested";
+        return mlir::WalkResult::interrupt();
+      }
+    }
+
+    if (mlir::failed(mlir::stablehlo::serializePortableArtifact(
+            tmp_module->get(), vhlo_target_version_, os,
+            allow_other_dialects))) {
+      stablehlo_module->emitOpError() << "failed to serialize to VHLO";
+      return mlir::WalkResult::interrupt();
+    }
+    return mlir::WalkResult::advance();
+  });
+  if (result.wasInterrupted()) {
+    signalPassFailure();
+  }
+}
+
+}  // namespace
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createIfrtAtomProgramsToVhloPass(
+    tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs,
+    std::string vhlo_target_version, std::string sdy_target_version) {
+  return std::make_unique<IfrtAtomProgramsToVhloPass>(
+      atom_programs, std::move(vhlo_target_version),
+      std::move(sdy_target_version));
+}
+
+}  // namespace ifrt
+}  // namespace xla

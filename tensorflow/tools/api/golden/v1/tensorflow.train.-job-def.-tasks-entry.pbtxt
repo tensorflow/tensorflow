@@ -1,0 +1,21 @@
+path: "tensorflow.train.JobDef.TasksEntry"
+tf_proto {
+  descriptor {
+    name: "TasksEntry"
+    field {
+      name: "key"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "value"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    options {
+      map_entry: true
+    }
+  }
+}

@@ -1,0 +1,162 @@
+toc:
+- title: tflite_model_maker
+  section:
+  - title: Overview
+    path: /lite/api_docs/python/tflite_model_maker
+  - title: audio_classifier
+    section:
+    - title: Overview
+      path: /lite/api_docs/python/tflite_model_maker/audio_classifier
+    - title: AudioClassifier
+      path: /lite/api_docs/python/tflite_model_maker/audio_classifier/AudioClassifier
+    - title: BrowserFftSpec
+      path: /lite/api_docs/python/tflite_model_maker/audio_classifier/BrowserFftSpec
+    - title: DataLoader
+      path: /lite/api_docs/python/tflite_model_maker/audio_classifier/DataLoader
+    - title: YamNetSpec
+      path: /lite/api_docs/python/tflite_model_maker/audio_classifier/YamNetSpec
+    - title: create
+      path: /lite/api_docs/python/tflite_model_maker/audio_classifier/create
+  - title: config
+    section:
+    - title: Overview
+      path: /lite/api_docs/python/tflite_model_maker/config
+    - title: ExportFormat
+      path: /lite/api_docs/python/tflite_model_maker/config/ExportFormat
+    - title: QuantizationConfig
+      path: /lite/api_docs/python/tflite_model_maker/config/QuantizationConfig
+  - title: image_classifier
+    section:
+    - title: Overview
+      path: /lite/api_docs/python/tflite_model_maker/image_classifier
+    - title: DataLoader
+      path: /lite/api_docs/python/tflite_model_maker/image_classifier/DataLoader
+    - title: EfficientNetLite0Spec
+      path: /lite/api_docs/python/tflite_model_maker/image_classifier/EfficientNetLite0Spec
+    - title: EfficientNetLite1Spec
+      path: /lite/api_docs/python/tflite_model_maker/image_classifier/EfficientNetLite1Spec
+    - title: EfficientNetLite2Spec
+      path: /lite/api_docs/python/tflite_model_maker/image_classifier/EfficientNetLite2Spec
+    - title: EfficientNetLite3Spec
+      path: /lite/api_docs/python/tflite_model_maker/image_classifier/EfficientNetLite3Spec
+    - title: EfficientNetLite4Spec
+      path: /lite/api_docs/python/tflite_model_maker/image_classifier/EfficientNetLite4Spec
+    - title: ImageClassifier
+      path: /lite/api_docs/python/tflite_model_maker/image_classifier/ImageClassifier
+    - title: MobileNetV2Spec
+      path: /lite/api_docs/python/tflite_model_maker/image_classifier/MobileNetV2Spec
+    - title: ModelSpec
+      path: /lite/api_docs/python/tflite_model_maker/image_classifier/ModelSpec
+    - title: Resnet50Spec
+      path: /lite/api_docs/python/tflite_model_maker/image_classifier/Resnet50Spec
+    - title: create
+      path: /lite/api_docs/python/tflite_model_maker/image_classifier/create
+  - title: model_spec
+    section:
+    - title: Overview
+      path: /lite/api_docs/python/tflite_model_maker/model_spec
+    - title: get
+      path: /lite/api_docs/python/tflite_model_maker/model_spec/get
+  - title: object_detector
+    section:
+    - title: Overview
+      path: /lite/api_docs/python/tflite_model_maker/object_detector
+    - title: DataLoader
+      path: /lite/api_docs/python/tflite_model_maker/object_detector/DataLoader
+    - title: EfficientDetLite0Spec
+      path: /lite/api_docs/python/tflite_model_maker/object_detector/EfficientDetLite0Spec
+    - title: EfficientDetLite1Spec
+      path: /lite/api_docs/python/tflite_model_maker/object_detector/EfficientDetLite1Spec
+    - title: EfficientDetLite2Spec
+      path: /lite/api_docs/python/tflite_model_maker/object_detector/EfficientDetLite2Spec
+    - title: EfficientDetLite3Spec
+      path: /lite/api_docs/python/tflite_model_maker/object_detector/EfficientDetLite3Spec
+    - title: EfficientDetLite4Spec
+      path: /lite/api_docs/python/tflite_model_maker/object_detector/EfficientDetLite4Spec
+    - title: EfficientDetSpec
+      path: /lite/api_docs/python/tflite_model_maker/object_detector/EfficientDetSpec
+    - title: ObjectDetector
+      path: /lite/api_docs/python/tflite_model_maker/object_detector/ObjectDetector
+    - title: create
+      path: /lite/api_docs/python/tflite_model_maker/object_detector/create
+  - title: question_answer
+    section:
+    - title: Overview
+      path: /lite/api_docs/python/tflite_model_maker/question_answer
+    - title: BertQaSpec
+      path: /lite/api_docs/python/tflite_model_maker/question_answer/BertQaSpec
+    - title: DataLoader
+      path: /lite/api_docs/python/tflite_model_maker/question_answer/DataLoader
+    - title: MobileBertQaSpec
+      path: /lite/api_docs/python/tflite_model_maker/question_answer/MobileBertQaSpec
+    - title: MobileBertQaSquadSpec
+      path: /lite/api_docs/python/tflite_model_maker/question_answer/MobileBertQaSquadSpec
+    - title: QuestionAnswer
+      path: /lite/api_docs/python/tflite_model_maker/question_answer/QuestionAnswer
+    - title: create
+      path: /lite/api_docs/python/tflite_model_maker/question_answer/create
+  - title: recommendation
+    section:
+    - title: Overview
+      path: /lite/api_docs/python/tflite_model_maker/recommendation
+    - title: DataLoader
+      path: /lite/api_docs/python/tflite_model_maker/recommendation/DataLoader
+    - title: ModelSpec
+      path: /lite/api_docs/python/tflite_model_maker/recommendation/ModelSpec
+    - title: Recommendation
+      path: /lite/api_docs/python/tflite_model_maker/recommendation/Recommendation
+    - title: create
+      path: /lite/api_docs/python/tflite_model_maker/recommendation/create
+    - title: spec
+      section:
+      - title: Overview
+        path: /lite/api_docs/python/tflite_model_maker/recommendation/spec
+      - title: Feature
+        path: /lite/api_docs/python/tflite_model_maker/recommendation/spec/Feature
+      - title: FeatureGroup
+        path: /lite/api_docs/python/tflite_model_maker/recommendation/spec/FeatureGroup
+      - title: InputSpec
+        path: /lite/api_docs/python/tflite_model_maker/recommendation/spec/InputSpec
+      - title: ModelHParams
+        path: /lite/api_docs/python/tflite_model_maker/recommendation/spec/ModelHParams
+  - title: searcher
+    section:
+    - title: Overview
+      path: /lite/api_docs/python/tflite_model_maker/searcher
+    - title: DataLoader
+      path: /lite/api_docs/python/tflite_model_maker/searcher/DataLoader
+    - title: ExportFormat
+      path: /lite/api_docs/python/tflite_model_maker/searcher/ExportFormat
+    - title: ImageDataLoader
+      path: /lite/api_docs/python/tflite_model_maker/searcher/ImageDataLoader
+    - title: MetadataType
+      path: /lite/api_docs/python/tflite_model_maker/searcher/MetadataType
+    - title: ScaNNOptions
+      path: /lite/api_docs/python/tflite_model_maker/searcher/ScaNNOptions
+    - title: ScoreAH
+      path: /lite/api_docs/python/tflite_model_maker/searcher/ScoreAH
+    - title: ScoreBruteForce
+      path: /lite/api_docs/python/tflite_model_maker/searcher/ScoreBruteForce
+    - title: Searcher
+      path: /lite/api_docs/python/tflite_model_maker/searcher/Searcher
+    - title: TextDataLoader
+      path: /lite/api_docs/python/tflite_model_maker/searcher/TextDataLoader
+    - title: Tree
+      path: /lite/api_docs/python/tflite_model_maker/searcher/Tree
+  - title: text_classifier
+    section:
+    - title: Overview
+      path: /lite/api_docs/python/tflite_model_maker/text_classifier
+    - title: AverageWordVecSpec
+      path: /lite/api_docs/python/tflite_model_maker/text_classifier/AverageWordVecSpec
+    - title: BertClassifierSpec
+      path: /lite/api_docs/python/tflite_model_maker/text_classifier/BertClassifierSpec
+    - title: DataLoader
+      path: /lite/api_docs/python/tflite_model_maker/text_classifier/DataLoader
+    - title: MobileBertClassifierSpec
+      path: /lite/api_docs/python/tflite_model_maker/text_classifier/MobileBertClassifierSpec
+    - title: TextClassifier
+      path: /lite/api_docs/python/tflite_model_maker/text_classifier/TextClassifier
+    - title: create
+      path: /lite/api_docs/python/tflite_model_maker/text_classifier/create
+  status: experimental

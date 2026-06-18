@@ -1,0 +1,71 @@
+path: "tensorflow.tpu.experimental.embedding"
+tf_module {
+  member {
+    name: "Adagrad"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "AdagradMomentum"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "Adam"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "CustomCombiner"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "CustomOptimizer"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "FTRL"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "FeatureConfig"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "QuantizationConfig"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "RowIdInitializer"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "SGD"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "SparseCoreEmbeddingConfig"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "TPUEmbedding"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "TPUEmbeddingForServing"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "TPUEmbeddingV0"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "TPUEmbeddingV2"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "TableConfig"
+    mtype: "<class \'type\'>"
+  }
+  member_method {
+    name: "serving_embedding_lookup"
+    argspec: "args=[\'inputs\', \'weights\', \'tables\', \'feature_config\'], varargs=None, keywords=None, defaults=None"
+  }
+}

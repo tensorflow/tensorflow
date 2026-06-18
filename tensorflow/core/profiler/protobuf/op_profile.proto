@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+package tensorflow.profiler.op_profile;
+
+import public "plugin/xprof/protobuf/op_profile.proto";

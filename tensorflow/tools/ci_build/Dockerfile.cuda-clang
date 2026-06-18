@@ -1,0 +1,32 @@
+# Dockerfile to build a manylinux 2010 compliant TensorFlow pip package with
+# cuda-clang.
+#
+# To build, first build the manylinux2010 toolchain docker image and tag it,
+# then build the TensorFlow docker image using the tagged image as base.
+#
+# $ docker build -f Dockerfile.rbe.cuda10.0-cudnn7-ubuntu16.04-manylinux2010 \
+#     --tag "local-manylinux-toolchain" .
+# $ docker build -f Dockerfile.cuda-clang .
+
+FROM local-manylinux-toolchain
+
+WORKDIR /
+RUN git clone https://github.com/tensorflow/tensorflow
+
+WORKDIR /tensorflow
+ENV TF_NEED_GCP=1 \
+    TF_NEED_HDFS=1 \
+    TF_NEED_CUDA=1 \
+    TF_CUDA_CLANG=1 \
+    PATH=/dt7/usr/bin:$PATH \
+    PYTHON_BIN_PATH=/usr/bin/python3.6 \
+    CLANG_CUDA_COMPILER_PATH=/clang_${CLANG_VERSION}/bin/clang
+
+ADD cuda-clang.patch cuda-clang.patch
+RUN patch -p1 < cuda-clang.patch
+
+RUN yes "" | ./configure
+
+RUN bazel build --config=opt tensorflow/tools/pip_package:build_pip_package
+
+RUN ./bazel-bin/tensorflow/tools/pip_package/build_pip_package /tf-wheel

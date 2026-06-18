@@ -1,0 +1,27 @@
+path: "tensorflow.version"
+tf_module {
+  member {
+    name: "COMPILER_VERSION"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "GIT_VERSION"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "GRAPH_DEF_VERSION"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "GRAPH_DEF_VERSION_MIN_CONSUMER"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "GRAPH_DEF_VERSION_MIN_PRODUCER"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "VERSION"
+    mtype: "<class \'str\'>"
+  }
+}

@@ -1,0 +1,57 @@
+op {
+  graph_op_name: "BoostedTreesMakeStatsSummary"
+  deprecation_message: "Boosted Trees kernels in TF are deprecated. Please use TensorFlow Decision Forests instead (https://github.com/tensorflow/decision-forests)"
+  visibility: HIDDEN
+  in_arg {
+    name: "node_ids"
+    description: <<END
+int32 Rank 1 Tensor containing node ids, which each example falls into for the requested layer.
+END
+  }
+  in_arg {
+    name: "gradients"
+    description: <<END
+float32; Rank 2 Tensor (shape=[#examples, 1]) for gradients.
+END
+  }
+  in_arg {
+    name: "hessians"
+    description: <<END
+float32; Rank 2 Tensor (shape=[#examples, 1]) for hessians.
+END
+  }
+  in_arg {
+    name: "bucketized_features_list"
+    description: <<END
+int32 list of Rank 1 Tensors, each containing the bucketized feature (for each feature column).
+END
+  }
+  out_arg {
+    name: "stats_summary"
+    description: <<END
+output Rank 4 Tensor (shape=[#features, #splits, #buckets, 2]) containing accumulated stats put into the corresponding node and bucket. The first index of 4th dimension refers to gradients, and the second to hessians.
+END
+  }
+  attr {
+    name: "max_splits"
+    description: <<END
+int; the maximum number of splits possible in the whole tree.
+END
+  }
+  attr {
+    name: "num_buckets"
+    description: <<END
+int; equals to the maximum possible value of bucketized feature.
+END
+  }
+  attr {
+    name: "num_features"
+    description: <<END
+int; inferred from the size of bucketized_features_list; the number of features.
+END
+  }
+  summary: "Makes the summary of accumulated stats for the batch."
+  description: <<END
+The summary stats contains gradients and hessians accumulated into the corresponding node and bucket for each example.
+END
+}

@@ -1,0 +1,42 @@
+op {
+  graph_op_name: "BoostedTreesCenterBias"
+  deprecation_message: "Boosted Trees kernels in TF are deprecated. Please use TensorFlow Decision Forests instead (https://github.com/tensorflow/decision-forests)"
+  visibility: HIDDEN
+  in_arg {
+    name: "tree_ensemble_handle"
+    description: <<END
+Handle to the tree ensemble.
+END
+  }
+  in_arg {
+    name: "mean_gradients"
+    description: <<END
+A tensor with shape=[logits_dimension] with mean of gradients for a first node.
+END
+  }
+  in_arg {
+    name: "mean_hessians"
+    description: <<END
+A tensor with shape=[logits_dimension] mean of hessians for a first node.
+END
+  }
+in_arg {
+    name: "l1"
+    description: <<END
+l1 regularization factor on leaf weights, per instance based.
+END
+  }
+  in_arg {
+    name: "l2"
+    description: <<END
+l2 regularization factor on leaf weights, per instance based.
+END
+  }
+  out_arg {
+    name: "continue_centering"
+    description: <<END
+Bool, whether to continue bias centering.
+END
+  }
+  summary: "Calculates the prior from the training data (the bias) and fills in the first node with the logits' prior. Returns a boolean indicating whether to continue centering."
+}

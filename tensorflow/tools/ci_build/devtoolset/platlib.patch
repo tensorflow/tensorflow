@@ -1,0 +1,34 @@
+diff --git a/tensorflow/tools/pip_package/build_pip_package.sh b/tensorflow/tools/pip_package/build_pip_package.sh
+index 305033cd44..d2c43dc7ab 100755
+--- a/tensorflow/tools/pip_package/build_pip_package.sh
++++ b/tensorflow/tools/pip_package/build_pip_package.sh
+@@ -135,6 +135,7 @@ function prepare_src() {
+   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
+   cp tensorflow/tools/pip_package/README ${TMPDIR}
+   cp tensorflow/tools/pip_package/setup.py ${TMPDIR}
++  touch ${TMPDIR}/stub.cc
+ 
+   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so
+   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so.[0-9].*
+diff --git a/tensorflow/tools/pip_package/setup.py b/tensorflow/tools/pip_package/setup.py
+index c36a2a0fa8..6ed096aafc 100644
+--- a/tensorflow/tools/pip_package/setup.py
++++ b/tensorflow/tools/pip_package/setup.py
+@@ -34,7 +34,7 @@ import os
+ import re
+ import sys
+ 
+-from setuptools import Command
++from setuptools import Command, Extension
+ from setuptools import find_packages
+ from setuptools import setup
+ from setuptools.command.install import install as InstallCommandBase
+@@ -269,6 +269,7 @@ setup(
+             EXTENSION_NAME,
+         ] + matches,
+     },
++    ext_modules=[Extension('_foo', ['stub.cc'])],
+     zip_safe=False,
+     distclass=BinaryDistribution,
+     cmdclass={
+)

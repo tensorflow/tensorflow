@@ -1,0 +1,87 @@
+op {
+  graph_op_name: "ExtractGlimpseV2"
+  visibility: HIDDEN
+  in_arg {
+    name: "input"
+    description: <<END
+A 4-D float tensor of shape `[batch_size, height, width, channels]`.
+END
+  }
+  in_arg {
+    name: "size"
+    description: <<END
+A 1-D tensor of 2 elements containing the size of the glimpses
+to extract.  The glimpse height must be specified first, following
+by the glimpse width.
+END
+  }
+  in_arg {
+    name: "offsets"
+    description: <<END
+A 2-D integer tensor of shape `[batch_size, 2]` containing
+the y, x locations of the center of each window.
+END
+  }
+  out_arg {
+    name: "glimpse"
+    description: <<END
+A tensor representing the glimpses `[batch_size,
+glimpse_height, glimpse_width, channels]`.
+END
+  }
+  attr {
+    name: "centered"
+    description: <<END
+indicates if the offset coordinates are centered relative to
+the image, in which case the (0, 0) offset is relative to the center
+of the input images. If false, the (0,0) offset corresponds to the
+upper left corner of the input images.
+END
+  }
+  attr {
+    name: "normalized"
+    description: <<END
+indicates if the offset coordinates are normalized.
+END
+  }
+  attr {
+    name: "uniform_noise"
+    description: <<END
+indicates if the noise should be generated using a
+uniform distribution or a Gaussian distribution.
+It should not be `True` when `noise` is not `uniform`.
+END
+  }
+  attr {
+    name: "noise"
+    description: <<END
+indicates if the noise should `uniform`, `gaussian`, or
+`zero`. The default is `uniform` which means the noise type
+will be decided by `uniform_noise`.
+END
+  }
+  summary: "Extracts a glimpse from the input tensor."
+  description: <<END
+Returns a set of windows called glimpses extracted at location
+`offsets` from the input tensor. If the windows only partially
+overlaps the inputs, the non overlapping areas will be filled with
+random noise.
+
+The result is a 4-D tensor of shape `[batch_size, glimpse_height,
+glimpse_width, channels]`. The channels and batch dimensions are the
+same as that of the input tensor. The height and width of the output
+windows are specified in the `size` parameter.
+
+The argument `normalized` and `centered` controls how the windows are built:
+
+* If the coordinates are normalized but not centered, 0.0 and 1.0
+  correspond to the minimum and maximum of each height and width
+  dimension.
+* If the coordinates are both normalized and centered, they range from
+  -1.0 to 1.0. The coordinates (-1.0, -1.0) correspond to the upper
+  left corner, the lower right corner is located at (1.0, 1.0) and the
+  center is at (0, 0).
+* If the coordinates are not normalized they are interpreted as
+  numbers of pixels.
+END
+}

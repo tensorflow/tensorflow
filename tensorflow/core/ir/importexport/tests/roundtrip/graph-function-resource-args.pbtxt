@@ -1,0 +1,79 @@
+node {
+  name: "x"
+  op: "VarHandleOp"
+  device: "/CPU:0"
+  attr {
+    key: "container"
+    value {
+      s: "a"
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: "x"
+    }
+  }
+}
+node {
+  name: "func_call"
+  op: "test_func_name"
+  input: "x"
+  input: "x"
+  attr {
+    key: "_disable_call_shape_inference"
+    value {
+      b: true
+    }
+  }
+}
+library {
+  function {
+    signature {
+      name: "test_func_name"
+      input_arg {
+        name: "a_0"
+        type: DT_RESOURCE
+      }
+      input_arg {
+        name: "a_1"
+        type: DT_RESOURCE
+      }
+      output_arg {
+        name: "a"
+        type: DT_RESOURCE
+      }
+    }
+    resource_arg_unique_id {
+      key: 0
+      value: 0
+    }
+    resource_arg_unique_id {
+      key: 1
+      value: 0
+    }
+    ret {
+      key: "a"
+      value: "a_0"
+    }
+    attr {
+      key: "_disable_call_shape_inference"
+      value {
+        b: true
+      }
+    }
+  }
+}

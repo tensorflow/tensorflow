@@ -1,0 +1,12 @@
+path: "tensorflow.RunOptions.Experimental.RunHandlerPoolOptions"
+tf_proto {
+  descriptor {
+    name: "RunHandlerPoolOptions"
+    field {
+      name: "priority"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+  }
+}

@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+
+// Protocol buffer representing the checkpoint state.
+message CheckpointState {
+  // Path to the most-recent model checkpoint.
+  string model_checkpoint_path = 1;
+
+  // Paths to all not-yet-deleted model checkpoints, sorted from oldest to
+  // newest.
+  // Note that the value of model_checkpoint_path should be the last item in
+  // this list.
+  repeated string all_model_checkpoint_paths = 2;
+  // Unix timestamps corresponding to all_model_checkpoint_paths, indicating
+  // when each checkpoint was created.
+  repeated double all_model_checkpoint_timestamps = 3;
+  // Unix timestamp indicating the creation time for the last preserved
+  // checkpoint.
+  double last_preserved_timestamp = 4;
+}

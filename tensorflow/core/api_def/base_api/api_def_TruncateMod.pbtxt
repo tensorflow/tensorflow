@@ -1,0 +1,11 @@
+op {
+  graph_op_name: "TruncateMod"
+  summary: "Returns element-wise remainder of division. This emulates C semantics in that"
+  description: <<END
+the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+y + truncate_mod(x, y) = x`.
+
+*NOTE*: `TruncateMod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}

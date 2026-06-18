@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "TensorMapHasKey"
+  summary: "Returns whether the given key exists in the map."
+  description: <<END
+input_handle: the input map
+key: the key to check
+has_key: whether the key is already in the map or not
+END
+}

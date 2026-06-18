@@ -1,0 +1,8 @@
+// This defines the RawData attachment to the TraceEvent proto.
+// It is in a separate file to avoid all consumers needing these dependencies.
+
+syntax = "proto2";
+
+package tensorflow.profiler;
+
+import public "plugin/xprof/protobuf/trace_events_raw.proto";

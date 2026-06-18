@@ -1,0 +1,69 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef XLA_BACKENDS_GPU_AUTOTUNER_MIOPEN_H_
+#define XLA_BACKENDS_GPU_AUTOTUNER_MIOPEN_H_
+
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/compiler.h"
+#include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
+
+namespace xla {
+namespace gpu {
+
+// A codegen backend for MIOpen.
+class MIOpenBackend : public GpuCodegenBackend {
+ public:
+  explicit MIOpenBackend(stream_executor::StreamExecutor* stream_executor,
+                         const DebugOptions* debug_options, Compiler* compiler,
+                         const Compiler::GpuTargetConfig* target_config,
+                         stream_executor::DeviceAddressAllocator* allocator)
+      : GpuCodegenBackend(autotuner::Backend::MIOPEN, debug_options, compiler,
+                          target_config, stream_executor),
+        do_not_autotune_(debug_options->xla_gpu_autotune_level() == 0),
+        allocator_(allocator) {}
+
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  GetSupportedConfigs(const HloInstruction& instr) override;
+
+  absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
+      const HloInstruction& instr) override;
+
+  absl::Status ApplyConfig(HloInstruction& instr,
+                           const BackendConfig& config) override;
+
+ private:
+  bool IsSupported(const HloInstruction& instr) override;
+  // TODO(b/514330710): use valid version
+  std::string version() const override { return "unknown"; }
+  bool do_not_autotune_;
+  stream_executor::DeviceAddressAllocator* allocator_;
+};
+
+}  // namespace gpu
+}  // namespace xla
+
+#endif  // XLA_BACKENDS_GPU_AUTOTUNER_MIOPEN_H_

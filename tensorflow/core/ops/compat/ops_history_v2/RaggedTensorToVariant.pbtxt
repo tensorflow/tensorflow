@@ -1,0 +1,91 @@
+op {
+  name: "RaggedTensorToVariant"
+  input_arg {
+    name: "rt_nested_splits"
+    type_attr: "Tsplits"
+    number_attr: "RAGGED_RANK"
+  }
+  input_arg {
+    name: "rt_dense_values"
+    type_attr: "Tvalues"
+  }
+  output_arg {
+    name: "encoded_ragged"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "RAGGED_RANK"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "Tvalues"
+    type: "type"
+  }
+  attr {
+    name: "Tsplits"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "batched_input"
+    type: "bool"
+  }
+}
+op {
+  name: "RaggedTensorToVariant"
+  input_arg {
+    name: "rt_nested_splits"
+    type_attr: "Tsplits"
+    number_attr: "RAGGED_RANK"
+  }
+  input_arg {
+    name: "rt_dense_values"
+    type_attr: "Tvalues"
+  }
+  output_arg {
+    name: "encoded_ragged"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_RAGGED
+      args {
+        type_id: TFT_VAR
+        s: "Tvalues"
+      }
+    }
+  }
+  attr {
+    name: "RAGGED_RANK"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "Tvalues"
+    type: "type"
+  }
+  attr {
+    name: "Tsplits"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "batched_input"
+    type: "bool"
+  }
+}

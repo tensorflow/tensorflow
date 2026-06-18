@@ -1,0 +1,402 @@
+/* Copyright 2024 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_
+#define XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_
+
+#include <cstdint>
+#include <optional>
+#include <utility>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
+#include "mlir/Support/LLVM.h"
+#include "xla/codegen/ir_emission_utils.h"  // IWYU pragma:  export
+#include "xla/codegen/tiling/experimental/scheduling.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiled_hlo_instruction.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
+#include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
+
+namespace xla::xtile {
+
+using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
+static constexpr auto kTritonDivisibilityAttr = "tt.divisibility";
+
+// Convenience class for holding the emitted values.
+class EmitterContext {
+ public:
+  EmitterContext(
+      mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
+      mlir::Value pid, gpu::experimental::Schedule schedule,
+      xtile::EntryFuncOp entry_func,
+      const gpu::experimental::TiledHloComputation& tiled_computation)
+      : b_(b),
+        pid_(pid),
+        schedule_(std::move(schedule)),
+        fusion_(fusion),
+        entry_func_(entry_func),
+        tiled_computation_(tiled_computation) {}
+
+  mlir::ImplicitLocOpBuilder& b() { return b_; }
+  mlir::Value pid() const { return pid_; }
+  const HloFusionInstruction& fusion() const { return *fusion_; }
+  xtile::EntryFuncOp entry_func() const { return entry_func_; }
+
+  TensorValue TiledHloToTensorValue(
+      const gpu::experimental::TiledHloInstruction& tiled_hlo) const {
+    return tiled_hlo_to_tensor_.at(&tiled_hlo);
+  }
+
+  bool MapTiledHloToTensorValue(
+      const gpu::experimental::TiledHloInstruction* tiled_hlo,
+      TensorValue value) {
+    return tiled_hlo_to_tensor_.insert(std::make_pair(tiled_hlo, value)).second;
+  }
+
+  std::pair<mlir::Value, Interval> GetSequentialDimValue(
+      gpu::experimental::TiledDimId sequential_dim_id) const {
+    auto it = sequential_dim_id_to_value_.find(sequential_dim_id);
+    QCHECK(it != sequential_dim_id_to_value_.end())
+        << "Sequential dim id " << sequential_dim_id
+        << " not found in the induction var map.";
+    return it->second;
+  }
+
+  bool MapSymbolIdToSequentialDimValue(
+      gpu::experimental::TiledDimId sequential_dim_id, mlir::Value value,
+      Interval interval) {
+    return sequential_dim_id_to_value_
+        .insert(
+            std::make_pair(sequential_dim_id, std::make_pair(value, interval)))
+        .second;
+  }
+
+  // Evaluates tiling parameters for the given affine expressions, e.g. offsets.
+  absl::StatusOr<mlir::SmallVector<mlir::Value>> EvaluateTilingParameters(
+      mlir::ArrayRef<SymbolicExpr> exprs);
+
+ private:
+  mlir::ImplicitLocOpBuilder& b_;
+  mlir::Value pid_;
+  absl::flat_hash_map<const gpu::experimental::TiledHloInstruction*,
+                      TensorValue>
+      tiled_hlo_to_tensor_;
+  gpu::experimental::Schedule schedule_;
+  const HloFusionInstruction* fusion_ = nullptr;
+  xtile::EntryFuncOp entry_func_;
+  const gpu::experimental::TiledHloComputation& tiled_computation_;
+  absl::flat_hash_map<gpu::experimental::TiledDimId,
+                      std::pair<mlir::Value, Interval>>
+      sequential_dim_id_to_value_;
+};
+
+// Constructs and holds information needed to construct a tile. This information
+// is propagated to Extract/Insert ops to use them to load and store the correct
+// tiles.
+class TileInfo {
+ public:
+  static absl::StatusOr<TileInfo> Construct(
+      mlir::ImplicitLocOpBuilder& b, mlir::Value pid,
+      mlir::ValueRange runtime_values, const TiledHloInstruction& tiled_hlo);
+
+  static absl::StatusOr<TileInfo> Construct(
+      EmitterContext& ctx,
+      const gpu::experimental::TiledHloInstruction& tiled_hlo);
+
+  // Tile offsets. Its size is equal to the rank of the output shape.
+  mlir::ValueRange offsets() const { return offsets_; }
+
+  // Tile strides. Its size is equal to the rank of the output shape.
+  mlir::ArrayRef<int64_t> tile_strides() const { return tile_strides_; }
+
+  // The original shape of the tensor.
+  mlir::ArrayRef<int64_t> original_shape() const { return original_shape_; }
+
+  // Tile sizes after padding to a power of 2 (Triton requirement).
+  mlir::ArrayRef<int64_t> padded_tile_sizes() const {
+    return padded_tile_sizes_;
+  }
+
+  // The layout of the tensor in minor-to-major order.
+  const llvm::SmallVector<int64_t>& minor_to_major_layout() const {
+    return minor_to_major_layout_;
+  }
+
+  // The replica id offsets if the tensor has a replica dimension.
+  llvm::ArrayRef<mlir::Value> replica_id_offsets() const {
+    return replica_id_offsets_;
+  }
+
+  // The replica id bounds if the tensor has a replica dimension.
+  llvm::ArrayRef<mlir::Value> replica_id_bounds() const {
+    return replica_id_bounds_;
+  }
+
+  // The storage type of the tensor. This could be different from the element
+  // type. e.g. predicates are stored as i8 instead of i1.
+  mlir::Type storage_type() const { return storage_type_; }
+
+ private:
+  llvm::SmallVector<mlir::Value> offsets_;
+  llvm::SmallVector<int64_t> tile_strides_;
+  llvm::SmallVector<int64_t> original_shape_;
+  llvm::SmallVector<int64_t> padded_tile_sizes_;
+  llvm::SmallVector<int64_t> minor_to_major_layout_;
+  mlir::Type storage_type_;
+  llvm::SmallVector<mlir::Value> replica_id_offsets_;
+  llvm::SmallVector<mlir::Value> replica_id_bounds_;
+
+  TileInfo(llvm::SmallVector<mlir::Value> offsets,             //
+           llvm::SmallVector<int64_t> tile_strides,            //
+           llvm::SmallVector<int64_t> original_shape,          //
+           llvm::SmallVector<int64_t> padded_tile_sizes,       //
+           llvm::SmallVector<int64_t> minor_to_major_layout,   //
+           mlir::Type storage_type,                            //
+           llvm::SmallVector<mlir::Value> replica_id_offsets,  //
+           llvm::SmallVector<mlir::Value> replica_id_bounds    //
+           )
+      : offsets_(std::move(offsets)),
+        tile_strides_(std::move(tile_strides)),
+        original_shape_(std::move(original_shape)),
+        padded_tile_sizes_(std::move(padded_tile_sizes)),
+        minor_to_major_layout_(std::move(minor_to_major_layout)),
+        storage_type_(std::move(storage_type)),
+        replica_id_offsets_(std::move(replica_id_offsets)),
+        replica_id_bounds_(std::move(replica_id_bounds)) {}
+};
+
+// Triton requires that all block dimensions are a power of 2.
+// TODO(b/353484968): Delete this function once we have constraints to only
+// propagate tile sizes that are a power of 2.
+llvm::SmallVector<int64_t> GetPaddedTileSizes(
+    llvm::ArrayRef<int64_t> tile_sizes);
+
+// XLA -> MLIR type conversions.
+absl::StatusOr<mlir::Type> PrimitiveTypeToMlirType(
+    mlir::ImplicitLocOpBuilder& b, PrimitiveType t,
+    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc =
+        std::nullopt);
+
+// MLIR type -> XLA type conversions.
+absl::StatusOr<PrimitiveType> GetPrimitiveType(mlir::Type t);
+
+mlir::Type StorageType(mlir::Type t);
+
+// Get the value of the scalar constant's literal in a C++ ty˝pe.
+template <typename T>
+T ScalarConstantValue(const HloInstruction& instr, PrimitiveType dst_type) {
+  CHECK_EQ(instr.opcode(), HloOpcode::kConstant);
+  CHECK(ShapeUtil::IsEffectiveScalar(instr.shape()));
+  absl::StatusOr<Literal> converted = instr.literal().Convert(dst_type);
+  CHECK_OK(converted.status());
+  return converted.value().GetFirstElement<T>();
+}
+
+// Create a scalar constant.
+template <typename T>
+mlir::Value CreateConst(mlir::ImplicitLocOpBuilder& b, mlir::Type type,
+                        T value) {
+  if (mlir::isa<mlir::IntegerType>(type)) {
+    return b.create<mlir::arith::ConstantOp>(b.getIntegerAttr(type, value));
+  }
+
+  if (mlir::isa<mlir::IndexType>(type)) {
+    return b.create<mlir::arith::ConstantOp>(b.getIndexAttr(value));
+  }
+
+  if (mlir::isa<mlir::FloatType>(type)) {
+    return b.create<mlir::arith::ConstantOp>(
+        b.getFloatAttr(type, static_cast<double>(value)));
+  }
+  LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
+}
+
+// Create a tensor constant.
+template <typename T>
+mlir::TypedValue<mlir::RankedTensorType> CreateConst(
+    mlir::ImplicitLocOpBuilder& b, mlir::Type type, T value,
+    llvm::ArrayRef<int64_t> shape) {
+  auto tensor_type = mlir::RankedTensorType::get(shape, type);
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
+    mlir::Value result =
+        b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
+            tensor_type,
+            mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
+                        /*isSigned=*/false, /*implicitTrunc=*/true)));
+    return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(result);
+  }
+  if (auto float_type = mlir::dyn_cast<mlir::FloatType>(type)) {
+    mlir::Value result =
+        b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
+            tensor_type, b.getFloatAttr(type, static_cast<double>(value))));
+    return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(result);
+  }
+  LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
+}
+
+// Create a constant of the same shape as `like` but with a new type and value.
+template <typename T>
+mlir::Value ConstLike(mlir::ImplicitLocOpBuilder& b, mlir::Value like,
+                      T new_value) {
+  if (auto src_shaped_ty = mlir::dyn_cast<mlir::ShapedType>(like.getType())) {
+    mlir::Type src_ty = src_shaped_ty.getElementType();
+    return CreateConst(b, src_ty, new_value, src_shaped_ty.getShape());
+  }
+  return CreateConst(b, like.getType(), new_value);
+}
+
+inline mlir::Value ZerosLike(mlir::ImplicitLocOpBuilder& b, mlir::Value x) {
+  return ConstLike(b, x, 0);
+}
+
+bool IsFp8Type(mlir::Type t);
+
+// Triton type conversions.
+mlir::Value Cast(mlir::ImplicitLocOpBuilder& b, mlir::Value value,
+                 mlir::Type dst_element_ty);
+
+// Emits a scalar constant.
+absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
+    mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant);
+
+absl::StatusOr<mlir::Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
+                                            const HloInstruction& hlo,
+                                            mlir::ValueRange inputs);
+
+mlir::Value Bitcast(mlir::ImplicitLocOpBuilder& b, mlir::Value value,
+                    mlir::Type type);
+
+// Emits an xtile::ExtractTileOp for the given tile info and argument.
+absl::StatusOr<TensorValue> EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
+                                                 const TileInfo& tile_info,
+                                                 mlir::Value arg);
+
+// Emits a sequence of HLO instructions within a specific scope.
+//
+// This function traverses the provided `hlo_instructions` in a
+// defined-before-use order and emits the corresponding MLIR operations using
+// the given `mlir::ImplicitLocOpBuilder`. It uses `emitted_values` to look up
+// already emitted results for instructions, typically parameters or results
+// from outer scopes. New results are added to the `emitted_values` map.
+//
+// Example usage within [EmitReduce] includes using it to emit the body of the
+// `HloInstruction::to_apply` computation.
+absl::StatusOr<TensorValue> EmitScope(
+    mlir::ImplicitLocOpBuilder& b,
+    absl::Span<const HloInstruction* const> instructions,
+    absl::flat_hash_map<const HloInstruction*, TensorValue>& values);
+
+// Same as HLO BroadcastInDims. The sorted indices in `dims` specify the
+// mapping of the input dimensions to the output dimensions.
+TensorValue BroadcastInDims(mlir::ImplicitLocOpBuilder& b, TensorValue value,
+                            ::mlir::ArrayRef<int64_t> output_shape,
+                            ::mlir::ArrayRef<int64_t> dims);
+
+TensorValue Splat(mlir::ImplicitLocOpBuilder& b, ::mlir::Value value,
+                  ::mlir::ArrayRef<int64_t> output_shape);
+
+// Returns a named attribute for divisibility of triton pointer function
+// arguments.
+inline mlir::NamedAttribute GetDivisibilityAttr(mlir::ImplicitLocOpBuilder& b) {
+  return b.getNamedAttr(kTritonDivisibilityAttr,
+                        b.getIntegerAttr(b.getI32Type(), 16));
+}
+
+mlir::Value UnsignedIntegerToSignlessInteger(mlir::OpBuilder& builder,
+                                             mlir::Value value);
+
+// Function to get the permutation vector from a MemRefType.
+// The motivation for extracting it from getStridesAndOffset vs directly from
+// xtile.layout is that when we fold memrefs (such as in a transpose) it
+// will have a generic strided layout that does not directly encode the
+// permutation.
+absl::StatusOr<llvm::SmallVector<int64_t>> GetPermutationMinorToMajor(
+    mlir::MemRefType memref);
+
+// Function to get a MemRefType from a Shape.
+mlir::MemRefType GetMemRefType(const Shape& shape, mlir::Type element_type);
+
+// Function to get the MLIR type from a PrimitiveType.
+absl::StatusOr<mlir::Type> GetMlirType(
+    mlir::ImplicitLocOpBuilder& b, PrimitiveType type,
+    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc);
+
+// Visitor to determine tile based requirements while iterating over the fusion
+// instructions.
+struct DefaultTileRequirementsVisitor {
+  DefaultTileRequirementsVisitor() = default;
+  virtual ~DefaultTileRequirementsVisitor() = default;
+  virtual absl::StatusOr<llvm::SmallVector<int64_t>> RequiredReplicaIdBounds(
+      const HloInstruction& instr) const {
+    return llvm::SmallVector<int64_t>();
+  }
+};
+
+// Function to get the MLIR types from a HloFusionInstruction.
+absl::StatusOr<llvm::SmallVector<mlir::Type>> GetFnArgTypes(
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction& fusion,
+    absl::Span<mlir::Type> opaque_args_types,
+    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc,
+    const DefaultTileRequirementsVisitor& tile_requirements_visitor =
+        DefaultTileRequirementsVisitor());
+
+// Function to check if the operands of a concatenation are valid for tiling.
+absl::Status CheckConcatenateOperands(
+    const HloConcatenateInstruction& hlo_concat, int64_t concat_dim_tile_size);
+
+absl::StatusOr<TensorValue> EmitTiledReshape(mlir::ImplicitLocOpBuilder& b,
+                                             llvm::ArrayRef<int64_t> tile_sizes,
+                                             TensorValue input);
+
+TensorValue EmitTiledTranspose(mlir::ImplicitLocOpBuilder& b,
+                               llvm::ArrayRef<int64_t> tile_sizes,
+                               llvm::SmallVector<int64_t> dimensions,
+                               TensorValue input);
+
+// Emits a reduction computation.
+absl::Status EmitReduceComputation(mlir::ImplicitLocOpBuilder& b,
+                                   const HloInstruction* hlo_reduction,
+                                   const HloComputation* reduction_computation,
+                                   mlir::Operation* reduction);
+}  // namespace xla::xtile
+
+#endif  // XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "SlideDataset"
+  endpoint {
+    name: "data.SlideDataset"
+  }
+}

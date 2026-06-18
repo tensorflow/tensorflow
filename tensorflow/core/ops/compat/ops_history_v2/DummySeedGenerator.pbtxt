@@ -1,0 +1,8 @@
+op {
+  name: "DummySeedGenerator"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}

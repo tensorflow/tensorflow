@@ -1,0 +1,17 @@
+op {
+  graph_op_name: "ResourceAccumulatorNumAccumulated"
+  visibility: HIDDEN
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle to an accumulator.
+END
+  }
+  out_arg {
+    name: "num_accumulated"
+    description: <<END
+The number of gradients aggregated in the given accumulator.
+END
+  }
+  summary: "Returns the number of gradients aggregated in the given accumulators."
+}

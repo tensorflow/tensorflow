@@ -1,0 +1,36 @@
+op {
+  graph_op_name: "ConcatOffset"
+  visibility: SKIP
+  in_arg {
+    name: "concat_dim"
+    description: <<END
+The dimension along which to concatenate.
+END
+  }
+  in_arg {
+    name: "shape"
+    description: <<END
+The `N` int32 or int64 vectors representing shape of tensors being concatenated.
+END
+  }
+  out_arg {
+    name: "offset"
+    description: <<END
+The `N` vectors representing the starting offset
+of input tensors within the concatenated output with type matching `shape`.
+END
+  }
+  summary: "Computes offsets of concat inputs within its output."
+  description: <<END
+For example:
+
+>>> x = [2, 2, 7]
+>>> y = [2, 3, 7]
+>>> z = [2, 9, 7]
+>>> offsets = concat_offset(1, [x, y, z])
+>>> [[a.item() for a in list(off.numpy())] for off in offsets]
+[[0, 0, 0], [0, 2, 0], [0, 5, 0]]
+
+This is typically used by gradient computations for a concat operation.
+END
+}

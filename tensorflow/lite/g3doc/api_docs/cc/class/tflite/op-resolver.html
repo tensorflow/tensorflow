@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+
+<html devsite="">
+<head>
+<title>tflite::OpResolver Class Reference</title>
+<meta name="page_type" value="reference"/>
+<meta content="reference" name="page_type"/></head>
+<body><div id="top"><!-- do not remove this div --></div><h1>tflite::<wbr/>OpResolver</h1><b>This is an abstract class.</b><br/><br/><code>#include &lt;op_resolver.h&gt;</code><p>Abstract interface that returns TfLiteRegistrations given op codes or custom op names. </p><h2>Summary</h2><p>This is the mechanism that ops being referenced in the flatbuffer model are mapped to executable function pointers (TfLiteRegistrations). </p><h3>Inheritance</h3>Direct Known Subclasses:<a href="/lite/api_docs/cc/class/tflite/mutable-op-resolver">tflite::MutableOpResolver</a><table class="constructors responsive">
+<tr>
+<th colspan="2">
+<h3>Constructors and Destructors</h3>
+</th>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1_op_resolver_1a0c77e42f61545356cdf059b77b5fc25b">~OpResolver</a>()</code>
+<br/>
+</td>
+</tr>
+</table><table class="properties responsive">
+<tr>
+<th colspan="2">
+<h3>Public types</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_op_resolver_1a7af97a72cb858d1926baa89a4b69b76f">TfLiteDelegateCreator</a></code>
+</td>
+<td>using<div>
+<code>std::function&lt; std::unique_ptr&lt; TfLiteDelegate, void(*)(TfLiteDelegate *)&gt;(TfLiteContext *)&gt;</code>
+</div></td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_op_resolver_1a2d5bec0cb807de14a895b7f887447fb8">TfLiteDelegateCreators</a></code>
+</td>
+<td>using<div>
+<code>std::vector&lt; TfLiteDelegateCreator &gt;</code>
+</div></td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_op_resolver_1a5edf154c181fb222fecfc12901b815d4">TfLiteDelegatePtrVector</a></code>
+</td>
+<td>using<div>
+<code>std::vector&lt; std::unique_ptr&lt; TfLiteDelegate, void(*)(TfLiteDelegate *)&gt;&gt;</code>
+</div></td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_op_resolver_1a145dc72aea9d1f64603a0fdece4d945a">TfLiteOpaqueDelegateCreator</a></code>
+</td>
+<td>using<div>
+<code>std::function&lt; TfLiteOpaqueDelegatePtr(int)&gt;</code>
+</div></td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_op_resolver_1abd7047114847917c8f5aa748a0c07322">TfLiteOpaqueDelegateCreators</a></code>
+</td>
+<td>using<div>
+<code>std::vector&lt; TfLiteOpaqueDelegateCreator &gt;</code>
+</div></td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_op_resolver_1a660e42e8f6a9ded2cbfdccd3ad202ec7">TfLiteOpaqueDelegatePtr</a></code>
+</td>
+<td>using<div>
+<code>std::unique_ptr&lt; TfLiteOpaqueDelegate, void(*)(TfLiteOpaqueDelegate *)&gt;</code>
+</div></td>
+</tr>
+</table><table class="methods responsive">
+<tr>
+<th colspan="2">
+<h3>Public functions</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_op_resolver_1a4b1cc6e397440d4a9d47c4d812406ed1">FindOp</a>(tflite::BuiltinOperator op, int version) const =0</code>
+</td>
+<td>
+<div>
+<code>virtual const TfLiteRegistration *</code>
+</div>
+<div>Finds the op registration for a builtin operator by enum code. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_op_resolver_1a0bc0bf7ab1e458d701dbae3e1f9ad834">FindOp</a>(const char *op, int version) const =0</code>
+</td>
+<td>
+<div>
+<code>virtual const TfLiteRegistration *</code>
+</div>
+<div>Finds the op registration of a custom operator by op name. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_op_resolver_1ac0209d301501fe893bc799ed8d1c5d55">GetDelegateCreators</a>() const </code>
+</td>
+<td>
+<div>
+<code>virtual TfLiteDelegateCreators</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_op_resolver_1a4ddbd0c045fff41c114756f08424fcb4">GetDelegates</a>(int num_threads) const </code>
+</td>
+<td>
+<div>
+<code>virtual TfLiteDelegatePtrVector</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_op_resolver_1ac075c57679241ccb12ed05a215d14af5">GetOpaqueDelegateCreators</a>() const </code>
+</td>
+<td>
+<div>
+<code>virtual TfLiteOpaqueDelegateCreators</code>
+</div>
+</td>
+</tr>
+</table><h2>Public types</h2><div id="classtflite_1_1_op_resolver_1a7af97a72cb858d1926baa89a4b69b76f">
+<h3>TfLiteDelegateCreator</h3>
+<pre class="prettyprint">std::function&lt; std::unique_ptr&lt; TfLiteDelegate, void(*)(TfLiteDelegate *)&gt;(TfLiteContext *)&gt; TfLiteDelegateCreator</pre>
+<div></div>
+</div><div id="classtflite_1_1_op_resolver_1a2d5bec0cb807de14a895b7f887447fb8">
+<h3>TfLiteDelegateCreators</h3>
+<pre class="prettyprint">std::vector&lt; TfLiteDelegateCreator &gt; TfLiteDelegateCreators</pre>
+<div></div>
+</div><div id="classtflite_1_1_op_resolver_1a5edf154c181fb222fecfc12901b815d4">
+<h3>TfLiteDelegatePtrVector</h3>
+<pre class="prettyprint">std::vector&lt; std::unique_ptr&lt; TfLiteDelegate, void(*)(TfLiteDelegate *)&gt;&gt; TfLiteDelegatePtrVector</pre>
+<div></div>
+</div><div id="classtflite_1_1_op_resolver_1a145dc72aea9d1f64603a0fdece4d945a">
+<h3>TfLiteOpaqueDelegateCreator</h3>
+<pre class="prettyprint">std::function&lt; TfLiteOpaqueDelegatePtr(int)&gt; TfLiteOpaqueDelegateCreator</pre>
+<div></div>
+</div><div id="classtflite_1_1_op_resolver_1abd7047114847917c8f5aa748a0c07322">
+<h3>TfLiteOpaqueDelegateCreators</h3>
+<pre class="prettyprint">std::vector&lt; TfLiteOpaqueDelegateCreator &gt; TfLiteOpaqueDelegateCreators</pre>
+<div></div>
+</div><div id="classtflite_1_1_op_resolver_1a660e42e8f6a9ded2cbfdccd3ad202ec7">
+<h3>TfLiteOpaqueDelegatePtr</h3>
+<pre class="prettyprint">std::unique_ptr&lt; TfLiteOpaqueDelegate, void(*)(TfLiteOpaqueDelegate *)&gt; TfLiteOpaqueDelegatePtr</pre>
+<div></div>
+</div><h2>Public functions</h2><div id="classtflite_1_1_op_resolver_1a4b1cc6e397440d4a9d47c4d812406ed1">
+<h3>FindOp</h3>
+<pre class="prettyprint">virtual const TfLiteRegistration * FindOp(
+  tflite::BuiltinOperator op,
+  int version
+) const =0</pre>
+<div>
+<p>Finds the op registration for a builtin operator by enum code. </p>
+</div>
+</div><div id="classtflite_1_1_op_resolver_1a0bc0bf7ab1e458d701dbae3e1f9ad834">
+<h3>FindOp</h3>
+<pre class="prettyprint">virtual const TfLiteRegistration * FindOp(
+  const char *op,
+  int version
+) const =0</pre>
+<div>
+<p>Finds the op registration of a custom operator by op name. </p>
+</div>
+</div><div id="classtflite_1_1_op_resolver_1ac0209d301501fe893bc799ed8d1c5d55">
+<h3>GetDelegateCreators</h3>
+<pre class="prettyprint">virtual TfLiteDelegateCreators GetDelegateCreators() const </pre>
+<div></div>
+</div><div id="classtflite_1_1_op_resolver_1a4ddbd0c045fff41c114756f08424fcb4">
+<h3>GetDelegates</h3>
+<pre class="prettyprint">virtual TfLiteDelegatePtrVector GetDelegates(
+  int num_threads
+) const </pre>
+<div></div>
+</div><div id="classtflite_1_1_op_resolver_1ac075c57679241ccb12ed05a215d14af5">
+<h3>GetOpaqueDelegateCreators</h3>
+<pre class="prettyprint">virtual TfLiteOpaqueDelegateCreators GetOpaqueDelegateCreators() const </pre>
+<div></div>
+</div><div id="classtflite_1_1_op_resolver_1a0c77e42f61545356cdf059b77b5fc25b">
+<h3>~OpResolver</h3>
+<pre class="prettyprint">virtual  ~OpResolver()</pre>
+<div></div>
+</div></body>
+</html>

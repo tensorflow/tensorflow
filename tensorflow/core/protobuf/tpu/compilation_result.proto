@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package tensorflow.tpu;
+
+import "xla/service/hlo.proto";
+import "tensorflow/core/protobuf/error_codes.proto";
+
+option cc_enable_arenas = true;
+
+// Describes the result of a TPU compilation. This is also used as TPU
+// compilation result status payload.
+// URI: "type.googleapis.com/tensorflow.tpu.CompilationResultProto"
+message CompilationResultProto {
+  // The error message, if any, returned during compilation.
+  error.Code status_code = 1;
+  string status_error_message = 2;
+
+  // HLO proto.
+  repeated xla.HloProto hlo_protos = 3;
+
+  enum ErrorCode {
+    UNKNOWN = 0;
+    OUT_OF_MEMORY = 1;
+  }
+  ErrorCode error_code = 4;
+}

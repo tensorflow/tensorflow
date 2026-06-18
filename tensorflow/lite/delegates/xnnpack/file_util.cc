@@ -1,0 +1,184 @@
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+#include "tensorflow/lite/delegates/xnnpack/file_util.h"
+
+#include <fcntl.h>
+
+#if defined(_WIN32)
+#include <io.h>
+#define F_OK 0
+#define ftruncate _chsize_s
+#define XNN_LSEEK _lseeki64
+#else
+#include <unistd.h>
+#define XNN_LSEEK lseek
+#endif  // defined(_WIN32)
+
+// We currently use the memfd_create system call to create in-memory files which
+// is only supported on Linux and Android.
+#if defined(__linux__) || defined(__ANDROID__)
+#ifndef TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
+// Some systems have syscall.h but don't define the SYS_memfd_create macro. We
+// detect those by actually doing the include and checking for its definition.
+#include <sys/syscall.h>
+#ifdef SYS_memfd_create
+#define TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED 1
+#endif  // SYS_memfd_create
+#endif  // TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
+#endif  // defined(__linux__) || defined(__ANDROID__)
+
+#include <sys/stat.h>
+
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+
+#include "tensorflow/lite/delegates/xnnpack/macros.h"
+
+#if !TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
+#include "tensorflow/lite/logger.h"
+#include "tensorflow/lite/minimal_logging.h"
+#endif
+
+namespace tflite {
+namespace xnnpack {
+
+FileDescriptor FileDescriptor::Duplicate(int fd) {
+  return FileDescriptor(dup(fd));
+}
+
+FileDescriptor FileDescriptor::Duplicate() const {
+  if (!IsValid()) {
+    return FileDescriptor(-1);
+  }
+  return FileDescriptor::Duplicate(fd_);
+}
+
+void FileDescriptor::Reset(int new_fd) {
+  if (fd_ == new_fd) {
+    return;
+  }
+  if (IsValid()) {
+    close(fd_);
+  }
+  fd_ = new_fd;
+}
+
+FileDescriptor::Offset FileDescriptorView::GetPos() const {
+  return XNN_LSEEK(fd_, 0, SEEK_CUR);
+}
+
+FileDescriptor::Offset FileDescriptorView::SetPos(
+    FileDescriptor::Offset position) const {
+  return XNN_LSEEK(fd_, position, SEEK_SET);
+}
+
+FileDescriptor::Offset FileDescriptorView::SetPosFromEnd(
+    FileDescriptor::Offset offset) const {
+  return XNN_LSEEK(fd_, offset, SEEK_END);
+}
+
+FileDescriptor::Offset FileDescriptorView::MovePos(
+    FileDescriptor::Offset offset) const {
+  return XNN_LSEEK(fd_, offset, SEEK_CUR);
+}
+
+FileDescriptor FileDescriptor::Open(const char* path, int flags, mode_t mode) {
+  if (!path) {
+    return {};
+  }
+#if defined(_WIN32)
+  if (!(flags & O_TEXT)) {
+    flags |= O_BINARY;
+  }
+#endif
+  return FileDescriptor(open(path, flags, mode));
+}
+
+void FileDescriptor::Close() { Reset(-1); }
+
+bool FileDescriptorView::Read(void* dst, size_t count) const {
+  char* dst_it = reinterpret_cast<char*>(dst);
+  while (count > 0) {
+    const auto bytes = read(fd_, dst_it, count);
+    if (bytes == -1 /* error */ || bytes == 0 /* EOF */) {
+      return false;
+    }
+    count -= bytes;
+    dst_it += bytes;
+  }
+  return true;
+}
+
+bool FileDescriptorView::Write(const void* src, size_t count) const {
+  const char* src_it = reinterpret_cast<const char*>(src);
+  while (count > 0) {
+    const auto bytes = write(fd_, src_it, count);
+    if (bytes == -1) {
+      return false;
+    }
+    count -= bytes;
+    src_it += bytes;
+  }
+  return true;
+}
+
+bool FileDescriptorView::Truncate(size_t size) const {
+  return ftruncate(fd_, size) == 0;
+}
+
+bool InMemoryFileDescriptorAvailable() {
+#if TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
+  // Test if the syscall memfd_create is available.
+  const int test_fd = syscall(SYS_memfd_create, "test fd", 0);
+  if (test_fd != -1) {
+    close(test_fd);
+    return true;
+  }
+#endif
+  return false;
+}
+
+FileDescriptor CreateInMemoryFileDescriptor(const char* path) {
+#ifdef TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
+  return FileDescriptor(syscall(
+      SYS_memfd_create, path ? path : "XNNPack in-memory weight cache", 0));
+#else
+  TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
+                  "XNNPack weight cache: in-memory cache is not enabled for "
+                  "this build.");
+  return FileDescriptor(-1);
+#endif
+}
+
+bool IsFileEmpty(const char* path, const FileDescriptor& fd) {
+#if defined(_WIN32)
+  struct _stat64 file_stats{};
+  const int res = fd.IsValid() ? _fstat64(fd.Value(), &file_stats)
+                               : _stat64(path, &file_stats);
+#else
+  struct stat file_stats{};
+  const int res =
+      fd.IsValid() ? fstat(fd.Value(), &file_stats) : stat(path, &file_stats);
+#endif
+  XNNPACK_RETURN_CHECK(
+      res == 0 || errno == ENOENT,
+      "could not access file descriptor %d stats to get size ('%s'): %s.",
+      fd.Value(), path, strerror(errno));
+  return file_stats.st_size == 0;
+}
+
+}  // namespace xnnpack
+}  // namespace tflite

@@ -1,0 +1,20 @@
+op {
+  graph_op_name: "Log"
+  endpoint {
+    name: "math.log"
+  }
+  endpoint {
+    name: "log"
+    deprecation_version: 2
+  }
+  description: <<END
+I.e., \\(y = \log_e x\\).
+
+Example:
+>>> x = tf.constant([0, 0.5, 1, 5])
+>>> tf.math.log(x)
+<tf.Tensor: shape=(4,), dtype=float32, numpy=array([      -inf, -0.6931472,  0.       ,  1.609438 ], dtype=float32)>
+
+See: https://en.wikipedia.org/wiki/Logarithm
+END
+}

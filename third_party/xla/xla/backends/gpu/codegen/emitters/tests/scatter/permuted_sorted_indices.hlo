@@ -1,0 +1,21 @@
+// RUN: gpu_test_correctness %s --bijection_inputs=scatter:2
+
+add {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %sum = f32[] add(%p0, %p1)
+}
+scatter {
+  %operand = f32[142,100]  parameter(0)
+  %indices = s32[20,2] parameter(1)
+  %update = f32[20,4,8] parameter(2)
+
+  ROOT %scatter = f32[142,100] scatter(%operand, %indices, %update),
+    update_window_dims={1,2},
+    inserted_window_dims={},
+    scatter_dims_to_operand_dims={0,1},
+    index_vector_dim=1,
+    indices_are_sorted=true,
+    unique_indices=false,
+    to_apply=add
+}

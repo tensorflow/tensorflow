@@ -1,0 +1,10 @@
+edition = "2023";
+
+package xla;
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+
+message PjRtDeviceDimensionsProto {
+  repeated int32 dimensions = 1;
+}

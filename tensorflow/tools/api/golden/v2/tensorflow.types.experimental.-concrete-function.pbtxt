@@ -1,0 +1,17 @@
+path: "tensorflow.types.experimental.ConcreteFunction"
+tf_class {
+  is_instance: "<class \'tensorflow.python.types.core.ConcreteFunction\'>"
+  is_instance: "<class \'tensorflow.python.types.core.Callable\'>"
+  is_instance: "<class \'object\'>"
+  member {
+    name: "function_type"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "inference_fn"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+}

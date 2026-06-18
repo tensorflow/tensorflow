@@ -1,0 +1,11 @@
+path: "tensorflow.tpu"
+tf_module {
+  member {
+    name: "XLAOptions"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<class \'module\'>"
+  }
+}

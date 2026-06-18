@@ -1,0 +1,10 @@
+diff --git a/src/important.cc b/src/important.cc
+new file mode 100644
+index 0000000..9c68461
+--- /dev/null
++++ b/src/important.cc
+@@ -0,0 +1,3 @@
++// Here we care if we find prohibited regexes.
++std::unique_ptr<int> add(int a, int b) {
++  return std::make_unique<int>(a + b);
++}

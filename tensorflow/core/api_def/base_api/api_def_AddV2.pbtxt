@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "AddV2"
+  summary: "Returns x + y element-wise."
+  description: <<END
+*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}

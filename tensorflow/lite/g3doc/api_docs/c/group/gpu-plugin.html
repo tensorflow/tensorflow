@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>lite/acceleration/configuration/c/gpu_plugin.h</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>lite/acceleration/configuration/c/gpu_plugin.h</h1>
+  <p>This header file is for the delegate plugin for GPU. </p>
+  <h2>Summary</h2>
+  <p>For the C++ delegate plugin interface, the GPU delegate plugin is added to the <code>DelegatePluginRegistry</code> by the side effect of a constructor for a static object, so there's no public API needed for this plugin, other than the API of <code>tflite::delegates::DelegatePluginRegistry</code>s, which is declared in delegate_registry.h.</p>
+  <p>But to provide a C API to access the GPU delegate plugin, we do expose some functions, which are declared below.<aside class="note"><strong>Note:</strong> Users of TensorFlow Lite should use <pre class="prettyprint">#include "tensorflow/lite/acceleration/configuration/c/gpu_plugin.h"</pre> to access the APIs documented on this page. </aside></p>
+  <table class="methods responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Functions</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__gpu__plugin_1ga5b1e9a75e753da0244806c28a18d0df4">TfLiteGpuDelegatePluginCApi</a>()</code>
+      </td>
+      <td>
+        <div>
+          <code>const <a href="/lite/api_docs/c/struct/tf-lite-delegate-plugin.html#struct_tf_lite_delegate_plugin">TfLiteDelegatePlugin</a> *</code>
+        </div>
+        <div>C API for the GPU delegate plugin. </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Functions</h2>
+  <div id="group__gpu__plugin_1ga5b1e9a75e753da0244806c28a18d0df4">
+    <h3>TfLiteGpuDelegatePluginCApi</h3>
+    <pre class="prettyprint">const <a href="/lite/api_docs/c/struct/tf-lite-delegate-plugin.html#struct_tf_lite_delegate_plugin">TfLiteDelegatePlugin</a> * TfLiteGpuDelegatePluginCApi()</pre>
+    <div>
+      <p>C API for the GPU delegate plugin. </p>
+      <p>Returns a pointer to a statically allocated table of function pointers. </p>
+    </div>
+  </div>
+</body>
+</html>

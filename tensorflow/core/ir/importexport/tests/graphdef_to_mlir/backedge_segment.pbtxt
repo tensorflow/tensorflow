@@ -1,0 +1,234 @@
+# RUN: tfg-translate --graphdef-to-mlir %s | FileCheck %s
+
+# Test that result segments are correctly resolved even in backedges.
+
+# CHECK: %[[SWITCH:.*]]:2, %{{.*}} = Switch{{.*}}name("cond/Switch")
+# CHECK: Identity(%[[SWITCH]]#1) name("cond/switch_t")
+
+# CHECK: %[[IDENTITY:.*]], %{{.*}} = Identity{{.*}}name("cond/pred_id")
+# CHECK: Switch(%[[SWITCH7:.*]]#1, %{{.*}}) name("cond/Switch_1")
+# CHECK: %[[SWITCH7]]:2, %{{.*}} = Switch{{.*}}name("cond/Switch_1/Switch")
+
+library {
+  function {
+    signature {
+      name: "foo"
+      input_arg {
+        name: "pred"
+        type: DT_BOOL
+      }
+      input_arg {
+        name: "cond_switch_1_placeholder"
+        type: DT_INT32
+      }
+      output_arg {
+        name: "cond_merge"
+        type: DT_INT32
+      }
+    }
+    node_def {
+      name: "cond/Switch"
+      op: "Switch"
+      input: "pred"
+      input: "pred"
+      attr {
+        key: "T"
+        value {
+          type: DT_BOOL
+        }
+      }
+    }
+    node_def {
+      name: "cond/switch_t"
+      op: "Identity"
+      input: "cond/Switch:output_true:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_BOOL
+        }
+      }
+    }
+    node_def {
+      name: "cond/switch_f"
+      op: "Identity"
+      input: "cond/Switch:output_false:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_BOOL
+        }
+      }
+    }
+    node_def {
+      name: "cond/pred_id"
+      op: "Identity"
+      input: "pred"
+      attr {
+        key: "T"
+        value {
+          type: DT_BOOL
+        }
+      }
+    }
+    node_def {
+      name: "cond/Switch_1"
+      op: "Switch"
+      input: "cond/Switch_1/Switch:output_true:0"
+      input: "cond/pred_id:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "_class"
+        value {
+          list {
+            s: "loc:@Const"
+          }
+        }
+      }
+    }
+    node_def {
+      name: "cond/Switch_1/Switch"
+      op: "Switch"
+      input: "cond_switch_1_placeholder"
+      input: "cond/pred_id:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "_class"
+        value {
+          list {
+            s: "loc:@Const"
+          }
+        }
+      }
+    }
+    node_def {
+      name: "cond/add/y"
+      op: "Const"
+      input: "^cond/switch_f"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 1
+          }
+        }
+      }
+    }
+    node_def {
+      name: "cond/add"
+      op: "AddV2"
+      input: "cond/add/Switch:output_false:0"
+      input: "cond/add/y:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_INT32
+        }
+      }
+    }
+    node_def {
+      name: "cond/add/Switch"
+      op: "Switch"
+      input: "cond_switch_1_placeholder"
+      input: "cond/pred_id:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "_class"
+        value {
+          list {
+            s: "loc:@Const"
+          }
+        }
+      }
+    }
+    node_def {
+      name: "cond/Merge"
+      op: "Merge"
+      input: "cond/add:z:0"
+      input: "cond/Switch_1:output_true:0"
+      attr {
+        key: "N"
+        value {
+          i: 2
+        }
+      }
+      attr {
+        key: "T"
+        value {
+          type: DT_INT32
+        }
+      }
+    }
+    ret {
+      key: "cond_merge"
+      value: "cond/Merge:output:0"
+    }
+    attr {
+      key: "_disable_call_shape_inference"
+      value {
+        b: true
+      }
+    }
+    arg_attr {
+      key: 0
+      value {
+        attr {
+          key: "_output_shapes"
+          value {
+            list {
+              shape {
+                unknown_rank: true
+              }
+            }
+          }
+        }
+      }
+    }
+    arg_attr {
+      key: 1
+      value {
+        attr {
+          key: "_class"
+          value {
+            list {
+              s: "loc:@Const"
+            }
+          }
+        }
+        attr {
+          key: "_output_shapes"
+          value {
+            list {
+              shape {
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

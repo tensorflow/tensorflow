@@ -1,0 +1,16 @@
+{
+  "sourceFilters" : [
+    "tensorflow/lite/delegates/gpu/...",
+    "tensorflow/lite/delegates/gpu/metal/benchmarking/models",
+  ],
+  "buildTargets" : [
+    "//tensorflow/lite/delegates/gpu/metal/benchmarking:iOSBenchmark",
+  ],
+  "projectName" : "Benchmark",
+  "additionalFilePaths" : [
+    "tensorflow/lite/delegates/gpu/BUILD",
+    "tensorflow/lite/delegates/gpu/metal/BUILD",
+    "tensorflow/lite/delegates/gpu/metal/kernels/BUILD",
+    "tensorflow/lite/delegates/gpu/metal/benchmarking/BUILD",
+  ]
+}

@@ -1,0 +1,68 @@
+op {
+  graph_op_name: "BarrierTakeMany"
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle to a barrier.
+END
+  }
+  in_arg {
+    name: "num_elements"
+    description: <<END
+A single-element tensor containing the number of elements to
+take.
+END
+  }
+  out_arg {
+    name: "indices"
+    description: <<END
+A one-dimensional tensor of indices, with length num_elems.
+These indices refer to the batch in which the values were placed into the
+barrier (starting with MIN_LONG and increasing with each BarrierInsertMany).
+END
+  }
+  out_arg {
+    name: "keys"
+    description: <<END
+A one-dimensional tensor of keys, with length num_elements.
+END
+  }
+  out_arg {
+    name: "values"
+    description: <<END
+One any-dimensional tensor per component in a barrier element. All
+values have length num_elements in the 0th dimension.
+END
+  }
+  attr {
+    name: "component_types"
+    description: <<END
+The type of each component in a value.
+END
+  }
+  attr {
+    name: "allow_small_batch"
+    description: <<END
+Allow to return less than num_elements items if barrier is
+already closed.
+END
+  }
+  attr {
+    name: "timeout_ms"
+    description: <<END
+If the queue is empty, this operation will block for up to
+timeout_ms milliseconds.
+Note: This option is not supported yet.
+END
+  }
+  summary: "Takes the given number of completed elements from a barrier."
+  description: <<END
+This operation concatenates completed-element component tensors along
+the 0th dimension to make a single component tensor.
+
+Elements come out of the barrier when they are complete, and in the order
+in which they were placed into the barrier.  The indices output provides
+information about the batch in which each element was originally inserted
+into the barrier.
+END
+}

@@ -1,0 +1,13 @@
+op {
+  graph_op_name: "Add"
+  summary: "Returns x + y element-wise."
+  description: <<END
+*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+Given two input tensors, the `tf.add` operation computes the sum for every element in the tensor.
+
+Both input and output have a range `(-inf, inf)`.
+
+END
+}

@@ -1,0 +1,76 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=input0,input1 -tf-input-data-types=DT_INT32,DT_INT32 -tf-input-shapes=10:10 -tf-output-arrays=Sub -o - | FileCheck %s
+
+node {
+  name: "Add"
+  op: "Add"
+  input: "input0"
+  input: "input1"
+  # If device type or id doesn't exist, assign a default one (device:CPU:0).
+  device: "/job:localhost/replica:0/task:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "Mul"
+  op: "Mul"
+  input: "Add"
+  input: "Add"
+  # Empty device name should be kept untouched.
+  device: ""
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "Sub"
+  op: "Sub"
+  input: "Add"
+  input: "Mul"
+  # Device name is not modified if complete
+  device: "/job:localhost/replica:0/task:0/device:CPU:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input0"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input1"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 27
+}
+
+# CHECK-LABEL: func @main
+# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<10xi32>, %[[ARG_1:[a-z0-9]+]]: tensor<10xi32>) -> tensor<*xi32>
+# CHECK-SAME:  control_outputs = ""
+# CHECK-SAME:  inputs = "input0,input1"
+# CHECK-SAME:  outputs = "Sub"
+# CHECK:           %[[add:.*]], %[[add_control:.*]] = tf_executor.island wraps "tf.Add"(%[[ARG_0]], %[[ARG_1]]) {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+# CHECK:           %[[mul:.*]], %[[mul_control:.*]] = tf_executor.island wraps "tf.Mul"(%[[add]], %[[add]]) {device = ""}
+# CHECK:           %[[sub:.*]], %[[sub_control:.*]] = tf_executor.island wraps "tf.Sub"(%[[add]], %[[mul]]) {device = "/job:localhost/replica:0/task:0/device:CPU:1"}

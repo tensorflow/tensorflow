@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "TensorListReserve"
+  summary: "List of the given size with empty elements."
+  description: <<END
+element_shape: the shape of the future elements of the list
+num_elements: the number of elements to reserve
+handle: the output list
+element_dtype: the desired type of elements in the list.
+END
+}

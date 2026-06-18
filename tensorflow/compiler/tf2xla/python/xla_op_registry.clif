@@ -1,0 +1,7 @@
+from "third_party/tensorflow/core/framework/kernel_def_pyclif.h" import *  # KernelDef
+
+from "third_party/tensorflow/compiler/tf2xla/xla_op_registry.h":
+  namespace `tensorflow`:
+    def `XlaOpRegistry::DeviceKernels` as
+      device_kernels(device: str, include_compilation_only_kernels: bool) ->
+        list<KernelDef>
