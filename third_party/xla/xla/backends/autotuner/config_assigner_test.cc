@@ -1099,14 +1099,6 @@ TEST_F(ConfigAssignerTest, DumpLogsToFile) {
   auto expected_logs = ParseTextProtoOrDie<AutotuningLogs>(R"pb(
     logs {
       results {
-        gemm { algorithm: 7 }
-        run_time { seconds: 0 nanos: 0 }
-        failure {
-          kind: DISQUALIFIED
-          msg: "INTERNAL: Compilation failed: failed to compile"
-        }
-      }
-      results {
         gemm { algorithm: 6 }
         run_time { seconds: 2 nanos: 0 }
         scratch_bytes: 100
@@ -1114,6 +1106,14 @@ TEST_F(ConfigAssignerTest, DumpLogsToFile) {
       results {
         gemm { algorithm: 8 }
         run_time { seconds: 1 nanos: 0 }
+      }
+      results {
+        gemm { algorithm: 7 }
+        run_time { seconds: 0 nanos: 0 }
+        failure {
+          kind: DISQUALIFIED
+          msg: "INTERNAL: Compilation failed: failed to compile"
+        }
       }
     }
   )pb");
