@@ -125,6 +125,7 @@ RawCompileOptionsFromFlags(const PyHloRunnerConfig& opts) {
         out.execution_options,
         FunctionalHloRunner::LoadExecutionOptions(opts.execution_options_path));
   }
+  out.debug_options = GetDebugOptionsFromFlags();
   out.num_replicas = opts.num_replicas < 0
                          ? std::nullopt
                          : std::optional<int>(opts.num_replicas);
@@ -203,14 +204,13 @@ absl::Status RunHloFiles(const std::vector<std::string>& hlo_files,
     }
     if (opts.should_run) {
       RETURN_IF_ERROR(FunctionalHloRunner::LoadAndRunAndDump(
-          *env.client, GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, running_options, hlo_file, opts.input_format,
-          opts.dump_output_literal_to, opts.task_id));
+          *env.client, preproc_options, raw_compile_options, running_options,
+          hlo_file, opts.input_format, opts.dump_output_literal_to,
+          opts.task_id));
     } else {
       RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
-                          *env.client, GetDebugOptionsFromFlags(),
-                          preproc_options, raw_compile_options, hlo_file,
-                          opts.input_format, opts.task_id)
+                          *env.client, preproc_options, raw_compile_options,
+                          hlo_file, opts.input_format, opts.task_id)
                           .status());
     }
     for (int i = 0; i < execution_profiles.size(); ++i) {

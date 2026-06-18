@@ -492,16 +492,16 @@ PjRtEnvironment& CollectivePerfTableGen::GetPjRtEnv() {
 
 std::unique_ptr<PjRtLoadedExecutable> CollectivePerfTableGen::Compile(
     std::unique_ptr<HloModule> module) {
-  DebugOptions debug_opts;
   FunctionalHloRunner::RawCompileOptions opts;
+  opts.debug_options = module->config().debug_options();
   opts.num_partitions = module->config().num_partitions();
   opts.spmd_mode = FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning;
   auto compile_opts = FunctionalHloRunner::CreateCompileOptions(
       *GetPjRtEnv().client, opts, config_.task_id, config_.num_nodes);
   CHECK_OK(compile_opts);
-  auto executable = FunctionalHloRunner::Compile(
-      *GetPjRtEnv().client, module.get(), debug_opts,
-      /*preproc_options=*/{}, *compile_opts);
+  auto executable =
+      FunctionalHloRunner::Compile(*GetPjRtEnv().client, module.get(),
+                                   /*preproc_options=*/{}, *compile_opts);
   CHECK_OK(executable);
   return std::move(*executable);
 }
