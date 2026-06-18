@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -76,8 +77,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class AlgorithmTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+class AlgorithmTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();

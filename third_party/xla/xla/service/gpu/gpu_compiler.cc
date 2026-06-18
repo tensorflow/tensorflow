@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/base/casts.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -61,8 +62,6 @@ limitations under the License.
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/backends/cpu/target_machine_options.h"
-#include "xla/backends/gpu/autotuner/block_level_emitter.h"
-#include "xla/backends/gpu/autotuner/native_emitter.h"
 #include "xla/backends/gpu/codegen/cubin_custom_kernel_compiler.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
@@ -108,6 +107,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/backends/gpu/transforms/dus_accumulator_zero_init_elimination.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_annotator.h"
+#include "xla/backends/gpu/transforms/dynamic_slice_copy_fusion_async_wrapper.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion_rewriter_v2.h"
 #include "xla/backends/gpu/transforms/estimate_cub_scan_scratch_size.h"
 #include "xla/backends/gpu/transforms/estimate_cub_sort_scratch_size.h"
@@ -225,7 +225,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/zero_sized_hlo_elimination.h"
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
-#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/all_reduce_promotion.h"
@@ -327,14 +326,12 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -347,7 +344,6 @@ limitations under the License.
 #include "xla/util/split_proto/split_proto_reader.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/path.h"
@@ -2272,8 +2268,8 @@ bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
   if (is_nccl_buffers_used && IsCollective(user)) {
     return true;
   }
-  // Handle one-shot zero-copy RaggedAllToAll
-  if (IsOneShotZeroCopyRaggedAllToAllEnabled(opts)) {
+  // Handle one-shot RaggedAllToAll with NCCL enabled.
+  if (IsOneShotRaggedAllToAllWithNcclEnabled(opts)) {
     // User is RA2A or AsyncStart(RA2A). Used by operand 1 (output).
     if ((IsRaggedAllToAllOrAsyncStartRaggedAllToAll(user)) &&
         use.operand_number == 1) {
@@ -2316,8 +2312,8 @@ bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts) {
   if (is_nccl_buffers_used && IsCollective(def)) {
     return true;
   }
-  // Handle one-shot zero-copy RaggedAllToAll
-  if (IsOneShotZeroCopyRaggedAllToAllEnabled(opts)) {
+  // Handle one-shot RaggedAllToAll with NCCL enabled.
+  if (IsOneShotRaggedAllToAllWithNcclEnabled(opts)) {
     // Defining Instruction is RA2A or AsyncDone(RA2A)
     if (IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(def)) {
       return true;
@@ -2985,11 +2981,18 @@ GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                                           gpu_topology, compile_options,
                                           nullptr, borrowed_context->get()));
 
+  std::unique_ptr<GpuAliasInfo> alias_info =
+      GetAliasInfo(gpu_topology.gpu_target_config().device_description);
+  std::string buffer_assignment_debug_summary =
+      res.compile_module_results.buffer_assignment->ToVerboseString(
+          alias_info.get(),
+          options.debug_options().xla_debug_buffer_assignment_show_max());
   std::vector<std::unique_ptr<CompiledModule>> results;
   ASSIGN_OR_RETURN(results.emplace_back(),
                    LegacyGpuAotCompilationResult::FromModule(
                        hlo_module.get(),
                        res.compile_module_results.buffer_assignment->ToProto(),
+                       std::move(buffer_assignment_debug_summary),
                        res.backend_result.asm_text, res.backend_result.binary,
                        {}, pointer_size_, this));
 
@@ -3015,11 +3018,17 @@ absl::StatusOr<std::unique_ptr<CompiledModule>> GpuCompiler::Export(
     ASSIGN_OR_RETURN(GpuExecutableProto proto, gpu_executable->ToProto());
     return GpuAotCompilationResult::FromProto(std::move(proto));
   }
-
+  std::string buffer_assignment_debug_summary =
+      gpu_executable->buffer_assignment()->ToVerboseString(
+          gpu_executable->alias_info(),
+          gpu_executable->module()
+              .config()
+              .debug_options()
+              .xla_debug_buffer_assignment_show_max());
   return LegacyGpuAotCompilationResult::FromModule(
       &gpu_executable->module(), gpu_executable->buffer_assignment()->ToProto(),
-      "", gpu_executable->binary(), gpu_executable->dnn_compiled_graphs(),
-      pointer_size_, this);
+      std::move(buffer_assignment_debug_summary), "", gpu_executable->binary(),
+      gpu_executable->dnn_compiled_graphs(), pointer_size_, this);
 }
 
 absl::Status GpuCompiler::RunPreSchedulingPasses(
@@ -3028,6 +3037,11 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
   tsl::profiler::TraceMe traceme("RunPreSchedulingPasses");
   HloPassPipeline pipeline("pre-scheduling-passes");
   pipeline.AddPass<FusionWrapper>(gpu_device_info);
+  const auto* cuda_cc =
+      gpu_device_info.gpu_compute_capability().cuda_compute_capability();
+  if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
+    pipeline.AddPass<DynamicSliceCopyFusionAsyncWrapper>();
+  }
   if (module->config().debug_options().xla_gpu_collect_cost_model_stats()) {
     GpuHloCostAnalysis::Options cost_analysis_options{
         ShapeSizeBytesFunction(),
@@ -3399,7 +3413,7 @@ GpuCompiler::LoadExecutableFromAotResult(
         /*executable_abi_version=*/executable_abi_version,
         /*cpu_target_machine_options=*/std::move(cpu_target_machine_options),
         /*buffer_assignment_proto=*/std::move(buffer_assignment_proto),
-    });
+        proto.buffer_allocations_debug_summary()});
   }
 }
 

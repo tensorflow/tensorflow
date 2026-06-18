@@ -169,10 +169,6 @@ namespace llvm {
 
 template <>
 struct DenseMapInfo<ShapeValue> {
-  static ShapeValue getEmptyKey() {
-    return ShapeValue(DenseMapInfo<mlir::Value>::getEmptyKey());
-  }
-
   static unsigned getHashValue(ShapeValue shape) { return hash_value(shape); }
   static bool isEqual(ShapeValue LHS, ShapeValue RHS) { return LHS == RHS; }
 };

@@ -476,6 +476,87 @@ ENTRY e {
 )");
 }
 
+TEST_P(GemmFusionTestV2, DoNotHoistBitcastOverParameterWithNonBitcastUsers) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = bf16[32,12] parameter(0)
+  t1 = bf16[12,32] transpose(p0), dimensions={1,0}
+  b1 = bf16[32,3,4] bitcast(p0)
+  t2 = bf16[32,4,3] transpose(b1), dimensions={0,2,1}
+  ROOT d = bf16[12,4,3] dot(t1, t2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter())));
+}
+
+TEST_P(GemmFusionTestV2, HoistBitcastOverMultipleEqualBitcasts) {
+  // This is an example of when a single bitcast turns into 2 different bitcasts
+  // due to hoisting over a binary operation, but then they come from the same
+  // parameter, and should still get hoisted.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = bf16[32,12] parameter(0)
+  e = bf16[32,12] exponential(p0)
+  c = bf16[] constant(7)
+  b = bf16[32,12] broadcast(c), dimensions={}
+  m = bf16[32,12] multiply(p0, b)
+  a = bf16[32,12] add(e, m)
+  bc = bf16[12,32] bitcast(a)
+  p1 = bf16[32,3] parameter(1)
+  ROOT d = bf16[12,3] dot(bc, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Bitcast(m::Parameter()))));
+}
+
+TEST_P(GemmFusionTestV2, HoistBitcastOverParameterWithMultipleBitcastUsers) {
+  // Regression test for b/524943134.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[32,3] parameter(0)
+  p1 = f32[8,28] parameter(1)
+  b1 = f32[32,7] bitcast(p1)
+  b2 = f32[32,7] bitcast(p1)
+  add = f32[32,7] add(b1, b2)
+  ROOT d = f32[3,7] dot(p0, add),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Bitcast(m::Parameter()))));
+}
+
+TEST_P(GemmFusionTestV2, HoistBitcastAcrossTransposeWithTrivialDimension) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[42,1]{1,0} parameter(0)
+  t = f32[1,42]{1,0} transpose(p0), dimensions={1,0}
+  b0 = f32[1,2,21,1]{3,2,1,0} bitcast(t)
+  b1 = f32[2,21,1]{2,1,0} bitcast(b0)
+  p1 = f32[2,1,42]{2,1,0} parameter(1)
+  ROOT d = f32[2,21,42]{2,1,0} dot(b1, p1), lhs_batch_dims={0},
+    rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  MatchHloModule(*module, R"(
+; CHECK: %fused_computation
+; CHECK-NOT: bitcast
+; CHECK: f32[2,21,1]{2,1,0} transpose({{.*}}), dimensions={0,1,2}
+; CHECK-NOT: bitcast
+; CHECK: ENTRY
+; CHECK: %[[B:.*]] = f32[2,21,1]{{.*}} bitcast
+; CHECK: fusion({{.*}}, %[[B]])
+)");
+}
+
 TEST_P(GemmFusionTestVersioned, BitcastChain) {
   // This HLO is artificial because unnecessary reshapes get optimized
   // out during compilation. It tests the ability of GemmFusion
@@ -1948,6 +2029,86 @@ ENTRY main {
 )";
   // Expect no change.
   RunAndFilecheckHloRewrite(hlo_text, GemmFusion(gpu_version_), std::nullopt);
+}
+
+TEST_P(GemmFusionTest, TransposeFusesInConcatGemm) {
+  if (!GetParam()) {
+    GTEST_SKIP() << "Tiling propagation is not enabled.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+  p_lhs = bf16[512,6144] parameter(0)
+  p_q = s8[32,6144,256] parameter(1)
+  p_kv = s8[2,8,6144,256] parameter(2)
+
+  // Q path (offset 0)
+  trans_q = s8[6144,32,256] transpose(p_q), dimensions={1,0,2}
+  bitcast_q = s8[6144,8192] bitcast(trans_q)
+
+  // KV path (offset 8192)
+  trans_kv = s8[6144,2,8,256] transpose(p_kv), dimensions={2,0,1,3}
+  bitcast_kv = s8[6144,4096] bitcast(trans_kv)
+
+  cat = s8[6144,12288] concatenate(bitcast_q, bitcast_kv), dimensions={1}
+  cvt = bf16[6144,12288] convert(cat)
+
+  ROOT d = bf16[512,12288] dot(p_lhs, cvt),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       GemmFusion(gpu_version_).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
+}
+
+TEST_P(GemmFusionTest, TransposeDoesNotFuseInConcatGemmIfUnaligned) {
+  if (!GetParam()) {
+    GTEST_SKIP() << "Tiling propagation is not enabled.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+  p_lhs = bf16[512,6144] parameter(0)
+  p_q = s8[30,6144,273] parameter(1)
+  p_kv = s8[2,8,6144,256] parameter(2)
+
+  // Q path (offset 0)
+  trans_q = s8[6144,30,273] transpose(p_q), dimensions={1,0,2}
+  bitcast_q = s8[6144,8190] bitcast(trans_q)
+
+  // KV path (offset 8190 - unaligned!)
+  trans_kv = s8[6144,2,8,256] transpose(p_kv), dimensions={2,0,1,3}
+  bitcast_kv = s8[6144,4096] bitcast(trans_kv)
+
+  cat = s8[6144,12286] concatenate(bitcast_q, bitcast_kv), dimensions={1}
+  cvt = bf16[6144,12286] convert(cat)
+
+  ROOT d = bf16[512,12286] dot(p_lhs, cvt),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       GemmFusion(gpu_version_).Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  // Transpose and bitcast are not fused.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(
+                  m::Parameter(),
+                  m::Concatenate(m::Bitcast(m::Transpose(m::Parameter())),
+                                 m::Bitcast(m::Transpose(m::Parameter()))))));
 }
 
 }  // namespace

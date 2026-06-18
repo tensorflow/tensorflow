@@ -13,6 +13,7 @@
 # limitations under the License.
 """Lit runner configuration."""
 
+import inspect
 import os
 import sys
 import tempfile
@@ -36,7 +37,17 @@ extra_env_flags = []
 config.name = "XLA"
 config.suffixes = [".cc", ".hlo", ".json", ".mlir", ".pbtxt", ".py", ".ll"]
 
-config.test_format = lit.formats.ShTest(execute_external=True)
+# Check if lit.formats.ShTest supports force_execute_external argument.
+# This argument is needed for newer lit versions to run tests externally,
+# but older lit versions (e.g. in some OSS environments) do not support it.
+sh_test_kwargs = {"execute_external": True}
+if (
+    "force_execute_external"
+    in inspect.signature(lit.formats.ShTest.__init__).parameters
+):
+  sh_test_kwargs["force_execute_external"] = True
+
+config.test_format = lit.formats.ShTest(**sh_test_kwargs)
 
 for env in [
     # Passthrough XLA_FLAGS.
@@ -78,4 +89,4 @@ config.substitutions.extend(
 )
 
 # Replace the default test format with our wrapped version
-config.test_format = ShTestWithRunfiles(execute_external=True)
+config.test_format = ShTestWithRunfiles(**sh_test_kwargs)

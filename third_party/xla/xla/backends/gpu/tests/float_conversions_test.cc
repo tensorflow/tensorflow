@@ -25,10 +25,10 @@ limitations under the License.
 namespace xla::gpu {
 
 class FloatConversionTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
+    : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
 
 class FloatConversionParamTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest>,
+    : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest>,
       public ::testing::WithParamInterface<std::string> {};
 
 INSTANTIATE_TEST_SUITE_P(FloatConversionParamSuite, FloatConversionParamTest,

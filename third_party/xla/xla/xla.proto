@@ -663,6 +663,12 @@ message DebugOptions {
 
   optional bool xla_gpu_enable_approx_costly_collectives = 305;
 
+  // Filter for collectives to be executed in a command buffer.
+  // Only collectives specified in this filter will be executed in a command
+  // buffer. Default is ALLCOLLECTIVES.
+  repeated CollectiveOpType xla_gpu_enable_collectives_command_buffer_filter =
+      497;
+
   // Determine the types of commands that are recorded into command buffers.
   repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
 
@@ -1269,6 +1275,10 @@ message DebugOptions {
   // same device with the same build of XLA.
   optional bool xla_disable_all_hlo_passes = 104;
 
+  // Run HLO passes starting from the pass with this name. All prior passes
+  // in the pipeline will be skipped. If empty, no passes are skipped.
+  optional string xla_run_hlo_passes_starting_from = 496;
+
   // Numerical optimization level for the XLA compiler backend; the specific
   // interpretation of this value is left to the backends.
   optional int32 xla_backend_optimization_level = 31;
@@ -1611,9 +1621,9 @@ message DebugOptions {
   optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl =
       462;
 
-  // TODO: b/482045400 - Remove double-copy approach once testing is complete.
-  // If true, use Symmetric Memory mode for MultiGpuBarrierWithNcclKernel
-  optional bool xla_gpu_experimental_ragged_all_to_all_zero_copy = 480;
+  // DEPRECATED: This flag is a no-op.
+  optional bool xla_gpu_experimental_ragged_all_to_all_zero_copy = 480
+      [deprecated = true];
 
   // If true, enable experimental tiling propagation.
   optional bool xla_gpu_experimental_enable_tiling_propagation = 456;
@@ -1629,7 +1639,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 496
+  // Next id: 498
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1936,7 +1946,7 @@ message ExecutionOptions {
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 43.
+// Next id: 44.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -2004,6 +2014,9 @@ message HloModuleConfigProto {
   ScheduleConfigProto schedule_config = 41;
   // Number of devices in a fast-interconnect domain.
   int64 partition_size = 42;
+  // Page size in KiB for modules that have their shared memory space split into
+  // multiple shared memory pages. Used for memory assignment and lowering.
+  int64 page_size_kib = 43;
 }
 
 message HloModuleProtoWithConfig {

@@ -2101,8 +2101,13 @@ cc_library(
     name = "cuda_command_buffer",
     srcs = [
         "cuda_command_buffer.cc",
+    ] + if_cuda_newer_than(
+        "12_9",
+        ["cuda_command_buffer_12_9.cc"],
+    ),
+    hdrs = [
+        "cuda_command_buffer.h",
     ],
-    hdrs = ["cuda_command_buffer.h"],
     tags = [
         "cuda-only",
         "gpu",
@@ -2116,6 +2121,7 @@ cc_library(
         "//xla/stream_executor:bit_pattern",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_args",

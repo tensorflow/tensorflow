@@ -62,7 +62,7 @@ def _DynamicStitchGrads(op, grad):
   ids = []
   current_size = array_ops.zeros([], dtype=dtypes.int32)
   for inp in inputs:
-    num_elements = array_ops.size(inp)
+    num_elements = math_ops.cast(array_ops.size(inp), current_size.dtype)
     flat_id = math_ops.range(current_size, current_size + num_elements)
     ids.append(array_ops.reshape(flat_id, array_ops.shape(inp)))
     current_size += num_elements
@@ -77,15 +77,16 @@ def _DynamicStitchGrads(op, grad):
 
   values_grad = []
   num_inner_dims = array_ops.rank(grad) - 1
-  for inp, single_id in zip(inputs, ids, strict=True):
+  for inp, single_id in zip(inputs, ids):
     value_grad = array_ops.gather(grad, inp)
     winning_ids = array_ops.gather(stitched_ids, inp)
     is_winner = math_ops.equal(winning_ids, single_id)
     mask = math_ops.cast(is_winner, value_grad.dtype)
+    winner_shape = array_ops.shape(is_winner)
     mask_shape = array_ops.concat(
         [
-            array_ops.shape(is_winner),
-            array_ops.ones([num_inner_dims], dtype=dtypes.int32),
+            winner_shape,
+            array_ops.ones([num_inner_dims], dtype=winner_shape.dtype),
         ],
         axis=0,
     )

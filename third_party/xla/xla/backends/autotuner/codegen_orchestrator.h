@@ -54,7 +54,7 @@ class CodegenOrchestrator {
     std::string ToString() const;
   };
 
-  struct CompilationResult {
+  struct MaybeExecutableCandidate {
     Config config;
     absl::StatusOr<std::unique_ptr<Executable>> executable;
   };
@@ -72,7 +72,7 @@ class CodegenOrchestrator {
 
   // Compiles all configs in parallel (if thread pool is present) and returns
   // their executable status.
-  tsl::Future<std::vector<CompilationResult>> CompileAll(
+  tsl::Future<std::vector<MaybeExecutableCandidate>> CompileAll(
       const HloInstruction& instr, std::vector<Config> configs) const;
 
   // Applies the configuration to the instruction using the appropriate backend.

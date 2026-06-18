@@ -202,7 +202,11 @@ void* PjRtCApiRawBuffer::OpaqueDeviceMemoryDataPointer() const {
 
 absl::StatusOr<PjRtRawBufferRef> PjRtCApiRawBuffer::Slice(int64_t offset,
                                                           int64_t size) {
-  return absl::UnimplementedError("Slice not supported by PJRT C API");
+  ASSIGN_OR_RETURN(
+      auto result,
+      static_cast<PjRtRawBufferInterface*>(c_buffer_)->Slice(offset, size));
+  return tsl::MakeRef<PjRtCApiRawBuffer>(result.release(), client_, c_api_,
+                                         c_extension_);
 }
 
 absl::StatusOr<PjRtDeviceEventRef>
@@ -216,13 +220,31 @@ void PjRtCApiRawBuffer::CopyTo(
     PjRtDeviceEventPromiseRef definition_event_promise,
     PjRtDeviceEventPromiseRef src_usage_event_promise,
     absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
-  absl::Status status =
-      absl::UnimplementedError("CopyTo not supported by PJRT C API");
-  definition_event_promise.SetError(status);
-  src_usage_event_promise.SetError(status);
-  if (allocation_event) {
-    std::move(allocation_event)(status);
+  if (auto* capi_dst = dst_raw_buffer->down_cast<PjRtCApiRawBuffer>()) {
+    dst_raw_buffer =
+        tsl::FormRef(static_cast<PjRtRawBufferInterface*>(capi_dst->c_buffer_));
   }
+
+  static_cast<PjRtRawBufferInterface*>(c_buffer_)->CopyTo(
+      std::move(dst_raw_buffer), std::move(definition_event_promise),
+      std::move(src_usage_event_promise), std::move(allocation_event));
+}
+
+void PjRtCApiRawBuffer::ScheduleCopyTo(
+    PjRtDeviceEventRefVector transfer_dependency_events,
+    PjRtRawBufferRef dst_raw_buffer,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise,
+    absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
+  if (auto* capi_dst = dst_raw_buffer->down_cast<PjRtCApiRawBuffer>()) {
+    dst_raw_buffer =
+        tsl::FormRef(static_cast<PjRtRawBufferInterface*>(capi_dst->c_buffer_));
+  }
+
+  static_cast<PjRtRawBufferInterface*>(c_buffer_)->ScheduleCopyTo(
+      std::move(transfer_dependency_events), std::move(dst_raw_buffer),
+      std::move(definition_event_promise), std::move(src_usage_event_promise),
+      std::move(allocation_event));
 }
 
 PjRtDeviceEventPtr PjRtCApiRawBuffer::GetRawBufferAsyncValue() {
@@ -234,7 +256,7 @@ bool PjRtCApiRawBuffer::is_mutable() const {
   return static_cast<const PjRtRawBufferInterface*>(c_buffer_)->is_mutable();
 }
 
-static std::optional<absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>>
+static std::optional<absl::StatusOr<PjRtRawBufferRef>>
 PjRtCApiBuffer_CreateRawAliasOfBuffer_Factory(PjRtBuffer* buffer) {
   if (auto* c_api_buffer = dynamic_cast<xla::PjRtCApiBuffer*>(buffer)) {
     auto* c_api = c_api_buffer->pjrt_c_api();

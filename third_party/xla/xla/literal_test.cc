@@ -3565,6 +3565,21 @@ BENCHMARK_POPULATE(PopulateParallel);
 BENCHMARK_POPULATE(PopulateLinear);
 BENCHMARK_POPULATE(PopulateLinearParallel);
 
+void BM_MakeFakeLiteral(::testing::benchmark::State& state) {
+  int64_t d0 = state.range(0);
+  Shape shape = ShapeUtil::MakeShape(F32, {d0, d0});
+  for (auto s : state) {
+    auto literal = MakeFakeLiteral(shape, /*pseudo_random=*/true,
+                                   /*use_large_range=*/true);
+    benchmark::DoNotOptimize(literal);
+  }
+}
+BENCHMARK(BM_MakeFakeLiteral)
+    ->MeasureProcessCPUTime()
+    ->Arg(64)
+    ->Arg(256)
+    ->Arg(1024);
+
 TEST(LiteralTest, SetShapeClearsCustomElementSizeInBitsOnTupleLeafArrays) {
   Shape leaf = ShapeUtil::MakeShape(F32, {1024});
   LayoutUtil::SetToDefaultLayout(&leaf);

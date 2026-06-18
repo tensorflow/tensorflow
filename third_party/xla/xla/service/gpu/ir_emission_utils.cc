@@ -691,8 +691,8 @@ std::optional<const HloInstruction*> VerifyInductionVariable(
         induction_var = gte;
       } else if (IsDynamicVariable(gte, loop)) {
         // Dynamic variables are also acceptable because they represent tuple
-        // indices used in DS/DUS that can be optimized by
-        // FusionDynamicMemcpyRewriter.
+        // indices used in DS/DUS copy fusions that can be emitted as
+        // specialized D2D copy thunk sequences.
         if (induction_var) {
           // This should never happen.
           VLOG(5) << "Found non-unique GTEs for the dynamic variable. Did "

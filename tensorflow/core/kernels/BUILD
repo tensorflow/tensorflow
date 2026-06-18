@@ -1086,6 +1086,7 @@ tf_kernel_library(
     name = "gather_op",
     prefix = "gather_op",
     deps = ARRAY_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
@@ -1102,6 +1103,8 @@ tf_kernel_library(
     prefix = "identity_n_op",
     deps = ARRAY_DEPS + [
         "//tensorflow/core:core_cpu_internal",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2850,7 +2853,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "lookup_table_op",
     prefix = "lookup_table_op",
-    deps = LOOKUP_DEPS,
+    deps = LOOKUP_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -6162,6 +6168,11 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:word2vec_ops",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -8161,7 +8172,10 @@ cc_library(
     visibility = [
         "//tensorflow:__subpackages__",
     ] + LOOSE_HEADER_VISIBILITY,
-    deps = ["@com_google_absl//absl/status"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 # Deleted deps

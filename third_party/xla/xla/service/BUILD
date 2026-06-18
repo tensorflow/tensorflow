@@ -418,7 +418,6 @@ cc_library(
         ":constant_value",
         ":hlo_value",
         "//xla:comparison_util",
-        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",
@@ -691,6 +690,50 @@ cc_library(
         "@riegeli//riegeli/bytes:fd_writer",
         "@riegeli//riegeli/bytes:writer",
     ],
+)
+
+cc_library(
+    name = "riegeli_file_reader_factory",
+    hdrs = ["riegeli_file_reader_factory.h"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+        "@riegeli//riegeli/bytes:reader",
+    ] + if_google(
+        [":riegeli_file_reader_factory_google"],
+        [":riegeli_file_reader_factory_oss"],
+    ),
+)
+
+cc_library(
+    name = "riegeli_file_reader_factory_google",
+    srcs = [
+        "riegeli_file_reader_factory.h",
+        "riegeli_file_reader_factory_google.cc",
+    ],
+    tags = ["manual"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+        # copybara:uncomment "@riegeli//riegeli/bytes:file_reader",
+        "@riegeli//riegeli/bytes:reader",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "riegeli_file_reader_factory_oss",
+    srcs = [
+        "riegeli_file_reader_factory.h",
+        "riegeli_file_reader_factory_oss.cc",
+    ],
+    tags = ["manual"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+        "@riegeli//riegeli/bytes:fd_reader",
+        "@riegeli//riegeli/bytes:reader",
+    ],
+    alwayslink = 1,
 )
 
 xla_cc_test(
@@ -5645,6 +5688,7 @@ cc_library(
     deps = [
         ":collective_permute_cycle",
         ":computation_placer",
+        ":hlo_module_config",
         ":pattern_matcher",
         ":source_target_pairs",
         "//xla:executable_run_options",
@@ -5659,7 +5703,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/runtime:device_id",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
@@ -6761,6 +6804,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:shape_tracker",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
@@ -6778,13 +6822,14 @@ xla_cc_test(
     srcs = ["matmul_indexing_utils_test.cc"],
     deps = [
         ":matmul_indexing_utils",
+        "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test",
         "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",

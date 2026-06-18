@@ -290,7 +290,7 @@ namespace {
 // Determines the memory space color for the given HLO buffer
 absl::StatusOr<BufferValue::Color> DetermineBufferColor(
     const HloBuffer& buffer, bool use_collective_memory, bool use_nvshmem,
-    bool is_one_shot_zero_copy_ra2a) {
+    bool is_one_shot_ra2a_with_nccl) {
   // Collect Color Candidates
   absl::InlinedVector<BufferValue::Color, 4> candidates;
   for (const HloValue* value : buffer.values()) {
@@ -341,9 +341,9 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
       // allocator will be added for the symmetric memory space.
       candidates.push_back(
           static_cast<BufferValue::Color>(MemorySpaceColor::kCollective));
-    } else if (is_one_shot_zero_copy_ra2a &&
+    } else if (is_one_shot_ra2a_with_nccl &&
                IsRaggedAllToAllCollectiveOperandOrResult(*value)) {
-      // One-shot zero-copy RaggedAllToAll requires collective memory for
+      // One-shot RaggedAllToAll with NCCL requires collective memory for
       // both operand 1 and the result.
       candidates.push_back(
           static_cast<BufferValue::Color>(MemorySpaceColor::kCollective));
@@ -382,14 +382,14 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
 // the HloValues in the buffer. If a valid, conflict-free color is found, it
 // is uniformly applied to all HloValues within the buffer.
 absl::Status AssignColors(bool use_collective_memory, bool use_nvshmem,
-                          bool is_one_shot_zero_copy_ra2a,
+                          bool is_one_shot_ra2a_with_nccl,
                           HloAliasAnalysis* alias_analysis) {
   HloDataflowAnalysis& dataflow_analysis = alias_analysis->dataflow_analysis();
   for (const HloBuffer& buffer : alias_analysis->buffers()) {
     ASSIGN_OR_RETURN(
         BufferValue::Color color,
         DetermineBufferColor(buffer, use_collective_memory, use_nvshmem,
-                             is_one_shot_zero_copy_ra2a));
+                             is_one_shot_ra2a_with_nccl));
     // Apply buffer color to all values in the buffer.
     for (const HloValue* const_value : buffer.values()) {
       HloValue& mutable_value = dataflow_analysis.GetValue(const_value->id());
@@ -409,14 +409,14 @@ BufferAssigner::Colorer CreateColorer(const DebugOptions& option) {
 
   bool use_collective_memory = nccl_user_buffers || nccl_symmetric_buffers;
 
-  // Is one-shot zero-copy RaggedAllToAll feature is enabled.
-  bool is_one_shot_zero_copy_ra2a =
-      IsOneShotZeroCopyRaggedAllToAllEnabled(option);
+  // Is one-shot RaggedAllToAll with NCCL feature is enabled.
+  bool is_one_shot_ra2a_with_nccl =
+      IsOneShotRaggedAllToAllWithNcclEnabled(option);
 
-  return [use_collective_memory, use_nvshmem, is_one_shot_zero_copy_ra2a](
+  return [use_collective_memory, use_nvshmem, is_one_shot_ra2a_with_nccl](
              HloAliasAnalysis* alias_analysis, const HloOrdering&) {
     return AssignColors(use_collective_memory, use_nvshmem,
-                        is_one_shot_zero_copy_ra2a, alias_analysis);
+                        is_one_shot_ra2a_with_nccl, alias_analysis);
   };
 }
 }  // namespace xla::gpu

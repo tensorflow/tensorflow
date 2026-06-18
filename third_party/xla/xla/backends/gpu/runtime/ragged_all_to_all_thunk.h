@@ -73,10 +73,6 @@ struct RaggedAllToAllConfig {
   // If set, this will be used to determine if optimized kernels that assume a
   // fast interconnect can be used.
   std::optional<int64_t> fast_interconnect_slice_size_override = std::nullopt;
-
-  // If true, one-shot kernel will use the Symmetric Memory for
-  // output buffers resulting in zero copy and temporary sym buffer elimination.
-  bool zero_copy_in_one_shot_kernel = false;
 };
 
 // Contains the values that are passed between host threads with rendezvous.
@@ -120,12 +116,6 @@ struct RaggedAllToAllStreamState {
   // Device memory buffer to store the output buffer pointers.
   std::unique_ptr<se::MemoryAllocation> output_buffer_ptr_storage;
 
-  // Reference to the symmetric memory handler for the pointer storage.
-  tsl::TiedRef<xla::SymmetricMemory> output_buffer_ptr_storage_symmetric_memory;
-
-  // Reference to the symmetric memory for the output buffers.
-  std::shared_ptr<xla::SymmetricMemory> output_temporary_symmetric_memory;
-
   // Contains the output buffer pointers and barrier signal buffers for all
   // peers.
   std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>> participants;
@@ -136,10 +126,6 @@ struct RaggedAllToAllStreamState {
         rank(rank),
         clique_key(std::move(clique_key)) {}
 };
-
-// Returns true if all replicas in every replica group of the collective
-// are located on the same host (node).
-bool IsAllReplicasLocal(int64_t device_count, const CollectiveConfig& config);
 
 // Thunk that performs a NCCL-based Ragged-All-to-All among CUDA GPU-based
 // replicas.
@@ -187,10 +173,6 @@ class RaggedAllToAllThunk : public CollectiveThunk {
     return config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel;
   }
 
-  bool zero_copy_in_one_shot_kernel() const {
-    return config_.zero_copy_in_one_shot_kernel;
-  }
-
   // Returns true if one shot kernel is supported
   bool IsOneShotKernelSupported() const;
 
@@ -215,9 +197,7 @@ class RaggedAllToAllThunk : public CollectiveThunk {
                              Communicator& comm) override;
 
  private:
-  bool is_local(int device_count) const {
-    return IsAllReplicasLocal(device_count, config_.config);
-  }
+  bool is_local(int device_count) const;
 
   const RaggedAllToAllConfig config_;
 
@@ -289,8 +269,8 @@ absl::Status RunOneShotRaggedAllToAllWithNccl(
     std::shared_ptr<xla::SymmetricMemory> barrier_signal_symmetric_memory,
     const se::DeviceAddressBase& barrier_signal_value,
     SymmetricMemory* output_sym_mem, size_t output_sym_offset,
-    bool is_zero_copy, int64_t num_total_updates, int64_t num_input_rows,
-    int64_t num_row_elements, absl::Span<DeviceBufferPair const> buffers);
+    int64_t num_total_updates, int64_t num_input_rows, int64_t num_row_elements,
+    absl::Span<DeviceBufferPair const> buffers);
 
 }  // namespace gpu
 }  // namespace xla

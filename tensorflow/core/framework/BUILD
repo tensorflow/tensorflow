@@ -1992,6 +1992,7 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/lib/monitoring:test_utils",
         "@com_google_googletest//:gtest_main",
     ],
 )

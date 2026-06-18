@@ -125,41 +125,22 @@ absl::Status DeviceAddressVmmAllocator::PopulateDevices(
 }
 
 DeviceAddressVmmAllocator::~DeviceAddressVmmAllocator() {
+  absl::Status status = SynchronizeAllPendingOperations();
+  CHECK(status.ok()) << status;
+
   for (auto& [ordinal, state] : per_device_) {
-    // Briefly acquire the lock to read the last pending seqno.
-    uint64_t last_seqno = 0;
-    {
-      absl::MutexLock lock(state->mu);
-      if (!state->pending_deallocations.empty()) {
-        last_seqno = state->pending_deallocations.back().seqno;
-      }
-    }
-
-    // Spin-wait for any pending GPU work to complete before freeing physical
-    // memory. pinned_timeline is not ABSL_GUARDED_BY and last_seqno is a local.
-    if (state->pinned_timeline != nullptr && last_seqno > 0) {
-      while (LoadTimeline(state->pinned_timeline) < last_seqno) {
-        absl::SleepFor(kGpuTimelinePollInterval);
-      }
-    }
-
-    {
-      absl::MutexLock lock(state->mu);
-      for (auto& pending : state->pending_deallocations) {
-        if (pending.kind == PendingDeallocationKind::kAllocate) {
-          DoDeallocate(*state, pending.mem);
-        } else {
-          DoUnMap(*state, pending.mem);
-        }
-      }
-      state->pending_deallocations.clear();
-    }
-
     // Free platform-specific per-device resources (e.g. pinned timeline).
     if (state->destroy_fn) {
       state->destroy_fn();
     }
   }
+}
+
+absl::Status DeviceAddressVmmAllocator::SynchronizeAllPendingOperations() {
+  for (auto& [ordinal, state] : per_device_) {
+    RETURN_IF_ERROR(SynchronizePendingOperations(ordinal));
+  }
+  return absl::OkStatus();
 }
 
 DeviceAddressVmmAllocator::PerDeviceState*
@@ -169,6 +150,26 @@ DeviceAddressVmmAllocator::GetPerDeviceState(int device_ordinal) const {
     return nullptr;
   }
   return it->second.get();
+}
+
+absl::StatusOr<DeviceAddressBase>
+DeviceAddressVmmAllocator::ValidateReservationRange(
+    MemoryReservation* reservation, uint64_t reservation_offset,
+    uint64_t size) const {
+  if (reservation == nullptr) {
+    return absl::InvalidArgumentError("reservation must not be null");
+  }
+
+  DeviceAddressBase address = reservation->address();
+  if (reservation_offset > address.size() ||
+      size > address.size() - reservation_offset) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "reservation range is out of bounds: offset=%uB, size=%uB, "
+        "reservation_size=%uB",
+        reservation_offset, size, address.size()));
+  }
+
+  return address.GetByteSlice(reservation_offset, size);
 }
 
 void DeviceAddressVmmAllocator::ProcessCompletedPendingDeallocations(
@@ -326,20 +327,9 @@ DeviceAddressVmmAllocator::Allocate(
     return ScopedDeviceAddress<uint8_t>(DeviceAddressBase(), device_ordinal,
                                         this);
   }
-  if (reservation == nullptr) {
-    return absl::InvalidArgumentError(
-        "VMM mapped allocation requires a non-null reservation");
-  }
-  DeviceAddressBase reservation_range = reservation->address();
-  if (reservation_offset > reservation_range.size() ||
-      mapping_size > reservation_range.size() - reservation_offset) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Reservation range [%u, %u) is outside reservation size %u",
-        reservation_offset, reservation_offset + mapping_size,
-        reservation_range.size()));
-  }
-  DeviceAddressBase reservation_address =
-      reservation_range.GetByteSlice(reservation_offset, mapping_size);
+  ASSIGN_OR_RETURN(
+      DeviceAddressBase reservation_address,
+      ValidateReservationRange(reservation, reservation_offset, mapping_size));
 
   PerDeviceState* state = GetPerDeviceState(device_ordinal);
   if (state == nullptr) {
@@ -577,20 +567,9 @@ absl::Status DeviceAddressVmmAllocator::Map(int device_ordinal,
     return absl::InvalidArgumentError(
         "DeviceAddressVmmAllocator::Map requires a non-null source address");
   }
-  if (reservation == nullptr) {
-    return absl::InvalidArgumentError(
-        "DeviceAddressVmmAllocator::Map requires a non-null reservation");
-  }
-  DeviceAddressBase reservation_range = reservation->address();
-  if (reservation_offset > reservation_range.size() ||
-      size > reservation_range.size() - reservation_offset) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Reservation range [%u, %u) is outside reservation size %u",
-        reservation_offset, reservation_offset + size,
-        reservation_range.size()));
-  }
-  DeviceAddressBase reservation_address =
-      reservation_range.GetByteSlice(reservation_offset, size);
+  ASSIGN_OR_RETURN(
+      DeviceAddressBase reservation_address,
+      ValidateReservationRange(reservation, reservation_offset, size));
 
   PerDeviceState* state = GetPerDeviceState(device_ordinal);
   if (state == nullptr) {
@@ -643,20 +622,9 @@ absl::Status DeviceAddressVmmAllocator::UnMap(int device_ordinal,
   if (size == 0) {
     return absl::OkStatus();
   }
-  if (reservation == nullptr) {
-    return absl::InvalidArgumentError(
-        "DeviceAddressVmmAllocator::UnMap requires a non-null reservation");
-  }
-  DeviceAddressBase reservation_range = reservation->address();
-  if (reservation_offset > reservation_range.size() ||
-      size > reservation_range.size() - reservation_offset) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Reservation range [%u, %u) is outside reservation size %u",
-        reservation_offset, reservation_offset + size,
-        reservation_range.size()));
-  }
-  DeviceAddressBase reservation_address =
-      reservation_range.GetByteSlice(reservation_offset, size);
+  ASSIGN_OR_RETURN(
+      DeviceAddressBase reservation_address,
+      ValidateReservationRange(reservation, reservation_offset, size));
 
   PerDeviceState* state = GetPerDeviceState(device_ordinal);
   if (state == nullptr) {

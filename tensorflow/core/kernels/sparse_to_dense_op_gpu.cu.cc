@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -39,14 +40,25 @@ __global__ void SparseToDenseKernel(const Index* __restrict__ indices,
                                     const int ndims, T* __restrict__ dense) {
   GPU_1D_KERNEL_LOOP(thread_idx, nnz) {
     eigen_assert(ndims >= 1);
-    int64_t output_idx = indices[thread_idx * ndims + ndims - 1];
-    Index strides = 1;
-    for (int i = ndims - 2; i >= 0; i--) {
-      strides *= dims[i + 1];
-      output_idx += indices[thread_idx * ndims + i] * strides;
+
+    bool valid = true;
+    for (int i = 0; i < ndims; i++) {
+      if (!FastBoundsCheck(indices[thread_idx * ndims + i], dims[i])) {
+        valid = false;
+        break;
+      }
     }
-    // If num_vals == 1, broadcast the scalar to the positions for non-zeros.
-    dense[output_idx] = vals[(num_vals == 1) ? 0 : thread_idx];
+
+    if (valid) {
+      int64_t output_idx = indices[thread_idx * ndims + ndims - 1];
+      Index strides = 1;
+      for (int i = ndims - 2; i >= 0; i--) {
+        strides *= dims[i + 1];
+        output_idx += indices[thread_idx * ndims + i] * strides;
+      }
+      // If num_vals == 1, broadcast the scalar to the positions for non-zeros.
+      dense[output_idx] = vals[(num_vals == 1) ? 0 : thread_idx];
+    }
   }
 }
 

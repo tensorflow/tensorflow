@@ -37,9 +37,9 @@ namespace tensorflow {
 
 namespace {
 
-gtl::InlinedVector<int64_t, 8> GetFlattenedRelativeOffsets(int64_t small_stride,
-                                                           int64_t big_stride) {
-  gtl::InlinedVector<int64_t, 8> flattened_offsets(small_stride);
+absl::InlinedVector<int64_t, 8UL> GetFlattenedRelativeOffsets(
+    int64_t small_stride, int64_t big_stride) {
+  absl::InlinedVector<int64_t, 8UL> flattened_offsets(small_stride);
   for (int64_t i = 0; i < small_stride; i++) {
     flattened_offsets[i] = i * big_stride;
   }

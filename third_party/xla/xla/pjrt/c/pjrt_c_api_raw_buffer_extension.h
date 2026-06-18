@@ -73,13 +73,30 @@ typedef struct PJRT_RawBuffer_FunctionTable {
                                             PJRT_DeviceEvent* event);
   // Returns true if the buffer is mutable.
   bool (*is_mutable)(const PJRT_RawBuffer* raw_buffer);
+  // Slices the buffer.
+  PJRT_Error* (*slice)(PJRT_RawBuffer* raw_buffer, int64_t offset,
+                       int64_t slice_size, PJRT_RawBuffer** sliced_buffer);
+  // Blocks on a list of dependencies and then copies directly into
+  // dst_raw_buffer. Must set definition_event_promise,
+  // when dst_raw_buffer is ready, allocation_event before using dst_raw_buffer
+  // and src_usage_event_promise when done using this buffer.
+  // transfer_dependency_events can be nullptr in which case the copy runs
+  // inline (no deps).
+  void (*schedule_copy_to)(PJRT_RawBuffer* src_buffer,
+                           PJRT_DeviceEventVector* transfer_dependency_events,
+                           PJRT_RawBuffer* dst_buffer,
+                           PJRT_DeviceEventPromise* definition_event_promise,
+                           PJRT_DeviceEventPromise* src_usage_event_promise,
+                           void (*allocation_event_callback)(PJRT_Error* status,
+                                                             void* user_data),
+                           void* allocation_event_user_data);
 } PJRT_RawBuffer_FunctionTable;
 
 struct PJRT_RawBuffer {
   const PJRT_RawBuffer_FunctionTable* vtable;
 };
 
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer_FunctionTable, is_mutable);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer_FunctionTable, schedule_copy_to);
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer, vtable);
 
 struct PJRT_RawBuffer_CreateRawAliasOfBuffer_Args {

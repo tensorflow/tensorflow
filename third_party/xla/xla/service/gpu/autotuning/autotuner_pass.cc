@@ -31,10 +31,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/codegen_orchestrator.h"
+#include "xla/backends/autotuner/config_assigner.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
@@ -393,16 +394,44 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   if (cache_dir.empty()) {
     cache_dir = debug_options.xla_gpu_experimental_autotuner_cache_dir();
   }
-  auto cache = std::make_unique<LegacyCache>(
-      cache_dir, debug_options.xla_gpu_experimental_autotune_cache_mode(),
-      target_config->device_description);
+  std::unique_ptr<AutotunerCacheInterface> cache =
+      std::make_unique<LegacyCache>(
+          cache_dir, debug_options.xla_gpu_experimental_autotune_cache_mode(),
+          target_config->device_description);
+
+  CodegenOrchestrator::Options orchestrator_options;
+  orchestrator_options.allow_reg_spills_fn =
+      autotune_config.allow_reg_spills_fn;
+  orchestrator_options.exclude_cublas_config =
+      autotune_config.exclude_cublas_config;
+  ASSIGN_OR_RETURN(auto orchestrator,
+                   CodegenOrchestrator::Create(
+                       std::move(backends), orchestrator_options, thread_pool));
+
+  ConfigAssigner::Options assigner_options;
+  assigner_options.use_default_config = autotune_config.use_default_config;
+  assigner_options.select_first_config = autotune_config.select_first_config;
+  assigner_options.expect_all_instructions_in_cache =
+      autotune_config.expect_all_instructions_in_cache;
+  assigner_options.dump_hlos = autotune_config.dump_hlos;
+
+  if (profiler != nullptr) {
+    assigner_options.check_buffers = autotune_config.check_buffers;
+    assigner_options.relative_tolerance = autotune_config.relative_tolerance;
+    assigner_options.crash_on_check_failure =
+        autotune_config.crash_on_check_failure;
+    assigner_options.scratch_bytes_window_size_us =
+        autotune_config.scratch_bytes_window_size_us;
+    assigner_options.dump_logs_to = autotune_config.dump_logs_to;
+  }
 
   ASSIGN_OR_RETURN(
-      std::unique_ptr<Autotuner> autotuner,
-      Autotuner::Create(std::move(backends), std::move(profiler),
-                        autotune_config, std::move(cache), thread_pool));
+      auto config_assigner,
+      ConfigAssigner::Create(assigner_options, std::move(cache),
+                             std::move(orchestrator), std::move(profiler)));
+
   return absl::WrapUnique(new AutotunerPass(
-      std::move(autotuner), std::move(should_autotune),
+      std::move(config_assigner), std::move(should_autotune),
       std::move(key_value_store), debug_options.xla_gpu_shard_autotuning()));
 }
 
@@ -415,13 +444,14 @@ absl::StatusOr<bool> AutotunerPass::RunImpl(
   bool shard_autotuning =
       enable_sharding_ && key_value_store_.process_count > 1;
   if (shard_autotuning) {
-    RETURN_IF_ERROR(
-        autotuner_->Autotune(module, should_autotune_, key_value_store_));
+    RETURN_IF_ERROR(config_assigner_->AssignConfigs(module, should_autotune_,
+                                                    key_value_store_));
   } else {
-    RETURN_IF_ERROR(autotuner_->Autotune(module, should_autotune_));
+    RETURN_IF_ERROR(config_assigner_->AssignConfigs(module, should_autotune_));
   }
-  VLOG(1) << "Autotuner cache stats: hits=" << autotuner_->GetCacheStats().hits
-          << ", misses=" << autotuner_->GetCacheStats().misses;
+  VLOG(1) << "Autotuner cache stats: hits="
+          << config_assigner_->GetCacheStats().hits
+          << ", misses=" << config_assigner_->GetCacheStats().misses;
   return true;
 }
 

@@ -43,6 +43,8 @@ namespace xla {
 
 class PjRtMemorySpace;
 class PjRtBuffer;
+class PjRtRawBufferInterface;
+using PjRtRawBufferRef = tsl::RCReference<PjRtRawBufferInterface>;
 
 class PjRtRawBufferInterface : public PJRT_RawBuffer {
  public:
@@ -70,21 +72,49 @@ class PjRtRawBufferInterface : public PJRT_RawBuffer {
   bool is_mutable() const;
   absl::StatusOr<PjRtDeviceEventRef> MakeAllocationReadyEvent();
   PjRtDeviceEventPtr GetRawBufferAsyncValue();
-};
 
-class PjRtRawBuffer;
-using PjRtRawBufferRef = tsl::RCReference<PjRtRawBuffer>;
+  absl::StatusOr<PjRtRawBufferRef> Slice(int64_t offset, int64_t size);
+
+  struct SliceInfo {
+    int64_t offset;
+    int64_t size;
+  };
+  absl::StatusOr<std::vector<PjRtRawBufferRef>> MultiSlice(
+      absl::Span<const SliceInfo> slices);
+
+  void CopyTo(PjRtRawBufferRef dst_raw_buffer,
+              PjRtDeviceEventPromiseRef definition_event_promise,
+              PjRtDeviceEventPromiseRef src_usage_event_promise,
+              absl::AnyInvocable<void(absl::Status) &&> allocation_event);
+
+  void ScheduleCopyTo(
+      PjRtDeviceEventRefVector transfer_dependency_events,
+      PjRtRawBufferRef dst_raw_buffer,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise,
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event);
+
+  void DecrefAfter(PjRtDeviceEventRefVector avs);
+
+  template <typename T>
+  T* down_cast();
+
+  template <typename T>
+  const T* down_cast() const;
+};
 
 // Experimental. Don't use unless you know what you're doing.
 // A raw buffer is an unsafe API for directly transferring into device
 // memory while existing processes are consuming or mutating the same buffer.
-class PjRtRawBuffer : public PJRT_RawBuffer,
+class PjRtRawBuffer : public PjRtRawBufferInterface,
                       public tsl::ReferenceCounted<PjRtRawBuffer> {
  public:
+  using tsl::ReferenceCounted<PjRtRawBuffer>::AddRef;
+  using tsl::ReferenceCounted<PjRtRawBuffer>::DropRef;
   PjRtRawBuffer();
   virtual ~PjRtRawBuffer() = default;
 
-  static absl::StatusOr<tsl::RCReference<PjRtRawBuffer>> CreateRawAliasOfBuffer(
+  static absl::StatusOr<PjRtRawBufferRef> CreateRawAliasOfBuffer(
       PjRtBuffer* buffer);
 
   // Memory space that the raw buffer lives on.
@@ -151,10 +181,7 @@ class PjRtRawBuffer : public PJRT_RawBuffer,
   virtual absl::StatusOr<PjRtRawBufferRef> Slice(int64_t offset,
                                                  int64_t size) = 0;
 
-  struct SliceInfo {
-    int64_t offset;
-    int64_t size;
-  };
+  using SliceInfo = PjRtRawBufferInterface::SliceInfo;
 
   // Batched version of Slice(). May be faster on some implementations.
   virtual absl::StatusOr<std::vector<PjRtRawBufferRef>> MultiSlice(
@@ -177,12 +204,11 @@ class PjRtRawBuffer : public PJRT_RawBuffer,
   // when dst_raw_buffer is ready, allocation_event before using dst_raw_buffer
   // and src_usage_event_promise when done using this buffer.
   virtual void ScheduleCopyTo(
-      AsyncWorkRunner* async_work_runner,
       PjRtDeviceEventRefVector transfer_dependency_events,
       PjRtRawBufferRef dst_raw_buffer,
       PjRtDeviceEventPromiseRef definition_event_promise,
       PjRtDeviceEventPromiseRef src_usage_event_promise,
-      absl::AnyInvocable<void(absl::Status) &&> allocation_event);
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event) = 0;
 
   // Returns the async value associated with the buffer.
   virtual PjRtDeviceEventPtr GetRawBufferAsyncValue() = 0;
@@ -194,10 +220,29 @@ class PjRtRawBuffer : public PJRT_RawBuffer,
   virtual void DecrefAfter(PjRtDeviceEventRefVector avs);
 
  private:
+  friend class PjRtRawBufferInterface;
   static const PJRT_RawBuffer_FunctionTable kRawBufferVtable;
 };
 
-using CommonPjRtRawBuffer = PjRtRawBuffer;
+template <typename T>
+T* PjRtRawBufferInterface::down_cast() {
+  if (vtable != &PjRtRawBuffer::kRawBufferVtable) {
+    return nullptr;
+  }
+  auto* cpp_buf =
+      static_cast<PjRtRawBuffer*>(static_cast<PJRT_RawBuffer*>(this));
+  return dynamic_cast<T*>(cpp_buf);
+}
+
+template <typename T>
+const T* PjRtRawBufferInterface::down_cast() const {
+  if (vtable != &PjRtRawBuffer::kRawBufferVtable) {
+    return nullptr;
+  }
+  auto* cpp_buf = static_cast<const PjRtRawBuffer*>(
+      static_cast<const PJRT_RawBuffer*>(this));
+  return dynamic_cast<const T*>(cpp_buf);
+}
 
 tsl::AsyncValueRef<PjRtStagingBuffer> ToStagingBuffer(
     PjRtRawBufferRef raw_buffer, PjRtDeviceEventPromiseRef usage_promise,
@@ -208,8 +253,7 @@ tsl::AsyncValueRef<PjRtStagingBuffer> ToStagingBuffer(
 class RegisterRawBufferFactory {
  public:
   using FactoryFuncT =
-      std::optional<absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>> (*)(
-          PjRtBuffer* buffer);
+      std::optional<absl::StatusOr<PjRtRawBufferRef>> (*)(PjRtBuffer* buffer);
   explicit RegisterRawBufferFactory(FactoryFuncT func);
 };
 

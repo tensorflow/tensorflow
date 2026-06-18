@@ -99,16 +99,20 @@ NcclSymmetricMemory::multimem_addr() const {
 
 absl::StatusOr<stream_executor::DeviceAddressBase>
 NcclSymmetricMemory::peer_addr(RankId peer) const {
-#if (NCCL_VERSION_CODE >= 22900) || defined(USE_NCCL_HOST_API)
+#if (NCCL_VERSION_CODE >= 22902) || defined(USE_NCCL_HOST_API)
   void* peer_addr = nullptr;
   XLA_NCCL_RETURN_IF_ERROR(
-      ncclGetLsaDevicePointer(win_, 0, peer.value(), &peer_addr));
+      ncclGetPeerDevicePointer(win_, 0, peer.value(), &peer_addr));
   if (peer_addr) {
     return stream_executor::DeviceAddressBase(peer_addr, addr_.size());
   }
-#endif
+  return absl::FailedPreconditionError(absl::StrFormat(
+      "Peer rank %d is not load/store accessible from this rank",
+      peer.value()));
+#else
   return absl::UnimplementedError(
-      "Peer address not supported on this NCCL version or device");
+      "Peer address requires ncclGetPeerDevicePointer (NCCL >= 2.29.2)");
+#endif
 }
 
 std::string NcclSymmetricMemory::ToString() const {

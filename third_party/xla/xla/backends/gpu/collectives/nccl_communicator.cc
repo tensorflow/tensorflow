@@ -932,20 +932,29 @@ Future<T> NcclCommunicator::Execute(
 
 #if NCCL_VERSION_CODE >= 22800
 
-NcclDeviceCommunicator::NcclDeviceCommunicator(const NcclCommunicator* comm,
-                                               ncclDevComm dev_comm)
-    : comm_(comm), dev_comm_(dev_comm) {}
+NcclDeviceCommunicator::NcclDeviceCommunicator(
+    ncclComm_t parent_comm, se::StreamExecutor* stream_executor,
+    std::shared_ptr<tsl::Executor> executor, ncclDevComm dev_comm)
+    : parent_comm_(parent_comm),
+      stream_executor_(stream_executor),
+      executor_(std::move(executor)),
+      dev_comm_(dev_comm) {}
 
 NcclDeviceCommunicator::~NcclDeviceCommunicator() {
-  VLOG(3) << absl::StreamFormat(
-      "Destroy NCCL device comm %v constructed for %v", *this, *comm_);
+  VLOG(3) << absl::StreamFormat("Destroy NCCL device comm %v", *this);
 
-  DCHECK(comm_ && comm_->stream_executor()) << "StreamExecutor is unavailable";
-  auto activation = comm_->stream_executor()->Activate();
+  auto destroy_fn = [this]() -> absl::Status {
+    DCHECK(stream_executor_) << "StreamExecutor is unavailable";
+    auto activation = stream_executor_->Activate();
+    return XLA_NCCL_STATUS(ncclDevCommDestroy(parent_comm_, &dev_comm_));
+  };
 
-  auto status = XLA_NCCL_STATUS(ncclDevCommDestroy(comm_->comm(), &dev_comm_));
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to destroy device comm: " << status.message();
+  auto future = executor_
+                    ? MakeFutureOn<void>(*executor_, std::move(destroy_fn))
+                    : Future<>(std::move(destroy_fn)());
+  absl::Status s = future.Await();
+  if (!s.ok()) {
+    LOG(ERROR) << "Failed to destroy device comm: " << s;
   }
 }
 
@@ -970,7 +979,8 @@ NcclDeviceCommunicator::CreateFrom(const NcclCommunicator& comm,
   RETURN_IF_ERROR(
       XLA_NCCL_STATUS(ncclDevCommCreate(comm.comm(), &reqs, &dev_comm)));
 
-  return absl::WrapUnique(new NcclDeviceCommunicator(&comm, dev_comm));
+  return absl::WrapUnique(new NcclDeviceCommunicator(
+      comm.comm(), comm.stream_executor(), comm.executor(), dev_comm));
 }
 
 PlatformCommunicatorHandle NcclDeviceCommunicator::platform_comm() const {

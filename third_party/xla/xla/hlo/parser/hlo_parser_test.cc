@@ -2833,6 +2833,120 @@ ENTRY test {
   ROOT root = f32[10,10]{1,0} sqrt(broadcast.anon)
 })"
 },
+
+{
+"CompactGte",
+R"(HloModule test
+
+ENTRY test {
+  p0 = (f32[10], f16[10]) parameter(0)
+  ROOT root = f32[10] add(f32[10] %p0#0, f32[10] %p0#0)
+})",
+R"(HloModule test, entry_computation_layout={((f32[10]{0}, f16[10]{0}))->f32[10]{0}}
+
+ENTRY test {
+  p0 = (f32[10]{0}, f16[10]{0}) parameter(0)
+  p0_0 = f32[10]{0} get-tuple-element(p0), index=0
+  ROOT root = f32[10]{0} add(p0_0, p0_0)
+})"
+},
+
+{
+"NestedCompactGte",
+R"(HloModule test
+
+ENTRY test {
+  p0 = (f32[10], (f32[20], f32[30])) parameter(0)
+  ROOT root = f32[20] add(f32[20] %p0#1#0, f32[20] %p0#1#0)
+})",
+R"(HloModule test, entry_computation_layout={((f32[10]{0}, (f32[20]{0}, f32[30]{0})))->f32[20]{0}}
+
+ENTRY test {
+  p0 = (f32[10]{0}, (f32[20]{0}, f32[30]{0})) parameter(0)
+  p0_1 = (f32[20]{0}, f32[30]{0}) get-tuple-element(p0), index=1
+  p0_1_0 = f32[20]{0} get-tuple-element(p0_1), index=0
+  ROOT root = f32[20]{0} add(p0_1_0, p0_1_0)
+})"
+},
+
+{
+"CompactGteMultipleUses",
+R"(HloModule test
+
+ENTRY test {
+  p0 = (f32[10], f16[10]) parameter(0)
+  gte_use1 = f32[10] negate(f32[10] %p0#0)
+  gte_use2 = f32[10] log(f32[10] %p0#0)
+  ROOT root = f32[10] add(gte_use1, gte_use2)
+})",
+R"(HloModule test, entry_computation_layout={((f32[10]{0}, f16[10]{0}))->f32[10]{0}}
+
+ENTRY test {
+  p0 = (f32[10]{0}, f16[10]{0}) parameter(0)
+  p0_0 = f32[10]{0} get-tuple-element(p0), index=0
+  gte_use1 = f32[10]{0} negate(p0_0)
+  gte_use2 = f32[10]{0} log(p0_0)
+  ROOT root = f32[10]{0} add(gte_use1, gte_use2)
+})"
+},
+
+{
+"CompactGteNameCollision",
+R"(HloModule test
+
+ENTRY test {
+  p0 = (f32[10], f16[10]) parameter(0)
+  p0_0 = f32[10] parameter(1)
+  ROOT root = f32[10] add(f32[10] %p0#0, f32[10] %p0_0)
+})",
+R"(HloModule test, entry_computation_layout={((f32[10]{0}, f16[10]{0}), f32[10]{0})->f32[10]{0}}
+
+ENTRY test {
+  p0 = (f32[10]{0}, f16[10]{0}) parameter(0)
+  p0_0.1 = f32[10]{0} get-tuple-element(p0), index=0
+  p0_0 = f32[10]{0} parameter(1)
+  ROOT root = f32[10]{0} add(p0_0.1, p0_0)
+})"
+},
+
+{
+"CompactGteMixedNesting",
+R"(HloModule test
+
+ENTRY test {
+  p0 = (f32[10], (f32[20], f32[30])) parameter(0)
+  ROOT root = ((f32[20], f32[30]), f32[20]) tuple((f32[20], f32[30]) %p0#1, f32[20] %p0#1#0)
+})",
+R"(HloModule test, entry_computation_layout={((f32[10]{0}, (f32[20]{0}, f32[30]{0})))->((f32[20]{0}, f32[30]{0}), f32[20]{0})}
+
+ENTRY test {
+  p0 = (f32[10]{0}, (f32[20]{0}, f32[30]{0})) parameter(0)
+  p0_1 = (f32[20]{0}, f32[30]{0}) get-tuple-element(p0), index=1
+  p0_1_0 = f32[20]{0} get-tuple-element(p0_1), index=0
+  ROOT root = ((f32[20]{0}, f32[30]{0}), f32[20]{0}) tuple(p0_1, p0_1_0)
+})"
+},
+
+{
+"CompactGteOnTuple",
+R"(HloModule test
+
+ENTRY test {
+  p0 = f32[10] parameter(0)
+  p1 = f16[10] parameter(1)
+  t = (f32[10], f16[10]) tuple(p0, p1)
+  ROOT root = f32[10] negate(f32[10] %t#0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10]{0}, f16[10]{0})->f32[10]{0}}
+
+ENTRY test {
+  p0 = f32[10]{0} parameter(0)
+  p1 = f16[10]{0} parameter(1)
+  t = (f32[10]{0}, f16[10]{0}) tuple(p0, p1)
+  t_0 = f32[10]{0} get-tuple-element(t), index=0
+  ROOT root = f32[10]{0} negate(t_0)
+})"
+},
 });
   // clang-format on
 }
@@ -3060,6 +3174,115 @@ ENTRY %blabla (x: f32[]) -> pred[] {
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(absl::OkStatus(), result.status());
+}
+
+TEST_F(HloParserTest, CompactGteNonTuple) {
+  const std::string original = R"(HloModule test
+ENTRY test {
+  p0 = f32[10] parameter(0)
+  ROOT root = f32[10] add(f32[10] %p0#0, f32[10] %p0#0)
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("GTE operand must be tuple"));
+}
+
+TEST_F(HloParserTest, CompactGteIndexOutOfBounds) {
+  const std::string original = R"(HloModule test
+ENTRY test {
+  p0 = (f32[10], f16[10]) parameter(0)
+  ROOT root = f32[10] add(f32[10] %p0#2, f32[10] %p0#2)
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("GTE index 2 out of bounds"));
+}
+
+TEST_F(HloParserTest, CompactGteInvalidIndex) {
+  const std::string original = R"(HloModule test
+ENTRY test {
+  p0 = (f32[10], f16[10]) parameter(0)
+  ROOT root = f32[10] add(f32[10] %p0#a, f32[10] %p0#a)
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), HasSubstr("expects integer"));
+}
+
+TEST_F(HloParserTest, CompactGteNegativeIndex) {
+  const std::string original = R"(HloModule test
+ENTRY test {
+  p0 = (f32[10], f16[10]) parameter(0)
+  ROOT root = f32[10] add(f32[10] %p0#-1, f32[10] %p0#-1)
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("GTE index -1 out of bounds"));
+}
+
+TEST_F(HloParserTest, CompactGteRoundTrip) {
+  const std::string original =
+      R"(HloModule test, entry_computation_layout={((f32[10]{0}, f16[10]{0}))->f32[10]{0}}
+
+ENTRY %test {
+  %p0 = (f32[10]{0}, f16[10]{0}) parameter(0)
+  ROOT %root = f32[10]{0} add(f32[10]{0} %p0#0, f32[10]{0} %p0#0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(original));
+  HloPrintOptions options = HloPrintOptions::ShortParsable();
+  options.set_compact_gte(true);
+  options.set_print_operand_shape(true);
+  options.set_print_percent(true);
+
+  std::string printed = module->ToString(options);
+  EXPECT_EQ(absl::StripAsciiWhitespace(original),
+            absl::StripAsciiWhitespace(printed));
+}
+
+TEST_F(HloParserTest, CompactGteMixedNestingRoundTrip) {
+  const std::string original =
+      R"(HloModule test, entry_computation_layout={((f32[10]{0}, (f32[20]{0}, f32[30]{0})))->((f32[20]{0}, f32[30]{0}), f32[20]{0})}
+
+ENTRY %test {
+  %p0 = (f32[10]{0}, (f32[20]{0}, f32[30]{0})) parameter(0)
+  ROOT %root = ((f32[20]{0}, f32[30]{0}), f32[20]{0}) tuple((f32[20]{0}, f32[30]{0}) %p0#1, f32[20]{0} %p0#1#0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(original));
+  HloPrintOptions options = HloPrintOptions::ShortParsable();
+  options.set_compact_gte(true);
+  options.set_print_operand_shape(true);
+  options.set_print_percent(true);
+
+  std::string printed = module->ToString(options);
+  EXPECT_EQ(absl::StripAsciiWhitespace(original),
+            absl::StripAsciiWhitespace(printed));
+}
+
+TEST_F(HloParserTest, CompactGteOnTupleRoundTrip) {
+  const std::string original =
+      R"(HloModule test, entry_computation_layout={(f32[10]{0}, f16[10]{0})->f32[10]{0}}
+
+ENTRY %test {
+  %p0 = f32[10]{0} parameter(0)
+  %p1 = f16[10]{0} parameter(1)
+  %t = (f32[10]{0}, f16[10]{0}) tuple(f32[10]{0} %p0, f16[10]{0} %p1)
+  ROOT %root = f32[10]{0} negate(f32[10]{0} %t#0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(original));
+  HloPrintOptions options = HloPrintOptions::ShortParsable();
+  options.set_compact_gte(true);
+  options.set_print_operand_shape(true);
+  options.set_print_percent(true);
+
+  std::string printed = module->ToString(options);
+  EXPECT_EQ(absl::StripAsciiWhitespace(original),
+            absl::StripAsciiWhitespace(printed));
 }
 
 TEST_F(HloParserTest, MoreConstants) {

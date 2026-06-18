@@ -889,20 +889,43 @@ absl::Status FusionSearchSpace::ShepherdBitcastsAwayFromDot(
   return absl::OkStatus();
 }
 
+// Returns true if all users of the parameter are bitcast or reshape
+// instructions with the given shape. This means we can safely swap out the
+// parameter shape for the new shape.
+bool CanReplaceParameterShape(HloInstruction* parameter,
+                              const Shape& new_shape) {
+  for (HloInstruction* user : parameter->users()) {
+    if (HloPredicateIsNotOp<HloOpcode::kBitcast, HloOpcode::kReshape>(user) ||
+        user->shape() != new_shape) {
+      return false;
+    }
+  }
+  return true;
+}
+
 absl::StatusOr<bool> FusionSearchSpace::HoistBitcast(HloInstruction* instr) {
   HloInstruction* operand = instr->mutable_operand(0);
   HloInstruction* new_instr = nullptr;
 
   switch (operand->opcode()) {
     case HloOpcode::kParameter: {
+      if (!CanReplaceParameterShape(operand, instr->shape())) {
+        return false;
+      }
       // Just update parameter shape in the submodule.
       // We will realize the bitcast in the original module later.
       Shape new_shape = instr->shape();
       CopyElementType(operand->shape(), &new_shape);
 
       *operand->mutable_shape() = new_shape;
-      RETURN_IF_ERROR(instr->ReplaceAllUsesWith(operand));
-      RETURN_IF_ERROR(instr->parent()->RemoveInstruction(instr));
+      // Copy users to a new vector to avoid invalidating the iterator.
+      std::vector<HloInstruction*> users(operand->users().begin(),
+                                         operand->users().end());
+      for (HloInstruction* user : users) {
+        RETURN_IF_ERROR(user->ReplaceAllUsesWith(operand));
+        RETURN_IF_ERROR(
+            user->parent()->RemoveInstructionAndUnusedOperands(user));
+      }
       return true;
     }
     case HloOpcode::kConstant: {
@@ -972,7 +995,7 @@ absl::StatusOr<bool> FusionSearchSpace::HoistBitcast(HloInstruction* instr) {
   }
 
   RETURN_IF_ERROR(instr->ReplaceAllUsesWith(new_instr));
-  RETURN_IF_ERROR(instr->parent()->RemoveInstruction(instr));
+  RETURN_IF_ERROR(instr->parent()->RemoveInstructionAndUnusedOperands(instr));
   return true;
 }
 
@@ -983,7 +1006,7 @@ absl::StatusOr<bool> FusionSearchSpace::SinkBitcast(HloInstruction* instr) {
   if (instr->IsRoot()) {
     instr->parent()->set_root_instruction(operand,
                                           /*accept_different_shape=*/true);
-    RETURN_IF_ERROR(instr->parent()->RemoveInstruction(instr));
+    RETURN_IF_ERROR(instr->parent()->RemoveInstructionAndUnusedOperands(instr));
     return true;
   }
   // We only build fusions where epilogues have single users. This could be
@@ -1057,8 +1080,7 @@ absl::StatusOr<bool> FusionSearchSpace::SinkBitcast(HloInstruction* instr) {
     original_to_fused_[original_op] = new_instr;
   }
   RETURN_IF_ERROR(user->ReplaceAllUsesWith(new_bitcast));
-  RETURN_IF_ERROR(instr->parent()->RemoveInstruction(user));
-  RETURN_IF_ERROR(instr->parent()->RemoveInstruction(instr));
+  RETURN_IF_ERROR(instr->parent()->RemoveInstructionAndUnusedOperands(user));
   return true;
 }
 

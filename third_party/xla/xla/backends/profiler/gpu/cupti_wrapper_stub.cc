@@ -45,6 +45,12 @@ CUptiResult CuptiWrapperStub::ActivityGetNextRecord(
   return CUPTI_ERROR_MAX_LIMIT_REACHED;
 }
 
+CUptiResult CuptiWrapperStub::ActivityGetNextRecordV2(
+    CUpti_SubscriberHandle /*subscriber*/, uint8_t* /*buffer*/,
+    size_t /*valid_buffer_size_bytes*/, CUpti_Activity** /*record*/) {
+  return CUPTI_ERROR_MAX_LIMIT_REACHED;
+}
+
 CUptiResult CuptiWrapperStub::ActivityGetNumDroppedRecords(CUcontext context,
                                                            uint32_t stream_id,
                                                            size_t* dropped) {
@@ -112,6 +118,11 @@ CUptiResult CuptiWrapperStub::GetDeviceId(CUcontext context,
 
 CUptiResult CuptiWrapperStub::GetTimestamp(uint64_t* timestamp) {
   return cuptiGetTimestamp(timestamp);
+}
+
+CUptiResult CuptiWrapperStub::GetTimestampV2(
+    CUpti_SubscriberHandle /*subscriber*/, uint64_t* timestamp) {
+  return GetTimestamp(timestamp);
 }
 
 CUptiResult CuptiWrapperStub::Finalize() { return CUPTI_SUCCESS; }

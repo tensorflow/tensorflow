@@ -613,8 +613,8 @@ absl::StatusOr<HloInstruction*> NormalizeBatchDimensions(HloInstruction* dot) {
       dims[i].ApplyPermutation(permutation);
     }
 
-    RETURN_IF_ERROR(
-        dims[i].Collapse(DotOperandDims::kBatch, /*remove_if_empty=*/false));
+    RETURN_IF_ERROR(dims[i].CollapseCategory(DotOperandDims::kBatch,
+                                             /*remove_if_empty=*/false));
     ASSIGN_OR_RETURN(operands[i], MakeReshapeHlo(dims[i].shape(), operands[i]));
   }
 

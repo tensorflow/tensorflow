@@ -51,6 +51,18 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "worker_thread_test",
+    srcs = ["worker_thread_test.cc"],
+    deps = [
+        ":worker_thread",
+        "//xla/hlo/testlib:test",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "pjrt_c_api_client",
     hdrs = ["pjrt_c_api_client.h"],
@@ -1535,6 +1547,7 @@ cc_library(
         "//xla:future",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla/pjrt/c:pjrt_c_api_device_event_hdrs",
         "//xla/pjrt/c:pjrt_c_api_raw_buffer_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_status_utils",
         "//xla/tsl/concurrency:async_value",

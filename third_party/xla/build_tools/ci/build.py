@@ -488,6 +488,7 @@ oneapi_build_tag_filter = (
     "-cuda-only",
     "-rocm-only",
     "-no-oneapi",
+    "gpu",
 )
 
 oneapi_test_tag_filter = (
@@ -501,6 +502,7 @@ oneapi_test_tag_filter = (
     "-cuda-only",
     "-rocm-only",
     "-no-oneapi",
+    "gpu",
 )
 
 Build(

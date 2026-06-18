@@ -654,6 +654,42 @@ Future<> CommonPjRtRawBufferImpl::CopyRawDeviceToHost(void* dst, int64_t offset,
                                "CommonPjRtRawBuffer", "CopyRawDeviceToHost");
 }
 
+void CommonPjRtRawBufferImpl::ScheduleCopyTo(
+    PjRtDeviceEventRefVector transfer_dependency_events,
+    PjRtRawBufferRef dst_raw_buffer,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise,
+    absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
+  PjRtDeviceEventSpan events_span(transfer_dependency_events);
+  CommonPjRtClient* client =
+      absl::down_cast<CommonPjRtClient*>(memory_space()->client());
+  AsyncWorkRunner* async_work_runner = client->async_work_runner();
+
+  xla::ExecuteWhenReady(
+      events_span, async_work_runner,
+      [src_raw_buffer = tsl::FormRef(this),
+       dst_raw_buffer = std::move(dst_raw_buffer),
+       definition_event_promise = std::move(definition_event_promise),
+       src_usage_event_promise = std::move(src_usage_event_promise),
+       allocation_event = std::move(allocation_event),
+       transfer_dependency_events =
+           std::move(transfer_dependency_events)]() mutable {
+        absl::Status status = xla::GetErrors(transfer_dependency_events);
+        if (!status.ok()) {
+          if (allocation_event) {
+            std::move(allocation_event)(status);
+          }
+          definition_event_promise.SetError(status);
+          src_usage_event_promise.SetError(status);
+          return;
+        }
+
+        src_raw_buffer->CopyTo(
+            std::move(dst_raw_buffer), std::move(definition_event_promise),
+            std::move(src_usage_event_promise), std::move(allocation_event));
+      });
+}
+
 void CommonPjRtBufferImpl::CopyToRemoteDevice(
     Future<std::string> serialized_descriptor, RemoteSendCallback on_done) {
   auto* common_client = absl::down_cast<CommonPjRtClient*>(client());
@@ -1074,7 +1110,7 @@ CommonPjRtClient::MakeCrossHostReceiveBuffers(
 
   ASSIGN_OR_RETURN(auto memory_space, pjrt_device->default_memory_space());
 
-  std::vector<tsl::RCReference<PjRtRawBuffer>> raw_buffers;
+  std::vector<PjRtRawBufferRef> raw_buffers;
   PjRtDeviceEventRefVector transfer_dependency_events;
   std::vector<xla::Shape> dst_shapes;
   raw_buffers.reserve(shapes.size());
@@ -1112,12 +1148,9 @@ CommonPjRtClient::MakeCrossHostReceiveBuffers(
   std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   buffers.reserve(shapes.size());
   for (int i = 0; i < raw_buffers.size(); ++i) {
-    CommonPjRtRawBuffer* common_raw_buffer =
-        absl::down_cast<CommonPjRtRawBuffer*>(raw_buffers[i].get());
     ASSIGN_OR_RETURN(
         std::unique_ptr<PjRtBuffer> output_buffer,
-        DefineBuffer(std::move(dst_shapes[i]), memory_space,
-                     tsl::FormRef(common_raw_buffer),
+        DefineBuffer(std::move(dst_shapes[i]), memory_space, raw_buffers[i],
                      {PjRtDeviceEventPtr(definition_events[i]).CopyRef()}));
     buffers.push_back(std::move(output_buffer));
   }
@@ -1174,7 +1207,7 @@ absl::StatusOr<std::vector<Future<>>> CommonPjRtClient::CrossHostSendBuffers(
 
   // Extract the raw buffers and definition events for each of the input send
   // buffers.
-  std::vector<tsl::RCReference<PjRtRawBuffer>> raw_buffers;
+  std::vector<PjRtRawBufferRef> raw_buffers;
   raw_buffers.reserve(buffers.size());
 
   PjRtDeviceEventRefVector transfer_dependencies;
@@ -2362,8 +2395,6 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::DirectCopyToMemorySpace(
     PjRtMemorySpace* dst_memory_space) {
   tsl::profiler::TraceMe traceme("CopyToMemorySpace");
-  CommonPjRtClient* const src_client =
-      absl::down_cast<CommonPjRtClient*>(client());
   if (!dynamic_cast<CommonPjRtClient*>(dst_memory_space->client())) {
     return absl::InvalidArgumentError(
         "DirectCopyToMemorySpace only supported across CommonPjRtClient "
@@ -2382,9 +2413,8 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
       definition_events, allocation_event));
   if (src_raw_buffer) {
     src_raw_buffer->ScheduleCopyTo(
-        src_client->async_work_runner(), std::move(definition_events),
-        std::move(dst_raw_buffer), std::move(definition_event_promise),
-        std::move(src_usage_event_promise),
+        std::move(definition_events), std::move(dst_raw_buffer),
+        std::move(definition_event_promise), std::move(src_usage_event_promise),
         ToAllocationCallback(std::move(allocation_event)));
   }
   return dst_buffer;
@@ -2394,8 +2424,6 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::DirectCopyToMemorySpace(PjRtBuffer* donated_dst) {
   PjRtMemorySpace* dst_memory_space = donated_dst->memory_space();
   tsl::profiler::TraceMe traceme("CopyToMemorySpace");
-  CommonPjRtClient* const src_client =
-      absl::down_cast<CommonPjRtClient*>(client());
   if (!dynamic_cast<CommonPjRtClient*>(dst_memory_space->client())) {
     return absl::InvalidArgumentError(
         "DirectCopyToMemorySpace only supported across CommonPjRtClient "
@@ -2426,9 +2454,8 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(PjRtBuffer* donated_dst) {
       definition_events, allocation_event));
   if (src_raw_buffer) {
     src_raw_buffer->ScheduleCopyTo(
-        src_client->async_work_runner(), std::move(definition_events),
-        std::move(dst_raw_buffer), std::move(definition_event_promise),
-        std::move(src_usage_event_promise),
+        std::move(definition_events), std::move(dst_raw_buffer),
+        std::move(definition_event_promise), std::move(src_usage_event_promise),
         ToAllocationCallback(std::move(allocation_event)));
   }
   return dst_buffer;
@@ -2643,7 +2670,7 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
   return result;
 }
 
-absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>
+absl::StatusOr<PjRtRawBufferRef>
 CommonPjRtBufferImpl::CreateRawAliasOfBuffer() {
   PjRtRawBufferRef raw_buffer;
   RETURN_IF_ERROR(AcquireScopedRawBuffer(
@@ -2657,7 +2684,7 @@ CommonPjRtBufferImpl::CreateRawAliasOfBuffer() {
   return raw_buffer;
 }
 
-static std::optional<absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>>
+static std::optional<absl::StatusOr<PjRtRawBufferRef>>
 CommonPjRtBufferImpl_CreateRawAliasOfBuffer(PjRtBuffer* buffer) {
   if (auto* common_buffer = dynamic_cast<CommonPjRtBufferImpl*>(buffer)) {
     return common_buffer->CreateRawAliasOfBuffer();

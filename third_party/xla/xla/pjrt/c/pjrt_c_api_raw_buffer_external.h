@@ -91,6 +91,13 @@ class PjRtCApiRawBuffer : public PjRtRawBuffer {
       PjRtDeviceEventPromiseRef src_usage_event_promise,
       absl::AnyInvocable<void(absl::Status) &&> allocation_event) override;
 
+  void ScheduleCopyTo(
+      PjRtDeviceEventRefVector transfer_dependency_events,
+      PjRtRawBufferRef dst_raw_buffer,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise,
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event) override;
+
   PjRtDeviceEventPtr GetRawBufferAsyncValue() override;
   bool is_mutable() const override;
 

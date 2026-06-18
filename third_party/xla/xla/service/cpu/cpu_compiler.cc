@@ -519,8 +519,6 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
     // - Improving performance by allowing parallelism.
     // YNNPACK doesn't need TreeReductionRewriter to do either of these.
     pipeline->AddPass<TreeReductionRewriter>(
-        /*reduce_window_size=*/32,
-        /*reduce_window_size_stride_one_dim=*/std::nullopt,
         [](const HloInstruction* hlo) {
           return !(IsInstructionPreferredByYnn(hlo) &&
                    IsReduceLikeOpSupportedByYnn(hlo));

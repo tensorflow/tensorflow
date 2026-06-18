@@ -103,7 +103,6 @@ struct EquivalentConst : public llvm::DenseMapInfo<Operation*> {
     auto* lhs = const_cast<Operation*>(lhs_c);
     auto* rhs = const_cast<Operation*>(rhs_c);
     if (lhs == rhs) return true;
-    if (lhs == getEmptyKey() || rhs == getEmptyKey()) return false;
     // Attributes are stored sorted by name.
     StringAttr name_id =
         cast<TFGraphDialect>(lhs->getDialect())->getNameAttrIdentifier();

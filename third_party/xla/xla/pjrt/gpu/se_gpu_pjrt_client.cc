@@ -114,6 +114,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -132,6 +133,7 @@ limitations under the License.
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM) || \
     defined(TENSORFLOW_USE_SYCL)
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/pjrt/gpu/gpu_metrics.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
@@ -139,6 +141,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/stream_executor/device_address_vmm_allocator.h"
+#include "xla/tsl/framework/scoped_allocation_trace.h"
 #include "xla/xla.pb.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM || TENSORFLOW_USE_SYCL
 
@@ -447,14 +450,13 @@ class PreparedTransfer {
  public:
   StreamExecutorGpuClient* client_;
   gpu::GpuCliqueKey clique_key_;
-  tsl::RCReference<PjRtRawBuffer> raw_buffer_;
+  PjRtRawBufferRef raw_buffer_;
   tsl::AsyncValueRef<BufferSequencingEvent> transfer_event_;
   AcquiredCliqueAndCommunicator clique_and_communicator_;
   bool is_sender_;
 
   PreparedTransfer(StreamExecutorGpuClient* client,
-                   gpu::GpuCliqueKey clique_key,
-                   tsl::RCReference<PjRtRawBuffer> raw_buffer,
+                   gpu::GpuCliqueKey clique_key, PjRtRawBufferRef raw_buffer,
                    tsl::AsyncValueRef<BufferSequencingEvent> transfer_event,
                    AcquiredCliqueAndCommunicator clique_and_communicator,
                    bool is_sender)
@@ -555,8 +557,7 @@ absl::StatusOr<AcquiredCliqueAndCommunicator> AcquireCliqueAndCommunicator(
 absl::StatusOr<PreparedTransfer> PrepareTransfer(
     StreamExecutorGpuClient* client, gpu::GpuCollectives* gpu_collectives,
     se::Stream* stream, GlobalDeviceId src_global_device_id,
-    GlobalDeviceId dst_global_device_id,
-    tsl::RCReference<PjRtRawBuffer> raw_buffer,
+    GlobalDeviceId dst_global_device_id, PjRtRawBufferRef raw_buffer,
     gpu::AcquiredCliquesMap& acquired_cliques_map,
     tsl::AsyncValueRef<BufferSequencingEvent> transfer_event, bool is_sender) {
   GlobalDeviceId src_device(src_global_device_id.value());
@@ -813,8 +814,8 @@ void StreamExecutorGpuClient::ScheduleTransfersOnLocalDevice(
          se::Stream* stream) -> absl::Status {
     for (PreparedTransfer& prepared_transfer : prepared_transfers) {
       // Launch the transfer.
-      auto mem = tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(
-                     prepared_transfer.raw_buffer_.get())
+      auto mem = prepared_transfer.raw_buffer_
+                     ->down_cast<PjRtStreamExecutorRawBuffer>()
                      ->device_buffer();
 
       // We always set `peer` to RankId(1) if we are the sender, and RankId(0)
@@ -996,14 +997,11 @@ void StreamExecutorGpuClient::ScheduleRemoteSend(
                  *std::move(serialized_descriptor)]() mutable {
               auto status = [&]() -> absl::Status {
                 RETURN_IF_ERROR(GetErrors(definition_events));
-                auto* local_device =
-                    tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(
-                        raw_buffer.get())
-                        ->local_device();
+                auto* se_raw_buffer =
+                    raw_buffer->down_cast<PjRtStreamExecutorRawBuffer>();
+                auto* local_device = se_raw_buffer->local_device();
                 auto* stream = local_device->GetDeviceToDeviceStream();
-                auto mem = tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(
-                               raw_buffer.get())
-                               ->device_buffer();
+                auto mem = se_raw_buffer->device_buffer();
                 CliqueId clique_id(serialized_descriptor);
 
                 // Create a communicator.
@@ -1078,8 +1076,7 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
       ASSIGN_OR_RETURN(CliqueId clique_id,
                        gpu_collectives->CreateUniqueCliqueId());
       auto mem =
-          tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(raw_buffer.get())
-              ->device_buffer();
+          raw_buffer->down_cast<PjRtStreamExecutorRawBuffer>()->device_buffer();
 
       // Notify the caller with the CliqueId. They will send the id to the
       // sender.
@@ -1430,6 +1427,26 @@ GetStreamExecutorGpuDeviceAllocator(
       return absl::UnimplementedError(
           "VMM allocator is only supported with CUDA.");
 #endif  // GOOGLE_CUDA
+    }
+
+    case GpuAllocatorConfig::Kind::kAddress: {
+      // Synchronous passthrough allocator. Unlike kPlatform (which returns
+      // nullptr to share the Backend/LocalClient allocator with TF), this
+      // constructs a dedicated StreamExecutorAddressAllocator at the PJRT
+      // level and bypasses the BFC allocator entirely.
+      LOG(INFO) << "Using address (synchronous passthrough) allocator.";
+      if (allocator_config.collective_memory_size != 0) {
+        LOG(WARNING)
+            << "collective_memory_size is non-zero, but allocator kind is set "
+               "to \"address\". Collective memory will not be allocated.";
+      }
+      std::vector<se::StreamExecutor*> executors;
+      executors.reserve(addressable_devices.size());
+      for (const auto& [ordinal, device] : addressable_devices) {
+        executors.push_back(device->executor());
+      }
+      return std::make_unique<se::StreamExecutorAddressAllocator>(platform,
+                                                                  executors);
     }
   }
 
@@ -2037,6 +2054,10 @@ StreamExecutorGpuClient::RunAsync(
       "[", device_ordinal, "] GpuExecutable::ExecuteAsyncOnStreamImpl(",
       gpu_exec->name(), ")"));
 
+  // Attribute all device memory allocations to the gpu executable.
+  tsl::ScopedAllocationTrace allocation_trace(
+      "xla.execute", {{"executable", gpu_exec->name()}});
+
   // GpuExecutable always bound to a single GpuContext during its execution, so
   // we activate it once to skip expensive context activations later.
   auto activation = executor->Activate();
@@ -2095,8 +2116,8 @@ StreamExecutorGpuClient::RunAsync(
         } else {
           param_no = allocation.parameter_number();
         }
-        buffer = tensorflow::down_cast<const xla::PjRtStreamExecutorRawBuffer*>(
-                     flat_arguments[param_no].get())
+        buffer = flat_arguments[param_no]
+                     ->down_cast<const xla::PjRtStreamExecutorRawBuffer>()
                      ->device_buffer()
                      ->mem();
         if (buffer.is_null() && buffer.size() > 0) {
@@ -2114,10 +2135,17 @@ StreamExecutorGpuClient::RunAsync(
         }
       } else {
         // Allocate each allocation that might escape, or is the temp buffer.
-        CHECK(allocation.maybe_live_out() ||
-              allocation.IsPreallocatedTempBuffer());
+        bool is_live_out = allocation.maybe_live_out();
+        bool is_temp_buffer = allocation.IsPreallocatedTempBuffer();
+        CHECK(is_live_out || is_temp_buffer);  // Crash OK
+
         int64_t buffer_size = allocation.size();
         if (buffer_size > 0) {
+          tsl::ScopedAllocationTrace allocation_trace(
+              "xla.buffer", {{"kind", is_temp_buffer ? "temp" : "live_out"},
+                             {"allocation_index", i},
+                             {"requested_bytes", buffer_size},
+                             {"memory_space", allocation.color()}});
           ASSIGN_OR_RETURN(
               se::ScopedDeviceAddress<uint8_t> owning_buffer,
               memory_allocator->Allocate(device_ordinal, buffer_size,
@@ -2147,15 +2175,15 @@ StreamExecutorGpuClient::RunAsync(
         << "Looking at: allocation " << output_info.allocation_index
         << " @ index: " << index.ToString();
 
-    auto buf =
-        tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(results[i].get())
-            ->device_buffer();
+    auto buf = results[i]
+                   .get()
+                   ->down_cast<PjRtStreamExecutorRawBuffer>()
+                   ->device_buffer();
     if (output_info.alias_config) {
-      auto input = tensorflow::down_cast<xla::PjRtStreamExecutorRawBuffer*>(
-                       flat_arguments[parameter_is_tupled_arguments
-                                          ? allocation->param_shape_index()[0]
-                                          : allocation->parameter_number()]
-                           .get())
+      auto input = flat_arguments[parameter_is_tupled_arguments
+                                      ? allocation->param_shape_index()[0]
+                                      : allocation->parameter_number()]
+                       ->down_cast<PjRtStreamExecutorRawBuffer>()
                        ->device_buffer();
       bool is_donated = input == buf;
       if (output_info.alias_config->must_alias() && !is_donated) {
@@ -2182,6 +2210,16 @@ StreamExecutorGpuClient::RunAsync(
                "buffer is not donated; allocating a fresh buffer";
         int64_t allocation_size = ShapeUtil::ByteSizeOf(
             ShapeUtil::GetSubshape(gpu_exec->result_shape(), index));
+        const HloInputOutputAliasConfig::Alias& alias =
+            *output_info.alias_config;
+        const bool must_alias = alias.must_alias();
+        tsl::ScopedAllocationTrace copy_protection_trace(
+            "xla.buffer",
+            {{"kind", "live_out_copy_protection"},
+             {"allocation_index", output_info.allocation_index},
+             {"requested_bytes", allocation_size},
+             {"memory_space", allocation->color()},
+             {"alias_kind", must_alias ? "must_alias" : "may_alias"}});
         absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> allocated_buffer =
             memory_allocator->Allocate(device_ordinal, allocation_size,
                                        /*retry_on_failure=*/true,

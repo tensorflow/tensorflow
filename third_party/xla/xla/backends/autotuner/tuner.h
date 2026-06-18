@@ -22,13 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "absl/types/span.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
@@ -36,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/executable.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 
@@ -54,12 +50,10 @@ class Tuner {
     bool crash_on_check_failure = false;
     // Window size in microseconds to consider for scratch bytes optimization.
     int scratch_bytes_window_size_us = 2;
-    // If not empty, detailed logs will be written to the specified file path.
-    std::string dump_logs_to = "";
   };
 
+  // TODO(b/519057668): Move these types to a shared header file.
   using Config = CodegenOrchestrator::Config;
-
   struct ExecutableCandidate {
     Config config;
     std::unique_ptr<Executable> executable;
@@ -80,7 +74,8 @@ class Tuner {
     AutotuneResult::FailureResult ToProto() const;
   };
 
-  struct ConfigResult {
+  // TODO(b/519057668): Move this struct and ToProto to a header file.
+  struct ConfigProfile {
     Config config;
     std::optional<Failure> failure;
     absl::Duration duration = absl::ZeroDuration();
@@ -92,22 +87,18 @@ class Tuner {
   };
 
   static absl::StatusOr<std::unique_ptr<Tuner>> Create(
-      std::unique_ptr<Profiler> profiler,
-      CodegenOrchestrator* absl_nonnull orchestrator, Options options);
+      std::unique_ptr<Profiler> profiler, Options options);
 
-  // Tunes and returns the best config. Thread-safe and returns a future that
-  // will contain the best config.
-  tsl::Future<Config> GetTunedConfig(const HloInstruction* instr);
+  absl::StatusOr<std::vector<ConfigProfile>> ProfileAll(
+      std::vector<ExecutableCandidate> candidates,
+      const HloInstruction* instr = nullptr);
 
-  // Dumps the autotuning logs to the specified file path.
-  absl::Status DumpLogsToFile();
+  absl::StatusOr<ConfigProfile> PickBestConfig(
+      std::vector<ConfigProfile>& results);
 
  private:
-  Tuner(std::unique_ptr<Profiler> profiler, CodegenOrchestrator* orchestrator,
-        Options options)
-      : profiler_(std::move(profiler)),
-        orchestrator_(orchestrator),
-        options_(options) {}
+  Tuner(std::unique_ptr<Profiler> profiler, Options options)
+      : profiler_(std::move(profiler)), options_(options) {}
 
   struct OutputCluster {
     ScopedShapedBuffer representative;
@@ -115,18 +106,11 @@ class Tuner {
     bool has_trusted_member = false;
   };
 
-  absl::StatusOr<std::vector<ConfigResult>> ProfileAll(
-      std::vector<ExecutableCandidate> candidates,
-      const HloInstruction* instr = nullptr);
-
-  ConfigResult ProfileCandidate(ExecutableCandidate candidate,
-                                InputBuffers& input_buffers,
-                                std::vector<OutputCluster>& clusters,
-                                bool is_trusted_config, bool allow_new_cluster)
+  ConfigProfile ProfileCandidate(ExecutableCandidate candidate,
+                                 InputBuffers& input_buffers,
+                                 std::vector<OutputCluster>& clusters,
+                                 bool is_trusted_config, bool allow_new_cluster)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(profiler_m_);
-
-  absl::StatusOr<ConfigResult> PickBestConfig(
-      std::vector<ConfigResult>& results);
 
   int AssignToOutputCluster(std::vector<OutputCluster>& clusters,
                             ScopedShapedBuffer& output, bool is_trusted_config,
@@ -134,16 +118,12 @@ class Tuner {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(profiler_m_);
 
   void DemoteNonWinningClusterConfigs(
-      std::vector<ConfigResult>& results,
+      std::vector<ConfigProfile>& results,
       const std::vector<OutputCluster>& clusters);
 
-  void LogConfigResults(const HloInstruction& instr,
-                        absl::Span<const ConfigResult> results);
-
+ public:
   std::unique_ptr<Profiler> profiler_ ABSL_GUARDED_BY(profiler_m_);
-  CodegenOrchestrator* absl_nonnull orchestrator_;
   Options options_;
-  AutotuningLogs logs_;
   absl::Mutex profiler_m_;
 };
 

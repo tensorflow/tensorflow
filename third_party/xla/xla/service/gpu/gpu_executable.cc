@@ -362,10 +362,27 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
 
 absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
     Params params) {
-  if (params.buffer_assignment_proto.has_value() &&
-      params.buffer_assignment != nullptr) {
-    return absl::InvalidArgumentError(
-        "Cannot set both buffer_assignment_proto and buffer_assignment.");
+  if (params.buffer_assignment != nullptr) {
+    if (params.buffer_assignment_proto.has_value()) {
+      return absl::InvalidArgumentError(
+          "Cannot set both buffer_assignment_proto and buffer_assignment.");
+    }
+
+    params.buffer_allocations_debug_summary =
+        params.buffer_assignment->ToVerboseString(
+            params.alias_info.get(),
+            params.debug_options.xla_debug_buffer_assignment_show_max());
+  } else {
+    if (!params.buffer_assignment_proto.has_value()) {
+      return absl::InvalidArgumentError(
+          "Must set either buffer_assignment_proto or buffer_assignment.");
+    }
+
+    if (params.buffer_allocations_debug_summary.empty()) {
+      return absl::InvalidArgumentError(
+          "Must set buffer_allocations_debug_summary when "
+          "buffer_assignment_proto is set.");
+    }
   }
 
   int64_t next_idx = 0;
@@ -413,7 +430,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(params.module_stats), std::move(thunk_sequence_proto),
       std::move(params.executable_abi_version),
       std::move(params.cpu_target_machine_options),
-      std::move(params.buffer_assignment_proto)));
+      std::move(params.buffer_assignment_proto),
+      std::move(params.buffer_allocations_debug_summary)));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -433,7 +451,8 @@ GpuExecutable::GpuExecutable(
     absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
     se::ExecutableAbiVersion executable_abi_version,
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
-    std::optional<BufferAssignmentProto> buffer_assignment_proto)
+    std::optional<BufferAssignmentProto> buffer_assignment_proto,
+    std::string buffer_allocations_debug_summary)
     : Executable(std::move(debug_module)),
       binary_(std::move(binary)),
       dnn_compiled_graphs_(std::move(dnn_compiled_graphs)),
@@ -457,7 +476,9 @@ GpuExecutable::GpuExecutable(
       enable_debug_info_manager_(enable_debug_info_manager),
       thunk_sequence_proto_(std::move(thunk_sequence_proto)),
       executable_abi_version_(std::move(executable_abi_version)),
-      cpu_target_machine_options_(std::move(cpu_target_machine_options)) {
+      cpu_target_machine_options_(std::move(cpu_target_machine_options)),
+      buffer_allocations_debug_summary_(
+          std::move(buffer_allocations_debug_summary)) {
   if (gpu_version_.IsRocm()) {
     // ROCm uses hsaco hashes to distinguish between modules.
     // Bad things happen if multiple modules with identical code are loaded.
@@ -1405,10 +1426,8 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 }
 
 absl::Status GpuExecutable::VerboseAllocationError(absl::Status s) {
-  return ResourceExhausted(
-      "%s\n%s\n", s.message(),
-      buffer_assignment_->ToVerboseString(alias_info_.get(),
-                                          debug_buffer_assignment_show_max_));
+  return ResourceExhausted("%s\n%s\n", s.message(),
+                           buffer_allocations_debug_summary_);
 }
 
 // VA remapping execution flow for 2 consecutive calls on the same executor:
@@ -1640,6 +1659,47 @@ absl::Status GpuExecutable::ExecuteThunksWithVaRemapping(
   return absl::OkStatus();
 }
 
+void GpuExecutable::LogChangedAllocationsInBetweenExecutions(
+    const BufferAllocations& buffer_allocations,
+    const ServiceExecutableRunOptions* run_options) {
+  se::StreamExecutor* executor = run_options->stream()->parent();
+
+  // Collect the set of allocations that changed between executions.
+  std::vector<std::pair<int32_t, std::string>> changed_allocations;
+
+  absl::MutexLock lock(module_handle_mutex_);
+  if (module_allocations_.find(executor) == module_allocations_.end()) {
+    std::vector<se::DeviceAddressBase> allocs_addr;
+    allocs_addr.reserve(buffer_allocations.size());
+    for (int i = 0; i < buffer_allocations.size(); i++) {
+      allocs_addr.push_back(buffer_allocations.GetDeviceAddress(i));
+    }
+    module_allocations_[executor] = std::move(allocs_addr);
+  } else {
+    for (int i = 0; i < buffer_allocations.size(); i++) {
+      if (module_allocations_[executor][i].IsSameAs(
+              buffer_allocations.GetDeviceAddress(i))) {
+        continue;
+      }
+      module_allocations_[executor][i] = buffer_allocations.GetDeviceAddress(i);
+      const BufferAllocation& allocation = *allocation_ptrs_[i];
+      const char* allocation_type = allocation.is_entry_computation_parameter()
+                                        ? "parameter"
+                                    : allocation.maybe_live_out() ? "live-out"
+                                                                  : "temp";
+      changed_allocations.emplace_back(i, allocation_type);
+    }
+  }
+
+  if (!changed_allocations.empty()) {
+    XLA_VLOG_DEVICE(5, executor->device_ordinal()) << absl::StreamFormat(
+        "Buffer allocations changed address between module %s executions: "
+        "[%s]",
+        module_name_,
+        absl::StrJoin(changed_allocations, ", ", absl::PairFormatter(":")));
+  }
+}
+
 std::optional<BufferAssignmentProto> GpuExecutable::buffer_assignment_proto()
     const {
   if (buffer_assignment_ != nullptr) {
@@ -1658,48 +1718,7 @@ absl::Status GpuExecutable::ExecuteThunks(
   });
 
   if (VLOG_IS_ON(5)) {
-    // Debug code to compare current allocation's address with previous run's
-    // address, and report the allocation info if memory addressed changed.
-    // Useful for identify in user's model if it is command buffer perf friendly
-    // (no command buffer update cost).
-    se::StreamExecutor* executor = run_options->stream()->parent();
-
-    // Collect the set of allocations that changed between executions.
-    std::vector<std::pair<int32_t, std::string>> changed_allocations;
-
-    absl::MutexLock lock(module_handle_mutex_);
-    if (module_allocations_.find(executor) == module_allocations_.end()) {
-      std::vector<se::DeviceAddressBase> allocs_addr;
-      allocs_addr.reserve(buffer_allocations.size());
-      for (int i = 0; i < buffer_allocations.size(); i++) {
-        allocs_addr.push_back(buffer_allocations.GetDeviceAddress(i));
-      }
-      module_allocations_[executor] = std::move(allocs_addr);
-    } else {
-      for (int i = 0; i < buffer_allocations.size(); i++) {
-        if (module_allocations_[executor][i].IsSameAs(
-                buffer_allocations.GetDeviceAddress(i))) {
-          continue;
-        }
-        module_allocations_[executor][i] =
-            buffer_allocations.GetDeviceAddress(i);
-        const BufferAllocation& allocation =
-            buffer_assignment_->GetAllocation(i);
-        const char* allocation_type =
-            allocation.is_entry_computation_parameter() ? "parameter"
-            : allocation.maybe_live_out()               ? "live-out"
-                                                        : "temp";
-        changed_allocations.emplace_back(i, allocation_type);
-      }
-    }
-
-    if (!changed_allocations.empty()) {
-      XLA_VLOG_DEVICE(5, executor->device_ordinal()) << absl::StreamFormat(
-          "Buffer allocations changed address between module %s executions: "
-          "[%s]",
-          module_name_,
-          absl::StrJoin(changed_allocations, ", ", absl::PairFormatter(":")));
-    }
+    LogChangedAllocationsInBetweenExecutions(buffer_allocations, run_options);
   }
 
   se::DeviceAddressAllocator* const memory_allocator = run_options->allocator();
@@ -1752,11 +1771,6 @@ absl::Status GpuExecutable::ExecuteThunks(
 }
 
 int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
-  // Non-empty PTX but empty cubin: compilation must have failed, return
-  // "unknown".
-  if (binary().empty()) {
-    return -1;
-  }
   int64_t size = binary().size();
   for (const BufferAllocation* allocation : GetAllocations()) {
     if (allocation->is_constant()) {
@@ -1927,6 +1941,7 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
   } else if (buffer_assignment_proto_.has_value()) {
     *proto.mutable_buffer_assignment() = buffer_assignment_proto_.value();
   }
+  proto.set_buffer_allocations_debug_summary(buffer_allocations_debug_summary_);
 
   if (has_module()) {
     *proto.mutable_hlo_module_with_config() = module().ToProtoWithConfig(
@@ -1993,6 +2008,9 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
     params.mlir_allocations->push_back(
         BufferAllocation::FromProto(allocation_proto));
   }
+
+  params.buffer_allocations_debug_summary =
+      proto.buffer_allocations_debug_summary();
 
   for (const auto& [key, value] : proto.dnn_compiled_graphs()) {
     params.dnn_compiled_graphs.emplace(key, value);

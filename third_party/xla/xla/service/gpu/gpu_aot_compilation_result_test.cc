@@ -160,6 +160,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
             events { kind: FREE }
           }
         )pb");
+    params.buffer_allocations_debug_summary = "dummy_summary";
 
     ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
                      GpuExecutable::Create(std::move(params)));

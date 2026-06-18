@@ -212,6 +212,7 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
         out.execution_options,
         FunctionalHloRunner::LoadExecutionOptions(opts.execution_options_path));
   }
+  out.debug_options = GetDebugOptionsFromFlags();
   out.num_replicas = opts.num_replicas < 0
                          ? std::nullopt
                          : std::optional<int>(opts.num_replicas);
@@ -386,16 +387,14 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     if (opts.should_run && !opts.compile_only) {
       std::cout << "\n** Running " << hlo_file << " **\n";
       RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
-          *env.client, GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, running_options, hlo_file, opts.input_format,
-          opts.dump_output_literal_to, opts.task_id, opts.num_nodes,
-          env.kv_store, engine.get()));
+          *env.client, preproc_options, raw_compile_options, running_options,
+          hlo_file, opts.input_format, opts.dump_output_literal_to,
+          opts.task_id, opts.num_nodes, env.kv_store, engine.get()));
     } else {
       std::cout << "\n** Compiling " << hlo_file << " **\n";
       RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
-                          *env.client, GetDebugOptionsFromFlags(),
-                          preproc_options, raw_compile_options, argv[c],
-                          opts.input_format, opts.task_id)
+                          *env.client, preproc_options, raw_compile_options,
+                          argv[c], opts.input_format, opts.task_id)
                           .status());
     }
 

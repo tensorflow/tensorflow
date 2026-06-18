@@ -26,9 +26,11 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/hlo_extractor.h"
+#include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/autotuner/tuner.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -67,6 +69,13 @@ class ConfigAssigner {
     bool select_first_config = false;
     bool expect_all_instructions_in_cache = false;
     bool dump_hlos = false;
+    std::string dump_logs_to = "";
+
+    // Tuner options
+    bool check_buffers = true;
+    float relative_tolerance = 1e-6;
+    bool crash_on_check_failure = false;
+    int scratch_bytes_window_size_us = 2;
   };
 
   using Config = CodegenOrchestrator::Config;
@@ -76,7 +85,7 @@ class ConfigAssigner {
       std::unique_ptr<AutotunerCacheInterface> absl_nonnull
       optimal_config_cache,
       std::unique_ptr<CodegenOrchestrator> absl_nonnull orchestrator,
-      std::unique_ptr<Tuner> tuner = nullptr);
+      std::unique_ptr<Profiler> absl_nullable profiler);
 
   // Online module-level entry point.
   absl::Status AssignConfigs(HloModule* module,
@@ -119,6 +128,10 @@ class ConfigAssigner {
   // Tuned config is updated in the cache if it is provided.
   tsl::Future<Config> GetConfig(const HloInstruction* instr);
 
+  // Tunes and returns the best config. Thread-safe and returns a future that
+  // will contain the best config.
+  tsl::Future<Config> GetTunedConfig(const HloInstruction* instr);
+
   // Returns the cached config for the given HLO instruction, if any.
   // Otherwise, returns std::nullopt.
   std::optional<Config> LookUp(const HloInstruction* instr) const;
@@ -128,10 +141,18 @@ class ConfigAssigner {
   // Dumps HLO before and after applying the config.
   absl::Status DumpHlo(const HloInstruction& instr, const Config& config);
 
+  void LogConfigProfiles(const HloInstruction& instr,
+                         absl::Span<const Tuner::ConfigProfile> profiles,
+                         absl::Span<const Tuner::ConfigProfile> failed_configs);
+
+  // Dumps the autotuning logs to the specified file path, vlogs if requested.
+  absl::Status DumpTuningLogs();
+
   Options options_;
   std::unique_ptr<AutotunerCacheInterface> absl_nonnull optimal_config_cache_;
   std::unique_ptr<CodegenOrchestrator> absl_nonnull orchestrator_;
   std::unique_ptr<Tuner> absl_nullable tuner_;
+  AutotuningLogs logs_;
   int dump_counter_ = 0;
 };
 

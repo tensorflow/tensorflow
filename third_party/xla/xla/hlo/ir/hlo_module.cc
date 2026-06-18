@@ -1614,6 +1614,7 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
   module->input_output_alias_config() = input_output_alias_config();
   module->buffer_donor_config() = buffer_donor_config();
   module->set_is_dynamic(is_dynamic());
+  module->set_hlo_passes_started(hlo_passes_started());
   module->set_frontend_attributes(frontend_attributes());
   *module->metadata() = metadata();
   // The canonical module id should be the same as the unique id from the

@@ -1,0 +1,30 @@
+--- a/python/test/unit/runtime/test_cache_determinism.py
++++ b/python/test/unit/runtime/test_cache_determinism.py
+@@ -74,8 +74,9 @@
+     env["PYTHONHASHSEED"] = str(seed)
+     env["TRITON_CACHE_KEY_TEST_ORDER"] = order
+     env["TRITON_CACHE_KEY_TEST_SEED"] = str(seed)
++    env["TRITON_CACHE_KEY_TEST_MODE"] = mode
+     result = subprocess.run(
+-        [sys.executable, __file__, mode],
++        [sys.executable or sys.argv[0]],
+         check=True,
+         capture_output=True,
+         env=env,
+@@ -117,11 +118,13 @@
+     print(stress_parent.cache_key)
+ 
+ 
+-if __name__ == "__main__":
+-    mode = sys.argv[1]
++if __name__ == "__main__" or "TRITON_CACHE_KEY_TEST_SEED" in os.environ:
++    mode = os.environ.get("TRITON_CACHE_KEY_TEST_MODE") or sys.argv[1]
+     if mode == "identity":
+         _run_identity_case()
+     elif mode == "stress":
+         _run_stress_case()
+     else:
+         raise ValueError(f"unknown mode: {mode}")
++    if "TRITON_CACHE_KEY_TEST_SEED" in os.environ:
++        os._exit(0)
+

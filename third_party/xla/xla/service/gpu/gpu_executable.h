@@ -150,6 +150,7 @@ class GpuExecutable : public Executable {
     se::ExecutableAbiVersion executable_abi_version;
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options;
     std::optional<BufferAssignmentProto> buffer_assignment_proto;
+    std::string buffer_allocations_debug_summary;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
@@ -225,6 +226,13 @@ class GpuExecutable : public Executable {
   // BufferAssignment and will return nullptr.
   const BufferAssignment* buffer_assignment() const {
     return buffer_assignment_.get();
+  }
+
+  // Human readable summary of the buffer allocations. Tailored to debugging
+  // OOMs, includes the Hlo op metadata for every buffer associated with each
+  // allocation.
+  const std::string& buffer_allocations_debug_summary() const {
+    return buffer_allocations_debug_summary_;
   }
 
   // Returns the proto representation of `buffer_assignment()` if available,
@@ -347,7 +355,8 @@ class GpuExecutable : public Executable {
       absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
       se::ExecutableAbiVersion executable_abi_version,
       std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
-      std::optional<BufferAssignmentProto> buffer_assignment_proto);
+      std::optional<BufferAssignmentProto> buffer_assignment_proto,
+      std::string buffer_allocations_debug_summary);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -385,6 +394,13 @@ class GpuExecutable : public Executable {
       CollectiveMemoryCache& collective_memory_cache,
       bool collective_use_minimal_resource);
 
+  // Compare current allocation's address with previous run's address, and
+  // report the allocation info if memory addressed changed. Useful for identify
+  // in user's model if it is command buffer perf friendly (no command buffer
+  // update cost).
+  void LogChangedAllocationsInBetweenExecutions(
+      const BufferAllocations& buffer_allocations,
+      const ServiceExecutableRunOptions* run_options);
 
   // The GPU machine code for the computation, targeting GPUs at
   // compute_capability_.
@@ -506,6 +522,11 @@ class GpuExecutable : public Executable {
   std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options_;
 
   CollectiveMemoryCache collective_memory_cache_;
+
+  // Human readable summary of the buffer allocations. Tailored to debugging
+  // OOMs, includes the Hlo op metadata for every buffer associated with each
+  // allocation.
+  std::string buffer_allocations_debug_summary_;
 };
 
 absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

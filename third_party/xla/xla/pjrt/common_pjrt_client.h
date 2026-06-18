@@ -343,7 +343,7 @@ class CommonPjRtClient : public PjRtClient {
   // be ready before the receive can complete. Returns a vector of definition
   // events that will be fulfilled once the receive operation completes.
   virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
-      absl::Span<const tsl::RCReference<PjRtRawBuffer>> buffers,
+      absl::Span<const PjRtRawBufferRef> buffers,
       PjRtCrossHostRecvNotifier notifier,
       PjRtDeviceEventSpan transfer_dependency_avs) {
     return absl::UnimplementedError(
@@ -371,7 +371,7 @@ class CommonPjRtClient : public PjRtClient {
   struct CrossHostTransferSpec {
     GlobalDeviceId src_global_device_id;
     GlobalDeviceId dst_global_device_id;
-    tsl::RCReference<PjRtRawBuffer> raw_buffer;
+    PjRtRawBufferRef raw_buffer;
   };
 
   virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
@@ -747,13 +747,20 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   std::unique_ptr<DispatchInfo::Extras> extras_;
 };
 
-class CommonPjRtRawBufferImpl : public CommonPjRtRawBuffer {
+class CommonPjRtRawBufferImpl : public PjRtRawBuffer {
  public:
   Future<> CopyRawHostToDevice(const void* src, int64_t offset,
                                int64_t transfer_size) override;
 
   Future<> CopyRawDeviceToHost(void* dst, int64_t offset,
                                int64_t transfer_size) override;
+
+  void ScheduleCopyTo(
+      PjRtDeviceEventRefVector transfer_dependency_events,
+      PjRtRawBufferRef dst_raw_buffer,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise,
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event) override;
 };
 
 // TODO(parkers): Merge everything here into CommonPjRtBuffer.
@@ -829,7 +836,7 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   Future<> LazyToLiteral(
       absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override;
 
-  absl::StatusOr<tsl::RCReference<PjRtRawBuffer>> CreateRawAliasOfBuffer();
+  absl::StatusOr<PjRtRawBufferRef> CreateRawAliasOfBuffer();
 
   absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;

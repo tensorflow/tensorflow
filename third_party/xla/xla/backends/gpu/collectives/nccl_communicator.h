@@ -165,6 +165,8 @@ class NcclCommunicator : public GpuCommunicator {
 
   bool IsBlocking() const { return executor_ == nullptr; }
 
+  std::shared_ptr<tsl::Executor> executor() const { return executor_; }
+
   // Polls the communicator until any pending non-blocking operations are done
   // or aborted.
   absl::Status PollUntilDone() const;
@@ -308,9 +310,14 @@ class NcclDeviceCommunicator : public GpuDeviceCommunicator {
   se::PackedKernelArg PackKernelArg() const final;
 
  private:
-  NcclDeviceCommunicator(const NcclCommunicator* comm, ncclDevComm dev_comm);
+  NcclDeviceCommunicator(ncclComm_t parent_comm,
+                         se::StreamExecutor* stream_executor,
+                         std::shared_ptr<tsl::Executor> executor,
+                         ncclDevComm dev_comm);
 
-  const NcclCommunicator* comm_;
+  ncclComm_t parent_comm_;
+  se::StreamExecutor* stream_executor_;
+  std::shared_ptr<tsl::Executor> executor_;
   ncclDevComm dev_comm_;
 };
 

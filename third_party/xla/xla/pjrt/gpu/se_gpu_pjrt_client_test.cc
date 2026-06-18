@@ -91,6 +91,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_device_address_vmm_allocator.h"
 #endif  // GOOGLE_CUDA
 #include "xla/pjrt/gpu/se_gpu_pjrt_client_test_helper.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -2117,10 +2119,7 @@ ENTRY main.5 {
         auto raw_buffer,
         xla::PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
 
-    // TODO(b/b/482307468) Switch to absl::down_cast after upgrade.
-    [[deprecated("remove after absl upgrade")]] auto* opaque_ptr =
-        absl::down_cast<CommonPjRtRawBuffer*>(raw_buffer.get())
-            ->OpaqueDeviceMemoryDataPointer();
+    auto* opaque_ptr = raw_buffer->OpaqueDeviceMemoryDataPointer();
     if (opaque_ptr == last_opaque_ptr) {
       clobbered = true;
     }
@@ -2301,6 +2300,25 @@ TEST(StreamExecutorGpuClientTest,
   EXPECT_TRUE(se_topology->gpu_topology().has_gpu_target_config());
   EXPECT_TRUE(
       se_topology->gpu_topology().host_target_machine_options().has_value());
+}
+
+// The "address" allocator must give a dedicated synchronous passthrough
+// StreamExecutorAddressAllocator at the PJRT level and bypass the BFC allocator
+// (MultiDeviceAdapter) entirely.
+TEST(StreamExecutorGpuClientTest, AddressAllocatorIsSynchronousPassthrough) {
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kAddress;
+  options.allowed_devices = {0};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+
+  auto* pjrt_se_client =
+      absl::down_cast<PjRtStreamExecutorClient*>(client.get());
+  EXPECT_NE(dynamic_cast<se::StreamExecutorAddressAllocator*>(
+                pjrt_se_client->allocator()),
+            nullptr);
+  EXPECT_EQ(dynamic_cast<se::MultiDeviceAdapter*>(pjrt_se_client->allocator()),
+            nullptr);
 }
 
 #if GOOGLE_CUDA

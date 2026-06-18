@@ -420,7 +420,7 @@ message RaggedAllToAllThunkProto {
   reserved 8;
   bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel = 9;
   int64 fast_interconnect_slice_size_override = 10;
-  bool zero_copy_in_one_shot_kernel = 11;
+  reserved 11;
   xla.DebugOptions.CollectivesMode collectives_mode = 12;
 }
 
