@@ -33,7 +33,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using DynamicUpdateSliceTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
+using DynamicUpdateSliceTest = HloInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(DynamicUpdateSliceTest, ShardedInPlaceDUS) {
   // A dynamic-update-slice within a while loop.  This construction is an easy
