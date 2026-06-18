@@ -316,7 +316,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
         thread::ThreadPool::SchedulingParams(
             thread::ThreadPool::SchedulingStrategy::
                 kFixedBlockSize /* strategy */,
-            absl::nullopt /* cost_per_unit */, block_size),
+            std::nullopt /* cost_per_unit */, block_size),
         [&](int64_t batch_and_row_begin, int64_t batch_and_row_end) {
           HandleBatchAndRowRange(
               num_lhs_rows, batch_and_row_begin, batch_and_row_end,
@@ -387,7 +387,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
         thread::ThreadPool::SchedulingParams(
             thread::ThreadPool::SchedulingStrategy::
                 kFixedBlockSize /* strategy */,
-            absl::nullopt /* cost_per_unit */, block_size),
+            std::nullopt /* cost_per_unit */, block_size),
         [&](int64_t batch_and_row_begin, int64_t batch_and_row_end, int tid) {
           HandleBatchAndRowRange(
               num_lhs_cols, batch_and_row_begin, batch_and_row_end,
