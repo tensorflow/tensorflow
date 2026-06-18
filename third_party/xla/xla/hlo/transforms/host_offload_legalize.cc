@@ -992,6 +992,168 @@ absl::StatusOr<bool> FixupInterveningCopies(
   return changed;
 }
 
+using host_offload_utils::InstructionAndShapeIndex;
+
+bool IsHostBuffer(const InstructionAndShapeIndex& node,
+                  absl::flat_hash_set<InstructionAndShapeIndex>& visited) {
+  if (visited.contains(node)) {
+    return false;
+  }
+  visited.insert(node);
+
+  HloInstruction* instr = node.instruction;
+  if (instr->IsCustomCall(memory_annotations::kMoveToHostCustomCallTarget)) {
+    return true;
+  }
+  if (instr->opcode() == HloOpcode::kParameter) {
+    if (instr->parent()->IsEntryComputation()) {
+      const Shape& param_shape =
+          instr->GetModule()
+              ->entry_computation_layout()
+              .parameter_layout(instr->parameter_number())
+              .shape();
+      const Shape& subshape =
+          ShapeUtil::GetSubshape(param_shape, node.shape_index);
+      if (subshape.has_layout() &&
+          subshape.layout().memory_space() == Layout::kHostMemorySpace) {
+        return true;
+      }
+      return false;
+    } else {
+      std::vector<InstructionAndShapeIndex> predecessors =
+          host_offload_utils::GetPredecessors(node);
+      for (const auto& pred : predecessors) {
+        if (IsHostBuffer(pred, visited)) {
+          return true;
+        }
+      }
+      return false;
+    }
+  } else if (instr->operand_count() == 0) {
+    return false;
+  } else {
+    for (int i = 0; i < instr->operand_count(); ++i) {
+      std::vector<InstructionAndShapeIndex> predecessors =
+          host_offload_utils::GetPredecessors(node, i);
+      for (const auto& pred : predecessors) {
+        if (IsHostBuffer(pred, visited)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+bool IsHostBuffer(HloInstruction* instr, const ShapeIndex& index) {
+  absl::flat_hash_set<InstructionAndShapeIndex> visited;
+  return IsHostBuffer(InstructionAndShapeIndex(instr, index), visited);
+}
+
+bool IsUsedByDUS(const InstructionAndShapeIndex& node,
+                 absl::flat_hash_set<InstructionAndShapeIndex>& visited) {
+  if (visited.contains(node)) {
+    return false;
+  }
+  visited.insert(node);
+
+  HloInstruction* instr = node.instruction;
+  if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return true;
+  }
+
+  std::vector<InstructionAndShapeIndex> successors;
+  auto status_or_successors = host_offload_utils::GetSuccessors(node);
+  if (status_or_successors.ok()) {
+    successors = status_or_successors.value();
+  } else {
+    return false;
+  }
+
+  for (const auto& succ : successors) {
+    if (IsUsedByDUS(succ, visited)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsUsedByDUS(HloInstruction* parameter, const ShapeIndex& index) {
+  absl::flat_hash_set<InstructionAndShapeIndex> visited;
+  return IsUsedByDUS(InstructionAndShapeIndex(parameter, index), visited);
+}
+
+absl::StatusOr<bool> InsertMoveToDeviceForLoopInputs(HloModule* module) {
+  bool changed = false;
+  for (HloComputation* computation : module->computations()) {
+    std::vector<HloInstruction*> instructions =
+        computation->MakeInstructionPostOrder();
+    for (HloInstruction* instruction : instructions) {
+      if (instruction->opcode() != HloOpcode::kWhile) {
+        continue;
+      }
+      HloInstruction* while_instr = instruction;
+      HloComputation* body = while_instr->while_body();
+      HloInstruction* init = while_instr->mutable_operand(0);
+      HloInstruction* parameter = body->parameter_instruction(0);
+
+      std::vector<ShapeIndex> mismatched_indices;
+      ShapeUtil::ForEachSubshape(
+          init->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+            if (subshape.IsTuple()) {
+              return;
+            }
+            if (IsHostBuffer(init, index) && IsUsedByDUS(parameter, index)) {
+              mismatched_indices.push_back(index);
+            }
+          });
+
+      if (mismatched_indices.empty()) {
+        continue;
+      }
+
+      VLOG(1) << "Found mismatched loop inputs for " << while_instr->name()
+              << " at indices: "
+              << absl::StrJoin(mismatched_indices, ", ",
+                               [](std::string* out, const ShapeIndex& index) {
+                                 absl::StrAppend(out, index.ToString());
+                               });
+
+      if (init->opcode() == HloOpcode::kTuple &&
+          absl::c_all_of(mismatched_indices, [](const ShapeIndex& index) {
+            return index.size() == 1;
+          })) {
+        for (const ShapeIndex& index : mismatched_indices) {
+          int64_t operand_index = index.front();
+          HloInstruction* operand = init->mutable_operand(operand_index);
+          Shape new_shape = operand->shape();
+          if (new_shape.has_layout()) {
+            new_shape.mutable_layout()->set_memory_space(
+                Layout::kDefaultMemorySpace);
+          }
+
+          HloInstruction* move_to_device =
+              init->parent()->AddInstruction(HloInstruction::CreateCustomCall(
+                  new_shape, {operand},
+                  memory_annotations::kMoveToDeviceCustomCallTarget));
+
+          RETURN_IF_ERROR(
+              init->ReplaceOperandWith(operand_index, move_to_device));
+          changed = true;
+          VLOG(1) << "Inserted MoveToDevice " << move_to_device->name()
+                  << " for loop input " << while_instr->name() << " operand "
+                  << operand_index;
+        }
+      } else {
+        LOG(WARNING)
+            << "General case for loop input mismatch not implemented yet for "
+            << while_instr->name();
+      }
+    }
+  }
+  return changed;
+}
+
 }  // namespace
 
 std::vector<HloInstruction*>
@@ -1029,6 +1191,11 @@ absl::StatusOr<bool> HostOffloadLegalize::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
+  if (run_insert_move_to_device_) {
+    ASSIGN_OR_RETURN(bool inserted_move_to_device,
+                     InsertMoveToDeviceForLoopInputs(module));
+    changed |= inserted_move_to_device;
+  }
   // Look for layout changing copies which happen during host memory offload. If
   // any are found, move them outside of the offload section.
   std::vector<HloInstruction*> starting_instructions =

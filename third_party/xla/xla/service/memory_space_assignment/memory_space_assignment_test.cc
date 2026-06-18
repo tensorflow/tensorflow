@@ -16722,7 +16722,7 @@ ENTRY entry {
   gte_param0_0 = f32[2,3]{1,0} get-tuple-element(prefetch_start_param0), index=0
   gte_param0_1 = s32[]{:T(128)S(2)} get-tuple-element(prefetch_start_param0), index=1
   prefetch_done_param0 = f32[2,3]{1,0} custom-call(p0, gte_param0_0, gte_param0_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
-  
+
   negate0 = f32[2,3]{1,0} negate(prefetch_done_param0)
   negate1 = f32[2,3]{1,0} negate(negate0)
   negate2 = f32[2,3]{1,0} negate(negate1)
@@ -17828,6 +17828,343 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalCommonInputAliasedOutputTest) {
   CheckMemorySpaceForInstructionNames(
       module.get(), {"negate0", "custom_call2", "custom_call0", "custom_call1"},
       kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, AsyncUpdate_No_LateBinding_0) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p = f32[4] parameter(0)
+  ROOT custom-call = f32[4] custom-call(p), custom_call_target="foo"
+}
+
+ENTRY entry {
+  param = f32[4] parameter(0)
+  negate0 = f32[4] negate(param)
+  async-start = ((f32[4]), f32[4], s32[]) async-start(negate0),
+                                                 calls=async_computation
+  negate1 = f32[4] negate(param)
+
+  async-done = f32[4] async-done(async-start), calls=async_computation
+  ROOT add = add(async-done, negate1)
+}
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  LOG(INFO) << "=== HLO AFTER MSA ===\n" << module->ToString();
+  HloInstruction* async_start =
+      module->entry_computation()->GetInstructionWithName("async-start");
+  LOG(INFO) << "async_start shape detailed: "
+            << async_start->shape().ToString(true);
+  LOG(INFO) << "async_start tuple 1 memory space: "
+            << async_start->shape().tuple_shapes(1).layout().memory_space();
+  EXPECT_EQ(async_start->shape().tuple_shapes(1).layout().memory_space(),
+            kAlternateMemorySpace);
+
+  HloInstruction* async_done =
+      module->entry_computation()->GetInstructionWithName("async-done");
+  LOG(INFO) << "async_done memory space: "
+            << async_done->shape().layout().memory_space();
+  EXPECT_EQ(async_done->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, AsyncUpdate_LateBinding_0) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p = f32[4] parameter(0)
+  ROOT custom-call = f32[4] custom-call(p), custom_call_target="foo"
+}
+
+ENTRY entry {
+  param = f32[4] parameter(0)
+  negate0 = f32[4] negate(param)
+  async-start = ((), (), s32[]) async-start(), calls=async_computation
+  negate1 = f32[4] negate(param)
+  async-update = ((f32[4]), f32[4], s32[]) async-update(async-start, negate0),
+                                                 calls=async_computation
+  async-done = f32[4] async-done(async-update), calls=async_computation
+  ROOT add = add(async-done, negate1)
+}
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LOG(INFO) << "=== HLO BEFORE MSA ===\n" << module->ToString();
+  Options options = DefaultMemorySpaceOptions();
+  options.verify = true;
+  std::optional<Options> options_override = std::move(options);
+  AssignMemorySpace(module.get(), std::move(options_override));
+  LOG(INFO) << "=== HLO AFTER MSA (LATE BINDING) ===\n" << module->ToString();
+  // HloInstruction* async_start =
+  //    module->entry_computation()->GetInstructionWithName("async-start");
+  // EXPECT_EQ(async_start->shape().tuple_shapes(1).layout().memory_space(),
+  //          kAlternateMemorySpace);
+
+  HloInstruction* async_update =
+      module->entry_computation()->GetInstructionWithName("async-update");
+  EXPECT_EQ(async_update->shape().tuple_shapes(1).layout().memory_space(),
+            kAlternateMemorySpace);
+
+  HloInstruction* async_done =
+      module->entry_computation()->GetInstructionWithName("async-done");
+  EXPECT_EQ(async_done->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, AsyncUpdate_LateBinding_1) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p = f32[4]{0} parameter(0)
+  ROOT custom-call = f32[4]{0} custom-call(p), custom_call_target="foo"
+}
+
+ENTRY entry {
+  param = f32[4]{0} parameter(0)
+  async-start = ((), (), s32[]) async-start(), calls=async_computation
+  negate1 = f32[4]{0} negate(param)
+  async-update = ((f32[4]{0}), f32[4]{0}, s32[]) async-update(async-start, negate1),
+                                                 calls=async_computation
+  async-done = f32[4]{0} async-done(async-update), calls=async_computation
+  ROOT add = add(async-done, negate1)
+}
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  // HloInstruction* async_start =
+  //    module->entry_computation()->GetInstructionWithName("async-start");
+  // EXPECT_EQ(async_start->shape().tuple_shapes(1).layout().memory_space(),
+  //          kAlternateMemorySpace);
+
+  HloInstruction* async_update =
+      module->entry_computation()->GetInstructionWithName("async-update");
+  EXPECT_EQ(async_update->shape().tuple_shapes(1).layout().memory_space(),
+            kAlternateMemorySpace);
+
+  HloInstruction* async_done =
+      module->entry_computation()->GetInstructionWithName("async-done");
+  EXPECT_EQ(async_done->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+// This one passes
+TEST_F(MemorySpaceAssignmentTest, AsyncUpdate_LateBinding_2) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p = f32[4]{0} parameter(0)
+  ROOT custom-call = f32[4]{0} custom-call(p), custom_call_target="foo"
+}
+
+ENTRY entry {
+  param = f32[4]{0} parameter(0)
+  async-start = ((), (), s32[]) async-start(), calls=async_computation
+  negate1 = f32[4]{0} negate(param)
+  async-update = ((f32[4]{0}), f32[4]{0}, s32[]) async-update(async-start, negate1),
+                                                 calls=async_computation
+  async-done = f32[4]{0} async-done(async-update), calls=async_computation
+  ROOT add = add(async-done, param)
+}
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  // HloInstruction* async_start =
+  //    module->entry_computation()->GetInstructionWithName("async-start");
+  // EXPECT_EQ(async_start->shape().tuple_shapes(1).layout().memory_space(),
+  //          kAlternateMemorySpace);
+
+  HloInstruction* async_update =
+      module->entry_computation()->GetInstructionWithName("async-update");
+  EXPECT_EQ(async_update->shape().tuple_shapes(1).layout().memory_space(),
+            kAlternateMemorySpace);
+
+  HloInstruction* async_done =
+      module->entry_computation()->GetInstructionWithName("async-done");
+  EXPECT_EQ(async_done->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+// This one passes
+TEST_F(MemorySpaceAssignmentTest, AsyncUpdate_LateBinding_3) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p = f32[4]{0} parameter(0)
+  ROOT custom-call = f32[4]{0} custom-call(p), custom_call_target="foo"
+}
+
+ENTRY entry {
+  param = f32[4]{0} parameter(0)
+  param2 = f32[4]{0} parameter(1)
+  async-start = ((), (), s32[]) async-start(), calls=async_computation
+  negate1 = f32[4]{0} negate(param)
+  async-update = ((f32[4]{0}), f32[4]{0}, s32[]) async-update(async-start, negate1),
+                                                 calls=async_computation
+  async-done = f32[4]{0} async-done(async-update), calls=async_computation
+  ROOT add = add(async-done, param2)
+}
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.is_use_allowed_in_alternate_mem_fn = [](const HloUse& use) {
+    if (use.instruction->name() == "negate1") {
+      return false;
+    }
+    return true;
+  };
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  std::optional<Options> options_override = std::move(options);
+  AssignMemorySpace(module.get(), std::move(options_override), {},
+                    &prefetch_interval_picker);
+  // HloInstruction* async_start =
+  //    module->entry_computation()->GetInstructionWithName("async-start");
+  // EXPECT_EQ(async_start->shape().tuple_shapes(1).layout().memory_space(),
+  //          kAlternateMemorySpace);
+
+  HloInstruction* async_update =
+      module->entry_computation()->GetInstructionWithName("async-update");
+  EXPECT_EQ(async_update->shape().tuple_shapes(1).layout().memory_space(),
+            kAlternateMemorySpace);
+
+  HloInstruction* async_done =
+      module->entry_computation()->GetInstructionWithName("async-done");
+  EXPECT_EQ(async_done->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+// This one fails: http://sponge2/d82d7773-2156-4cc8-ab93-9a6d14ead598
+TEST_F(MemorySpaceAssignmentTest, AsyncUpdate_LateBinding_4) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p = f32[4]{0} parameter(0)
+  ROOT custom-call = f32[4]{0} custom-call(p), custom_call_target="foo"
+}
+
+ENTRY entry {
+  param = f32[4]{0} parameter(0)
+  param2 = f32[4]{0} parameter(1)
+  async-start = ((), (), s32[]) async-start(), calls=async_computation
+  negate1 = f32[4]{0} negate(param)
+  async-update = ((f32[4]{0}), f32[4]{0}, s32[]) async-update(async-start, negate1),
+                                                 calls=async_computation
+  async-done = f32[4]{0} async-done(async-update), calls=async_computation
+  ROOT add = add(async-done, param2)
+}
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  // HloInstruction* async_start =
+  //    module->entry_computation()->GetInstructionWithName("async-start");
+  // EXPECT_EQ(async_start->shape().tuple_shapes(1).layout().memory_space(),
+  //          kAlternateMemorySpace);
+
+  HloInstruction* async_update =
+      module->entry_computation()->GetInstructionWithName("async-update");
+  EXPECT_EQ(async_update->shape().tuple_shapes(1).layout().memory_space(),
+            kAlternateMemorySpace);
+
+  HloInstruction* async_done =
+      module->entry_computation()->GetInstructionWithName("async-done");
+  EXPECT_EQ(async_done->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, AsyncUpdate_LateBinding_5) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p = f32[4]{0} parameter(0)
+  ROOT custom-call = f32[4]{0} custom-call(p), custom_call_target="foo"
+}
+
+ENTRY entry {
+  param = f32[4]{0} parameter(0)
+  param2 = f32[4]{0} parameter(1)
+  async-start = ((), (), s32[]) async-start(), calls=async_computation
+  negate1 = f32[4]{0} negate(param)
+  async-update = ((f32[4]{0}), f32[4]{0}, s32[]) async-update(async-start, negate1),
+                                                 calls=async_computation
+  async-done = f32[4]{0} async-done(async-update), calls=async_computation
+  add0 = f32[4]{0} add(async-done, param2)
+  ROOT add = add(add0, param)
+}
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  // HloInstruction* async_start =
+  //    module->entry_computation()->GetInstructionWithName("async-start");
+  // EXPECT_EQ(async_start->shape().tuple_shapes(1).layout().memory_space(),
+  //          kAlternateMemorySpace);
+
+  HloInstruction* async_update =
+      module->entry_computation()->GetInstructionWithName("async-update");
+  EXPECT_EQ(async_update->shape().tuple_shapes(1).layout().memory_space(),
+            kAlternateMemorySpace);
+
+  HloInstruction* async_done =
+      module->entry_computation()->GetInstructionWithName("async-done");
+  EXPECT_EQ(async_done->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, AsyncUpdateAliasedConsumer) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p = f32[4]{0} parameter(0)
+  ROOT custom-call = f32[4]{0} custom-call(p), custom_call_target="foo"
+}
+
+ENTRY entry {
+  param = f32[4]{0} parameter(0)
+  param2 = f32[4]{0} parameter(1)
+  async-start = ((), (), s32[]) async-start(), calls=async_computation
+  negate1 = f32[4]{0:S(1)} negate(param)
+  async-update = ((f32[4]{0:S(1)}), f32[4]{0}, s32[]) async-update(async-start, negate1),
+                                                 calls=async_computation
+  negate2 = f32[4]{0} negate(negate1)
+  async-done = f32[4]{0} async-done(async-update), calls=async_computation
+  ROOT root = f32[4]{0} add(async-done, negate2)
+}
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  auto status = AssignMemorySpaceAndReturnStatus(
+      module.get(), std::nullopt, std::nullopt, &prefetch_interval_picker);
+  if (status.ok()) {
+    EXPECT_OK(module->Verify());
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    const HloInstruction* negate2 = root->operand(1);
+    ASSERT_EQ(negate2->opcode(), HloOpcode::kNegate);
+    // negate2's operand must be negate1 (which is also a negate), NOT
+    // get-tuple-element.
+    EXPECT_EQ(negate2->operand(0)->opcode(), HloOpcode::kNegate);
+  } else {
+    EXPECT_EQ(status.status().code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_NE(status.status().message().find(
+                  "requires allocation in the alternate memory"),
+              std::string::npos);
+  }
 }
 
 }  // namespace
