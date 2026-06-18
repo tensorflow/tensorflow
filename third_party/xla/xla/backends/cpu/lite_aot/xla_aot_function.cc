@@ -81,22 +81,16 @@ CreateExecutableAndSupportingLiterals(
     auto tuple_shapes = nanort_program_shape.result().tuple_shapes();
     results_literals.reserve(tuple_shapes.size());
     for (const Shape& shape : tuple_shapes) {
-      ASSIGN_OR_RETURN(results_literals.emplace_back(),
-                       Literal::Make(shape, /*allocate_arrays=*/true));
+      results_literals.push_back(Literal::CreateFromShape(shape));
     }
 
   } else {
-    ASSIGN_OR_RETURN(results_literals.emplace_back(),
-                     Literal::Make(nanort_program_shape.result(),
-                                   /*allocate_arrays=*/true));
+    results_literals.push_back(
+        Literal::CreateFromShape(nanort_program_shape.result()));
   }
 
-  ASSIGN_OR_RETURN(
-      Literal temp_literal,
-      Literal::Make(
-          ShapeUtil::MakeShape(U8, {static_cast<int64_t>(
-                                       nanort_executable->temp_buffer_size())}),
-          /*allocate_arrays=*/true));
+  Literal temp_literal = Literal::CreateFromShape(ShapeUtil::MakeShape(
+      U8, {static_cast<int64_t>(nanort_executable->temp_buffer_size())}));
 
   return ExecutableAndSupportingLiterals{std::move(nanort_executable),
                                          std::move(results_literals),
