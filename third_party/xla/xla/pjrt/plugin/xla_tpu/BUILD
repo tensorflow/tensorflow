@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
@@ -7,6 +8,18 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
+)
+
+bool_flag(
+    name = "exclude_xprof",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "exclude_xprof_setting",
+    flag_values = {
+        ":exclude_xprof": "True",
+    },
 )
 
 cc_library(
@@ -41,7 +54,13 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_tpu_internal",
         "//xla/pjrt/plugin:plugin_names",
         "//xla/pjrt/plugin:static_registration",
-    ],
+    ] + select({
+        ":exclude_xprof_setting": [
+            "//learning/brain/research/pjrt:tpu_compile_only_support",
+            "//learning/brain/tfrc/executor/next:tpu_api_static_initializer_minimal",
+        ],
+        "//conditions:default": [],
+    }),
     alwayslink = True,
 )
 
@@ -53,7 +72,13 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_tpu_internal",
         "//xla/pjrt/plugin:plugin_names",
         "//xla/pjrt/plugin:static_registration",
-    ],
+    ] + select({
+        ":exclude_xprof_setting": [
+            "//learning/brain/tfrc/executor/next:tpu_api_static_initializer_minimal",
+        ],
+        "//conditions:default": [
+        ],
+    }),
     alwayslink = True,
 )
 
