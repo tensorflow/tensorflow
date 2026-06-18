@@ -2112,6 +2112,11 @@ TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateFromArray(
                              : shape().dimensions(dim);
     CHECK_EQ(values.dim(dim), shape_size);
   }
+  if (LayoutUtil::IsMonotonicWithDim0Major(shape().layout())) {
+    absl::Span<NativeT> data = this->data<NativeT>();
+    std::copy(values.begin(), values.end(), data.begin());
+    return;
+  }
   values.Each([this](absl::Span<const int64_t> indices, NativeT value) {
     this->Set(indices, value);
   });

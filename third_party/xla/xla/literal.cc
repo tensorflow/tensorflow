@@ -620,11 +620,50 @@ void CopyElementsBetween(absl::Span<NativeT> dest,
   if (ShapeUtil::IsZeroElementArray(dest_shape)) {
     return;
   }
-  std::vector<int64_t> index(dest_shape.dimensions().size());
-  do {
-    dest[IndexUtil::MultidimensionalIndexToLinearIndex(dest_shape, index)] =
-        src[IndexUtil::MultidimensionalIndexToLinearIndex(src_shape, index)];
-  } while (IndexUtil::BumpIndices(dest_shape, absl::MakeSpan(index)));
+  if (dest_shape.dimensions().empty()) {
+    dest[0] = src[0];
+    return;
+  }
+  auto dest_m2m = LayoutUtil::MinorToMajor(dest_shape);
+  auto src_m2m = LayoutUtil::MinorToMajor(src_shape);
+  if (dest_m2m == src_m2m) {
+    std::copy(src.begin(), src.begin() + dest.size(), dest.begin());
+    return;
+  }
+  const int64_t rank = dest_shape.dimensions().size();
+  std::vector<int64_t> src_strides(rank, 0);
+  src_strides[src_m2m[0]] = 1;
+  int64_t scale = 1;
+  for (int i = 1; i < src_m2m.size(); ++i) {
+    scale *= src_shape.dimensions(src_m2m[i - 1]);
+    src_strides[src_m2m[i]] = scale;
+  }
+
+  std::vector<int64_t> dims(rank);
+  std::vector<int64_t> deltas(rank);
+  int64_t accumulated_wrap = 0;
+  for (int i = 0; i < rank; ++i) {
+    int64_t dim = dest_m2m[i];
+    dims[i] = dest_shape.dimensions(dim);
+    deltas[i] = src_strides[dim] - accumulated_wrap;
+    accumulated_wrap += (dims[i] - 1) * src_strides[dim];
+  }
+
+  std::vector<int64_t> index(rank, 0);
+  int64_t src_idx = 0;
+  int64_t dest_idx = 0;
+  const int64_t total_elements = dest.size();
+  while (dest_idx < total_elements) {
+    dest[dest_idx++] = src[src_idx];
+    for (int i = 0; i < rank; ++i) {
+      index[i]++;
+      if (index[i] < dims[i]) {
+        src_idx += deltas[i];
+        break;
+      }
+      index[i] = 0;
+    }
+  }
 }
 }  // namespace
 
