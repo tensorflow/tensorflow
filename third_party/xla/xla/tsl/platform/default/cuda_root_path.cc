@@ -44,9 +44,6 @@ limitations under the License.
 #define CUDA_NVDISASM_REPO_NAME "cuda_nvdisasm"
 #endif
 
-#ifndef NVIDIA_NVSHMEM_REPO_NAME
-#define NVIDIA_NVSHMEM_REPO_NAME "nvidia_nvshmem"
-#endif
 
 #ifndef CUDA_NVVM_REPO_NAME
 #define CUDA_NVVM_REPO_NAME "cuda_nvvm"
@@ -63,8 +60,8 @@ std::vector<std::string> CandidateCudaRoots() {
   auto roots = std::vector<std::string>{};
   std::string runfiles_suffix = "runfiles";
   std::vector<std::string> cuda_dir_names = {
-      CUDA_NVCC_REPO_NAME, CUDA_NVDISASM_REPO_NAME, NVIDIA_NVSHMEM_REPO_NAME,
-      CUDA_NVVM_REPO_NAME, CUDA_CUDART_REPO_NAME};
+      CUDA_NVCC_REPO_NAME, CUDA_NVDISASM_REPO_NAME, CUDA_NVVM_REPO_NAME,
+      CUDA_CUDART_REPO_NAME};
 
   // The CUDA candidate root for c++ targets.
   std::string executable_path = tsl::Env::Default()->GetExecutablePath();

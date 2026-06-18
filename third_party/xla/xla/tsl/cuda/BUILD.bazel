@@ -393,38 +393,6 @@ alias(
 )
 
 cuda_stub(
-    name = "nvshmem",
-    srcs = ["nvshmem.symbols"],
-)
-
-cc_library(
-    name = "nvshmem",  # buildifier: disable=duplicated-name
-    srcs = if_cuda_is_configured([
-        "nvshmem_stub.cc",
-        "nvshmem.tramp.S",
-    ]),
-    # TODO: standalone pip wheel rpath
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/nvshmem/lib")),
-    local_defines = [
-        "IMPLIB_EXPORT_SHIMS=1",
-    ],
-    textual_hdrs = ["nvshmem.inc"],
-    visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured([
-        # keep sorted
-        "//xla/tsl/platform:logging",
-        "@tsl//tsl/platform:dso_loader",
-        "@tsl//tsl/platform:load_library",
-    ]),
-)
-
-alias(
-    name = "nvshmem_stub",
-    actual = if_cuda_libs("@nvidia_nvshmem//:nvshmem", ":nvshmem"),
-    visibility = ["//visibility:public"],
-)
-
-cuda_stub(
     name = "nvml",
     srcs = ["nvml.symbols"],
 )

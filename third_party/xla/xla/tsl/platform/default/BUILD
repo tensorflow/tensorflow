@@ -85,7 +85,6 @@ cc_library(
     local_defines = [
         "CUDA_NVCC_REPO_NAME=\\\"" + get_canonical_repo_name("cuda_nvcc") + "\\\"",
         "CUDA_NVDISASM_REPO_NAME=\\\"" + get_canonical_repo_name("cuda_nvdisasm") + "\\\"",
-        "NVIDIA_NVSHMEM_REPO_NAME=\\\"" + get_canonical_repo_name("nvidia_nvshmem") + "\\\"",
         "CUDA_NVVM_REPO_NAME=\\\"" + get_canonical_repo_name("cuda_nvvm") + "\\\"",
         "CUDA_CUDART_REPO_NAME=\\\"" + get_canonical_repo_name("cuda_cudart") + "\\\"",
     ],
@@ -133,7 +132,6 @@ cc_library(
         # keep sorted
         "@local_config_nccl//:nccl_config",
         "@local_config_tensorrt//:tensorrt_headers",
-        "@nvshmem//:nvshmem_config",
         "@tsl//tsl/platform",
     ]) + if_rocm_is_configured([
         # keep sorted
