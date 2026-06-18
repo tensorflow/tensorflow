@@ -1944,8 +1944,9 @@ Queue<TaskType>::PeekBatchPriorityImpl() const {
     }
     std::optional<tsl::criticality::Criticality> highest_criticality =
         tasks_priority_queue_.HighestCriticality();
-    // Priority is 4 - criticality, so CRITICAL_PLUS (3) -> 1, CRITICAL (2) ->
-    // 2, etc.
+    // Priority is max_priority - criticality, so kCriticalPlus (3) -> 0,
+    // kCritical (2) -> 1, kSheddablePlus (1) -> 2, kSheddable (0) -> 3.
+    // Lower value means higher priority.
 
     const int max_priority =
         static_cast<int>(tsl::criticality::Criticality::kCriticalPlus);
@@ -1954,7 +1955,7 @@ Queue<TaskType>::PeekBatchPriorityImpl() const {
         tasks_priority_queue_.EarliestHighPriorityTaskStartTime().value());
   }
 
-  const int kHighPriority = 1;
+  const int kHighPriority = 0;
   const int kLowPriority = 2;
 
   const std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
