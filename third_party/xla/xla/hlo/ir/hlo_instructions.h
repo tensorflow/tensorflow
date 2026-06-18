@@ -253,9 +253,9 @@ class HloAliasible {
 
 class HloAsyncInstruction : public HloInstruction {
  public:
-  // Constructs async-{update,done}.
-  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
-                      HloInstruction* operand);
+  HloAsyncInstruction(
+      HloOpcode opcode, const Shape& shape, HloInstruction* operand,
+      std::optional<HloOpcode> async_wrapped_opcode = std::nullopt);
 
   HloComputation* async_wrapped_computation() const;
   HloInstruction* async_wrapped_instruction() const;

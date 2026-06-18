@@ -1674,15 +1674,17 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncUpdate(
-    const Shape& shape, HloInstruction* operand) {
+    const Shape& shape, HloInstruction* operand,
+    std::optional<HloOpcode> async_wrapped_opcode) {
   return std::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncUpdate, shape,
-                                               operand);
+                                               operand, async_wrapped_opcode);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncDone(
-    const Shape& shape, HloInstruction* operand) {
+    const Shape& shape, HloInstruction* operand,
+    std::optional<HloOpcode> async_wrapped_opcode) {
   return std::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncDone, shape,
-                                               operand);
+                                               operand, async_wrapped_opcode);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCopyStart(
@@ -6248,6 +6250,93 @@ const DomainMetadata& HloInstruction::operand_side_metadata() const {
 
 const DomainMetadata& HloInstruction::user_side_metadata() const {
   return Cast<HloDomainInstruction>(this)->user_side_metadata();
+}
+
+namespace {
+HloInstruction* FindAsyncProducerImpl(HloInstruction* instr, ShapeIndex& path,
+                                      bool stop_at_parameter) {
+  if (instr == nullptr) return nullptr;
+
+  if (HloAsyncInstruction::ClassOf(instr)) {
+    return instr;
+  }
+
+  switch (instr->opcode()) {
+    case HloOpcode::kGetTupleElement: {
+      path.push_back(instr->tuple_index());
+      HloInstruction* res = FindAsyncProducerImpl(instr->mutable_operand(0),
+                                                  path, stop_at_parameter);
+      if (res != nullptr) return res;
+      path.pop_back();
+      return nullptr;
+    }
+    case HloOpcode::kTuple: {
+      if (path.empty()) {
+        return nullptr;
+      }
+      int64_t idx = path.back();
+      path.pop_back();
+      HloInstruction* res = FindAsyncProducerImpl(instr->mutable_operand(idx),
+                                                  path, stop_at_parameter);
+      if (res != nullptr) return res;
+      path.push_back(idx);
+      return nullptr;
+    }
+    case HloOpcode::kWhile: {
+      if (path.empty()) {
+        return nullptr;
+      }
+      HloComputation* body = instr->while_body();
+      HloInstruction* body_root = body->root_instruction();
+
+      ShapeIndex body_path = path;
+      HloInstruction* body_producer = FindAsyncProducerImpl(
+          body_root, body_path, /*stop_at_parameter=*/true);
+
+      if (body_producer != nullptr) {
+        if (body_producer->opcode() == HloOpcode::kParameter &&
+            body_producer->parent() == body) {
+          return FindAsyncProducerImpl(instr->mutable_operand(0), body_path,
+                                       stop_at_parameter);
+        }
+        return body_producer;
+      }
+      return nullptr;
+    }
+    case HloOpcode::kParameter: {
+      if (stop_at_parameter) {
+        return instr;
+      }
+      HloComputation* comp = instr->parent();
+      if (comp == nullptr || comp->parent() == nullptr ||
+          comp->IsEntryComputation()) {
+        return nullptr;
+      }
+      auto callers = comp->caller_instructions();
+      if (callers.size() == 1 && callers[0]->opcode() == HloOpcode::kWhile) {
+        HloInstruction* while_instr = callers[0];
+        return FindAsyncProducerImpl(while_instr->mutable_operand(0), path,
+                                     stop_at_parameter);
+      }
+      return nullptr;
+    }
+    default:
+      return nullptr;
+  }
+}
+}  // namespace
+
+/* static */ HloInstruction* HloInstruction::FindAsyncProducer(
+    HloInstruction* instr) {
+  ShapeIndex path;
+  return FindAsyncProducerImpl(instr, path, /*stop_at_parameter=*/false);
+}
+
+/* static */ const HloInstruction* HloInstruction::FindAsyncProducer(
+    const HloInstruction* instr) {
+  ShapeIndex path;
+  return FindAsyncProducerImpl(const_cast<HloInstruction*>(instr), path,
+                               /*stop_at_parameter=*/false);
 }
 
 HloInstruction* HloInstruction::async_chain_start() const {
