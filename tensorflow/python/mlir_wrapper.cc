@@ -42,8 +42,8 @@ PYBIND11_MODULE(_pywrap_mlir, m) {
            const std::string &pass_pipeline, bool show_debug_info) {
           tensorflow::Safe_TF_StatusPtr status =
               tensorflow::make_safe(TF_NewStatus());
-          auto *ctxt = static_cast<TFE_Context *>(
-              PyCapsule_GetPointer(context.ptr(), nullptr));
+          auto* ctxt = static_cast<TFE_Context*>(
+              PyCapsule_GetPointer(context.ptr(), "TFE_Context"));
           if (!ctxt) throw py::error_already_set();
           std::string output = tensorflow::ImportFunction(
               functiondef, pass_pipeline, show_debug_info, ctxt, status.get());
