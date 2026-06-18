@@ -98,7 +98,7 @@ jobs:
           },
           {
             pool: "linux-x86-g2-16-l4-1gpu",
-            container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
+            container: "gcr.io/tensorflow-sigs/build:latest-python3.12",
             name: "JAX Linux x86 GPU L4",
             repo: "jax-ml/jax",
           },
