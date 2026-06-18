@@ -63,7 +63,7 @@ def scale_regularization_loss(regularization_loss):
         "while it was expected to be called in replica context."
     )
 
-  num_replicas = distribute_lib.get_strategy().num_replicas_in_sync
+  num_replicas = _get_num_replicas_in_sync()
   return math_ops.reduce_sum(regularization_loss) / num_replicas
 
 

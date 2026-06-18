@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for loss scaling utilities in tensorflow.ops.nn."""
 
+from unittest import mock
+
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
@@ -269,7 +271,6 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
 # ==============================================================================
 # REGRESSION TESTS FOR COMPUTE_AVERAGE_LOSS XLA CONTEXT MASKING
 # ==============================================================================
-from unittest import mock
 
 
 class TestGetNumReplicasInSync(test_lib.TestCase):
@@ -304,10 +305,14 @@ class TestGetNumReplicasInSync(test_lib.TestCase):
     replica_ctx.num_replicas_in_sync = 2
     with (
         mock.patch.object(
-            distribute_lib, "get_replica_context", return_value=replica_ctx
+            nn_impl_distribute.distribute_lib,
+            "get_replica_context",
+            return_value=replica_ctx,
         ),
         mock.patch.object(
-            distribute_lib, "has_strategy", return_value=False
+            nn_impl_distribute.distribute_lib,
+            "has_strategy",
+            return_value=False,
         ),
     ):
       self.assertEqual(nn_impl_distribute._get_num_replicas_in_sync(), 2)
@@ -318,13 +323,19 @@ class TestGetNumReplicasInSync(test_lib.TestCase):
     strategy.num_replicas_in_sync = 6
     with (
         mock.patch.object(
-            distribute_lib, "get_replica_context", return_value=None
+            nn_impl_distribute.distribute_lib,
+            "get_replica_context",
+            return_value=None,
         ),
         mock.patch.object(
-            distribute_lib, "has_strategy", return_value=True
+            nn_impl_distribute.distribute_lib,
+            "has_strategy",
+            return_value=True,
         ),
         mock.patch.object(
-            distribute_lib, "get_strategy", return_value=strategy
+            nn_impl_distribute.distribute_lib,
+            "get_strategy",
+            return_value=strategy,
         ),
     ):
       self.assertEqual(nn_impl_distribute._get_num_replicas_in_sync(), 6)
@@ -333,10 +344,14 @@ class TestGetNumReplicasInSync(test_lib.TestCase):
     """Returns 1 when neither replica context nor strategy is active."""
     with (
         mock.patch.object(
-            distribute_lib, "get_replica_context", return_value=None
+            nn_impl_distribute.distribute_lib,
+            "get_replica_context",
+            return_value=None,
         ),
         mock.patch.object(
-            distribute_lib, "has_strategy", return_value=False
+            nn_impl_distribute.distribute_lib,
+            "has_strategy",
+            return_value=False,
         ),
     ):
       self.assertEqual(nn_impl_distribute._get_num_replicas_in_sync(), 1)
@@ -346,7 +361,9 @@ class TestGetNumReplicasInSync(test_lib.TestCase):
     bad_ctx = mock.MagicMock()
     bad_ctx.num_replicas_in_sync = 0
     with mock.patch.object(
-        distribute_lib, "get_replica_context", return_value=bad_ctx
+        nn_impl_distribute.distribute_lib,
+        "get_replica_context",
+        return_value=bad_ctx,
     ):
       with self.assertRaises(ValueError):
         nn_impl_distribute._get_num_replicas_in_sync()
@@ -357,13 +374,19 @@ class TestGetNumReplicasInSync(test_lib.TestCase):
     bad_strategy.num_replicas_in_sync = -1
     with (
         mock.patch.object(
-            distribute_lib, "get_replica_context", return_value=None
+            nn_impl_distribute.distribute_lib,
+            "get_replica_context",
+            return_value=None,
         ),
         mock.patch.object(
-            distribute_lib, "has_strategy", return_value=True
+            nn_impl_distribute.distribute_lib,
+            "has_strategy",
+            return_value=True,
         ),
         mock.patch.object(
-            distribute_lib, "get_strategy", return_value=bad_strategy
+            nn_impl_distribute.distribute_lib,
+            "get_strategy",
+            return_value=bad_strategy,
         ),
     ):
       with self.assertRaises(ValueError):
@@ -384,62 +407,117 @@ class TestComputeAverageLossXLAContextMasking(test_lib.TestCase):
     replica_ctx.num_replicas_in_sync = 2
     with (
         mock.patch.object(
-            distribute_lib, "get_replica_context", return_value=replica_ctx
+            nn_impl_distribute.distribute_lib,
+            "get_replica_context",
+            return_value=replica_ctx,
         ),
         mock.patch.object(
-            distribute_lib, "has_strategy", return_value=False
+            nn_impl_distribute.distribute_lib,
+            "has_strategy",
+            return_value=False,
         ),
         mock.patch.object(
-            distribute_lib, "in_cross_replica_context", return_value=False
+            nn_impl_distribute.distribute_lib,
+            "in_cross_replica_context",
+            return_value=False,
         ),
     ):
       per_example_loss = constant_op.constant([3.0, 3.0])
-      result = nn_impl_distribute.compute_average_loss(per_example_loss)
-    # sum=6.0, replicas=2, per_replica_batch=2, global_batch=4 -> 6/4 = 1.5
+      result = nn_impl_distribute.compute_average_loss(
+          per_example_loss,
+      )
+    # sum=6, replicas=2, batch=2, global=4 -> 6/4=1.5
     self.assertAllClose(self.evaluate(result), 1.5)
 
   def test_no_context_falls_back_to_single_replica(self):
-    """Without any distribution context, behaves as single-replica training."""
+    """Without any distribution context, single-replica."""
     with (
         mock.patch.object(
-            distribute_lib, "get_replica_context", return_value=None
+            nn_impl_distribute.distribute_lib,
+            "get_replica_context",
+            return_value=None,
         ),
         mock.patch.object(
-            distribute_lib, "has_strategy", return_value=False
+            nn_impl_distribute.distribute_lib,
+            "has_strategy",
+            return_value=False,
         ),
         mock.patch.object(
-            distribute_lib, "in_cross_replica_context", return_value=False
+            nn_impl_distribute.distribute_lib,
+            "in_cross_replica_context",
+            return_value=False,
         ),
     ):
       per_example_loss = constant_op.constant([2.0, 4.0])
-      result = nn_impl_distribute.compute_average_loss(per_example_loss)
-    # sum=6.0, replicas=1, per_replica_batch=2, global_batch=2 -> 6/2 = 3.0
+      result = nn_impl_distribute.compute_average_loss(
+          per_example_loss,
+      )
+    # sum=6, replicas=1, batch=2, global=2 -> 6/2=3.0
     self.assertAllClose(self.evaluate(result), 3.0)
 
-  def test_replica_ctx_priority_over_strategy_in_compute_average_loss(self):
-    """Verifies replica context takes priority over the strategy stack."""
+  def test_replica_ctx_priority_over_strategy(self):
+    """Replica context takes priority over strategy stack."""
     replica_ctx = mock.MagicMock()
     replica_ctx.num_replicas_in_sync = 4
     strategy = mock.MagicMock()
     strategy.num_replicas_in_sync = 8
     with (
         mock.patch.object(
-            distribute_lib, "get_replica_context", return_value=replica_ctx
+            nn_impl_distribute.distribute_lib,
+            "get_replica_context",
+            return_value=replica_ctx,
         ),
         mock.patch.object(
-            distribute_lib, "has_strategy", return_value=True
+            nn_impl_distribute.distribute_lib,
+            "has_strategy",
+            return_value=True,
         ),
         mock.patch.object(
-            distribute_lib, "get_strategy", return_value=strategy
+            nn_impl_distribute.distribute_lib,
+            "get_strategy",
+            return_value=strategy,
         ),
         mock.patch.object(
-            distribute_lib, "in_cross_replica_context", return_value=False
+            nn_impl_distribute.distribute_lib,
+            "in_cross_replica_context",
+            return_value=False,
         ),
     ):
       per_example_loss = constant_op.constant([1.0, 1.0])
-      result = nn_impl_distribute.compute_average_loss(per_example_loss)
-    # sum=2.0, replicas=4 (from replica_ctx), global_batch=2*4=8 -> 2/8 = 0.25
+      result = nn_impl_distribute.compute_average_loss(
+          per_example_loss,
+      )
+    # sum=2, replicas=4, batch=2, global=8 -> 2/8=0.25
     self.assertAllClose(self.evaluate(result), 0.25)
+
+
+class TestScaleRegularizationLossXLAContextMasking(
+    test_lib.TestCase,
+):
+  """Verifies scale_regularization_loss under XLA masking."""
+
+  def test_scale_regularization_loss_xla_mask(self):
+    """XLA mask: replica ctx visible, strategy absent."""
+    replica_ctx = mock.MagicMock()
+    replica_ctx.num_replicas_in_sync = 2
+    with (
+        mock.patch.object(
+            nn_impl_distribute.distribute_lib,
+            "get_replica_context",
+            return_value=replica_ctx,
+        ),
+        mock.patch.object(
+            nn_impl_distribute.distribute_lib,
+            "has_strategy",
+            return_value=False,
+        ),
+    ):
+      reg_loss = constant_op.constant(4.0)
+      result = nn_impl_distribute.scale_regularization_loss(
+          reg_loss,
+      )
+    # 4.0 / 2 = 2.0
+    self.assertAllClose(self.evaluate(result), 2.0)
 
 
 if __name__ == "__main__":
