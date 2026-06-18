@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/ragged_all_to_all.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
@@ -569,7 +570,8 @@ absl::StatusOr<const se::CommandBuffer::Command*> RaggedAllToAllThunk::Record(
   }
 
   TF_RET_CHECK(IsAllReplicasLocal(
-      execute_params.collective_params->local_device_count, config_.config))
+      execute_params.collective_params->local_device_count,
+      config_.config.replica_groups, config_.config.group_mode))
       << "RaggedAllToAllThunk: All replicas must be local for the one-shot "
          "kernel to work";
 
@@ -1185,18 +1187,9 @@ absl::Status RunOneShotRaggedAllToAll(
   return absl::OkStatus();
 }
 
-bool IsAllReplicasLocal(int64_t device_count, const CollectiveConfig& config) {
-  CHECK_NE(device_count, -1);
-  for (const auto& replica_group : config.replica_groups) {
-    const int64_t node_id = replica_group.replica_ids().at(0) / device_count;
-    if (!absl::c_all_of(replica_group.replica_ids(),
-                        [device_count, node_id](const int64_t rank) {
-                          return rank / device_count == node_id;
-                        })) {
-      return false;
-    }
-  }
-  return true;
+bool RaggedAllToAllThunk::is_local(int device_count) const {
+  return IsAllReplicasLocal(device_count, config_.config.replica_groups,
+                            config_.config.group_mode);
 }
 
 }  // namespace gpu

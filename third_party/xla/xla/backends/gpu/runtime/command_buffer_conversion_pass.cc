@@ -52,11 +52,11 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/ffi/ffi_registry.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/platform.h"
@@ -323,7 +323,9 @@ bool IsConvertible(const RaggedAllToAllThunk& ra2a_thunk,
   // kernel (and P2P) cannot be used.
   if (config.num_local_devices > 0) {
     bool is_local = IsAllReplicasLocal(
-        config.num_local_devices, ra2a_thunk.ragged_all_to_all_config().config);
+        config.num_local_devices,
+        ra2a_thunk.ragged_all_to_all_config().config.replica_groups,
+        ra2a_thunk.ragged_all_to_all_config().config.group_mode);
     if (!is_local) {
       VLOG(2) << "Skipping RaggedAllToAll Command Buffer conversion: "
                  "Operation requires multi-host communication "
