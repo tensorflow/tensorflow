@@ -220,6 +220,8 @@ cc_library(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/transforms:despecializer",
+        "//xla/hlo/transforms/simplifiers:float_normalization",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_module_util",
