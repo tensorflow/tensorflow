@@ -1659,6 +1659,47 @@ absl::Status GpuExecutable::ExecuteThunksWithVaRemapping(
   return absl::OkStatus();
 }
 
+void GpuExecutable::LogChangedAllocationsInBetweenExecutions(
+    const BufferAllocations& buffer_allocations,
+    const ServiceExecutableRunOptions* run_options) {
+  se::StreamExecutor* executor = run_options->stream()->parent();
+
+  // Collect the set of allocations that changed between executions.
+  std::vector<std::pair<int32_t, std::string>> changed_allocations;
+
+  absl::MutexLock lock(module_handle_mutex_);
+  if (module_allocations_.find(executor) == module_allocations_.end()) {
+    std::vector<se::DeviceAddressBase> allocs_addr;
+    allocs_addr.reserve(buffer_allocations.size());
+    for (int i = 0; i < buffer_allocations.size(); i++) {
+      allocs_addr.push_back(buffer_allocations.GetDeviceAddress(i));
+    }
+    module_allocations_[executor] = std::move(allocs_addr);
+  } else {
+    for (int i = 0; i < buffer_allocations.size(); i++) {
+      if (module_allocations_[executor][i].IsSameAs(
+              buffer_allocations.GetDeviceAddress(i))) {
+        continue;
+      }
+      module_allocations_[executor][i] = buffer_allocations.GetDeviceAddress(i);
+      const BufferAllocation& allocation = *allocation_ptrs_[i];
+      const char* allocation_type = allocation.is_entry_computation_parameter()
+                                        ? "parameter"
+                                    : allocation.maybe_live_out() ? "live-out"
+                                                                  : "temp";
+      changed_allocations.emplace_back(i, allocation_type);
+    }
+  }
+
+  if (!changed_allocations.empty()) {
+    XLA_VLOG_DEVICE(5, executor->device_ordinal()) << absl::StreamFormat(
+        "Buffer allocations changed address between module %s executions: "
+        "[%s]",
+        module_name_,
+        absl::StrJoin(changed_allocations, ", ", absl::PairFormatter(":")));
+  }
+}
+
 std::optional<BufferAssignmentProto> GpuExecutable::buffer_assignment_proto()
     const {
   if (buffer_assignment_ != nullptr) {
@@ -1677,48 +1718,7 @@ absl::Status GpuExecutable::ExecuteThunks(
   });
 
   if (VLOG_IS_ON(5)) {
-    // Debug code to compare current allocation's address with previous run's
-    // address, and report the allocation info if memory addressed changed.
-    // Useful for identify in user's model if it is command buffer perf friendly
-    // (no command buffer update cost).
-    se::StreamExecutor* executor = run_options->stream()->parent();
-
-    // Collect the set of allocations that changed between executions.
-    std::vector<std::pair<int32_t, std::string>> changed_allocations;
-
-    absl::MutexLock lock(module_handle_mutex_);
-    if (module_allocations_.find(executor) == module_allocations_.end()) {
-      std::vector<se::DeviceAddressBase> allocs_addr;
-      allocs_addr.reserve(buffer_allocations.size());
-      for (int i = 0; i < buffer_allocations.size(); i++) {
-        allocs_addr.push_back(buffer_allocations.GetDeviceAddress(i));
-      }
-      module_allocations_[executor] = std::move(allocs_addr);
-    } else {
-      for (int i = 0; i < buffer_allocations.size(); i++) {
-        if (module_allocations_[executor][i].IsSameAs(
-                buffer_allocations.GetDeviceAddress(i))) {
-          continue;
-        }
-        module_allocations_[executor][i] =
-            buffer_allocations.GetDeviceAddress(i);
-        const BufferAllocation& allocation =
-            buffer_assignment_->GetAllocation(i);
-        const char* allocation_type =
-            allocation.is_entry_computation_parameter() ? "parameter"
-            : allocation.maybe_live_out()               ? "live-out"
-                                                        : "temp";
-        changed_allocations.emplace_back(i, allocation_type);
-      }
-    }
-
-    if (!changed_allocations.empty()) {
-      XLA_VLOG_DEVICE(5, executor->device_ordinal()) << absl::StreamFormat(
-          "Buffer allocations changed address between module %s executions: "
-          "[%s]",
-          module_name_,
-          absl::StrJoin(changed_allocations, ", ", absl::PairFormatter(":")));
-    }
+    LogChangedAllocationsInBetweenExecutions(buffer_allocations, run_options);
   }
 
   se::DeviceAddressAllocator* const memory_allocator = run_options->allocator();
