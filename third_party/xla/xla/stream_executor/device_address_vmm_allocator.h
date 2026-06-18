@@ -42,41 +42,89 @@ class DeviceAssignment;
 
 namespace stream_executor {
 
-// Abstract base class for virtual memory map (VMM) allocators that separate
-// virtual address reservation from physical memory allocation. It can be bound
-// to one or more GPU devices at construction time and routes
-// Allocate/Deallocate calls to per-device state based on device_ordinal.
+// Abstract base class for a DeviceAddressAllocator backed by virtual memory
+// management (VMM). VMM lets the allocator manage device memory in three
+// separate steps:
 //
-// Concurrency model: each device has its own absl::Mutex, so operations on
-// different devices run fully in parallel. The per-device map is populated
-// entirely at construction and never modified afterward, so lookups require no
-// global lock.
+//  1. Allocate raw physical memory. This is the real device memory capacity.
+//  2. Reserve a virtual address (VA) range. This creates addresses but does not
+//     make them usable yet.
+//  3. Map a VA range to raw physical memory. Device kernels access memory
+//     through the mapped VA.
 //
-// For each device the allocator:
-//  1. Allocates physical memory via MemoryAllocation (e.g. cuMemCreate).
-//  2. Reserves virtual address space via MemoryReservation
-//     (e.g. cuMemAddressReserve).
-//  3. Maps physical memory to virtual address via
-//     MemoryReservation::ScopedMapping (e.g. cuMemMap + cuMemSetAccess), which
-//     automatically unmaps on destruction.
+// A concrete subclass provides the platform-specific operations for those
+// steps, plus a stream-ordered timeline used to know when old mappings and
+// allocations are safe to release.
 //
-// The allocator tracks the ScopedMapping and underlying MemoryAllocation and
-// MemoryReservation objects for each returned DeviceAddressBase. Callers can
-// retrieve these via GetRawAllocation() and GetReservation(). Callers can also
-// create non-owning aliases into caller-owned MemoryReservation ranges with
-// Map(), then release those aliases with UnMap().
+// Caller-visible address roles:
 //
-// This allocator supports asynchronous deallocation: when Deallocate() is
-// called, it records a GPU timeline write on the device's stream and defers
-// the actual deallocation until the GPU reaches that point in the stream. This
-// allows callers to deallocate memory while device kernels may still be
-// consuming the data.
+//  * Allocator address: any address returned by Allocate(). It owns the raw
+//    physical allocation, can be used as the source address for Map(), and must
+//    eventually be released with Deallocate().
+//  * Reservation address: a caller-owned MemoryReservation slice
+//    [reservation_base + offset, reservation_base + offset + size) that is
+//    mapped as a non-owning alias of an allocator address. It must be released
+//    with UnMap(), not Deallocate().
+//
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+// Allowed address behavior:
+//
+// +--------------------------------------------------------+---------------------+------------+-----+-------+
+// | Address                                                | Role                | Deallocate | Map | UnMap |
+// +--------------------------------------------------------+---------------------+------------+-----+-------+
+// | Allocate() return                                      | allocator address   | yes        | yes | no    |
+// | Allocate(..., return_reservation_address=true) return  | allocator address   | yes        | yes | no    |
+// | Allocate(..., return_reservation_address=false) return | allocator address   | yes        | yes | no    |
+// | reservation slice from Allocate(..., false)            | reservation address | no         | no  | yes   |
+// | reservation slice from Map()                           | reservation address | no         | no  | yes   |
+// +--------------------------------------------------------+---------------------+------------+-----+-------+
+// NOLINTEND(whitespace/line_length)
+// clang-format on
+//
+// The table uses "yes" for API calls that accept the address in that row. For
+// example, Map() takes an allocator address as its source, while UnMap() takes
+// a reservation address to tear down. Map() still requires the allocator
+// address to have no active reservation-address alias; for example, an
+// Allocate(..., return_reservation_address=false) result can be remapped only
+// after its initial reservation-address alias is released with UnMap().
+//
+// The main API flows are:
+//
+//  1. Allocate(size) creates an allocator-owned VA reservation, allocates raw
+//     physical memory, maps that memory into the owned reservation, and returns
+//     the allocator address.
+//  2. Allocate(..., return_reservation_address=true) allocates raw physical
+//     memory and maps it directly into the caller reservation. The returned VA
+//     comes from the caller reservation, but it is still the allocator address
+//     for this allocation.
+//  3. Allocate(..., return_reservation_address=false) returns a separate
+//     allocator-owned address and also maps the same raw physical allocation
+//     into the caller reservation as a reservation address.
+//  4. Map(addr, reservation, ...) maps the raw physical allocation currently
+//     backing allocator address `addr` into one caller reservation slice.
+//     UnMap(reservation, ...) removes that reservation-address alias.
+//
+// Deallocate() accepts only allocator addresses and requires any active
+// reservation-address alias to be released with UnMap() first. UnMap() accepts
+// only reservation addresses created by Map() or by
+// Allocate(..., return_reservation_address=false). Passing an allocator address
+// to UnMap(), or a reservation address to Deallocate(), is an error.
+// Each allocator address may have at most one active reservation-address alias.
+//
+// Deallocate() and UnMap() are stream-ordered deferred operations. The
+// allocator records a per-device sequence number for the affected address and
+// keeps the old mapping or allocation alive until the stream reaches that
+// sequence number, so kernels already submitted to the stream can keep using
+// the old VA. When the sequence completes, dropping the ScopedMapping objects
+// performs the real unmap, then the allocator releases any owned reservation
+// and raw physical memory.
 //
 // Concrete subclasses implement the platform-specific virtual methods
 // (InitializeDeviceState, CreateAllocation, CreateReservation,
 // EnqueueDeferredDeallocation) and expose platform-specific Create() factories.
 // Subclasses must also set PerDeviceState::destroy_fn in InitializeDeviceState
-// to release platform-specific resources (e.g. pinned timeline memory).
+// to release platform-specific resources such as pinned timeline memory.
 //
 // This allocator is thread-safe for concurrent use by multiple threads across
 // any registered devices.
@@ -100,15 +148,24 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
       int64_t memory_space) override;
 
   // Allocates raw physical memory and maps it into a caller-owned
-  // MemoryReservation range. `allocation_size` and `mapping_size` must be
-  // equal.
+  // MemoryReservation range.
+  // `allocation_size` and `mapping_size` must be equal.
   //
-  // If `return_reservation_address` is true, the returned allocator address is
-  // the reservation slice and must be released with Deallocate(); `reservation`
-  // must outlive the returned address and any pending deallocation. If false,
-  // the returned allocator address is a separate allocator-owned VA and the
-  // reservation slice is a non-owning alias that must be released with UnMap()
-  // before the returned allocator address is deallocated.
+  // There are two modes:
+  //
+  //  * `return_reservation_address=true`: the mapped reservation slice is
+  //    returned and is treated as the allocator address. The caller releases it
+  //    with Deallocate(), may use it as a Map() source, and must not pass it to
+  //    UnMap().
+  //  * `return_reservation_address=false`: the allocator creates and returns a
+  //    separate allocator-owned address. The same raw physical allocation is
+  //    also mapped into the caller reservation as a reservation address. The
+  //    returned allocator address is released with Deallocate(); the
+  //    reservation-address alias may be released earlier with UnMap().
+  //
+  // The caller owns `reservation` and must keep it alive while any mapping into
+  // it is active or waiting for deferred unmap completion. Deallocate() never
+  // destroys or takes ownership of `reservation`.
   absl::StatusOr<ScopedDeviceAddress<uint8_t>> Allocate(
       int device_ordinal, uint64_t allocation_size, bool retry_on_failure,
       int64_t memory_space, MemoryReservation* reservation,
@@ -132,34 +189,58 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
     const xla::DeviceAssignment* previous_;
   };
 
-  // Deallocates memory asynchronously. The caller can call this function even
-  // if device kernels are still consuming the data — the actual deallocation
-  // will be deferred until all previously enqueued work on the device's stream
-  // completes.
+  // Deallocates an allocator address asynchronously. `mem` must be an address
+  // returned by Allocate(), including reservation-derived addresses returned by
+  // Allocate(..., return_reservation_address=true). Reservation addresses
+  // created by Map() or by Allocate(..., return_reservation_address=false) must
+  // not be passed to Deallocate(). If `mem` has an active reservation-address
+  // alias, the caller must release that alias with UnMap() before calling
+  // Deallocate(). The caller can call this function while device kernels are
+  // still consuming the data; the actual release is deferred until earlier work
+  // on the device stream completes.
   absl::Status Deallocate(int device_ordinal, DeviceAddressBase mem) override;
 
-  // Maps the physical allocation backing `addr` into `reservation` at
-  // `reservation_offset`. `addr` must be an active allocator address returned
-  // by Allocate(), and each allocator address may have at most one active
-  // reservation alias.
+  // Adds a reservation-address alias for an existing allocator address by
+  // mapping the physical allocation currently backing `addr` into
+  // `reservation` at `reservation_offset`.
+  //
+  // `addr` must be an active allocator address returned by this allocator,
+  // including reservation-derived addresses returned by
+  // Allocate(..., return_reservation_address=true). Non-owning reservation
+  // addresses created by Map() or by
+  // Allocate(..., return_reservation_address=false), and addresses from other
+  // allocators, are not supported. The physical allocation backing `addr` must
+  // be at least `size` bytes. Each allocator address may have at most one
+  // active reservation-address alias at a time. The caller owns `reservation`
+  // and must keep it alive until UnMap() is called and the allocator stream
+  // reaches that deferred unmap point.
   absl::Status Map(int device_ordinal, DeviceAddressBase addr,
                    MemoryReservation* reservation, uint64_t reservation_offset,
                    uint64_t size);
 
-  // Defers unmapping the reservation alias created by Map() until all
-  // previously enqueued work on this allocator's stream has completed. The
-  // caller must pass the same full reservation range used for Map().
+  // Defers unmapping the reservation address created by Map() or by
+  // Allocate(..., return_reservation_address=false) for the given reservation
+  // range until all previously enqueued work on the allocator stream has
+  // completed.
+  // The caller must pass the same full reservation range that created the
+  // mapping. The reservation-derived allocator address returned by
+  // Allocate(..., return_reservation_address=true) is not a reservation
+  // address for this API and must be released with Deallocate() instead.
+  //
+  // On success this method moves the active mapping to the deferred unmap
+  // queue. On error, active bookkeeping is unchanged. Empty mappings, such as
+  // zero-size Map(), are treated as no-ops.
   absl::Status UnMap(int device_ordinal, MemoryReservation* reservation,
                      uint64_t reservation_offset, uint64_t size);
 
-  // Returns true — this allocator supports asynchronous deallocation.
+  // Returns true: this allocator supports asynchronous deallocation.
   bool AllowsAsynchronousDeallocation() const override { return true; }
 
   // Returns the stream for the given device ordinal.
   absl::StatusOr<Stream*> GetStream(int device_ordinal) override;
 
-  // Waits for all pending stream-ordered deallocations on the given device to
-  // complete, then releases the corresponding allocator bookkeeping.
+  // Waits for all pending stream-ordered deallocations and unmaps on the given
+  // device to complete, then drops the corresponding deferred bookkeeping.
   absl::Status SynchronizePendingOperations(int device_ordinal);
 
   // Returns the StreamExecutor for the given device ordinal.
@@ -267,6 +348,9 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   static absl::Status PopulateDevices(DeviceAddressVmmAllocator* allocator,
                                       absl::Span<const DeviceConfig> devices);
 
+  // Drains pending stream-ordered allocator operations for all devices.
+  absl::Status SynchronizeAllPendingOperations();
+
   // Validates device capabilities and initializes timeline fields
   // (pinned_timeline, timeline_dev_ptr, allocation_granularity) in state.
   // state.executor, state.stream, and state.pa_budget are already set.
@@ -284,6 +368,12 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // Returns pointer into per_device_ map; null if device_ordinal not
   // registered. No lock needed — per_device_ is read-only after construction.
   PerDeviceState* GetPerDeviceState(int device_ordinal) const;
+
+  // Validates a caller-owned reservation slice and returns the corresponding
+  // DeviceAddressBase.
+  absl::StatusOr<DeviceAddressBase> ValidateReservationRange(
+      MemoryReservation* reservation, uint64_t reservation_offset,
+      uint64_t size) const;
 
   absl::StatusOr<DeviceAddressBase> AllocateWithBudget(PerDeviceState& state,
                                                        uint64_t size)

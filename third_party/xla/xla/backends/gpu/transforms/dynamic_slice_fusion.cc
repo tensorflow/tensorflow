@@ -488,46 +488,53 @@ static const HloInstruction* WalkGteChain(const HloInstruction* instr,
   return current;
 }
 
+absl::StatusOr<DynamicSliceFusion::Parameter>
+DynamicSliceFusion::ResolveParameter(const HloInstruction* operand) {
+  const HloInstruction* walk = WalkThroughBitcasts(operand);
+
+  std::optional<DynamicSliceConfig> config;
+  std::optional<std::vector<Offset>> offsets;
+  const HloInstruction* source = walk;
+  Shape slice_shape = operand->shape();
+
+  if (auto* ds = DynCast<HloDynamicSliceInstruction>(walk)) {
+    config = ExtractDynamicSliceConfig(ds);
+    ASSIGN_OR_RETURN(offsets, ResolveOffsets(ds, 1));
+    slice_shape = ds->shape();
+    source = ds->operand(0);
+  } else if (auto* slice = DynCast<HloSliceInstruction>(walk)) {
+    config = ComputeStaticSliceConfig(slice);
+    slice_shape = slice->shape();
+    source = slice->operand(0);
+  }
+
+  source = WalkThroughBitcasts(source);
+  auto* parameter = DynCast<HloParameterInstruction>(source);
+  if (parameter == nullptr) {
+    return Internal(
+        "DynamicSliceFusion: expected fusion parameter backing hero operand, "
+        "got %s",
+        source->ToString());
+  }
+
+  return DynamicSliceFusion::Parameter{
+      parameter->parameter_number(),
+      source->shape(),
+      slice_shape,
+      config,
+      std::move(offsets),
+  };
+}
+
 absl::StatusOr<std::vector<DynamicSliceFusion::Parameter>>
 DynamicSliceFusion::ResolveParameters(const HloInstruction* hero) {
   std::vector<DynamicSliceFusion::Parameter> result;
   result.reserve(hero->operand_count());
 
   for (const HloInstruction* operand : hero->operands()) {
-    const HloInstruction* walk = WalkThroughBitcasts(operand);
-
-    std::optional<DynamicSliceConfig> config;
-    std::optional<std::vector<Offset>> offsets;
-    const HloInstruction* source = walk;
-    Shape slice_shape = operand->shape();
-
-    if (auto* ds = DynCast<HloDynamicSliceInstruction>(walk)) {
-      config = ExtractDynamicSliceConfig(ds);
-      ASSIGN_OR_RETURN(offsets, ResolveOffsets(ds, 1));
-      slice_shape = ds->shape();
-      source = ds->operand(0);
-    } else if (auto* slice = DynCast<HloSliceInstruction>(walk)) {
-      config = ComputeStaticSliceConfig(slice);
-      slice_shape = slice->shape();
-      source = slice->operand(0);
-    }
-
-    source = WalkThroughBitcasts(source);
-    auto* parameter = DynCast<HloParameterInstruction>(source);
-    if (parameter == nullptr) {
-      return Internal(
-          "DynamicSliceFusion: expected fusion parameter backing hero operand, "
-          "got %s",
-          source->ToString());
-    }
-
-    result.push_back(DynamicSliceFusion::Parameter{
-        parameter->parameter_number(),
-        source->shape(),
-        slice_shape,
-        config,
-        std::move(offsets),
-    });
+    ASSIGN_OR_RETURN(DynamicSliceFusion::Parameter parameter,
+                     ResolveParameter(operand));
+    result.push_back(std::move(parameter));
   }
 
   return result;

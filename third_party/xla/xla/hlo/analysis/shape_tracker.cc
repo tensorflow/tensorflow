@@ -173,6 +173,23 @@ void ShapeTracker::BufferView::MergeAdjacentDimensions() {
   extents_.resize(w + 1);
 }
 
+void ShapeTracker::BufferView::RemoveDegenerateDimensions() {
+  llvm::SmallVector<int64_t, 6> new_strides;
+  llvm::SmallVector<int64_t, 6> new_extents;
+  for (size_t i = 0; i < strides_.size(); ++i) {
+    if (extents_[i] != 1) {
+      new_strides.push_back(strides_[i]);
+      new_extents.push_back(extents_[i]);
+    }
+  }
+  if (new_strides.empty() && !strides_.empty()) {
+    new_strides.push_back(1);
+    new_extents.push_back(1);
+  }
+  strides_ = std::move(new_strides);
+  extents_ = std::move(new_extents);
+}
+
 ShapeTracker::BufferView ShapeTracker::BufferView::FromSubviews(
     absl::Span<const BufferView> sub_views) {
   BufferView result;
@@ -192,32 +209,6 @@ ShapeTracker::BufferView::FromStridesAndExtents(
     return absl::InvalidArgumentError(
         absl::StrCat("Strides and extents size mismatch: ", strides.size(),
                      " vs ", extents.size()));
-  }
-
-  for (size_t i = 0; i < strides.size(); ++i) {
-    if (strides[i] < 1) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Stride must be >= 1, got: ", strides[i]));
-    }
-    if (extents[i] < 1) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Extent must be >= 1, got: ", extents[i]));
-    }
-  }
-
-  llvm::SmallVector<int64_t, 6> order(strides.size());
-  absl::c_iota(order, 0);
-  absl::c_stable_sort(
-      order, [&](int64_t a, int64_t b) { return strides[a] < strides[b]; });
-
-  int64_t running = 1;
-  for (int64_t i : order) {
-    if (strides[i] < running) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Overlapping strides: stride ", strides[i],
-                       " is less than running size ", running));
-    }
-    running = strides[i] * extents[i];
   }
 
   BufferView view;
@@ -289,6 +280,19 @@ ShapeTracker::BufferView ShapeTracker::BufferView::FromShape(
   return view;
 }
 
+ShapeTracker::BufferView ShapeTracker::BufferView::FromShapeAndIndices(
+    const xla::Shape& shape, absl::Span<const int64_t> indices) {
+  BufferView full_view = FromShape(shape);
+  BufferView view;
+  view.strides_.reserve(indices.size());
+  view.extents_.reserve(indices.size());
+  for (int64_t dim : indices) {
+    view.strides_.push_back(full_view.strides_[dim]);
+    view.extents_.push_back(full_view.extents_[dim]);
+  }
+  return view;
+}
+
 ShapeTracker::BufferView ShapeTracker::BufferView::FromShapeCompacted(
     const xla::Shape& shape) {
   BufferView view;
@@ -330,6 +334,7 @@ std::optional<ShapeTracker::BufferView>
 ShapeTracker::BufferView::TryIntersectWith(
     const ShapeTracker::BufferView& other) const {
   BufferView other_normalized = other;
+  other_normalized.SortByStrideDescending();
   other_normalized.MergeAdjacentDimensions();
 
   BufferView result;
@@ -363,6 +368,22 @@ void ShapeTracker::BufferView::Pack() {
   }
 }
 
+void ShapeTracker::BufferView::SortByStrideDescending() {
+  llvm::SmallVector<int64_t, 6> order(strides_.size());
+  absl::c_iota(order, 0);
+  absl::c_sort(order,
+               [&](int64_t a, int64_t b) { return strides_[a] > strides_[b]; });
+
+  llvm::SmallVector<int64_t, 6> permuted_strides(strides_.size());
+  llvm::SmallVector<int64_t, 6> permuted_extents(extents_.size());
+  for (size_t i = 0; i < order.size(); ++i) {
+    permuted_strides[i] = strides_[order[i]];
+    permuted_extents[i] = extents_[order[i]];
+  }
+  strides_ = std::move(permuted_strides);
+  extents_ = std::move(permuted_extents);
+}
+
 ShapeTracker::~ShapeTracker() = default;
 ShapeTracker::ShapeTracker(const ShapeTracker&) = default;
 ShapeTracker::ShapeTracker(ShapeTracker&&) noexcept = default;
@@ -372,6 +393,17 @@ ShapeTracker& ShapeTracker::operator=(ShapeTracker&&) noexcept = default;
 ShapeTracker::ShapeTracker(xla::Shape shape)
     : input_shape_(shape), output_shape_(shape) {
   projections_.push_back(BufferView::FromShapeCompacted(shape));
+}
+
+void ShapeTracker::SetElementType(PrimitiveType element_type) {
+  input_shape_.set_element_type(element_type);
+  output_shape_.set_element_type(element_type);
+}
+
+bool ShapeTracker::operator==(const ShapeTracker& other) const {
+  return ShapeUtil::Compatible(input_shape_, other.input_shape_) &&
+         ShapeUtil::Compatible(output_shape_, other.output_shape_) &&
+         projections_ == other.projections_;
 }
 
 absl::StatusOr<ShapeTracker> ShapeTracker::FromProducerConsumer(
@@ -601,10 +633,6 @@ absl::Status ShapeTracker::AppendInstruction(const HloInstruction* inst) {
 }
 
 absl::Status ShapeTracker::PrependInstruction(const HloInstruction* inst) {
-  if (inst->operand_count() == 0) {
-    return absl::InvalidArgumentError(
-        "Instruction must have at least one operand");
-  }
   if (!ShapeUtil::Compatible(inst->shape(), input_shape_)) {
     return absl::InvalidArgumentError(
         "Instruction shape does not match current input shape");
@@ -829,7 +857,7 @@ std::vector<int64_t> PartialProducts(absl::Span<const int64_t> input) {
 
 // If a reshape tries to glue dimensions, the function keeps them when possible.
 // Do to that, it keeps the strides of the target dimensions (which we are
-// required to preserve), and inserts existing dimensions when it doens't
+// required to preserve), and inserts existing dimensions when it doesn't
 // violate divisibility.
 std::pair<ShapeTracker::Step, std::vector<int64_t>> ExpandReshapeStep(
     const ShapeTracker::Step& step, const std::vector<int64_t>& current_shape) {
@@ -1017,9 +1045,14 @@ std::string ShapeTracker::DebugString(bool avoid_combining_reshapes) const {
 
 namespace {
 
+struct SlicePropagationResult {
+  std::vector<ShapeTracker::BufferView> sliced_projections;
+  ShapeTracker::BufferView final_slice;
+};
+
 // Keeps the parts of the projections that intersect with the @slice. I.e.
 // tracks the life of the slice as it goes through the projections.
-absl::StatusOr<std::vector<ShapeTracker::BufferView>> SliceProjectionChain(
+absl::StatusOr<SlicePropagationResult> SliceProjectionChain(
     absl::Span<const ShapeTracker::BufferView> projections,
     const ShapeTracker::BufferView& slice) {
   int64_t expected_elements = slice.ElementsIn();
@@ -1086,7 +1119,8 @@ absl::StatusOr<std::vector<ShapeTracker::BufferView>> SliceProjectionChain(
                          next_slice_strides, next_slice_extents));
   }
 
-  return sliced_projections;
+  return SlicePropagationResult{std::move(sliced_projections),
+                                std::move(current_slice)};
 }
 
 }  // namespace
@@ -1148,22 +1182,77 @@ absl::StatusOr<ShapeTracker> ShapeTracker::Narrow(
                                              keep_strides, keep_extents));
 
   // Slice the projections, and pack them.
-  ASSIGN_OR_RETURN(std::vector<BufferView> sliced_projections,
+  ASSIGN_OR_RETURN(SlicePropagationResult propagation_result,
                    SliceProjectionChain(projections_, keep_view));
 
   // Append rather than assign, for the case the tracker has an initial
   // transpose.
-  for (const auto& proj : sliced_projections) {
+  for (const auto& proj : propagation_result.sliced_projections) {
     sliced_tracker.projections_.push_back(proj);
     TryFoldProjections(sliced_tracker.projections_);
   }
 
   // Build the narrowed output shape.
   Shape sliced_output_shape = ShapeUtil::MakeShape(
-      output_shape_.element_type(), sliced_projections.back().extents());
+      output_shape_.element_type(),
+      propagation_result.sliced_projections.back().extents());
   sliced_tracker.output_shape_ = std::move(sliced_output_shape);
 
   return sliced_tracker;
+}
+
+std::optional<std::vector<int64_t>>
+ShapeTracker::MapInputDimensionsToOutputUnordered(
+    absl::Span<const int64_t> input_dims) const {
+  // Create a view which covers the input dimensions we want to map.
+  BufferView keep_view =
+      BufferView::FromShapeAndIndices(input_shape_, input_dims);
+  keep_view.RemoveDegenerateDimensions();
+  if (keep_view.ElementsIn() <= 1) {
+    return std::vector<int64_t>{};
+  }
+  keep_view.SortByStrideDescending();
+  keep_view.MergeAdjacentDimensions();
+
+  // Propagate the view through the projection chain.
+  auto propagation_result_or = SliceProjectionChain(projections_, keep_view);
+  if (!propagation_result_or.ok()) {
+    return std::nullopt;
+  }
+  BufferView final_slice = propagation_result_or->final_slice;
+
+  // Map the final slice to the output logical dimensions.
+  auto output_dim_views_opt =
+      projections_.back().TryUnflatten(output_shape_.dimensions());
+  if (!output_dim_views_opt.has_value()) {
+    return std::nullopt;
+  }
+  const std::vector<BufferView>& output_dim_views = *output_dim_views_opt;
+
+  std::vector<int64_t> kept_output_dims;
+  kept_output_dims.reserve(output_dim_views.size());
+  for (size_t i = 0; i < output_dim_views.size(); ++i) {
+    if (output_shape_.dimensions(i) == 1) {
+      // Skip the degenerate dimensions.
+      continue;
+    }
+    auto intersection_opt = output_dim_views[i].TryIntersectWith(final_slice);
+    if (!intersection_opt.has_value()) {
+      // Couldn't cleanly intersect, so we can't map this input to output.
+      return std::nullopt;
+    }
+    BufferView intersection = *intersection_opt;
+    if (intersection.IsEmpty()) {
+      continue;
+    }
+    if (intersection != output_dim_views[i]) {
+      // Only partially intersected, so we can't map this input to output.
+      return std::nullopt;
+    }
+    kept_output_dims.push_back(i);
+  }
+
+  return kept_output_dims;
 }
 
 absl::StatusOr<ShapeTracker> ShapeTracker::Zip(

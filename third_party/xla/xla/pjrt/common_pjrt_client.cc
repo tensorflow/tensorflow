@@ -654,6 +654,42 @@ Future<> CommonPjRtRawBufferImpl::CopyRawDeviceToHost(void* dst, int64_t offset,
                                "CommonPjRtRawBuffer", "CopyRawDeviceToHost");
 }
 
+void CommonPjRtRawBufferImpl::ScheduleCopyTo(
+    PjRtDeviceEventRefVector transfer_dependency_events,
+    PjRtRawBufferRef dst_raw_buffer,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise,
+    absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
+  PjRtDeviceEventSpan events_span(transfer_dependency_events);
+  CommonPjRtClient* client =
+      absl::down_cast<CommonPjRtClient*>(memory_space()->client());
+  AsyncWorkRunner* async_work_runner = client->async_work_runner();
+
+  xla::ExecuteWhenReady(
+      events_span, async_work_runner,
+      [src_raw_buffer = tsl::FormRef(this),
+       dst_raw_buffer = std::move(dst_raw_buffer),
+       definition_event_promise = std::move(definition_event_promise),
+       src_usage_event_promise = std::move(src_usage_event_promise),
+       allocation_event = std::move(allocation_event),
+       transfer_dependency_events =
+           std::move(transfer_dependency_events)]() mutable {
+        absl::Status status = xla::GetErrors(transfer_dependency_events);
+        if (!status.ok()) {
+          if (allocation_event) {
+            std::move(allocation_event)(status);
+          }
+          definition_event_promise.SetError(status);
+          src_usage_event_promise.SetError(status);
+          return;
+        }
+
+        src_raw_buffer->CopyTo(
+            std::move(dst_raw_buffer), std::move(definition_event_promise),
+            std::move(src_usage_event_promise), std::move(allocation_event));
+      });
+}
+
 void CommonPjRtBufferImpl::CopyToRemoteDevice(
     Future<std::string> serialized_descriptor, RemoteSendCallback on_done) {
   auto* common_client = absl::down_cast<CommonPjRtClient*>(client());
@@ -2359,8 +2395,6 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::DirectCopyToMemorySpace(
     PjRtMemorySpace* dst_memory_space) {
   tsl::profiler::TraceMe traceme("CopyToMemorySpace");
-  CommonPjRtClient* const src_client =
-      absl::down_cast<CommonPjRtClient*>(client());
   if (!dynamic_cast<CommonPjRtClient*>(dst_memory_space->client())) {
     return absl::InvalidArgumentError(
         "DirectCopyToMemorySpace only supported across CommonPjRtClient "
@@ -2379,9 +2413,8 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
       definition_events, allocation_event));
   if (src_raw_buffer) {
     src_raw_buffer->ScheduleCopyTo(
-        src_client->async_work_runner(), std::move(definition_events),
-        std::move(dst_raw_buffer), std::move(definition_event_promise),
-        std::move(src_usage_event_promise),
+        std::move(definition_events), std::move(dst_raw_buffer),
+        std::move(definition_event_promise), std::move(src_usage_event_promise),
         ToAllocationCallback(std::move(allocation_event)));
   }
   return dst_buffer;
@@ -2391,8 +2424,6 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::DirectCopyToMemorySpace(PjRtBuffer* donated_dst) {
   PjRtMemorySpace* dst_memory_space = donated_dst->memory_space();
   tsl::profiler::TraceMe traceme("CopyToMemorySpace");
-  CommonPjRtClient* const src_client =
-      absl::down_cast<CommonPjRtClient*>(client());
   if (!dynamic_cast<CommonPjRtClient*>(dst_memory_space->client())) {
     return absl::InvalidArgumentError(
         "DirectCopyToMemorySpace only supported across CommonPjRtClient "
@@ -2423,9 +2454,8 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(PjRtBuffer* donated_dst) {
       definition_events, allocation_event));
   if (src_raw_buffer) {
     src_raw_buffer->ScheduleCopyTo(
-        src_client->async_work_runner(), std::move(definition_events),
-        std::move(dst_raw_buffer), std::move(definition_event_promise),
-        std::move(src_usage_event_promise),
+        std::move(definition_events), std::move(dst_raw_buffer),
+        std::move(definition_event_promise), std::move(src_usage_event_promise),
         ToAllocationCallback(std::move(allocation_event)));
   }
   return dst_buffer;

@@ -95,7 +95,9 @@ void CreateResourceVariableIfNotAvailable(ResourceMap* resources,
 
 ResourceVariable* GetResourceVariable(ResourceMap* resources, int resource_id) {
   auto it = resources->find(resource_id);
-  if (it != resources->end()) {
+  if (it != resources->end() &&
+      it->second->GetResourceType() ==
+          ResourceBase::ResourceType::kResourceVariable) {
     return static_cast<ResourceVariable*>(it->second.get());
   }
   return nullptr;

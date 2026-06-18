@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -37,8 +36,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -46,10 +43,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
   ReductionRewriterVisitor(
       int64_t reduce_window_size,
-      std::optional<int64_t> reduce_window_size_stride_one_dim,
       HloPredicate filter)
       : reduce_window_size_(reduce_window_size),
-        reduce_window_size_stride_one_dim_(reduce_window_size_stride_one_dim),
         filter_(std::move(filter)) {}
 
   absl::Status HandleReduce(HloInstruction *hlo) override {
@@ -69,20 +64,10 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
-    auto get_window_size_for_dim = [&](int64_t dim_idx) {
-      if (reduce_window_size_stride_one_dim_.has_value() &&
-          input_shape.has_layout() && input_shape.dimensions().size() > 0 &&
-          input_shape.layout().minor_to_major(0) == dim_idx) {
-        return *reduce_window_size_stride_one_dim_;
-      }
-      return reduce_window_size_;
-    };
-
     // All of the reduced dimensions is smaller than the window size,
     // do not perform the rewrite.
     if (absl::c_all_of(hlo->dimensions(), [&](int64_t reduced_dim) {
-          return input_shape.dimensions(reduced_dim) <=
-                 get_window_size_for_dim(reduced_dim);
+          return input_shape.dimensions(reduced_dim) <= reduce_window_size_;
         })) {
       VLOG(1) << "Skipping tree reduction rewrite: all reduced dimensions are "
                  "smaller than the window size.";
@@ -91,6 +76,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     std::vector<int64_t> window_dimensions;
     std::vector<int64_t> window_strides;
+    window_dimensions.reserve(input_shape.dimensions().size());
+    window_strides.reserve(input_shape.dimensions().size());
     for (int64_t dim_idx = 0; dim_idx < input_shape.dimensions().size();
          dim_idx++) {
       if (!absl::c_linear_search(hlo->dimensions(), dim_idx)) {
@@ -99,8 +86,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
         continue;
       }
 
-      int64_t window_size_for_dim = std::min(input_shape.dimensions(dim_idx),
-                                             get_window_size_for_dim(dim_idx));
+      int64_t window_size_for_dim =
+          std::min(input_shape.dimensions(dim_idx), reduce_window_size_);
 
       window_dimensions.push_back(window_size_for_dim);
       window_strides.push_back(window_size_for_dim);
@@ -132,15 +119,13 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
  private:
   int64_t reduce_window_size_;
-  std::optional<int64_t> reduce_window_size_stride_one_dim_;
   HloPredicate filter_;
 };
 
 absl::StatusOr<bool> TreeReductionRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ReductionRewriterVisitor visitor(reduce_window_size_,
-                                   reduce_window_size_stride_one_dim_, filter_);
+  ReductionRewriterVisitor visitor(reduce_window_size_, filter_);
   bool changed = false;
   for (const auto &computation :
        module->MakeNonfusionComputations(execution_threads)) {

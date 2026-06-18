@@ -44,6 +44,8 @@ namespace stream_executor::gpu {
 // the device does not meet the compute capability requirement.
 class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
  public:
+  ~CudaDeviceAddressVmmAllocator() override;
+
   // Creates an allocator supporting multiple devices.
   //
   // Returns an error if any device does not support cuStreamWriteValue64

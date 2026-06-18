@@ -201,9 +201,9 @@ TritonBackend::GetSupportedConfigsForScaledDot(const HloInstruction* instr) {
 
   const bool exhaustive_search =
       debug_options().xla_gpu_exhaustive_tiling_search();
-  for (int block_m = 128; block_m <= 256; block_m *= 2) {
+  for (int block_m = 64; block_m <= 256; block_m *= 2) {
     for (int block_n = 16; block_n <= 256; block_n *= 2) {
-      for (int block_k = 128; block_k <= 256; block_k *= 2) {
+      for (int block_k = 64; block_k <= 256; block_k *= 2) {
         // TODO(b/436988479): fine tune the search space.
         const int elements_per_thread = (block_m * block_n) / (4 * 32);
         if (!exhaustive_search &&

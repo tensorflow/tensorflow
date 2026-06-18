@@ -32,6 +32,10 @@ namespace resource {
 // of using Resource handle like TensorFlow).
 class LookupInterface : public ResourceBase {
  public:
+  ResourceType GetResourceType() const override {
+    return ResourceType::kHashTable;
+  }
+
   virtual TfLiteStatus Lookup(TfLiteContext* context, const TfLiteTensor* keys,
                               TfLiteTensor* values,
                               const TfLiteTensor* default_value) = 0;

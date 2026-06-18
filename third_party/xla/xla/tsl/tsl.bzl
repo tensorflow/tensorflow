@@ -131,13 +131,13 @@ def if_google(google_value, oss_value = []):
     _ = (google_value, oss_value)  # buildifier: disable=unused-variable
     return oss_value  # copybara:comment_replace return google_value
 
-def internal_visibility(internal_targets):
+def internal_visibility(internal_targets, or_else = ["//visibility:public"]):
     """Returns internal_targets in g3, but returns public in OSS.
 
     Useful for targets that are part of the XLA/TSL API surface but want finer-grained visibilites
     internally.
     """
-    return if_google(internal_targets, ["//visibility:public"])
+    return if_google(internal_targets, or_else)
 
 # TODO(jakeharmon): Use this to replace if_static
 # TODO(b/356020232): remove completely after migration is done

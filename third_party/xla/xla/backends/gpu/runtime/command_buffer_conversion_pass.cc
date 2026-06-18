@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
 
 #include <algorithm>
+#include <bitset>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -68,12 +69,49 @@ namespace {
 
 using CommandBufferConfig = CommandBufferConversionPass::CommandBufferConfig;
 
+std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
+    Thunk::Kind kind) {
+  switch (kind) {
+    case Thunk::kAllGather:
+      return DebugOptions::ALLGATHER;
+    case Thunk::kAllReduce:
+      return DebugOptions::ALLREDUCE;
+    case Thunk::kAllToAll:
+      return DebugOptions::ALLTOALL;
+    case Thunk::kCollectiveBroadcast:
+      return DebugOptions::COLLECTIVEBROADCAST;
+    case Thunk::kCollectivePermute:
+      return DebugOptions::COLLECTIVEPERMUTE;
+    case Thunk::kRaggedAllToAll:
+      return DebugOptions::RAGGEDALLTOALL;
+    case Thunk::kReduceScatter:
+      return DebugOptions::REDUCESCATTER;
+    default:
+      return std::nullopt;
+  }
+}
+
 CommandBufferConfig GetCommandBufferConfig(
     const DebugOptions& debug_options, const se::DeviceDescription& device_info,
     const HloModule* hlo_module) {
   absl::flat_hash_set<DebugOptions::CommandBufferCmdType> commands;
   for (auto cmd_type : debug_options.xla_gpu_enable_command_buffer()) {
     commands.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
+  }
+
+  std::bitset<CommandBufferConfig::kMaxCollectiveOps> enabled_collectives;
+  const auto& filter =
+      debug_options.xla_gpu_enable_collectives_command_buffer_filter();
+  if (!filter.empty()) {
+    for (auto op_type : filter) {
+      if (op_type >= 0 && op_type < CommandBufferConfig::kMaxCollectiveOps) {
+        enabled_collectives.set(op_type);
+      } else {
+        LOG(WARNING) << "Invalid collective op type: " << op_type;
+      }
+    }
+  } else {
+    enabled_collectives.set(DebugOptions::ALLCOLLECTIVES);
   }
 
   // Extract slice_size (partition_size) from HloModule config if available.
@@ -83,9 +121,12 @@ CommandBufferConfig GetCommandBufferConfig(
   }
 
   CommandBufferConfig config{
-      std::move(commands), device_info,
+      std::move(commands),
+      std::move(enabled_collectives),
+      device_info,
       debug_options.xla_gpu_command_buffer_update_mode(),
-      debug_options.xla_gpu_command_buffer_unroll_loops(), num_local_devices};
+      debug_options.xla_gpu_command_buffer_unroll_loops(),
+      num_local_devices};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
@@ -367,6 +408,17 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
     return false;  // Thunk kind is not supported for command buffer conversion.
   }
 
+  if (*cmd_type == DebugOptions::COLLECTIVES) {
+    if (!config.enabled_collectives.test(DebugOptions::ALLCOLLECTIVES)) {
+      auto op_type = GetCollectiveOpType(thunk.kind());
+      if (op_type.has_value() && !config.enabled_collectives.test(*op_type)) {
+        VLOG(2) << "Collective thunk kind " << Thunk::KindToString(thunk.kind())
+                << " is not enabled by the collectives filter";
+        return false;
+      }
+    }
+  }
+
   if (thunk.kind() == Thunk::kWhile) {
     return IsConvertible(static_cast<const WhileThunk&>(thunk), config);
   }
@@ -587,7 +639,24 @@ std::string CommandBufferConversionPass::CommandBufferConfig::ToString() const {
     absl::StrAppend(out, DebugOptions::CommandBufferCmdType_Name(cmd));
   };
   std::string cmd_names = absl::StrJoin(enabled_commands, ", ", formatter);
-  return absl::StrCat("enabled_commands: [", cmd_names, "]");
+
+  std::string collectives_filter;
+  if (enabled_collectives.test(DebugOptions::ALLCOLLECTIVES)) {
+    collectives_filter = "ALLCOLLECTIVES";
+  } else {
+    std::vector<std::string> enabled_names;
+    for (int i = 0; i < kMaxCollectiveOps; ++i) {
+      if (enabled_collectives.test(i) &&
+          DebugOptions::CollectiveOpType_IsValid(i)) {
+        enabled_names.push_back(DebugOptions::CollectiveOpType_Name(
+            static_cast<DebugOptions::CollectiveOpType>(i)));
+      }
+    }
+    collectives_filter = absl::StrJoin(enabled_names, ", ");
+  }
+
+  return absl::StrCat("enabled_commands: [", cmd_names,
+                      "], enabled_collectives: [", collectives_filter, "]");
 }
 
 absl::StatusOr<bool> CommandBufferConversionPass::Run(

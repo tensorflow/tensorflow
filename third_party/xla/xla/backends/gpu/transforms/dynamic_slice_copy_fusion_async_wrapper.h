@@ -1,9 +1,9 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_TRANSFORMS_FUSION_DYNAMIC_MEMCPY_REWRITER_H_
-#define XLA_BACKENDS_GPU_TRANSFORMS_FUSION_DYNAMIC_MEMCPY_REWRITER_H_
+#ifndef XLA_BACKENDS_GPU_TRANSFORMS_DYNAMIC_SLICE_COPY_FUSION_ASYNC_WRAPPER_H_
+#define XLA_BACKENDS_GPU_TRANSFORMS_DYNAMIC_SLICE_COPY_FUSION_ASYNC_WRAPPER_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -22,16 +22,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
-// Detects fusions with a DS/DUS root that have a DynamicSliceConfig annotation
-// and restructures them into DynamicSliceFusion form: inserts a copy hero and
-// sets the backend config to kCustomFusion with "dynamic_slice_fusion" name.
-class FusionDynamicMemcpyRewriter : public HloModulePass {
+// Wraps dynamic-slice memcpy fusions in async-start/done pairs before
+// scheduling so that latency hiding can overlap the copy with compute.
+class DynamicSliceCopyFusionAsyncWrapper : public HloModulePass {
  public:
   absl::string_view name() const override {
-    return "fusion-dynamic-memcpy-rewriter";
+    return "dynamic-slice-copy-fusion-async-wrapper";
   }
 
  protected:
@@ -40,7 +38,6 @@ class FusionDynamicMemcpyRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_TRANSFORMS_FUSION_DYNAMIC_MEMCPY_REWRITER_H_
+#endif  // XLA_BACKENDS_GPU_TRANSFORMS_DYNAMIC_SLICE_COPY_FUSION_ASYNC_WRAPPER_H_

@@ -49,6 +49,9 @@ limitations under the License.
 
 namespace xla::gpu {
 
+struct DynamicSliceCopyFusion;
+struct StaticSliceCopyFusion;
+
 // Emits Thunks for the given HLO module.
 class ThunkEmitter {
  public:
@@ -154,8 +157,11 @@ class ThunkEmitter {
 
   AsyncThunkSequence EmitFusion(const HloFusionInstruction* instr);
 
-  absl::StatusOr<std::optional<ThunkSequence>> TryEmitTrivialSliceFusion(
-      const HloFusionInstruction* instr);
+  AsyncThunkSequence EmitDynamicSliceCopyFusion(
+      const HloFusionInstruction* instr, DynamicSliceCopyFusion copy);
+
+  AsyncThunkSequence EmitStaticSliceCopyFusion(
+      const HloFusionInstruction* instr, const StaticSliceCopyFusion& copy);
 
   absl::StatusOr<ThunkSequence> EmitFftThunk(const HloFftInstruction* instr);
 

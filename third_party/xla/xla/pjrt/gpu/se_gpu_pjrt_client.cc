@@ -114,6 +114,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -1424,6 +1425,26 @@ GetStreamExecutorGpuDeviceAllocator(
       return absl::UnimplementedError(
           "VMM allocator is only supported with CUDA.");
 #endif  // GOOGLE_CUDA
+    }
+
+    case GpuAllocatorConfig::Kind::kAddress: {
+      // Synchronous passthrough allocator. Unlike kPlatform (which returns
+      // nullptr to share the Backend/LocalClient allocator with TF), this
+      // constructs a dedicated StreamExecutorAddressAllocator at the PJRT
+      // level and bypasses the BFC allocator entirely.
+      LOG(INFO) << "Using address (synchronous passthrough) allocator.";
+      if (allocator_config.collective_memory_size != 0) {
+        LOG(WARNING)
+            << "collective_memory_size is non-zero, but allocator kind is set "
+               "to \"address\". Collective memory will not be allocated.";
+      }
+      std::vector<se::StreamExecutor*> executors;
+      executors.reserve(addressable_devices.size());
+      for (const auto& [ordinal, device] : addressable_devices) {
+        executors.push_back(device->executor());
+      }
+      return std::make_unique<se::StreamExecutorAddressAllocator>(platform,
+                                                                  executors);
     }
   }
 

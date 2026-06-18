@@ -19,8 +19,8 @@ tf_proto_library(
     srcs = ["split_proto.proto"],
     visibility = [
         # This proto is an implementation detail of the split proto format,
-        # it shouldn't be used outside of this package.
-        "//visibility:private",
+        # it shouldn't be used outside of this package, and the split_proto_cli.
+        "//xla/tools/split_proto:__subpackages__",
     ],
 )
 
@@ -104,6 +104,7 @@ cc_library(
     name = "split_gpu_executable_writer",
     srcs = ["split_gpu_executable_writer.cc"],
     hdrs = ["split_gpu_executable_writer.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":split_proto_cc",
         ":split_proto_riegeli_options",
@@ -187,6 +188,7 @@ cc_library(
     name = "split_hlo_writer",
     srcs = ["split_hlo_writer.cc"],
     hdrs = ["split_hlo_writer.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":split_proto_cc",
         ":split_proto_riegeli_options",

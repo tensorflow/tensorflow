@@ -266,16 +266,28 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "fusion_dynamic_memcpy_rewriter",
-    srcs = ["fusion_dynamic_memcpy_rewriter.cc"],
-    hdrs = ["fusion_dynamic_memcpy_rewriter.h"],
+    name = "dynamic_slice_copy",
+    srcs = ["dynamic_slice_copy.cc"],
+    hdrs = ["dynamic_slice_copy.h"],
     deps = [
         ":dynamic_slice_fusion",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
         "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:ir_emission_utils",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "dynamic_slice_copy_fusion_async_wrapper",
+    srcs = ["dynamic_slice_copy_fusion_async_wrapper.cc"],
+    hdrs = ["dynamic_slice_copy_fusion_async_wrapper.h"],
+    deps = [
+        ":dynamic_slice_copy",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
@@ -284,19 +296,31 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "fusion_dynamic_memcpy_rewriter_test",
-    srcs = ["fusion_dynamic_memcpy_rewriter_test.cc"],
+    name = "dynamic_slice_copy_fusion_async_wrapper_test",
+    srcs = ["dynamic_slice_copy_fusion_async_wrapper_test.cc"],
+    tags = ["gpu"],
+    deps = [
+        ":dynamic_slice_copy_fusion_async_wrapper",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "dynamic_slice_copy_test",
+    srcs = ["dynamic_slice_copy_test.cc"],
     tags = ["gpu"],
     deps = [
         ":dynamic_slice_annotator",
+        ":dynamic_slice_copy",
         ":dynamic_slice_fusion",
-        ":fusion_dynamic_memcpy_rewriter",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:ir_emission_utils",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
     ],

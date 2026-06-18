@@ -340,6 +340,20 @@ class BufferAllocation {
     return peak_buffers_;
   }
 
+  // Returns the buffers placed in this allocation whose own color differs from
+  // the allocation color, i.e. buffers that reused this allocation's free space
+  // when CanUseAllocation allows cross-color reuse (e.g. GPU S(0) temps placed
+  // in an S(1) allocation).
+  //
+  // These buffers are deliberately NOT among the peak-driving buffers reported
+  // by PeakMemoryLogicalBuffers, which come from the heap trace that sized this
+  // allocation. They are carved into pre-existing holes and never grew the
+  // allocation, so they are not part of its sizing attribution (this says
+  // nothing about whether they happen to be live at the allocation's peak).
+  const std::vector<const HloValue*>& CrossColorBuffers() const {
+    return cross_color_buffers_;
+  }
+
   // Get the number of bytes lost to fragmentation. This is equal to the
   // difference between the size of the allocation and the size of the maximal
   // live set.
@@ -431,8 +445,14 @@ class BufferAllocation {
   int64_t fragmentation_bytes_ = 0;
   std::vector<HeapSimulatorTrace> heap_traces_;
 
-  // Set of buffers live at the point of peak memory usage for this allocation.
+  // Set of buffers live at the point of peak memory usage for this allocation;
+  // i.e. the buffers that drove the allocation's size.
   std::vector<const HloValue*> peak_buffers_;
+
+  // Buffers placed in this allocation whose own color differs from the
+  // allocation color (placed into pre-existing holes by cross-color reuse,
+  // without growing the allocation).
+  std::vector<const HloValue*> cross_color_buffers_;
 };
 
 // Add stream operators for nicer output of CHECK/RET_CHECK failures.
@@ -754,6 +774,20 @@ class BufferAssigner {
  public:
   using Colorer =
       std::function<absl::Status(HloAliasAnalysis*, const HloOrdering&)>;
+
+  // Returns true if a buffer with `buffer_color` can use an allocation with
+  // `allocation_color`.
+  //
+  // Some memory spaces are backed by the same physical memory but have
+  // directional placement constraints. For example, GPU S(0) is ordinary HBM
+  // and S(1) is collective/symmetric HBM. S(1) allocations satisfy stricter
+  // alignment and symmetric-offset requirements, so a buffer that only requires
+  // S(0) may be placed in an S(1) allocation. The reverse is not generally
+  // safe: an S(0) allocation may not satisfy the extra S(1) runtime
+  // requirements.
+  using CanUseAllocation = std::function<bool(
+      BufferValue::Color buffer_color, BufferValue::Color allocation_color)>;
+
   using MustNotLiveOut = std::function<bool(
       const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
   using PrivateStacks = absl::flat_hash_map<BufferValue::Color,
@@ -772,6 +806,10 @@ class BufferAssigner {
 
     // Functor used to assign colors to newly allocated logical buffers.
     Colorer colorer = DefaultColorer();
+
+    // Functor used to decide whether a buffer of one color can use an
+    // allocation of another color. Defaults to strict equality.
+    CanUseAllocation can_use_allocation = DefaultCanUseAllocation();
 
     // An optional function that returns true if the given instruction can't
     // live out of a computation.
@@ -802,6 +840,25 @@ class BufferAssigner {
     // default module config's device memory size.
     std::function<int64_t(LogicalBuffer::Color)> color_memory_limit;
   };
+
+  static CanUseAllocation DefaultCanUseAllocation() {
+    return [](BufferValue::Color buffer_color,
+              BufferValue::Color allocation_color) {
+      return buffer_color == allocation_color;
+    };
+  }
+
+  // Returns a CanUseAllocation predicate that allows same-color allocation use
+  // and one extra directional pair: buffers of `from_color` may use allocations
+  // of `to_color`.
+  static CanUseAllocation AllowCrossColorReuse(BufferValue::Color from_color,
+                                               BufferValue::Color to_color) {
+    return [from_color, to_color](BufferValue::Color buffer_color,
+                                  BufferValue::Color allocation_color) {
+      return buffer_color == allocation_color ||
+             (buffer_color == from_color && allocation_color == to_color);
+    };
+  }
 
   static Colorer DefaultColorer() {
     return [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
@@ -891,6 +948,27 @@ class BufferAssigner {
           heap_buffer_interval_compare,
       std::optional<BufferAssignment::BufferIsolationOptions>
           isolation_options);
+
+  // Orders colors so that if buffers of color A can use allocations of color B
+  // (but not the reverse), B is simulated before A. This lets the fixed-size B
+  // heap be available for opportunistic reuse before A's remaining buffers are
+  // heap-simulated. Colors with no directional relation are ordered by numeric
+  // color for stability.
+  std::vector<LogicalBuffer::Color> SortColorsForCanUseAllocation(
+      absl::Span<const LogicalBuffer::Color> colors) const;
+
+  // Tries to place whole buffers of `buffer_color` into the free space of
+  // already-materialized compatible temp allocations (those of a different
+  // color C where can_use_allocation(buffer_color, C) holds), without
+  // increasing the destination allocation sizes. `values` are the
+  // still-unassigned HloValues of this color; those that fit are assigned to
+  // the destination allocation and removed from `values`. Relies on colors
+  // being processed in SortColorsForCanUseAllocation order, so all compatible
+  // destinations are already materialized. Returns the number of buffers
+  // placed.
+  absl::StatusOr<int64_t> ReuseCompatibleTempHeaps(
+      absl::flat_hash_set<const HloValue*>* values,
+      LogicalBuffer::Color buffer_color, BufferAssignment* assignment);
 
   // Isolates the buffers packed by heap simulator using the provided isolation
   // options. Please see the documentation for BufferIsolationConfig for more

@@ -1094,6 +1094,23 @@ cc_library(
 )
 
 cc_library(
+    name = "xla_cpu_compile_lib",
+    srcs = ["xla_cpu_compile_lib.cc"],
+    hdrs = ["xla_cpu_compile_lib.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/backends/cpu:target_machine_options",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compiled_module",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/service/cpu:cpu_compiler_pure",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "xla_compile_lib",
     srcs = ["xla_compile_lib.cc"],
     hdrs = ["xla_compile_lib.h"],
@@ -1112,6 +1129,7 @@ cc_library(
     deps = [
         ":hlo_module_loader",
         ":llvm_targets",  # fixdeps: keep
+        ":xla_cpu_compile_lib",
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:util",
@@ -1275,12 +1293,14 @@ xla_cc_test(
     tags = ["gpu"],
     deps = [
         ":xla_compile_lib",
+        "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/target_config",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:compiler",
         "//xla/service:gpu_plugin",
+        "//xla/service:hlo_module_config",
         "//xla/service:platform_util",
         "//xla/service:symbol_repository",
         "//xla/service:xla_compile_result_proto_cc_impl",

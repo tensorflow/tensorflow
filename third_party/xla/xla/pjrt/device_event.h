@@ -382,33 +382,36 @@ class PjRtDeviceEventRefVector {
       PjRtDeviceEventRefVector&& other) noexcept;
   ~PjRtDeviceEventRefVector();
 
-  size_t size() const { return events_.size(); }
-  bool empty() const { return events_.empty(); }
+  size_t size() const { return vector_.size; }
+  bool empty() const { return vector_.size == 0; }
 
   PjRtDeviceEventPtr operator[](size_t pos) const {
-    return PjRtDeviceEventPtr(events_[pos]);
+    return PjRtDeviceEventPtr(vector_.data[pos]);
   }
 
   void push_back(const PjRtDeviceEventRef& value);
   void push_back(PjRtDeviceEventRef&& value);
 
-  void reserve(size_t new_cap) { events_.reserve(new_cap); }
+  void reserve(size_t new_cap);
 
   void Clear();
+
+  PJRT_DeviceEventVector& ToC() & { return vector_; }
+  static PjRtDeviceEventRefVector MoveFromC(PJRT_DeviceEventVector* data);
 
  private:
   template <typename Functor>
   friend void ConsumeEvents(PjRtDeviceEventRefVector&& events, Functor&& f);
   friend class PjRtDeviceEventSpan;
 
-  std::vector<PJRT_DeviceEvent> events_;
+  PJRT_DeviceEventVector vector_ = {nullptr, 0, 0, nullptr};
 };
 
 template <typename Functor>
 void ConsumeEvents(PjRtDeviceEventRefVector&& events, Functor&& f) {
-  for (size_t i = 0; i < events.events_.size(); ++i) {
-    PJRT_DeviceEvent ev = events.events_[i];
-    events.events_[i] = {nullptr, nullptr};
+  for (size_t i = 0; i < events.vector_.size; ++i) {
+    PJRT_DeviceEvent ev = events.vector_.data[i];
+    events.vector_.data[i] = {nullptr, nullptr};
     f(PjRtDeviceEventRef::TakeRef(PjRtDeviceEventPtr(ev)));
   }
 }
@@ -418,7 +421,7 @@ class PjRtDeviceEventSpan {
  public:
   PjRtDeviceEventSpan() = default;
   PjRtDeviceEventSpan(const PjRtDeviceEventRefVector& vec)
-      : ptr_(vec.events_.data()), size_(vec.events_.size()) {}
+      : ptr_(vec.vector_.data), size_(vec.vector_.size) {}
 
   size_t size() const { return size_; }
   bool empty() const { return size_ == 0; }

@@ -347,10 +347,10 @@ absl::Status BufferAllocation::AddAssignment(const HloValue& buffer,
   CHECK_LE(offset + size, size_)
       << "LogicalBuffer " << buffer
       << " size out of range at offset: " << offset << " with size: " << size;
-  if (!(IsPreallocatedTempBuffer() && color() != 0)) {
+  if (IsInputOrOutput()) {
     TF_RET_CHECK(buffer.color() == color())
         << "Buffer color " << buffer.color() << " for buffer " << buffer
-        << " does not match allocation color " << color()
+        << " does not match input/output allocation color " << color()
         << ". This could be caused by an unusable donated buffer.";
   }
   OffsetSize offset_size;
@@ -518,6 +518,20 @@ std::string BufferAllocation::ToString() const {
                   " value: %s (size=%d,offset=%d): %s\n",
                   buffer->ToShortString(), offset_size.size, offset_size.offset,
                   ShapeUtil::HumanStringWithLayout(buffer->shape())));
+  }
+  // Report any buffers that reused this allocation's free space despite having
+  // a different color. They are already listed above; this makes the
+  // cross-color reuse explicit for humans reading the dump.
+  if (!cross_color_buffers_.empty()) {
+    std::vector<const HloValue*> sorted_reused(cross_color_buffers_.begin(),
+                                               cross_color_buffers_.end());
+    absl::c_sort(sorted_reused, &CompareHloValuesById);
+    StrAppend(&output, " reused by buffers of a different color:\n");
+    for (const HloValue* buffer : sorted_reused) {
+      StrAppend(&output,
+                absl::StrFormat("  value: %s (color=%d)\n",
+                                buffer->ToShortString(), buffer->color()));
+    }
   }
   return output;
 }
@@ -875,6 +889,13 @@ absl::Status BufferAssignment::CombineTempAllocations(
           temp_allocation.peak_buffers_.begin(),
           temp_allocation.peak_buffers_.end());
     }
+
+    // Carry over the cross-color reuse reporting info from the absorbed
+    // allocation so the combined allocation's dump still reflects it.
+    combined_allocation->cross_color_buffers_.insert(
+        combined_allocation->cross_color_buffers_.end(),
+        temp_allocation.cross_color_buffers_.begin(),
+        temp_allocation.cross_color_buffers_.end());
 
     if (temp_buffer_color.has_value()) {
       if (combined_allocation->color() == 0) {
@@ -1595,7 +1616,21 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
           << " to allocation: " << *allocation;
 
   ASSIGN_OR_RETURN(auto buffer_color, hlo_buffer.color());
-  if (buffer_color != allocation->color()) {
+
+  // Input/output allocations are backed by caller-provided or live-out storage,
+  // so buffer assignment cannot strengthen their runtime allocation
+  // requirements after the fact. Temporary allocations can use the backend's
+  // directional color-assignment predicate below.
+  if (allocation->IsInputOrOutput() && buffer_color != allocation->color()) {
+    VLOG(4) << "Cannot assign: input/output allocation has color "
+            << allocation->color() << ", but buffer has color " << buffer_color
+            << ".";
+    return false;
+  }
+
+  // This is a storage-compatibility check, not recoloring: the buffer keeps its
+  // HLO color even when it can use an allocation with a different color.
+  if (!opts_.can_use_allocation(buffer_color, allocation->color())) {
     VLOG(4) << "Can't assign: buffer has color " << buffer_color
             << " and allocation has color " << allocation->color() << ".";
     return false;
@@ -1736,7 +1771,7 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
       assignment->AddAssignment(allocation, hlo_buffer, /*offset=*/0,
                                 assignment->HloBufferSize(hlo_buffer)));
   return true;
-}  // namespace xla
+}
 
 absl::Status BufferAssigner::AssignSingleHloBuffer(
     const HloBuffer* hlo_buffer, bool is_thread_local,
@@ -2027,6 +2062,226 @@ BufferAssigner::SplitBuffersByPrivateStackComputation(
   return computation_map;
 }
 
+std::vector<LogicalBuffer::Color> BufferAssigner::SortColorsForCanUseAllocation(
+    absl::Span<const LogicalBuffer::Color> colors) const {
+  std::vector<LogicalBuffer::Color> sorted(colors.begin(), colors.end());
+
+  // If buffers of color A can use allocations of color B (but not the reverse),
+  // process B first so that B's fixed-size heap is materialized and available
+  // for opportunistic reuse before A's buffers are heap-simulated. When the
+  // predicate is symmetric (same group) or unrelated in both directions, fall
+  // back to a stable order by numeric color.
+  absl::c_sort(sorted, [&](LogicalBuffer::Color a, LogicalBuffer::Color b) {
+    const bool a_uses_b = opts_.can_use_allocation(a, b);
+    const bool b_uses_a = opts_.can_use_allocation(b, a);
+    // If the relation is asymmetric, the color that can use the other's
+    // allocations must come later; otherwise fall back to numeric color.
+    return (a_uses_b != b_uses_a) ? b_uses_a : a < b;
+  });
+
+  return sorted;
+}
+
+namespace {
+// A whole HloBuffer that is a candidate for being placed into an existing,
+// compatible temp allocation. `size` is the buffer's allocation size, cached
+// because it is the (hot) sort key.
+struct ReuseCandidate {
+  const HloBuffer* hlo_buffer;
+  int64_t size;
+};
+
+// A spot found inside an existing allocation where a candidate fits.
+// `allocation` is the destination; `offset` is where to place the candidate;
+// `slack` is the leftover free space in the gap (used to pick the tightest,
+// i.e. best, fit).
+struct ReusePlacement {
+  BufferAllocation* allocation;
+  int64_t offset;
+  int64_t slack;
+};
+
+// Finds the best-fit free gap (the fitting gap that leaves the least leftover
+// slack) of at least `size` bytes, aligned to `alignment`, inside `allocation`;
+// returns nullopt if it does not fit. `blocking` are the byte ranges already
+// occupied by buffers that conflict with the candidate; ranges not listed are
+// treated as free.
+std::optional<ReusePlacement> FindBestFitGap(
+    BufferAllocation& allocation, int64_t size, int64_t alignment,
+    std::vector<BufferAllocation::OffsetSize> blocking) {
+  // Placing a candidate larger than the whole allocation would require growing
+  // it, which we never do.
+  if (size > allocation.size()) {
+    return std::nullopt;
+  }
+  absl::c_sort(blocking, [](const BufferAllocation::OffsetSize& a,
+                            const BufferAllocation::OffsetSize& b) {
+    return a.offset < b.offset;
+  });
+
+  // Sentinel so the trailing free space [last_blocking_end, size) is handled by
+  // the loop like any other gap.
+  blocking.push_back({allocation.size(), 0});
+
+  // Sweep left to right. `free_start` is the first byte not covered by a
+  // blocking range seen so far; [free_start, blocking_range.offset) is the next
+  // free gap. We keep the gap with the least leftover slack.
+  std::optional<ReusePlacement> best;
+  int64_t free_start = 0;
+  for (const BufferAllocation::OffsetSize& blocking_range : blocking) {
+    int64_t offset = RoundUpTo(free_start, alignment);
+    int64_t slack = blocking_range.offset - (offset + size);
+    if (slack >= 0 && (!best.has_value() || slack < best->slack)) {
+      best = ReusePlacement{&allocation, offset, slack};
+    }
+    free_start =
+        std::max(free_start, blocking_range.offset + blocking_range.size);
+  }
+  return best;
+}
+
+}  // namespace
+
+absl::StatusOr<int64_t> BufferAssigner::ReuseCompatibleTempHeaps(
+    absl::flat_hash_set<const HloValue*>* values,
+    LogicalBuffer::Color buffer_color, BufferAssignment* assignment) {
+  // Opportunistically packs whole buffers of `buffer_color` into the free space
+  // of allocations already materialized for a *different*, compatible color,
+  // WITHOUT growing those allocations. This is what lets GPU S(0) temps live in
+  // the holes of the (large, mostly-idle) S(1) collective allocation while
+  // keeping that allocation honestly colored S(1), so the runtime allocates it
+  // from the S(1) pool with no special-casing.
+  //
+  // Colors are processed in SortColorsForCanUseAllocation order, so by the time
+  // we assign `buffer_color`, every allocation it is allowed to reuse has
+  // already been materialized. A value that is placed here is removed from
+  // `values`, so the caller will not heap-simulate a separate allocation for
+  // it.
+  //
+  // We only run when the module is fully scheduled, because placement relies on
+  // exact live ranges to prove two buffers can share storage.
+  if (values->empty() ||
+      !assignment->hlo_live_range().total_order_scheduled()) {
+    return 0;
+  }
+
+  const auto& live_ranges = assignment->hlo_live_range().buffer_live_ranges();
+
+  // Step 1: Collect the destination allocations we are allowed to reuse: the
+  // already-materialized temp allocations of a different but compatible color.
+  std::vector<BufferAllocation*> destinations;
+  for (BufferAllocation& allocation : assignment->allocations_) {
+    if (allocation.color() != buffer_color &&
+        allocation.IsPreallocatedTempBuffer() &&
+        opts_.can_use_allocation(buffer_color, allocation.color())) {
+      destinations.push_back(&allocation);
+    }
+  }
+  if (destinations.empty()) {
+    return 0;
+  }
+
+  // Step 2: Collect movable candidates.
+  std::vector<ReuseCandidate> candidates;
+  absl::flat_hash_set<const HloBuffer*> seen_buffers;
+  for (const HloValue* value : *values) {
+    const HloBuffer& hlo_buffer =
+        assignment->alias_analysis().GetBufferContainingValue(*value);
+
+    // Check if we already processed this buffer via another of its values.
+    auto [it, inserted] = seen_buffers.insert(&hlo_buffer);
+    if (!inserted) {
+      continue;
+    }
+
+    // We can only move a buffer as a whole (all its aliased values together),
+    // because the values share storage by construction. A buffer is movable
+    // only if every one of its values is still unassigned (present in
+    // `values`), has the color we are currently processing, and has a known
+    // live range.
+    auto is_moveable = [&](const HloValue* buffer_value) {
+      return values->contains(buffer_value) &&
+             buffer_value->color() == buffer_color &&
+             live_ranges.contains(buffer_value);
+    };
+
+    if (absl::c_all_of(hlo_buffer.values(), is_moveable)) {
+      candidates.push_back(
+          ReuseCandidate{&hlo_buffer, assignment->HloBufferSize(hlo_buffer)});
+    }
+  }
+
+  // Step 3: Try the largest buffers first; they are the hardest to fit into a
+  // gap, and placing them frees the most space in `buffer_color`'s own heap.
+  // Ties broken by buffer id (a stable unique key) for deterministic output.
+  absl::c_sort(candidates, [](const auto& a, const auto& b) {
+    return (a.size != b.size) ? (a.size > b.size)
+                              : (a.hlo_buffer->id() < b.hlo_buffer->id());
+  });
+
+  // Returns true if any value of `candidate` is live at the same time as
+  // `other_value`. If so, they cannot occupy overlapping storage.
+  auto candidate_interferes_with = [&](const ReuseCandidate& candidate,
+                                       const HloValue* other_value) {
+    auto& other_range = live_ranges.at(other_value);
+    return absl::c_any_of(
+        candidate.hlo_buffer->values(), [&](const HloValue* value) {
+          return LiveRangeInterferes(value, live_ranges.at(value), other_value,
+                                     other_range, assignment);
+        });
+  };
+
+  // Finds the best-fit free gap into which `candidate` fits inside
+  // `allocation`, or nullopt if it does not fit. A gap is free if no buffer
+  // occupying it is live at the same time as the candidate.
+  auto find_placement = [&](const ReuseCandidate& candidate,
+                            BufferAllocation& allocation) {
+    // Collect the byte ranges that block the candidate: only buffers whose live
+    // range overlaps the candidate's. Non-overlapping buffers are invisible
+    // because the candidate can safely reuse their storage.
+    std::vector<BufferAllocation::OffsetSize> blocking;
+    for (const auto& [assigned_value, offset_size] :
+         allocation.assigned_buffers()) {
+      if (candidate_interferes_with(candidate, assigned_value)) {
+        blocking.push_back(offset_size);
+      }
+    }
+    int64_t alignment = assignment->color_alignment_(allocation.color());
+    return FindBestFitGap(allocation, candidate.size, alignment,
+                          std::move(blocking));
+  };
+
+  // Step 4: Place each candidate into the first compatible allocation where it
+  // fits, committing through the normal AddAssignment path.
+  int64_t placed_buffers = 0;
+  for (const ReuseCandidate& candidate : candidates) {
+    for (BufferAllocation* allocation : destinations) {
+      std::optional<ReusePlacement> placement =
+          find_placement(candidate, *allocation);
+      if (!placement.has_value()) {
+        continue;
+      }
+      // Commit: assign the whole buffer at the chosen offset and drop its
+      // values from `values` so the caller does not allocate a separate heap
+      // for them. The buffer keeps its own color; only the storage is shared.
+      RETURN_IF_ERROR(
+          assignment->AddAssignment(allocation, *candidate.hlo_buffer,
+                                    placement->offset, candidate.size));
+      for (const HloValue* value : candidate.hlo_buffer->values()) {
+        allocation->cross_color_buffers_.push_back(value);
+        values->erase(value);
+      }
+      VLOG(2) << "Reused temp allocation #" << allocation->index() << " (color "
+              << allocation->color() << ") for buffer color " << buffer_color
+              << ": " << candidate.hlo_buffer->ToString() << " at offset "
+              << placement->offset;
+      ++placed_buffers;
+      break;
+    }
+  }
+  return placed_buffers;
+}
+
 absl::Status BufferAssigner::AssignPresetBuffers(
     absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
     BufferAssignment* assignment) {
@@ -2262,8 +2517,24 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       auto color = single_colored_set.first;
       sorted_colors.emplace(sorted_colors.end(), color);
     }
-    absl::c_sort(sorted_colors);
+    sorted_colors = SortColorsForCanUseAllocation(sorted_colors);
+
     for (auto color : sorted_colors) {
+      // First try to place this color's buffers into the free space of already-
+      // materialized compatible allocations (earlier colors). Whatever fits is
+      // removed from color_map[color] and will not get its own allocation.
+      ASSIGN_OR_RETURN(
+          int64_t reused_buffers,
+          ReuseCompatibleTempHeaps(&color_map[color], color, assignment));
+      VLOG(2) << "Placed " << reused_buffers << " buffers of color " << color
+              << " into existing compatible temp allocations";
+
+      // All buffers were placed into existing allocations. Nothing left to
+      // heap-simulate for this color.
+      if (color_map[color].empty()) {
+        continue;
+      }
+
       VLOG(2) << "Simulating heap for color " << color;
       int64_t alignment = assignment->color_alignment_(color);
       HeapSimulator::Options options;
@@ -2562,6 +2833,10 @@ absl::Status BufferAssigner::AssignBuffersFromHeapSimulator(
       allocation->set_page_id(page_index++);
     }
     for (const auto& [value, chunk] : heap_result.chunk_map) {
+      TF_RET_CHECK(
+          opts_.can_use_allocation(value->color(), allocation->color()))
+          << "Buffer color " << value->color() << " for buffer " << *value
+          << " cannot use temp allocation color " << allocation->color() << ".";
       RETURN_IF_ERROR(assignment->AddAssignment(allocation, *value,
                                                 chunk.offset, chunk.size));
     }

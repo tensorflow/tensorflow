@@ -36,7 +36,9 @@ extra_env_flags = []
 config.name = "XLA"
 config.suffixes = [".cc", ".hlo", ".json", ".mlir", ".pbtxt", ".py", ".ll"]
 
-config.test_format = lit.formats.ShTest(execute_external=True)
+config.test_format = lit.formats.ShTest(
+    execute_external=True, force_execute_external=True
+)
 
 for env in [
     # Passthrough XLA_FLAGS.
@@ -78,4 +80,6 @@ config.substitutions.extend(
 )
 
 # Replace the default test format with our wrapped version
-config.test_format = ShTestWithRunfiles(execute_external=True)
+config.test_format = ShTestWithRunfiles(
+    execute_external=True, force_execute_external=True
+)
