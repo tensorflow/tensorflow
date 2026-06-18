@@ -2071,7 +2071,7 @@ class RequiresCollectiveSymmetricMemorySpaceTest
 
 TEST_P(RequiresCollectiveSymmetricMemorySpaceTest, DirectUsage) {
   constexpr absl::string_view kHloTemplate = R"(
-HloModule test$0, replica_count=2
+HloModule test$0
 
 ENTRY test_computation {
   p = u32[2] parameter(0)
@@ -2085,11 +2085,7 @@ ENTRY test_computation {
       {{"$0",
         use_input_output_alias ? ", input_output_alias={ {}: (0, {}) }" : ""}});
 
-  DeviceAssignment device_assignment(2, 1);
-  for (int replica = 0; replica < 2; replica++) {
-    device_assignment(replica, 0) = 0;
-  }
-  HloModuleConfig config = GetModuleConfigForTest(2, 1, device_assignment);
+  HloModuleConfig config = GetModuleConfigForTest();
   if (GetParam().is_sym_mem) {
     config.mutable_debug_options().set_xla_gpu_collective_permute_mode(
         DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
@@ -2102,18 +2098,18 @@ ENTRY test_computation {
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
   constexpr absl::string_view kS0NoCopy = R"(
-    // CHECK:  %collective-permute-start = (u32[2]{0}, u32[2]{0}) collective-permute-start(%{{param|p}})
+    // CHECK:  %collective-permute-start = (u32[2]{0}, u32[2]{0}) collective-permute-start(%p)
     // CHECK:  ROOT %collective-permute-done = u32[2]{0} collective-permute-done(%collective-permute-start)
   )";
 
   constexpr absl::string_view kS0OneResultCopy = R"(
-    // CHECK:  %collective-permute-start = (u32[2]{0}, u32[2]{0}) collective-permute-start(%{{param|p}})
+    // CHECK:  %collective-permute-start = (u32[2]{0}, u32[2]{0}) collective-permute-start(%p)
     // CHECK:  %collective-permute-done = u32[2]{0} collective-permute-done(%collective-permute-start)
     // CHECK:  ROOT %copy{{.*}} = u32[2]{0} copy(%collective-permute-done)
   )";
 
   constexpr absl::string_view kS1TwoCopies = R"(
-    // CHECK:  [[COPY0:%copy[0-9.]*]] = u32[2]{0:S(1)} copy(%{{param|p}})
+    // CHECK:  [[COPY0:%copy[0-9.]*]] = u32[2]{0:S(1)} copy(%p)
     // CHECK:  %collective-permute-start = (u32[2]{0:S(1)}, u32[2]{0:S(1)}) collective-permute-start([[COPY0]])
     // CHECK:  %collective-permute-done = u32[2]{0:S(1)} collective-permute-done(%collective-permute-start)
     // CHECK:  ROOT %copy{{.*}} = u32[2]{0} copy(%collective-permute-done)
@@ -2151,7 +2147,7 @@ ENTRY test_computation {
 
 TEST_P(RequiresCollectiveSymmetricMemorySpaceTest, LoopUsage) {
   constexpr absl::string_view kHloTemplate = R"(
-    HloModule test$0, num_partitions=2
+    HloModule test$0
 
     while_condition {
       params = (s32[], u32[2]) parameter(0)
@@ -2184,11 +2180,7 @@ TEST_P(RequiresCollectiveSymmetricMemorySpaceTest, LoopUsage) {
       {{"$0",
         use_input_output_alias ? ", input_output_alias={ {}: (0, {}) }" : ""}});
 
-  DeviceAssignment device_assignment(1, 2);
-  for (int partition = 0; partition < 2; partition++) {
-    device_assignment(0, partition) = 0;
-  }
-  HloModuleConfig config = GetModuleConfigForTest(1, 2, device_assignment);
+  HloModuleConfig config = GetModuleConfigForTest();
   if (GetParam().is_sym_mem) {
     config.mutable_debug_options().set_xla_gpu_collective_permute_mode(
         DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
@@ -2201,30 +2193,30 @@ TEST_P(RequiresCollectiveSymmetricMemorySpaceTest, LoopUsage) {
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
   constexpr absl::string_view kS0NoCopy = R"(
-    // CHECK:ENTRY %entry_computation{{(_spmd)?}} ([[PARAM:[a-zA-Z0-9._-]+]]: u32[2]) -> u32[2] {
-    // CHECK:  %[[PARAM]] = u32[2]{0} parameter(0)
-    // CHECK:  [[TUPLE:%tuple[0-9.]*]] = (s32[], u32[2]{0}) tuple({{%copy\.[0-9]+}}, %[[PARAM]])
-    // CHECK:  [[WHILE:%while[0-9.]*]] = (s32[], u32[2]{0}) while([[TUPLE]])
-    // CHECK:  ROOT %[[RESULT:[a-zA-Z0-9._-]+]] = u32[2]{0} get-tuple-element([[WHILE]])
+    // CHECK:ENTRY %entry_computation (input: u32[2]) -> u32[2] {
+    // CHECK:  %input = u32[2]{0} parameter(0)
+    // CHECK:  %tuple = (s32[], u32[2]{0}) tuple(%copy{{.*}}, %input)
+    // CHECK:  %while = (s32[], u32[2]{0}) while(%tuple)
+    // CHECK:  ROOT [[RESULT:%result[0-9.]*]] = u32[2]{0} get-tuple-element(%while)
   )";
 
   constexpr absl::string_view kS0OneParamCopy = R"(
-    // CHECK:ENTRY %entry_computation{{(_spmd)?}} ([[PARAM:[a-zA-Z0-9._-]+]]: u32[2]) -> u32[2] {
-    // CHECK:  %[[PARAM]] = u32[2]{0} parameter(0)
-    // CHECK:  [[COPY1:%copy[0-9.]*]] = u32[2]{0} copy(%[[PARAM]])
-    // CHECK:  [[TUPLE:%tuple[0-9.]*]] = (s32[], u32[2]{0}) tuple({{%copy\.[0-9]+}}, [[COPY1]])
-    // CHECK:  [[WHILE:%while[0-9.]*]] = (s32[], u32[2]{0}) while([[TUPLE]])
-    // CHECK:  ROOT %[[RESULT:[a-zA-Z0-9._-]+]] = u32[2]{0} get-tuple-element([[WHILE]])
+    // CHECK:ENTRY %entry_computation (input: u32[2]) -> u32[2] {
+    // CHECK:  %input = u32[2]{0} parameter(0)
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = u32[2]{0} copy(%input)
+    // CHECK:  %tuple = (s32[], u32[2]{0}) tuple(%copy{{.*}}, [[COPY1]])
+    // CHECK:  %while = (s32[], u32[2]{0}) while(%tuple)
+    // CHECK:  ROOT [[RESULT:%result[0-9.]*]] = u32[2]{0} get-tuple-element(%while)
   )";
 
   constexpr absl::string_view kS1TwoCopies = R"(
-    // CHECK:ENTRY %entry_computation{{(_spmd)?}} ([[PARAM:[a-zA-Z0-9._-]+]]: u32[2]) -> u32[2] {
-    // CHECK:  %[[PARAM]] = u32[2]{0} parameter(0)
-    // CHECK:  [[COPY1:%copy[0-9.]*]] = u32[2]{0:S(1)} copy(%[[PARAM]])
-    // CHECK:  [[TUPLE:%tuple[0-9.]*]] = (s32[], u32[2]{0:S(1)}) tuple({{%copy\.[0-9]+}}, [[COPY1]])
-    // CHECK:  [[WHILE:%while[0-9.]*]] = (s32[], u32[2]{0:S(1)}) while([[TUPLE]])
-    // CHECK:  %[[RESULT:[a-zA-Z0-9._-]+]] = u32[2]{0:S(1)} get-tuple-element([[WHILE]])
-    // CHECK:  ROOT {{%copy\.[0-9]+}} = u32[2]{0} copy(%[[RESULT]])
+    // CHECK:ENTRY %entry_computation (input: u32[2]) -> u32[2] {
+    // CHECK:  %input = u32[2]{0} parameter(0)
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = u32[2]{0:S(1)} copy(%input)
+    // CHECK:  %tuple = (s32[], u32[2]{0:S(1)}) tuple(%copy{{.*}}, [[COPY1]])
+    // CHECK:  %while = (s32[], u32[2]{0:S(1)}) while(%tuple)
+    // CHECK:  [[RESULT:%result[0-9.]*]] = u32[2]{0:S(1)} get-tuple-element(%while)
+    // CHECK:  ROOT %copy{{.*}} = u32[2]{0} copy([[RESULT]])
   )";
 
   const absl::string_view expected_check = [&]() {

@@ -417,7 +417,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #endif
 
   opts.set_xla_gpu_use_memcpy_local_p2p(false);
-  opts.set_xla_gpu_collective_permute_connected_components(true);
+  opts.set_xla_gpu_collective_permute_connected_components(false);
 
   opts.set_xla_reduce_window_rewrite_base_length(16);
 
