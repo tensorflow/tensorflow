@@ -127,6 +127,15 @@ std::optional<std::vector<MaybeParallelTensorOwned>> ExecuteWithSpecialOps(
       TF_SetStatus(status, TF_INVALID_ARGUMENT, message.c_str());
       return result;
     }
+    if (inputs.size() != 1) {
+      std::string message(absl::StrCat("The parallel device ",
+                                       parallel_device_name,
+                                       " expected 1 input for "
+                                       "TPUReplicatedOutput, but got ",
+                                       inputs.size()));
+      TF_SetStatus(status, TF_INVALID_ARGUMENT, message.c_str());
+      return result;
+    }
     if (absl::holds_alternative<TFE_TensorHandle*>(inputs[0])) {
       TF_SetStatus(status, TF_INVALID_ARGUMENT,
                    "Expected the input to "
