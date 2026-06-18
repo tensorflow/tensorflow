@@ -118,10 +118,13 @@ using DimLevelTypeVector = absl::InlinedVector<DimLevelType, InlineRank()>;
   XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, (condition))
 
 // Helper for macros above.  Don't use directly.
-#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, condition)     \
-  static ::xla::TimerStats XLA_TimerStats##counter;                            \
-  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter(           \
-      label, /*enabled=*/VLOG_IS_ON(level) && (condition), __FILE__, __LINE__, \
+#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, condition) \
+  static ::xla::TimerStats XLA_TimerStats##counter;                        \
+  const bool XLA_TimerEnabled##counter = VLOG_IS_ON(level) && (condition); \
+  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter(       \
+      XLA_TimerEnabled##counter ? ::absl::string_view(label)               \
+                                : ::absl::string_view(""),                 \
+      XLA_TimerEnabled##counter, __FILE__, __LINE__,                       \
       &XLA_TimerStats##counter);
 
 struct TimerStats {
