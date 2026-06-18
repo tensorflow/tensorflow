@@ -48,22 +48,20 @@ std::shared_ptr<::grpc::ChannelCredentials> GetClientCredentials() {
   if (UseInsecureCredentials()) {
     LOG(WARNING) << "Using insecure client credentials for gRPC.";
     return ::grpc::InsecureChannelCredentials();  // NOLINT
-  } else {
+  }
     LOG(INFO) << "Using ALTS client credentials for gRPC.";
     return ::grpc::experimental::AltsCredentials(
         ::grpc::experimental::AltsCredentialsOptions());
-  }
 }
 
 std::shared_ptr<::grpc::ServerCredentials> GetServerCredentials() {
   if (UseInsecureCredentials()) {
     LOG(WARNING) << "Using insecure server credentials for gRPC.";
     return ::grpc::InsecureServerCredentials();  // NOLINT
-  } else {
+  }
     LOG(INFO) << "Using ALTS server credentials for gRPC.";
     return ::grpc::experimental::AltsServerCredentials(
         ::grpc::experimental::AltsServerCredentialsOptions());
-  }
 }
 
 }  // namespace proxy

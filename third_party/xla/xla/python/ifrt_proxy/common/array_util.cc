@@ -40,7 +40,9 @@ namespace proxy {
 namespace {
 
 std::string StridesAsStr(const ArrayMemRegion::ByteStrides& strides) {
-  if (!strides.has_value()) return "strides{nullopt}";
+  if (!strides.has_value()) {
+    return "strides{nullopt}";
+  }
   return absl::StrCat("strides{", absl::StrJoin(*strides, ","), "}");
 }
 
@@ -109,7 +111,8 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
     if (shape.dims()[i] < 0) {
       return absl::InvalidArgumentError(
           absl::StrCat("A shape dimension is negative: ", shape));
-    } else if (shape.dims()[i] == 1) {
+    }
+    if (shape.dims()[i] == 1) {
       // The stride shouldn't matter in this case, so continue without checking
       // validity of the given stride.
       continue;
