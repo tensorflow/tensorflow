@@ -1590,6 +1590,7 @@ exports_files(
         "tf_exported_symbols.lds",
         "tf_private_symbols.lds",
         "tf_framework_version_script.lds",
+        "tf_framework_exported_symbols.lds",
     ],
 )
 

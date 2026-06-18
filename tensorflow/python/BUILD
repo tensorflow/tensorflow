@@ -1653,7 +1653,7 @@ pywrap_library(
             "//conditions:default": "//tensorflow:tf_version_script.lds",
         }),
         "tensorflow/tensorflow_framework": select({
-            "//tensorflow:macos": "//tensorflow:tf_exported_symbols.lds",
+            "//tensorflow:macos": "//tensorflow:tf_framework_exported_symbols.lds",
             "//conditions:default": "//tensorflow:tf_framework_version_script.lds",
         }),
     },
