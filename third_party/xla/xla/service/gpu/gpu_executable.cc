@@ -1370,9 +1370,9 @@ absl::Status GpuExecutable::VerboseAllocationError(absl::Status s) {
 //                   +---------------------+---------------------++---------------------+---------------------+
 // GPU               |  VA1 Execute        |  VA2 Execute        ||  VA1 Execute        |  VA2 Execute        |
 //                   +---------------------+---------------------++---------------------+---------------------+
-//         +---------++---------+           +---------++---------+ +---------++---------++---------+           +---------+
-// CPU     | VA1 Map || VA2 Map |           |VA1 UnMap|| VA1 Map | |VA2 UnMap|| VA2 Map ||VA1 UnMap|           |VA2 UnMap|
-//         +---------++---------+           +---------++---------+ +---------++---------++---------+           +---------+
+//         +---------+             +---------++---------+             +---------++---------+
+// CPU     | VA Map  |             |VA UnMap || VA Map  |             |VA UnMap || VA Map  |
+//         +---------+             +---------++---------+             +---------++---------+
 // NOLINTEND
 // clang-format on
 absl::Status GpuExecutable::ExecuteThunksWithVaRemapping(
@@ -1381,22 +1381,16 @@ absl::Status GpuExecutable::ExecuteThunksWithVaRemapping(
     se::StreamExecutor* executor, int64_t unique_id,
     Thunk::ExecutableSource executable_source, bool block_host_until_done,
     bool collective_use_minimal_resource) {
-  // Get or create VaRanges for this executor and VA range index. We hold
-  // va_ranges_mutex_ briefly just to access/create the VaRanges entry.
-  // The VA range index allows multiplexing: with kNumVaReservationSets=2
-  // reservations, the CPU can remap one range while the GPU executes the other.
-  int command_buffer_va_range_idx =
-      run_options->run_options().command_buffer_va_range_idx();
+  // Get or create VaRanges for this executor. We hold va_ranges_mutex_ briefly
+  // just to access/create the VaRanges entry.
   VaRanges* va_ranges = nullptr;
   {
     absl::MutexLock lock(va_ranges_mutex_);
-    auto va_ranges_key = std::make_pair(executor, command_buffer_va_range_idx);
-    va_ranges = &module_va_ranges_[va_ranges_key];
+    va_ranges = &module_va_ranges_[executor];
   }
 
   XLA_VLOG_DEVICE(3, executor->device_ordinal())
       << "VA remapping: module " << module_name_
-      << " va_range_idx=" << command_buffer_va_range_idx
       << " num_allocations=" << command_buffer_allocation_indexes_.size();
 
   // Get the DeviceAddressVmmAllocator to look up physical allocations.
@@ -1987,15 +1981,6 @@ CreateSerializableBuildOptionsProto(const ExecutableBuildOptions& options) {
   serializable_opts.set_compile_thread_pool(nullptr);
 
   return serializable_opts.ToProto();
-}
-
-int GpuExecutable::GetNextCommandBufferVaRangeIdx(int device_ordinal,
-                                                  int num_sets) {
-  absl::MutexLock lock(&command_buffer_va_range_idx_mutex_);
-  int& idx = command_buffer_va_range_idx_[device_ordinal];
-  int result = idx;
-  idx = (idx + 1) % num_sets;
-  return result;
 }
 
 absl::Status GpuExecutable::DumpExecutableIfEnabled(
