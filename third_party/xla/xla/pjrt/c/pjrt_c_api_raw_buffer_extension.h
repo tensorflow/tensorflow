@@ -50,7 +50,8 @@ typedef struct PJRT_RawBuffer_FunctionTable {
   // this method for specific alignment requirements.
   PJRT_Error* (*copy_raw_host_to_device_and_return_event)(
       PJRT_RawBuffer* raw_buffer, const void* src, int64_t offset,
-      int64_t transfer_size, PJRT_DeviceEvent* event);
+      int64_t transfer_size, PJRT_DeviceEventVector* dependencies,
+      PJRT_DeviceEvent* event);
   // Transfers a sub-range of the on-device representation of the buffer.
   // offset+transfer_size must be less than get_on_device_size_in_bytes. The
   // returned event transitions to ready on error, or after the transfer has
@@ -61,7 +62,8 @@ typedef struct PJRT_RawBuffer_FunctionTable {
   // this method for specific alignment requirements.
   PJRT_Error* (*copy_raw_device_to_host_and_return_event)(
       PJRT_RawBuffer* raw_buffer, void* dst, int64_t offset,
-      int64_t transfer_size, PJRT_DeviceEvent* event);
+      int64_t transfer_size, PJRT_DeviceEventVector* dependencies,
+      PJRT_DeviceEvent* event);
   // Return opaque device memory pointer to the underlying memory.
   void* (*opaque_device_memory_data_pointer)(const PJRT_RawBuffer* raw_buffer);
   // Fill `event` with the event that signals when the buffer allocation is

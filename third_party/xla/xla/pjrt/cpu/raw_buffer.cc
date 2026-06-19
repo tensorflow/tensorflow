@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/transpose.h"
@@ -149,21 +150,69 @@ absl::StatusOr<PjRtRawBufferRef> CpuRawBuffer::Slice(int64_t offset,
 }
 
 absl::StatusOr<PjRtDeviceEventRef>
-CpuRawBuffer::CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
-                                                int64_t transfer_size) {
+CpuRawBuffer::CopyRawHostToDeviceAndReturnEvent(
+    const void* src, int64_t offset, int64_t transfer_size,
+    PjRtDeviceEventRefVector dependencies) {
   RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
-  std::memcpy(static_cast<uint8_t*>(GetHostPointer()) + offset, src,
-              transfer_size);
-  return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
+
+  if (dependencies.empty()) {
+    std::memcpy(static_cast<uint8_t*>(GetHostPointer()) + offset, src,
+                transfer_size);
+    return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
+  }
+
+  auto event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
+
+  auto run_copy = [buf = tsl::FormRef(this), src, offset, transfer_size,
+                   dependencies, event]() mutable {
+    absl::Status dep_status = GetErrors(dependencies);
+    if (!dep_status.ok()) {
+      event.SetError(dep_status);
+      return;
+    }
+    std::memcpy(static_cast<uint8_t*>(buf->GetHostPointer()) + offset, src,
+                transfer_size);
+    event.SetStateConcrete();
+  };
+
+  auto* client = absl::down_cast<CommonPjRtClient*>(memory_space()->client());
+  ExecuteWhenReady(dependencies, client->async_work_runner(),
+                   std::move(run_copy));
+
+  return PjRtDeviceEventRef(std::move(event));
 }
 
 absl::StatusOr<PjRtDeviceEventRef>
-CpuRawBuffer::CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
-                                                int64_t transfer_size) {
+CpuRawBuffer::CopyRawDeviceToHostAndReturnEvent(
+    void* dst, int64_t offset, int64_t transfer_size,
+    PjRtDeviceEventRefVector dependencies) {
   RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
-  std::memcpy(dst, static_cast<uint8_t*>(GetHostPointer()) + offset,
-              transfer_size);
-  return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
+
+  if (dependencies.empty()) {
+    std::memcpy(dst, static_cast<uint8_t*>(GetHostPointer()) + offset,
+                transfer_size);
+    return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
+  }
+
+  auto event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
+
+  auto run_copy = [buf = tsl::FormRef(this), dst, offset, transfer_size,
+                   dependencies, event]() mutable {
+    absl::Status dep_status = GetErrors(dependencies);
+    if (!dep_status.ok()) {
+      event.SetError(dep_status);
+      return;
+    }
+    std::memcpy(dst, static_cast<uint8_t*>(buf->GetHostPointer()) + offset,
+                transfer_size);
+    event.SetStateConcrete();
+  };
+
+  auto* client = absl::down_cast<CommonPjRtClient*>(memory_space()->client());
+  ExecuteWhenReady(dependencies, client->async_work_runner(),
+                   std::move(run_copy));
+
+  return PjRtDeviceEventRef(std::move(event));
 }
 
 absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyFromLiteral(

@@ -63,9 +63,11 @@ class PjRtRawBufferInterface : public PJRT_RawBuffer {
                                int64_t transfer_size);
 
   absl::StatusOr<PjRtDeviceEventRef> CopyRawHostToDeviceAndReturnEvent(
-      const void* src, int64_t offset, int64_t transfer_size);
+      const void* src, int64_t offset, int64_t transfer_size,
+      PjRtDeviceEventRefVector dependencies = {});
   absl::StatusOr<PjRtDeviceEventRef> CopyRawDeviceToHostAndReturnEvent(
-      void* dst, int64_t offset, int64_t transfer_size);
+      void* dst, int64_t offset, int64_t transfer_size,
+      PjRtDeviceEventRefVector dependencies = {});
 
   void* OpaqueDeviceMemoryDataPointer() const;
 
@@ -160,7 +162,8 @@ class PjRtRawBuffer : public PjRtRawBufferInterface,
   // on the alignment of `src` and `offset` as well. Look at implementations of
   // this method for specific alignment requirements.
   virtual absl::StatusOr<PjRtDeviceEventRef> CopyRawHostToDeviceAndReturnEvent(
-      const void* src, int64_t offset, int64_t transfer_size) = 0;
+      const void* src, int64_t offset, int64_t transfer_size,
+      PjRtDeviceEventRefVector dependencies) = 0;
 
   // Transfers a sub-range of the on-device representation of the buffer.
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
@@ -171,7 +174,8 @@ class PjRtRawBuffer : public PjRtRawBufferInterface,
   // on the alignment of `dst` and `offset` as well. Look at implementations of
   // this method for specific alignment requirements.
   virtual absl::StatusOr<PjRtDeviceEventRef> CopyRawDeviceToHostAndReturnEvent(
-      void* dst, int64_t offset, int64_t transfer_size) = 0;
+      void* dst, int64_t offset, int64_t transfer_size,
+      PjRtDeviceEventRefVector dependencies) = 0;
 
   // A sliced buffer is a view into the offset and range of this buffer.
   //

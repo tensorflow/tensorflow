@@ -634,7 +634,8 @@ CommonPjRtClient::GetTransposePlan(const TransposePlan::Options& options) {
 Future<> CommonPjRtRawBufferImpl::CopyRawHostToDevice(const void* src,
                                                       int64_t offset,
                                                       int64_t transfer_size) {
-  auto event = CopyRawHostToDeviceAndReturnEvent(src, offset, transfer_size);
+  auto event =
+      CopyRawHostToDeviceAndReturnEvent(src, offset, transfer_size, {});
   if (!event.ok()) {
     return Future<>(event.status());
   }
@@ -645,7 +646,8 @@ Future<> CommonPjRtRawBufferImpl::CopyRawHostToDevice(const void* src,
 
 Future<> CommonPjRtRawBufferImpl::CopyRawDeviceToHost(void* dst, int64_t offset,
                                                       int64_t transfer_size) {
-  auto event = CopyRawDeviceToHostAndReturnEvent(dst, offset, transfer_size);
+  auto event =
+      CopyRawDeviceToHostAndReturnEvent(dst, offset, transfer_size, {});
   if (!event.ok()) {
     return Future<>(event.status());
   }

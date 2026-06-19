@@ -181,18 +181,21 @@ Future<> PjRtCApiRawBuffer::CopyRawDeviceToHost(void* dst, int64_t offset,
 }
 
 absl::StatusOr<PjRtDeviceEventRef>
-PjRtCApiRawBuffer::CopyRawHostToDeviceAndReturnEvent(const void* src,
-                                                     int64_t offset,
-                                                     int64_t transfer_size) {
+PjRtCApiRawBuffer::CopyRawHostToDeviceAndReturnEvent(
+    const void* src, int64_t offset, int64_t transfer_size,
+    PjRtDeviceEventRefVector dependencies) {
   return static_cast<PjRtRawBufferInterface*>(c_buffer_)
-      ->CopyRawHostToDeviceAndReturnEvent(src, offset, transfer_size);
+      ->CopyRawHostToDeviceAndReturnEvent(src, offset, transfer_size,
+                                          std::move(dependencies));
 }
 
 absl::StatusOr<PjRtDeviceEventRef>
-PjRtCApiRawBuffer::CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
-                                                     int64_t transfer_size) {
+PjRtCApiRawBuffer::CopyRawDeviceToHostAndReturnEvent(
+    void* dst, int64_t offset, int64_t transfer_size,
+    PjRtDeviceEventRefVector dependencies) {
   return static_cast<PjRtRawBufferInterface*>(c_buffer_)
-      ->CopyRawDeviceToHostAndReturnEvent(dst, offset, transfer_size);
+      ->CopyRawDeviceToHostAndReturnEvent(dst, offset, transfer_size,
+                                          std::move(dependencies));
 }
 
 void* PjRtCApiRawBuffer::OpaqueDeviceMemoryDataPointer() const {

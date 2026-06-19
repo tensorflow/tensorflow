@@ -224,10 +224,15 @@ const PJRT_RawBuffer_FunctionTable PjRtRawBuffer::kRawBufferVtable = {
     },
     /*copy_raw_host_to_device_and_return_event=*/
     +[](PJRT_RawBuffer* raw_buffer, const void* src, int64_t offset,
-        int64_t transfer_size, PJRT_DeviceEvent* event) -> PJRT_Error* {
-      auto result =
-          static_cast<PjRtRawBuffer*>(raw_buffer)
-              ->CopyRawHostToDeviceAndReturnEvent(src, offset, transfer_size);
+        int64_t transfer_size, PJRT_DeviceEventVector* dependencies,
+        PJRT_DeviceEvent* event) -> PJRT_Error* {
+      PjRtDeviceEventRefVector cpp_deps;
+      if (dependencies != nullptr) {
+        cpp_deps = PjRtDeviceEventRefVector::MoveFromC(dependencies);
+      }
+      auto result = static_cast<PjRtRawBuffer*>(raw_buffer)
+                        ->CopyRawHostToDeviceAndReturnEvent(
+                            src, offset, transfer_size, std::move(cpp_deps));
       if (!result.ok()) {
         return pjrt::StatusToPjRtError(result.status());
       }
@@ -236,10 +241,15 @@ const PJRT_RawBuffer_FunctionTable PjRtRawBuffer::kRawBufferVtable = {
     },
     /*copy_raw_device_to_host_and_return_event=*/
     +[](PJRT_RawBuffer* raw_buffer, void* dst, int64_t offset,
-        int64_t transfer_size, PJRT_DeviceEvent* event) -> PJRT_Error* {
-      auto result =
-          static_cast<PjRtRawBuffer*>(raw_buffer)
-              ->CopyRawDeviceToHostAndReturnEvent(dst, offset, transfer_size);
+        int64_t transfer_size, PJRT_DeviceEventVector* dependencies,
+        PJRT_DeviceEvent* event) -> PJRT_Error* {
+      PjRtDeviceEventRefVector cpp_deps;
+      if (dependencies != nullptr) {
+        cpp_deps = PjRtDeviceEventRefVector::MoveFromC(dependencies);
+      }
+      auto result = static_cast<PjRtRawBuffer*>(raw_buffer)
+                        ->CopyRawDeviceToHostAndReturnEvent(
+                            dst, offset, transfer_size, std::move(cpp_deps));
       if (!result.ok()) {
         return pjrt::StatusToPjRtError(result.status());
       }
@@ -327,10 +337,11 @@ PjRtRawBuffer::PjRtRawBuffer() { vtable = &kRawBufferVtable; }
 
 absl::StatusOr<PjRtDeviceEventRef>
 PjRtRawBufferInterface::CopyRawHostToDeviceAndReturnEvent(
-    const void* src, int64_t offset, int64_t transfer_size) {
+    const void* src, int64_t offset, int64_t transfer_size,
+    PjRtDeviceEventRefVector dependencies) {
   PJRT_DeviceEvent device_event;
   PJRT_Error* error = vtable->copy_raw_host_to_device_and_return_event(
-      this, src, offset, transfer_size, &device_event);
+      this, src, offset, transfer_size, &dependencies.ToC(), &device_event);
   if (error != nullptr) {
     return pjrt::PjrtErrorToStatus(error);
   }
@@ -339,10 +350,11 @@ PjRtRawBufferInterface::CopyRawHostToDeviceAndReturnEvent(
 
 absl::StatusOr<PjRtDeviceEventRef>
 PjRtRawBufferInterface::CopyRawDeviceToHostAndReturnEvent(
-    void* dst, int64_t offset, int64_t transfer_size) {
+    void* dst, int64_t offset, int64_t transfer_size,
+    PjRtDeviceEventRefVector dependencies) {
   PJRT_DeviceEvent device_event;
   PJRT_Error* error = vtable->copy_raw_device_to_host_and_return_event(
-      this, dst, offset, transfer_size, &device_event);
+      this, dst, offset, transfer_size, &dependencies.ToC(), &device_event);
   if (error != nullptr) {
     return pjrt::PjrtErrorToStatus(error);
   }

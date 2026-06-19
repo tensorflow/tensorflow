@@ -103,15 +103,23 @@ void PjRtStreamExecutorDeviceEventPromise::SetReady() {
 
 absl::StatusOr<PjRtDeviceEventRef>
 PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
-    const void* src, int64_t offset, int64_t transfer_size) {
+    const void* src, int64_t offset, int64_t transfer_size,
+    PjRtDeviceEventRefVector dependencies) {
   se::Stream* stream = local_device_->host_to_device_stream();
   auto device_event =
       BufferSequencingEvent::Create(client_->async_work_runner());
   device_event.AndThen([device_buffer = device_buffer_]() {});
-  client_->async_work_runner()->Schedule([client = client_, device_event,
-                                          local_device = local_device_, stream,
-                                          src, offset, transfer_size,
-                                          buf = tsl::FormRef(this)]() mutable {
+
+  auto run_transfer = [client = client_, device_event,
+                       local_device = local_device_, stream, src, offset,
+                       transfer_size, buf = tsl::FormRef(this),
+                       dependencies = dependencies]() mutable {
+    absl::Status dep_status = GetErrors(dependencies);
+    if (!dep_status.ok()) {
+      client->SetEventAsError(device_event, dep_status);
+      return;
+    }
+
     se::DeviceAddressBase sub_buffer = buf->device_buffer_->mem();
     if (transfer_size < sub_buffer.size()) {
       sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
@@ -155,21 +163,33 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
     if (!status.ok()) {
       client->SetEventAsError(device_event, status);
     }
-  });
+  };
+
+  ExecuteWhenReady(dependencies, client_->async_work_runner(),
+                   std::move(run_transfer));
+
   return PjRtDeviceEventRef(std::move(device_event));
 }
 
 absl::StatusOr<PjRtDeviceEventRef>
 PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
-    void* dst, int64_t offset, int64_t transfer_size) {
+    void* dst, int64_t offset, int64_t transfer_size,
+    PjRtDeviceEventRefVector dependencies) {
   se::Stream* stream = local_device_->GetDeviceToHostStream();
   auto device_event =
       BufferSequencingEvent::Create(client_->async_work_runner());
   device_event.AndThen([device_buffer = device_buffer_]() {});
-  client_->async_work_runner()->Schedule([client = client_, device_event,
-                                          local_device = local_device_, stream,
-                                          dst, offset, transfer_size,
-                                          buf = tsl::FormRef(this)]() mutable {
+
+  auto run_transfer = [client = client_, device_event,
+                       local_device = local_device_, stream, dst, offset,
+                       transfer_size, buf = tsl::FormRef(this),
+                       dependencies = dependencies]() mutable {
+    absl::Status dep_status = GetErrors(dependencies);
+    if (!dep_status.ok()) {
+      client->SetEventAsError(device_event, dep_status);
+      return;
+    }
+
     se::DeviceAddressBase sub_buffer = buf->device_buffer_->mem();
     if (transfer_size < sub_buffer.size()) {
       sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
@@ -214,7 +234,11 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
     if (!status.ok()) {
       client->SetEventAsError(device_event, status);
     }
-  });
+  };
+
+  ExecuteWhenReady(dependencies, client_->async_work_runner(),
+                   std::move(run_transfer));
+
   return PjRtDeviceEventRef(std::move(device_event));
 }
 
@@ -304,8 +328,8 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
     definition_event_promise.Set(*std::move(h2d_event));
     return;
   } else if (auto* dst_ptr = dst_raw_buffer->GetHostPointer()) {
-    auto d2h_event =
-        CopyRawDeviceToHostAndReturnEvent(dst_ptr, 0, GetOnDeviceSizeInBytes());
+    auto d2h_event = CopyRawDeviceToHostAndReturnEvent(
+        dst_ptr, 0, GetOnDeviceSizeInBytes(), {});
     if (!d2h_event.ok()) {
       definition_event_promise.SetError(d2h_event.status());
       src_usage_event_promise.SetError(d2h_event.status());
@@ -332,7 +356,7 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
         client_->GetHostMemoryAllocator()->Allocate(GetOnDeviceSizeInBytes(),
                                                     alloc_opts);
     auto d2h_event = CopyRawDeviceToHostAndReturnEvent(
-        staging_buffer.get(), 0, GetOnDeviceSizeInBytes());
+        staging_buffer.get(), 0, GetOnDeviceSizeInBytes(), {});
     if (!d2h_event.ok()) {
       definition_event_promise.SetError(d2h_event.status());
       src_usage_event_promise.SetError(d2h_event.status());

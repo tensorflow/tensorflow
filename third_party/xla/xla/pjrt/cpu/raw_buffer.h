@@ -116,10 +116,12 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
   absl::StatusOr<PjRtRawBufferRef> Slice(int64_t offset, int64_t size) override;
 
   absl::StatusOr<PjRtDeviceEventRef> CopyRawHostToDeviceAndReturnEvent(
-      const void* src, int64_t offset, int64_t transfer_size) override;
+      const void* src, int64_t offset, int64_t transfer_size,
+      PjRtDeviceEventRefVector dependencies) override;
 
   absl::StatusOr<PjRtDeviceEventRef> CopyRawDeviceToHostAndReturnEvent(
-      void* dst, int64_t offset, int64_t transfer_size) override;
+      void* dst, int64_t offset, int64_t transfer_size,
+      PjRtDeviceEventRefVector dependencies) override;
 
   absl::StatusOr<PjRtDeviceEventRef> CopyFromLiteral(
       const LiteralSlice& literal, const xla::Layout& layout,
