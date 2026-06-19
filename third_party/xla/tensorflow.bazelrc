@@ -310,9 +310,11 @@ common:sycl --repo_env=SYCL_BUILD_HERMETIC=0
 # Enable Clang for host and icpx for SYCL
 common:icpx_clang --repo_env TF_ICPX_CLANG=1
 common:icpx_clang --copt=-fclang-abi-compat=17
+common:icpx_clang --copt=-Wno-unknown-warning-option
 
 # Hermetic SYCL Configuration
 common:sycl_hermetic --config=sycl
+common:sycl_hermetic --config=icpx_clang
 common:sycl_hermetic --repo_env=SYCL_BUILD_HERMETIC=1
 
 # Options to disable default on features
