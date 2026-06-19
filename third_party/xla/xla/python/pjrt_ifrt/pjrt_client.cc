@@ -1061,8 +1061,6 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
 
   absl::Span<xla::ifrt::Device* const> ifrt_addressable_devices =
       sharding->devices()->AddressableDeviceList()->devices();
-  auto count =
-      std::make_shared<std::atomic<int>>(ifrt_addressable_devices.size());
   if (ifrt_addressable_devices.empty()) {
     return InvalidArgument("Cannot copy array to non-addressable device: %v",
                            sharding->devices());
@@ -1078,12 +1076,12 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
   }
   std::function<void()> on_done_with_host_buffer_per_device;
   if (on_done_with_host_buffer) {
+    auto shared_on_done = std::shared_ptr<void>(
+        nullptr,
+        [on_done = std::move(on_done_with_host_buffer)](void*) { on_done(); });
     on_done_with_host_buffer_per_device =
-        [on_done_with_host_buffer = std::move(on_done_with_host_buffer),
-         count]() {
-          if (count->fetch_sub(1, std::memory_order_relaxed) == 1) {
-            on_done_with_host_buffer();
-          }
+        [shared_on_done = std::move(shared_on_done)]() mutable {
+          shared_on_done.reset();
         };
   } else {
     on_done_with_host_buffer_per_device = []() {};
