@@ -3168,11 +3168,17 @@ std::string FormatShapeIndexValidationError(
   auto shape_index_formatter = [](std::string* out, const ShapeIndex& i) {
     absl::StrAppend(out, i.ToString());
   };
+  std::string module_info = "";
+  if (instruction->GetModule() != nullptr) {
+    module_info =
+        absl::StrCat("Module: ", instruction->GetModule()->name(), "\n");
+  }
   return absl::StrFormat(
-      "Mismatched tuple structure in original_value for "
-      "instruction %s. Leaf indices in shape and original_value "
-      "do not match.\nIn shape only: {%s}\nIn original_value only: {%s}",
-      instruction->ToString(),
+      "Mismatched tuple structure in shape and original value.\n%s"
+      "Instruction: %s\nShape indices in shape only: {%s}\nShape indices in "
+      "original value "
+      "only: {%s}",
+      module_info, instruction->ToString(),
       absl::StrJoin(shape_only, ", ", shape_index_formatter),
       absl::StrJoin(ov_only, ", ", shape_index_formatter));
 }
