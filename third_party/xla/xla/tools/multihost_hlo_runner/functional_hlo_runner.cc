@@ -1644,6 +1644,40 @@ std::string AbslUnparseFlag(ModuleOutputMode output_mode) {
   return GetModuleOutputModeParser().Unparse(output_mode);
 }
 
+absl::StatusOr<ResolveTopologyResult> ResolveTopology(
+    std::optional<int> num_replicas, std::optional<int> num_partitions,
+    absl::string_view hlo_file, InputFormat input_format,
+    const HloModule* already_loaded_module) {
+  ResolveTopologyResult result;
+  const HloModule* module = already_loaded_module;
+  if (module == nullptr && !hlo_file.empty()) {
+    ASSIGN_OR_RETURN(result.loaded_module,
+                     LoadHloModuleAndArguments(hlo_file, input_format));
+    module = result.loaded_module->hlo_module.get();
+  }
+
+  int resolved_replicas = 1;
+  int resolved_partitions = 1;
+
+  if (num_replicas.has_value() && *num_replicas >= 0) {
+    resolved_replicas = *num_replicas;
+  } else if (module != nullptr) {
+    resolved_replicas = module->config().replica_count();
+  }
+
+  if (num_partitions.has_value() && *num_partitions >= 0) {
+    resolved_partitions = *num_partitions;
+  } else if (module != nullptr) {
+    resolved_partitions = module->config().num_partitions();
+  }
+
+  result.topology.num_replicas = resolved_replicas;
+  result.topology.num_partitions = resolved_partitions;
+  result.topology.num_nodes = resolved_replicas * resolved_partitions;
+
+  return result;
+}
+
 }  // namespace FunctionalHloRunner
 
 HLORunnerProfiler::HLORunnerProfiler(absl::string_view dump_path,

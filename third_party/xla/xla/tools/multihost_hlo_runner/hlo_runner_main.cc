@@ -88,13 +88,14 @@ struct HloRunnerConfig {
   bool should_run = true;
   bool compile_only = false;
   bool enable_mock_nccl = false;
+  int run_single_shard_id = -1;
   std::string dump_output_literal_to = "";
   int task_id = 0;
   int num_nodes = 1;
   std::string device_type_str = "gpu";
   std::string address_str = "";
-  int32_t num_replicas = -1;
-  int32_t num_partitions = 1;
+  std::optional<int32_t> num_replicas = std::nullopt;
+  std::optional<int32_t> num_partitions = std::nullopt;
   bool log_output = false;
   bool run_xla_backend_only = false;
   bool disable_all_hlo_passes = false;
@@ -193,7 +194,8 @@ RunningOptionsFromFlags(const HloRunnerConfig& opts) {
 }
 
 static absl::StatusOr<FunctionalHloRunner::RawCompileOptions>
-RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
+RawCompileOptionsFromFlags(const HloRunnerConfig& opts,
+                           const DebugOptions& debug_options) {
   FunctionalHloRunner::RawCompileOptions out;
   out.hlo_passes_mode =
       opts.run_xla_backend_only
@@ -212,13 +214,9 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
         out.execution_options,
         FunctionalHloRunner::LoadExecutionOptions(opts.execution_options_path));
   }
-  out.debug_options = GetDebugOptionsFromFlags();
-  out.num_replicas = opts.num_replicas < 0
-                         ? std::nullopt
-                         : std::optional<int>(opts.num_replicas);
-  out.num_partitions = opts.num_partitions < 0
-                           ? std::nullopt
-                           : std::optional<int>(opts.num_partitions);
+  out.debug_options = debug_options;
+  out.num_replicas = opts.num_replicas;
+  out.num_partitions = opts.num_partitions;
   out.xla_dump_to = opts.xla_dump_to;
   out.xla_text_dump_mode =
       opts.xla_dump_as_text
@@ -312,13 +310,33 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
 
   PreprocessFlags(opts);
 
+  if (opts.run_single_shard_id >= 0) {
+    opts.enable_mock_nccl = true;
+    opts.task_id = opts.run_single_shard_id;
+
+    std::string hlo_file = (argc > 1) ? argv[1] : "";
+    ASSIGN_OR_RETURN(auto resolve_result,
+                     FunctionalHloRunner::ResolveTopology(
+                         opts.num_replicas, opts.num_partitions, hlo_file,
+                         opts.input_format));
+
+    opts.num_replicas = resolve_result.topology.num_replicas;
+    opts.num_partitions = resolve_result.topology.num_partitions;
+    opts.num_nodes = resolve_result.topology.num_nodes;
+  }
+
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
+  if (opts.enable_mock_nccl) {
+    debug_options.set_xla_gpu_shard_autotuning(false);
+  }
+
   ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::PreprocessingOptions preproc_options,
       PreprocessingOptionsFromFlags(opts));
   preproc_options.annotate_while_loop_trip_count = true;
   ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::RawCompileOptions raw_compile_options,
-      RawCompileOptionsFromFlags(opts));
+      RawCompileOptionsFromFlags(opts, debug_options));
   ASSIGN_OR_RETURN(xla::FunctionalHloRunner::RunningOptions running_options,
                    RunningOptionsFromFlags(opts));
 
@@ -460,14 +478,39 @@ int main(int argc, char** argv) {
       tsl::Flag(
           "enable_mock_nccl", &opts.enable_mock_nccl,
           "Should we simulate multi-hosts run with mock nccl collectives?"),
+      tsl::Flag(
+          "run_single_shard_id", &opts.run_single_shard_id,
+          "Run only a single shard of a multi-GPU workload. Specifying a "
+          "non-negative value will automatically enable mock NCCL, set the "
+          "task_id to this shard ID, and infer the total number of shards from "
+          "the HLO module config."),
       tsl::Flag("address", &opts.address_str,
                 "Coordinator address with port for when num_nodes > 1. "
                 "Example: 127.0.0.1:12345"),
-      tsl::Flag("num_replicas", &opts.num_replicas,
-                "The number of replicas; set to -1 for multihost "
-                "execution, which then uses all devices on all host."),
-      tsl::Flag("num_partitions", &opts.num_partitions,
-                "Number of partitions for SPMD."),
+      tsl::Flag(
+          "num_replicas",
+          [&opts](int32_t val) {
+            if (val >= 0) {
+              opts.num_replicas = val;
+            } else {
+              opts.num_replicas = std::nullopt;
+            }
+            return true;
+          },
+          -1,
+          "The number of replicas; set to -1 for multihost "
+          "execution, which then uses all devices on all host."),
+      tsl::Flag(
+          "num_partitions",
+          [&opts](int32_t val) {
+            if (val >= 0) {
+              opts.num_partitions = val;
+            } else {
+              opts.num_partitions = std::nullopt;
+            }
+            return true;
+          },
+          -1, "Number of partitions for SPMD."),
       tsl::Flag("log_output", &opts.log_output,
                 "Log the input and output to stderr."),
       tsl::Flag("run_xla_backend_only", &opts.run_xla_backend_only,

@@ -110,6 +110,15 @@ using PerDeviceLiteralVecType = absl::btree_map<int, LiteralVec>;
 using PerDeviceShapeVecType = absl::btree_map<int, ShapeVec>;
 using PerDeviceIndexVecType = absl::btree_map<int, std::vector<int>>;
 
+struct HloModuleAndArguments {
+  std::unique_ptr<HloModule> hlo_module;
+
+  // The outer `std::vector` represents the list of shards. The inner
+  // `std::vector<Literal>` represents a list of arguments for a single shard
+  // partition.
+  std::vector<std::vector<Literal>> arguments;
+};
+
 enum class LogOutputMode { kLogOutput, kNotLogOutput };
 
 enum class HloPassesMode {
@@ -251,6 +260,18 @@ struct RawCompileOptions {
   std::string xla_gpu_dump_xspace_to = "";
 };
 
+struct TopologyConfig {
+  int num_replicas;
+  int num_partitions;
+  int num_nodes;
+};
+
+struct ResolveTopologyResult {
+  TopologyConfig topology;
+  // The loaded module and arguments, if they were loaded during resolution.
+  std::optional<HloModuleAndArguments> loaded_module;
+};
+
 // The options controlling the execution of the HLO module.
 struct RunningOptions {
   // Option controlling the inputs of the HLO.
@@ -285,14 +306,6 @@ struct RunningOptions {
   }
 };
 
-struct HloModuleAndArguments {
-  std::unique_ptr<HloModule> hlo_module;
-
-  // The outer `std::vector` represents the list of shards. The inner
-  // `std::vector<Literal>` represents a list of arguments for a single shard
-  // partition.
-  std::vector<std::vector<Literal>> arguments;
-};
 
 struct ReplicasAndPartitions {
   int replicas = 1;
@@ -400,6 +413,18 @@ absl::StatusOr<PerDeviceLiteralVecType> Run(
 
 absl::StatusOr<HloModuleAndArguments> LoadHloModuleAndArguments(
     absl::string_view hlo_file, InputFormat input_format);
+
+// Resolves num_replicas and num_partitions by checking the provided values.
+// If they are empty (std::nullopt or negative), it tries to infer them from
+// `already_loaded_module` if provided, or by loading the module from
+// `hlo_file`.
+// If they still cannot be resolved, they default to 1.
+// `num_nodes` is calculated as `num_replicas * num_partitions`.
+absl::StatusOr<ResolveTopologyResult> ResolveTopology(
+    std::optional<int> num_replicas, std::optional<int> num_partitions,
+    absl::string_view hlo_file = "",
+    InputFormat input_format = InputFormat::kText,
+    const HloModule* already_loaded_module = nullptr);
 
 // This would ideally be private, but we need it for the implementation of
 // MultihostHloRunner.
