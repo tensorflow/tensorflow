@@ -74,16 +74,21 @@ cc_library(
 xla_cc_test(
     name = "cpu_cliques_test",
     srcs = ["cpu_cliques_test.cc"],
-    tags = ["notap"],
     deps = [
         ":cpu_clique_key",
         ":cpu_cliques",
+        ":cpu_collectives",
         ":in_process_collectives",
+        ":in_process_communicator",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/runtime:device_id",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
 )
