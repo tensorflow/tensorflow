@@ -1137,7 +1137,9 @@ void FuseOperandsBFS(mlir::MLIRContext& mlir_context,
   for (HloInstruction* operand : candidates) {
     queue.push(operand);
   }
-  while (!queue.empty()) {
+  while (!queue.empty() &&
+         fusion->operand_count() <
+             TritonFusionAnalysis::kMaxParameterPerDotOperand * 2) {
     HloInstruction* candidate = queue.front();
     queue.pop();
 
