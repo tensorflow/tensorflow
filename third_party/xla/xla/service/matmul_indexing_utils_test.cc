@@ -363,6 +363,46 @@ TEST(DotOperandDimsTest, InsertDimensionAtSpecificIndex) {
   EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(3, 0));
 }
 
+TEST(DotOperandDimsTest, PermuteToConsecutive) {
+  ASSERT_OK_AND_ASSIGN(Shape shape, ParseShape("f32[10,20,30,40,50,60]"));
+  DotOperandDims dims(shape, /*batch_dims=*/{0, 5},
+                      /*non_contracting_dims=*/{1, 3},
+                      /*contracting_dims=*/{2, 4});
+
+  auto permutation = dims.PermuteToConsecutive(DotOperandDims::kContracting);
+  EXPECT_TRUE(permutation.has_value());
+  EXPECT_THAT(*permutation, ElementsAre(0, 1, 3, 5, 2, 4));
+
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0, 3));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(1, 2));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(4, 5));
+}
+
+TEST(DotOperandDimsTest, PermuteToConsecutiveAlreadyConsecutive) {
+  ASSERT_OK_AND_ASSIGN(Shape shape, ParseShape("f32[10,20,30,40,50,60]"));
+  DotOperandDims dims(shape, /*batch_dims=*/{0, 5},
+                      /*non_contracting_dims=*/{1, 2},
+                      /*contracting_dims=*/{3, 4});
+
+  auto permutation = dims.PermuteToConsecutive(DotOperandDims::kContracting);
+  EXPECT_FALSE(permutation.has_value());
+}
+
+TEST(DotOperandDimsTest, PermuteToConsecutiveUnsorted) {
+  Shape shape = ParseShape("f32[10,20,30,40,50,60]").value();
+  DotOperandDims dims(shape, /*batch_dims=*/{0, 5},
+                      /*non_contracting_dims=*/{1, 2},
+                      /*contracting_dims=*/{4, 3});
+
+  auto permutation = dims.PermuteToConsecutive(DotOperandDims::kContracting);
+  ASSERT_TRUE(permutation.has_value());
+  EXPECT_THAT(*permutation, ElementsAre(0, 1, 2, 5, 4, 3));
+
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0, 3));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(1, 2));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(4, 5));
+}
+
 TEST(DotOperandDimsTest, MapBackwardThroughTranspose) {
   ASSERT_OK_AND_ASSIGN(Shape operand_shape, ParseShape("f32[10,20,30]"));
   auto param = HloInstruction::CreateParameter(0, operand_shape, "param");

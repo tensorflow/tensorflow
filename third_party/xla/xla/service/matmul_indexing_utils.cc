@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <iterator>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <vector>
@@ -282,6 +283,28 @@ absl::Status DotOperandDims::CollapseCategory(Category category,
   // Set the first dimension to the total size and remove the rest.
   shape_.set_dimensions(min_dim, total_size);
   return EraseDimensions(min_dim + 1, max_dim + 1);
+}
+
+std::optional<std::vector<int64_t>> DotOperandDims::PermuteToConsecutive(
+    Category category) {
+  if (IsConsecutive(category)) {
+    return std::nullopt;
+  }
+
+  const auto& dims = dim_numbers_[category];
+  std::vector<int64_t> permutation(shape_.dimensions().size());
+  std::iota(permutation.begin(), permutation.end(), 0);
+  // Partition into non-category and category dimensions, preserving relative
+  // order.
+  auto dims_begin = absl::c_stable_partition(permutation, [&dims](int64_t dim) {
+    return !absl::c_linear_search(dims, dim);
+  });
+  // Overwrite the category dimensions part with the actual `dims` to preserve
+  // its order.
+  absl::c_copy(dims, dims_begin);
+
+  ApplyPermutation(permutation);
+  return permutation;
 }
 
 std::string DotOperandDims::ToString() const {

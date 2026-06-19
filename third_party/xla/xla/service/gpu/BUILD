@@ -1786,6 +1786,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/transforms:convert_memory_placement_to_internal_annotations",
+        "//xla/hlo/transforms:dot_dimension_normalizer",
         "//xla/hlo/transforms:host_offload_legalize",
         "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms:host_offloading_prepare",
