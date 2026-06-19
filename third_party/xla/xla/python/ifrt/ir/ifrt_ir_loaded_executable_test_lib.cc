@@ -1960,12 +1960,10 @@ module @auto_layout {
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
   auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
-  // TODO(b/510955190): Update compatibility requirement to WEEK_4 once the
-  // 4 weeks version is >= 0.4.0.
   ASSERT_OK_AND_ASSIGN(
       program,
       SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::NONE));
+                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(4));
   ASSERT_OK_AND_ASSIGN(
       auto ifrt_ir_executable,
