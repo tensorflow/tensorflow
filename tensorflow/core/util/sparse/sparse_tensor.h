@@ -762,8 +762,6 @@ inline absl::StatusOr<SparseTensor> SparseTensor::SliceImpl(
       const int64_t idx_val =
           static_cast<int64_t>(input_indices_t(i, dim)) - start[dim];
       DCHECK_GE(idx_val, 0);
-      CHECK_LE(idx_val, std::numeric_limits<Tindices>::max())
-          << "Index value " << idx_val << " overflows Tindices";
       output_indices_t(index, dim) = static_cast<Tindices>(idx_val);
     }
     index++;

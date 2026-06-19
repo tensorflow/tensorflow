@@ -18,8 +18,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <limits>
-#include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/reshape_util.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
@@ -79,7 +79,7 @@ absl::Status UploadShapeToGPU(OpKernelContext* context,
   TF_RETURN_IF_ERROR(context->allocate_temp(DataTypeToEnum<Tindices>::value,
                                             TensorShape({rank}), gpu_shape_t));
   // Build host-side array of Tindices shape values.
-  std::vector<Tindices> host_shape(rank);
+  absl::InlinedVector<Tindices, 8> host_shape(rank);
   for (int i = 0; i < rank; ++i) {
     host_shape[i] = static_cast<Tindices>(shape.dim_size(i));
   }
