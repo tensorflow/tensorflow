@@ -1381,9 +1381,7 @@ void AddCollectiveCombinerPasses(
 
   // Assign collective backends after combining, so that combined collectives
   // get the correct backend config.
-  pipeline.AddPass<CollectiveBackendAssigner>(
-      device_description.gpu_compute_capability(),
-      num_visible_devices_per_process, options.slice_size);
+  pipeline.AddPass<CollectiveBackendAssigner>();
 
   // Annotate AllReduce ops with the Triton kernel strategy (one-shot /
   // two-shot) that will be used at runtime. This annotation is consumed by

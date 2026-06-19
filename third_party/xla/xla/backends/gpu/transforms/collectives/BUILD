@@ -83,8 +83,6 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/gpu:backend_configs_cc",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
