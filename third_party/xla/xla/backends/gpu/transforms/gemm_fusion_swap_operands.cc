@@ -142,7 +142,7 @@ absl::StatusOr<int64_t> GetNonContractingDimsNumElements(
       operand_index == 0 ? dot_dims.lhs_contracting_dimensions()
                          : dot_dims.rhs_contracting_dimensions();
   const DimensionVector noncontracting_dim_indices = GetNonContractingDims(
-      shape.dimensions().size(), batch_dim_indices, contracting_dim_indices);
+      shape.dimensions().size(), contracting_dim_indices, batch_dim_indices);
   return absl::c_accumulate(
       noncontracting_dim_indices, int64_t{1},
       [&](int64_t acc, int64_t dim) { return acc * shape.dimensions(dim); });
