@@ -540,7 +540,6 @@ cc_library(
         ":logical_buffer_analysis",
         "//xla:shape_tree",
         "//xla:shape_util",
-        "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -559,7 +558,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:status",
     ],
 )
 
