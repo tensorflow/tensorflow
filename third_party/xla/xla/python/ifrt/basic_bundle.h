@@ -69,13 +69,14 @@ class BasicBundle final : public llvm::RTTIExtends<BasicBundle, Bundle> {
   absl::StatusOr<std::vector<BundleRef>> Slice(
       absl::Span<const int> sizes, ArrayCopySemantics semantics) final;
 
-  absl::StatusOr<BundleRef> CopyArrays(
-      absl::Span<const int> slice_sizes,
-      absl::Span<const CopySpec> copy_specs) final;
+  absl::StatusOr<BundleRef> CopyArrays(absl::Span<const int> slice_sizes,
+                                       absl::Span<const CopySpec> copy_specs,
+                                       ArrayCopySemantics semantics) final;
 
   absl::StatusOr<BundleRef> ReshardArrays(
       absl::Span<const int> slice_sizes,
-      absl::Span<const ReshardSpec> reshard_specs) final;
+      absl::Span<const ReshardSpec> reshard_specs,
+      ArrayCopySemantics semantics) final;
 
   static char ID;  // NOLINT
 

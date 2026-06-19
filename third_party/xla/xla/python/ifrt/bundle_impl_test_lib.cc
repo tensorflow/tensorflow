@@ -258,7 +258,9 @@ TEST(BundleImplTest, CopyArrays) {
   ASSERT_OK_AND_ASSIGN(spec.devices, client->MakeDeviceList({device}));
   std::vector<Bundle::CopySpec> specs = {spec};
 
-  ASSERT_OK_AND_ASSIGN(BundleRef copied_bundle, bundle->CopyArrays({1}, specs));
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef copied_bundle,
+      bundle->CopyArrays({1}, specs, ArrayCopySemantics::kReuseInput));
 
   EXPECT_EQ(copied_bundle->num_values(), 1);
 
@@ -304,8 +306,9 @@ TEST(BundleImplTest, ReshardArrays) {
       /*layout=*/nullptr,
   }}}};
 
-  ASSERT_OK_AND_ASSIGN(BundleRef resharded_bundle,
-                       bundle->ReshardArrays({1}, specs));
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef resharded_bundle,
+      bundle->ReshardArrays({1}, specs, ArrayCopySemantics::kReuseInput));
   EXPECT_EQ(resharded_bundle->num_values(), 1);
 
   ASSERT_OK_AND_ASSIGN(

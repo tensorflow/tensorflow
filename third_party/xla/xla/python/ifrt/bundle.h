@@ -63,7 +63,9 @@ class Bundle : public tsl::ReferenceCounted<Bundle>,
   // Deletes all values in this `Bundle`.
   virtual tsl::Future<> Delete() = 0;
 
-  // Returns true if this `Bundle` has been deleted.
+  // Returns true iff the whole `Bundle` has been deleted or donated using
+  // `Delete()`, or `CopyArrays()`/`ReshardArrays()` with `kDonateInput`. This
+  // does not track whether the values in this `Bundle` have been deleted.
   virtual bool IsDeleted() const = 0;
 
   // Returns a string representation of this `Bundle`.
@@ -110,9 +112,6 @@ class Bundle : public tsl::ReferenceCounted<Bundle>,
     // explicitly whenever the destination array should use the custom layout.
     std::optional<DeviceListRef> devices;
     std::optional<MemoryKind> memory_kind;
-
-    // Array copy semantics. Aliasing is default.
-    ArrayCopySemantics semantics = ArrayCopySemantics::kReuseInput;
   };
 
   // Copies the arrays in this `Bundle` to create a new `Bundle`.
@@ -131,8 +130,8 @@ class Bundle : public tsl::ReferenceCounted<Bundle>,
   // The size of `slice_sizes` must be equal to the size of `copy_specs`. The
   // sum of `slice_sizes` must be equal to `num_values()`.
   virtual absl::StatusOr<BundleRef> CopyArrays(
-      absl::Span<const int> slice_sizes,
-      absl::Span<const CopySpec> copy_specs) = 0;
+      absl::Span<const int> slice_sizes, absl::Span<const CopySpec> copy_specs,
+      ArrayCopySemantics semantics) = 0;
 
   // Specification for resharding a slice of the bundle.
   struct ReshardSpec {
@@ -142,9 +141,6 @@ class Bundle : public tsl::ReferenceCounted<Bundle>,
     //
     // TODO(hyeontaek): Generalize it when we support non-array values.
     std::vector<ArraySpec> array_specs;
-
-    // Array copy semantics for this slice. Aliasing is default.
-    ArrayCopySemantics semantics = ArrayCopySemantics::kReuseInput;
   };
 
   // Reshards the arrays in this `Bundle` to create a new `Bundle`.
@@ -164,7 +160,8 @@ class Bundle : public tsl::ReferenceCounted<Bundle>,
   // sum of `slice_sizes` must be equal to `num_values()`.
   virtual absl::StatusOr<BundleRef> ReshardArrays(
       absl::Span<const int> slice_sizes,
-      absl::Span<const ReshardSpec> reshard_specs) = 0;
+      absl::Span<const ReshardSpec> reshard_specs,
+      ArrayCopySemantics semantics) = 0;
 
   static char ID;  // NOLINT
 };
