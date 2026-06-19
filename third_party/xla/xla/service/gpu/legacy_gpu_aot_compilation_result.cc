@@ -104,7 +104,8 @@ LegacyGpuAotCompilationResult::LoadExecutable(
     se::Platform::Id platform_id,
     const se::DeviceDescription& device_description,
     const DebugOptions& debug_options) && {
-  return compiler_->LoadExecutableFromAotResult(*this, device_description);
+  return compiler_->LoadExecutableFromLegacyAotResult(*this,
+                                                      device_description);
 }
 
 absl::StatusOr<CompiledMemoryStats>
