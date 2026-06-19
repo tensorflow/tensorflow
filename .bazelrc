@@ -1006,6 +1006,7 @@ common:cross_compile_base --config=clang_local
 common:cross_compile_base --host_cpu=k8
 common:cross_compile_base --host_crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 common:cross_compile_base --extra_execution_platforms=//tensorflow/tools/toolchains/cross_compile/config:linux_x86_64
+common:cross_compile_base --extra_toolchains=//tensorflow/tools/toolchains/cross_compile/cc:linux_x86_toolchain
 
 common:rbe_cross_compile_base --config=rbe_base
 common:rbe_cross_compile_base --remote_instance_name=projects/tensorflow-testing/instances/default_instance
