@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -6034,6 +6035,74 @@ BENCHMARK(BM_FindAndExtractBestNodeAvailable)
     ->Arg(1000)
     ->Arg(10000)
     ->Arg(40000);
+
+TEST_F(LatencyHidingSchedulerTest, NopBypassPreferenceInteraction) {
+  absl::string_view hlo_string = R"(
+    HloModule TestModule, is_scheduled=true
+
+    ENTRY entry {
+      p = f32[8] parameter(0)
+      ag-start = (f32[8], f32[16]) all-gather-start(p), replica_groups={{0,1}}, dimensions={0}
+      ag-done = f32[16] all-gather-done(ag-start)
+      negate.0 = f32[8] negate(p)
+      bitcast.0 = f32[8] bitcast(p)
+      add1 = f32[8] add(bitcast.0, negate.0)
+      slice = f32[8] slice(ag-done), slice={[0:8]}
+      ROOT r = f32[8] add(add1, slice)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+
+  auto graph_processing_hook = [](HloScheduleGraph* graph) {
+    HloGraphNode* n_node = nullptr;
+    HloGraphNode* a_node = nullptr;
+    for (const HloInstruction* instr : graph->GetOriginalInstrList()) {
+      if (instr->name() == "bitcast.0") {
+        n_node = graph->GetNodePtr(instr);
+      } else if (instr->name() == "negate.0") {
+        a_node = graph->GetNodePtr(instr);
+      }
+    }
+    EXPECT_NE(n_node, nullptr);
+    EXPECT_NE(a_node, nullptr);
+    n_node->SetPreference(-2.0);
+    a_node->SetPreference(-1.0);
+    return absl::OkStatus();
+  };
+
+  SchedulerConfig sched_config = GetDefaultSchedConfig();
+  std::unique_ptr<LatencyEstimator> latency_estimator =
+      std::make_unique<ApproximateLatencyEstimator>();
+  auto async_tracker = std::make_unique<AsyncTracker>(sched_config);
+  AliasInfo alias_info;
+  HloCostAnalysis::ShapeSizeFunction shape_size_bytes = ShapeSizeBytes;
+
+  std::shared_ptr<const SchedulingContext> scheduling_context =
+      std::make_shared<const SchedulingContext>(
+          hlo_module.get(), std::move(latency_estimator),
+          std::move(async_tracker), &alias_info, shape_size_bytes);
+
+  auto scheduler_core =
+      std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
+  TF_ASSERT_OK(scheduler_core->SetGraphProcessingHook(graph_processing_hook));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      LatencyHidingScheduler(scheduling_context, std::move(scheduler_core))
+          .Run(hlo_module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_TRUE(hlo_module->has_schedule());
+  const HloInstructionSequence& sequence =
+      hlo_module->schedule().sequence(hlo_module->entry_computation());
+
+  int n_pos = GetIndex(sequence.instructions(), "bitcast.0");
+  int a_pos = GetIndex(sequence.instructions(), "negate.0");
+
+  EXPECT_LT(n_pos, a_pos)
+      << "Expected bitcast.0 to be scheduled before negate.0";
+}
 
 }  // namespace
 }  // namespace xla

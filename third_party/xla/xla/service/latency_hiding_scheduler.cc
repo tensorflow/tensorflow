@@ -1553,7 +1553,9 @@ class ReadySetLt {
     // the two candidates. If two preferences are the same regular LHS logic
     // will run as usual, we take advantage of this fact when initializing
     // the heuristic algorithm.
-    CMP_PROPERTY(GetPreference(), "kPreference");
+    if (an->HasPreference() && bn->HasPreference()) {
+      CMP_PROPERTY(GetPreference(), "kPreference");
+    }
 
     // Update the resource_constrained of the candidate before any
     // target specific rule is applied so rules can access the
@@ -2811,8 +2813,9 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     int64_t annotation = edge.Target().GetAnnotation();
     // We are adding the no-op instructions to a separate set so that we can
     // immediately schedule them when they are ready.
-    if (IsNopInstruction(edge.Target().GetOpcode(), edge.Target().GetInstr()) &&
-        annotation == -1) {
+    const bool is_nop =
+        IsNopInstruction(edge.Target().GetOpcode(), edge.Target().GetInstr());
+    if (is_nop && annotation == -1 && !edge.Target().HasPreference()) {
       sched_state->nop_set.push_back(&edge.Target());
       continue;
     }
@@ -3796,7 +3799,9 @@ DefaultSchedulerCore::ScheduleComputation(
   for (HloGraphNode* root : roots) {
     // Set ready time for the roots 0.
     root->SetReadyTime(0.0);
-    if (IsNopInstruction(root->GetInstr().opcode(), root->GetInstr())) {
+    const bool is_nop =
+        IsNopInstruction(root->GetInstr().opcode(), root->GetInstr());
+    if (is_nop && !root->HasPreference()) {
       sched_state->nop_set.push_back(root);
     } else {
       sched_state->ready_set.push_back(root);

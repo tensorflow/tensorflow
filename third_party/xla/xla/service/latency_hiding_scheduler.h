@@ -783,8 +783,12 @@ class HloGraphNode {
     num_hops_to_closest_selective_resource_occupier_ =
         num_hops_to_closest_selective_resource_occupier;
   }
-  void SetPreference(double preference) { preference_ = preference; }
+  void SetPreference(double preference) {
+    preference_ = preference;
+    has_preference_ = true;
+  }
   double GetPreference() const { return preference_; }
+  bool HasPreference() const { return has_preference_; }
   const ResourcesVector& GetResources() const { return rare_->resources; }
   bool DoesOccupyAnyResource() const { return does_occupy_any_resource_; }
   bool DoesReleaseAnyResource() const { return does_release_any_resource_; }
@@ -1021,6 +1025,7 @@ class HloGraphNode {
   // a graph node having a higher preference value means it's scheduled
   // earlier. See ReadySetLt::operator()
   float preference_ = 0.0;
+  bool has_preference_ = false;
 
   // Other boolean fields are less performance sensitive so can be stored in
   // bitfields.  These are initialized to default values in InitBitFields() (due
