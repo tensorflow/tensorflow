@@ -552,8 +552,12 @@ inline SparseTensor SparseTensor::ConcatImpl(
       const auto* st_ix = &st.ix_.matrix<Tindices>()(0, 0);
       auto* ix_out = &ix_t(offset, 0);
       for (std::size_t i = 0; i < st_num_entries * dims; ++i) {
-        *ix_out++ = static_cast<Tindices>(
-            *st_ix++ + ((i % dims == primary_dim) ? shape_offset : 0));
+        const int64_t idx_val =
+            static_cast<int64_t>(*st_ix++) +
+            ((i % dims == primary_dim) ? shape_offset : 0);
+        DCHECK_LE(idx_val, std::numeric_limits<Tindices>::max())
+            << "Index value " << idx_val << " overflows Tindices";
+        *ix_out++ = static_cast<Tindices>(idx_val);
       }
     }
 
@@ -753,8 +757,12 @@ inline absl::StatusOr<SparseTensor> SparseTensor::SliceImpl(
     }
     output_values_t(index) = input_values_t(i);
     for (int dim = 0; dim < dims; dim++) {
-      output_indices_t(index, dim) =
-          static_cast<Tindices>(input_indices_t(i, dim) - start[dim]);
+      const int64_t idx_val =
+          static_cast<int64_t>(input_indices_t(i, dim)) - start[dim];
+      DCHECK_GE(idx_val, 0);
+      DCHECK_LE(idx_val, std::numeric_limits<Tindices>::max())
+          << "Index value " << idx_val << " overflows Tindices";
+      output_indices_t(index, dim) = static_cast<Tindices>(idx_val);
     }
     index++;
   }

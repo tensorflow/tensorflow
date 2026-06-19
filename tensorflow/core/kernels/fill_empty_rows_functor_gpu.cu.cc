@@ -479,17 +479,19 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
 
 }  // namespace functor
 
-#define DEFINE_INT64(T)                                       \
-  template struct functor::FillEmptyRows<GPUDevice, T, int64, \
-                                         /*RaggedOperands=*/true>;
-TF_CALL_POD_TYPES(DEFINE_INT64)
-#undef DEFINE_INT64
-
-#define DEFINE_INT64(T)                                       \
-  template struct functor::FillEmptyRows<GPUDevice, T, int64, \
-                                         /*RaggedOperands=*/false>;
-TF_CALL_POD_TYPES(DEFINE_INT64)
-#undef DEFINE_INT64
+#define DEFINE_FILL_EMPTY_ROWS(T, Tindex, RaggedOperands)               \
+  template struct functor::FillEmptyRows<GPUDevice, T, Tindex,          \
+                                         /*RaggedOperands=*/RaggedOperands>;
+#define DEFINE_FOR_TYPE(T)           \
+  DEFINE_FILL_EMPTY_ROWS(T, int64, true)  \
+  DEFINE_FILL_EMPTY_ROWS(T, int64, false) \
+  DEFINE_FILL_EMPTY_ROWS(T, int32, true)  \
+  DEFINE_FILL_EMPTY_ROWS(T, int32, false) \
+  DEFINE_FILL_EMPTY_ROWS(T, int16, true)  \
+  DEFINE_FILL_EMPTY_ROWS(T, int16, false)
+TF_CALL_POD_TYPES(DEFINE_FOR_TYPE)
+#undef DEFINE_FOR_TYPE
+#undef DEFINE_FILL_EMPTY_ROWS
 
 namespace {
 
@@ -598,10 +600,15 @@ struct FillEmptyRowsGrad<GPUDevice, T, Tindex> {
 
 }  // namespace functor
 
-#define DEFINE_INT64(T) \
-  template struct functor::FillEmptyRowsGrad<GPUDevice, T, int64>;
-TF_CALL_REAL_NUMBER_TYPES(DEFINE_INT64);
-#undef DEFINE_INT64
+#define DEFINE_FILL_EMPTY_ROWS_GRAD(T, Tindex) \
+  template struct functor::FillEmptyRowsGrad<GPUDevice, T, Tindex>;
+#define DEFINE_GRAD_FOR_TYPE(T)        \
+  DEFINE_FILL_EMPTY_ROWS_GRAD(T, int64) \
+  DEFINE_FILL_EMPTY_ROWS_GRAD(T, int32) \
+  DEFINE_FILL_EMPTY_ROWS_GRAD(T, int16)
+TF_CALL_REAL_NUMBER_TYPES(DEFINE_GRAD_FOR_TYPE);
+#undef DEFINE_GRAD_FOR_TYPE
+#undef DEFINE_FILL_EMPTY_ROWS_GRAD
 
 }  // namespace tensorflow
 

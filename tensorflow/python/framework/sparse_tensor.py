@@ -181,9 +181,9 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     """The indices of non-zero values in the represented dense tensor.
 
     Returns:
-      A 2-D integer Tensor (dtype `tf.int32` or `tf.int64`) with dense_shape
-        `[N, ndims]`, where `N` is the number of non-zero values in the tensor,
-        and `ndims` is the rank.
+      A 2-D integer Tensor (dtype `tf.int16`, `tf.int32`, or `tf.int64`) with
+        dense_shape `[N, ndims]`, where `N` is the number of non-zero values in
+        the tensor, and `ndims` is the rank.
     """
     return self._indices
 
@@ -510,17 +510,20 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
     else:
       dense_shape.set_shape([rank])
 
+    if self._indices_dtype != dtypes.int64:
+      indices = gen_math_ops.cast(indices, self._indices_dtype)
     return SparseTensor(indices, values, dense_shape)
 
   def _batch(self, batch_size):
     return SparseTensorSpec(
         tensor_shape.TensorShape([batch_size]).concatenate(self._shape),
-        self._dtype)
+        self._dtype,
+        self._indices_dtype)
 
   def _unbatch(self):
     if self._shape.ndims == 0:
       raise ValueError("Unbatching a tensor is only supported for rank >= 1")
-    return SparseTensorSpec(self._shape[1:], self._dtype)
+    return SparseTensorSpec(self._shape[1:], self._dtype, self._indices_dtype)
 
   def _to_legacy_output_types(self):
     return self._dtype

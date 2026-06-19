@@ -87,9 +87,19 @@ class SparseReorderOp : public OpKernel {
     const Tensor& input_shape_in = context->input(2);
     // Indices aren't used, and some ops use -1 as a placeholder for missing
     // values.
-    OP_REQUIRES_OK(context, (sparse_utils::ValidateSparseTensor<int64_t>(
-                                input_ind, input_val, input_shape_in,
-                                sparse_utils::IndexValidation::kNone)));
+    if (input_ind.dtype() == DT_INT16) {
+      OP_REQUIRES_OK(context, (sparse_utils::ValidateSparseTensor<int16_t>(
+                                   input_ind, input_val, input_shape_in,
+                                   sparse_utils::IndexValidation::kNone)));
+    } else if (input_ind.dtype() == DT_INT32) {
+      OP_REQUIRES_OK(context, (sparse_utils::ValidateSparseTensor<int32_t>(
+                                   input_ind, input_val, input_shape_in,
+                                   sparse_utils::IndexValidation::kNone)));
+    } else {
+      OP_REQUIRES_OK(context, (sparse_utils::ValidateSparseTensor<int64_t>(
+                                   input_ind, input_val, input_shape_in,
+                                   sparse_utils::IndexValidation::kNone)));
+    }
     functor::SparseReorderFunctor<Device, T>()(context, input_ind, input_val,
                                                input_shape_in);
   }

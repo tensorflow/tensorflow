@@ -227,21 +227,22 @@ class SparseReduceOp : public OpKernel {
     auto DoReduce = [&](auto group_iter) -> absl::Status {
       for (const auto &g : group_iter) {
         Op::template Run<T>(ctx, reduced_val, g.template values<T>());
+        const std::vector<int64_t> group = g.group();
         if (!(output_strides.empty() ||
-              g.group().size() == output_strides.size())) {
+              group.size() == output_strides.size())) {
           return absl::InternalError(absl::StrCat(
               "Expected group size and output_strides size to match",
-              ", but got ", g.group().size(), " and ",
+              ", but got ", group.size(), " and ",
               output_strides.size()));
         }
-        const int64_t idx = CoordinatesToFlatIndex(g.group(), output_strides);
+        const int64_t idx = CoordinatesToFlatIndex(group, output_strides);
         if (idx < 0 || idx >= out_flat.size()) {
           return errors::Internal(
               "Obtained a write index of ", idx,
               " which is outside of bounds of [0, ", out_flat.size(), ")");
         }
         out_flat(idx) = reduced_val();
-        VLOG(2) << "coords: " << absl::StrJoin(g.group(), ",")
+        VLOG(2) << "coords: " << absl::StrJoin(group, ",")
                 << "; idx: " << idx << "; group " << Op::Name() << ": "
                 << reduced_val();
       }
@@ -384,7 +385,7 @@ class SparseReduceSparseOp : public OpKernel {
         }
         out_flat(i) = reduced_val();
         i++;
-        VLOG(2) << "coords: " << absl::StrJoin(g.group(), ",")
+        VLOG(2) << "coords: " << absl::StrJoin(group, ",")
                 << "; group " << Op::Name() << ": "
                 << reduced_val();
       }
