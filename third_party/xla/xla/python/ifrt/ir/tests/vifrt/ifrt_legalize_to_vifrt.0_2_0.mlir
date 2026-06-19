@@ -1,11 +1,11 @@
 // RUN: ifrt-opt %s --ifrt-legalize-to-vifrt --vifrt-to-version='target_version=0.2.0' --symbol-dce --mlir-print-op-generic -split-input-file | FileCheck %s
 // RUN: ifrt-translate --serialize --ifrt_version=0.2.0 --atom_program_version=1.13.1 --strip_debuginfo %s | ifrt-translate --deserialize --strip_debuginfo | ifrt-opt > %t.0
 // RUN: ifrt-opt %s > %t.1
-// RUN: diff %t.0 %t.1
+// RUN: cmp -s %t.0 %t.1
 
 // RUN: ifrt-translate --deserialize --strip_debuginfo %s.bytes | ifrt-opt > %t.2
 // RUN: ifrt-opt %s > %t.3
-// RUN: diff %t.2 %t.3
+// RUN: cmp -s %t.2 %t.3
 
 // ============ Types and attributes ============
 
