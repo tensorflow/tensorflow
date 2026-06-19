@@ -34,7 +34,7 @@ namespace xla::gpu {
 namespace {
 
 class GemmBroadcastFoldingRewriteTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  protected:
   const auto& GpuComputeComp() {
     return device_description().gpu_compute_capability();
