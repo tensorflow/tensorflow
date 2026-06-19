@@ -181,11 +181,13 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
       return errors::InvalidArgument("dense_shape cannot be empty.");
     }
     const int64_t dense_rows_64 = dense_shape_t.flat<int64_t>()(0);
-    if (dense_rows_64 >
-        static_cast<int64_t>(std::numeric_limits<Tindex>::max())) {
+    if (dense_rows_64 < 0 ||
+        dense_rows_64 >
+            static_cast<int64_t>(std::numeric_limits<Tindex>::max())) {
       return errors::InvalidArgument(
           "dense_shape[0] (", dense_rows_64,
-          ") exceeds the maximum value representable by index type (",
+          ") is invalid or exceeds the maximum value representable by index "
+          "type (",
           std::numeric_limits<Tindex>::max(), ")");
     }
     const Tindex dense_rows = static_cast<Tindex>(dense_rows_64);

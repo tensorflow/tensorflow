@@ -551,9 +551,12 @@ inline SparseTensor SparseTensor::ConcatImpl(
     if (st_num_entries > 0) {
       std::copy_n(&st.vals_.vec<T>()(0), st_num_entries, &vals_t(offset));
 
-      // Validate once per tensor: the accumulated offset + this tensor's
-      // primary-dim size must fit in Tindices, guaranteeing all individual
-      // indices are in range (no per-element check needed in the loop).
+      // Precondition: the caller (SparseConcatOp) validates all output shape
+      // dimensions against numeric_limits<Tindices>::max() before reaching
+      // here, so this CHECK fires only on API misuse bypassing the op. Since
+      // ConcatImpl returns SparseTensor (not Status), CHECK is the only
+      // available signalling mechanism; a future refactor to
+      // absl::StatusOr<SparseTensor> would allow returning a proper error.
       CHECK_LE(shape_offset + st.shape()[primary_dim],
                static_cast<int64_t>(std::numeric_limits<Tindices>::max()))
           << "Concatenated dimension size overflows Tindices";
