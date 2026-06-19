@@ -18,9 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -139,23 +137,17 @@ class CommandBufferThunk : public Thunk {
     bool warmup_done ABSL_GUARDED_BY(mutex) = false;
   };
 
-  // Command buffer thunk owns commands buffers instantiated on all executors.
-  // When VA remapping is enabled, the key includes the first allocation's VA
-  // address to distinguish between command buffers for different VA ranges.
+  // Command buffer thunk owns one command buffer for each executor it runs on.
   struct State {
     absl::Mutex mutex;
-    absl::flat_hash_map<std::pair<se::StreamExecutor*, void*>,
+    absl::flat_hash_map<se::StreamExecutor*,
                         std::shared_ptr<ExecutorCommandBuffer>>
         command_buffers ABSL_GUARDED_BY(mutex);
   };
 
-  // Returns a command buffer for (executor, buffer_allocations) or creates a
-  // new one. When VA remapping is enabled the key includes the first
-  // allocation's device address to distinguish per-VA-range command buffers;
-  // otherwise the key uses nullptr.
+  // Returns a command buffer for `executor` or creates a new one.
   absl::StatusOr<std::shared_ptr<ExecutorCommandBuffer>>
-  GetOrCreateCommandBuffer(se::StreamExecutor* executor,
-                           const BufferAllocations& buffer_allocations);
+  GetOrCreateCommandBuffer(se::StreamExecutor* executor);
 
   // Each individual command buffer allocates state on device (CUDA graph) and
   // it adds up pretty quickly. To prevent OOM errors we proactively evict
@@ -187,10 +179,6 @@ class CommandBufferThunk : public Thunk {
 
   // The update mode controlling VA remapping strategy for this command buffer.
   DebugOptions::CommandBufferUpdateMode command_buffer_update_mode_;
-
-  // Cached minimum allocation index of the first traced command. Computed once
-  // in the constructor for CAPTURE_CMD_NEVER_UPDATE mode.
-  std::optional<BufferAllocation::Index> first_traced_cmd_alloc_idx_;
 
   // Command buffer thunk state allocated in heap to allow global (per-process)
   // management of instantiated command buffers.

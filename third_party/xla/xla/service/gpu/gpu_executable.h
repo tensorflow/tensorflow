@@ -144,11 +144,6 @@ class GpuExecutable : public Executable {
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
-  // Returns the next VA range index for the given device ordinal. Cycle wraps
-  // at num_sets. Keeping this state in the Executable avoids ABA pointer reuse
-  // issues and memory leaks that happen when using global pointer maps.
-  int GetNextCommandBufferVaRangeIdx(int device_ordinal, int num_sets) override;
-
   absl::string_view name() const override { return module_name_; }
 
   xla::Shape result_shape() const override { return program_shape_.result(); }
@@ -480,15 +475,8 @@ class GpuExecutable : public Executable {
   // module_allocations_mutex_ during VA remapping operations which may involve
   // GPU synchronization.
   absl::Mutex va_ranges_mutex_;
-  absl::node_hash_map<std::pair<se::StreamExecutor*, int>, VaRanges>
-      module_va_ranges_ ABSL_GUARDED_BY(va_ranges_mutex_);
-  absl::Mutex command_buffer_va_range_idx_mutex_;
-  // Map from device ordinal (key) to virtual address (VA) range index (value).
-  // Kept per GPU executable so each compiled module independently alternates
-  // between VA range sets.
-  absl::flat_hash_map<int, int> command_buffer_va_range_idx_
-      ABSL_GUARDED_BY(command_buffer_va_range_idx_mutex_);
-
+  absl::node_hash_map<se::StreamExecutor*, VaRanges> module_va_ranges_
+      ABSL_GUARDED_BY(va_ranges_mutex_);
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;
 
