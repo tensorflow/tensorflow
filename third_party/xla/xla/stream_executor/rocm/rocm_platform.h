@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/abi/runtime_abi_version.h"

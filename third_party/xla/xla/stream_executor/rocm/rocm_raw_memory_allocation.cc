@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_raw_memory_allocation.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 
