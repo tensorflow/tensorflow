@@ -134,17 +134,17 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
       # Preserve an explicit integer dtype on the incoming tensor/array;
       # fall back to int64 for plain Python lists and other untyped inputs.
-      if (hasattr(indices, "dtype") and
-          dtypes.as_dtype(indices.dtype).is_integer):
+      if hasattr(indices, "dtype"):
+        indices_dtype = dtypes.as_dtype(indices.dtype)
+        if not indices_dtype.is_integer:
+          raise TypeError(
+              "SparseTensor indices must have an integer dtype, "
+              f"got {indices_dtype!r}."
+          )
         indices = ops.convert_to_tensor(indices, name="indices")
       else:
         indices = ops.convert_to_tensor(
             indices, name="indices", dtype=dtypes.int64)
-      if not indices.dtype.is_integer:
-        raise TypeError(
-            "SparseTensor indices must have an integer dtype, "
-            f"got {indices.dtype!r}."
-        )
       # TODO(touts): Consider adding mutable_values() when 'values'
       # is a VariableOp and updating users of SparseTensor.
       values = ops.convert_to_tensor(values, name="values")
@@ -510,7 +510,7 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
     else:
       dense_shape.set_shape([rank])
 
-    if self._indices_dtype != dtypes.int64:
+    if indices.dtype != self._indices_dtype:
       indices = gen_math_ops.cast(indices, self._indices_dtype)
     return SparseTensor(indices, values, dense_shape)
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse_concat_op.h"
 
 #include <algorithm>
+#include <limits>
 #include <numeric>
 #include <unordered_map>
 #include <utility>
@@ -207,6 +208,19 @@ class SparseConcatOp : public OpKernel {
                           "Concat dimension overflowed at position ", i)));
           output_shape.set_dim(j, new_dim);
         }
+      }
+    }
+
+    if constexpr (!std::is_same_v<Tindices, int64_t>) {
+      for (int j = 0; j < output_shape.dims(); ++j) {
+        OP_REQUIRES(
+            context,
+            output_shape.dim_size(j) <=
+                static_cast<int64_t>(std::numeric_limits<Tindices>::max()),
+            absl::InvalidArgumentError(absl::StrCat(
+                "Output shape dimension ", j, " (", output_shape.dim_size(j),
+                ") exceeds the maximum index value for the chosen index type (",
+                std::numeric_limits<Tindices>::max(), ")")));
       }
     }
 
