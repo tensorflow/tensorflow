@@ -65,7 +65,7 @@ class Group {
   template <typename T>
   typename TTypes<T>::UnalignedVec values() const {
     return typename TTypes<T>::UnalignedVec(
-        &(iter_->vals_.vec<T>()(loc_)), next_loc_ - loc_);
+        &(iter_->vals_.template vec<T>()(loc_)), next_loc_ - loc_);
   }
 
  private:
