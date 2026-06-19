@@ -227,5 +227,18 @@ TEST_F(CpuPjrtCompilerTest, CompileMultiModuleHloSuccess) {
   EXPECT_TRUE(TempDirContainsHloString(xla::kMultiModuleCustomCallTarget));
 }
 
+TEST_F(CpuPjrtCompilerTest, DeserializePjRtTopologyDescriptionSuccess) {
+  xla::cpu::CpuPjRtCompiler compiler;
+  auto topology_description = GetDefaultCpuTopologyDescription();
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized_topology_description,
+                          topology_description->ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto deserialized_topology_description,
+      compiler.DeserializePjRtTopologyDescription(
+          serialized_topology_description.SerializeAsString()));
+  EXPECT_THAT(deserialized_topology_description->platform_name(),
+              xla::CpuPlatformName());
+}
+
 }  // namespace
 }  // namespace xla::cpu

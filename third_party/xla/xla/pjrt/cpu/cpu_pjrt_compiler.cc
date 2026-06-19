@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -105,6 +106,17 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
     const PjRtTopologyDescription& topology, PjRtClient* client) {
   ASSIGN_OR_RETURN(auto cpu_client, CreatePjRtCpuClientFromTopology(topology));
   return cpu_client->Compile(std::move(module), options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+CpuPjRtCompiler::DeserializePjRtTopologyDescription(
+    const std::string& serialized_topology) {
+  xla::PjRtTopologyDescriptionProto proto;
+  if (!proto.ParseFromString(serialized_topology)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse CpuTopologyDescription from string.");
+  }
+  return CpuTopologyDescription::FromProto(proto);
 }
 
 }  // namespace xla::cpu
