@@ -1900,8 +1900,9 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
                                                dynamic_dimensions.end()));
   if (shape.has_layout()) {
     *new_shape.mutable_layout() = shape.layout();
+    std::vector<int64_t> inverse_permutation = InversePermutation(permutation);
     for (int64_t& dim : *new_shape.mutable_layout()->mutable_minor_to_major()) {
-      dim = permutation[dim];
+      dim = inverse_permutation[dim];
     }
   }
   return new_shape;
