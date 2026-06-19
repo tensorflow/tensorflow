@@ -168,8 +168,9 @@ class SparseAddOp : public OpKernel {
     for (i = 0; i < sum_nnz; ++i) {
       const bool from_a = entries_to_copy[i].first;
       const int64_t idx = entries_to_copy[i].second;
-      out_indices_mat.chip<0>(i) =
-          from_a ? a_indices_mat.chip<0>(idx) : b_indices_mat.chip<0>(idx);
+      out_indices_mat.template chip<0>(i) =
+          from_a ? a_indices_mat.template chip<0>(idx)
+                 : b_indices_mat.template chip<0>(idx);
     }
     if (sum_nnz > 0) {
       std::copy_n(out_values.begin(), sum_nnz, &out_values_flat(0));

@@ -74,7 +74,7 @@ void UnionSparseIndicesAndValues(
   int64_t i = 0, j = 0;
   const T kZero = T(0);
   while (i < a_nnz && j < b_nnz) {
-    switch (sparse::DimComparator::cmp(a_indices_mat, b_indices_mat, i, j,
+    switch (sparse::DimComparator<int64_t>::cmp(a_indices_mat, b_indices_mat, i, j,
                                        num_dims)) {
       case -1:
         entries_to_copy->emplace_back(true, i);

@@ -506,6 +506,8 @@ inline SparseTensor SparseTensor::ConcatImpl(
     DCHECK_EQ(st.dims_, dims) << "All SparseTensors must have the same rank.";
     DCHECK_EQ(DataTypeToEnum<T>::v(), st.dtype())
         << "Concat requested with the wrong data type";
+    DCHECK_EQ(st.ix_.dtype(), tensors[0].ix_.dtype())
+        << "All SparseTensors must have the same index dtype.";
     DCHECK_GE(st.order()[0], 0) << "SparseTensor must be ordered";
     DCHECK_EQ(st.order()[0], primary_dim)
         << "All SparseTensors' order[0] must match.  This is the concat dim.";
@@ -555,7 +557,7 @@ inline SparseTensor SparseTensor::ConcatImpl(
         const int64_t idx_val =
             static_cast<int64_t>(*st_ix++) +
             ((i % dims == primary_dim) ? shape_offset : 0);
-        DCHECK_LE(idx_val, std::numeric_limits<Tindices>::max())
+        CHECK_LE(idx_val, std::numeric_limits<Tindices>::max())
             << "Index value " << idx_val << " overflows Tindices";
         *ix_out++ = static_cast<Tindices>(idx_val);
       }
@@ -760,7 +762,7 @@ inline absl::StatusOr<SparseTensor> SparseTensor::SliceImpl(
       const int64_t idx_val =
           static_cast<int64_t>(input_indices_t(i, dim)) - start[dim];
       DCHECK_GE(idx_val, 0);
-      DCHECK_LE(idx_val, std::numeric_limits<Tindices>::max())
+      CHECK_LE(idx_val, std::numeric_limits<Tindices>::max())
           << "Index value " << idx_val << " overflows Tindices";
       output_indices_t(index, dim) = static_cast<Tindices>(idx_val);
     }

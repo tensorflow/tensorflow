@@ -102,7 +102,7 @@ TEST(SparseTensorTest, DimComparatorSorts) {
 TEST(SparseTensorTest, SparseTensorInvalidIndicesType) {
   int N = 5;
   const int NDIM = 3;
-  Tensor ix(DT_INT32, TensorShape({N, NDIM}));
+  Tensor ix(DT_FLOAT, TensorShape({N, NDIM}));
   Tensor vals(DT_STRING, TensorShape({N}));
   SparseTensor result;
 

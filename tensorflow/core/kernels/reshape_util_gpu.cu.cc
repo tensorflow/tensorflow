@@ -87,40 +87,64 @@ absl::Status UploadShapeToGPU(OpKernelContext* context,
       gpu_shape_t->flat<Tindices>().data(), rank * sizeof(Tindices));
   return stream->Memcpy(&gpu_mem, host_shape.data(), rank * sizeof(Tindices));
 }
-}  // namespace
 
 template <typename Tindices>
-absl::Status ReshapeSparseTensorFunctor<GPUDevice, Tindices>::operator()(
+absl::Status ReshapeSparseTensorFunctorGPUImpl(
     OpKernelContext* context, const TensorShape& input_shape,
     const TensorShape& output_shape,
     typename TTypes<Tindices>::ConstMatrix input_indices,
-    typename TTypes<Tindices>::Matrix output_indices) const {
+    typename TTypes<Tindices>::Matrix output_indices) {
   const int64_t input_rank = input_shape.dims();
   const int64_t output_rank = output_shape.dims();
   const int64_t nnz = input_indices.dimension(0);
   se::Stream* stream = context->op_device_context()->stream();
   if (!stream) return absl::InternalError("No GPU stream available.");
   Tensor input_shape_gpu_t, output_shape_gpu_t;
-  TF_RETURN_IF_ERROR(
-      UploadShapeToGPU<Tindices>(context, input_shape, stream, &input_shape_gpu_t));
-  TF_RETURN_IF_ERROR(
-      UploadShapeToGPU<Tindices>(context, output_shape, stream, &output_shape_gpu_t));
+  TF_RETURN_IF_ERROR(UploadShapeToGPU<Tindices>(context, input_shape, stream,
+                                                &input_shape_gpu_t));
+  TF_RETURN_IF_ERROR(UploadShapeToGPU<Tindices>(context, output_shape, stream,
+                                                &output_shape_gpu_t));
   const GPUDevice& device = context->template eigen_device<GPUDevice>();
   auto config = GetGpuLaunchConfig(nnz, device);
-  return GpuLaunchKernel(ReshapeSparseTensorKernel<Tindices>, config.block_count,
-                         config.thread_per_block, 0, device.stream(),
-                         nnz,
-                         static_cast<int32_t>(input_rank),
-                         static_cast<int32_t>(output_rank),
-                         input_shape_gpu_t.flat<Tindices>().data(),
-                         output_shape_gpu_t.flat<Tindices>().data(),
-                         input_indices.data(),
-                         output_indices.data());
+  return GpuLaunchKernel(
+      ReshapeSparseTensorKernel<Tindices>, config.block_count,
+      config.thread_per_block, 0, device.stream(), nnz,
+      static_cast<int32_t>(input_rank), static_cast<int32_t>(output_rank),
+      input_shape_gpu_t.flat<Tindices>().data(),
+      output_shape_gpu_t.flat<Tindices>().data(), input_indices.data(),
+      output_indices.data());
+}
+}  // namespace
+
+template <>
+absl::Status ReshapeSparseTensorFunctor<GPUDevice, int64_t>::operator()(
+    OpKernelContext* context, const TensorShape& input_shape,
+    const TensorShape& output_shape,
+    typename TTypes<int64_t>::ConstMatrix input_indices,
+    typename TTypes<int64_t>::Matrix output_indices) const {
+  return ReshapeSparseTensorFunctorGPUImpl<int64_t>(
+      context, input_shape, output_shape, input_indices, output_indices);
 }
 
-template struct ReshapeSparseTensorFunctor<GPUDevice, int16_t>;
-template struct ReshapeSparseTensorFunctor<GPUDevice, int32_t>;
-template struct ReshapeSparseTensorFunctor<GPUDevice, int64_t>;
+template <>
+absl::Status ReshapeSparseTensorFunctor<GPUDevice, int32_t>::operator()(
+    OpKernelContext* context, const TensorShape& input_shape,
+    const TensorShape& output_shape,
+    typename TTypes<int32_t>::ConstMatrix input_indices,
+    typename TTypes<int32_t>::Matrix output_indices) const {
+  return ReshapeSparseTensorFunctorGPUImpl<int32_t>(
+      context, input_shape, output_shape, input_indices, output_indices);
+}
+
+template <>
+absl::Status ReshapeSparseTensorFunctor<GPUDevice, int16_t>::operator()(
+    OpKernelContext* context, const TensorShape& input_shape,
+    const TensorShape& output_shape,
+    typename TTypes<int16_t>::ConstMatrix input_indices,
+    typename TTypes<int16_t>::Matrix output_indices) const {
+  return ReshapeSparseTensorFunctorGPUImpl<int16_t>(
+      context, input_shape, output_shape, input_indices, output_indices);
+}
 
 }  // namespace functor
 

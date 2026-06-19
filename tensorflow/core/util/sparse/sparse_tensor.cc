@@ -281,25 +281,6 @@ absl::Status SparseTensor::IndicesValidHelper() const {
 }
 
 absl::Status SparseTensor::IndicesValid() const {
-  if (ix_.dtype() == DT_INT32 || ix_.dtype() == DT_INT16) {
-    // No fast paths for int32/int16; check order then call generic helper.
-    bool standard_order = true;
-    for (size_t i = 0; i < order_.size(); ++i) {
-      if (order_[i] < 0) {
-        return absl::FailedPreconditionError(
-            "Order was not provided.  Provide an order at "
-            "construction time or run ReorderInPlace");
-      }
-      standard_order = standard_order && order_[i] == i;
-    }
-    if (ix_.dtype() == DT_INT16) {
-      return standard_order ? IndicesValidHelper<true, int16_t>()
-                            : IndicesValidHelper<false, int16_t>();
-    }
-    return standard_order ? IndicesValidHelper<true, int32_t>()
-                          : IndicesValidHelper<false, int32_t>();
-  }
-
   bool standard_order = true;
   for (size_t i = 0; i < order_.size(); ++i) {
     if (order_[i] < 0) {
@@ -308,6 +289,15 @@ absl::Status SparseTensor::IndicesValid() const {
           "construction time or run ReorderInPlace");
     }
     standard_order = standard_order && order_[i] == i;
+  }
+
+  if (ix_.dtype() == DT_INT16) {
+    return standard_order ? IndicesValidHelper<true, int16_t>()
+                          : IndicesValidHelper<false, int16_t>();
+  }
+  if (ix_.dtype() == DT_INT32) {
+    return standard_order ? IndicesValidHelper<true, int32_t>()
+                          : IndicesValidHelper<false, int32_t>();
   }
 
   if (standard_order) {

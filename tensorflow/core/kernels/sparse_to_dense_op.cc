@@ -112,7 +112,7 @@ class SparseToDense : public OpKernel {
     const int64_t num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
     const int64_t num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
 
-    auto output_shape_vec = output_shape.flat<Index>();
+    auto output_shape_vec = output_shape.flat<int64_t>();
     TensorShape output_tensor_shape;
     OP_REQUIRES_OK(c, TensorShapeUtils::MakeShape(output_shape_vec.data(),
                                                   output_shape_vec.size(),
@@ -223,7 +223,7 @@ class SparseToDenseGPU : public AsyncOpKernel {
                                                   sparse_values, default_value),
                          done);
 
-    auto output_shape_vec = output_shape.flat<Index>();
+    auto output_shape_vec = output_shape.flat<int64_t>();
     TensorShape output_tensor_shape;
     OP_REQUIRES_OK_ASYNC(c,
                          TensorShapeUtils::MakeShape(output_shape_vec.data(),

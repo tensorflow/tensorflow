@@ -104,22 +104,14 @@ void SparseSplitOpImpl(OpKernelContext* context, int num_split,
     const auto index_val = std::is_same_v<Device, CPUDevice>
                                ? sparse_utils::IndexValidation::kUnordered
                                : sparse_utils::IndexValidation::kNone;
-    absl::Status validate_status;
-    if (input_indices.dtype() == DT_INT16) {
-      validate_status = sparse_utils::ValidateSparseTensor<int16_t>(
-          input_indices, input_values, input_shape, index_val);
-    } else if (input_indices.dtype() == DT_INT32) {
-      validate_status = sparse_utils::ValidateSparseTensor<int32_t>(
-          input_indices, input_values, input_shape, index_val);
-    } else if (input_indices.dtype() == DT_INT64) {
-      validate_status = sparse_utils::ValidateSparseTensor<int64_t>(
-          input_indices, input_values, input_shape, index_val);
-    } else {
-      validate_status = absl::InvalidArgumentError(absl::StrCat(
-          "Unsupported index dtype for SparseSplit: ",
-          DataTypeString(input_indices.dtype())));
-    }
-    OP_REQUIRES_OK_ASYNC(context, validate_status, done);
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        sparse::DispatchIndexDtype(
+            input_indices.dtype(), [&](auto Tidx) -> absl::Status {
+              return sparse_utils::ValidateSparseTensor<decltype(Tidx)>(
+                  input_indices, input_values, input_shape, index_val);
+            }),
+        done);
   }
 
   const int64_t axis_input = input_axis.scalar<int64_t>()();
