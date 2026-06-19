@@ -59,6 +59,9 @@ struct FillEmptyRows<CPUDevice, T, Tindex, RaggedOperands> {
     const auto values = values_t.vec<T>();
 
     const Tindex N = indices_t.shape().dim_size(0);
+    if (dense_shape_t.NumElements() == 0) {
+      return errors::InvalidArgument("dense_shape cannot be empty.");
+    }
     const int64_t dense_rows_64 = dense_shape_t.flat<int64_t>()(0);
     if (dense_rows_64 >
         static_cast<int64_t>(std::numeric_limits<Tindex>::max())) {

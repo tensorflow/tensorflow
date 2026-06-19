@@ -728,7 +728,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
   def testEmptyIndicesTensor(self):
     with test_util.use_gpu():
       sp_input = sparse_tensor.SparseTensor(
-          indices=np.ones([0, 2]),
+          indices=np.ones([0, 2], dtype=np.int64),
           values=np.ones([0]),
           dense_shape=np.array([2, 5]))
       sp_output, empty_row_indicator = (
@@ -745,7 +745,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
   def testEmptyOutput(self):
     with test_util.use_gpu():
       sp_input = sparse_tensor.SparseTensor(
-          indices=np.ones([0, 2]),
+          indices=np.ones([0, 2], dtype=np.int64),
           values=np.ones([0]),
           dense_shape=np.array([0, 3]))
       sp_output, empty_row_indicator = (

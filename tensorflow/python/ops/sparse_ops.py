@@ -545,8 +545,13 @@ def _cast_dense_shape_to_index_dtype(dense_shape, index_dtype):
       )
     return math_ops.cast(shape_t, dtype)
 
+  # reduce_max fails on an empty tensor; append 0 so reduction always has at
+  # least one element. 0 < max_val for any valid index dtype, so it never
+  # spuriously triggers the assertion.
+  non_empty_shape_t = array_ops.concat(
+      [shape_t, constant_op.constant([0], dtype=dtypes.int64)], axis=0)
   check = check_ops.assert_less_equal(
-      math_ops.reduce_max(shape_t),
+      math_ops.reduce_max(non_empty_shape_t),
       constant_op.constant(max_val, dtype=dtypes.int64),
       message=(
           "SparseTensor dense_shape has a dimension that exceeds the maximum "
@@ -638,6 +643,8 @@ def sparse_add_v2(a, b, threshold=0):
     # swap to make `a` the SparseTensor.
     if isinstance(b, sparse_classes):
       a, b = b, a
+    # SparseTensorValue may carry list indices (no .dtype); convert first.
+    a = _convert_to_sparse_tensor(a)
     a_shape = _cast_dense_shape_to_index_dtype(a.dense_shape, a.indices.dtype)
     return gen_sparse_ops.sparse_tensor_dense_add(a.indices, a.values,
                                                   a_shape, b)
