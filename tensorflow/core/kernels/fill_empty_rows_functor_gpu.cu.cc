@@ -173,11 +173,19 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
     const auto default_value = default_value_t.scalar<T>();
     const auto indices = indices_t.tensor<Tindex, IndicesRank>();
     const auto values = values_t.vec<T>();
-    const auto dense_shape = dense_shape_t.tensor<Tindex, IndicesRank - 1>();
 
     const Tindex N = indices_t.shape().dim_size(0);
     const int rank = IndicesRank == 1 ? 1 : indices_t.shape().dim_size(1);
-    const Tindex dense_rows = dense_shape(0);  // Must be on the host
+    // dense_shape_t is always int64 per op spec; read it correctly.
+    const int64_t dense_rows_64 = dense_shape_t.flat<int64_t>()(0);
+    if (dense_rows_64 >
+        static_cast<int64_t>(std::numeric_limits<Tindex>::max())) {
+      return errors::InvalidArgument(
+          "dense_shape[0] (", dense_rows_64,
+          ") exceeds the maximum value representable by index type (",
+          std::numeric_limits<Tindex>::max(), ")");
+    }
+    const Tindex dense_rows = static_cast<Tindex>(dense_rows_64);
     DataType index_type = DataTypeToEnum<Tindex>::value;
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     se::Stream* stream = context->op_device_context()->stream();
