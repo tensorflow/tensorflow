@@ -732,9 +732,10 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(ctx, buffer_size >= 0 || buffer_size == model::kAutotune,
-              errors::InvalidArgument("buffer_size must be >= 0 or set "
-                                      "buffer_size to be ",
-                                      model::kAutotune, " for auto-tuning"));
+              absl::InvalidArgumentError(
+                  absl::StrCat("buffer_size must be >= 0 or set "
+                               "buffer_size to be ",
+                               model::kAutotune, " for auto-tuning")));
 
   if (buffer_size == model::kAutotune) {
     metrics::RecordTFDataAutotune(kDatasetType);
