@@ -558,8 +558,8 @@ NVPTXCompiler::CompileTargetBinary(
   se::cuda::CompilationOptions compilation_options =
       PtxCompileOptionsFromDebugOptions(module_config.debug_options());
 
-  se::CudaComputeCapability cc =
-      *device_description.gpu_compute_capability().cuda_compute_capability();
+  se::CudaComputeCapability cc = nvptx::ResolveSupportedComputeCapability(
+      *device_description.gpu_compute_capability().cuda_compute_capability());
 
   // This may print multiple lines per HLO compilation because of the
   // parallelized compilation of LLVM modules.
@@ -620,8 +620,8 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     return std::vector<uint8_t>{};
   }
 
-  auto cc =
-      device_description.gpu_compute_capability().cuda_compute_capability();
+  se::CudaComputeCapability cc = nvptx::ResolveSupportedComputeCapability(
+      *device_description.gpu_compute_capability().cuda_compute_capability());
 
   ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
                    GetCompilationProvider(debug_options, stream_exec));
@@ -640,7 +640,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
           << compilation_provider->name();
   ASSIGN_OR_RETURN(
       se::cuda::Assembly assembly,
-      compilation_provider->CompileAndLink(*cc, inputs, compilation_options));
+      compilation_provider->CompileAndLink(cc, inputs, compilation_options));
 
   return std::move(assembly.cubin);
 }
