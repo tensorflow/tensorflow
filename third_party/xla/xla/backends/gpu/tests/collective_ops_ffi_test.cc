@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -296,12 +297,16 @@ static absl::Status PreparePeerAllReduce(
 // handler, builtin all-reduce is a much better option. This version
 // demonstrates requesting a communication stream and synchronizing it with the
 // main stream.
-static absl::Status AllReduce(se::Stream* stream, se::Stream* comm_stream,
+static absl::Status AllReduce(se::Stream* stream,
+                              std::array<se::Stream*, 2> comm_streams,
                               ffi::BufferR0<U32> src,
                               ffi::Result<ffi::BufferR0<U32>> dst,
                               const CollectiveParams* collective_params,
                               const CollectiveCliques* collective_cliques) {
   TF_RET_CHECK(collective_params && collective_cliques);
+
+  auto [comm_stream, unused_comm_stream] = comm_streams;
+  (void)unused_comm_stream;  // we only test that we can bind two streams
 
   ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
@@ -717,10 +722,14 @@ XLA_FFI_DEFINE_HANDLER(kPrepareAllReduce, PrepareAllReduce,
                            .Ctx<ffi::CollectiveParams>()
                            .Ctx<ffi::CollectiveCliqueRequests>());
 
+// Preprocessor fails to parse comma inside macro call, introduce an alias to
+// request multiple comm streams for test.
+using CommunicationStreams = ffi::CommunicationStream<0, 1>;
+
 XLA_FFI_DEFINE_HANDLER(kAllReduce, AllReduce,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
-                           .Ctx<ffi::CommunicationStream<0>>()
+                           .Ctx<CommunicationStreams>()
                            .Arg<ffi::BufferR0<U32>>()  // src
                            .Ret<ffi::BufferR0<U32>>()  // dst
                            .Ctx<ffi::CollectiveParams>()
