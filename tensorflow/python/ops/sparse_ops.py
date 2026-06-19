@@ -521,6 +521,31 @@ def sparse_add(a, b, threshold=None, thresh=None):
   return sparse_add_v2(a, b, threshold)
 
 
+def _cast_dense_shape_to_index_dtype(dense_shape, index_dtype):
+  """Casts dense_shape to index_dtype with overflow validation.
+
+  SparseTensor ops that declare `shape: Tindices` require the shape tensor to
+  match the index dtype.  dense_shape is always int64, so we must cast — but
+  only after verifying that no dimension exceeds the target dtype's max value.
+  """
+  dtype = dtypes.as_dtype(index_dtype)
+  if dtype == dtypes.int64:
+    return math_ops.cast(dense_shape, dtypes.int64)
+  max_val = np.iinfo(dtype.as_numpy_dtype).max
+  shape_t = ops.convert_to_tensor(dense_shape, dtype=dtypes.int64)
+  check = check_ops.assert_less_equal(
+      math_ops.reduce_max(shape_t),
+      constant_op.constant(max_val, dtype=dtypes.int64),
+      message=(
+          "SparseTensor dense_shape has a dimension that exceeds the maximum "
+          f"value representable by the index dtype {dtype.name} ({max_val}). "
+          "Use int64 indices for large tensors."
+      ),
+  )
+  with ops.control_dependencies([check]):
+    return math_ops.cast(shape_t, dtype)
+
+
 @tf_export("sparse.add", v1=[])
 def sparse_add_v2(a, b, threshold=0):
   """Adds two tensors, at least one of each is a `SparseTensor`.
@@ -601,9 +626,7 @@ def sparse_add_v2(a, b, threshold=0):
     # swap to make `a` the SparseTensor.
     if isinstance(b, sparse_classes):
       a, b = b, a
-    # a_shape must match Tindices (op constraint); dense_shape is always int64
-    # but for int16/int32 indices the shape dims fit within that dtype range.
-    a_shape = math_ops.cast(a.dense_shape, a.indices.dtype)
+    a_shape = _cast_dense_shape_to_index_dtype(a.dense_shape, a.indices.dtype)
     return gen_sparse_ops.sparse_tensor_dense_add(a.indices, a.values,
                                                   a_shape, b)
 
@@ -1728,8 +1751,8 @@ def sparse_tensor_to_dense(sp_input,
   if default_value is None:
     default_value = array_ops.zeros([], dtype=sp_input.dtype)
 
-  # dense_shape is always int64; cast to indices dtype (op constraint).
-  output_shape = math_ops.cast(sp_input.dense_shape, sp_input.indices.dtype)
+  output_shape = _cast_dense_shape_to_index_dtype(
+      sp_input.dense_shape, sp_input.indices.dtype)
   return gen_sparse_ops.sparse_to_dense(
       sp_input.indices,
       output_shape,
