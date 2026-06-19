@@ -60,11 +60,14 @@ namespace functor {
 
 namespace {
 // Uploads shape dims (int64 on host) to a GPU tensor of type Tindices.
+// host_shape is filled by this function and must outlive the async Memcpy
+// (caller allocates it so its lifetime extends past this call).
 template <typename Tindices>
 absl::Status UploadShapeToGPU(OpKernelContext* context,
                                const TensorShape& shape,
                                se::Stream* stream,
-                               Tensor* gpu_shape_t) {
+                               Tensor* gpu_shape_t,
+                               absl::InlinedVector<Tindices, 8>* host_shape) {
   const int64_t rank = shape.dims();
   const int64_t max_index =
       static_cast<int64_t>(std::numeric_limits<Tindices>::max());
@@ -78,14 +81,13 @@ absl::Status UploadShapeToGPU(OpKernelContext* context,
   }
   TF_RETURN_IF_ERROR(context->allocate_temp(DataTypeToEnum<Tindices>::value,
                                             TensorShape({rank}), gpu_shape_t));
-  // Build host-side array of Tindices shape values.
-  absl::InlinedVector<Tindices, 8> host_shape(rank);
+  host_shape->resize(rank);
   for (int i = 0; i < rank; ++i) {
-    host_shape[i] = static_cast<Tindices>(shape.dim_size(i));
+    (*host_shape)[i] = static_cast<Tindices>(shape.dim_size(i));
   }
   stream_executor::DeviceAddressBase gpu_mem(
       gpu_shape_t->flat<Tindices>().data(), rank * sizeof(Tindices));
-  return stream->Memcpy(&gpu_mem, host_shape.data(), rank * sizeof(Tindices));
+  return stream->Memcpy(&gpu_mem, host_shape->data(), rank * sizeof(Tindices));
 }
 
 template <typename Tindices>
@@ -100,10 +102,14 @@ absl::Status ReshapeSparseTensorFunctorGPUImpl(
   se::Stream* stream = context->op_device_context()->stream();
   if (!stream) return absl::InternalError("No GPU stream available.");
   Tensor input_shape_gpu_t, output_shape_gpu_t;
+  // Host staging buffers must outlive the async Memcpy calls below.
+  absl::InlinedVector<Tindices, 8> input_host_shape, output_host_shape;
   TF_RETURN_IF_ERROR(UploadShapeToGPU<Tindices>(context, input_shape, stream,
-                                                &input_shape_gpu_t));
+                                                &input_shape_gpu_t,
+                                                &input_host_shape));
   TF_RETURN_IF_ERROR(UploadShapeToGPU<Tindices>(context, output_shape, stream,
-                                                &output_shape_gpu_t));
+                                                &output_shape_gpu_t,
+                                                &output_host_shape));
   const GPUDevice& device = context->template eigen_device<GPUDevice>();
   auto config = GetGpuLaunchConfig(nnz, device);
   return GpuLaunchKernel(

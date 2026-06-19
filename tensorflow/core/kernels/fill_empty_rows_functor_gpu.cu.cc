@@ -499,9 +499,7 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
   DEFINE_FILL_EMPTY_ROWS(T, int64, true)  \
   DEFINE_FILL_EMPTY_ROWS(T, int64, false) \
   DEFINE_FILL_EMPTY_ROWS(T, int32, true)  \
-  DEFINE_FILL_EMPTY_ROWS(T, int32, false) \
-  DEFINE_FILL_EMPTY_ROWS(T, int16, true)  \
-  DEFINE_FILL_EMPTY_ROWS(T, int16, false)
+  DEFINE_FILL_EMPTY_ROWS(T, int32, false)
 TF_CALL_POD_TYPES(DEFINE_FOR_TYPE)
 #undef DEFINE_FOR_TYPE
 #undef DEFINE_FILL_EMPTY_ROWS
@@ -617,8 +615,7 @@ struct FillEmptyRowsGrad<GPUDevice, T, Tindex> {
   template struct functor::FillEmptyRowsGrad<GPUDevice, T, Tindex>;
 #define DEFINE_GRAD_FOR_TYPE(T)        \
   DEFINE_FILL_EMPTY_ROWS_GRAD(T, int64) \
-  DEFINE_FILL_EMPTY_ROWS_GRAD(T, int32) \
-  DEFINE_FILL_EMPTY_ROWS_GRAD(T, int16)
+  DEFINE_FILL_EMPTY_ROWS_GRAD(T, int32)
 TF_CALL_REAL_NUMBER_TYPES(DEFINE_GRAD_FOR_TYPE);
 #undef DEFINE_GRAD_FOR_TYPE
 #undef DEFINE_FILL_EMPTY_ROWS_GRAD
