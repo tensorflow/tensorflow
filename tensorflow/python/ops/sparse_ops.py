@@ -533,6 +533,18 @@ def _cast_dense_shape_to_index_dtype(dense_shape, index_dtype):
     return math_ops.cast(dense_shape, dtypes.int64)
   max_val = np.iinfo(dtype.as_numpy_dtype).max
   shape_t = ops.convert_to_tensor(dense_shape, dtype=dtypes.int64)
+
+  # Try static validation first — avoids adding runtime assertion ops to graph.
+  const_shape = tensor_util.constant_value(shape_t)
+  if const_shape is not None:
+    if np.any(const_shape > max_val):
+      raise ValueError(
+          "SparseTensor dense_shape has a dimension that exceeds the maximum "
+          f"value representable by the index dtype {dtype.name} ({max_val}). "
+          "Use int64 indices for large tensors."
+      )
+    return math_ops.cast(shape_t, dtype)
+
   check = check_ops.assert_less_equal(
       math_ops.reduce_max(shape_t),
       constant_op.constant(max_val, dtype=dtypes.int64),

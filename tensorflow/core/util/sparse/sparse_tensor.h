@@ -551,15 +551,18 @@ inline SparseTensor SparseTensor::ConcatImpl(
     if (st_num_entries > 0) {
       std::copy_n(&st.vals_.vec<T>()(0), st_num_entries, &vals_t(offset));
 
+      // Validate once per tensor: the accumulated offset + this tensor's
+      // primary-dim size must fit in Tindices, guaranteeing all individual
+      // indices are in range (no per-element check needed in the loop).
+      CHECK_LE(shape_offset + st.shape()[primary_dim],
+               static_cast<int64_t>(std::numeric_limits<Tindices>::max()))
+          << "Concatenated dimension size overflows Tindices";
+      const Tindices T_shape_offset = static_cast<Tindices>(shape_offset);
       const auto* st_ix = &st.ix_.matrix<Tindices>()(0, 0);
       auto* ix_out = &ix_t(offset, 0);
       for (std::size_t i = 0; i < st_num_entries * dims; ++i) {
-        const int64_t idx_val =
-            static_cast<int64_t>(*st_ix++) +
-            ((i % dims == primary_dim) ? shape_offset : 0);
-        CHECK_LE(idx_val, std::numeric_limits<Tindices>::max())
-            << "Index value " << idx_val << " overflows Tindices";
-        *ix_out++ = static_cast<Tindices>(idx_val);
+        *ix_out++ =
+            *st_ix++ + ((i % dims == primary_dim) ? T_shape_offset : 0);
       }
     }
 
