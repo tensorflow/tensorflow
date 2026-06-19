@@ -1208,6 +1208,11 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
                   })) {
             continue;
           }
+          if ((instruction->opcode() == HloOpcode::kAsyncDone ||
+               instruction->opcode() == HloOpcode::kAsyncUpdate) &&
+              operand_index.operand_number == 0) {
+            continue;
+          }
           copied_operands.insert(operand_index.operand_number);
           RETURN_IF_ERROR(AddCopiesForInPlaceOperation(
               *alias_analysis, instruction, operand_index.operand_number));
