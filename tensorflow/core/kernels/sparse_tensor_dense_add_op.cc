@@ -183,7 +183,8 @@ struct ScatterNdFunctor<CPUDevice, T, Index, NDIMS, scatter_op::UpdateOp::ADD> {
 
 #define REGISTER_KERNELS(T)         \
   REGISTER_KERNELS_CPU(T, int64_t); \
-  REGISTER_KERNELS_CPU(T, int32)
+  REGISTER_KERNELS_CPU(T, int32);   \
+  REGISTER_KERNELS_CPU(T, int16)
 
 TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS

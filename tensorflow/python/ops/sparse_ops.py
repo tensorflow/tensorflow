@@ -601,8 +601,11 @@ def sparse_add_v2(a, b, threshold=0):
     # swap to make `a` the SparseTensor.
     if isinstance(b, sparse_classes):
       a, b = b, a
+    # a_shape must match Tindices (op constraint); dense_shape is always int64
+    # but for int16/int32 indices the shape dims fit within that dtype range.
+    a_shape = math_ops.cast(a.dense_shape, a.indices.dtype)
     return gen_sparse_ops.sparse_tensor_dense_add(a.indices, a.values,
-                                                  a.dense_shape, b)
+                                                  a_shape, b)
 
 
 @tf_export("sparse.cross")
@@ -1725,9 +1728,11 @@ def sparse_tensor_to_dense(sp_input,
   if default_value is None:
     default_value = array_ops.zeros([], dtype=sp_input.dtype)
 
+  # dense_shape is always int64; cast to indices dtype (op constraint).
+  output_shape = math_ops.cast(sp_input.dense_shape, sp_input.indices.dtype)
   return gen_sparse_ops.sparse_to_dense(
       sp_input.indices,
-      sp_input.dense_shape,
+      output_shape,
       sp_input.values,
       default_value=default_value,
       validate_indices=validate_indices,
