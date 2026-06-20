@@ -56,21 +56,33 @@ def register(name):
       raise ValueError("Class %s.%s has already been registered with name %s." %
                        (cls.__module__, cls.__name__, _TYPE_SPEC_TO_NAME[cls]))
     if name in _NAME_TO_TYPE_SPEC:
-      if _NAME_TO_TYPE_SPEC[name] is not cls:
-        raise ValueError("Name %s has already been registered for class %s.%s." %
-                       (name, _NAME_TO_TYPE_SPEC[name].__module__,
-                        _NAME_TO_TYPE_SPEC[name].__name__))
-      else:
+      existing_cls = _NAME_TO_TYPE_SPEC[name]
+      
+      if existing_cls is cls:
         from tensorflow.python.platform import tf_logging as logging
         logging.warning(
             "Name %s has already been registered for class %s.%s. "
-            "This usually happens when a module is reloaded mid-session.",
+            "This usually happens when a module is imported twice.",
             name, cls.__module__, cls.__name__)
         return cls
+        
+      elif (existing_cls.__module__ == cls.__module__ and 
+            existing_cls.__name__ == cls.__name__):
+        from tensorflow.python.platform import tf_logging as logging
+        logging.warning(
+            "Name %s has already been registered for class %s.%s. "
+            "This usually happens when a module is reloaded mid-session. "
+            "The newly registered class will replace the existing one.",
+            name, cls.__module__, cls.__name__)
+        _TYPE_SPEC_TO_NAME.pop(existing_cls, None)
+        
+      else:
+        raise ValueError("Name %s has already been registered for class %s.%s." %
+                         (name, existing_cls.__module__, existing_cls.__name__))
+
     _TYPE_SPEC_TO_NAME[cls] = name
     _NAME_TO_TYPE_SPEC[name] = cls
     return cls
-
   return decorator_fn
 
 
