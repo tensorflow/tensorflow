@@ -247,9 +247,8 @@ class UnaryOpTest(test.TestCase):
     # the result stays finite.
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
-    except ImportError as e:
-      tf_logging.warn("Cannot test erfinv edge cases: %s" % str(e))
-      return
+    except ImportError:
+      self.skipTest("scipy is not installed")
     for dtype in (np.float32, np.float64):
       x = np.array([
           np.nextafter(dtype(1.0), dtype(0.0)),
@@ -261,7 +260,7 @@ class UnaryOpTest(test.TestCase):
           dtype(-0.99),
       ], dtype=dtype)
       with self.cached_session(use_gpu=False):
-        tf_ans = self.evaluate(math_ops.erfinv(ops.convert_to_tensor(x)))
+        tf_ans = self.evaluate(math_ops.erfinv(x))
       self.assertTrue(
           np.all(np.isfinite(tf_ans)),
           msg="erfinv produced non-finite output for %s: %s" % (dtype, tf_ans))
