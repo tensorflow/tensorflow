@@ -56,9 +56,17 @@ def register(name):
       raise ValueError("Class %s.%s has already been registered with name %s." %
                        (cls.__module__, cls.__name__, _TYPE_SPEC_TO_NAME[cls]))
     if name in _NAME_TO_TYPE_SPEC:
-      raise ValueError("Name %s has already been registered for class %s.%s." %
+      if _NAME_TO_TYPE_SPEC[name] is not cls:
+        raise ValueError("Name %s has already been registered for class %s.%s." %
                        (name, _NAME_TO_TYPE_SPEC[name].__module__,
                         _NAME_TO_TYPE_SPEC[name].__name__))
+      else:
+        from tensorflow.python.platform import tf_logging as logging
+        logging.warning(
+            "Name %s has already been registered for class %s.%s. "
+            "This usually happens when a module is reloaded mid-session.",
+            name, cls.__module__, cls.__name__)
+        return cls
     _TYPE_SPEC_TO_NAME[cls] = name
     _NAME_TO_TYPE_SPEC[name] = cls
     return cls
