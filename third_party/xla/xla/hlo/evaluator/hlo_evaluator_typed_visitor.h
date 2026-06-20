@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/array2d.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -1223,6 +1224,30 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         parent_->GetEvaluatedLiteralFor(lhs).Convert(accumulation_ty).value();
     Literal rhs_literal =
         parent_->GetEvaluatedLiteralFor(rhs).Convert(accumulation_ty).value();
+
+    const auto& debug_options = dot->GetModule() != nullptr
+                                    ? dot->GetModule()->config().debug_options()
+                                    : DefaultDebugOptionsIgnoringFlags();
+    const bool default_to_bf16 =
+        debug_options.xla_gpu_default_to_alg_dot_bf16_bf16_f32();
+    const bool is_f32_dot =
+        dot->shape().element_type() == PrimitiveType::F32 &&
+        dot->operand(0)->shape().element_type() == PrimitiveType::F32 &&
+        dot->operand(1)->shape().element_type() == PrimitiveType::F32;
+    const bool is_default_precision =
+        absl::c_all_of(dot->precision_config().operand_precision(),
+                       [](int p) { return p == PrecisionConfig::DEFAULT; });
+
+    if (default_to_bf16 && is_f32_dot && is_default_precision) {
+      lhs_literal = lhs_literal.Convert(PrimitiveType::BF16)
+                        .value()
+                        .Convert(PrimitiveType::F32)
+                        .value();
+      rhs_literal = rhs_literal.Convert(PrimitiveType::BF16)
+                        .value()
+                        .Convert(PrimitiveType::F32)
+                        .value();
+    }
     const int64_t contracted_dimension_size =
         lhs->shape().dimensions(lhs_contracting_dimension);
     Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
@@ -1271,11 +1296,40 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                              const Literal& rhs_literal) {
     const auto& dnums = dot->dot_dimension_numbers();
 
-    const auto lhs_rank = lhs_literal.shape().dimensions().size();
-    const auto rhs_rank = rhs_literal.shape().dimensions().size();
+    Literal lhs_c = lhs_literal.Clone();
+    Literal rhs_c = rhs_literal.Clone();
 
-    CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), rhs_literal.shape()));
-    CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), dot->shape()));
+    const auto& debug_options = dot->GetModule() != nullptr
+                                    ? dot->GetModule()->config().debug_options()
+                                    : DefaultDebugOptionsIgnoringFlags();
+    const bool default_to_bf16 =
+        debug_options.xla_gpu_default_to_alg_dot_bf16_bf16_f32();
+    const bool is_f32_dot =
+        dot->shape().element_type() == PrimitiveType::F32 &&
+        lhs_literal.shape().element_type() == PrimitiveType::F32 &&
+        rhs_literal.shape().element_type() == PrimitiveType::F32;
+    const bool is_default_precision =
+        absl::c_all_of(dot->precision_config().operand_precision(),
+                       [](int p) { return p == PrecisionConfig::DEFAULT; });
+
+    if (default_to_bf16 && is_f32_dot && is_default_precision) {
+      if constexpr (std::is_same_v<ElementwiseT, float>) {
+        lhs_c = lhs_c.Convert(PrimitiveType::BF16)
+                    .value()
+                    .Convert(PrimitiveType::F32)
+                    .value();
+        rhs_c = rhs_c.Convert(PrimitiveType::BF16)
+                    .value()
+                    .Convert(PrimitiveType::F32)
+                    .value();
+      }
+    }
+
+    const auto lhs_rank = lhs_c.shape().dimensions().size();
+    const auto rhs_rank = rhs_c.shape().dimensions().size();
+
+    CHECK(ShapeUtil::SameElementType(lhs_c.shape(), rhs_c.shape()));
+    CHECK(ShapeUtil::SameElementType(lhs_c.shape(), dot->shape()));
 
     CHECK_EQ(dnums.lhs_batch_dimensions_size(),
              dnums.rhs_batch_dimensions_size());
@@ -1296,7 +1350,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       const int64_t rhs_dnum = dnums.rhs_contracting_dimensions(i);
       lhs_contracting_dims.push_back(lhs_dnum);
       rhs_contracting_dims.push_back(rhs_dnum);
-      const int64_t dim_size = lhs_literal.shape().dimensions(lhs_dnum);
+      const int64_t dim_size = lhs_c.shape().dimensions(lhs_dnum);
       contracting_dim_sizes.push_back(dim_size);
     }
     const int64_t total_contraction_size = Product(contracting_dim_sizes);
@@ -1327,22 +1381,23 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           // Accumulate resulting product along the contracting dimensions.
           ElementwiseT result_val = static_cast<ElementwiseT>(0);
           for (int64_t k = 0; k < total_contraction_size; k++) {
-            const auto lhs =
-                static_cast<ElementwiseT>(lhs_literal.Get<ReturnT>(lhs_index));
-            const auto rhs =
-                static_cast<ElementwiseT>(rhs_literal.Get<ReturnT>(rhs_index));
-            result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+            const auto lhs_val =
+                static_cast<ElementwiseT>(lhs_c.Get<ReturnT>(lhs_index));
+            const auto rhs_val =
+                static_cast<ElementwiseT>(rhs_c.Get<ReturnT>(rhs_index));
+            result_val +=
+                ToArithmeticSafeType(lhs_val) * ToArithmeticSafeType(rhs_val);
 
             if (parent_->trace_mac_handler_ != nullptr) {
               const int64_t result_linear_index =
                   IndexUtil::MultidimensionalIndexToLinearIndex(dot_shape,
                                                                 result_index);
               const int64_t lhs_linear_index =
-                  IndexUtil::MultidimensionalIndexToLinearIndex(
-                      lhs_literal.shape(), lhs_index);
+                  IndexUtil::MultidimensionalIndexToLinearIndex(lhs_c.shape(),
+                                                                lhs_index);
               const int64_t rhs_linear_index =
-                  IndexUtil::MultidimensionalIndexToLinearIndex(
-                      rhs_literal.shape(), rhs_index);
+                  IndexUtil::MultidimensionalIndexToLinearIndex(rhs_c.shape(),
+                                                                rhs_index);
 
               parent_->trace_mac_handler_(result_linear_index, lhs_linear_index,
                                           rhs_linear_index);

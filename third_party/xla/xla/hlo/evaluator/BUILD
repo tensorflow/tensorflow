@@ -66,6 +66,7 @@ cc_library(
         ":hlo_evaluator_interface",
         "//xla:array2d",
         "//xla:comparison_util",
+        "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
