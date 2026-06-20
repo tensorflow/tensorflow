@@ -233,14 +233,16 @@ TEST(ReverseOpTest, Int32MultiDimensions8D) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({3, 2, 1}));
 }
 
-#if GTEST_HAS_DEATH_TEST
 TEST(ReverseOpTest, Int32MultiDimensions9D) {
-  EXPECT_DEATH(
-      ReverseOpModel<int32_t>({TensorType_INT32, {1, 1, 1, 1, 1, 1, 1, 1, 3}},
-                              {TensorType_INT32, {9}}),
-      "Cannot allocate tensors");
+  ReverseOpModel<int32_t> model({TensorType_INT32, {1, 1, 1, 1, 1, 1, 1, 1, 3}},
+                                {TensorType_INT32, {9}});
+  model.PopulateTensor<int32_t>(model.input(), {1, 2, 3});
+  model.PopulateTensor<int32_t>(model.axis(), {8, 7, 6, 5, 4, 3, 2, 1, 0});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 1, 1, 1, 1, 1, 3));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({3, 2, 1}));
 }
-#endif  // GTEST_HAS_DEATH_TEST
 
 // int64 tests
 TEST(ReverseOpTest, Int64OneDimension) {
