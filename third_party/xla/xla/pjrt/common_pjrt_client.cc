@@ -1233,7 +1233,7 @@ absl::StatusOr<std::vector<Future<>>> CommonPjRtClient::CrossHostSendBuffers(
       }
     });
     RETURN_IF_ERROR(
-        tensorflow::down_cast<CommonPjRtBufferImpl*>(buffers[i])
+        absl::down_cast<CommonPjRtBufferImpl*>(buffers[i])
             ->AcquireScopedRawBuffer(
                 [&](PjRtRawBufferRef buf_raw_buffer,
                     PjRtDeviceEventRefVector buf_definition_events) mutable
