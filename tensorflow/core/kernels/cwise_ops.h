@@ -750,6 +750,104 @@ struct functor_traits<scalar_erfinv_op<T>> {
   };
 };
 
+// Specialization of erfinv for float.
+//
+// The generic implementation above evaluates erfinv(x) as
+// ndtri(0.5 * x + 0.5) * sqrt(0.5).  In float, forming 0.5 * x + 0.5
+// catastrophically loses precision for x near +/-1: the result lands on the
+// coarse grid of representable floats around 1.0, so its distance from 1 (which
+// is exactly what ndtri needs in the tail) is corrupted.  This left eager
+// erfinv up to ~1% off near +/-1 while the XLA path stayed accurate.
+//
+// Instead, follow xla::ErfInv32 and evaluate the inverse error function
+// directly with the polynomial approximation from
+//   Giles, M., "Approximating the erfinv function",
+// using w = -log1p(-x * x) so that the 1 - x^2 cancellation is handled
+// accurately.  This keeps the eager and XLA float results in agreement.
+template <>
+struct scalar_erfinv_op<float> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(const float& x) const {
+    constexpr int kDegree = 9;
+    const float w_less_than_5_constants[kDegree] = {
+        2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
+        -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
+        -0.00417768164f,  0.246640727f,    1.50140941f};
+    const float w_greater_than_5_constants[kDegree] = {
+        -0.000200214257f, 0.000100950558f, 0.00134934322f,
+        -0.00367342844f,  0.00573950773f,  -0.0076224613f,
+        0.00943887047f,   1.00167406f,     2.83297682f};
+    // Compute log(1 + arg) with log1p, which is more precise than log(1 + arg)
+    // when arg is close to zero.
+    float w = -numext::log1p(-x * x);
+    float p;
+    if (w < 5.0f) {
+      w -= 2.5f;
+      p = w_less_than_5_constants[0];
+      for (int i = 1; i < kDegree; ++i) p = w_less_than_5_constants[i] + p * w;
+    } else {
+      w = numext::sqrt(w) - 3.0f;
+      p = w_greater_than_5_constants[0];
+      for (int i = 1; i < kDegree; ++i) p = w_greater_than_5_constants[i] + p * w;
+    }
+    float result = p * x;
+    // Handle edge cases: erfinv(+/-1) = +/-inf and erfinv(|x| > 1) = NaN.  The
+    // computation above is indeterminate there.
+    const float abs_x = numext::abs(x);
+    if (abs_x >= 1.0f) {
+      result = (abs_x == 1.0f)
+                   ? (x < 0.0f ? -NumTraits<float>::infinity()
+                               : NumTraits<float>::infinity())
+                   : NumTraits<float>::quiet_NaN();
+    }
+    return result;
+  }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    constexpr int kDegree = 9;
+    const float w_less_than_5_constants[kDegree] = {
+        2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
+        -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
+        -0.00417768164f,  0.246640727f,    1.50140941f};
+    const float w_greater_than_5_constants[kDegree] = {
+        -0.000200214257f, 0.000100950558f, 0.00134934322f,
+        -0.00367342844f,  0.00573950773f,  -0.0076224613f,
+        0.00943887047f,   1.00167406f,     2.83297682f};
+    Packet w = pnegate(
+        scalar_log1p_op<float>().packetOp(pnegate(pmul(x, x))));
+    Packet lt = pcmp_lt(w, pset1<Packet>(5.0f));
+    w = pselect(lt, psub(w, pset1<Packet>(2.5f)),
+                psub(psqrt(w), pset1<Packet>(3.0f)));
+    Packet p = pselect(lt, pset1<Packet>(w_less_than_5_constants[0]),
+                       pset1<Packet>(w_greater_than_5_constants[0]));
+    for (int i = 1; i < kDegree; ++i) {
+      Packet c = pselect(lt, pset1<Packet>(w_less_than_5_constants[i]),
+                         pset1<Packet>(w_greater_than_5_constants[i]));
+      p = pmadd(p, w, c);
+    }
+    Packet result = pmul(p, x);
+    // Handle edge cases: erfinv(+/-1) = +/-inf and erfinv(|x| > 1) = NaN.
+    Packet one = pset1<Packet>(1.0f);
+    Packet abs_x = pabs(x);
+    Packet inf = pset1<Packet>(NumTraits<float>::infinity());
+    Packet signed_inf = pselect(pcmp_lt(x, pzero(x)), pnegate(inf), inf);
+    result = pselect(pcmp_eq(abs_x, one), signed_inf, result);
+    result = pselect(pcmp_lt(one, abs_x),
+                     pset1<Packet>(NumTraits<float>::quiet_NaN()), result);
+    return result;
+  }
+};
+
+template <>
+struct functor_traits<scalar_erfinv_op<float>> {
+  enum {
+    Cost = functor_traits<scalar_log1p_op<float>>::Cost +
+           20 * NumTraits<float>::MulCost,
+    PacketAccess =
+        packet_traits<float>::HasLog && packet_traits<float>::HasSqrt,
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
