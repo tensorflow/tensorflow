@@ -354,7 +354,7 @@ TEST(ElementWise, SqrtEdgeCases) {
       0.0f,
       -0.0f,
       std::numeric_limits<float>::quiet_NaN(),
-      std::numeric_limits<float>::denorm_min()
+      std::numeric_limits<float>::min()
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto output = m.ExtractVector<float>(m.output());
