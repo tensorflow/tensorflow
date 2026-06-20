@@ -51,6 +51,8 @@ class CudaPlatform : public Platform {
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
   absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) override;
 
+  absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
+      int ordinal, bool use_primary_context);
   absl::StatusOr<std::unique_ptr<RuntimeAbiVersion> absl_nonnull>
   GetRuntimeAbiVersion() const override;
 

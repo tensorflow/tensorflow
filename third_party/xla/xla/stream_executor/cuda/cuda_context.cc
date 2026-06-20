@@ -116,7 +116,11 @@ CudaContext::~CudaContext() {
   cuCtxGetDevice(&device);
   cuCtxPopCurrent(nullptr);
 
-  status = cuda::ToStatus(cuDevicePrimaryCtxRelease(device));
+  if (is_primary_) {
+    status = cuda::ToStatus(cuDevicePrimaryCtxRelease(device));
+  } else {
+    status = cuda::ToStatus(cuCtxDestroy(context_));
+  }
 
   if (!status.ok()) {
     LOG(ERROR) << "failed to release CUDA context; leaking: " << status;
@@ -126,56 +130,66 @@ CudaContext::~CudaContext() {
 }
 
 absl::StatusOr<CudaContext*> CudaContext::Create(int device_ordinal,
-                                                 CUdevice device) {
+                                                 CUdevice device,
+                                                 bool use_primary_context) {
   CudaContext* context = nullptr;
-
-  int flags = GetFlagsFromEnv();
-
-  unsigned int former_primary_context_flags;
-  int former_primary_context_is_active;
-  RETURN_IF_ERROR(cuda::ToStatus(
-      cuDevicePrimaryCtxGetState(device, &former_primary_context_flags,
-                                 &former_primary_context_is_active)));
-  if (former_primary_context_flags != flags) {
-    if (former_primary_context_is_active) {
-      LOG(ERROR)
-          << "The primary context is active and has a different flag set ("
-          << former_primary_context_flags << ") than the desired flag set ("
-          << flags << ").";
-    } else {
-      RETURN_IF_ERROR(
-          cuda::ToStatus(cuDevicePrimaryCtxSetFlags(device, flags)));
-    }
-  }
-
-  CUcontext former_context = CurrentContextOrDie();
   CUcontext new_context;
-  RETURN_IF_ERROR(
-      cuda::ToStatus(cuDevicePrimaryCtxRetain(&new_context, device)));
-  if (former_context != nullptr) {
-    CUdevice former_device;
-    if (cuCtxGetDevice(&former_device) == CUDA_SUCCESS) {
-      if (former_device == device) {
-        if (former_context == new_context) {
-          VLOG(2) << "The primary context " << former_context << " for device "
-                  << device
-                  << " exists before initializing the StreamExecutor.";
-        } else {
-          LOG(WARNING) << "A non-primary context " << former_context
-                       << " for device " << device
-                       << " exists before initializing the StreamExecutor. The "
-                       << "primary context is now " << new_context << ". We "
-                       << "haven't verified StreamExecutor works with that.";
-        }
-      }
-    } else {
-      LOG(ERROR) << "Failed to get the device of the current context "
-                 << former_context;
-    }
-  }
-  RETURN_IF_ERROR(cuda::ToStatus(cuCtxSetCurrent(former_context)));
 
-  context = GetContextMap()->Add(new_context, device_ordinal);
+  if (use_primary_context) {
+    int flags = GetFlagsFromEnv();
+
+    unsigned int former_primary_context_flags;
+    int former_primary_context_is_active;
+    RETURN_IF_ERROR(cuda::ToStatus(
+        cuDevicePrimaryCtxGetState(device, &former_primary_context_flags,
+                                   &former_primary_context_is_active)));
+    if (former_primary_context_flags != flags) {
+      if (former_primary_context_is_active) {
+        LOG(ERROR)
+            << "The primary context is active and has a different flag set ("
+            << former_primary_context_flags << ") than the desired flag set ("
+            << flags << ").";
+      } else {
+        RETURN_IF_ERROR(
+            cuda::ToStatus(cuDevicePrimaryCtxSetFlags(device, flags)));
+      }
+    }
+
+    CUcontext former_context = CurrentContextOrDie();
+    RETURN_IF_ERROR(
+        cuda::ToStatus(cuDevicePrimaryCtxRetain(&new_context, device)));
+    if (former_context != nullptr) {
+      CUdevice former_device;
+      if (cuCtxGetDevice(&former_device) == CUDA_SUCCESS) {
+        if (former_device == device) {
+          if (former_context == new_context) {
+            VLOG(2) << "The primary context " << former_context
+                    << " for device " << device
+                    << " exists before initializing the StreamExecutor.";
+          } else {
+            LOG(WARNING)
+                << "A non-primary context " << former_context << " for device "
+                << device
+                << " exists before initializing the StreamExecutor. The "
+                << "primary context is now " << new_context << ". We "
+                << "haven't verified StreamExecutor works with that.";
+          }
+        }
+      } else {
+        LOG(ERROR) << "Failed to get the device of the current context "
+                   << former_context;
+      }
+    }
+    RETURN_IF_ERROR(cuda::ToStatus(cuCtxSetCurrent(former_context)));
+  } else {
+    int flags = GetFlagsFromEnv();
+    CUcontext former_context = CurrentContextOrDie();
+    RETURN_IF_ERROR(cuda::ToStatus(cuCtxCreate(&new_context, flags, device)));
+    RETURN_IF_ERROR(cuda::ToStatus(cuCtxSetCurrent(former_context)));
+  }
+
+  context =
+      GetContextMap()->Add(new_context, device_ordinal, use_primary_context);
   CHECK(context != nullptr)
       << "success in this call must entail non-null result";
   VLOG(2) << "created or reused context " << new_context << " for this thread";

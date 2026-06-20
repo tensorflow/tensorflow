@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 
+#if GOOGLE_CUDA
+#include "xla/stream_executor/cuda/cuda_platform.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
+#endif
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -215,6 +220,29 @@ static absl::Status InitializeBuffersIfRequiredByOpcode(
 
 }  // namespace
 
+static absl::StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
+    const Shape& shape, se::DeviceAddressAllocator* allocator,
+    int device_ordinal) {
+  ScopedShapedBuffer shaped_buffer(shape, allocator, device_ordinal);
+  absl::Status status = ShapeUtil::ForEachLeafShapeWithStatus(
+      shape,
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+        if (ShapeUtil::IsZeroElementArray(subshape)) {
+          shaped_buffer.set_buffer(se::ScopedDeviceAddress<uint8_t>(), index);
+          return absl::OkStatus();
+        }
+        uint64_t size = ShapeUtil::ByteSizeOf(subshape);
+        ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> alloc,
+                         allocator->Allocate(device_ordinal, size));
+        shaped_buffer.set_buffer(std::move(alloc), index);
+        return absl::OkStatus();
+      });
+  if (!status.ok()) {
+    return status;
+  }
+  return shaped_buffer;
+}
+
 std::unique_ptr<GpuProfiler> GpuProfiler::Create(
     se::StreamExecutor* stream_executor, ProfileOptions options,
     se::DeviceAddressAllocator* external_allocator) {
@@ -266,6 +294,102 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
     Executable* executable, const InputBuffers& buffers) {
   const GpuInputBuffers& gpu_buffers =
       absl::down_cast<const GpuInputBuffers&>(buffers);
+
+#if GOOGLE_CUDA
+  if (options_.isolate_contexts &&
+      stream_executor_->GetPlatform()->id() == se::cuda::kCudaPlatformId) {
+    auto* cuda_platform = absl::down_cast<se::gpu::CudaPlatform*>(
+        stream_executor_->GetPlatform());
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<se::StreamExecutor> temp_executor,
+        cuda_platform->GetUncachedExecutor(stream_executor_->device_ordinal(),
+                                           /*use_primary_context=*/false));
+
+    std::unique_ptr<GpuProfiler> temp_profiler =
+        GpuProfiler::Create(temp_executor.get(), options_, nullptr);
+    if (temp_profiler == nullptr) {
+      return absl::InternalError("Failed to create temporary GpuProfiler");
+    }
+
+    const RedzoneBuffers& primary_rz_buffers = gpu_buffers.redzone_buffers;
+    ASSIGN_OR_RETURN(
+        RedzoneBuffers temp_rz_buffers,
+        RedzoneBuffers::FromProgramShape(
+            executable->compute_computation_layout().ComputeProgramShape(),
+            RedzoneBuffers::BuffersToCreate::kAllInputs,
+            options_.should_init_buffers,
+            /*should_check_correctness=*/true, options_.redzone_padding_bytes,
+            temp_profiler->allocator_, temp_profiler->stream_));
+
+    auto primary_inputs = primary_rz_buffers.input_buffers();
+    auto temp_inputs = temp_rz_buffers.input_buffers();
+    CHECK_EQ(primary_inputs.size(), temp_inputs.size());
+
+    for (int i = 0; i < primary_inputs.size(); ++i) {
+      uint64_t size = primary_inputs[i].size();
+      CHECK_EQ(size, temp_inputs[i].size());
+      if (size > 0) {
+        std::vector<uint8_t> host_buf(size);
+        RETURN_IF_ERROR(
+            stream_->Memcpy(host_buf.data(), primary_inputs[i], size));
+        RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+
+        RETURN_IF_ERROR(temp_profiler->stream_->Memcpy(&temp_inputs[i],
+                                                       host_buf.data(), size));
+        RETURN_IF_ERROR(temp_profiler->stream_->BlockHostUntilDone());
+      }
+    }
+
+    auto temp_input_buffers = std::make_unique<GpuInputBuffers>();
+    temp_input_buffers->redzone_buffers = std::move(temp_rz_buffers);
+
+    absl::StatusOr<ProfileResult> temp_result =
+        temp_profiler->Profile(executable, *temp_input_buffers);
+    if (!temp_result.ok()) {
+      return temp_result.status();
+    }
+
+    ProfileResult result;
+    result.duration = temp_result->duration;
+    result.scratch_bytes = temp_result->scratch_bytes;
+
+    if (temp_result->output_buffer.has_value()) {
+      ScopedShapedBuffer& temp_output = temp_result->output_buffer.value();
+      ASSIGN_OR_RETURN(
+          ScopedShapedBuffer primary_output,
+          AllocateScopedShapedBuffer(temp_output.on_device_shape(), allocator_,
+                                     stream_executor_->device_ordinal()));
+
+      absl::Status copy_status = ShapeUtil::ForEachLeafShapeWithStatus(
+          temp_output.on_device_shape(),
+          [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+            const se::DeviceAddressBase& temp_addr = temp_output.buffer(index);
+            const se::DeviceAddressBase& primary_addr =
+                primary_output.buffer(index);
+            uint64_t size = temp_addr.size();
+            CHECK_EQ(size, primary_addr.size());
+            if (size > 0) {
+              std::vector<uint8_t> host_buf(size);
+              RETURN_IF_ERROR(temp_profiler->stream_->Memcpy(host_buf.data(),
+                                                             temp_addr, size));
+              RETURN_IF_ERROR(temp_profiler->stream_->BlockHostUntilDone());
+
+              RETURN_IF_ERROR(stream_->Memcpy(
+                  const_cast<se::DeviceAddressBase*>(&primary_addr),
+                  host_buf.data(), size));
+              RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+            }
+            return absl::OkStatus();
+          });
+      if (!copy_status.ok()) {
+        return copy_status;
+      }
+      result.output_buffer = std::move(primary_output);
+    }
+    return result;
+  }
+#endif
+
   const RedzoneBuffers& rz_buffers = gpu_buffers.redzone_buffers;
   ProfileResult result;
   result.scratch_bytes = GetScratchBytes(executable);

@@ -825,7 +825,9 @@ CudaExecutor::CreateMemoryAllocator(MemorySpace type) {
       absl::StrFormat("Unsupported memory type %d", type));
 }
 
-absl::Status CudaExecutor::Init() {
+absl::Status CudaExecutor::Init() { return Init(/*use_primary_context=*/true); }
+
+absl::Status CudaExecutor::Init(bool use_primary_context) {
   ASSIGN_OR_RETURN(device_, GetDevice(device_ordinal()));
 
   ASSIGN_OR_RETURN(bool is_vmm_supported, IsVmmSupported(device_));
@@ -837,8 +839,9 @@ absl::Status CudaExecutor::Init() {
   }
 
   ASSIGN_OR_RETURN(is_multicast_supported_, IsMulticastSupported(device_));
-  ASSIGN_OR_RETURN(CudaContext * context,
-                   CudaContext::Create(device_ordinal(), device_));
+  ASSIGN_OR_RETURN(
+      CudaContext * context,
+      CudaContext::Create(device_ordinal(), device_, use_primary_context));
   cuda_context_ = context;
   ASSIGN_OR_RETURN(delay_kernels_supported_, DelayKernelIsSupported());
   numa_node_ = ReadNumaNode(GetPCIBusID(device_), device_ordinal())

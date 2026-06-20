@@ -82,6 +82,7 @@ class CudaExecutor : public GpuExecutor {
   ~CudaExecutor() override;
   std::unique_ptr<ActivateContext> Activate() override;
   absl::Status Init() override;
+  absl::Status Init(bool use_primary_context);
   int numa_node() const override { return numa_node_; }
   bool SynchronizeAllActivity() override;
   HostCallbackRegistry* GetHostCallbackRegistry() const {

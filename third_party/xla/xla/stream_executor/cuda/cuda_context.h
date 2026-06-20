@@ -32,7 +32,11 @@ namespace stream_executor::gpu {
 class CudaContext : public Context {
  public:
   CudaContext(CUcontext context, int device_ordinal)
-      : context_(context), device_ordinal_(device_ordinal) {}
+      : context_(context), device_ordinal_(device_ordinal), is_primary_(true) {}
+  CudaContext(CUcontext context, int device_ordinal, bool is_primary)
+      : context_(context),
+        device_ordinal_(device_ordinal),
+        is_primary_(is_primary) {}
   ~CudaContext() override;
 
   void SetActive() override;
@@ -49,7 +53,8 @@ class CudaContext : public Context {
 
   // Returns a new context for the given device.
   static absl::StatusOr<CudaContext*> Create(int device_ordinal,
-                                             CUdevice device);
+                                             CUdevice device,
+                                             bool use_primary_context = true);
 
   // Returns the context map for all XLA-known CUDA contexts.
   static ContextMap<CUcontext, CudaContext>* GetContextMap();
@@ -57,6 +62,7 @@ class CudaContext : public Context {
  private:
   CUcontext const context_;
   const int device_ordinal_;
+  const bool is_primary_;
 };
 
 }  // namespace stream_executor::gpu

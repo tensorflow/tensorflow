@@ -46,7 +46,8 @@ class ContextMap {
   }
 
   // Adds context to the live set, or returns it if it's already present.
-  ContextType* Add(GpuContext context, int device_ordinal) {
+  template <typename... Args>
+  ContextType* Add(GpuContext context, int device_ordinal, Args&&... args) {
     CHECK_NE(context, nullptr);
     absl::MutexLock lock(mutex_);
 
@@ -55,7 +56,8 @@ class ContextMap {
     auto it = insert_result.first;
     if (insert_result.second) {
       // context was not present in the map.  Add it.
-      it->second = std::make_unique<ContextType>(context, device_ordinal);
+      it->second = std::make_unique<ContextType>(context, device_ordinal,
+                                                 std::forward<Args>(args)...);
       ordinal_to_type_map_[device_ordinal].push_back(context);
     }
     return it->second.get();
