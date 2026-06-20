@@ -768,16 +768,14 @@ template <>
 struct scalar_erfinv_op<float> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(const float& x) const {
     constexpr int kDegree = 9;
-    const float w_less_than_5_constants[kDegree] = {
+    constexpr float w_less_than_5_constants[kDegree] = {
         2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
         -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
         -0.00417768164f,  0.246640727f,    1.50140941f};
-    const float w_greater_than_5_constants[kDegree] = {
+    constexpr float w_greater_than_5_constants[kDegree] = {
         -0.000200214257f, 0.000100950558f, 0.00134934322f,
         -0.00367342844f,  0.00573950773f,  -0.0076224613f,
         0.00943887047f,   1.00167406f,     2.83297682f};
-    // Compute log(1 + arg) with log1p, which is more precise than log(1 + arg)
-    // when arg is close to zero.
     float w = -numext::log1p(-x * x);
     float p;
     if (w < 5.0f) {
@@ -805,11 +803,11 @@ struct scalar_erfinv_op<float> {
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
     constexpr int kDegree = 9;
-    const float w_less_than_5_constants[kDegree] = {
+    constexpr float w_less_than_5_constants[kDegree] = {
         2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
         -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
         -0.00417768164f,  0.246640727f,    1.50140941f};
-    const float w_greater_than_5_constants[kDegree] = {
+    constexpr float w_greater_than_5_constants[kDegree] = {
         -0.000200214257f, 0.000100950558f, 0.00134934322f,
         -0.00367342844f,  0.00573950773f,  -0.0076224613f,
         0.00943887047f,   1.00167406f,     2.83297682f};

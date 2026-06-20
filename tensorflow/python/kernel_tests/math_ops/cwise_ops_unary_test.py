@@ -256,6 +256,17 @@ class UnaryOpTest(test.TestCase):
       actual = self.evaluate(math_ops.erfinv(ops.convert_to_tensor(x)))
     self.assertAllClose(expected, actual, rtol=1e-5, atol=1e-5)
 
+  def testFloatErfinvEdgeCases(self):
+    # erfinv is +/-inf at +/-1 and undefined (NaN) outside [-1, 1].  The float32
+    # path mirrors the XLA implementation here.
+    x = np.array([1.0, -1.0, 1.5, -2.0], dtype=np.float32)
+    with self.cached_session():
+      y = self.evaluate(math_ops.erfinv(ops.convert_to_tensor(x)))
+    self.assertEqual(np.inf, y[0])
+    self.assertEqual(-np.inf, y[1])
+    self.assertTrue(np.isnan(y[2]))
+    self.assertTrue(np.isnan(y[3]))
+
   @test_util.run_deprecated_v1
   def testFloatTanhEdge(self):
     x = np.arange(40, 40 + 6).reshape(6).astype(np.float32)
