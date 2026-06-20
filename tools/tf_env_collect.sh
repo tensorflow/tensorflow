@@ -131,7 +131,7 @@ tf.version.VERSION = {tf.version.VERSION}
 tf.version.GIT_VERSION = {tf.version.GIT_VERSION}
 tf.version.COMPILER_VERSION = {tf.version.COMPILER_VERSION}
 """)
-print("Sanity check: %r" % tf.constant([1,2,3])[:1])
+print(f"Sanity check: {tf.constant([1,2,3])[:1]!r}")
 EOF
 
   # Record libraries loaded by tensorflow
