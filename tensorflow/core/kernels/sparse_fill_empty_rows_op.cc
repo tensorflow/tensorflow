@@ -161,6 +161,8 @@ class SparseFillEmptyRowsGPUOp : public AsyncOpKernel {
                           SparseFillEmptyRowsGPUOp<T, Tindex>)
 
 
+// int16_t omitted: the GPU functor uses GpuAtomicAdd(Tindex*,...) which CUDA
+// does not support for int16_t. The CPU int16_t kernel handles that case.
 #define REGISTER_KERNELS_TINDEX(T)   \
   REGISTER_KERNELS(T, int64);         \
   REGISTER_KERNELS(T, int32)
@@ -232,6 +234,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+// int16_t omitted: same GpuAtomicAdd constraint as GPU forward kernel above.
 #define REGISTER_GPU_KERNELS(T)    \
   REGISTER_KERNELS(GPU, T, int64); \
   REGISTER_KERNELS(GPU, T, int32)

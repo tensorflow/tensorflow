@@ -495,6 +495,8 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
 #define DEFINE_FILL_EMPTY_ROWS(T, Tindex, RaggedOperands)               \
   template struct functor::FillEmptyRows<GPUDevice, T, Tindex,          \
                                          /*RaggedOperands=*/RaggedOperands>;
+// int16_t omitted: CountElementsPerRowKernel calls GpuAtomicAdd(Tindex*, 1),
+// and CUDA's atomicAdd does not support int16_t. CPU kernels handle int16_t.
 #define DEFINE_FOR_TYPE(T)           \
   DEFINE_FILL_EMPTY_ROWS(T, int64, true)  \
   DEFINE_FILL_EMPTY_ROWS(T, int64, false) \
@@ -613,6 +615,7 @@ struct FillEmptyRowsGrad<GPUDevice, T, Tindex> {
 
 #define DEFINE_FILL_EMPTY_ROWS_GRAD(T, Tindex) \
   template struct functor::FillEmptyRowsGrad<GPUDevice, T, Tindex>;
+// int16_t omitted: same atomicAdd constraint as DEFINE_FOR_TYPE above.
 #define DEFINE_GRAD_FOR_TYPE(T)        \
   DEFINE_FILL_EMPTY_ROWS_GRAD(T, int64) \
   DEFINE_FILL_EMPTY_ROWS_GRAD(T, int32)
