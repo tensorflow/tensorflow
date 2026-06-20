@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "absl/strings/str_cat.h"

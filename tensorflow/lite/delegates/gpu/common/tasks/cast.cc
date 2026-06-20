@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/cast.h"
 
-#include <map>
 #include <string>
 #include <utility>
 #include <vector>

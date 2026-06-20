@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"

@@ -15,10 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_metal_simd.h"
 
-#include <cmath>
 #include <cstdint>
-#include <functional>
-#include <map>
 #include <memory>
 #include <string>
 #include <utility>
