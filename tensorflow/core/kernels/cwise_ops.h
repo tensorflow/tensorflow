@@ -728,17 +728,27 @@ struct functor_traits<xdivy_op<Scalar>> {
 template <typename T>
 struct scalar_erfinv_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x) const {
+    // erfinv(x) = sqrt(1/2) * ndtri((1 + x) / 2). Forming (1 + x) / 2 directly
+    // loses precision near |x| == 1: for the largest-magnitude input below 1 it
+    // rounds to exactly 1 (or 0), and ndtri(1) is +inf, so erfinv would wrongly
+    // return +/-inf. Using the odd symmetry of erfinv together with the
+    // identity ndtri(p) = -ndtri(1 - p), feed ndtri the small tail probability
+    // (1 - |x|) / 2 instead, which stays representable (exact by Sterbenz for
+    // |x| in [1/2, 1]) and keeps the result finite.
     constexpr T half = T(0.5);
-    T y = numext::ndtri(half * x + half);
     constexpr T half_sqrt = T(M_SQRT1_2);
-    return y * half_sqrt;
+    const T tail = half * (T(1) - numext::abs(x));
+    const T magnitude = -half_sqrt * numext::ndtri(tail);
+    return numext::copysign(magnitude, x);
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
-    Packet half = pset1<Packet>(T(0.5));
-    Packet y = pndtri<Packet>(pmadd(half, x, half));
-    Packet half_sqrt = pset1<Packet>(T(M_SQRT1_2));
-    return pmul(y, half_sqrt);
+    const Packet half = pset1<Packet>(T(0.5));
+    const Packet one = pset1<Packet>(T(1));
+    const Packet neg_half_sqrt = pset1<Packet>(T(-M_SQRT1_2));
+    const Packet tail = pmul(half, psub(one, pabs(x)));
+    const Packet magnitude = pmul(neg_half_sqrt, pndtri<Packet>(tail));
+    return pselect(pcmp_lt(x, pzero(x)), pnegate(magnitude), magnitude);
   }
 };
 

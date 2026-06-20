@@ -239,6 +239,34 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(y, np.sign, math_ops.sign)
     self._compareBothSparse(x, np.vectorize(math.erf), math_ops.erf)
 
+  def testErfinvEdge(self):
+    # Regression test for GitHub issue #121502: erfinv returned +/-inf for the
+    # largest-magnitude finite inputs below 1. The intermediate (1 + x) / 2
+    # rounds to exactly 1.0 (or 0.0) there, and ndtri(1.0) is +inf. The fix
+    # reformulates erfinv to feed ndtri the small tail probability instead, so
+    # the result stays finite.
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+    except ImportError as e:
+      tf_logging.warn("Cannot test erfinv edge cases: %s" % str(e))
+      return
+    for dtype in (np.float32, np.float64):
+      x = np.array([
+          np.nextafter(dtype(1.0), dtype(0.0)),
+          np.nextafter(dtype(-1.0), dtype(0.0)),
+          dtype(0.0),
+          dtype(0.5),
+          dtype(-0.5),
+          dtype(0.99),
+          dtype(-0.99),
+      ], dtype=dtype)
+      with self.cached_session(use_gpu=False):
+        tf_ans = self.evaluate(math_ops.erfinv(ops.convert_to_tensor(x)))
+      self.assertTrue(
+          np.all(np.isfinite(tf_ans)),
+          msg="erfinv produced non-finite output for %s: %s" % (dtype, tf_ans))
+      self.assertAllClose(special.erfinv(x), tf_ans, rtol=1e-5, atol=1e-5)
+
   @test_util.run_deprecated_v1
   def testFloatTanhEdge(self):
     x = np.arange(40, 40 + 6).reshape(6).astype(np.float32)
