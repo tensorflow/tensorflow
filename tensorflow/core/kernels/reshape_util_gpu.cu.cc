@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <limits>
 
-#include "absl/container/inlined_vector.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/reshape_util.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
@@ -60,14 +59,14 @@ namespace functor {
 
 namespace {
 // Uploads shape dims (int64 on host) to a GPU tensor of type Tindices.
-// host_shape is filled by this function and must outlive the async Memcpy
-// (caller allocates it so its lifetime extends past this call).
+// cpu_shape_t is allocated with on_host+gpu_compatible attributes so TF's
+// allocator keeps the pinned buffer valid until stream ops complete.
 template <typename Tindices>
 absl::Status UploadShapeToGPU(OpKernelContext* context,
                                const TensorShape& shape,
                                se::Stream* stream,
                                Tensor* gpu_shape_t,
-                               absl::InlinedVector<Tindices, 8>* host_shape) {
+                               Tensor* cpu_shape_t) {
   const int64_t rank = shape.dims();
   const int64_t max_index =
       static_cast<int64_t>(std::numeric_limits<Tindices>::max());
@@ -81,13 +80,20 @@ absl::Status UploadShapeToGPU(OpKernelContext* context,
   }
   TF_RETURN_IF_ERROR(context->allocate_temp(DataTypeToEnum<Tindices>::value,
                                             TensorShape({rank}), gpu_shape_t));
-  host_shape->resize(rank);
+  AllocatorAttributes alloc_attr;
+  alloc_attr.set_on_host(true);
+  alloc_attr.set_gpu_compatible(true);
+  TF_RETURN_IF_ERROR(context->allocate_temp(DataTypeToEnum<Tindices>::value,
+                                            TensorShape({rank}), cpu_shape_t,
+                                            alloc_attr));
+  auto cpu_shape_flat = cpu_shape_t->flat<Tindices>();
   for (int i = 0; i < rank; ++i) {
-    (*host_shape)[i] = static_cast<Tindices>(shape.dim_size(i));
+    cpu_shape_flat(i) = static_cast<Tindices>(shape.dim_size(i));
   }
   stream_executor::DeviceAddressBase gpu_mem(
       gpu_shape_t->flat<Tindices>().data(), rank * sizeof(Tindices));
-  return stream->Memcpy(&gpu_mem, host_shape->data(), rank * sizeof(Tindices));
+  return stream->Memcpy(&gpu_mem, cpu_shape_flat.data(),
+                        rank * sizeof(Tindices));
 }
 
 template <typename Tindices>
@@ -102,14 +108,13 @@ absl::Status ReshapeSparseTensorFunctorGPUImpl(
   se::Stream* stream = context->op_device_context()->stream();
   if (!stream) return absl::InternalError("No GPU stream available.");
   Tensor input_shape_gpu_t, output_shape_gpu_t;
-  // Host staging buffers must outlive the async Memcpy calls below.
-  absl::InlinedVector<Tindices, 8> input_host_shape, output_host_shape;
+  Tensor input_shape_cpu_t, output_shape_cpu_t;
   TF_RETURN_IF_ERROR(UploadShapeToGPU<Tindices>(context, input_shape, stream,
                                                 &input_shape_gpu_t,
-                                                &input_host_shape));
+                                                &input_shape_cpu_t));
   TF_RETURN_IF_ERROR(UploadShapeToGPU<Tindices>(context, output_shape, stream,
                                                 &output_shape_gpu_t,
-                                                &output_host_shape));
+                                                &output_shape_cpu_t));
   const GPUDevice& device = context->template eigen_device<GPUDevice>();
   auto config = GetGpuLaunchConfig(nnz, device);
   return GpuLaunchKernel(
