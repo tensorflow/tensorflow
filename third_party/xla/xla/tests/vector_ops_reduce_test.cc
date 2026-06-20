@@ -33,7 +33,7 @@ namespace {
 constexpr ErrorSpec kErrorSpec{1e-3, 0};
 
 class VecOpsReduceTest : public ClientLibraryTestRunnerMixin<
-                             HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+                             HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   VecOpsReduceTest() : builder_(TestName()) {}
 
