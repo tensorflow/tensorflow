@@ -144,35 +144,38 @@ def cygpath(path):
 
 
 def get_python_path(environ_cp, python_bin_path):
-  """Get the python site package paths."""
-  python_paths = []
-  if environ_cp.get('PYTHONPATH'):
-    python_paths = environ_cp.get('PYTHONPATH').split(':')
-  try:
-    stderr = open(os.devnull, 'wb')
-    library_paths = run_shell([
-        python_bin_path, '-c',
-        'import site; print("\\n".join(site.getsitepackages()))'
-    ],
-                              stderr=stderr).split('\n')
-  except subprocess.CalledProcessError:
-    library_paths = [
-        run_shell([
-            python_bin_path,
-            '-c',
-            'import sysconfig; print(sysconfig.get_path("purelib"))',
-        ])
-    ]
+    """Get the python site package paths."""
+    python_paths = []
+    if environ_cp.get('PYTHONPATH'):
+        python_paths = environ_cp.get('PYTHONPATH').split(os.pathsep)
+    
+    with open(os.devnull, 'wb') as stderr:
+        try:
+            library_paths = run_shell([
+                python_bin_path, '-c',
+                'import site; print("\\n".join(site.getsitepackages()))'
+            ], stderr=stderr).split('\n')
+        except subprocess.CalledProcessError:
+            try:
+                library_paths = [
+                    run_shell([
+                        python_bin_path,
+                        '-c',
+                        'import sysconfig; print(sysconfig.get_path("purelib"))',
+                    ], stderr=stderr)
+                ]
+            except subprocess.CalledProcessError:
+                library_paths = []
 
-  all_paths = set(python_paths + library_paths)
-  # Sort set so order is deterministic
-  all_paths = sorted(all_paths)
+    all_paths = set(python_paths + library_paths)
+    # Sort set so order is deterministic
+    all_paths = sorted(all_paths)
 
-  paths = []
-  for path in all_paths:
-    if os.path.isdir(path):
-      paths.append(path)
-  return paths
+    paths = []
+    for path in all_paths:
+        if os.path.isdir(path):
+            paths.append(path)
+    return paths
 
 
 def get_python_major_version(python_bin_path):
