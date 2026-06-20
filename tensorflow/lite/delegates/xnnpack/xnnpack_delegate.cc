@@ -1419,8 +1419,8 @@ class Subgraph {
           resource_id = *GetTensorData<int>(&resource_tensor);
         }
 
-        resource::CreateResourceVariableIfNotAvailable(
-            &this_subgraph->resources(), resource_id);
+        TF_LITE_ENSURE_STATUS(resource::CreateResourceVariableIfNotAvailable(
+            &this_subgraph->resources(), resource_id));
         tflite::resource::ResourceVariable* variable =
             resource::GetResourceVariable(&this_subgraph->resources(),
                                           resource_id);

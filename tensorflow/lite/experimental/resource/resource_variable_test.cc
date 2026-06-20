@@ -218,5 +218,39 @@ TEST(ResourceTest, GetMemoryUsage) {
   TfLiteTensorFree(&tensor);
 }
 
+class DummyHashTableResource : public ResourceBase {
+ public:
+  ResourceType GetResourceType() const override {
+    return ResourceType::kHashTable;
+  }
+  bool IsInitialized() override { return true; }
+};
+
+TEST(ResourceTest, CreateResourceVariableIfNotAvailable_CreatesNew) {
+  ResourceMap resources;
+  EXPECT_EQ(kTfLiteOk, CreateResourceVariableIfNotAvailable(&resources,
+                                                            /*resource_id=*/1));
+  ASSERT_EQ(resources.size(), 1);
+  EXPECT_NE(resources.find(1), resources.end());
+  EXPECT_EQ(resources[1]->GetResourceType(),
+            ResourceBase::ResourceType::kResourceVariable);
+}
+
+TEST(ResourceTest, CreateResourceVariableIfNotAvailable_ExistingMatchingType) {
+  ResourceMap resources;
+  EXPECT_EQ(kTfLiteOk, CreateResourceVariableIfNotAvailable(&resources,
+                                                            /*resource_id=*/1));
+  EXPECT_EQ(kTfLiteOk, CreateResourceVariableIfNotAvailable(&resources,
+                                                            /*resource_id=*/1));
+  ASSERT_EQ(resources.size(), 1);
+}
+
+TEST(ResourceTest, CreateResourceVariableIfNotAvailable_TypeMismatch) {
+  ResourceMap resources;
+  resources[1] = std::make_unique<DummyHashTableResource>();
+  EXPECT_EQ(kTfLiteError, CreateResourceVariableIfNotAvailable(
+                              &resources, /*resource_id=*/1));
+}
+
 }  // namespace resource
 }  // namespace tflite
