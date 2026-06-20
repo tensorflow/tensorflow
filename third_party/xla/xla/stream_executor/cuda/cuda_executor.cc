@@ -259,7 +259,7 @@ absl::StatusOr<CUmodule> LoadCubin(Context* context, const char* cubin_bytes) {
   ScopedActivateContext activation(context);
   CUmodule module;
   RETURN_IF_ERROR(cuda::ToStatus(
-      cuModuleLoadFatBinary(&module, cubin_bytes),
+      cuModuleLoadData(&module, cubin_bytes),
       absl::StrCat(xla::XlaFormatDevice(context->device_ordinal()),
                    "Failed to load in-memory CUBIN "
                    "(compiled for a different GPU?).")));

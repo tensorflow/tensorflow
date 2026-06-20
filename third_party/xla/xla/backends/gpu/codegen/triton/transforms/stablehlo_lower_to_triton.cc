@@ -595,13 +595,15 @@ absl::StatusOr<AlgorithmEmitter> GetAlgorithmEmitter(
 
 bool IsTf32Allowed(const ::xla::xtile::PrecisionSpec& precision_spec) {
   if (precision_spec.algorithm == ::xla::PrecisionConfig::ALG_UNSET) {
-    return tsl::tensor_float_32_execution_enabled() &&
-           StableHloPrecisionToXlaPrecision(
-               precision_spec.lhs_operand_precision) ==
-               ::xla::PrecisionConfig::DEFAULT &&
-           StableHloPrecisionToXlaPrecision(
-               precision_spec.rhs_operand_precision) ==
-               ::xla::PrecisionConfig::DEFAULT;
+    if (!tsl::tensor_float_32_execution_enabled()) {
+      return false;
+    }
+    ::xla::PrecisionConfig::Precision lhs_precision =
+        StableHloPrecisionToXlaPrecision(precision_spec.lhs_operand_precision);
+    ::xla::PrecisionConfig::Precision rhs_precision =
+        StableHloPrecisionToXlaPrecision(precision_spec.rhs_operand_precision);
+    return lhs_precision <= ::xla::PrecisionConfig::HIGH &&
+           rhs_precision <= ::xla::PrecisionConfig::HIGH;
   }
   return ::xla::algorithm_util::HasTf32InputType(precision_spec.algorithm);
 }
