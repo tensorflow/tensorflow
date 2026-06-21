@@ -41,7 +41,7 @@ TEST(SessionTest, InvalidTargetReturnsNull) {
 // NewSession().
 class FakeSessionFactory : public SessionFactory {
  public:
-  FakeSessionFactory() {}
+  FakeSessionFactory() = default;
 
   bool AcceptsOptions(const SessionOptions& options) override {
     return absl::StartsWith(options.target, "fake");

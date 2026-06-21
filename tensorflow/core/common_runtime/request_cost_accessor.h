@@ -28,7 +28,7 @@ namespace tensorflow {
 // request.
 class RequestCostAccessor {
  public:
-  virtual ~RequestCostAccessor() {}
+  virtual ~RequestCostAccessor() = default;
   virtual RequestCost* GetRequestCost() const = 0;
 };
 

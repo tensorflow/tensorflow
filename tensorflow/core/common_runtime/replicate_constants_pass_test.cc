@@ -70,7 +70,7 @@ bool IsEdge(Node* src, Node* dst) {
 
 // Test that a small constant is replicated to each successor's device.
 TEST(ReplicateConstantsPassTest, TestSmallConstant) {
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   {
     Scope scope = Scope::NewRootScope().ExitOnError();
     Output const0 =
@@ -107,7 +107,7 @@ TEST(ReplicateConstantsPassTest, TestSmallConstant) {
 
 // Test that a large constant is ignored.
 TEST(ReplicateConstantsPassTest, TestLargeConstant) {
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   {
     Scope scope = Scope::NewRootScope().ExitOnError();
     Output const0 =
@@ -145,7 +145,7 @@ TEST(ReplicateConstantsPassTest, TestLargeConstant) {
 
 // Test that a constant with a control successor is ignored.
 TEST(ReplicateConstantsPassTest, TestControlOut) {
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   {
     Scope scope = Scope::NewRootScope().ExitOnError();
     Output const0 =
@@ -187,7 +187,7 @@ TEST(ReplicateConstantsPassTest, TestControlOut) {
 
 // Test that a constant on a TPU is ignored.
 TEST(ReplicateConstantsPassTest, TestTpuConst) {
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   {
     Scope scope = Scope::NewRootScope().ExitOnError();
     Output const0 =
@@ -223,7 +223,7 @@ TEST(ReplicateConstantsPassTest, TestTpuConst) {
 }
 
 TEST(ReplicateConstantsPassTest, TestSmallAndLargeConstants) {
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   {
     Scope scope = Scope::NewRootScope().ExitOnError();
     Output small = ops::Const(scope.WithOpName("small"), 1.0f, TensorShape({}));
@@ -274,7 +274,7 @@ TEST(ReplicateConstantsPassTest, TestSmallAndLargeConstants) {
 // Test that a constant at a CPU with TPU successors is replicated to the
 // TPUs' host CPUs.
 TEST(ReplicateConstantsPassTest, TestTpuDestinations) {
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   {
     Scope scope = Scope::NewRootScope().ExitOnError();
     Output const0 =
