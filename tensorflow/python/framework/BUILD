@@ -2186,6 +2186,7 @@ pytype_strict_library(
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+    # "//third_party/darwinn/tflite/python:__pkg__",
     # "//third_party/py/neural_structured_learning:__subpackages__",
     # "//third_party/py/tf_agents:__subpackages__",
     # "//third_party/py/tf_keras:__subpackages__",
