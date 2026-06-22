@@ -924,37 +924,189 @@ absl::StatusOr<std::vector<TensorValue>> EmitScan(
   return results;
 }
 
-absl::StatusOr<TensorValue> EmitReduce(
-    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
-  if (tiled_hlo.hlo()->dimensions().size() != 1 ||
-      tiled_hlo.hlo()->operand_count() != 2) {
-    // Triton does support variadic reduce and reductions over multiple
-    // dimensions but we don't support it here yet. For example, xtile.mask
-    // only supports masking of at most one dimension. To support
-    // multi-dimensional we should use a different method or update xtile.mask.
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Only reduce with one dimension and two operands is supported. Got ",
-        tiled_hlo.hlo()->dimensions().size(), " dimensions and ",
-        tiled_hlo.hlo()->operand_count(), " operands."));
-  }
-  ImplicitLocOpBuilder& b = emitter_ctx.b();
-  const HloReduceInstruction& reduce_hlo =
-      *::xla::Cast<HloReduceInstruction>(tiled_hlo.hlo());
+absl::StatusOr<TensorValue> MaskInputStatically(
+    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo,
+    TensorValue input) {
+  auto& b = emitter_ctx.b();
+  const HloReduceInstruction* reduce_hlo =
+      ::xla::Cast<HloReduceInstruction>(tiled_hlo.hlo());
   const ge::TiledHloInstruction* tiled_input = tiled_hlo.operand(0);
-  TensorValue input_value = emitter_ctx.TiledHloToTensorValue(*tiled_input);
-  ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> mask_dim_bounds,
+
+  int64_t reduce_dim = reduce_hlo->dimensions()[0];
+  int64_t reduce_dim_size = tiled_input->hlo()->shape().dimensions(reduce_dim);
+  ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> tile_sizes,
                    tiled_input->tile().GetStaticTileSizes());
-  int64_t reduce_dim = reduce_hlo.dimensions()[0];
-  mask_dim_bounds[reduce_dim] =
-      tiled_input->hlo()->shape().dimensions(reduce_dim);
+  int64_t tile_size = tile_sizes[reduce_dim];
+  if (reduce_dim_size % tile_size == 0) {
+    return input;
+  }
+
+  llvm::SmallVector<int64_t> mask_dim_bounds = std::move(tile_sizes);
+  mask_dim_bounds[reduce_dim] = reduce_dim_size;
+
   TensorValue init_value =
       emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(1));
   // N.B.: while that mostly works in practice, there are valid HLOs, for
   // example `reduce(p0, init=1), to_apply=add`, that will produce the wrong
   // result with this implementation.
-  mlir::Value neutral_value = mlir::tensor::ExtractOp::create(b, init_value);
-  input_value = mlir::cast<TensorValue>(b.createOrFold<xtile::MaskOp>(
-      input_value, mask_dim_bounds, neutral_value));
+  mlir::Value neutral_value = b.create<mlir::tensor::ExtractOp>(init_value);
+
+  return mlir::cast<TensorValue>(
+      b.createOrFold<xtile::MaskOp>(input, mask_dim_bounds, neutral_value));
+}
+
+absl::StatusOr<TensorValue> MaskInputDynamically(
+    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo,
+    TensorValue input, Value iv, int64_t tile_size, int64_t global_bound) {
+  ImplicitLocOpBuilder& b = emitter_ctx.b();
+  const HloReduceInstruction* reduce_hlo =
+      xla::Cast<HloReduceInstruction>(tiled_hlo.hlo());
+  int64_t reduce_dim = reduce_hlo->dimensions()[0];
+
+  auto input_type = mlir::cast<mlir::RankedTensorType>(input.getType());
+
+  // 1. Generate 1D Iota and broadcast to match input shape.
+  auto iota_1d_type = mlir::RankedTensorType::get({tile_size}, b.getI32Type());
+  Value iota_1d = b.create<stablehlo::IotaOp>(iota_1d_type, 0);
+  auto iota_type =
+      mlir::RankedTensorType::get(input_type.getShape(), b.getI32Type());
+  Value iota = b.create<stablehlo::BroadcastInDimOp>(
+      iota_type, iota_1d, b.getDenseI64ArrayAttr({reduce_dim}));
+
+  // 2. Compute dynamic offset: offset = iv * tile_size.
+  Value iv_i32 = b.create<arith::IndexCastOp>(b.getI32Type(), iv);
+  Value tile_size_val = b.create<arith::ConstantIntOp>(tile_size, 32);
+  Value offset = b.create<arith::MulIOp>(iv_i32, tile_size_val);
+
+  // Broadcast offset to match input shape.
+  auto offset_tensor_type = mlir::RankedTensorType::get({}, b.getI32Type());
+  Value offset_tensor =
+      b.create<mlir::tensor::FromElementsOp>(offset_tensor_type, offset);
+  Value offset_broadcast = b.create<stablehlo::BroadcastInDimOp>(
+      iota_type, offset_tensor, b.getDenseI64ArrayAttr({}));
+
+  // 3. Compute global indices: global_indices = iota + offset.
+  Value global_indices = b.create<arith::AddIOp>(iota, offset_broadcast);
+
+  // 4. Compare global_indices < global_bound.
+  Value global_bound_val = b.create<arith::ConstantIntOp>(global_bound, 32);
+  Value global_bound_tensor = b.create<mlir::tensor::FromElementsOp>(
+      offset_tensor_type, global_bound_val);
+  Value global_bound_broadcast = b.create<stablehlo::BroadcastInDimOp>(
+      iota_type, global_bound_tensor, b.getDenseI64ArrayAttr({}));
+
+  Value mask = b.create<arith::CmpIOp>(arith::CmpIPredicate::slt,
+                                       global_indices, global_bound_broadcast);
+
+  // 5. Broadcast neutral value to match input shape.
+  TensorValue init_value =
+      emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(1));
+  Value neutral_broadcast = b.create<stablehlo::BroadcastInDimOp>(
+      input_type, init_value, b.getDenseI64ArrayAttr({}));
+
+  // 6. Select input or neutral value based on mask.
+  return mlir::cast<TensorValue>(
+      b.create<arith::SelectOp>(mask, input, neutral_broadcast).getResult());
+}
+
+// Emit a tiled reduction using a sequential loop (scf.for).
+absl::StatusOr<TensorValue> EmitTiledLoopReduce(
+    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+  ImplicitLocOpBuilder& b = emitter_ctx.b();
+  const HloReduceInstruction& reduce_hlo =
+      *::xla::Cast<HloReduceInstruction>(tiled_hlo.hlo());
+
+  llvm::SmallVector<int64_t> sequential_dim_ids =
+      GetSequentialDimIds(*tiled_hlo.hlo());
+  ASSIGN_OR_RETURN(
+      SmallVector<int64_t> loop_iteration_count,
+      GetSequentialLoopIterationCounts(tiled_hlo, sequential_dim_ids));
+  CHECK(loop_iteration_count.size() == 1)
+      << "Expected exactly one loop iteration count for reduce";
+
+  ASSIGN_OR_RETURN(SmallVector<int64_t> output_tile_sizes,
+                   tiled_hlo.tile().GetStaticTileSizes());
+
+  TensorValue init_value =
+      emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(1));
+  Type element_type = getElementTypeOrSelf(init_value.getType());
+
+  auto accumulator_type =
+      mlir::RankedTensorType::get(output_tile_sizes, element_type);
+  Value init_accumulator = b.create<mlir::stablehlo::BroadcastInDimOp>(
+      accumulator_type, init_value, b.getDenseI64ArrayAttr({}));
+
+  auto for_op = mlir::scf::ForOp::create(
+      b,
+      /*lowerBound=*/MakeIndex(b, 0),
+      /*upperBound=*/MakeIndex(b, loop_iteration_count.front()),
+      /*step=*/MakeIndex(b, 1), init_accumulator);
+
+  {  // Loop body.
+    mlir::OpBuilder::InsertionGuard g(b);
+    b.setInsertionPointToStart(for_op.getBody());
+    Value iv = for_op.getInductionVar();
+
+    const ge::TilingSpace::DimensionInfo& dim_info =
+        tiled_hlo.tile().tiling_space().GetDimensionInfo(
+            *tiled_hlo.hlo(), sequential_dim_ids.front());
+    TF_RET_CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
+        dim_info.id, iv, Interval{0, loop_iteration_count.front() - 1}))
+        << "Failed to map sequential dimension ID to value";
+
+    const ge::TiledHloRegion& reduce_region = tiled_hlo.hlo_regions().front();
+    const ge::TiledHloInstruction* tiled_input = tiled_hlo.operand(0);
+
+    // Recursively emit the region inside the loop to generate the tile
+    // extracts.
+    ASSIGN_OR_RETURN(
+        std::vector<TensorValue> results,
+        EmitTiledComputation(emitter_ctx, reduce_region, {tiled_input}));
+    TensorValue loaded_input_chunk = results[0];
+
+    int64_t tile_size = *dim_info.tile_size;
+    int64_t global_bound = dim_info.dimension_size;
+    if (global_bound % tile_size != 0) {
+      ASSIGN_OR_RETURN(
+          loaded_input_chunk,
+          MaskInputDynamically(emitter_ctx, tiled_hlo, loaded_input_chunk, iv,
+                               tile_size, global_bound));
+    }
+
+    stablehlo::ReduceOp reduction = stablehlo::ReduceOp::create(
+        b, loaded_input_chunk, init_value, reduce_hlo.dimensions());
+    RETURN_IF_ERROR(EmitReduceComputation(
+        b, &reduce_hlo, tiled_hlo.hlo()->to_apply(), reduction));
+    TensorValue reduced_chunk = mlir::cast<TensorValue>(reduction.getResult(0));
+
+    Value carry_acc = for_op.getRegionIterArgs().front();
+    const HloComputation* to_apply = tiled_hlo.hlo()->to_apply();
+    const HloInstruction* root_instruction = to_apply->root_instruction();
+    ASSIGN_OR_RETURN(
+        Value combined_accumulator,
+        EmitElementwise(b, *root_instruction, {carry_acc, reduced_chunk}));
+    mlir::scf::YieldOp::create(b, combined_accumulator);
+  }
+
+  b.setInsertionPointAfter(for_op);
+  return mlir::cast<TensorValue>(for_op.getResult(0));
+}
+
+// Emit a flat reduction covering the entire tiled dimension in one step.
+absl::StatusOr<TensorValue> EmitFlatReduce(
+    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+  ImplicitLocOpBuilder& b = emitter_ctx.b();
+  const HloReduceInstruction& reduce_hlo =
+      *::xla::Cast<HloReduceInstruction>(tiled_hlo.hlo());
+
+  const ge::TiledHloInstruction* tiled_input = tiled_hlo.operand(0);
+  TensorValue input_value = emitter_ctx.TiledHloToTensorValue(*tiled_input);
+
+  ASSIGN_OR_RETURN(input_value,
+                   MaskInputStatically(emitter_ctx, tiled_hlo, input_value));
+
+  TensorValue init_value =
+      emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(1));
   stablehlo::ReduceOp reduction = stablehlo::ReduceOp::create(
       b, input_value, init_value, reduce_hlo.dimensions());
   RETURN_IF_ERROR(EmitReduceComputation(
@@ -962,13 +1114,37 @@ absl::StatusOr<TensorValue> EmitReduce(
   return mlir::cast<TensorValue>(reduction.getResult(0));
 }
 
-absl::StatusOr<TensorValue> EmitTiledHloInstruction(
+absl::StatusOr<TensorValue> EmitReduce(
+    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+  if (tiled_hlo.hlo()->dimensions().size() != 1 ||
+      tiled_hlo.hlo()->operand_count() != 2) {
+    // Currently we only support reduce on a single dimension on one input.
+    // TODO(b/525358513): Add support for multi-dimensional reduce.
+    // TODO(b/525357362): Add variable support.
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Only reduce with one dimension and two operands is supported. Got ",
+        tiled_hlo.hlo()->dimensions().size(), " dimensions and ",
+        tiled_hlo.hlo()->operand_count(), " operands."));
+  }
+
+  if (tiled_hlo.IsControlFlowLoop()) {
+    return EmitTiledLoopReduce(emitter_ctx, tiled_hlo);
+  }
+  return EmitFlatReduce(emitter_ctx, tiled_hlo);
+}
+
+// Emit scoped, control flow, or boundary instructions. These instructions
+// manage their own operand evaluations on-demand (e.g. inside nested loop
+// bodies or conditional branches). Returns the emitted TensorValue, or
+// std::nullopt if the HLO is not a scoped instruction and should be handled by
+// the flat path.
+absl::StatusOr<std::optional<TensorValue>> EmitScopedOrControlFlowInstruction(
     EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
   auto& b = emitter_ctx.b();
   const HloInstruction* hlo = tiled_hlo.hlo();
-  VLOG(4) << "EmitTiledHloInstruction: " << hlo->ToString();
-
   const HloFusionInstruction& fusion = emitter_ctx.fusion();
+  VLOG(4) << "EmitScopedOrControlFlowInstruction: " << hlo->ToString();
+
   if (hlo->opcode() == HloOpcode::kParameter && !fusion.IsUserOf(hlo)) {
     hlo = hlo->parent()->FusionInstruction()->operand(hlo->parameter_number());
   }
@@ -1011,13 +1187,16 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     return parameter;
   }
   if (hlo->opcode() == HloOpcode::kDot) {
-    return EmitDot(emitter_ctx, tiled_hlo);
+    ASSIGN_OR_RETURN(TensorValue val, EmitDot(emitter_ctx, tiled_hlo));
+    return val;
   }
   if (hlo->opcode() == HloOpcode::kScaledDot) {
-    return EmitScaledDot(emitter_ctx, tiled_hlo);
+    ASSIGN_OR_RETURN(TensorValue val, EmitScaledDot(emitter_ctx, tiled_hlo));
+    return val;
   }
   if (hlo->opcode() == HloOpcode::kConcatenate) {
-    return EmitConcatenate(emitter_ctx, tiled_hlo);
+    ASSIGN_OR_RETURN(TensorValue val, EmitConcatenate(emitter_ctx, tiled_hlo));
+    return val;
   }
   if (hlo->opcode() == HloOpcode::kGetTupleElement) {
     int64_t index = hlo->tuple_index();
@@ -1027,6 +1206,25 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     return absl::UnimplementedError(
         absl::StrCat("Unsupported get-tuple-element index ", index));
   }
+  if (hlo->opcode() == HloOpcode::kReduce) {
+    ASSIGN_OR_RETURN(TensorValue val, EmitReduce(emitter_ctx, tiled_hlo));
+    return val;
+  }
+
+  return std::nullopt;
+}
+
+// Emit flat, elementwise, or data reorganization instructions. These
+// instructions are stateless/non-control-flow and are evaluated eagerly. All
+// input operands are pre-evaluated in the current scope before the instruction
+// is emitted.
+absl::StatusOr<TensorValue> EmitFlatOrElementwiseInstruction(
+    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+  auto& b = emitter_ctx.b();
+  const HloInstruction* hlo = tiled_hlo.hlo();
+  const HloFusionInstruction& fusion = emitter_ctx.fusion();
+  VLOG(4) << "EmitFlatOrElementwiseInstruction: " << hlo->ToString();
+
   std::vector<Value> operands;
   operands.reserve(hlo->operands().size());
   for (const ge::TiledHloInstruction* operand : tiled_hlo.operands()) {
@@ -1092,9 +1290,6 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
       return EmitTranspose(b, tile_sizes, hlo->dimensions(),
                            mlir::cast<TensorValue>(operands[0]));
     }
-    case HloOpcode::kReduce: {
-      return EmitReduce(emitter_ctx, tiled_hlo);
-    }
     case HloOpcode::kScan: {
       ASSIGN_OR_RETURN(auto result, EmitScan(emitter_ctx, tiled_hlo));
       return result.front();
@@ -1108,6 +1303,21 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
   return absl::UnimplementedError(
       absl::StrCat("Unsupported operation ", hlo->ToString()));
+}
+
+// Lower a single tiled HLO instruction.
+// We route instructions into two categories:
+// 1. Scoped/Control Flow: Manage their own operand evaluations on-demand. We
+// check these first.
+// 2. Flat/Elementwise: Operands are pre-evaluated eagerly in the outer scope.
+absl::StatusOr<TensorValue> EmitTiledHloInstruction(
+    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+  ASSIGN_OR_RETURN(std::optional<TensorValue> result,
+                   EmitScopedOrControlFlowInstruction(emitter_ctx, tiled_hlo));
+  if (result.has_value()) {
+    return *result;
+  }
+  return EmitFlatOrElementwiseInstruction(emitter_ctx, tiled_hlo);
 }
 
 absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(

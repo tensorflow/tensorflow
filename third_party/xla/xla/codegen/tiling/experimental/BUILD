@@ -218,6 +218,7 @@ cc_library(
     deps = [
         ":tile",
         ":tile_propagation",
+        "//xla:status_macros",
         "//xla:util",
         "//xla/hlo/analysis:interval",
         "//xla/hlo/ir:hlo",
