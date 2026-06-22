@@ -164,10 +164,6 @@ bool IsCustomCallToMosaicGpu(const HloInstruction& hlo) {
           hlo.custom_call_target() == "mosaic_gpu_v2");
 }
 
-bool IsMosaicWithNvshmem(const HloInstruction& hlo) {
-  return IsCustomCallToMosaicGpu(hlo) &&
-         absl::StrContains(hlo.raw_backend_config_string(), "nvshmem");
-}
 
 bool IsMosaicWithMultimem(const HloInstruction& hlo) {
   return IsCustomCallToMosaicGpu(hlo) &&
@@ -182,7 +178,7 @@ bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo) {
 }
 
 bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
-  return IsMosaicWithNvshmem(hlo) || IsMosaicWithMultimem(hlo);
+  return IsMosaicWithMultimem(hlo);
 }
 
 static bool IsContiguousSlice(
