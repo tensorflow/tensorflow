@@ -515,6 +515,8 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
   // Get parameter specs.
   const std::optional<std::vector<xla::OpSharding>> parameter_shardings =
       pjrt_executable->GetParameterShardings();
+  // TODO(skye): add API for getting number of parameters, so we don't need this
+  // convoluted logic that potentially results in setting num_parameters = 0.
   uint64_t num_parameters;
   std::vector<std::shared_ptr<const xla::PjRtLayout>> parameter_layouts;
   if (auto maybe_layouts = pjrt_executable->GetParameterLayouts();
@@ -556,10 +558,12 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
   for (int i = 0; i < num_parameters; ++i) {
     SerializedXlaExecutableMetadata::ParameterSpec& parameter_spec =
         *metadata.add_parameter_specs();
-    // Layout
-    auto pjrt_layout = PjRtLayout::Create(parameter_layouts[i]);
-    ASSIGN_OR_RETURN(*parameter_spec.mutable_layout(),
-                     pjrt_layout->ToProto(serdes_version));
+    // Layout (nullptr means default layout)
+    if (parameter_layouts[i] != nullptr) {
+      auto pjrt_layout = PjRtLayout::Create(parameter_layouts[i]);
+      ASSIGN_OR_RETURN(*parameter_spec.mutable_layout(),
+                       pjrt_layout->ToProto(serdes_version));
+    }
 
     // Sharding
     if (parameter_shardings.has_value()) {

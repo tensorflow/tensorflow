@@ -644,7 +644,7 @@ cc_library(
     name = "trace_util_hdrs",
     hdrs = ["trace_util.h"],
     deps = [
-        "@com_google_absl//absl/strings",
+        "//third_party/gloop/base:tracer",
     ],
 )
 
