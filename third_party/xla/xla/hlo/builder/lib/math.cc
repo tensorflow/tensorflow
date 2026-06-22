@@ -2143,8 +2143,20 @@ XlaOp Zeta(XlaOp x, XlaOp q) {
     const double inf = std::numeric_limits<double>::infinity();
     // Use the initial zeta sum without the correction term coming
     // from Euler-Maclaurin if it is accurate enough.
-    XlaOp output = Select(Lt(Abs(neg_power), Abs(S) * Epsilon(&builder, type)),
-                          S, accurate_result);
+    //
+    // When the running term `neg_power` has underflowed to exactly zero (for
+    // example when `q` is +inf, or `q` is so large that `pow(q, -x)`
+    // underflows), the Euler-Maclaurin correction is either zero or an
+    // indeterminate form: in particular `I = neg_power * acc / (x - 1)` becomes
+    // `0 * inf = NaN` for `q == +inf`, which poisons `accurate_result`. In that
+    // regime the partial sum `S` is already the answer, so fall back to it
+    // whenever `neg_power == 0`. This mirrors the `if (b == 0) return s;` guard
+    // in Eigen's CPU Cephes implementation and fixes `Zeta(x, +inf)` returning
+    // NaN instead of 0 on GPU (b/121501).
+    XlaOp use_series =
+        Or(Eq(neg_power, ScalarLike(neg_power, 0.)),
+           Lt(Abs(neg_power), Abs(S) * Epsilon(&builder, type)));
+    XlaOp output = Select(use_series, S, accurate_result);
 
     // This is the harmonic series.
     output = Select(Eq(x, ScalarLike(x, 1.)), ScalarLike(x, inf), output);
