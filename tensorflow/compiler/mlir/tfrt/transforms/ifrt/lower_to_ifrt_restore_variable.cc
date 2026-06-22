@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -37,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -74,6 +76,8 @@ class LowerToIfrtRestoreVariablePass
         return signalPassFailure();
       }
     }
+
+    ReconcileFuncAndWhileResourceSubtypes(module);
   }
 
  private:
@@ -583,6 +587,140 @@ class LowerToIfrtRestoreVariablePass
     }
 
     return mlir::success();
+  }
+
+  // Reconciles narrowed resource subtypes across function signatures, block
+  // arguments, and control flow / call operations (tf.While, tf.If, tf.Call)
+  // across the entire module to ensure verifier compliance.
+  void ReconcileFuncAndWhileResourceSubtypes(mlir::ModuleOp module) {
+    mlir::SymbolTable symtab(module);
+    bool changed = true;
+    while (changed) {
+      changed = false;
+
+      // Rule 1: Callsite Operands -> Callee Arguments
+      module.walk([&](mlir::Operation* op) {
+        auto update_callee_args = [&](mlir::func::FuncOp callee,
+                                      mlir::TypeRange operand_types) {
+          if (!callee || callee.isExternal()) return;
+          llvm::SmallVector<mlir::Type, 4> new_arg_types(
+              callee.getFunctionType().getInputs().begin(),
+              callee.getFunctionType().getInputs().end());
+          bool arg_changed = false;
+          for (int i = 0; i < operand_types.size(); ++i) {
+            if (i < new_arg_types.size() &&
+                new_arg_types[i] != operand_types[i]) {
+              new_arg_types[i] = operand_types[i];
+              callee.getBody().front().getArgument(i).setType(operand_types[i]);
+              arg_changed = true;
+            }
+          }
+          if (arg_changed) {
+            callee.setType(
+                mlir::FunctionType::get(callee.getContext(), new_arg_types,
+                                        callee.getFunctionType().getResults()));
+            changed = true;
+          }
+        };
+
+        if (auto while_op = llvm::dyn_cast<mlir::TF::WhileOp>(op)) {
+          update_callee_args(while_op.cond_function(),
+                             while_op.getOperandTypes());
+          update_callee_args(while_op.body_function(),
+                             while_op.getOperandTypes());
+        } else if (auto if_op = llvm::dyn_cast<mlir::TF::IfOp>(op)) {
+          llvm::SmallVector<mlir::Type, 4> op_types(
+              op->getOperandTypes().begin(), op->getOperandTypes().end());
+          update_callee_args(if_op.then_function(),
+                             llvm::ArrayRef<mlir::Type>(op_types).drop_front());
+          update_callee_args(if_op.else_function(),
+                             llvm::ArrayRef<mlir::Type>(op_types).drop_front());
+        } else if (auto case_op = llvm::dyn_cast<mlir::TF::CaseOp>(op)) {
+          llvm::SmallVector<mlir::Type, 4> op_types(
+              op->getOperandTypes().begin(), op->getOperandTypes().end());
+          for (auto branch :
+               case_op.getBranches().getAsRange<mlir::FlatSymbolRefAttr>()) {
+            update_callee_args(
+                symtab.lookup<mlir::func::FuncOp>(branch.getValue()),
+                llvm::ArrayRef<mlir::Type>(op_types).drop_front());
+          }
+        } else if (llvm::isa<mlir::TF::StatefulPartitionedCallOp,
+                             mlir::TF::PartitionedCallOp,
+                             mlir::TF::LegacyCallOp>(op)) {
+          auto sym = op->getAttrOfType<mlir::FlatSymbolRefAttr>("f");
+          if (sym) {
+            update_callee_args(
+                symtab.lookup<mlir::func::FuncOp>(sym.getValue()),
+                op->getOperandTypes());
+          }
+        }
+      });
+
+      // Rule 2: Callee Return Operands -> Callee Results & Callsite Results
+      for (auto func_op : module.getOps<mlir::func::FuncOp>()) {
+        if (func_op.isExternal()) continue;
+        auto return_op = llvm::dyn_cast_or_null<mlir::func::ReturnOp>(
+            func_op.getBody().front().getTerminator());
+        if (!return_op) continue;
+
+        llvm::SmallVector<mlir::Type, 4> new_result_types(
+            func_op.getFunctionType().getResults().begin(),
+            func_op.getFunctionType().getResults().end());
+        bool func_changed = false;
+        for (int i = 0; i < return_op.getNumOperands(); ++i) {
+          mlir::Type res_type = new_result_types[i];
+          mlir::Type ret_type = return_op.getOperand(i).getType();
+          if (res_type != ret_type) {
+            new_result_types[i] = ret_type;
+            func_changed = true;
+          }
+        }
+
+        if (func_changed) {
+          func_op.setType(mlir::FunctionType::get(
+              func_op.getContext(), func_op.getFunctionType().getInputs(),
+              new_result_types));
+          changed = true;
+
+          // Update any callsites invoking this function across the module.
+          module.walk([&](mlir::Operation* op) {
+            bool is_caller = false;
+            if (auto while_op = llvm::dyn_cast<mlir::TF::WhileOp>(op)) {
+              if (while_op.body_function() == func_op) is_caller = true;
+            } else if (auto if_op = llvm::dyn_cast<mlir::TF::IfOp>(op)) {
+              if (if_op.then_function() == func_op ||
+                  if_op.else_function() == func_op) {
+                is_caller = true;
+              }
+            } else if (auto case_op = llvm::dyn_cast<mlir::TF::CaseOp>(op)) {
+              for (auto branch : case_op.getBranches()
+                                     .getAsRange<mlir::FlatSymbolRefAttr>()) {
+                if (branch.getValue() == func_op.getSymName()) is_caller = true;
+              }
+            } else if (llvm::isa<mlir::TF::StatefulPartitionedCallOp,
+                                 mlir::TF::PartitionedCallOp,
+                                 mlir::TF::LegacyCallOp>(op)) {
+              auto sym = op->getAttrOfType<mlir::FlatSymbolRefAttr>("f");
+              if (sym && sym.getValue() == func_op.getSymName())
+                is_caller = true;
+            }
+
+            if (is_caller) {
+              mlir::OpBuilder builder(op);
+              mlir::OperationState state(op->getLoc(), op->getName());
+              state.addOperands(op->getOperands());
+              state.addTypes(new_result_types);
+              state.addAttributes(op->getAttrs());
+              mlir::Operation* new_op = builder.create(state);
+              for (int i = 0; i < op->getNumResults(); ++i) {
+                op->getResult(i).replaceAllUsesWith(new_op->getResult(i));
+              }
+              op->erase();
+            }
+          });
+        }
+      }
+    }
   }
 };
 

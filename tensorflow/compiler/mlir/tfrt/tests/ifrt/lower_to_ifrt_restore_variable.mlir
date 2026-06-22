@@ -306,3 +306,34 @@ module {
     return
   }
 }
+
+// -----
+// reconcile narrowed resource subtypes across while loop and function signature
+
+// CHECK-LABEL: func.func @while_body(
+// CHECK-SAME:  %arg0: tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+
+// CHECK-LABEL: func.func @reconcile_while(
+// CHECK:       %[[WHILE:.*]] = "tf.While"(%[[HANDLE:.*]]) <{body = @while_body, cond = @while_cond, is_stateless = false}> : (tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+
+module {
+  func.func @while_cond(%arg0: tensor<*x!tf_type.resource>) -> tensor<i1> {
+    %cst = "tf.Const"() <{value = dense<true> : tensor<i1>}> : () -> tensor<i1>
+    return %cst : tensor<i1>
+  }
+
+  func.func @while_body(%arg0: tensor<*x!tf_type.resource>) -> tensor<*x!tf_type.resource> {
+    return %arg0 : tensor<*x!tf_type.resource>
+  }
+
+  func.func @reconcile_while() {
+    %cst = "tf.Const"() <{value = dense<"restore_ariables"> : tensor<!tf_type.string>}> : () -> tensor<!tf_type.string>
+    %cst_0 = "tf.Const"() <{value = dense<""> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
+    %cst_1 = "tf.Const"() <{value = dense<"y"> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
+    %0 = "tf.RestoreV2"(%cst, %cst_1, %cst_0): (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<3x1xf32>
+    %1 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+    "tf.AssignVariableOp"(%1, %0) : (tensor<!tf_type.resource<tensor<3x1xf32>>>, tensor<3x1xf32>) -> ()
+    %2 = "tf.While"(%1) <{cond = @while_cond, body = @while_body, is_stateless = false}> : (tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<*x!tf_type.resource>
+    return
+  }
+}
