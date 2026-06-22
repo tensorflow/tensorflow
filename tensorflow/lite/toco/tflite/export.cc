@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "flatbuffers/buffer.h"  // from @flatbuffers
