@@ -909,10 +909,6 @@ message DebugOptions {
   // Enable NCCL symmetric buffers.
   optional bool xla_gpu_experimental_enable_nccl_symmetric_buffers = 406;
 
-  // Enable NVSHMEM. Must be set via XLA_FLAGS variable before XLA client is
-  // initialized and can't be set just through HLO Config->ExecutionOptions.
-  optional bool xla_gpu_experimental_enable_nvshmem = 388;
-
   // Enable fusion for the subchannel dequantisation sequences like
   // [x,z]param -> [x,y,z]broadcast -> [x*y,z]bitcast -> multiply -> dot.
   // Performance can be worse, because some block sizes / split-k > 1 is
@@ -1751,6 +1747,7 @@ message DebugOptions {
   reserved "xla_ignore_channel_id";
   reserved "xla_use_shardy";
   reserved "xla_gpu_experimental_move_gemm_conv_autotuner";
+  reserved "xla_gpu_experimental_enable_nvshmem";
 
   reserved 5, 63, 80, 93, 94, 98, 117, 130, 133, 134, 139, 141, 143, 152, 156,
       158, 160, 161, 162, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179, 180,
@@ -1758,8 +1755,8 @@ message DebugOptions {
       206, 207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 241, 242,
       243, 249, 263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298,
       299, 302, 303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 354, 355,
-      358, 361, 367, 369, 371, 385, 394, 396, 398, 402, 423, 430, 443, 446, 458,
-      464, 477;
+      358, 361, 367, 369, 371, 385, 388, 394, 396, 398, 402, 423, 430, 443, 446,
+      458, 464, 477;
 }
 
 // Contains flags which affects the GPU compilation result.

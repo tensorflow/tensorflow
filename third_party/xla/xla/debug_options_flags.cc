@@ -305,7 +305,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
   opts.set_xla_gpu_enable_allocator_spatial_partitioning(true);
   opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(false);
-  opts.set_xla_gpu_experimental_enable_nvshmem(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(true);
   opts.set_xla_gpu_nccl_init_max_rank_per_root_ratio(0);
 
@@ -2071,11 +2070,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "only compiles up to the HLO optimization stage, before Thunk "
       "generation."));
 
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_nvshmem",
-      bool_setter_for(&DebugOptions::set_xla_gpu_experimental_enable_nvshmem),
-      debug_options->xla_gpu_experimental_enable_nvshmem(),
-      "Enables NVSHMEM."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_temp_buffer_use_separate_color",
       bool_setter_for(

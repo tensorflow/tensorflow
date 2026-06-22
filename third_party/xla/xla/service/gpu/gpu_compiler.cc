@@ -2331,11 +2331,6 @@ bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
     return true;
   }
 
-  // Check Mosaic with nvshmem attribute
-  if (opts.xla_gpu_experimental_enable_nvshmem() &&
-      IsMosaicWithNvshmem(*user)) {
-    return true;
-  }
 
   // Check Mosaic with multimem_parameters attribute
   if (IsMosaicWithMultimem(*user)) {
@@ -2374,10 +2369,6 @@ bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts) {
     return true;
   }
 
-  // Check Mosaic with nvshmem attribute
-  if (opts.xla_gpu_experimental_enable_nvshmem() && IsMosaicWithNvshmem(*def)) {
-    return true;
-  }
 
   // Check Mosaic with multimem_parameters attribute
   if (IsMosaicWithMultimem(*def)) {
