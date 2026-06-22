@@ -1037,6 +1037,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
     if (value == "fail") {
       return DebugOptions::DETECTION_MODE_FAIL;
     }
+    if (value == "dump") {
+      return DebugOptions::DETECTION_MODE_DUMP;
+    }
     return std::nullopt;
   };
   auto setter_for_xla_detect_unstable_reductions =
@@ -3253,9 +3256,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       DebugOptions::DetectionMode_Name(debug_options->xla_gpu_detect_nan()),
       "Controls the behavior of the NaN detector pass that checks for presence "
       "of NaN values in kernel outputs. Acceptable values are: 'none', "
-      "'warning', and 'fail'. 'none' is the default. If other than 'none' "
-      "value is provided, additional thunks will be added to detect and "
-      "warn or fail the execution if NaNs are detected."));
+      "'warning', 'fail', and 'dump'. 'none' is the default. If other than "
+      "'none' value is provided, additional thunks will be added to detect and "
+      "warn or crash (possibly creating a crash dump) if NaNs are detected."));
   auto setter_for_xla_gpu_detect_inf =
       [debug_options, detection_mode](const std::string& value) {
         if (auto mode = detection_mode(debug_options, value)) {
@@ -3269,9 +3272,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       DebugOptions::DetectionMode_Name(debug_options->xla_gpu_detect_inf()),
       "Controls the behavior of the Inf detector pass that checks for presence "
       "of Inf values in kernel outputs. Acceptable values are: 'none', "
-      "'warning', and 'fail'. 'none' is the default. If other than 'none' "
-      "value is provided, additional thunks will be added to detect and "
-      "warn or fail the execution if Infs are detected."));
+      "'warning', 'fail', and 'dump'. 'none' is the default. If other than "
+      "'none' value is provided, additional thunks will be added to detect and "
+      "warn or crash (possibly creating a crash dump) if Infs are detected."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_log_minmax",
                 bool_setter_for(&DebugOptions::set_xla_gpu_log_minmax),
