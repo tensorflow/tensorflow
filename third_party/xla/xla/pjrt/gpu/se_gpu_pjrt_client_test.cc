@@ -2422,6 +2422,27 @@ CompileOptions CmdBufVaRemappingOptions() {
   return opts;
 }
 
+class ScopedVaRemappingVLog {
+ public:
+  ScopedVaRemappingVLog()
+      : old_gpu_executable_(absl::SetVLogLevel("gpu_executable", 3)),
+        old_buffer_allocator_(
+            absl::SetVLogLevel("gpu_executable_buffer_allocator", 3)) {}
+
+  ~ScopedVaRemappingVLog() {
+    absl::SetVLogLevel("gpu_executable", old_gpu_executable_);
+    absl::SetVLogLevel("gpu_executable_buffer_allocator",
+                       old_buffer_allocator_);
+  }
+
+  ScopedVaRemappingVLog(const ScopedVaRemappingVLog&) = delete;
+  ScopedVaRemappingVLog& operator=(const ScopedVaRemappingVLog&) = delete;
+
+ private:
+  int old_gpu_executable_;
+  int old_buffer_allocator_;
+};
+
 // Tests that element-wise fusion operations (FUSION command type) produce
 // correct results under command buffer VA remapping across multiple runs,
 // reusing one VA reservation.
@@ -2445,7 +2466,7 @@ TEST_F(VmmTest, CommandBufferVaRemappingFusionOps) {
   TF_ASSERT_OK_AND_ASSIGN(auto* mem, device->default_memory_space());
 
   // 3 runs reuse the same VA reservation with different physical allocations.
-  int old_vlog = absl::SetVLogLevel("gpu_executable", 3);
+  ScopedVaRemappingVLog vlog;
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
   EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
                             ::testing::HasSubstr("VA remapping: Mapped")))
@@ -2474,7 +2495,6 @@ TEST_F(VmmTest, CommandBufferVaRemappingFusionOps) {
         << "Mismatch on run " << run;
   }
   mock_log.StopCapturingLogs();
-  absl::SetVLogLevel("gpu_executable", old_vlog);
 }
 
 // Tests that GEMM operations (CUBLAS/CUBLASLT command type) produce correct
@@ -2507,7 +2527,7 @@ TEST_F(VmmTest, CommandBufferVaRemappingGemmOps) {
   auto identity = LiteralUtil::CreateR2<float>(
       {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}});
 
-  int old_vlog = absl::SetVLogLevel("gpu_executable", 3);
+  ScopedVaRemappingVLog vlog;
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
   EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
                             ::testing::HasSubstr("VA remapping: Mapped")))
@@ -2531,7 +2551,6 @@ TEST_F(VmmTest, CommandBufferVaRemappingGemmOps) {
         << "Mismatch on run " << run;
   }
   mock_log.StopCapturingLogs();
-  absl::SetVLogLevel("gpu_executable", old_vlog);
 }
 
 // Tests that conditional operations (CONDITIONAL command type) produce correct
@@ -2575,7 +2594,7 @@ TEST_F(VmmTest, CommandBufferVaRemappingConditional) {
   std::vector<RunConfig> runs = {
       {true, 5.0f, 15.0f}, {false, 5.0f, 25.0f}, {true, 7.0f, 17.0f}};
 
-  int old_vlog = absl::SetVLogLevel("gpu_executable", 3);
+  ScopedVaRemappingVLog vlog;
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
   EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
                             ::testing::HasSubstr("VA remapping: Mapped")))
@@ -2597,7 +2616,6 @@ TEST_F(VmmTest, CommandBufferVaRemappingConditional) {
         LiteralUtil::CreateR0<float>(cfg.expected), *result_lit));
   }
   mock_log.StopCapturingLogs();
-  absl::SetVLogLevel("gpu_executable", old_vlog);
 }
 
 // Tests that while-loop operations (WHILE command type) produce correct results
@@ -2640,7 +2658,7 @@ TEST_F(VmmTest, CommandBufferVaRemappingWhileLoop) {
   auto* device = client->addressable_devices()[0];
   TF_ASSERT_OK_AND_ASSIGN(auto* mem, device->default_memory_space());
 
-  int old_vlog = absl::SetVLogLevel("gpu_executable", 3);
+  ScopedVaRemappingVLog vlog;
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
   EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
                             ::testing::HasSubstr("VA remapping: Mapped")))
@@ -2660,7 +2678,6 @@ TEST_F(VmmTest, CommandBufferVaRemappingWhileLoop) {
         << "Mismatch on run " << run;
   }
   mock_log.StopCapturingLogs();
-  absl::SetVLogLevel("gpu_executable", old_vlog);
 }
 
 // Tests that dynamic-slice fusion operations (DYNAMIC_SLICE_FUSION command
@@ -2702,7 +2719,7 @@ TEST_F(VmmTest, CommandBufferVaRemappingDynamicSliceFusion) {
       {4, {1, 2, 3, 4, 10, 12, 14, 16}},
   };
 
-  int old_vlog = absl::SetVLogLevel("gpu_executable", 3);
+  ScopedVaRemappingVLog vlog;
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
   EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
                             ::testing::HasSubstr("VA remapping: Mapped")))
@@ -2725,7 +2742,6 @@ TEST_F(VmmTest, CommandBufferVaRemappingDynamicSliceFusion) {
         << "Mismatch at offset " << cfg.offset;
   }
   mock_log.StopCapturingLogs();
-  absl::SetVLogLevel("gpu_executable", old_vlog);
 }
 
 // Tests repeated reuse of the single command-buffer VA range across multiple
@@ -2752,7 +2768,7 @@ TEST_F(VmmTest, CommandBufferVaRemappingSingleRangeReuse) {
   TF_ASSERT_OK_AND_ASSIGN(auto* mem, device->default_memory_space());
 
   // Reuse the same VA range across multiple remaps.
-  int old_vlog = absl::SetVLogLevel("gpu_executable", 3);
+  ScopedVaRemappingVLog vlog;
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
   EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
                             ::testing::HasSubstr("VA remapping: Mapped")))
@@ -2773,7 +2789,6 @@ TEST_F(VmmTest, CommandBufferVaRemappingSingleRangeReuse) {
         << "Mismatch on run " << run;
   }
   mock_log.StopCapturingLogs();
-  absl::SetVLogLevel("gpu_executable", old_vlog);
 }
 
 // Tests that CAPTURE_CMD_NEVER_UPDATE mode produces correct results across
@@ -2787,7 +2802,7 @@ TEST_F(VmmTest, CommandBufferVaRemappingCustomLibraryUpdateFree) {
 
   // Pure GEMM: lhs * rhs. With Triton disabled the dot is lowered to a
   // GemmCmd/CublasLtCmd (TracedCommandBufferCmd subclass), so its allocations
-  // populate command_buffer_allocation_indexes_ under
+  // populate the VA-remapped allocation index set under
   // CAPTURE_CMD_NEVER_UPDATE.
   static constexpr char kHlo[] = R"(
     HloModule custom_lib_update_free_test
@@ -2822,9 +2837,8 @@ TEST_F(VmmTest, CommandBufferVaRemappingCustomLibraryUpdateFree) {
   auto identity = LiteralUtil::CreateR2<float>(
       {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}});
 
-  // Verify VA remapping is active: traced GEMM allocations are in
-  // command_buffer_allocation_indexes_, so ExecuteThunksWithVaRemapping fires.
-  int old_vlog = absl::SetVLogLevel("gpu_executable", 3);
+  // Verify VA remapping is active for traced GEMM allocations.
+  ScopedVaRemappingVLog vlog;
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
   EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
                             ::testing::HasSubstr("VA remapping: Mapped")))
@@ -2849,7 +2863,6 @@ TEST_F(VmmTest, CommandBufferVaRemappingCustomLibraryUpdateFree) {
         << "Mismatch on run " << run;
   }
   mock_log.StopCapturingLogs();
-  absl::SetVLogLevel("gpu_executable", old_vlog);
 }
 
 // Tests that two different executables using NEVER_UPDATE can coexist and
@@ -2894,7 +2907,7 @@ TEST_F(VmmTest, CommandBufferVaRemappingTwoExecutables) {
   // Each executable owns one VA range and one command buffer per executor.
   // Repeated executions remap new physical allocations into the same VA range
   // and reuse the same command buffer after warmup.
-  int old_vlog_exec = absl::SetVLogLevel("gpu_executable", 3);
+  ScopedVaRemappingVLog vlog;
   int old_vlog_cbt = absl::SetVLogLevel("command_buffer_thunk", 3);
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
 
@@ -2947,7 +2960,6 @@ TEST_F(VmmTest, CommandBufferVaRemappingTwoExecutables) {
         << "exec2 mismatch on run " << run;
   }
   mock_log.StopCapturingLogs();
-  absl::SetVLogLevel("gpu_executable", old_vlog_exec);
   absl::SetVLogLevel("command_buffer_thunk", old_vlog_cbt);
 }
 

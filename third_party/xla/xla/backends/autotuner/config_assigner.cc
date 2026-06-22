@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
+#include "xla/backends/autotuner/config_selector.h"
 #include "xla/backends/autotuner/hlo_extractor.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/autotuner/tuner.h"
@@ -114,13 +115,12 @@ absl::StatusOr<std::unique_ptr<ConfigAssigner>> ConfigAssigner::Create(
     std::unique_ptr<Profiler> absl_nullable profiler) {
   std::unique_ptr<Tuner> tuner = nullptr;
   if (profiler != nullptr) {
-    Tuner::Options tuner_options;
-    tuner_options.check_buffers = options.check_buffers;
-    tuner_options.relative_tolerance = options.relative_tolerance;
-    tuner_options.crash_on_check_failure = options.crash_on_check_failure;
-    tuner_options.scratch_bytes_window_size_us =
-        options.scratch_bytes_window_size_us;
-    ASSIGN_OR_RETURN(tuner, Tuner::Create(std::move(profiler), tuner_options));
+    Tuner::CorrectnessCheckOptions correctness_check_options;
+    correctness_check_options.enable_correctness_check = options.check_buffers;
+    correctness_check_options.relative_tolerance = options.relative_tolerance;
+    correctness_check_options.crash_on_failure = options.crash_on_check_failure;
+    ASSIGN_OR_RETURN(
+        tuner, Tuner::Create(std::move(profiler), correctness_check_options));
   }
   return absl::WrapUnique(
       new ConfigAssigner(std::move(options), std::move(cache),
@@ -414,8 +414,9 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetTunedConfig(
             << ". No configs could be profiled.";
 
         LogConfigProfiles(*instr, profiles, compilation_failures);
-        ASSIGN_OR_RETURN(Tuner::ConfigProfile best_profile,
-                         tuner_->PickBestConfig(profiles));
+        ASSIGN_OR_RETURN(
+            Tuner::ConfigProfile best_profile,
+            PickBestConfig(profiles, options_.scratch_bytes_window_size_us));
         return std::move(best_profile.config);
       });
 }

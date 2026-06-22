@@ -3,6 +3,10 @@ load(
     "xla_cc_binary",
     "xla_cc_test",
 )
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -11,11 +15,21 @@ package(
     licenses = ["notice"],
 )
 
+tf_proto_library(
+    name = "split_proto_cli_proto",
+    srcs = ["split_proto_cli.proto"],
+    deps = [
+        "//xla/pjrt/proto:compile_options_proto",
+        "//xla/service/gpu:gpu_executable_proto",
+    ],
+)
+
 cc_library(
     name = "split_proto_cli_lib",
     srcs = ["split_proto_cli_lib.cc"],
     hdrs = ["split_proto_cli_lib.h"],
     deps = [
+        ":split_proto_cli_proto_cc",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tsl/platform:status_macros",
@@ -25,12 +39,16 @@ cc_library(
         "//xla/util/split_proto:split_proto_cc",
         "//xla/util/split_proto:split_proto_reader",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
+        "@riegeli//riegeli/base:initializer",
         "@riegeli//riegeli/base:types",
         "@riegeli//riegeli/bytes:reader",
+        "@riegeli//riegeli/bytes:string_reader",
+        "@riegeli//riegeli/bytes:string_writer",
         "@riegeli//riegeli/bytes:writer",
         "@riegeli//riegeli/messages:parse_message",
         "@riegeli//riegeli/messages:serialize_message",
@@ -45,7 +63,10 @@ xla_cc_binary(
         ":split_proto_cli_lib",
         "//xla/service:riegeli_file_reader_factory",
         "//xla/service:riegeli_file_writer_factory",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -62,12 +83,16 @@ xla_cc_test(
     srcs = ["split_proto_cli_test.cc"],
     deps = [
         ":split_proto_cli_lib",
+        ":split_proto_cli_proto_cc",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service/gpu:dense_data_intermediate_proto_cc",
         "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
+        "//xla/util/split_proto:split_executable_and_options_writer",
+        "//xla/util/split_proto:split_gpu_executable_writer",
+        "//xla/util/split_proto:split_proto_reader",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
@@ -75,6 +100,5 @@ xla_cc_test(
         "@riegeli//riegeli/base:initializer",
         "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/bytes:string_writer",
-        "@riegeli//riegeli/bytes:writer",
     ],
 )

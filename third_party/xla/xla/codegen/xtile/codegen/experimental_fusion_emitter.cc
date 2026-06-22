@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
@@ -176,7 +175,7 @@ absl::StatusOr<TensorValue> EmitBroadcast(
   if (input_tile_shape.empty() && output_tile_shape.empty()) {
     return input;
   }
-  CHECK(!output_tile_shape.empty());
+  TF_RET_CHECK(!output_tile_shape.empty());
 
   return xtile::BroadcastInDims(
       b, input, output_tile_shape,
@@ -201,9 +200,10 @@ absl::StatusOr<TensorValue> EmitConcatenate(
   ASSIGN_OR_RETURN(TileInfo tile_info,
                    TileInfo::Construct(emitter_ctx, tiled_concat));
   RETURN_IF_ERROR(CheckConcatenateOperands(*hlo_concat, concat_dim_tile_size));
-  Type result_type =
-      mlir::RankedTensorType::get(tile_sizes, tile_info.storage_type());
-
+  ASSIGN_OR_RETURN(
+      auto element_type,
+      xtile::PrimitiveTypeToMlirType(b, hlo_concat->shape().element_type()));
+  Type result_type = mlir::RankedTensorType::get(tile_sizes, element_type);
   // We will load and compute from a single operand, so we need to figure out
   // which one by looking at the offset within the concatenation dimension.
   Value concatenate_dimension_offset =
@@ -242,8 +242,13 @@ absl::StatusOr<TensorValue> EmitConcatenate(
     }
     const auto& region = tiled_concat.hlo_regions()[i];
     const ge::TiledHloInstruction* const region_root = region.back().get();
-    ASSIGN_OR_RETURN(auto results,
+    ASSIGN_OR_RETURN(std::vector<TensorValue> results,
                      EmitTiledComputation(emitter_ctx, region, {region_root}));
+    TF_RET_CHECK(results.size() == 1)
+        << "Concatenation region must have exactly one result"
+        << results.size();
+    TF_RET_CHECK(results[0].getType() == result_type)
+        << "Region result type must match the concatenate result type";
     mlir::scf::YieldOp::create(b, results.back());
   }
   b.setInsertionPointAfter(if_ops.front());
@@ -367,10 +372,11 @@ absl::StatusOr<SmallVector<int64_t>> GetSequentialLoopIterationCounts(
   for (int64_t dim_id : sequential_dim_ids) {
     const ge::TilingSpace::DimensionInfo& dim_info =
         tiling_space.GetDimensionInfo(hlo, output_rank++);
-    CHECK(dim_info.type == ge::TilingSpace::DimensionSemantics::kSequential)
+    TF_RET_CHECK(dim_info.type ==
+                 ge::TilingSpace::DimensionSemantics::kSequential)
         << "Expected a sequential dimension info for contracting dimension "
         << dim_id << " in op " << hlo.ToString();
-    CHECK(dim_info.tile_size.has_value())
+    TF_RET_CHECK(dim_info.tile_size.has_value())
         << "Tile size is not set for contracting dimension ";
     loop_iteration_counts.push_back(
         CeilOfRatio(dim_info.dimension_size, *dim_info.tile_size));
@@ -411,7 +417,7 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
   ASSIGN_OR_RETURN(
       SmallVector<int64_t> loop_iteration_count,
       GetSequentialLoopIterationCounts(tiled_dot, sequential_dim_ids));
-  CHECK(loop_iteration_count.size() == 1)
+  TF_RET_CHECK(loop_iteration_count.size() == 1)
       << "Expected exactly one loop iteration count for dot";
 
   auto for_op = mlir::scf::ForOp::create(
@@ -428,7 +434,7 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
     const ge::TilingSpace::DimensionInfo& dim_info =
         tiled_dot.tile().tiling_space().GetDimensionInfo(
             *tiled_dot.hlo(), sequential_dim_ids.front());
-    CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
+    TF_RET_CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
         dim_info.id, iv, Interval{0, loop_iteration_count.front() - 1}));
 
     // Emit the dot region.
@@ -499,7 +505,7 @@ absl::StatusOr<TensorValue> EmitScaledDot(
   ASSIGN_OR_RETURN(
       SmallVector<int64_t> loop_iteration_counts,
       GetSequentialLoopIterationCounts(tiled_scaled_dot, sequential_dim_ids));
-  CHECK(loop_iteration_counts.size() == 1)
+  TF_RET_CHECK(loop_iteration_counts.size() == 1)
       << "Expected exactly one loop iteration count for scaled dot";
 
   auto for_op = mlir::scf::ForOp::create(
@@ -515,7 +521,7 @@ absl::StatusOr<TensorValue> EmitScaledDot(
     const ge::TilingSpace::DimensionInfo& dim_info =
         tiled_scaled_dot.tile().tiling_space().GetDimensionInfo(
             *tiled_scaled_dot.hlo(), sequential_dim_ids.front());
-    CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
+    TF_RET_CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
         dim_info.id, iv, Interval{0, loop_iteration_counts.front() - 1}));
 
     // Emit the dot region.
@@ -585,9 +591,10 @@ absl::StatusOr<TensorValue> EmitIota(
   // Then, add the base offset to the iota components.
   range = arith::AddIOp::create(
       b, range, xtile::Splat(b, iota_dim_offset, padded_tile_sizes[iota_dim]));
-
-  // Cast the result to the targeted type.
-  range = Cast(b, range, tile_info.storage_type());
+  ASSIGN_OR_RETURN(
+      Type iota_element_type,
+      PrimitiveTypeToMlirType(b, hlo_iota->shape().element_type()));
+  range = Cast(b, range, iota_element_type);
 
   // And finally, produce a broadcast along the non-iota dimensions in order to
   // produce the whole iota tile.
