@@ -299,16 +299,16 @@ TEST(BundleImplTest, ReshardArrays) {
       BundleRef bundle,
       client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
 
-  std::vector<Bundle::ReshardSpec> specs = {{/*array_specs=*/{{
+  std::vector<ArraySpec> specs = {{
       /*dtype=*/dtype,
       /*shape=*/shape,
       /*sharding=*/sharding,
       /*layout=*/nullptr,
-  }}}};
+  }};
 
   ASSERT_OK_AND_ASSIGN(
       BundleRef resharded_bundle,
-      bundle->ReshardArrays({1}, specs, ArrayCopySemantics::kReuseInput));
+      bundle->ReshardArrays(specs, ArrayCopySemantics::kReuseInput));
   EXPECT_EQ(resharded_bundle->num_values(), 1);
 
   ASSERT_OK_AND_ASSIGN(

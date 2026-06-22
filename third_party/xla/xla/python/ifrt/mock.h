@@ -140,8 +140,7 @@ class MockBundle : public llvm::RTTIExtends<MockBundle, Bundle> {
                ArrayCopySemantics semantics),
               (override));
   MOCK_METHOD(absl::StatusOr<BundleRef>, ReshardArrays,
-              (absl::Span<const int> slice_sizes,
-               absl::Span<const ReshardSpec> reshard_specs,
+              (absl::Span<const xla::ifrt::ArraySpec> array_specs,
                ArrayCopySemantics semantics),
               (override));
 
