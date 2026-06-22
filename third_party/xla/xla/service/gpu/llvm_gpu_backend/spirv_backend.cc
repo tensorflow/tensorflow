@@ -26,6 +26,8 @@ limitations under the License.
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
@@ -85,6 +87,49 @@ std::string EmitModuleToSPIRV(llvm::Module* module,
 
   pm.run(*module);
   return spirv_binary;
+}
+
+llvm::IntegerType* GetSubByteElementType(llvm::Type* call_type) {
+  llvm::Type* scalar = call_type->getScalarType();
+  if (auto* type = llvm::dyn_cast<llvm::IntegerType>(scalar)) {
+    return type->getBitWidth() < 8 ? type : nullptr;
+  }
+  return nullptr;
+}
+
+// Expand sub-byte integer llvm bitreverse intrinsic calls because SPIR-V has no
+// native support for such integer types.
+void ExpandSubByteBitReverse(llvm::Module* module) {
+  llvm::SmallVector<llvm::CallInst*> calls;
+  for (auto& func : *module) {
+    for (auto& bb : func) {
+      for (auto& inst : bb) {
+        llvm::IntrinsicInst* call = llvm::dyn_cast<llvm::IntrinsicInst>(&inst);
+        if (call && call->getIntrinsicID() == llvm::Intrinsic::bitreverse &&
+            GetSubByteElementType(call->getType())) {
+          calls.push_back(call);
+        }
+      }
+    }
+  }
+  for (llvm::CallInst* call : calls) {
+    llvm::IRBuilder<> builder(call);
+    llvm::Type* type = call->getType();
+    llvm::Type* wide_type = llvm::Type::getInt32Ty(module->getContext());
+    if (auto* vec_type = llvm::dyn_cast<llvm::FixedVectorType>(type)) {
+      wide_type = llvm::FixedVectorType::get(builder.getInt32Ty(),
+                                             vec_type->getNumElements());
+    }
+    llvm::Value* zext = builder.CreateZExt(call->getArgOperand(0), wide_type);
+    llvm::Function* bitrev = llvm::Intrinsic::getOrInsertDeclaration(
+        module, llvm::Intrinsic::bitreverse, {wide_type});
+    llvm::Value* rev = builder.CreateCall(bitrev, {zext});
+    llvm::Value* shr = builder.CreateLShr(
+        rev, 32 - GetSubByteElementType(type)->getBitWidth());
+    llvm::Value* result = builder.CreateTrunc(shr, type);
+    call->replaceAllUsesWith(result);
+    call->eraseFromParent();
+  }
 }
 
 }  // namespace
@@ -195,6 +240,8 @@ absl::StatusOr<std::string> CompileToSPIRV(
   RETURN_IF_ERROR(LinkAndOptimizeModule(
       module, gpu_version, debug_options, "", SPIRVTargetModuleLinker,
       default_target_triple, target_machine.get(), kDefaultInlineThreshold));
+
+  ExpandSubByteBitReverse(module);
 
   // The LLVM SPIR-V backend removes unused globals during its passes for
   // translation to SPIR-V. To prevent this, we create a fake use of those
