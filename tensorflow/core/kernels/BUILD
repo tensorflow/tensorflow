@@ -177,6 +177,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -221,6 +225,9 @@ tf_kernel_library(
         "//tensorflow/core/activity_watcher:activity_watcher_utils",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ] + if_nccl([
         "//tensorflow/core/nccl:collective_communicator",
@@ -1011,7 +1018,7 @@ tf_kernel_library(
     name = "concat_op",
     features = ["-layering_check"],
     prefix = "concat_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -2478,6 +2485,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -2666,7 +2677,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "conditional_accumulator_op",
     prefix = "conditional_accumulator_op",
-    deps = DATA_FLOW_DEPS,
+    deps = DATA_FLOW_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 tf_kernel_library(
@@ -3670,7 +3684,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "argmax_op",
     prefix = "argmax_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -3739,7 +3756,7 @@ tf_kernel_library(
     features = if_cuda(["-layering_check"]),
     gpu_srcs = ["gpu_device_array.h"],
     prefix = "bucketize_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + ["@com_google_absl//absl/status"],
 )
 
 tf_kernel_library(
@@ -4393,7 +4410,10 @@ NN_DEPS = if_cuda_or_rocm([":conv_2d"]) + [
 tf_kernel_library(
     name = "batch_norm_op",
     prefix = "batch_norm_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -5958,7 +5978,7 @@ tf_kernel_library(
     name = "as_string_op",
     features = ["-layering_check"],
     prefix = "as_string_op",
-    deps = STRING_DEPS,
+    deps = STRING_DEPS + ["@com_google_absl//absl/strings:string_view"],
 )
 
 tf_cc_test(
