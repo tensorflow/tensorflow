@@ -160,6 +160,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"ScheduleWithSplit", kScheduleWithSplit},
       {"ScheduleWithEagerSplit", kScheduleWithEagerSplit},
       {"ASBSQueue::Schedule", kASBSQueueSchedule},
+      {"OrbaxServing::ProcessBatch", kOrbaxProcessBatch},
+      {"OrbaxServing::ConcatInputBuffers", kOrbaxConcatInputBuffers},
       // TFRT related.
       {"TfrtModelRun", kTfrtModelRun},
       // Serving related.
