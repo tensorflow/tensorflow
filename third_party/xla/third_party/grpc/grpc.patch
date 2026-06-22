@@ -82,21 +82,43 @@ diff --git a/bazel/cython_library.bzl b/bazel/cython_library.bzl
 +    copts = kwargs.pop("copts", [])
      for src in pyx_srcs:
          stem = src.split(".")[0]
-@@ -81,2 +81,4 @@ def pyx_library(name, deps = [], py_deps
+@@ -81,9 +81,16 @@ def pyx_library(name, deps = [], py_deps
              defines = defines,
 +            copts = copts,
 +            features = kwargs.get("features", []),
              linkshared = 1,
-                 # The "-undefined dynamic_lookup" flag allows the shared library to use symbols
-                 # that are not defined at link time but will be resolved at runtime.
+-            linkopts = select({
+-                # The "-undefined dynamic_lookup" flag allows the shared library to use symbols
+-                # that are not defined at link time but will be resolved at runtime.
+-                # This is necessary for Python extensions on macOS to access Python C API symbols.
+-                "@platforms//os:macos": ["-undefined", "dynamic_lookup"],
+-                "//conditions:default": [],
+-            }),
++            linkopts = select({
++                # The "-undefined dynamic_lookup" flag allows the shared library to use symbols
++                # that are not defined at link time but will be resolved at runtime.
++                # This is necessary for Python extensions on macOS to access Python C API symbols.
++                "@platforms//os:macos": ["-undefined", "dynamic_lookup"],
++                "@platforms//os:windows": [
++                    "/NODEFAULTLIB:python3.lib",
++                    "/OPT:REF",
++                    "/OPT:ICF",
++                ],
++                "//conditions:default": [],
++            }),
+        )
+        shared_objects.append(shared_object_name)
 diff --git a/src/python/grpcio/grpc/_cython/BUILD.bazel b/src/python/grpcio/grpc/_cython/BUILD.bazel
 --- a/src/python/grpcio/grpc/_cython/BUILD.bazel
 +++ b/src/python/grpcio/grpc/_cython/BUILD.bazel
-@@ -35,1 +35,7 @@
+@@ -35,1 +35,10 @@
      defines = ["GRPC_PYTHON_BUILD=1"],
 +    # -Wno-unused-result is needed because Cython generated code triggers unused result warnings.
 +    copts = select({
 +        "@platforms//os:windows": [],
 +        "//conditions:default": ["-Wno-unused-result"],
 +    }),
-+    features = ["-layering_check"],
++    features = select({
++        "@platforms//os:windows": ["-layering_check", "force_no_whole_archive"],
++        "//conditions:default": ["-layering_check"],
++    }),
