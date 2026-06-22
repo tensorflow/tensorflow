@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -89,6 +90,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/profiler_session.h"
+#include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -567,8 +569,16 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers;
   std::vector<std::vector<PjRtBuffer*>> argument_ptrs;
 
+  absl::Time run_start = absl::Now();
+  double total_buffer_creation_ms = 0;
+  double total_execute_ms = 0;
+  double total_await_ms = 0;
+
   bool has_active_profiler_session = false;
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
+    tsl::profiler::TraceMe repeat_traceme([&] {
+      return tsl::profiler::TraceMeEncode("Repeat", {{"id", repeat}});
+    });
     const bool is_last_repeat = (repeat == running_options.num_repeats - 1);
     const bool profile_current_repeat =
         (running_options.profiler != nullptr) &&
@@ -581,12 +591,16 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
       XLA_SCOPED_LOGGING_TIMER("FunctionalHloRunner::ExecuteOnDevices");
 
       if (repeat == 0 || running_options.recreate_buffers_between_repeats) {
+        tsl::profiler::TraceMe alloc_traceme("BufferCreation");
         VLOG(1) << "Creating argument buffers. repeat = " << repeat;
         device_buffers.clear();
         argument_ptrs.clear();
+        absl::Time alloc_start = absl::Now();
         ASSIGN_OR_RETURN(device_buffers,
                          create_argument_buffers_on_device(flatten_arguments));
         argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
+        total_buffer_creation_ms +=
+            absl::ToDoubleMilliseconds(absl::Now() - alloc_start);
       }
       execute_options.launch_id = repeat + 1 + running_options.base_run_id;
       if (running_options.execution_profiles != nullptr) {
@@ -600,12 +614,31 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
         has_active_profiler_session = true;
       }
       futures->clear();
-      ASSIGN_OR_RETURN(
-          output_buffers,
-          executable->Execute(argument_ptrs, execute_options, futures));
-      for (auto& future : *futures) {
-        RETURN_IF_ERROR(future.Await());
+      absl::Time exec_start = absl::Now();
+      double exec_ms = 0;
+      {
+        tsl::profiler::TraceMe exec_traceme("Execute");
+        ASSIGN_OR_RETURN(
+            output_buffers,
+            executable->Execute(argument_ptrs, execute_options, futures));
+        exec_ms = absl::ToDoubleMilliseconds(absl::Now() - exec_start);
+        total_execute_ms += exec_ms;
       }
+
+      absl::Time await_start = absl::Now();
+      double await_ms = 0;
+      {
+        tsl::profiler::TraceMe await_traceme("Await");
+        for (auto& future : *futures) {
+          RETURN_IF_ERROR(future.Await());
+        }
+        await_ms = absl::ToDoubleMilliseconds(absl::Now() - await_start);
+        total_await_ms += await_ms;
+      }
+
+      LOG(INFO) << "MANUAL_REPEAT_PROF: [" << module.name() << "] Repeat "
+                << repeat << " Execute: " << exec_ms
+                << " ms, Await: " << await_ms << " ms";
 
       const bool upload_active_profiler_session =
           running_options.recreate_profiler_session_between_repeats ||
@@ -638,10 +671,21 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
     }
   }
 
+  absl::Time fetch_start = absl::Now();
   ASSIGN_OR_RETURN(PerDeviceLiteralVecType results,
                    FetchAndLogOutput(client, output_buffers,
                                      running_options.module_output_mode,
                                      running_options.log_input_output()));
+  double fetch_ms = absl::ToDoubleMilliseconds(absl::Now() - fetch_start);
+  double total_run_ms = absl::ToDoubleMilliseconds(absl::Now() - run_start);
+
+  LOG(INFO) << "MANUAL_PROF: [" << module.name() << "] "
+            << "Total: " << total_run_ms << " ms, "
+            << "BufferCreation: " << total_buffer_creation_ms << " ms, "
+            << "Execute: " << total_execute_ms << " ms, "
+            << "Await: " << total_await_ms << " ms, "
+            << "Fetch: " << fetch_ms << " ms";
+
   return results;
 }
 
