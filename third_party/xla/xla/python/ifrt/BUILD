@@ -662,6 +662,7 @@ cc_library(
     deps = [
         ":ifrt",
         ":test_util",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",

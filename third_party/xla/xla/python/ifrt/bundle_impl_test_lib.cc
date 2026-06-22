@@ -31,12 +31,38 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/value.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
+
+using ::testing::ElementsAreArray;
+
+void CheckArrayContents(Array* lhs, Array* rhs) {
+  ASSERT_EQ(lhs->dtype(), rhs->dtype());
+  ASSERT_EQ(lhs->shape(), rhs->shape());
+
+  ASSERT_TRUE(lhs->dtype().byte_size().has_value());
+  int64_t expected_size =
+      *lhs->dtype().byte_size() * lhs->shape().num_elements();
+
+  std::vector<uint8_t> lhs_data(expected_size);
+  std::vector<uint8_t> rhs_data(expected_size);
+
+  tsl::Future<> lhs_future =
+      lhs->CopyToHostBuffer(lhs_data.data(), /*byte_strides=*/std::nullopt,
+                            ArrayCopySemantics::kAlwaysCopy);
+  tsl::Future<> rhs_future =
+      rhs->CopyToHostBuffer(rhs_data.data(), /*byte_strides=*/std::nullopt,
+                            ArrayCopySemantics::kAlwaysCopy);
+
+  ASSERT_OK(lhs_future.Await());
+  ASSERT_OK(rhs_future.Await());
+  EXPECT_THAT(lhs_data, ElementsAreArray(rhs_data));
+}
 
 TEST(BundleImplTest, Roundtrip) {
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
@@ -75,8 +101,12 @@ TEST(BundleImplTest, Roundtrip) {
   ASSERT_OK_AND_ASSIGN(std::vector<ValueRef> retrieved_values,
                        bundle->GetValues(ArrayCopySemantics::kReuseInput));
   ASSERT_EQ(retrieved_values.size(), 2);
-  EXPECT_EQ(retrieved_values[0].get(), array1.get());
-  EXPECT_EQ(retrieved_values[1].get(), array2.get());
+  auto* retrieved_array0 = llvm::dyn_cast<Array>(retrieved_values[0].get());
+  ASSERT_NE(retrieved_array0, nullptr);
+  CheckArrayContents(retrieved_array0, array1.get());
+  auto* retrieved_array1 = llvm::dyn_cast<Array>(retrieved_values[1].get());
+  ASSERT_NE(retrieved_array1, nullptr);
+  CheckArrayContents(retrieved_array1, array2.get());
 }
 
 TEST(BundleImplTest, ConcatBundles) {
@@ -128,8 +158,12 @@ TEST(BundleImplTest, ConcatBundles) {
       std::vector<ValueRef> retrieved_values,
       concat_bundle->GetValues(ArrayCopySemantics::kReuseInput));
   ASSERT_EQ(retrieved_values.size(), 2);
-  EXPECT_EQ(retrieved_values[0].get(), array1.get());
-  EXPECT_EQ(retrieved_values[1].get(), array2.get());
+  auto* retrieved_array0 = llvm::dyn_cast<Array>(retrieved_values[0].get());
+  ASSERT_NE(retrieved_array0, nullptr);
+  CheckArrayContents(retrieved_array0, array1.get());
+  auto* retrieved_array1 = llvm::dyn_cast<Array>(retrieved_values[1].get());
+  ASSERT_NE(retrieved_array1, nullptr);
+  CheckArrayContents(retrieved_array1, array2.get());
 }
 
 TEST(BundleImplTest, Slice) {
@@ -182,13 +216,19 @@ TEST(BundleImplTest, Slice) {
   ASSERT_OK_AND_ASSIGN(std::vector<ValueRef> retrieved_values0,
                        slices[0]->GetValues(ArrayCopySemantics::kReuseInput));
   ASSERT_EQ(retrieved_values0.size(), 1);
-  EXPECT_EQ(retrieved_values0[0].get(), array1.get());
+  auto* retrieved_array0 = llvm::dyn_cast<Array>(retrieved_values0[0].get());
+  ASSERT_NE(retrieved_array0, nullptr);
+  CheckArrayContents(retrieved_array0, array1.get());
 
   ASSERT_OK_AND_ASSIGN(std::vector<ValueRef> retrieved_values1,
                        slices[1]->GetValues(ArrayCopySemantics::kReuseInput));
   ASSERT_EQ(retrieved_values1.size(), 2);
-  EXPECT_EQ(retrieved_values1[0].get(), array2.get());
-  EXPECT_EQ(retrieved_values1[1].get(), array3.get());
+  auto* retrieved_array1_0 = llvm::dyn_cast<Array>(retrieved_values1[0].get());
+  ASSERT_NE(retrieved_array1_0, nullptr);
+  CheckArrayContents(retrieved_array1_0, array2.get());
+  auto* retrieved_array1_1 = llvm::dyn_cast<Array>(retrieved_values1[1].get());
+  ASSERT_NE(retrieved_array1_1, nullptr);
+  CheckArrayContents(retrieved_array1_1, array3.get());
 }
 
 TEST(BundleImplTest, Alias) {
