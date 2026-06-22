@@ -62,7 +62,7 @@ def TFPromiseOp: TensorflowMlrt_Op<"tf_promise", [TF_MustExecute, TFRT_CostFunct
   );
 }
 
-def TFMapFnOp : TensorflowMlrt_Op<"tf_map_fn", [AttrSizedOperandSegments, Pure]> {
+def TFMapFnOp : TensorflowMlrt_Op<"tf_map_fn", [AttrSizedOperandSegments]> {
   let summary = "The Parallel Map for tf_mlrt dialect";
   let description = [{
     The Pmap executes body function in parallel for all ranges up to $max_iterations.
