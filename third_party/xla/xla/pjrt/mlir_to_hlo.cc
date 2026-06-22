@@ -315,7 +315,7 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   if (!allow_mixed_serialization) {
     xla::sdy::addSdyRoundTripExportPipeline(pm);
   }
-  pm.addPass(mlir::stablehlo_ext::createChloPreserveHighLevelOpsPass());
+  pm.addPass(mlir::stablehlo_ext::createChloPreserveHighLevelOpsPass({target}));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createChloLegalizeToStablehloPass());
   pm.addPass(

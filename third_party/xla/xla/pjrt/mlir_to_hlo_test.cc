@@ -128,6 +128,34 @@ TEST(MlirToHloTest, ChloTanOpTest) {
   EXPECT_THAT(blob, IsVhloArtifact("1.0.0"));
 }
 
+TEST(MlirToHloTest, ChloScanPre114TargetDecomposes) {
+  // chlo.scan is otherwise preserved as a region-bearing stablehlo.composite
+  // (VHLO composite_v2, StableHLO >= 1.14.0). Serializing to a target that
+  // predates 1.14.0 must decompose it into portable StableHLO rather than fail
+  // the VHLO downgrade. Regression test for the pre-1.14 plugin path.
+  constexpr absl::string_view kProgram =
+      R"(
+    func.func @scan(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+      %0 = chlo.scan(%arg0) inits() dimension=0 {
+      ^bb0(%arg1: tensor<2xf32>):
+        stablehlo.return %arg1 : tensor<2xf32>
+      } : (tensor<2x2xf32>) -> tensor<2x2xf32>
+      return %0 : tensor<2x2xf32>
+    }
+  )";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, context));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::string blob,
+      Serialize(*module, /*target=*/"1.13.0", /*sdy_version=*/"0.0.1",
+                /*inplace=*/false));
+
+  // The scan decomposes to StableHLO, so it serializes cleanly at the pre-1.14
+  // target instead of failing the composite_v2 downgrade.
+  EXPECT_THAT(blob, IsVhloArtifact("1.13.0"));
+}
+
 TEST(MlirToHloTest, MhloMixedSerializationTest) {
   constexpr absl::string_view kProgram =
       R"(

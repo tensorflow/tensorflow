@@ -1018,5 +1018,6 @@ cc_library(
         "@stablehlo//:stablehlo_passes",
         "@stablehlo//:stablehlo_passes_optimization",
         "@stablehlo//:stablehlo_type_inference",
+        "@stablehlo//:version",
     ],
 )

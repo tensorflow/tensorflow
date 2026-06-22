@@ -55,6 +55,14 @@ def ChloPreserveHighLevelOpsPass : Pass<"stablehlo-ext-chlo-preserve-high-level-
     pure StableHLO implementaiton of the CHLO op's semantics.
   }];
   let dependentDialects = ["stablehlo::StablehloDialect", "chlo::ChloDialect"];
+  let options = [
+    Option<"targetVersionOption", "target", "std::string", /*default=*/"",
+           "The target StableHLO version (of the form `#.#.#`). CHLO ops whose "
+           "composite carries a region (e.g. chlo.scan) serialize as VHLO "
+           "composite_v2, which requires StableHLO >= 1.14.0; for older targets "
+           "they are left in place to be decomposed into portable StableHLO "
+           "instead. An empty version preserves all supported ops.">,
+  ];
 }
 
 def ChloRecomposeOpsPass : Pass<"stablehlo-ext-chlo-recompose-ops", "mlir::func::FuncOp"> {

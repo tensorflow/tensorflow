@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 #include "stablehlo/dialect/ChloOps.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "stablehlo/dialect/Version.h"
 #include "stablehlo_ext/transforms/passes.h"  // IWYU pragma: keep, passes.h.inc
 
 #define DEBUG_TYPE "stablehlo-ext-chlo"
@@ -237,9 +238,19 @@ struct ChloPreserveHighLevelOpsPass
                  ChloOpToCompositePattern<chlo::ErfOp>,
                  ChloOpToCompositePattern<chlo::MulhiOp>,
                  ChloOpToCompositePattern<chlo::RaggedDotOp>,
-                 ChloOpToCompositePattern<chlo::TopKOp>,
-                 ChloOpToCompositePattern<chlo::ScanOp>>(
+                 ChloOpToCompositePattern<chlo::TopKOp>>(
         &getContext(), symbolTable, /*version=*/1);
+
+    // chlo.scan carries a reduction region, so it is preserved as a
+    // region-bearing stablehlo.composite that serializes as VHLO composite_v2
+    // (StableHLO >= 1.14.0). When the serialization target predates that, the
+    // composite cannot be downgraded, so leave chlo.scan in place for the
+    // subsequent CHLO-to-StableHLO legalization to decompose into portable
+    // StableHLO (a while loop) instead.
+    if (shouldPreserveRegionBearingComposites()) {
+      patterns.add<ChloOpToCompositePattern<chlo::ScanOp>>(
+          &getContext(), symbolTable, /*version=*/1);
+    }
 
     FrozenRewritePatternSet frozenPatterns(std::move(patterns));
     SmallVector<Operation*> moduleOps;
@@ -248,6 +259,19 @@ struct ChloPreserveHighLevelOpsPass
     for (Operation& op : llvm::reverse(moduleOp.getBodyRegion().front())) {
       walkAndApplyPatterns(&op, frozenPatterns);
     }
+  }
+
+ private:
+  // Region-bearing composites (e.g. chlo.scan) serialize as VHLO composite_v2,
+  // which requires StableHLO >= 1.14.0. Only preserve them when the requested
+  // serialization target supports them. An empty or unparsable target version
+  // means "no downgrade target", so preserve (current default behavior).
+  bool shouldPreserveRegionBearingComposites() {
+    if (targetVersionOption.empty()) return true;
+    FailureOr<vhlo::Version> version =
+        vhlo::Version::fromString(targetVersionOption);
+    if (failed(version)) return true;
+    return vhlo::Version(1, 14, 0) <= *version;
   }
 };
 
