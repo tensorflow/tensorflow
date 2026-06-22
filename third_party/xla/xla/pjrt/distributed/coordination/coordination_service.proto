@@ -109,6 +109,16 @@ message PollForErrorRequest {
 
 message PollForErrorResponse {}
 
+// Request and response messages for reporting errors to the service.
+message ReportErrorToServiceRequest {
+  Incarnations incarnations = 1;
+  int32 source_task_id = 2;
+  int32 error_code = 3;
+  string error_message = 4;
+}
+
+message ReportErrorToServiceResponse {}
+
 // Request and response messages for disconnecting a task from the service.
 message ShutdownTaskRequest {
   Incarnations incarnations = 1;
@@ -432,4 +442,10 @@ service CoordinationService {
   rpc PollForError(PollForErrorRequest) returns (PollForErrorResponse) {
     // [AUTOMATION]: Internal rpc option goes here.
   }
+
+  // Reports an error from a task to the coordination service. The service
+  // updates the global job state and broadcasts the failure to all tasks via
+  // WatchTasks.
+  rpc ReportErrorToService(ReportErrorToServiceRequest)
+      returns (ReportErrorToServiceResponse);
 }

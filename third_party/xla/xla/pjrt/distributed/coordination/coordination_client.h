@@ -46,6 +46,8 @@ using xla::coordination::PollForErrorRequest;
 using xla::coordination::PollForErrorResponse;
 using xla::coordination::RegisterTaskRequest;
 using xla::coordination::RegisterTaskResponse;
+using xla::coordination::ReportErrorToServiceRequest;
+using xla::coordination::ReportErrorToServiceResponse;
 using xla::coordination::ShutdownTaskRequest;
 using xla::coordination::ShutdownTaskResponse;
 using xla::coordination::TryGetKeyValueRequest;
@@ -121,6 +123,10 @@ class CoordinationClient {
                                  const PollForErrorRequest* request,
                                  PollForErrorResponse* response,
                                  tsl::StatusCallback done) = 0;
+
+  virtual void ReportErrorToServiceAsync(
+      const ReportErrorToServiceRequest* request,
+      ReportErrorToServiceResponse* response, tsl::StatusCallback done) = 0;
 };
 
 }  // namespace xla

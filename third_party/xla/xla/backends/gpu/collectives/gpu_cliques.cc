@@ -1141,4 +1141,33 @@ absl::Status UpdateGlobalProcessInfo(absl::Span<coordination::TaskInfo> infos) {
   return s;
 }
 
+absl::Status AbortCollectivesOnTaskFailure(int failed_task_id,
+                                           const absl::Status& error) {
+  ProcessGpuCliques& state = GetProcessGpuCliques();
+  absl::MutexLock lock(state.mu);
+  if (state.task_state_infos.empty()) {
+    return absl::OkStatus();
+  }
+
+  std::vector<coordination::TaskInfo> updated = state.task_state_infos;
+  auto it =
+      absl::c_find_if(updated, [failed_task_id](coordination::TaskInfo& info) {
+        return info.task_id() == failed_task_id;
+      });
+  if (it == updated.end()) {
+    return absl::NotFoundError(absl::StrFormat(
+        "Task %d not found in global process info", failed_task_id));
+  }
+  it->set_state(coordination::TaskState::ERROR);
+  it->set_error_code(error.raw_code());
+  it->set_error_message(std::string(error.message()));
+  it->mutable_error_payload()->set_source_task_id(failed_task_id);
+  it->mutable_error_payload()->set_is_reported_error(true);
+
+  absl::Status s =
+      AbortOnFailure(state.cliques, state.task_state_infos, updated);
+  state.task_state_infos = std::move(updated);
+  return s;
+}
+
 }  // namespace xla::gpu

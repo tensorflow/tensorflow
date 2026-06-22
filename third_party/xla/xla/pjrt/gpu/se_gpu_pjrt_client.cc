@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -69,6 +70,8 @@ limitations under the License.
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/device_event_utils.h"
+#include "xla/pjrt/distributed/client.h"
+#include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
@@ -1946,6 +1949,40 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   auto gpu_run_options = std::make_unique<gpu::GpuExecutableRunOptions>();
   if (options.enable_mock_nccl) {
     gpu_run_options->set_enable_mock_collectives();
+  }
+
+  if (options.abort_collectives_on_failure) {
+    gpu_run_options->set_execution_timeout_handler(
+        [process_index = options.node_id,
+         distributed_client = options.distributed_client](
+            absl::string_view action, absl::Duration timeout) {
+          absl::Status error = absl::DeadlineExceededError(
+              absl::StrFormat("%s failed to finish in %v", action, timeout));
+
+          if (absl::Status s =
+                  gpu::AbortCollectivesOnTaskFailure(process_index, error);
+              !s.ok()) {
+            LOG(WARNING) << s;
+          }
+
+          if (distributed_client != nullptr) {
+            absl::StatusOr<CoordinationServiceAgent*> agent =
+                distributed_client->GetCoordinationServiceAgent();
+            if (agent.ok()) {
+              if (absl::Status s = (*agent)->ReportError(error); !s.ok()) {
+                LOG(WARNING) << "Failed to report execution timeout to "
+                                "coordination service: "
+                             << s;
+              }
+            } else {
+              LOG(WARNING) << "Failed to get coordination service agent: "
+                           << agent.status();
+            }
+          } else {
+            LOG(INFO) << "Skipping coordination service error report: "
+                         "distributed client is not available.";
+          }
+        });
   }
 
   static const bool xla_gpu_require_exclusive_lock =

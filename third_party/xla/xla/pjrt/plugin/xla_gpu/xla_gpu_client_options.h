@@ -27,6 +27,8 @@ limitations under the License.
 
 namespace xla {
 
+class DistributedRuntimeClient;
+
 // Options for creating a XLA:GPU PjRtClient.
 struct GpuClientOptions {
   GpuAllocatorConfig allocator_config;
@@ -47,6 +49,10 @@ struct GpuClientOptions {
 
   // kv_store must be non-null if num_nodes > 1.
   std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
+
+  // Optional distributed runtime client used to report execution timeouts to
+  // the coordination service when abort_collectives_on_failure is enabled.
+  std::shared_ptr<DistributedRuntimeClient> distributed_client = nullptr;
 
   bool abort_collectives_on_failure = false;
 

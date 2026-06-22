@@ -93,6 +93,7 @@ absl::StatusOr<PjRtEnvironment> GetPjRtEnvironmentForGpu(
                                              gpu_options.num_nodes,
                                              init_timeout, env));
     gpu_options.kv_store = env.kv_store;
+    gpu_options.distributed_client = env.distributed_client;
   }
 
   if (gpu_options.enable_mock_nccl) {

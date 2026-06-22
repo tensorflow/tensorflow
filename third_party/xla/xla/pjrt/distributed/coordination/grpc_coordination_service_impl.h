@@ -99,6 +99,7 @@ class GrpcCoordinationServiceImpl : public tsl::AsyncServiceInterface {
   HANDLER(CancelBarrier);
   HANDLER(GetAliveTasks);
   HANDLER(PollForError);
+  HANDLER(ReportErrorToService);
 #undef HANDLER
 
   tsl::thread::ThreadPool& compute_pool_;

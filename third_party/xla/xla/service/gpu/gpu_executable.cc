@@ -46,6 +46,7 @@ limitations under the License.
 #include "riegeli/bytes/writer.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
@@ -658,10 +659,32 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
       };
     }
 
-    guard = HangWatchdog::Global().Watch(
-        watchdog_name, watchdog_timeout,
-        HangWatchdog::Abort(watchdog_name, watchdog_timeout,
-                            std::move(pre_abort)));
+    const gpu::GpuExecutableRunOptions* gpu_run_options =
+        run_options->run_options().gpu_executable_run_options();
+
+    HangWatchdog::CancelCallback on_timeout;
+    if (gpu_run_options && gpu_run_options->execution_timeout_handler()) {
+      on_timeout = [watchdog_name, watchdog_timeout,
+                    pre_abort = std::move(pre_abort), gpu_run_options,
+                    &guard]() mutable {
+        if (pre_abort) {
+          std::move(pre_abort)();
+        }
+
+        guard = HangWatchdog::Global().Watch(
+            "post-abort ...", absl::Minutes(1),
+            HangWatchdog::Abort("post-abort ...", absl::Minutes(1)));
+
+        gpu_run_options->execution_timeout_handler()(watchdog_name,
+                                                     watchdog_timeout);
+      };
+    } else {
+      on_timeout = HangWatchdog::Abort(watchdog_name, watchdog_timeout,
+                                       std::move(pre_abort));
+    }
+
+    guard = HangWatchdog::Global().Watch(watchdog_name, watchdog_timeout,
+                                         std::move(on_timeout));
   }
 
   // Borrow stream for tracing command buffers.

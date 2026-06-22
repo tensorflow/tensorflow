@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/distributed/client.h"
+#include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
 #include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/service.h"
@@ -262,6 +263,151 @@ TEST(StreamExecutorGpuClientTest, DistributedInit) {
       EXPECT_EQ(client->device_count(), 4);
     });
   }
+}
+
+TEST(StreamExecutorGpuClientTest,
+     DistributedInitWithAbortCollectivesOnFailure) {
+  const int num_nodes = 2;
+  const char* kServiceAddress = "127.0.0.1:12351";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::DistributedRuntimeService> service,
+      xla::GetDistributedRuntimeService(
+          kServiceAddress, xla::CoordinationServiceImpl::Options{num_nodes}));
+
+  tsl::thread::ThreadPool thread_pool(
+      tsl::Env::Default(), "DistributedInitAbortCollectives", num_nodes);
+  std::vector<absl::Status> statuses(num_nodes);
+
+  for (int i = 0; i < num_nodes; ++i) {
+    thread_pool.Schedule([i, num_nodes, kServiceAddress, &statuses]() {
+      DistributedRuntimeClient::Options distributed_options;
+      distributed_options.node_id = i;
+      distributed_options.init_timeout = absl::Seconds(120);
+      auto distributed_client =
+          GetDistributedRuntimeClient(kServiceAddress, distributed_options);
+      statuses[i] = distributed_client->Connect();
+      if (!statuses[i].ok()) {
+        return;
+      }
+
+      GpuClientOptions options = GetTestGpuClientOptions(2);
+      options.node_id = i;
+      options.num_nodes = num_nodes;
+      options.enable_mock_nccl = true;
+      options.abort_collectives_on_failure = true;
+      options.distributed_client = distributed_client;
+      options.kv_store =
+          GetDistributedKeyValueStore(distributed_client, "abort:");
+
+      absl::StatusOr<std::unique_ptr<PjRtClient>> client_status =
+          GetStreamExecutorGpuClient(options);
+      if (!client_status.ok()) {
+        statuses[i] = client_status.status();
+        return;
+      }
+      std::unique_ptr<PjRtClient>& client = *client_status;
+      auto* gpu_client = tsl::down_cast<StreamExecutorGpuClient*>(client.get());
+      ExecuteOptions exec_options;
+      const gpu::GpuExecutableRunOptions* run_options =
+          gpu_client->gpu_run_options(exec_options);
+      if (run_options == nullptr || !run_options->execution_timeout_handler()) {
+        statuses[i] = absl::InternalError(
+            "execution_timeout_handler not configured when "
+            "abort_collectives_on_failure is enabled");
+        return;
+      }
+
+      EXPECT_TRUE(client->platform_name() == xla::CudaName() ||
+                  client->platform_name() == xla::RocmName() ||
+                  client->platform_name() == xla::OneapiName());
+      EXPECT_EQ(client->addressable_device_count(), 2);
+      EXPECT_EQ(client->device_count(), 4);
+      statuses[i] = absl::OkStatus();
+    });
+  }
+
+  for (const absl::Status& status : statuses) {
+    TF_EXPECT_OK(status);
+  }
+}
+
+TEST(StreamExecutorGpuClientTest,
+     AbortCollectivesOnFailureWithoutDistributedClient) {
+  GpuClientOptions options = GetTestGpuClientOptions(2);
+  options.abort_collectives_on_failure = true;
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+
+  auto* gpu_client = tsl::down_cast<StreamExecutorGpuClient*>(client.get());
+  ExecuteOptions exec_options;
+  const gpu::GpuExecutableRunOptions* run_options =
+      gpu_client->gpu_run_options(exec_options);
+  ASSERT_NE(run_options, nullptr);
+  ASSERT_TRUE(run_options->execution_timeout_handler());
+
+  // Should not crash when coordination service client is unavailable.
+  run_options->execution_timeout_handler()("test execution timeout",
+                                           absl::Seconds(1));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     ExecutionTimeoutHandlerReportsErrorToCoordinationService) {
+  const int num_nodes = 2;
+  const char* kServiceAddress = "127.0.0.1:12352";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::DistributedRuntimeService> service,
+      xla::GetDistributedRuntimeService(
+          kServiceAddress, xla::CoordinationServiceImpl::Options{num_nodes}));
+
+  std::vector<std::shared_ptr<DistributedRuntimeClient>> distributed_clients(
+      num_nodes);
+  std::vector<std::unique_ptr<PjRtClient>> pjrt_clients(num_nodes);
+
+  for (int i = 0; i < num_nodes; ++i) {
+    DistributedRuntimeClient::Options distributed_options;
+    distributed_options.node_id = i;
+    distributed_options.init_timeout = absl::Seconds(120);
+    distributed_options.missed_heartbeat_callback =
+        [](const absl::Status& status) {
+          LOG(INFO) << "Coordination error callback: " << status;
+        };
+    distributed_clients[i] =
+        GetDistributedRuntimeClient(kServiceAddress, distributed_options);
+    ASSERT_OK(distributed_clients[i]->Connect());
+
+    GpuClientOptions options = GetTestGpuClientOptions(2);
+    options.node_id = i;
+    options.num_nodes = num_nodes;
+    options.enable_mock_nccl = true;
+    options.abort_collectives_on_failure = true;
+    options.distributed_client = distributed_clients[i];
+    options.kv_store =
+        GetDistributedKeyValueStore(distributed_clients[i], "timeout:");
+
+    ASSERT_OK_AND_ASSIGN(pjrt_clients[i], GetStreamExecutorGpuClient(options));
+  }
+
+  auto* gpu_client0 =
+      tsl::down_cast<StreamExecutorGpuClient*>(pjrt_clients[0].get());
+  ExecuteOptions exec_options;
+  const gpu::GpuExecutableRunOptions* run_options =
+      gpu_client0->gpu_run_options(exec_options);
+  ASSERT_NE(run_options, nullptr);
+  ASSERT_TRUE(run_options->execution_timeout_handler());
+
+  run_options->execution_timeout_handler()("test execution timeout",
+                                           absl::Seconds(30));
+
+  ASSERT_OK_AND_ASSIGN(CoordinationServiceAgent * reporting_agent,
+                       distributed_clients[0]->GetCoordinationServiceAgent());
+  ASSERT_OK_AND_ASSIGN(CoordinationServiceAgent * peer_agent,
+                       distributed_clients[1]->GetCoordinationServiceAgent());
+  EXPECT_TRUE(reporting_agent->IsError());
+
+  absl::Time deadline = absl::Now() + absl::Seconds(30);
+  while (!peer_agent->IsError() && absl::Now() < deadline) {
+    absl::SleepFor(absl::Milliseconds(100));
+  }
+  EXPECT_TRUE(peer_agent->IsError());
 }
 
 TEST(StreamExecutorGpuClientTest, GetAllocatorStatsTest) {
@@ -1108,6 +1254,7 @@ absl::StatusOr<PreparedCrossHostTransferTest> PrepareCrossHostTransferTest(
   options.num_nodes = 2;
   options.kv_store =
       GetDistributedKeyValueStore(distributed_client, /*key_prefix=*/"cross:");
+  options.distributed_client = distributed_client;
   options.allowed_devices = {rank_id};
 
   LOG(INFO) << log_prefix << ": creating PjRtClient";

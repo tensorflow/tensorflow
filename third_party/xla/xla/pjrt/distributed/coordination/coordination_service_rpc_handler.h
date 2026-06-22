@@ -95,6 +95,11 @@ class CoordinationServiceRpcHandler {
                          xla::coordination::PollForErrorResponse* response,
                          tsl::StatusCallback done);
 
+  void ReportErrorToServiceAsync(
+      const xla::coordination::ReportErrorToServiceRequest* request,
+      xla::coordination::ReportErrorToServiceResponse* response,
+      tsl::StatusCallback done);
+
  private:
   absl::Mutex mu_;
   CoordinationServiceAgent* agent_ TF_GUARDED_BY(mu_) = nullptr;

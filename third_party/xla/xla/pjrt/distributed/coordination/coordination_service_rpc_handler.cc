@@ -336,4 +336,20 @@ void CoordinationServiceRpcHandler::PollForErrorAsync(
       [done = std::move(done)](const absl::Status& status) { done(status); });
 }
 
+void CoordinationServiceRpcHandler::ReportErrorToServiceAsync(
+    const xla::coordination::ReportErrorToServiceRequest* request,
+    xla::coordination::ReportErrorToServiceResponse* response,
+    tsl::StatusCallback done) {
+  absl::ReaderMutexLock l(mu_);
+  if (absl::Status s = ValidateRequest(request, service_); !s.ok()) {
+    done(s);
+    return;
+  }
+  CoordinationService::TaskId task = request->source_task_id();
+  absl::Status error(static_cast<absl::StatusCode>(request->error_code()),
+                     request->error_message());
+  error = MakeCoordinationError(error, task, /*is_reported_error=*/true);
+  done(service_->ReportTaskError(task, error));
+}
+
 }  // namespace xla

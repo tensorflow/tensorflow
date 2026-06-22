@@ -93,6 +93,8 @@ cc_library(
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -773,6 +775,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/backends/gpu/collectives:gpu_cliques",
         "//xla/backends/gpu/runtime:annotation",
         "//xla/backends/gpu/runtime:async_thunk",
         "//xla/backends/gpu/runtime:collective_clique_requests",
