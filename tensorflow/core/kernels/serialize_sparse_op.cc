@@ -392,7 +392,7 @@ class SerializeManySparseOp : public OpKernel {
     for (int d = 1; d < rank; d++) output_shape_t(d - 1) = input_shape_t(d);
 
     // Get groups by minibatch dimension
-    sparse::GroupIterable minibatch = input_st.group({0});
+    sparse::GroupIterable<int64_t> minibatch = input_st.group({0});
 
     OP_REQUIRES_OK(context, SerializeGroups<T, U>()(&minibatch, output_shape, N,
                                                     rank, serialized_sparse));
