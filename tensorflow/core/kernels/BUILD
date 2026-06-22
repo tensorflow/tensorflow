@@ -5189,7 +5189,6 @@ cc_library(
 SPARSE_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
-    "//tensorflow/core/util/sparse:sparse_tensor",
     ":sparse_utils",
 ]
 
