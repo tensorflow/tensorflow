@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import TensorFlowTestCase
@@ -505,6 +506,44 @@ class TrainingOpsTest(TensorFlowTestCase):
     thread2.start()
     thread1.join()
     thread2.join()
+
+  def testSparseApplyOpsRejectLowerRankGrad(self):
+    # Regression test for #94131: a grad of lower rank than var made the
+    # per-dimension shape check read past grad's rank and crash the process.
+    var, accum, accum2, accum3 = [
+        variables.Variable(np.ones((4, 4), np.float32)) for _ in range(4)
+    ]
+    self.evaluate(variables.global_variables_initializer())
+    s = np.float32(0.1)
+    grad = np.zeros(3, np.float32)  # rank 1, var is rank 2
+    idx = constant_op.constant([0, 1, 2], dtypes.int32)
+    g = gen_training_ops
+    cases = [
+        lambda: g.resource_sparse_apply_momentum(
+            var.handle, accum.handle, s, grad, idx, s),
+        lambda: g.resource_sparse_apply_keras_momentum(
+            var.handle, accum.handle, s, grad, idx, s),
+        lambda: g.resource_sparse_apply_adadelta(
+            var.handle, accum.handle, accum2.handle, s, s, s, grad, idx),
+        lambda: g.resource_sparse_apply_proximal_gradient_descent(
+            var.handle, s, s, s, grad, idx),
+        lambda: g.resource_sparse_apply_proximal_adagrad(
+            var.handle, accum.handle, s, s, s, grad, idx),
+        lambda: g.resource_sparse_apply_adagrad_da(
+            var.handle, accum.handle, accum2.handle, grad, idx, s, s, s,
+            np.int64(1)),
+        lambda: g.resource_sparse_apply_ftrl(
+            var.handle, accum.handle, accum2.handle, grad, idx, s, s, s,
+            np.float32(-0.5)),  # lr_power must be non-positive
+        lambda: g.resource_sparse_apply_rms_prop(
+            var.handle, accum.handle, accum2.handle, s, s, s, s, grad, idx),
+        lambda: g.resource_sparse_apply_centered_rms_prop(
+            var.handle, accum.handle, accum2.handle, accum3.handle, s, s, s, s,
+            grad, idx),
+    ]
+    for apply_op in cases:
+      with self.assertRaises(errors.InvalidArgumentError):
+        self.evaluate(apply_op())
 
 
 if __name__ == '__main__':
