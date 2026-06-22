@@ -147,10 +147,6 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       // is handled in the BytesRequired function.
       *bytes = sizeof(int8_t);
       break;
-    case kTfLiteFloat8E4M3FN:
-    case kTfLiteFloat8E5M2:
-      *bytes = 1;
-      break;
     default:
       if (context) {
         TF_LITE_KERNEL_LOG(

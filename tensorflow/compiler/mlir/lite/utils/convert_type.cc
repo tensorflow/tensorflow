@@ -45,10 +45,6 @@ tflite::TensorType ConvertTypeToTensorType(mlir::Type type) {
     return tflite::TensorType_FLOAT32;
   } else if (type.isF64()) {
     return tflite::TensorType_FLOAT64;
-  } else if (mlir::isa<mlir::Float8E4M3FNType>(type)) {
-    return tflite::TensorType_FLOAT8_E4M3FN;
-  } else if (mlir::isa<mlir::Float8E5M2Type>(type)) {
-    return tflite::TensorType_FLOAT8_E5M2;
   } else if (mlir::isa<mlir::TF::StringType>(type)) {
     return tflite::TensorType_STRING;
   } else if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(type)) {
@@ -98,10 +94,6 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
       return builder.getF32Type();
     case tflite::TensorType_FLOAT64:
       return builder.getF64Type();
-    case tflite::TensorType_FLOAT8_E4M3FN:
-      return mlir::Float8E4M3FNType::get(builder.getContext());
-    case tflite::TensorType_FLOAT8_E5M2:
-      return mlir::Float8E5M2Type::get(builder.getContext());
     case tflite::TensorType_INT32:
       return builder.getIntegerType(32);
     case tflite::TensorType_UINT16:
@@ -155,10 +147,6 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_FLOAT;
     case tflite::TensorType_FLOAT64:
       return tensorflow::DT_DOUBLE;
-    case tflite::TensorType_FLOAT8_E4M3FN:
-      return tensorflow::DT_FLOAT8_E4M3FN;
-    case tflite::TensorType_FLOAT8_E5M2:
-      return tensorflow::DT_FLOAT8_E5M2;
     // TODO(b/246806634): Tensorflow DT_INT2/4 type doesn't exist yet
     case tflite::TensorType_INT2:
       return tensorflow::DT_INT8;
@@ -207,10 +195,6 @@ absl::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
       return tflite::TensorType_FLOAT32;
     case tensorflow::DT_DOUBLE:
       return tflite::TensorType_FLOAT64;
-    case tensorflow::DT_FLOAT8_E4M3FN:
-      return tflite::TensorType_FLOAT8_E4M3FN;
-    case tensorflow::DT_FLOAT8_E5M2:
-      return tflite::TensorType_FLOAT8_E5M2;
     case tensorflow::DT_UINT4:
       return tflite::TensorType_UINT4;
     case tensorflow::DT_INT8:

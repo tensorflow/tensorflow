@@ -401,10 +401,6 @@ const char* TensorTypeName(TfLiteType type) {
       return "kTfLiteInt2";
     case kTfLiteUInt4:
       return "kTfLiteUInt4";
-    case kTfLiteFloat8E4M3FN:
-      return "kTfLiteFloat8E4M3FN";
-    case kTfLiteFloat8E5M2:
-      return "kTfLiteFloat8E5M2";
   }
   return "(invalid)";
 }

@@ -196,10 +196,6 @@ absl::Status CreateVectorCopyData(const TfLiteTensor& src, T* dst) {
         return absl::UnimplementedError("src can't be int4.");
       case kTfLiteInt2:
         return absl::UnimplementedError("src can't be int2.");
-      case kTfLiteFloat8E4M3FN:
-        return absl::UnimplementedError("src can't be float8_e4m3fn.");
-      case kTfLiteFloat8E5M2:
-        return absl::UnimplementedError("src can't be float8_e5m2.");
     }
   }
 }

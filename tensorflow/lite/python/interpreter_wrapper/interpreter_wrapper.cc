@@ -630,20 +630,13 @@ PyObject* InterpreterWrapper::SetTensor(int tensor_index, PyObject* value,
 
   TfLiteType incoming_type = python_utils::TfLiteTypeFromPyArray(array);
   if (incoming_type != tensor->type) {
-    bool allow_raw_bytes =
-        (tensor->type == kTfLiteFloat8E4M3FN ||
-         tensor->type == kTfLiteFloat8E5M2) &&
-        (incoming_type == kTfLiteInt8 || incoming_type == kTfLiteUInt8);
-    if (!allow_raw_bytes) {
-      PyErr_Format(
-          PyExc_ValueError,
-          "Cannot set tensor:"
-          " Got value of type %s"
-          " but expected type %s for input %d, name: %s ",
-          TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
-          TfLiteTypeGetName(tensor->type), tensor_index, tensor->name);
-      return nullptr;
-    }
+    PyErr_Format(PyExc_ValueError,
+                 "Cannot set tensor:"
+                 " Got value of type %s"
+                 " but expected type %s for input %d, name: %s ",
+                 TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
+                 TfLiteTypeGetName(tensor->type), tensor_index, tensor->name);
+    return nullptr;
   }
 
   if (PyArray_NDIM(array) != tensor->dims->size) {

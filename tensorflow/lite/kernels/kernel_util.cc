@@ -546,8 +546,6 @@ int TfLiteTypeGetSizeBits(TfLiteType type) {
       return 4;
     case kTfLiteUInt8:
     case kTfLiteInt8:
-    case kTfLiteFloat8E4M3FN:
-    case kTfLiteFloat8E5M2:
       return 8;
     case kTfLiteUInt16:
     case kTfLiteInt16:

@@ -372,15 +372,6 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
 
   // The bytes of floats are stored little-endian.
   switch (elem_type.getIntOrFloatBitWidth()) {
-    case 8: {
-      assert(bytes_len == shaped_type.getNumElements());
-      assert(mlir::isa<mlir::Float8E4M3FNType>(elem_type) ||
-             mlir::isa<mlir::Float8E5M2Type>(elem_type));
-      return mlir::ElementsAttr(DenseElementsAttr::getFromRawBuffer(
-          shaped_type,
-          llvm::ArrayRef<char>(reinterpret_cast<const char*>(buffer.data()),
-                               bytes_len)));
-    }
     case 16: {
       assert(bytes_len % 2 == 0);
       // Supports both BF16 and F16.
