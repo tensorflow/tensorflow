@@ -1156,7 +1156,8 @@ GpuExecutable::AllocateCopyProtectedOutputBuffer(
                                  /*retry_on_failure=*/true,
                                  /*memory_space=*/allocation.color());
   if (!allocated_buffer.ok()) {
-    return VerboseAllocationError(allocated_buffer.status());
+    return ResourceExhausted("%s\n%s\n", allocated_buffer.status().message(),
+                             buffer_allocations_debug_summary());
   }
   se::DeviceAddressBase result_buffer = allocated_buffer->Release();
   se::DeviceAddressBase& aliased_buffer =
@@ -1356,11 +1357,6 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     MarkToBeReleasedArguments(*args, result);
   }
   return std::move(result);
-}
-
-absl::Status GpuExecutable::VerboseAllocationError(absl::Status s) {
-  return ResourceExhausted("%s\n%s\n", s.message(),
-                           buffer_allocations_debug_summary_);
 }
 
 // VA remapping execution flow for 2 consecutive calls on the same executor:

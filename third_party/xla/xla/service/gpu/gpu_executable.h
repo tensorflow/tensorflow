@@ -265,8 +265,6 @@ class GpuExecutable : public Executable {
       const BufferAllocation& allocation, int device_ordinal,
       se::DeviceAddressAllocator* memory_allocator);
 
-  absl::Status VerboseAllocationError(absl::Status s);
-
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> FromProto(
       const GpuExecutableProto&,
       const se::DeviceDescription& device_description,
