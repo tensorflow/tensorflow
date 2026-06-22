@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -37,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -74,6 +76,8 @@ class LowerToIfrtRestoreVariablePass
         return signalPassFailure();
       }
     }
+
+    ReconcileFuncAndWhileResourceSubtypes(module);
   }
 
  private:
@@ -581,8 +585,227 @@ class LowerToIfrtRestoreVariablePass
     } else {
       restore_op.erase();
     }
-
     return mlir::success();
+  }
+
+  // Suggested Helper to unify functional op handling
+  struct FunctionalCallees {
+    llvm::SmallVector<mlir::func::FuncOp, 2> callees;
+    llvm::SmallVector<mlir::Type, 4>
+        operand_slice;  // Operands passed to callees
+  };
+
+  FunctionalCallees GetFunctionalCallees(mlir::Operation* op,
+                                         mlir::SymbolTable& symtab) {
+    FunctionalCallees result;
+    if (auto while_op = llvm::dyn_cast<mlir::TF::WhileOp>(op)) {
+      if (auto cond = while_op.cond_function()) result.callees.push_back(cond);
+      if (auto body = while_op.body_function()) result.callees.push_back(body);
+      result.operand_slice.append(while_op.getOperandTypes().begin(),
+                                  while_op.getOperandTypes().end());
+    } else if (auto if_op = llvm::dyn_cast<mlir::TF::IfOp>(op)) {
+      if (auto then_fn = if_op.then_function())
+        result.callees.push_back(then_fn);
+      if (auto else_fn = if_op.else_function())
+        result.callees.push_back(else_fn);
+      // For tf.If, the 0th operand is the boolean condition tensor. We use
+      // llvm::drop_begin to ignore the leading condition operand and extract
+      // only the data arguments passed to the then/else branch functions.
+      for (auto type : llvm::drop_begin(op->getOperandTypes())) {
+        result.operand_slice.push_back(type);
+      }
+    } else if (auto case_op = llvm::dyn_cast<mlir::TF::CaseOp>(op)) {
+      for (auto branch :
+           case_op.getBranches().getAsRange<mlir::FlatSymbolRefAttr>()) {
+        if (auto fn = symtab.lookup<mlir::func::FuncOp>(branch.getValue())) {
+          result.callees.push_back(fn);
+        }
+      }
+      // For tf.Case, the 0th operand is the branch index tensor. We use
+      // llvm::drop_begin to ignore the leading branch index operand and extract
+      // only the data arguments passed to the branch functions.
+      for (auto type : llvm::drop_begin(op->getOperandTypes())) {
+        result.operand_slice.push_back(type);
+      }
+    } else if (llvm::isa<mlir::TF::StatefulPartitionedCallOp,
+                         mlir::TF::PartitionedCallOp, mlir::TF::LegacyCallOp>(
+                   op)) {
+      // For TF function call operations (StatefulPartitionedCall,
+      // PartitionedCall, LegacyCall), the attribute 'f' stores the symbol
+      // reference to the callee function being invoked. We retrieve 'f' to
+      // look up the target func::FuncOp from the symbol table.
+      auto sym = op->getAttrOfType<mlir::FlatSymbolRefAttr>("f");
+      if (sym) {
+        if (auto fn = symtab.lookup<mlir::func::FuncOp>(sym.getValue())) {
+          result.callees.push_back(fn);
+        }
+      }
+      result.operand_slice.append(op->getOperandTypes().begin(),
+                                  op->getOperandTypes().end());
+    }
+    return result;
+  }
+
+  // Returns true if potential is a more specific type than existing.
+  // Ensures monotonicity (only narrowing) during fixed-point iteration to
+  // prevent oscillations or infinite loops.
+  bool IsMoreSpecific(mlir::Type existing, mlir::Type potential) {
+    if (existing == potential) return false;
+    auto existing_tensor = mlir::dyn_cast<mlir::TensorType>(existing);
+    auto potential_tensor = mlir::dyn_cast<mlir::TensorType>(potential);
+    if (!existing_tensor || !potential_tensor) return false;
+
+    auto existing_res = mlir::dyn_cast<mlir::tf_type::ResourceType>(
+        existing_tensor.getElementType());
+    auto potential_res = mlir::dyn_cast<mlir::tf_type::ResourceType>(
+        potential_tensor.getElementType());
+    if (!existing_res || !potential_res) return false;
+
+    // If potential has subtypes (e.g., ranked resource) and existing has fewer
+    // or none, potential is more specific.
+    if (potential_res.getSubtypes().size() >
+        existing_res.getSubtypes().size()) {
+      return true;
+    }
+    return false;
+  }
+
+  // Rule 1 Helper: Promotes callee arguments and function signature if callsite
+  // operands narrow. Returns true if the callee signature was modified.
+  bool UpdateCalleeArguments(mlir::func::FuncOp callee,
+                             mlir::TypeRange operand_slice) {
+    if (!callee || callee.isExternal()) return false;
+    llvm::SmallVector<mlir::Type, 4> new_arg_types(
+        callee.getFunctionType().getInputs().begin(),
+        callee.getFunctionType().getInputs().end());
+    bool arg_changed = false;
+    for (int i = 0; i < operand_slice.size(); ++i) {
+      if (i < new_arg_types.size() &&
+          IsMoreSpecific(new_arg_types[i], operand_slice[i])) {
+        new_arg_types[i] = operand_slice[i];
+        callee.getBody().front().getArgument(i).setType(operand_slice[i]);
+        arg_changed = true;
+      }
+    }
+    if (arg_changed) {
+      callee.setType(
+          mlir::FunctionType::get(callee.getContext(), new_arg_types,
+                                  callee.getFunctionType().getResults()));
+    }
+    return arg_changed;
+  }
+
+  // Rule 2 (Part 1) Helper: Promotes callee result signature if return operands
+  // narrow. Returns true if the function result signature was modified.
+  bool UpdateFuncResultTypes(mlir::func::FuncOp func_op) {
+    auto return_op = llvm::dyn_cast_or_null<mlir::func::ReturnOp>(
+        func_op.getBody().front().getTerminator());
+    if (!return_op) return false;
+
+    llvm::SmallVector<mlir::Type, 4> new_result_types(
+        func_op.getFunctionType().getResults().begin(),
+        func_op.getFunctionType().getResults().end());
+    bool func_changed = false;
+    for (int i = 0; i < return_op.getNumOperands(); ++i) {
+      mlir::Type res_type = new_result_types[i];
+      mlir::Type ret_type = return_op.getOperand(i).getType();
+      if (IsMoreSpecific(res_type, ret_type)) {
+        new_result_types[i] = ret_type;
+        func_changed = true;
+      }
+    }
+    if (func_changed) {
+      func_op.setType(mlir::FunctionType::get(
+          func_op.getContext(), func_op.getFunctionType().getInputs(),
+          new_result_types));
+    }
+    return func_changed;
+  }
+
+  // Rule 2 (Part 2) Helper: Clones caller operation if callee results narrow.
+  // Returns the new caller operation if modified, or nullptr if unchanged.
+  mlir::Operation* UpdateCallerResultTypes(mlir::Operation* caller_op,
+                                           mlir::TypeRange callee_results) {
+    llvm::SmallVector<mlir::Type, 4> new_caller_results(
+        caller_op->getResultTypes().begin(), caller_op->getResultTypes().end());
+    bool caller_changed = false;
+    for (int i = 0; i < new_caller_results.size(); ++i) {
+      if (i < callee_results.size() &&
+          IsMoreSpecific(new_caller_results[i], callee_results[i])) {
+        new_caller_results[i] = callee_results[i];
+        caller_changed = true;
+      }
+    }
+    if (!caller_changed) return nullptr;
+
+    mlir::OpBuilder builder(caller_op);
+    mlir::OperationState state(caller_op->getLoc(), caller_op->getName());
+    state.addOperands(caller_op->getOperands());
+    state.addTypes(new_caller_results);
+    state.addAttributes(caller_op->getAttrs());
+    mlir::Operation* new_op = builder.create(state);
+    for (int i = 0; i < caller_op->getNumResults(); ++i) {
+      caller_op->getResult(i).replaceAllUsesWith(new_op->getResult(i));
+    }
+    caller_op->erase();
+    return new_op;
+  }
+
+  // Reconciles narrowed resource subtypes across function signatures, block
+  // arguments, and control flow / call operations (tf.While, tf.If, tf.Call)
+  // across the entire module using a worklist-driven monotonic fixed-point
+  // iteration.
+  void ReconcileFuncAndWhileResourceSubtypes(mlir::ModuleOp module) {
+    mlir::SymbolTable symtab(module);
+    llvm::SetVector<mlir::func::FuncOp> worklist;
+
+    // 1. Initialize worklist with all internal functions.
+    for (auto func_op : module.getOps<mlir::func::FuncOp>()) {
+      if (!func_op.isExternal()) worklist.insert(func_op);
+    }
+
+    // 2. Process worklist until fixed-point is reached.
+    while (!worklist.empty()) {
+      mlir::func::FuncOp func_op = worklist.pop_back_val();
+
+      // Rule 2 (Part 1): Callee Return Operands -> Callee Results
+      bool func_changed = UpdateFuncResultTypes(func_op);
+
+      // Rule 2 (Part 2) & Rule 1: Update callers and synchronize branches.
+      auto uses = mlir::SymbolTable::getSymbolUses(func_op, module);
+      if (!uses) continue;
+
+      for (auto use : *uses) {
+        mlir::Operation* caller_op = use.getUser();
+        FunctionalCallees fc = GetFunctionalCallees(caller_op, symtab);
+        if (fc.callees.empty() || !llvm::is_contained(fc.callees, func_op)) {
+          continue;
+        }
+
+        // Rule 2 (Part 2): Callee Results -> Callsite Results
+        if (func_changed) {
+          if (mlir::Operation* new_caller = UpdateCallerResultTypes(
+                  caller_op, func_op.getFunctionType().getResults())) {
+            caller_op = new_caller;
+
+            if (auto parent_func =
+                    caller_op->getParentOfType<mlir::func::FuncOp>()) {
+              worklist.insert(parent_func);
+            }
+            for (auto callee : fc.callees) {
+              if (callee != func_op) worklist.insert(callee);
+            }
+          }
+        }
+
+        // Rule 1: Callsite Operands -> Callee Arguments
+        for (auto callee : fc.callees) {
+          if (UpdateCalleeArguments(callee, fc.operand_slice)) {
+            worklist.insert(callee);
+          }
+        }
+      }
+    }
   }
 };
 
