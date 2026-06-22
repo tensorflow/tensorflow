@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_AUTOTUNER_TUNER_H_
-#define XLA_BACKENDS_AUTOTUNER_TUNER_H_
+#ifndef XLA_BACKENDS_AUTOTUNER_CONFIG_RUNNER_H_
+#define XLA_BACKENDS_AUTOTUNER_CONFIG_RUNNER_H_
 
 #include <memory>
 #include <optional>
@@ -36,11 +36,9 @@ limitations under the License.
 
 namespace xla {
 
-// TODO(b/519057668): Rename to ConfigRunner to reflect the updated
-// responsibilities.
-// Tuner is responsible for profiling and picking the best config for a given
-// HLO instruction.
-class Tuner {
+// ConfigRunner is responsible for running and profiling a given set of
+// executable candidates on device.
+class ConfigRunner {
  public:
   struct CorrectnessCheckOptions {
     // Whether to check the correctness of the output buffers and OOM reads on
@@ -86,7 +84,7 @@ class Tuner {
     AutotuneResult ToProto() const;
   };
 
-  static absl::StatusOr<std::unique_ptr<Tuner>> Create(
+  static absl::StatusOr<std::unique_ptr<ConfigRunner>> Create(
       std::unique_ptr<Profiler> profiler, CorrectnessCheckOptions options);
 
   absl::StatusOr<std::vector<ConfigProfile>> ProfileAll(
@@ -94,7 +92,8 @@ class Tuner {
       const HloInstruction* instr = nullptr);
 
  private:
-  Tuner(std::unique_ptr<Profiler> profiler, CorrectnessCheckOptions options)
+  ConfigRunner(std::unique_ptr<Profiler> profiler,
+               CorrectnessCheckOptions options)
       : profiler_(std::move(profiler)), options_(options) {}
 
   struct OutputCluster {
@@ -126,4 +125,4 @@ class Tuner {
 
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_AUTOTUNER_TUNER_H_
+#endif  // XLA_BACKENDS_AUTOTUNER_CONFIG_RUNNER_H_

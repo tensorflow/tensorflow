@@ -75,10 +75,10 @@ cc_library(
         ":autotuner_cache_interface",
         ":codegen_backend",
         ":codegen_orchestrator",
+        ":config_runner",
         ":config_selector",
         ":hlo_extractor",
         ":profiler",
-        ":tuner",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/distributed:key_value_store_interface",
@@ -185,9 +185,9 @@ cc_library(
 )
 
 cc_library(
-    name = "tuner",
-    srcs = ["tuner.cc"],
-    hdrs = ["tuner.h"],
+    name = "config_runner",
+    srcs = ["config_runner.cc"],
+    hdrs = ["config_runner.h"],
     deps = [
         ":codegen_backend",
         ":codegen_orchestrator",
@@ -221,7 +221,7 @@ cc_library(
     srcs = ["config_selector.cc"],
     hdrs = ["config_selector.h"],
     deps = [
-        ":tuner",
+        ":config_runner",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

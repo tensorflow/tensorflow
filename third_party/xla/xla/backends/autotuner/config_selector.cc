@@ -27,17 +27,17 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
-#include "xla/backends/autotuner/tuner.h"
+#include "xla/backends/autotuner/config_runner.h"
 
 namespace xla {
 
-absl::StatusOr<Tuner::ConfigProfile> PickBestConfig(
-    std::vector<Tuner::ConfigProfile>& results,
+absl::StatusOr<ConfigRunner::ConfigProfile> PickBestConfig(
+    std::vector<ConfigRunner::ConfigProfile>& results,
     int scratch_bytes_window_size_us) {
   absl::Duration min_duration = absl::InfiniteDuration();
-  Tuner::ConfigProfile* best_result = nullptr;
+  ConfigRunner::ConfigProfile* best_result = nullptr;
   std::vector<std::string> failures;
-  for (Tuner::ConfigProfile& result : results) {
+  for (ConfigRunner::ConfigProfile& result : results) {
     if (result.failure.has_value()) {
       failures.push_back(result.failure->ToString());
     } else if (result.duration < min_duration) {
@@ -55,13 +55,13 @@ absl::StatusOr<Tuner::ConfigProfile> PickBestConfig(
     return absl::NotFoundError(message);
   }
 
-  const Tuner::ConfigProfile* fastest_result = best_result;
+  const ConfigRunner::ConfigProfile* fastest_result = best_result;
   int64_t min_scratch_bytes = std::numeric_limits<int64_t>::max();
   absl::Duration duration_limit =
       min_duration + absl::Microseconds(scratch_bytes_window_size_us);
   absl::Duration min_duration_with_optimized_scratch_bytes =
       absl::InfiniteDuration();
-  for (Tuner::ConfigProfile& result : results) {
+  for (ConfigRunner::ConfigProfile& result : results) {
     if (!result.failure.has_value() && result.duration <= duration_limit) {
       bool current_result_is_better =
           result.scratch_bytes < min_scratch_bytes ||
