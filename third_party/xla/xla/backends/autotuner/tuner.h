@@ -36,20 +36,20 @@ limitations under the License.
 
 namespace xla {
 
+// TODO(b/519057668): Rename to ConfigRunner to reflect the updated
+// responsibilities.
 // Tuner is responsible for profiling and picking the best config for a given
 // HLO instruction.
 class Tuner {
  public:
-  struct Options {
+  struct CorrectnessCheckOptions {
     // Whether to check the correctness of the output buffers and OOM reads on
     // Input Buffers.
-    bool check_buffers = true;
+    bool enable_correctness_check = true;
     // Relative tolerance for correctness check.
     float relative_tolerance = 1e-6;
     // Whether to crash the process on check failure.
-    bool crash_on_check_failure = false;
-    // Window size in microseconds to consider for scratch bytes optimization.
-    int scratch_bytes_window_size_us = 2;
+    bool crash_on_failure = false;
   };
 
   // TODO(b/519057668): Move these types to a shared header file.
@@ -87,17 +87,14 @@ class Tuner {
   };
 
   static absl::StatusOr<std::unique_ptr<Tuner>> Create(
-      std::unique_ptr<Profiler> profiler, Options options);
+      std::unique_ptr<Profiler> profiler, CorrectnessCheckOptions options);
 
   absl::StatusOr<std::vector<ConfigProfile>> ProfileAll(
       std::vector<ExecutableCandidate> candidates,
       const HloInstruction* instr = nullptr);
 
-  absl::StatusOr<ConfigProfile> PickBestConfig(
-      std::vector<ConfigProfile>& results);
-
  private:
-  Tuner(std::unique_ptr<Profiler> profiler, Options options)
+  Tuner(std::unique_ptr<Profiler> profiler, CorrectnessCheckOptions options)
       : profiler_(std::move(profiler)), options_(options) {}
 
   struct OutputCluster {
@@ -123,7 +120,7 @@ class Tuner {
 
  public:
   std::unique_ptr<Profiler> profiler_ ABSL_GUARDED_BY(profiler_m_);
-  Options options_;
+  CorrectnessCheckOptions options_;
   absl::Mutex profiler_m_;
 };
 
