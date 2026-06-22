@@ -68,6 +68,32 @@ cc_library(
 )
 
 cc_library(
+    name = "autotuner",
+    srcs = ["autotuner.cc"],
+    hdrs = ["autotuner.h"],
+    deps = [
+        ":codegen_orchestrator",
+        ":config_runner",
+        ":config_selector",
+        ":hlo_extractor",
+        ":profiler",
+        "//xla:status_macros",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/concurrency:executor",
+        "//xla/tsl/concurrency:future",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "config_assigner",
     srcs = ["config_assigner.cc"],
     hdrs = ["config_assigner.h"],
@@ -153,6 +179,36 @@ xla_cc_test(
         "@com_google_protobuf//:protobuf",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:protobuf",
+    ],
+)
+
+xla_cc_test(
+    name = "autotuner_test",
+    srcs = ["autotuner_test.cc"],
+    deps = [
+        ":autotuner",
+        ":backends_proto_cc",
+        ":codegen_backend",
+        ":codegen_orchestrator",
+        ":profiler",
+        "//xla:autotune_results_proto_cc",
+        "//xla:autotuning_proto_cc",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:executable",
+        "//xla/service:shaped_buffer",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -350,6 +350,8 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
       });
 }
 
+// TODO(b/444398084): Use Autouner::GetTunedConfig when the cache is migrated
+// and we don't need backward compatibility.
 tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetTunedConfig(
     const HloInstruction* instr) {
   CHECK(config_runner_ != nullptr);
