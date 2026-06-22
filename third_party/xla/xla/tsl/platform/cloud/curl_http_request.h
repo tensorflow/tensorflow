@@ -202,7 +202,7 @@ class CurlHttpRequest : public HttpRequest {
   std::vector<char> default_response_buffer_;
 
   std::unordered_map<std::string, std::string> response_headers_;
-  uint64_t response_code_ = 0;
+  int64_t response_code_ = 0;
 
   // The timestamp of the last activity related to the request execution, in
   // seconds since epoch.
@@ -244,7 +244,7 @@ class LibCurl {
 
   virtual CURL* curl_easy_init() = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                                    uint64_t param) TF_MUST_USE_RESULT = 0;
+                                    int64_t param) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                                     const char* param) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
@@ -263,7 +263,7 @@ class LibCurl {
                    curl_off_t ulnow)) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_perform(CURL* curl) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                                     uint64_t* value) TF_MUST_USE_RESULT = 0;
+                                     int64_t* value) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                                      double* value) TF_MUST_USE_RESULT = 0;
   virtual void curl_easy_cleanup(CURL* curl) = 0;

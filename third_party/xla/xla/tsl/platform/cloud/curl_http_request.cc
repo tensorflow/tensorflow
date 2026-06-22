@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/scanner.h"
-#include "tsl/platform/strcat.h"
 
 #define CHECK_CURL_OK(expr) CHECK_EQ(expr, CURLE_OK)
 
@@ -61,7 +60,7 @@ class LibCurlProxy : public LibCurl {
   CURL* curl_easy_init() override { return ::curl_easy_init(); }
 
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                            uint64_t param) override {
+                            int64_t param) override {
     return ::curl_easy_setopt(curl, option, param);
   }
 
@@ -99,7 +98,7 @@ class LibCurlProxy : public LibCurl {
   }
 
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                             uint64_t* value) override {
+                             int64_t* value) override {
     return ::curl_easy_getinfo(curl, info, value);
   }
 
@@ -219,8 +218,7 @@ void CurlHttpRequest::AddResolveOverride(const std::string& hostname,
   CheckNotSent();
   // Resolve values are hostname:port:IP.add.ress
   resolve_list_ = libcurl_->curl_slist_append(
-      resolve_list_,
-      strings::StrCat(hostname, ":", port, ":", ip_addr).c_str());
+      resolve_list_, absl::StrCat(hostname, ":", port, ":", ip_addr).c_str());
 }
 
 void CurlHttpRequest::AddAuthBearerHeader(const std::string& auth_token) {
@@ -267,7 +265,8 @@ absl::Status CurlHttpRequest::SetPutFromFile(const std::string& body_filepath,
 
   curl_headers_ = libcurl_->curl_slist_append(
       curl_headers_, absl::StrCat("Content-Length: ", size).c_str());
-  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(
+      curl_, CURLOPT_UPLOAD, 1L));  // NOLINT(misc-include-cleaner)
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
                                            reinterpret_cast<void*>(put_body_)));
   // Using the default CURLOPT_READFUNCTION, which is doing an fread() on the
@@ -280,7 +279,8 @@ void CurlHttpRequest::SetPutEmptyBody() {
   CheckMethodNotSet();
   is_method_set_ = true;
   method_ = RequestMethod::kPut;
-  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(
+      curl_, CURLOPT_UPLOAD, 1L));  // NOLINT(misc-include-cleaner)
   AddHeader("Content-Length", "0");
   AddHeader("Transfer-Encoding", "identity");
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
@@ -648,16 +648,17 @@ absl::Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
   if (code == CURLE_OK) {
     return absl::OkStatus();
   }
-  std::string error_message = strings::StrCat(
+  std::string error_message = absl::StrCat(
       "Error executing an HTTP request: libcurl code ", code, " meaning '",
       curl_easy_strerror(code), "', error details: ");
   // Special-case response-too-large errors as FAILED_PRECONDITION.
-  if (code == CURLE_WRITE_ERROR && IsDirectResponse() &&
+  if (code == CURLE_WRITE_ERROR &&  // NOLINT(misc-include-cleaner)
+      IsDirectResponse() &&
       direct_response_.bytes_received_ > direct_response_.buffer_size_) {
-    std::string overflow_message = strings::StrCat(
+    std::string overflow_message = absl::StrCat(
         "Received ", direct_response_.bytes_received_, " response bytes ",
         "for a ", direct_response_.buffer_size_, "-byte buffer");
-    uint64_t response_code = 0;
+    int64_t response_code = 0;
     const CURLcode get_response_result = libcurl_->curl_easy_getinfo(
         curl_, CURLINFO_RESPONSE_CODE, &response_code);
     // Special-case 416 Range Not Satisfied responses; they sometimes have

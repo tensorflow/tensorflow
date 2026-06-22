@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/platform/cloud/curl_http_request.h"
 
+#include <cstdint>
 #include <fstream>
 #include <string>
 
@@ -43,16 +44,16 @@ class FakeEnv : public EnvWrapper {
 // A fake proxy that pretends to be libcurl.
 class FakeLibCurl : public LibCurl {
  public:
-  FakeLibCurl(const std::string& response_content, uint64_t response_code)
+  FakeLibCurl(const std::string& response_content, int64_t response_code)
       : response_content_(response_content), response_code_(response_code) {}
-  FakeLibCurl(const std::string& response_content, uint64_t response_code,
+  FakeLibCurl(const std::string& response_content, int64_t response_code,
               std::vector<std::tuple<uint64_t, curl_off_t>> progress_ticks,
               FakeEnv* env)
       : response_content_(response_content),
         response_code_(response_code),
         progress_ticks_(std::move(progress_ticks)),
         env_(env) {}
-  FakeLibCurl(const std::string& response_content, uint64_t response_code,
+  FakeLibCurl(const std::string& response_content, int64_t response_code,
               const std::vector<std::string>& response_headers)
       : response_content_(response_content),
         response_code_(response_code),
@@ -62,13 +63,14 @@ class FakeLibCurl : public LibCurl {
     // The reuslt just needs to be non-null.
     return reinterpret_cast<CURL*>(this);
   }
-  CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                            uint64_t param) override {
+  CURLcode curl_easy_setopt(CURL* curl,         // NOLINT(misc-include-cleaner)
+                            CURLoption option,  // NOLINT(misc-include-cleaner)
+                            int64_t param) override {
     switch (option) {
       case CURLOPT_POST:
         is_post_ = param;
         break;
-      case CURLOPT_PUT:
+      case CURLOPT_UPLOAD:  // NOLINT(misc-include-cleaner)
         is_put_ = param;
         break;
       default:
@@ -181,8 +183,9 @@ class FakeLibCurl : public LibCurl {
     }
     return curl_easy_perform_result_;
   }
-  CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                             uint64_t* value) override {
+  CURLcode curl_easy_getinfo(CURL* curl,     // NOLINT(misc-include-cleaner)
+                             CURLINFO info,  // NOLINT(misc-include-cleaner)
+                             int64_t* value) override {
     switch (info) {
       case CURLINFO_RESPONSE_CODE:
         *value = response_code_;
@@ -236,7 +239,7 @@ class FakeLibCurl : public LibCurl {
 
   // Variables defining the behavior of this fake.
   std::string response_content_;
-  uint64_t response_code_;
+  int64_t response_code_;
   std::vector<std::string> response_headers_;
 
   // Internal variables to store the libcurl state.
@@ -800,7 +803,7 @@ class TestStats : public HttpRequest::RequestStats {
 class StatsTestFakeLibCurl : public FakeLibCurl {
  public:
   StatsTestFakeLibCurl(TestStats* stats, const std::string& response_content,
-                       uint64_t response_code)
+                       int64_t response_code)
       : FakeLibCurl(response_content, response_code), stats_(stats) {}
   CURLcode curl_easy_perform(CURL* curl) override {
     CHECK(!performed_request_);
