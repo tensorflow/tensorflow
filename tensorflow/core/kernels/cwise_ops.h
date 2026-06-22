@@ -811,8 +811,7 @@ struct scalar_erfinv_op<float> {
         -0.000200214257f, 0.000100950558f, 0.00134934322f,
         -0.00367342844f,  0.00573950773f,  -0.0076224613f,
         0.00943887047f,   1.00167406f,     2.83297682f};
-    Packet w = pnegate(
-        scalar_log1p_op<float>().packetOp(pnegate(pmul(x, x))));
+    Packet w = pnegate(plog1p(pnegate(pmul(x, x))));
     Packet lt = pcmp_lt(w, pset1<Packet>(5.0f));
     w = pselect(lt, psub(w, pset1<Packet>(2.5f)),
                 psub(psqrt(w), pset1<Packet>(3.0f)));
@@ -841,8 +840,7 @@ struct functor_traits<scalar_erfinv_op<float>> {
   enum {
     Cost = functor_traits<scalar_log1p_op<float>>::Cost +
            20 * NumTraits<float>::MulCost,
-    PacketAccess =
-        packet_traits<float>::HasLog && packet_traits<float>::HasSqrt,
+    PacketAccess = packet_traits<float>::HasLog1p,
   };
 };
 
