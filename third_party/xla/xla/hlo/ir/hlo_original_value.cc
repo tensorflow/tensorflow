@@ -178,6 +178,16 @@ std::shared_ptr<OriginalValue> OriginalValue::FromProto(
   }
   std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>> nodes;
   for (const auto& leaf : original_value_proto.elements()) {
+    bool valid = true;
+    for (int64_t idx : leaf.shape_index()) {
+      if (idx < 0) {
+        valid = false;
+        break;
+      }
+    }
+    if (!valid) {
+      continue;
+    }
     ShapeIndex index(leaf.shape_index());
     if (leaf.has_original_array()) {
       nodes.emplace_back(index,
