@@ -44,7 +44,7 @@ There are two primary ways to integrate a PJRT plugin into your application:
     *   **Example (Conceptual):**
 
         ```c++
-        const char* plugin_name = PJRT_PLUGIN_NAME_CPU;
+        const char* plugin_name = kCpuPjrtName;
         // Or another name from plugin_names.h
 
         absl::StatusOr<std::unique_ptr<PjrtClient>> client =
