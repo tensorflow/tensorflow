@@ -873,6 +873,7 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:convert_mover",
         "//xla/hlo/transforms/simplifiers:hlo_constant_folding",
         "//xla/hlo/transforms/simplifiers:reshape_mover",
+        "//xla/hlo/utils:hlo_query",
         "//xla/service:hlo_module_config",
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:backend_configs_cc",
