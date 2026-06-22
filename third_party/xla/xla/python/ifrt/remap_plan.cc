@@ -144,6 +144,19 @@ absl::Status CheckRange(int64_t num_shards,
                            num_shards + interval.step - 1, interval.step,
                            interval.end);
   }
+  // The `end` bound above is necessary but not sufficient: with a large `step`,
+  // the last stepped index can exceed `num_shards` while still satisfying
+  // `index < end`, which would lead to out-of-bounds indexing of the per-shard
+  // buffers. Verify the last stepped index explicitly.
+  if (interval.end > interval.start) {
+    const int64_t last_index =
+        interval.end - 1 - (interval.end - 1 - interval.start) % interval.step;
+    if (last_index >= num_shards) {
+      return InvalidArgument(
+          "interval addresses shard %d, which is out of range [0, %d)",
+          last_index, num_shards);
+    }
+  }
   return absl::OkStatus();
 }
 
