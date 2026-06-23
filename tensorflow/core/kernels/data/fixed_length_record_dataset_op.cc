@@ -184,6 +184,13 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
         const std::string& next_filename =
             dataset()->filenames_[current_file_index_];
         TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(next_filename, &file_size));
+        if (file_size < dataset()->header_bytes_ + dataset()->footer_bytes_) {
+          return errors::InvalidArgument(
+              "Input file \"", next_filename, "\" has length ", file_size,
+              " bytes, which is smaller than the sum of the header (",
+              dataset()->header_bytes_, " bytes) and footer (",
+              dataset()->footer_bytes_, " bytes).");
+        }
         file_pos_limit_ = file_size - dataset()->footer_bytes_;
 
         uint64_t body_size =
@@ -353,6 +360,14 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
           uint64_t file_size;
           TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
               dataset()->filenames_[current_file_index_], &file_size));
+          if (file_size < dataset()->header_bytes_ + dataset()->footer_bytes_) {
+            return errors::InvalidArgument(
+                "Input file \"", dataset()->filenames_[current_file_index_],
+                "\" has length ", file_size,
+                " bytes, which is smaller than the sum of the header (",
+                dataset()->header_bytes_, " bytes) and footer (",
+                dataset()->footer_bytes_, " bytes).");
+          }
           file_pos_limit_ = file_size - dataset()->footer_bytes_;
 
           uint64_t body_size =

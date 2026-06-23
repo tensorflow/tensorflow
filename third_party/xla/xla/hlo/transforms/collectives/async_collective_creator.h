@@ -54,6 +54,7 @@ class AsyncCollectiveCreator : public HloModulePass {
     };
     int64_t all_reduce_min_threshold_in_bytes = 0;
     int64_t all_gather_min_threshold_in_bytes = 0;
+    int64_t reduce_scatter_min_threshold_in_bytes = 0;
   };
   explicit AsyncCollectiveCreator(CollectiveCreatorConfig creator_config)
       : config_(std::move(creator_config)) {}

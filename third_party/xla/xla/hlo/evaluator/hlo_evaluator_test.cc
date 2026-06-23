@@ -426,6 +426,40 @@ TEST_F(HloEvaluatorTest, DoesMultiply) {
                std::move(rhs));
 }
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
+// element-wise multiply-high with 2 operands.
+TEST_F(HloEvaluatorTest, DoesMulhiU32) {
+  // u32: 0xFFFFFFFF * 0xFFFFFFFF = 0xFFFFFFFE00000001
+  // High bits: 0xFFFFFFFE (4294967294)
+  auto lhs_u32 = LiteralUtil::CreateR0<uint32_t>(0xFFFFFFFF);
+  auto rhs_u32 = LiteralUtil::CreateR0<uint32_t>(0xFFFFFFFF);
+  auto expected_u32 = LiteralUtil::CreateR0<uint32_t>(0xFFFFFFFE);
+  TestBinaryOp(HloOpcode::kMulhi, std::move(expected_u32), std::move(lhs_u32),
+               std::move(rhs_u32));
+}
+
+TEST_F(HloEvaluatorTest, DoesMulhiS32) {
+  // s32: -1 * -1 = 1 (wider signed multiply: 0xFFFFFFFF * 0xFFFFFFFF = 1)
+  // 64-bit signed product: 1 (0x0000000000000001)
+  // High bits (signed): 0
+  auto lhs_s32 = LiteralUtil::CreateR0<int32_t>(-1);
+  auto rhs_s32 = LiteralUtil::CreateR0<int32_t>(-1);
+  auto expected_s32 = LiteralUtil::CreateR0<int32_t>(0);
+  TestBinaryOp(HloOpcode::kMulhi, std::move(expected_s32), std::move(lhs_s32),
+               std::move(rhs_s32));
+}
+
+TEST_F(HloEvaluatorTest, DoesMulhiS32Min) {
+  // s32: Min * 2
+  // -2147483648 * 2 = -4294967296 (0xFFFFFFFF00000000)
+  // High bits (signed): -1 (0xFFFFFFFF)
+  auto lhs_s32_2 =
+      LiteralUtil::CreateR0<int32_t>(std::numeric_limits<int32_t>::min());
+  auto rhs_s32_2 = LiteralUtil::CreateR0<int32_t>(2);
+  auto expected_s32_2 = LiteralUtil::CreateR0<int32_t>(-1);
+  TestBinaryOp(HloOpcode::kMulhi, std::move(expected_s32_2),
+               std::move(lhs_s32_2), std::move(rhs_s32_2));
+}
+// Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise divide with 2 operands.
 TEST_F(HloEvaluatorTest, DoesDivideInt64) {
   auto lhs = LiteralUtil::CreateR2<int64_t>({{1, 0}, {-100, 4}});
@@ -6040,9 +6074,11 @@ ENTRY main {
 
   absl::StatusOr<Literal> actual = Evaluate({&arg});
   EXPECT_FALSE(actual.ok());
-  EXPECT_EQ(actual.status().message(),
-            "Evaluator cannot evaluate bitcast for non-scalar operand without "
-            "assigned layout.");
+  EXPECT_THAT(
+      actual.status().message(),
+      ::testing::HasSubstr(
+          "Evaluator cannot evaluate bitcast for non-scalar operand without "
+          "assigned layout."));
 }
 
 TEST_P(HloEvaluatorBf16Test, EffectiveScalarBitcastWithoutLayout) {

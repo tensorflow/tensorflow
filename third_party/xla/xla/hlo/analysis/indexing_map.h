@@ -121,7 +121,9 @@ class IndexingMap {
     Variable(int64_t lb, int64_t ub, llvm::StringRef name = "")
         : Variable(Interval{lb, ub}, name) {}
 
+    // struct Interval represents a closed interval [lower_bound, upper_bound].
     Interval bounds;
+    // Name of the variable is used for nicer printing.
     std::string name = "";
   };
 
@@ -404,6 +406,8 @@ struct UsedParameters {
   // Sorted list of symbol IDs.
   llvm::SmallVector<int64_t> symbol_ids;
 };
+
+// Returns IDs of dimensions and symbols that participate in SymbolicExpr.
 UsedParameters GetUsedParameters(absl::Span<const SymbolicExpr> exprs,
                                  int64_t num_dims);
 

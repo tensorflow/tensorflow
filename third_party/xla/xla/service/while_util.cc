@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -91,8 +92,8 @@ WidenWhileCondition(HloComputation* narrow_condition, const Shape& wide_shape) {
 
   wide_while_cond->set_root_instruction(call_narrow_cond);
 
-  TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,
-                      CallInliner::Inline(call_narrow_cond));
+  ASSIGN_OR_RETURN(auto inlined_instructions_map,
+                   CallInliner::Inline(call_narrow_cond));
   return {{wide_while_cond, std::move(inlined_instructions_map)}};
 }
 
@@ -133,8 +134,8 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
   wide_while_body->set_root_instruction(
       TupleUtil::AppendSuffix(call_narrow_body, live_through_values));
 
-  TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,
-                      CallInliner::Inline(call_narrow_body));
+  ASSIGN_OR_RETURN(auto inlined_instructions_map,
+                   CallInliner::Inline(call_narrow_body));
   return {{wide_while_body, std::move(inlined_instructions_map)}};
 }
 
@@ -236,15 +237,14 @@ WhileUtil::MakeInstructionsLiveIn(
 
   HloComputation* new_while_condition;
   CallInliner::InlinedInstructionMap inlined_condition_instructions_map;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::tie(new_while_condition, inlined_condition_instructions_map),
       WidenWhileCondition(while_instr->while_condition(), new_while_shape));
 
   HloComputation* new_while_body;
   CallInliner::InlinedInstructionMap inlined_instructions_map;
-  TF_ASSIGN_OR_RETURN(
-      std::tie(new_while_body, inlined_instructions_map),
-      WidenWhileBody(while_instr->while_body(), new_while_shape));
+  ASSIGN_OR_RETURN(std::tie(new_while_body, inlined_instructions_map),
+                   WidenWhileBody(while_instr->while_body(), new_while_shape));
 
   HloInstruction* new_while_init =
       TupleUtil::AppendSuffix(while_instr->mutable_operand(0), instructions);
@@ -285,10 +285,10 @@ WhileUtil::MakeInstructionsLiveIn(
   // instead of relying on HloComputation::ReplaceInstruction.
   HloInstruction* replacement_instr = TupleUtil::ExtractPrefix(
       new_while, while_instr->shape().tuple_shapes().size());
-  TF_RETURN_IF_ERROR(new_while->CopyAllControlDepsFrom(while_instr));
-  TF_RETURN_IF_ERROR(while_instr->DropAllControlDeps());
-  TF_RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(replacement_instr));
-  TF_RETURN_IF_ERROR(containing_computation->RemoveInstruction(while_instr));
+  RETURN_IF_ERROR(new_while->CopyAllControlDepsFrom(while_instr));
+  RETURN_IF_ERROR(while_instr->DropAllControlDeps());
+  RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(replacement_instr));
+  RETURN_IF_ERROR(containing_computation->RemoveInstruction(while_instr));
 
   HloInstruction* while_body_param = new_while_body->parameter_instruction(0);
   std::vector<HloInstruction*> live_in_instructions;
@@ -319,19 +319,18 @@ MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
                                     int32_t trip_count) {
   Shape scalar_pred = ShapeUtil::MakeShape(PRED, {});
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> cond_computation,
-                      CreateComputationWithSignature(
-                          {&loop_state_shape}, scalar_pred, "while_cond"));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> cond_computation,
+                   CreateComputationWithSignature({&loop_state_shape},
+                                                  scalar_pred, "while_cond"));
 
   HloInstruction* trip_count_constant =
       cond_computation->AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateR0<int32_t>(trip_count)));
 
   HloInstruction* param = cond_computation->parameter_instruction(0);
-  TF_ASSIGN_OR_RETURN(HloInstruction * indvar,
-                      MakeGetTupleElementHlo(param, 0));
+  ASSIGN_OR_RETURN(HloInstruction * indvar, MakeGetTupleElementHlo(param, 0));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * compare,
       MakeCompareHlo(ComparisonDirection::kLt, indvar, trip_count_constant));
   cond_computation->set_root_instruction(compare);
@@ -344,25 +343,24 @@ MakeCountedLoopBodyComputation(
     absl::FunctionRef<absl::StatusOr<WhileUtil::LoopStateTy>(
         HloInstruction*, const WhileUtil::LoopStateTy&)>
         loop_body_generator) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> body_computation,
-                      CreateComputationWithSignature(
-                          {&loop_state_shape}, loop_state_shape, "while_body"));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> body_computation,
+                   CreateComputationWithSignature(
+                       {&loop_state_shape}, loop_state_shape, "while_body"));
   HloInstruction* one = body_computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
   HloInstruction* param = body_computation->parameter_instruction(0);
-  TF_ASSIGN_OR_RETURN(HloInstruction * indvar,
-                      MakeGetTupleElementHlo(param, 0));
-  TF_ASSIGN_OR_RETURN(HloInstruction * next_indvar,
-                      MakeBinaryHlo(HloOpcode::kAdd, indvar, one));
+  ASSIGN_OR_RETURN(HloInstruction * indvar, MakeGetTupleElementHlo(param, 0));
+  ASSIGN_OR_RETURN(HloInstruction * next_indvar,
+                   MakeBinaryHlo(HloOpcode::kAdd, indvar, one));
 
   std::vector<HloInstruction*> loop_body_generator_args;
   for (int i = 1, e = loop_state_shape.tuple_shapes().size(); i < e; i++) {
-    TF_ASSIGN_OR_RETURN(HloInstruction * tuple_element,
-                        MakeGetTupleElementHlo(param, i));
+    ASSIGN_OR_RETURN(HloInstruction * tuple_element,
+                     MakeGetTupleElementHlo(param, i));
     loop_body_generator_args.push_back(tuple_element);
   }
-  TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> next_state,
-                      loop_body_generator(indvar, loop_body_generator_args));
+  ASSIGN_OR_RETURN(std::vector<HloInstruction*> next_state,
+                   loop_body_generator(indvar, loop_body_generator_args));
   next_state.insert(next_state.begin(), next_indvar);
   HloInstruction* next_state_tuple =
       body_computation->AddInstruction(HloInstruction::CreateTuple(next_state));
@@ -415,10 +413,10 @@ WhileUtil::MakeCountedLoop(HloModule* module, int32_t trip_count,
   // use loop_state_shape to create a literal, which requires loop_state_shape
   // to have a layout.
   Shape loop_state_shape = MakeLoopStateShapeWithLayout(init_values);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloComputation> cond,
       MakeCountedLoopConditionComputation(loop_state_shape, trip_count));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloComputation> body,
       MakeCountedLoopBodyComputation(loop_state_shape, loop_body_generator));
   std::unique_ptr<HloInstruction> owned_indvar;
@@ -451,10 +449,9 @@ WhileUtil::MakeCountedLoop(HloModule* module, int32_t trip_count,
     const WhileUtil::LoopStateTy& init_values,
     WhileUtil::LoopBodyGeneratorTy loop_body_generator,
     const OpMetadata& metadata) {
-  TF_ASSIGN_OR_RETURN(
-      auto owning_loop_state,
-      MakeCountedLoop(computation->parent(), trip_count, init_values,
-                      loop_body_generator, metadata));
+  ASSIGN_OR_RETURN(auto owning_loop_state,
+                   MakeCountedLoop(computation->parent(), trip_count,
+                                   init_values, loop_body_generator, metadata));
   for (auto& instruction_to_add : owning_loop_state.instructions_to_add) {
     computation->AddInstruction(std::move(instruction_to_add));
   }

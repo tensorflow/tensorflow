@@ -48,8 +48,7 @@ namespace gpu {
 
 class TransposeFusionBase : public MlirKernelEmitter {
  public:
-  explicit TransposeFusionBase(const HloFusionAnalysis& analysis,
-                               mlir::MLIRContext* mlir_context);
+  explicit TransposeFusionBase(const HloFusionAnalysis& analysis);
 
  protected:
   absl::Status EmitEntryFunction(
@@ -85,7 +84,6 @@ class TransposeFusionBase : public MlirKernelEmitter {
       mlir::ValueRange thread_and_block_ids) const = 0;
 
   const HloFusionAnalysis& analysis_;
-  mlir::MLIRContext* mlir_context_;
 
   // Number of threads per block.
   int64_t num_threads_per_block_;
@@ -118,8 +116,7 @@ class TransposeFusionBase : public MlirKernelEmitter {
 // https://goo.gl/MStRV6.
 class TransposeFusion : public TransposeFusionBase {
  public:
-  explicit TransposeFusion(const HloFusionAnalysis& analysis,
-                           mlir::MLIRContext* mlir_context);
+  explicit TransposeFusion(const HloFusionAnalysis& analysis);
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
@@ -240,8 +237,7 @@ class PackedTranspose : public TransposeFusionBase {
  public:
   explicit PackedTranspose(const HloFusionAnalysis& analysis,
                            const PackedTransposeDescription& spec,
-                           absl::Span<const int64_t> output_block_tile,
-                           mlir::MLIRContext* mlir_context);
+                           absl::Span<const int64_t> output_block_tile);
 
   LaunchDimensions launch_dimensions() const override;
 
@@ -307,7 +303,7 @@ class PackedTranspose : public TransposeFusionBase {
 };
 
 std::unique_ptr<MlirKernelEmitter> CreateTransposeFusion(
-    const HloFusionAnalysis& analysis, mlir::MLIRContext* mlir_context);
+    const HloFusionAnalysis& analysis);
 
 }  // namespace gpu
 }  // namespace xla

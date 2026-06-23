@@ -16,59 +16,53 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
-#include "xla/error_spec.h"
+#include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
-namespace xla {
-namespace gpu {
-
+namespace xla::gpu {
 namespace {
 
-class CompilationParallelismTest : public GpuCodegenTest {
+class CompilationParallelismTest : public GpuPjRtCodegenTest {
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
     // Use multiple threads for compilation
     debug_options.set_xla_gpu_force_compilation_parallelism(4);
     debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(true);
+    debug_options.set_xla_gpu_executable_embed_debug_info(true);
     return debug_options;
   }
 };
 
 TEST_F(CompilationParallelismTest, SharedConstantInMultipleReduce) {
   const char* hlo_text = R"(
-HloModule Module
-
-%add_computation (x: f32[], y: f32[]) -> f32[] {
-  %x = f32[] parameter(0)
-  %y = f32[] parameter(1)
-  ROOT %add0 = f32[] add(f32[] %x, f32[] %y)
-}
-
-ENTRY %fused_computation.371 {
-  %param_0 = f32[4,8,32]{2,1,0} parameter(0)
-  %param_1 = f32[4,10,32]{2,1,0} parameter(1)
-  %constant_0 = f32[] constant(0.0)
-  %reduce_0 = f32[4,8]{1,0} reduce(f32[4,8,32]{2,1,0} %param_0, f32[] %constant_0), dimensions={2}, to_apply=%add_computation
-  %reduce_1 = f32[4,10]{1,0} reduce(f32[4,10,32]{2,1,0} %param_1, f32[] %constant_0), dimensions={2}, to_apply=%add_computation
-  ROOT %tule = (f32[4,8]{1,0}, f32[4,10]{1,0}) tuple(%reduce_0, %reduce_1)
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-
+    HloModule m
+    %add_computation {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add0 = f32[] add(f32[] %x, f32[] %y)
+    }
+    ENTRY %fused_computation.371 {
+      %p0 = f32[4,8,32]{2,1,0} parameter(0)
+      %p1 = f32[4,10,32]{2,1,0} parameter(1)
+      %c0 = f32[] constant(0.0)
+      %reduce_0 = f32[4,8]{1,0} reduce(f32[4,8,32]{2,1,0} %p0, f32[] %c0),
+        dimensions={2}, to_apply=%add_computation
+      %reduce_1 = f32[4,10]{1,0} reduce(f32[4,10,32]{2,1,0} %p1, f32[] %c0),
+        dimensions={2}, to_apply=%add_computation
+      ROOT %tule = (f32[4,8]{1,0}, f32[4,10]{1,0}) tuple(%reduce_0, %reduce_1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   // Make sure constant folding works correctly
   CompileAndOptionallyVerifyPtx(std::move(optimized_module),
                                 R"(
-CHECK-NOT: ld.global.nc.f32 	%f2, [buffer_for_constant_0];
-)");
+    CHECK-NOT: ld.global.nc.f32 	%f2, [buffer_for_constant_0];
+  )");
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

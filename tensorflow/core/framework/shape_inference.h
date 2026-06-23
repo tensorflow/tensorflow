@@ -901,7 +901,7 @@ inline Shape::Shape(const std::vector<DimensionHandle>& dims)
     : rank_(dims.size()), dims_(dims) {}
 
 inline DimensionOrConstant::DimensionOrConstant(DimensionHandle dim)
-    : dim(dim) {
+    : dim(dim), val(InferenceContext::kUnknownDim) {
   DCHECK(dim.IsSet()) << "Internal error: Got nullptr for Dimension.";
 }
 

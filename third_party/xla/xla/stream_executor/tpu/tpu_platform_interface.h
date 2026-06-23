@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/tpu_topology.h"
 
 namespace tensorflow {
 namespace tpu {

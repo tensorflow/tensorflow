@@ -18,10 +18,12 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
@@ -32,7 +34,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/error_spec.h"
 #include "xla/ffi/ffi.h"
-#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -158,7 +159,7 @@ class CommandBufferTest
     TF_ASSERT_OK_AND_ASSIGN(
         auto exec, CreateExecutable(std::move(module), run_hlo_passes));
 
-    auto* pjrt_runner = tsl::down_cast<HloRunnerPjRt*>(&test_runner());
+    auto* pjrt_runner = absl::down_cast<HloRunnerPjRt*>(&test_runner());
     ASSERT_TRUE(pjrt_runner != nullptr);
 
     // Create two copies of device buffers to make sure command buffer saved
@@ -237,6 +238,30 @@ TEST_P(CommandBufferTest, Fusions) {
 
   ExecuteThreePhasesAndExpect(std::move(module), {&argument}, expected,
                               /*run_hlo_passes=*/false);
+}
+
+TEST_P(CommandBufferTest, Convolutions) {
+  constexpr absl::string_view hlo_text = R"(
+HloModule test
+ENTRY Test {
+  input = f32[8,128,2,32] parameter(0)
+  filter = f32[3,3,128,128] parameter(1)
+  conv = f32[8,128,2,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01
+ })";
+
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CONVOLUTION);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+  config.set_debug_options(debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+
+  RunAndCompareThreeIterations(std::move(module), /*run_hlo_passes=*/true,
+                               ErrorSpec{1e-3, 2e-3});
 }
 
 static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
@@ -750,12 +775,22 @@ TEST_P(CommandBufferUnrollTest, WhileLoopMultiDevice) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, results[1]));
 }
 
+std::string GetCommandBufferSchedulingModeName(
+    const ::testing::TestParamInfo<DebugOptions::CommandBufferSchedulingMode>&
+        info) {
+  return DebugOptions::CommandBufferSchedulingMode_Name(info.param);
+}
+
 INSTANTIATE_TEST_SUITE_P(CommandBufferTests, CommandBufferTest,
                          ::testing::Values(DebugOptions::LHS,
-                                           DebugOptions::CONCURRENT));
+                                           DebugOptions::CONCURRENT,
+                                           DebugOptions::CONCURRENT_REGIONS),
+                         GetCommandBufferSchedulingModeName);
 INSTANTIATE_TEST_SUITE_P(CommandBufferTestsUnroll, CommandBufferUnrollTest,
                          ::testing::Values(DebugOptions::LHS,
-                                           DebugOptions::CONCURRENT));
+                                           DebugOptions::CONCURRENT,
+                                           DebugOptions::CONCURRENT_REGIONS),
+                         GetCommandBufferSchedulingModeName);
 
 }  // namespace
 }  // namespace xla::gpu

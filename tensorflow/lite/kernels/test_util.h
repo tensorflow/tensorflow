@@ -33,6 +33,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -43,10 +44,13 @@ limitations under the License.
 #include "absl/log/absl_log.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -738,6 +742,9 @@ class SingleOpModel {
       if (t->type == kTfLiteInt4) {
         PopulateTensor4bit(index, /*offset=*/0, quantized_output.data(),
                            quantized_output.data() + quantized_output.size());
+      } else if (t->type == kTfLiteInt2) {
+        PopulateTensor2bit(index, /*offset=*/0, quantized_output.data(),
+                           quantized_output.data() + quantized_output.size());
       }
     }
   }
@@ -1118,8 +1125,8 @@ class SingleOpModel {
       qmin = -7;
       qmax = 7;
     } else if (type == kTfLiteInt2) {
-      qmin = -2;
-      qmax = 2;
+      qmin = -1;
+      qmax = 1;
     } else {
       qmin = std::numeric_limits<T>::min();
       qmax = std::numeric_limits<T>::max();

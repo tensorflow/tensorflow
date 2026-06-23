@@ -108,7 +108,8 @@ absl::StatusOr<std::string> GpuAotCompilationResult::SerializeAsString() const {
 absl::StatusOr<std::unique_ptr<Executable>>
 GpuAotCompilationResult::LoadExecutable(
     se::Platform::Id platform_id,
-    const se::DeviceDescription& device_description) && {
+    const se::DeviceDescription& device_description,
+    const DebugOptions& debug_options) && {
   const auto symbol_resolver = [&](absl::string_view symbol_name) {
     stream_executor::KernelSymbolRegistry& registry =
         stream_executor::KernelSymbolRegistry::GetGlobalInstance();
@@ -124,8 +125,8 @@ GpuAotCompilationResult::LoadExecutable(
       executable_fingerprint_.low64, executable_fingerprint_.high64);
 
   return GpuExecutable::FromProto(GetExecutableProto(), device_description,
-                                  platform_id->ToName(),
-                                  GetDebugOptionsFromFlags(), symbol_resolver);
+                                  platform_id->ToName(), debug_options,
+                                  symbol_resolver);
 }
 
 const GpuExecutableProto& GpuAotCompilationResult::GetExecutableProto() const {

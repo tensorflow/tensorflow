@@ -47,6 +47,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -223,7 +224,7 @@ absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForModule(
   // ignoring fragmentation. We run the heap simulation on the whole module,
   // rather than summing each computation, since it gives us a better lower
   // bound, by minimizing the liveness of sub-computations.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
       HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
                          *module, schedule, alias_analysis, alias_info,
@@ -236,7 +237,7 @@ absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
     const HloComputation& computation, const HloInstructionSequence& sequence,
     const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
     const LogicalBuffer::SizeFunction* absl_nonnull size_function) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
       HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
                          computation, sequence, alias_analysis, alias_info,
@@ -255,12 +256,12 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
   const HloComputation* entry_computation = module.entry_computation();
   const HloInstructionSequence& instruction_sequence =
       schedule.sequence(entry_computation);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloLiveRange> hlo_live_range,
       HloLiveRange::Run(schedule, alias_analysis, entry_computation));
-  TF_RETURN_IF_ERROR(heap.RunComputation(*entry_computation,
-                                         instruction_sequence, alias_analysis,
-                                         alias_info, hlo_live_range.get()));
+  RETURN_IF_ERROR(heap.RunComputation(*entry_computation, instruction_sequence,
+                                      alias_analysis, alias_info,
+                                      hlo_live_range.get()));
   return heap.Finish();
 }
 
@@ -276,12 +277,12 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
                      /*schedule=*/nullptr);
   HloSchedule schedule(computation.parent());
   schedule.set_sequence(&computation, instruction_sequence);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
-                      HloLiveRange::Run(schedule, alias_analysis, &computation,
-                                        /*module_scoped_analysis=*/false));
-  TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
-                                         alias_analysis, alias_info,
-                                         hlo_live_range.get()));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                   HloLiveRange::Run(schedule, alias_analysis, &computation,
+                                     /*module_scoped_analysis=*/false));
+  RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
+                                      alias_analysis, alias_info,
+                                      hlo_live_range.get()));
   return heap.Finish();
 }
 
@@ -295,12 +296,11 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     const HloSchedule* schedule, const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
                      /*schedule=*/schedule);
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloLiveRange> hlo_live_range,
-      HloLiveRange::Run(*schedule, alias_analysis, &computation));
-  TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
-                                         alias_analysis, alias_info,
-                                         hlo_live_range.get()));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                   HloLiveRange::Run(*schedule, alias_analysis, &computation));
+  RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
+                                      alias_analysis, alias_info,
+                                      hlo_live_range.get()));
   return heap.Finish();
 }
 
@@ -584,7 +584,7 @@ int64_t HeapSimulator::GetBufferSize(const HloValue* buffer) const {
 }
 
 absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Finish() {
-  TF_ASSIGN_OR_RETURN(Result<HloValue> result, algorithm_->Finish());
+  ASSIGN_OR_RETURN(Result<HloValue> result, algorithm_->Finish());
 
   // Post-process the result to add chunks for shared buffers.  An empty chunk
   // map means that either no buffers were allocated, or the heap was only
@@ -603,8 +603,8 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Finish() {
   }
 
   // Fragmentation is the difference between the actual and ideal sizes.
-  TF_ASSIGN_OR_RETURN(const Result<HloValue> no_frag_result,
-                      no_fragmentation_stats_->Finish());
+  ASSIGN_OR_RETURN(const Result<HloValue> no_frag_result,
+                   no_fragmentation_stats_->Finish());
   result.fragmentation_size = result.heap_size - no_frag_result.heap_size;
 
   // Copy the debug trace we collected to the final result.
@@ -2506,42 +2506,45 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
         });
   }
 
+  if (used_chunks_.empty()) {
+    return FreeChunks({{0, INT64_MAX}});
+  }
+
   // Sort used chunks by offset ascending.
   std::sort(used_chunks_.begin(), used_chunks_.end(),
             [](const Chunk& a, const Chunk& b) { return a.offset < b.offset; });
 
-  disjoint_used_chunks_.clear();
-
-  // Merge overlapping used chunks.
-  if (!used_chunks_.empty()) {
-    disjoint_used_chunks_.push_back(used_chunks_[0]);
-    for (size_t i = 1; i < used_chunks_.size(); ++i) {
-      Chunk& last = disjoint_used_chunks_.back();
-      const Chunk& curr = used_chunks_[i];
-      if (curr.offset < last.chunk_end()) {
-        last.size = std::max(last.chunk_end(), curr.chunk_end()) - last.offset;
-      } else {
-        disjoint_used_chunks_.push_back(curr);
-      }
-    }
-  }
-
+  // Merge overlapping used chunks and build free chunks in a single pass.
   // Track the start of the current free space candidate.
   int64_t current_free_chunk_start = 0;
   free_chunks_list_.clear();
 
-  for (const auto& used_chunk : disjoint_used_chunks_) {
-    // If there is a gap between the current free space candidate and the used
-    // chunk and the gap is large enough for the buffer, record it as free
-    if (used_chunk.offset - current_free_chunk_start >= buffer_interval.size) {
-      free_chunks_list_.push_back(
-          {current_free_chunk_start, used_chunk.offset});
+  {
+    const absl::Span<const Chunk> used_chunks = used_chunks_;
+    int64_t current_offset = used_chunks[0].offset;
+    int64_t current_end = used_chunks[0].chunk_end();
+    for (size_t i = 1; i < used_chunks.size(); ++i) {
+      const Chunk& curr = used_chunks[i];
+      if (curr.offset < current_end) {
+        current_end = std::max(current_end, curr.chunk_end());
+      } else {
+        // Emit free chunk before this disjoint used range.
+        if (current_offset - current_free_chunk_start >= buffer_interval.size) {
+          free_chunks_list_.push_back(
+              {current_free_chunk_start, current_offset});
+        }
+        current_free_chunk_start = std::max(
+            current_free_chunk_start, ComputeAlignedChunkEnd(current_end));
+        current_offset = curr.offset;
+        current_end = curr.chunk_end();
+      }
     }
-    // Advance the free space candidate start to after the current used chunk,
-    // respecting alignment requirements.
+    // Emit free chunk before the last disjoint used range.
+    if (current_offset - current_free_chunk_start >= buffer_interval.size) {
+      free_chunks_list_.push_back({current_free_chunk_start, current_offset});
+    }
     current_free_chunk_start =
-        std::max(current_free_chunk_start,
-                 ComputeAlignedChunkEnd(used_chunk.chunk_end()));
+        std::max(current_free_chunk_start, ComputeAlignedChunkEnd(current_end));
   }
 
   free_chunks_list_.push_back({current_free_chunk_start, INT64_MAX});
@@ -2801,7 +2804,7 @@ ConstrainedGlobalDecreasingSizeBestFitHeap::FinishFastMerge() {
   do {
     FreeChunksManager chunks_manager(
         [this](int64_t addr) { return ComputeAlignedChunkEnd(addr); });
-    TF_RETURN_IF_ERROR(AllocateBuffersSortedByTimeInSingleHeap(
+    RETURN_IF_ERROR(AllocateBuffersSortedByTimeInSingleHeap(
         remaining_sorted_buffers, chunks_manager));
     // Collect the result from the currently processed heap and reset the heap
     // states.
@@ -2872,7 +2875,7 @@ ConstrainedGlobalDecreasingSizeBestFitHeap::FinishFastSplit() {
     chunks_manager.Allocate(0, max_end_in_phase_one);
 
     // Second phase: process the rest of the buffers.
-    TF_RETURN_IF_ERROR(AllocateBuffersSortedByTimeInSingleHeap(
+    RETURN_IF_ERROR(AllocateBuffersSortedByTimeInSingleHeap(
         remaining_fast_pass_sorted_buffers, chunks_manager));
 
     // Collect the result from the currently processed heap and reset the heap
@@ -2998,7 +3001,7 @@ ChooseBestHeapAlgorithm<BufferType>::Finish() {
   int64_t min_size = INT64_MAX;
   int min_size_index = -1;
   for (int i = 0; i < algorithms_.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(results[i], algorithms_[i]->Finish());
+    ASSIGN_OR_RETURN(results[i], algorithms_[i]->Finish());
     if (results[i].heap_size < min_size) {
       min_size = results[i].heap_size;
       min_size_index = i;

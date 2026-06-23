@@ -90,16 +90,33 @@ std::string GetEnvProgram() {
 
 class SubProcessTest : public ::testing::Test {};
 
+TEST_F(SubProcessTest, GetArgv) {
+  tsl::SubProcess proc;
+  EXPECT_EQ(proc.GetArgv(), nullptr);
+
+  std::vector<std::string> argv = {NoopProgram(), "arg1", "arg2"};
+  proc.SetProgram(NoopProgram(), argv);
+
+  const char* const* res_argv_ptr = proc.GetArgv();
+  ASSERT_NE(res_argv_ptr, nullptr);
+  std::vector<std::string> res_argv_vec;
+  while (*res_argv_ptr != nullptr) {
+    res_argv_vec.push_back(*res_argv_ptr);
+    res_argv_ptr++;
+  }
+  EXPECT_EQ(argv, res_argv_vec);
+}
+
 TEST_F(SubProcessTest, NoOutputNoComm) {
   tsl::SubProcess proc;
-  proc.SetProgram(NoopProgram().c_str(), {NoopProgram()});
+  proc.SetProgram(NoopProgram(), {NoopProgram()});
   EXPECT_TRUE(proc.Start());
   EXPECT_TRUE(proc.Wait());
 }
 
 TEST_F(SubProcessTest, NoOutput) {
   tsl::SubProcess proc;
-  proc.SetProgram(NoopProgram().c_str(), {NoopProgram()});
+  proc.SetProgram(NoopProgram(), {NoopProgram()});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -115,8 +132,7 @@ TEST_F(SubProcessTest, NoOutput) {
 TEST_F(SubProcessTest, Stdout) {
   tsl::SubProcess proc;
   const char test_string[] = "hello_world";
-  proc.SetProgram(EchoArgv1Program().c_str(),
-                  {EchoArgv1Program(), test_string});
+  proc.SetProgram(EchoArgv1Program(), {EchoArgv1Program(), test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -132,8 +148,7 @@ TEST_F(SubProcessTest, Stdout) {
 TEST_F(SubProcessTest, StdoutIgnored) {
   tsl::SubProcess proc;
   const char test_string[] = "hello_world";
-  proc.SetProgram(EchoArgv1Program().c_str(),
-                  {EchoArgv1Program(), test_string});
+  proc.SetProgram(EchoArgv1Program(), {EchoArgv1Program(), test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -146,7 +161,7 @@ TEST_F(SubProcessTest, StdoutIgnored) {
 TEST_F(SubProcessTest, Stderr) {
   tsl::SubProcess proc;
   const char test_string[] = "muh_failure!";
-  proc.SetProgram(StdErrProgram().c_str(), {StdErrProgram(), test_string});
+  proc.SetProgram(StdErrProgram(), {StdErrProgram(), test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -162,7 +177,7 @@ TEST_F(SubProcessTest, Stderr) {
 TEST_F(SubProcessTest, StderrIgnored) {
   tsl::SubProcess proc;
   const char test_string[] = "muh_failure!";
-  proc.SetProgram(StdErrProgram().c_str(), {StdErrProgram(), test_string});
+  proc.SetProgram(StdErrProgram(), {StdErrProgram(), test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -174,7 +189,7 @@ TEST_F(SubProcessTest, StderrIgnored) {
 
 TEST_F(SubProcessTest, Stdin) {
   tsl::SubProcess proc;
-  proc.SetProgram(EchoProgram().c_str(), {EchoProgram()});
+  proc.SetProgram(EchoProgram(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
@@ -186,7 +201,7 @@ TEST_F(SubProcessTest, Stdin) {
 
 TEST_F(SubProcessTest, StdinStdout) {
   tsl::SubProcess proc;
-  proc.SetProgram(EchoProgram().c_str(), {EchoProgram()});
+  proc.SetProgram(EchoProgram(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -203,7 +218,7 @@ TEST_F(SubProcessTest, StdinStdout) {
 
 TEST_F(SubProcessTest, StdinChildExit) {
   tsl::SubProcess proc;
-  proc.SetProgram(NoopProgram().c_str(), {NoopProgram()});
+  proc.SetProgram(NoopProgram(), {NoopProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
@@ -222,7 +237,7 @@ TEST_F(SubProcessTest, StdinChildExit) {
 
 TEST_F(SubProcessTest, StdinStdoutOverlap) {
   tsl::SubProcess proc;
-  proc.SetProgram(EchoProgram().c_str(), {EchoProgram()});
+  proc.SetProgram(EchoProgram(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -246,7 +261,7 @@ TEST_F(SubProcessTest, StdinStdoutOverlap) {
 
 TEST_F(SubProcessTest, KillProc) {
   tsl::SubProcess proc;
-  proc.SetProgram(EchoProgram().c_str(), {EchoProgram()});
+  proc.SetProgram(EchoProgram(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());

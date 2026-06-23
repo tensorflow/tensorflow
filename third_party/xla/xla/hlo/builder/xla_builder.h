@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -320,9 +321,13 @@ class XlaBuilder {
   //
   // Returns the old op metadata.
   OpMetadata SwapOpMetadata(OpMetadata metadata) {
-    OpMetadata old_metadata = std::move(metadata_);
-    metadata_ = std::move(metadata);
-    return old_metadata;
+    return std::exchange(metadata_, std::move(metadata));
+  }
+
+  // Swaps the passed sharding with the one currently set.
+  // Returns the old sharding.
+  std::optional<OpSharding> SwapSharding(std::optional<OpSharding> sharding) {
+    return std::exchange(sharding_, std::move(sharding));
   }
 
   // Similar to SetOpMetadata, but only set the metadata for the next op.
@@ -1675,6 +1680,8 @@ class XlaBuilder {
                    absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Mul(XlaOp lhs, XlaOp rhs,
                    absl::Span<const int64_t> broadcast_dimensions);
+  friend XlaOp Mulhi(XlaOp lhs, XlaOp rhs,
+                     absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Div(XlaOp lhs, XlaOp rhs,
                    absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Rem(XlaOp lhs, XlaOp rhs,
@@ -2113,7 +2120,7 @@ class XlaBuilder {
   // absl::StatusOr similar to absl::StatusOr.
   template <typename InstructionType>
   absl::StatusOr<InstructionType> LookUpInstructionInternal(XlaOp op) const {
-    TF_RETURN_IF_ERROR(CheckOpBuilder(op));
+    RETURN_IF_ERROR(CheckOpBuilder(op));
     return LookUpInstructionByHandleInternal<InstructionType>(op.handle());
   }
 
@@ -2128,25 +2135,21 @@ class XlaScopedShardingAssignment {
  public:
   XlaScopedShardingAssignment(xla::XlaBuilder* builder,
                               std::optional<OpSharding> sharding)
-      : builder_(builder), prev_sharding_(builder->sharding()) {
-    SetSharding(sharding);
+      : builder_(builder) {
+    // Move the new sharding into the builder, store the original one.
+    prev_sharding_ = builder_->SwapSharding(std::move(sharding));
   }
 
   XlaScopedShardingAssignment(const XlaScopedShardingAssignment&) = delete;
   XlaScopedShardingAssignment& operator=(const XlaScopedShardingAssignment&) =
       delete;
 
-  ~XlaScopedShardingAssignment() { SetSharding(prev_sharding_); }
-
- private:
-  void SetSharding(const std::optional<OpSharding>& sharding) {
-    if (sharding.has_value()) {
-      builder_->SetSharding(sharding.value());
-    } else {
-      builder_->ClearSharding();
-    }
+  ~XlaScopedShardingAssignment() {
+    // Restore the original sharding.
+    builder_->SwapSharding(std::move(prev_sharding_));
   }
 
+ private:
   xla::XlaBuilder* const builder_;
   std::optional<OpSharding> prev_sharding_;
 };
@@ -2857,6 +2860,10 @@ XlaOp Sub(XlaOp lhs, XlaOp rhs,
 // Enqueues a multiply instruction onto the computation.
 XlaOp Mul(XlaOp lhs, XlaOp rhs,
           absl::Span<const int64_t> broadcast_dimensions = {});
+
+// Enqueues a multiply-high instruction onto the computation.
+XlaOp Mulhi(XlaOp lhs, XlaOp rhs,
+            absl::Span<const int64_t> broadcast_dimensions = {});
 
 // Enqueues a divide instruction onto the computation.
 XlaOp Div(XlaOp lhs, XlaOp rhs,

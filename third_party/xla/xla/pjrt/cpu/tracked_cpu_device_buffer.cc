@@ -16,19 +16,16 @@ limitations under the License.
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
-#include <vector>
 
-#include "absl/base/casts.h"
 #include "absl/base/no_destructor.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/future.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
@@ -158,16 +155,49 @@ tsl::AsyncValueRef<CpuDeviceMemory> CpuDeviceMemory::CreateForeignMemory(
       base, size, std::move(on_delete_callback));
 }
 
+class CpuDeviceMemorySlice final : public CpuDeviceMemory {
+ public:
+  CpuDeviceMemorySlice(tsl::AsyncValueRef<CpuDeviceMemory> base, size_t offset,
+                       size_t size)
+      : base_(std::move(base)), offset_(offset), size_bytes_(size) {}
+
+  void* untyped_data() const final {
+    return static_cast<uint8_t*>(base_->untyped_data()) + offset_;
+  }
+  size_t size_bytes() const final { return size_bytes_; }
+
+ private:
+  tsl::AsyncValueRef<CpuDeviceMemory> base_;
+  size_t offset_;
+  size_t size_bytes_;
+};
+
 tsl::AsyncValueRef<CpuDeviceMemory> CpuDeviceMemory::CreateConstantMemory(
     void* base, size_t size) {
   return tsl::MakeAvailableAsyncValueRef<CpuDeviceMemoryConstant>(base, size);
 }
 
+tsl::AsyncValueRef<CpuDeviceMemory> CpuDeviceMemory::CreateSlicedMemory(
+    tsl::AsyncValueRef<CpuDeviceMemory> base_async_value, size_t offset,
+    size_t size) {
+  auto slice = tsl::MakeConstructedAsyncValueRef<CpuDeviceMemorySlice>(
+      base_async_value, offset, size);
+  base_async_value.AndThen(
+      [slice = slice.CopyRef(), base = base_async_value.CopyRef()]() mutable {
+        if (auto* error = base.GetErrorIfPresent()) {
+          slice.SetError(*error);
+        } else {
+          slice.SetStateConcrete();
+        }
+      });
+  return slice;
+}
+
 // Allocates owning memory wrapped in an available `AsyncValueRef`.
 absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> CpuDeviceMemory::Allocate(
     size_t size_bytes, const Allocator& allocator) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<RawMemory> mem,
-                      allocator.Allocate(size_bytes, cpu::MinAlign()));
+  ASSIGN_OR_RETURN(std::unique_ptr<RawMemory> mem,
+                   allocator.Allocate(size_bytes, cpu::MinAlign()));
   return tsl::MakeAvailableAsyncValueRef<CpuDeviceMemoryOwned>(std::move(mem));
 }
 
@@ -179,182 +209,10 @@ absl::Status CpuDeviceMemory::AllocateInto(
     return Internal("Delayed memory is not a CpuDeviceMemoryOwned");
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<RawMemory> mem,
-                      allocator.Allocate(size_bytes, cpu::MinAlign()));
+  ASSIGN_OR_RETURN(std::unique_ptr<RawMemory> mem,
+                   allocator.Allocate(size_bytes, cpu::MinAlign()));
   owned_memory.emplace(std::move(mem));
   return absl::OkStatus();
-}
-
-//===----------------------------------------------------------------------===//
-// TrackedCpuDeviceBuffer.
-//===----------------------------------------------------------------------===//
-
-TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
-    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-    tsl::AsyncValueRef<CpuEvent> definition_event)
-    : AbstractTrackedDeviceBuffer(std::move(raw_buffer), [definition_event]() {
-        absl::InlinedVector<PjRtDeviceEventRef, 2> events;
-        if (definition_event) {
-          events.push_back(PjRtDeviceEventRef(std::move(definition_event)));
-        }
-        return events;
-      }()) {
-  DCHECK(!definition_events().empty());
-}
-
-TrackedCpuDeviceBuffer::~TrackedCpuDeviceBuffer() = default;
-
-const tsl::AsyncValueRef<CpuDeviceMemory>& TrackedCpuDeviceBuffer::buffer() {
-  if (raw_buffer()) {
-    return absl::down_cast<CpuRawBuffer*>(this->raw_buffer().get())->buffer();
-  }
-  static absl::NoDestructor<tsl::AsyncValueRef<CpuDeviceMemory>> missing_buffer;
-  return *missing_buffer;
-}
-
-size_t TrackedCpuDeviceBuffer::BufferSize() {
-  return raw_buffer() ? raw_buffer()->GetOnDeviceSizeInBytes() : 0;
-}
-
-void TrackedCpuDeviceBuffer::AddUsageEvents(
-    absl::Span<tsl::AsyncValueRef<CpuEvent>> events) {
-  // Periodically remove available usage events to prevent memory blowup.
-  if (usage_events_.size() >= 1024) {
-    int i = 0;
-    while (i < usage_events_.size()) {
-      auto& event = usage_events_[i];
-      if (event.IsAvailable()) {
-        using std::swap;
-        swap(event, usage_events_.back());
-        usage_events_.pop_back();
-        continue;
-      }
-      ++i;
-    }
-  }
-  for (auto& ev : events) {
-    usage_events_.push_back(std::move(ev));
-  }
-}
-
-absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>
-TrackedCpuDeviceBuffer::LockUseAndTransferUsageEvents() {
-  return std::move(usage_events_);
-}
-
-void TrackedCpuDeviceBuffer::ConfirmDonation() {
-  ReleaseDeviceMemory();
-  usage_events_.clear();
-}
-
-
-std::vector<tsl::RCReference<tsl::AsyncValue>>
-TrackedCpuDeviceBuffer::GetAsyncValueDefinitionAndUsageEvents() {
-  std::vector<tsl::RCReference<tsl::AsyncValue>> result;
-  if (auto ev = definition_event()) {
-    result.push_back(ev.CopyRCRef());
-  }
-  for (auto& event : usage_events_) {
-    result.push_back(event.CopyRCRef());
-  }
-  return result;
-}
-
-void TrackedCpuDeviceBuffer::AddUsageEvent(PjRtDeviceEventRef event) {
-  if (event) {
-    auto cpu_event = event.down_cast<CpuEvent>();
-    AddUsageEvents({&cpu_event, 1});
-  }
-}
-
-void TrackedCpuDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
-  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer(this);
-  // Now that all holds have completed and no more can be added, we can get
-  // the final set of usage events.
-  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> usage_events =
-      device_buffer->LockUseAndTransferUsageEvents();
-
-  std::vector<tsl::AsyncValue*> event_avs;
-  event_avs.reserve(usage_events.size() + 1);
-  for (auto& event : usage_events) {
-    event_avs.push_back(event.GetAsyncValue());
-  }
-
-  // We should also wait for the definition event.
-  event_avs.push_back(device_buffer->definition_event().GetAsyncValue());
-
-  RunWhenReady(event_avs, [device_buffer = std::move(device_buffer)]() mutable {
-    device_buffer.reset();
-  });
-}
-
-Future<> TrackedCpuDeviceBuffer::GetReadyFuture(PjRtMemorySpace* memory_space) {
-  auto [promise, future] = MakePromise<>();
-
-  absl::down_cast<CommonPjRtClient*>(memory_space->client())
-      ->TrackFuture(memory_space, "BufferDefinitionEvent", future);
-
-  definition_event().AndThen([definition_event = definition_event().AsPtr(),
-                              promise = std::move(promise)]() mutable {
-    if (definition_event.IsError()) {
-      const absl::Status& s = definition_event.GetError();
-      promise.Set(tsl::errors::CreateWithUpdatedMessage(
-          s, absl::StrCat("Buffer Definition Event: ", s.message())));
-    } else {
-      promise.Set();
-    }
-  });
-
-  return future;
-}
-
-absl::StatusOr<PjRtDeviceEventRef> TrackedCpuDeviceBuffer::GetDefinitionEvent(
-    PjRtMemorySpace* memory_space) {
-  if (auto ev = definition_event()) {
-    return PjRtDeviceEventRef(ev);
-  }
-  return absl::InternalError(
-      "GetDefinitionEvent only supported on CPU for buffers with "
-      "exactly 1 definition event.");
-}
-
-absl::Status TrackedCpuDeviceBuffer::BlockForOperationsToComplete(
-    PjRtMemorySpace* memory_space) {
-  // Block the host until all usage events have completed. We do not return
-  // the error of a usage event because it does not matter if these usages
-  // failed.
-  for (const auto& av : usage_events_) {
-    BlockUntilReady(av.GetAsyncValue());
-  }
-
-  if (auto ev = definition_event()) {
-    BlockUntilReady(ev.GetAsyncValue());
-    if (auto* error = ev.GetErrorIfPresent()) {
-      return absl::InternalError(
-          absl::StrFormat("Error Execute: %s", error->message()));
-    }
-  }
-  return absl::OkStatus();
-}
-
-bool TrackedCpuDeviceBuffer::AddDefinitionEventsToSet(
-    PjRtDeviceEventSet& events) {
-  if (auto ev = definition_event()) {
-    if (!ev.IsAvailable() || ev.IsError()) {
-      absl::down_cast<CpuTrackedDeviceEventSet*>(&events)->AddEvent(
-          ev.CopyRCRef());
-    }
-  }
-  return false;
-}
-
-void TrackedCpuDeviceBuffer::AddUsageEventsToSet(PjRtDeviceEventSet& events) {
-  for (const auto& ev : usage_events_) {
-    if (!ev.IsAvailable()) {
-      absl::down_cast<CpuTrackedDeviceEventSet*>(&events)->AddEvent(
-          ev.CopyRCRef());
-    }
-  }
 }
 
 }  // namespace xla

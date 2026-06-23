@@ -24,12 +24,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/device_address_vmm_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_reservation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/vmm_device_address_allocator.h"
 
 namespace stream_executor::gpu {
 
@@ -44,6 +44,8 @@ namespace stream_executor::gpu {
 // the device does not meet the compute capability requirement.
 class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
  public:
+  ~CudaDeviceAddressVmmAllocator() override;
+
   // Creates an allocator supporting multiple devices.
   //
   // Returns an error if any device does not support cuStreamWriteValue64

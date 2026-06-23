@@ -30,18 +30,20 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/command.h"
-#include "xla/backends/gpu/runtime/command_buffer_cmd.h"
+#include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
+#include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
-#include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -97,7 +99,7 @@ struct OwningExecutableSource {
 };
 
 absl::StatusOr<OwningExecutableSource> ExecutableSource() {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<uint8_t> fatbin,
       se::gpu::GetGpuTestKernelsFatbin(GpuExecutor()->GetPlatform()->Name()));
   return OwningExecutableSource{/*text=*/{},
@@ -736,10 +738,17 @@ TEST(CommandBufferThunkTest, GemmCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandSequence commands;
-  commands.Append(
-      std::make_unique<GemmThunk>(Thunk::ThunkInfo{}, config.value(), slice_lhs,
-                                  slice_rhs, slice_out, slice_workspace,
-                                  /*deterministic=*/true));
+  Shape lhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4});
+  Shape rhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3});
+  Shape output_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3});
+  commands.Append(std::make_unique<CublasLtMatmulThunk>(
+      Thunk::ThunkInfo(), "canonical_hlo", config.value(),
+      se::gpu::BlasLt::Epilogue::kDefault, 0, 0,
+      ShapedSlice{slice_lhs, lhs_shape}, ShapedSlice{slice_rhs, rhs_shape},
+      ShapedSlice{slice_out, output_shape},
+      ShapedSlice{slice_out, output_shape}, std::nullopt, std::nullopt,
+      std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt,
+      std::nullopt, std::nullopt));
   TF_ASSERT_OK_AND_ASSIGN(
       CommandExecutor executor,
       CommandExecutor::Create(std::move(commands), serialize));
@@ -863,7 +872,7 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
       se::gpu::BlasLt::Epilogue::kDefault, /*algorithm_idx=*/0,
       /*autotune_workspace_size=*/0, slice_a, slice_b, slice_c, slice_d,
       std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt,
-      std::nullopt, std::nullopt, slice_workspace);
+      std::nullopt, std::nullopt, std::nullopt, slice_workspace);
   TF_ASSERT_OK_AND_ASSIGN(
       CommandExecutor executor,
       CommandExecutor::Create(std::move(commands), serialize));
@@ -1086,7 +1095,7 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 21 + 21));
 }
 
-TEST(CommandBufferThunkTest, CaseCmd) {
+TEST(CommandBufferThunkTest, ConditionalThunkCaseCommand) {
   se::StreamExecutor* stream_executor = GpuExecutor();
 
   if (!IsAtLeastCuda12300(stream_executor)) {
@@ -1122,8 +1131,8 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
-  // Prepare commands sequence for branches.
-  std::vector<CommandSequence> branches_sequence(2);
+  // Prepare thunk sequences for branches.
+  std::vector<ThunkSequence> branch_thunks(2);
 
   auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
                       MemoryAccess::kWrite};
@@ -1131,7 +1140,7 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   {  // Case 0: b = a + a
     std::vector<ShapedSlice> args{
         {slice_a, shape}, {slice_a, shape}, {slice_b, shape}};
-    branches_sequence[0].Append(KernelThunk::MakeKernelThunk(
+    branch_thunks[0].push_back(KernelThunk::MakeKernelThunk(
         "AddI32", args, args_access, LaunchDimensions(1, 4),
         /*shmem_bytes=*/0));
   }
@@ -1139,28 +1148,26 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   {  // Case 1: b = b + b
     std::vector<ShapedSlice> args{
         {slice_b, shape}, {slice_b, shape}, {slice_b, shape}};
-    branches_sequence[1].Append(KernelThunk::MakeKernelThunk(
+    branch_thunks[1].push_back(KernelThunk::MakeKernelThunk(
         "AddI32", args, args_access, LaunchDimensions(1, 4),
         /*shmem_bytes=*/0));
   }
 
-  std::vector<CommandExecutor> branches(2);
-  TF_ASSERT_OK_AND_ASSIGN(
-      branches[0],
-      CommandExecutor::Create(std::move(branches_sequence[0]), serialize));
-  TF_ASSERT_OK_AND_ASSIGN(
-      branches[1],
-      CommandExecutor::Create(std::move(branches_sequence[1]), serialize));
+  // Prepare thunk sequence for command buffer conversion.
+  ThunkSequence thunks;
+  thunks.push_back(std::make_unique<ConditionalThunk>(
+      Thunk::ThunkInfo(), ShapedSlice{slice_i, i_shape},
+      std::move(branch_thunks)));
 
-  // Prepare commands sequence for thunk.
-  CommandSequence commands;
-  commands.Emplace<CaseCmd>(ShapedSlice{slice_i, i_shape}, std::move(branches));
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor executor,
-      CommandExecutor::Create(std::move(commands), serialize));
+  ConvertToCommandsOptions options;
+  options.synchronization_mode = serialize;
+  ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
+                       ConvertToCommands(thunks, options));
 
-  // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
+  // Construct a command buffer thunk with command sequence and fallback thunks.
+  CommandBufferThunk thunk(
+      std::move(executor), Thunk::ThunkInfo(),
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks)));
 
   ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
@@ -1195,7 +1202,7 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 2 * (42 + 42)));
 }
 
-TEST(CommandBufferThunkTest, WhileCmd) {
+TEST(CommandBufferThunkTest, WhileThunk) {
   se::StreamExecutor* stream_executor = GpuExecutor();
 
   if (!IsAtLeastCuda12300(stream_executor)) {
@@ -1247,34 +1254,33 @@ TEST(CommandBufferThunkTest, WhileCmd) {
   auto body_args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
                            MemoryAccess::kWrite};
 
-  // Prepare commands sequence for loop `cond`.
-  CommandSequence cond_commands;
-  cond_commands.Append(KernelThunk::MakeKernelThunk(
+  // Prepare thunk sequence for loop `cond`.
+  ThunkSequence cond_thunks;
+  cond_thunks.push_back(KernelThunk::MakeKernelThunk(
       "IncAndCmp", cond_args, cond_args_access, LaunchDimensions(1, 1),
       /*shmem_bytes=*/0));
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor cond_executor,
-      CommandExecutor::Create(std::move(cond_commands), serialize));
 
-  // Prepare commands sequence for loop `body`.
-  CommandSequence body_commands;
-  body_commands.Append(KernelThunk::MakeKernelThunk(
+  // Prepare thunk sequence for loop `body`.
+  ThunkSequence body_thunks;
+  body_thunks.push_back(KernelThunk::MakeKernelThunk(
       "AddI32", body_args, body_args_access, LaunchDimensions(1, 4),
       /*shmem_bytes=*/0));
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor body_executor,
-      CommandExecutor::Create(std::move(body_commands), serialize));
 
-  // Prepare commands sequence for thunk.
-  CommandSequence commands;
-  commands.Emplace<WhileCmd>(slice_pred, std::move(cond_executor),
-                             std::move(body_executor));
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor executor,
-      CommandExecutor::Create(std::move(commands), serialize));
+  // Prepare thunk sequence for command buffer conversion.
+  ThunkSequence thunks;
+  thunks.push_back(std::make_unique<WhileThunk>(Thunk::ThunkInfo(), slice_pred,
+                                                std::move(cond_thunks),
+                                                std::move(body_thunks)));
 
-  // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
+  ConvertToCommandsOptions options;
+  options.synchronization_mode = serialize;
+  ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
+                       ConvertToCommands(thunks, options));
+
+  // Construct a command buffer thunk with command sequence and fallback thunks.
+  CommandBufferThunk thunk(
+      std::move(executor), Thunk::ThunkInfo(),
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks)));
 
   ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);

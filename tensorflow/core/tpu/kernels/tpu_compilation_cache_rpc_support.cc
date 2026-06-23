@@ -16,20 +16,22 @@ limitations under the License.
 
 #include <memory>
 
+#include "third_party/grpc/include/grpcpp/security/credentials.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
-#include "tensorflow/core/platform/casts.h"
-#if defined(LIBTPU_ON_GCE)
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
-#endif
-#include "absl/cleanup/cleanup.h"
-#include "xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
+
+#if defined(LIBTPU_ON_GCE)
+#include "absl/cleanup/cleanup.h"
+#include "xla/tpu/proto_helper.h"
+#include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
+#endif
 
 namespace tensorflow {
 namespace tpu {
 std::shared_ptr<::grpc::ChannelCredentials> CreateChannelCredentials() {
-  return ::grpc::InsecureChannelCredentials();  // NOLINT
+  return ::grpc::InsecureChannelCredentials();
 }
 
 #if defined(LIBTPU_ON_GCE)

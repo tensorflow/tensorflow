@@ -306,24 +306,37 @@ bool ComputeRelativeLocation::AddControlDependenceForUnorderedOps() {
   PredecessorHloOrdering* ordering =
       dynamic_cast<PredecessorHloOrdering*>(ordering_);
   if (ordering == nullptr) {
-    // Support force ordering of unordered-ops only when using predecssor
+    // Support force ordering of unordered-ops only when using predecessor
     // ordering.
     return false;
   }
+  // NOLINTNEXTLINE computation order is not important for correctness.
   for (const auto& comp_it : ctrl_deps_) {
     HloComputation* parent = comp_it.first;
     HloReachabilityMap& reachability_map = ordering->reachability_map(parent);
+    absl::flat_hash_map<const HloInstruction*,
+                        absl::flat_hash_set<const HloInstruction*>>
+        to_update;
+    // NOLINTNEXTLINE the loop aggregation is order independent.
     for (const auto& instr_it : comp_it.second) {
-      HloInstruction* entry1 = instr_it.first;
-      for (HloInstruction* entry2 : instr_it.second) {
-        VLOG(3) << "   Adding control dependence between:";
-        VLOG(3) << "     predecessor: " << entry2->name();
-        VLOG(3) << "       successor: " << entry1->name();
-        CHECK_OK(entry2->AddControlDependencyTo(entry1));
+      HloInstruction* successor = instr_it.first;
+      for (HloInstruction* predecessor : instr_it.second) {
+        VLOG(3) << "   Adding control dependence between predecessor: "
+                << predecessor->name()
+                << " and successor: " << successor->name();
+        CHECK_OK(predecessor->AddControlDependencyTo(successor));
+        to_update[successor].insert(predecessor);
       }
-      reachability_map.UpdateReachabilityThroughInstruction(entry1);
-      for (HloInstruction* entry2 : instr_it.second) {
-        DCHECK(ordering_->GetExecutionConstraint(entry1, entry2) ==
+    }
+    // Adding all control dependencies and updating in one go is more efficient
+    // than calling UpdateReachabilityThroughInstruction for each new
+    // dependence.
+    reachability_map.UpdateMultipleInstructions(std::move(to_update));
+    // NOLINTNEXTLINE the order has no effect on the correctness.
+    for (const auto& instr_it : comp_it.second) {
+      const HloInstruction* successor = instr_it.first;
+      for (const HloInstruction* predecessor : instr_it.second) {
+        DCHECK(ordering_->GetExecutionConstraint(successor, predecessor) ==
                HloOrdering::ExecutionConstraint::kRunAfter);
       }
     }

@@ -38,6 +38,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -1595,6 +1596,12 @@ absl::string_view Tensor::tensor_data() const {
   if (buf_ == nullptr) return absl::string_view();
   CHECK(DataTypeCanUseMemcpy(dtype()));  // Crash OK
   return tensor_data_internal();
+}
+
+absl::Cord Tensor::tensor_data_cord() const {
+  if (buf_ == nullptr) return absl::Cord();
+  return absl::MakeCordFromExternal(tensor_data(),
+                                    [t = *this](absl::string_view) {});
 }
 
 void* Tensor::data() const {

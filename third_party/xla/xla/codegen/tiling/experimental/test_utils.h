@@ -17,8 +17,10 @@ limitations under the License.
 #define XLA_CODEGEN_TILING_EXPERIMENTAL_TEST_UTILS_H_
 
 #include <cstdint>
+#include <string>
 
 #include <gmock/gmock.h>
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
@@ -27,8 +29,17 @@ limitations under the License.
 namespace xla::gpu::experimental {
 
 MATCHER_P(MatchString, tile_string, "") {
-  return ExplainMatchResult(true, ApproximateMatch(tile_string, arg.ToString()),
-                            result_listener);
+  const absl::string_view expected_string = tile_string;
+  const std::string actual_string = arg.ToString();
+  const auto [expected_index, actual_index] =
+      FindApproximateMismatch(expected_string, actual_string);
+  const bool matches = expected_index == expected_string.size() &&
+                       actual_index == actual_string.size();
+  if (!matches) {
+    *result_listener << GetMismatchReport(expected_index, actual_index,
+                                          tile_string, arg.ToString());
+  }
+  return matches;
 }
 
 Tile GetTestTile(const TilingSpace& tiling_space,

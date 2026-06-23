@@ -20,6 +20,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -30,13 +31,17 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/cubin_custom_kernel_compiler.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
-#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -44,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/object_pool.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -54,13 +60,26 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
+using ::testing::AllOf;
+using ::testing::ElementsAre;
 using ::testing::Optional;
 using ::tsl::proto_testing::EqualsProto;
+
+MATCHER_P(HasShape, expected_shape, "") {
+  return arg != nullptr && arg->shape() == expected_shape;
+}
+MATCHER_P(HasOpcode, expected_opcode, "") {
+  return arg != nullptr && arg->opcode() == expected_opcode;
+}
+MATCHER_P(HasNumOperands, expected_operands, "") {
+  return arg != nullptr && arg->operand_count() == expected_operands;
+}
 
 struct ModuleWithFusion {
   std::unique_ptr<HloModule> module;
@@ -76,7 +95,6 @@ struct ModuleWithFusion {
 };
 
 struct ModuleWithEmitter : public ModuleWithFusion {
-  mlir::MLIRContext mlir_context;
   std::optional<HloFusionAnalysis> analysis;
   std::unique_ptr<TritonFusion> emitter;
   llvm::LLVMContext llvm_context;
@@ -96,8 +114,8 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<ModuleWithFusion> BuildModuleWithFusion(
       std::string module_str) const {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        ParseAndReturnVerifiedModule(module_str));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(module_str));
     const HloInstruction* instr = hlo_query::GetFirstInstructionWithOpcode(
         *module->entry_computation(), HloOpcode::kAllReduceStart);
     std::unique_ptr<HloModule> module_with_fusion =
@@ -142,9 +160,9 @@ class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
  public:
   absl::StatusOr<std::unique_ptr<ModuleWithEmitter>> BuildModuleWithEmitter(
       std::string module_str, const se::DeviceDescription& device_info) const {
-    TF_ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
-                        BuildModuleWithFusion(std::move(module_str)));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
+                     BuildModuleWithFusion(std::move(module_str)));
+    ASSIGN_OR_RETURN(
         bool collective_fusion_config_set,
         TrySetGpuBackendConfigForCollective(
             device_info_, module_with_fusion.MutableFusionInstr()));
@@ -158,8 +176,7 @@ class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
     result->analysis =
         HloFusionAnalysis::Create(*result->FusionInstr(), device_info);
     std::unique_ptr<FusionInterface> fusion_emitter =
-        GetFusionEmitter(PreBufferAssignmentFusionInfo{*result->analysis},
-                         &result->mlir_context);
+        GetFusionEmitter(PreBufferAssignmentFusionInfo{*result->analysis});
     TritonFusion* triton_emitter =
         dynamic_cast<TritonFusion*>(fusion_emitter.get());
     TF_RET_CHECK(triton_emitter != nullptr);
@@ -269,7 +286,7 @@ TEST_F(CollectiveEmitterTest, AllReduceWithTritonGetLaunchConfig) {
   auto& result = *result_ptr;
   const TritonFusion* triton_fusion = result.emitter.get();
   ASSERT_NE(triton_fusion, nullptr);
-  auto const launch_config = triton_fusion->GetLaunchConfig();
+  auto const launch_config = TritonFusion::GetLaunchConfig(&*result.analysis);
   ASSERT_NE(launch_config, std::nullopt);
   EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 32);
   EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 512);
@@ -286,12 +303,29 @@ TEST_P(CollectiveEmitterParameterizedTest,
       BuildModuleWithEmitter(GetModuleStr(GetParam()), device_info_));
   const TritonFusion* triton_fusion = result->emitter.get();
   ASSERT_NE(triton_fusion, nullptr);
+
+  auto llvm_compiler =
+      [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
+          const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
+    return std::vector<uint8_t>{1};
+  };
+  DebugOptions debug_options;
+  CubinCustomKernelCompiler kernel_compiler(llvm_compiler, device_info_,
+                                            debug_options);
+
+  ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
+      []() { return CreateMlirContext(); });
+  TF_ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
+                          mlir_context_pool.GetOrCreate());
+
   TF_ASSERT_OK_AND_ASSIGN(  // Check that we can generate the kernel
       TritonWrapperResult triton_kernel,
-      triton_fusion->GenerateTritonKernelAndWrapper(
-          *result->FusionInstr(), "test-all-reduce-start", device_info_,
-          result->target_triple, result->data_layout, &result->llvm_context,
-          &result->mlir_context));
+      triton_fusion
+          ->GenerateTritonKernelAndWrapper(
+              *result->FusionInstr(), "test-all-reduce-start", device_info_,
+              result->target_triple, result->data_layout,
+              std::move(borrowed_context), &kernel_compiler)
+          .Await());
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -374,6 +408,43 @@ INSTANTIATE_TEST_SUITE_P(
          }}),
     [](const ::testing::TestParamInfo<GreedyPowerOfTwoTilesTest::ParamType>&
            info) { return info.param.test_name; });
+
+TEST_F(CollectiveEmitterTest, FlattenCollectiveComputation) {
+  Shape shape_3d = ShapeUtil::MakeShape(F32, {2, 4, 8});
+  Shape shape_1d = ShapeUtil::MakeShape(F32, {64});  // 2 * 4 * 8
+  TF_ASSERT_OK_AND_ASSIGN(ModuleWithFusion module_with_fusion,
+                          BuildModuleWithFusion(GetModuleStr(shape_3d)));
+  HloFusionInstruction* fusion_instr = module_with_fusion.MutableFusionInstr();
+  EXPECT_THAT(fusion_instr,
+              AllOf(HasOpcode(HloOpcode::kFusion), HasShape(shape_3d)));
+
+  HloComputation* entry_computation =
+      module_with_fusion.module->entry_computation();
+  EXPECT_OK(FlattenCollectiveFusion(fusion_instr));
+
+  // Output bitcast should have the original 3D shape.
+  HloInstruction* root = entry_computation->root_instruction();
+  EXPECT_THAT(root, AllOf(HasOpcode(HloOpcode::kBitcast), HasShape(shape_3d),
+                          HasNumOperands(1)));
+
+  // All other ops should have the flattened 1D shape.
+  HloInstruction* new_fusion_instr = root->mutable_operand(0);
+  EXPECT_THAT(new_fusion_instr, AllOf(HasOpcode(HloOpcode::kFusion),
+                                      HasShape(shape_1d), HasNumOperands(1)));
+
+  HloInstruction* input_bitcast = new_fusion_instr->mutable_operand(0);
+  EXPECT_THAT(input_bitcast, AllOf(HasOpcode(HloOpcode::kBitcast),
+                                   HasShape(shape_1d), HasNumOperands(1)));
+  EXPECT_THAT(input_bitcast->operand(0), HasOpcode(HloOpcode::kParameter));
+
+  HloComputation* fused_comp =
+      new_fusion_instr->fused_instructions_computation();
+  EXPECT_THAT(
+      fused_comp->parameter_instructions(),
+      ElementsAre(AllOf(HasOpcode(HloOpcode::kParameter), HasShape(shape_1d))));
+  EXPECT_THAT(fused_comp->root_instruction(),
+              AllOf(HasOpcode(HloOpcode::kAllReduceStart), HasShape(shape_1d)));
+}
 
 }  // namespace
 

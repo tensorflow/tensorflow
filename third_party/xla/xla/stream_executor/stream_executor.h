@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -188,6 +189,10 @@ class StreamExecutor {
     return absl::UnimplementedError("Not implemented");
   }
 
+  // Checks if the given address points to the memory which was allocated with
+  // virtual memory management API.
+  virtual bool IsVmmMemory(const DeviceAddressBase& address) { return false; }
+
   // Synchronizes all activity occurring in the StreamExecutor's context.
   virtual bool SynchronizeAllActivity() = 0;
 
@@ -228,7 +233,7 @@ class StreamExecutor {
   virtual void DeallocateStream(Stream* stream) = 0;
 
   // Enables peer access from this StreamExecutor to memory
-  // allocated by other, such that launched device code, memcpies, etc may
+  // allocated by other, such that launched device code, memcopies, etc may
   // access it directly.
   virtual absl::Status EnablePeerAccessTo(StreamExecutor* other) = 0;
 
@@ -415,7 +420,20 @@ inline DeviceAddress<T> StreamExecutor::AllocateArray(uint64_t element_count,
                  << "]";
     return DeviceAddress<T>();
   }
-  return DeviceAddress<T>(Allocate(bytes, memory_space));
+
+  DeviceAddressBase raw_allocation = Allocate(bytes, memory_space);
+  if (raw_allocation.is_null()) {
+    return DeviceAddress<T>();
+  }
+
+  // Raw allocations can report a larger backend allocation size (for example,
+  // CUDA VMM granularity padding). AllocateArray exposes only the logical array
+  // byte range because callers requested exactly `element_count` elements and
+  // should not treat allocator padding as additional array elements.
+  DCHECK_GE(raw_allocation.size(), bytes);
+  DeviceAddressBase logical_allocation(raw_allocation.opaque(), bytes);
+  logical_allocation.SetPayload(raw_allocation.payload());
+  return DeviceAddress<T>(logical_allocation);
 }
 
 }  // namespace stream_executor

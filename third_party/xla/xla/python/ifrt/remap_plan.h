@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device_list.h"
@@ -140,7 +141,7 @@ struct RemapPlan {
   absl::StatusOr<RemapPlanProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     RemapPlanProto proto;
-    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 

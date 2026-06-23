@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/propagate_call_metadata.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
@@ -898,6 +899,39 @@ ENTRY main {
   EXPECT_THAT(root, op::Reduce());
   EXPECT_EQ(root->metadata().op_name(), "x/reduce");
   EXPECT_EQ(root->to_apply()->root_instruction()->metadata().op_name(), "");
+}
+
+TEST_F(CallInlinerTest, PropagateCallMetadataThenInlineDoesNotDuplicate) {
+  const char* hlo = R"(
+callee {
+  input = f32[128,32] parameter(0)
+  ROOT neg = f32[128,32] negate(input), metadata={op_name="neg"}
+}
+
+ENTRY main {
+  input = f32[128,32] parameter(0)
+  ROOT result = f32[128,32] call(input), to_apply=callee, metadata={op_name="x"}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  // First run the standalone pass — this propagates "x" into callee.
+  TF_ASSERT_OK_AND_ASSIGN(bool propagated,
+                          PropagateCallMetadata().Run(m.get()));
+  EXPECT_TRUE(propagated);
+
+  // Callee instruction should already have "x/neg".
+  HloComputation* callee = m->GetComputationWithName("callee");
+  EXPECT_EQ(callee->root_instruction()->metadata().op_name(), "x/neg");
+
+  // Now inline — the inliner also propagates metadata by default.
+  // Because "x/neg" already starts with "x", UpdateOpName should be a no-op.
+  ASSERT_THAT(CallInliner().Run(m.get()), absl_testing::IsOkAndHolds(true));
+
+  auto root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Negate());
+  EXPECT_EQ(root->metadata().op_name(), "x/neg");
 }
 
 TEST_F(CallInlinerTest, GetInlinedModule) {

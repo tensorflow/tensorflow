@@ -43,9 +43,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "xla/array4d.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
-#include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/tpu_topology.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/statusor.h"

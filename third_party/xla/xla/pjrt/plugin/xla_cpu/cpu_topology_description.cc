@@ -29,16 +29,19 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_device_description.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/util.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
@@ -59,8 +62,54 @@ CpuTopologyDescription::CpuTopologyDescription(
 
 absl::StatusOr<Layout> CpuTopologyDescription::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) const {
+  if (!primitive_util::IsArrayType(element_type)) {
+    return InvalidArgument("Element type %s does not support layout",
+                           PrimitiveType_Name(element_type));
+  }
   Shape shape = ShapeUtil::MakeShape(element_type, dims);
   return LayoutUtil::GetWithDefaultLayout(shape).layout();
+}
+
+absl::StatusOr<int> CpuTopologyDescription::GetMemorySpaceKindForShape(
+    const Shape& shape) const {
+  if (shape.has_layout()) {
+    if (shape.layout().memory_space() == Layout::kHostMemorySpace) {
+      return PinnedHostMemorySpace::kKindId;
+    }
+    if (shape.layout().memory_space() == Layout::kUnpinnedHostMemorySpace) {
+      return UnpinnedHostMemorySpace::kKindId;
+    }
+  }
+  return CpuDeviceMemorySpace::kKindId;
+}
+
+absl::StatusOr<absl::string_view> CpuTopologyDescription::KindIdToKind(
+    int kind) const {
+  if (kind == PinnedHostMemorySpace::kKindId) {
+    return PinnedHostMemorySpace::kKind;
+  }
+  if (kind == UnpinnedHostMemorySpace::kKindId) {
+    return UnpinnedHostMemorySpace::kKind;
+  }
+  if (kind == CpuDeviceMemorySpace::kKindId) {
+    return CpuDeviceMemorySpace::kKind;
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unknown memory kind ID: ", kind));
+}
+
+absl::Span<const int> CpuTopologyDescription::GetMemorySpaceKindIds() const {
+  static const int kCpuMemorySpaceKindIds[] = {
+      CpuDeviceMemorySpace::kKindId, PinnedHostMemorySpace::kKindId,
+      UnpinnedHostMemorySpace::kKindId};
+  return absl::MakeConstSpan(kCpuMemorySpaceKindIds);
+}
+
+absl::StatusOr<xla::Shape>
+CpuTopologyDescription::MakeCanonicalShapeForMemorySpace(
+    int memory_space_kind_id, xla::Shape shape,
+    const xla::Layout* layout) const {
+  return MakeDefaultCpuBufferShape(std::move(shape), layout);
 }
 
 absl::StatusOr<uint64_t> CpuTopologyDescription::Fingerprint() const {
@@ -122,6 +171,27 @@ CpuTopologyDescription::FromProto(
   return std::make_unique<CpuTopologyDescription>(
       proto.platform_id(), proto.platform_name(), proto.platform_version(),
       *cpu_topology);
+}
+
+absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(
+    xla::Shape shape, const xla::Layout* layout) {
+  if (layout) {
+    shape.mutable_layout()->mutable_minor_to_major()->assign(
+        layout->minor_to_major().begin(), layout->minor_to_major().end());
+  } else {
+    xla::LayoutUtil::SetToDefaultLayout(&shape);
+  }
+  auto element_type = shape.element_type();
+  if (primitive_util::IsSubByteNonPredType(element_type)) {
+    shape.mutable_layout()->set_element_size_in_bits(
+        primitive_util::BitWidth(element_type));
+  }
+  if (layout && *layout != shape.layout()) {
+    return absl::UnimplementedError(
+        absl::StrCat("PjRt CPU buffers only support default layout. ",
+                     shape.ToString(), " vs ", layout->ToString()));
+  }
+  return shape;
 }
 
 }  // namespace xla

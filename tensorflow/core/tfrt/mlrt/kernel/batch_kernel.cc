@@ -174,7 +174,15 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
   // local is used to pass the context.
   static absl::StatusOr<std::unique_ptr<BatchTask>> CreateBatchTask(
       OpKernelContext*) {
-    return {std::make_unique<MlrtBatchTask>(GetBatchFunctionMlrtContext())};
+    // Configure the batch task with params from the fallback request state.
+    const auto& context =
+        GetBatchFunctionMlrtContext()->GetUserContext<Context>();
+    const auto& fallback_request_state = context.fallback_request_state();
+    auto task = std::make_unique<MlrtBatchTask>(GetBatchFunctionMlrtContext());
+    task->rpc_deadline =
+        fallback_request_state.rpc_deadline_for_batching_task_cancellation();
+    task->is_rpc_cancelled = fallback_request_state.is_rpc_cancelled_callback();
+    return task;
   }
 
   // This can only be called in Compute() and ComputeAsync() because thread
@@ -231,7 +239,8 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
             options.low_priority_allowed_batch_sizes,
             options.mixed_priority_batching_policy,
             options.enable_priority_aware_batch_scheduler,
-            options.enable_priority_aware_batch_scheduler_resplit),
+            options.enable_priority_aware_batch_scheduler_resplit,
+            options.enable_batching_task_lazy_cancellation),
         options.allowed_batch_sizes));
     return absl::OkStatus();
   }
@@ -301,7 +310,7 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
 
   std::vector<mlrt::Value> results(batch_function_.output_regs().size());
 
-  const auto& task = down_cast<const MlrtBatchTask&>(last_task);
+  const auto& task = absl::down_cast<const MlrtBatchTask&>(last_task);
   DCHECK(task.context);
   mlrt::ExecutionContext& caller_context = *task.caller_context;
 
@@ -534,6 +543,7 @@ REGISTER_OP(kMlrtBatchFunctionName)
     .Attr("disable_padding: bool = false")
     .Attr("enable_priority_aware_batch_scheduler: bool = false")
     .Attr("enable_priority_aware_batch_scheduler_resplit: bool = false")
+    .Attr("enable_batching_task_lazy_cancellation: bool = false")
     .Attr("num_warmup_batch_threads: int = 0")
     // An opaque function handle, which is an int64_t, for passing the batch
     // function.

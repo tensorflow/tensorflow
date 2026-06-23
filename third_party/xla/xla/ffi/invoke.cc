@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
@@ -133,15 +134,15 @@ static absl::Status BlockUntilReady(XLA_FFI_Future* future) {
 
 absl::Status Invoke(const XLA_FFI_Api* api, Ffi& handler, CallFrame& call_frame,
                     const InvokeContext& context, ExecutionStage stage) {
-  TF_ASSIGN_OR_RETURN(XLA_FFI_Future * future,
-                      Invoke<Ffi>(api, handler, call_frame, context, stage));
+  ASSIGN_OR_RETURN(XLA_FFI_Future * future,
+                   Invoke<Ffi>(api, handler, call_frame, context, stage));
   return BlockUntilReady(future);
 }
 
 absl::Status Invoke(const XLA_FFI_Api* api, XLA_FFI_Handler* handler,
                     CallFrame& call_frame, const InvokeContext& context,
                     XLA_FFI_ExecutionStage stage) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       XLA_FFI_Future * future,
       Invoke<XLA_FFI_Handler*>(api, handler, call_frame, context,
                                static_cast<ExecutionStage>(stage)));
@@ -152,8 +153,8 @@ tsl::AsyncValueRef<tsl::Chain> InvokeAsync(const XLA_FFI_Api* api, Ffi& handler,
                                            CallFrame& call_frame,
                                            const InvokeContext& context,
                                            ExecutionStage stage) {
-  TF_ASSIGN_OR_RETURN(XLA_FFI_Future * future,
-                      Invoke<Ffi>(api, handler, call_frame, context, stage));
+  ASSIGN_OR_RETURN(XLA_FFI_Future * future,
+                   Invoke<Ffi>(api, handler, call_frame, context, stage));
   return TakeFuture(future);
 }
 
@@ -162,7 +163,7 @@ tsl::AsyncValueRef<tsl::Chain> InvokeAsync(const XLA_FFI_Api* api,
                                            CallFrame& call_frame,
                                            const InvokeContext& context,
                                            XLA_FFI_ExecutionStage stage) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       XLA_FFI_Future * future,
       Invoke<XLA_FFI_Handler*>(api, handler, call_frame, context,
                                static_cast<ExecutionStage>(stage)));

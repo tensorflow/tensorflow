@@ -74,6 +74,7 @@ message GroupedGemmConfigProto {
   xla.PrimitiveType type_d = 19;
   int64 stride_ragged_dim = 20;
   int64 stride_group_dim = 21;
+  int64 c_stride_ragged_dim = 27;
   int64 output_stride_ragged_dim = 22;
   xla.PrecisionConfig.Algorithm precision_algorithm = 23;
   int64 compute_precision = 24;

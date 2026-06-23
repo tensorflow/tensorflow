@@ -536,6 +536,7 @@ cc_library(
     deps = [
         ":map_stablehlo_to_hlo_op",
         ":mlir_hlo",
+        ":unregistered_attributes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -987,6 +988,7 @@ cc_library(
     strip_include_prefix = ".",
     visibility = internal_visibility(["//learning/brain/mlir:stablehlo_friends"]),
     deps = [
+        ":mlir_hlo",
         ":shape_component_analysis",
         ":stablehlo_extension_base",
         ":stablehlo_extension_ops",

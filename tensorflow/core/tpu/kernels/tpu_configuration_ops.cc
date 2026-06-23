@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/tpu/status_helper.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tpu/status_helper.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/protobuf/error_codes.pb.h"

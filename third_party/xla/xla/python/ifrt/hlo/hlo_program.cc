@@ -72,9 +72,9 @@ absl::StatusOr<std::string> HloProgram::ToBytes() const {
 }
 
 absl::StatusOr<std::unique_ptr<HloProgram>> HloProgram::FromBytes(
-    absl::string_view bytes, std::unique_ptr<mlir::MLIRContext> context) {
+    absl::string_view bytes, std::shared_ptr<mlir::MLIRContext> context) {
   if (context == nullptr) {
-    context = std::make_unique<mlir::MLIRContext>(
+    context = std::make_shared<mlir::MLIRContext>(
         mlir::MLIRContext::Threading::DISABLED);
     mlir::DialectRegistry registry;
     xla::RegisterAllHloDialects(registry);
@@ -168,18 +168,7 @@ absl::StatusOr<uint64_t> HloProgram::Fingerprint() const {
   tsl::StatusScopedDiagnosticHandler diag_handler(mlir_module_->getContext());
 
   mlir::BytecodeWriterConfig config;
-  config.attachAttributeCallback(
-      [](mlir::Attribute attr,
-         std::optional<llvm::StringRef>& group_name_override,
-         mlir::DialectBytecodeWriter& writer) -> mlir::LogicalResult {
-        if (llvm::isa_and_nonnull<mlir::LocationAttr>(attr)) {
-          // Ignore location attributes since they are for debugging only and
-          // do not affect the semantics of the program.
-          return mlir::success();
-        }
-        // Fall back to the default implementation.
-        return mlir::failure();
-      });
+  config.setElideLocations(true);
 
   // Use a version before `kUseListOrdering` due to an MLIR bug where use list
   // ordering is not stable.

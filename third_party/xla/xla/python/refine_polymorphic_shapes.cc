@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
@@ -320,8 +321,8 @@ absl::Status RefinePolymorphicShapes(llvm::StringRef module_str,
     return absl::InvalidArgumentError("Cannot parse module.");
   }
 
-  TF_RETURN_IF_ERROR(RefinePolymorphicShapes(*module, enable_shape_assertions));
-  if (validate_static_shapes) TF_RETURN_IF_ERROR(ValidateStaticShapes(*module));
+  RETURN_IF_ERROR(RefinePolymorphicShapes(*module, enable_shape_assertions));
+  if (validate_static_shapes) RETURN_IF_ERROR(ValidateStaticShapes(*module));
   if (mlir::failed(mlir::writeBytecodeToFile(*module, os))) {
     return absl::InternalError("Cannot serialize module.");
   }

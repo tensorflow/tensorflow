@@ -41,6 +41,8 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -64,6 +66,7 @@ limitations under the License.
 namespace xla {
 
 class HloModule;
+class HloPayloadDeduplicator;
 
 // Describes a computation at the HLO level.
 //
@@ -129,7 +132,7 @@ class HloComputation {
     absl::Status ForEachInstruction(
         absl::FunctionRef<absl::Status(const HloInstruction*)> func) const {
       for (const auto& instruction : instructions_) {
-        TF_RETURN_IF_ERROR(func(instruction.get()));
+        RETURN_IF_ERROR(func(instruction.get()));
       }
       return absl::OkStatus();
     }
@@ -401,7 +404,8 @@ class HloComputation {
       absl::Span<const HloInstruction* const> instruction_order) const;
 
   // Serializes this computation to a proto.
-  void ToProto(HloComputationProto* proto) const;
+  void ToProto(HloComputationProto* proto,
+               HloProtoOptions options = HloProtoOptions()) const;
 
   // Creates a computation from the given proto. Arguments:
   //
@@ -421,7 +425,8 @@ class HloComputation {
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
       bool prohibit_empty_literal = true, bool preserve_instruction_ids = true,
       absl::flat_hash_map<int64_t, int64_t>* id_remap_map = nullptr,
-      const tsl::protobuf::RepeatedPtrField<std::string>* payloads = nullptr);
+      absl::Span<const std::shared_ptr<BackendConfigWrapper>> backend_configs =
+          {});
 
   // Generates a hash value of an HLO computation. Hash considers
   // information on opcode, shape, operands, and typically a root instruction.
@@ -711,6 +716,12 @@ class HloComputation {
   std::unique_ptr<HloComputation> Clone(const std::string& suffix = "clone",
                                         HloCloneContext* context = nullptr);
 
+  // Like Clone(), but also returns a schedule for the cloned computation which
+  // matches the original. The original computation must be scheduled.
+  std::pair<std::unique_ptr<HloComputation>, std::vector<HloInstruction*>>
+  CloneWithSchedule(const std::string& suffix = "clone",
+                    HloCloneContext* context = nullptr);
+
   // Like Clone(), but if an instruction is present in replacement_map, we use
   // the map's value to replace that instruction in the cloned computation.
   //
@@ -739,8 +750,23 @@ class HloComputation {
                    const absl::Span<HloInstruction* const>>
           new_root = nullptr);
 
+  // Like CloneWithReplacements(), but also returns a schedule for the cloned
+  // computation which
+  // matches the original. The original computation must be scheduled.
+  std::pair<std::unique_ptr<HloComputation>, std::vector<HloInstruction*>>
+  CloneWithScheduleAndReplacements(
+      const absl::flat_hash_map<const HloInstruction*,
+                                std::unique_ptr<HloInstruction>>* replacements,
+      absl::Span<const HloInstruction* const> extra_parameters = {},
+      HloCloneContext* context = nullptr, const std::string& suffix = "clone",
+      std::variant<const HloInstruction*,
+                   const absl::Span<HloInstruction* const>>
+          new_root = nullptr);
+
   // Like CloneWithReplacements(), but this is a const method and `context` must
   // be specified.
+  // If `clone_sequence` is not nullptr, the module must be have a schedule for
+  // this computation.
   std::unique_ptr<HloComputation> CloneInContext(
       HloCloneContext& context,
       const absl::flat_hash_map<const HloInstruction*,
@@ -750,7 +776,8 @@ class HloComputation {
       const std::string& suffix = "clone",
       std::variant<const HloInstruction*,
                    const absl::Span<HloInstruction* const>>
-          new_root = nullptr) const;
+          new_root = nullptr,
+      std::vector<HloInstruction*>* clone_sequence = nullptr) const;
 
   // Convenience overloads for CloneWithReplacements.  You want to do
   //
@@ -1196,7 +1223,7 @@ absl::Status HloComputation::Accept(
   for (HloInstruction* root : CollectUnreachableRoots()) {
     VLOG(3) << "Traversing unreachable root: " << root->ToString();
     // Call FinishVisit only at the end.
-    TF_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
+    RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
   }
   // Visit the computation root instruction last.
   return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
@@ -1223,10 +1250,10 @@ absl::Status HloComputation::AcceptOrdered(
         << " appears more than once in order";
     HloInstruction* mutable_instruction =
         const_cast<HloInstruction*>(instruction);
-    TF_RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
-    TF_RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
+    RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
+    RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
     visitor->SetVisited(*mutable_instruction);
-    TF_RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
+    RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
     visited.insert(instruction);
   }
   return visitor->FinishVisit(root_instruction());

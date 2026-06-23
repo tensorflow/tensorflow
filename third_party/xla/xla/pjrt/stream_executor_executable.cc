@@ -57,8 +57,8 @@ absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
     const {
   if (IsEarlyExitCompilation(compile_options_)) {
     ExecutableAndOptionsProto proto;
-    TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
-                        compile_options_.ToProto());
+    ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                     compile_options_.ToProto());
     std::string result;
     if (!tsl::SerializeToStringDeterministic(proto, &result)) {
       return absl::InternalError(
@@ -79,17 +79,17 @@ absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
           "PjRtStreamExecutorClient::SerializeExecutable unimplemented for "
           "MPMD executables");
     }
-    TF_ASSIGN_OR_RETURN(serialized, aot_executables[0]->SerializeAsString());
+    ASSIGN_OR_RETURN(serialized, aot_executables[0]->SerializeAsString());
   } else {
     const auto& local_executables =
         std::get<std::vector<std::unique_ptr<LocalExecutable>>>(executables_);
     Executable* built_executable = local_executables[0]->executable();
     CHECK(local_client_ != nullptr);
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::unique_ptr<CompiledModule> aot_result,
         local_client_->backend().compiler()->Export(built_executable));
 
-    TF_ASSIGN_OR_RETURN(serialized, aot_result->SerializeAsString());
+    ASSIGN_OR_RETURN(serialized, aot_result->SerializeAsString());
   }
 
   if (serialized.empty()) {
@@ -99,8 +99,8 @@ absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
   }
   ExecutableAndOptionsProto proto;
   *proto.mutable_serialized_executable() = std::move(serialized);
-  TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
-                      compile_options_.ToProto());
+  ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                   compile_options_.ToProto());
   std::string result;
   if (!tsl::SerializeToStringDeterministic(proto, &result)) {
     return absl::InternalError("Failed to serialize ExecutableAndOptionsProto");
@@ -191,8 +191,8 @@ StreamExecutorExecutable::GetCompiledMemoryStats() const {
     memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
     HloModuleProto hlo_module_proto =
         local_executables[0]->executable()->module().ToProto();
-    TF_ASSIGN_OR_RETURN(auto peak_memories,
-                        ComputePeakMemorySizes(*proto, hlo_module_proto));
+    ASSIGN_OR_RETURN(auto peak_memories,
+                     ComputePeakMemorySizes(*proto, hlo_module_proto));
     memory_stats.peak_memory_in_bytes = peak_memories.padded;
     memory_stats.peak_unpadded_heap_bytes = peak_memories.unpadded;
     memory_stats.total_allocation_bytes =
@@ -246,14 +246,14 @@ absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
 absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
     const Shape& shape, absl::string_view default_memory_kind) {
   if (!shape.IsTuple()) {
-    TF_ASSIGN_OR_RETURN(absl::string_view memory_kind,
-                        MemoryKindFromSimpleShape(shape, default_memory_kind));
+    ASSIGN_OR_RETURN(absl::string_view memory_kind,
+                     MemoryKindFromSimpleShape(shape, default_memory_kind));
     return {{memory_kind}};
   }
   std::vector<absl::string_view> result;
   result.reserve(shape.tuple_shapes().size());
   for (const auto& element_shape : shape.tuple_shapes()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         absl::string_view element_memory_kind,
         MemoryKindFromSimpleShape(element_shape, default_memory_kind));
     result.push_back(element_memory_kind);
@@ -265,18 +265,28 @@ absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 StreamExecutorExecutable::GetParameterMemoryKinds() const {
-  TF_ASSIGN_OR_RETURN(auto modules, GetHloModules());
+  ASSIGN_OR_RETURN(auto modules, GetHloModules());
+  // If no modules are available, we cannot determine memory kinds. Returning
+  // Unimplemented here triggers a safe fallback in IFRT (executable.cc) to
+  // avoid a crash when memory kinds are not available (e.g., when annotations
+  // are stripped).
+  if (modules.empty()) {
+    return absl::UnimplementedError(
+        "GetParameterMemoryKinds is not supported when no modules are "
+        "available.");
+  }
+
   std::vector<std::vector<absl::string_view>> out;
   out.reserve(modules.size());
   for (const auto& module : modules) {
     const ComputationLayout& comp_layout = module->entry_computation_layout();
-    TF_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
-                        comp_layout.FlattenedParameterLayouts());
+    ASSIGN_OR_RETURN(std::vector<Layout> layouts,
+                     comp_layout.FlattenedParameterLayouts());
     std::vector<absl::string_view>& memory_kinds = out.emplace_back();
     memory_kinds.reserve(layouts.size());
     for (const xla::Layout& layout : layouts) {
-      TF_ASSIGN_OR_RETURN(absl::string_view memory_kind,
-                          MemoryKindFromLayout(layout, default_memory_kind_));
+      ASSIGN_OR_RETURN(absl::string_view memory_kind,
+                       MemoryKindFromLayout(layout, default_memory_kind_));
       memory_kinds.push_back(memory_kind);
     }
   }
@@ -285,12 +295,12 @@ StreamExecutorExecutable::GetParameterMemoryKinds() const {
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 StreamExecutorExecutable::GetOutputMemoryKinds() const {
-  TF_ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
+  ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
   std::vector<std::vector<absl::string_view>> out;
   out.reserve(shapes.size());
   for (const auto& shape : shapes) {
-    TF_ASSIGN_OR_RETURN(std::vector<absl::string_view> memory_kind,
-                        MemoryKindsFromShape(shape, default_memory_kind_));
+    ASSIGN_OR_RETURN(std::vector<absl::string_view> memory_kind,
+                     MemoryKindsFromShape(shape, default_memory_kind_));
     out.push_back(memory_kind);
   }
   return out;
@@ -299,7 +309,7 @@ StreamExecutorExecutable::GetOutputMemoryKinds() const {
 absl::StatusOr<std::unique_ptr<LocalExecutable>>
 StreamExecutorExecutable::ConsumeExecutable(
     LocalClient* client, const CompileOptions& compile_options) {
-  TF_RETURN_IF_ERROR(GetOrLoadExecutable(client, compile_options).status());
+  RETURN_IF_ERROR(GetOrLoadExecutable(client, compile_options).status());
   if (std::holds_alternative<std::vector<std::unique_ptr<LocalExecutable>>>(
           executables_)) {
     auto tmp = std::get<std::vector<std::unique_ptr<LocalExecutable>>>(
@@ -338,9 +348,9 @@ absl::StatusOr<LocalExecutable*> StreamExecutorExecutable::GetOrLoadExecutable(
           "ConsumeExecutable is not supported for more than one executable.");
     }
     std::vector<std::unique_ptr<LocalExecutable>> tmp;
-    TF_ASSIGN_OR_RETURN(auto local_executable,
-                        client->Load(std::move(aot_executables[0]),
-                                     compile_options.executable_build_options));
+    ASSIGN_OR_RETURN(auto local_executable,
+                     client->Load(std::move(aot_executables[0]),
+                                  compile_options.executable_build_options));
     tmp.push_back(std::move(local_executable));
     auto* result = tmp[0].get();
     executables_ = std::move(tmp);

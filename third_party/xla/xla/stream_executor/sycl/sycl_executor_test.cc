@@ -15,19 +15,25 @@ limitations under the License.
 
 #include "xla/stream_executor/sycl/sycl_executor.h"
 
+#include <cstdint>
 #include <fstream>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
-#include "xla/tests/llvm_irgen_test_base.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -42,12 +48,12 @@ using ::tsl::testing::StatusIs;
 
 constexpr size_t kMemoryAllocationSize = 1024;
 
-class SyclExecutorTest : public xla::LlvmIrGenTestBase {};
+class SyclExecutorTest : public xla::gpu::HloPjRtGpuTestBase {};
 
 TEST_F(SyclExecutorTest, GetSyclKernel) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          stream_executor::PlatformManager::PlatformWithId(
-                              stream_executor::sycl::kSyclPlatformId));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Platform * platform,
+      stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(kDefaultDeviceOrdinal));
 
@@ -65,9 +71,12 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
       xla::ParseAndReturnUnverifiedModule(hlo_text, config));
 
   TF_ASSERT_OK_AND_ASSIGN(
+      hlo_module, compiler()->RunHloPasses(std::move(hlo_module), executor,
+                                           /*device_allocator=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::Executable> exec,
-      CompileToExecutable(std::move(hlo_module),
-                          /*run_optimization_passes=*/true));
+      compiler()->RunBackend(std::move(hlo_module), executor,
+                             /*device_allocator=*/nullptr));
 
   auto* gpu_exec = static_cast<xla::gpu::GpuExecutable*>(exec.get());
   ASSERT_NE(gpu_exec, nullptr);
@@ -77,17 +86,15 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
 
   const xla::gpu::Thunk* thunk = thunk_exec.thunks().at(0).get();
   ASSERT_NE(thunk, nullptr);
-  EXPECT_EQ(thunk->kind(), xla::gpu::Thunk::Kind::kKernel);
+  EXPECT_EQ(thunk->kind(), xla::gpu::Thunk::Kind::kCustomKernel);
 
-  const auto* kernel_thunk = dynamic_cast<const xla::gpu::KernelThunk*>(thunk);
+  const auto* kernel_thunk =
+      dynamic_cast<const xla::gpu::CustomKernelThunk*>(thunk);
   ASSERT_NE(kernel_thunk, nullptr);
 
-  std::string kernel_name = kernel_thunk->kernel_name();
-
+  // Load the SPIR-V binary and get the symbols for the constants to verify
+  // that they are correctly loaded.
   std::vector<uint8_t> spv_bin(gpu_exec->binary());
-
-  // Load the module and get the symbols for the constants to verify that they
-  // are correctly loaded.
   MultiModuleLoaderSpec module_spec;
   ModuleHandle module_handle;
   module_spec.AddCudaCubinInMemory(spv_bin);
@@ -101,11 +108,12 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
         executor->GetSymbol(const_info.symbol_name, module_handle));
   }
 
-  KernelLoaderSpec spec =
-      KernelLoaderSpec::CreateCudaCubinInMemorySpec(spv_bin, kernel_name, 3);
-
+  // The per-fusion kernel binary is stored inside the CustomKernel's loader
+  // spec. Load the kernel directly from that spec.
+  const KernelLoaderSpec& kernel_spec =
+      kernel_thunk->custom_kernel().kernel_spec();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
-                          executor->LoadKernel(spec));
+                          executor->LoadKernel(kernel_spec));
 
   auto sycl_executor = dynamic_cast<SyclExecutor*>(executor);
   ASSERT_NE(sycl_executor, nullptr);

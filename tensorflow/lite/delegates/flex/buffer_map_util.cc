@@ -19,12 +19,14 @@ limitations under the License.
 #include <cstring>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/string_util.h"
 
@@ -154,6 +156,16 @@ absl::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
     *tf_tensor = t;
     return absl::OkStatus();
   } else if (IsResourceOrVariant(tensor)) {
+    // Resource and Variant tensors are expected to be managed by the Flex
+    // delegate, which sets up the tensor->data.raw to point to a
+    // tensorflow::Tensor**. If tensor->delegate is nullptr, it means this
+    // tensor is not managed by the Flex delegate, and we cannot interpret its
+    // data as a TensorFlow tensor pointer.
+    if (tensor->delegate == nullptr) {
+      return absl::InvalidArgumentError(  // NOLINT
+          "Input tensor has resource or variant type but is not managed by "
+          "the Flex delegate.");
+    }
     // TODO(b/179094265): This is an experimental implementation, subject to
     // change. This can be re-implemented with life cycle management mechanism
     // like reference counting.

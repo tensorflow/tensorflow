@@ -51,7 +51,7 @@ absl::Status GraphToFunctionDef(
 //     be unique for all control output nodes.
 absl::Status GraphToFunctionDef(
     const Graph& graph, const std::string& name,
-    const std::function<absl::optional<std::string>(const Node*)>& control_ret,
+    const std::function<std::optional<std::string>(const Node*)>& control_ret,
     FunctionDef* fdef);
 
 absl::Status GraphToFunctionDef(const Graph& graph, const std::string& name,

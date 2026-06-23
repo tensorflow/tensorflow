@@ -14,14 +14,30 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/eager/gradients.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients_internal.h"
+#include "tensorflow/c/eager/tape.h"
+#include "tensorflow/c/tensor_interface.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace gradients {
@@ -34,22 +50,6 @@ int64_t ToId(const AbstractTensorHandle* t) {
   return static_cast<int64_t>(reinterpret_cast<uintptr_t>(t));
 }
 
-absl::Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* t,
-                       AbstractTensorHandle** result) {
-  AbstractOperationPtr op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op->Reset("ZerosLike", /*raw_device_name=*/nullptr));
-  if (isa<tracing::TracingOperation>(op.get())) {
-    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(op.get())->SetOpName(
-        absl::StrCat("ZerosLike", ToId(t)).c_str()));
-  }
-  TF_RETURN_IF_ERROR(op->AddInput(t));
-  int num_outputs = 1;
-  std::vector<AbstractTensorHandle*> outputs(num_outputs);
-  TF_RETURN_IF_ERROR(
-      op->Execute(absl::Span<AbstractTensorHandle*>(outputs), &num_outputs));
-  *result = outputs[0];
-  return absl::OkStatus();
-}
 }  // namespace
 
 absl::Status GradientRegistry::Register(
@@ -75,17 +75,53 @@ absl::Status GradientRegistry::Lookup(
 }
 
 TapeTensor::TapeTensor(AbstractTensorHandle* handle) : handle_(handle) {
-  handle_->Ref();
+  if (handle_) {
+    handle_->Ref();
+  }
 }
 TapeTensor::TapeTensor(const TapeTensor& other) {
   handle_ = other.handle_;
-  handle_->Ref();
+  if (handle_) {
+    handle_->Ref();
+  }
 }
-TapeTensor::~TapeTensor() { handle_->Unref(); }
+TapeTensor& TapeTensor::operator=(const TapeTensor& other) {
+  if (this != &other) {
+    if (other.handle_) {
+      other.handle_->Ref();
+    }
+    if (handle_) {
+      handle_->Unref();
+    }
+    handle_ = other.handle_;
+  }
+  return *this;
+}
+TapeTensor::TapeTensor(TapeTensor&& other) noexcept : handle_(other.handle_) {
+  other.handle_ = nullptr;
+}
+TapeTensor& TapeTensor::operator=(TapeTensor&& other) noexcept {
+  if (this != &other) {
+    if (handle_) {
+      handle_->Unref();
+    }
+    handle_ = other.handle_;
+    other.handle_ = nullptr;
+  }
+  return *this;
+}
+TapeTensor::~TapeTensor() {
+  if (handle_) {
+    handle_->Unref();
+  }
+}
 
 int64_t TapeTensor::GetID() const { return ToId(handle_); }
 
 tensorflow::DataType TapeTensor::GetDType() const {
+  if (handle_ == nullptr) {
+    return DT_INVALID;
+  }
   return handle_->DataType();
 }
 AbstractTensorHandle* TapeTensor::GetHandle() const { return handle_; }
@@ -96,7 +132,7 @@ class TapeVSpace
     : public eager::VSpace<AbstractTensorHandle, GradientFunction, TapeTensor> {
  public:
   explicit TapeVSpace(AbstractContext* ctx) : ctx_(ctx) {}
-  ~TapeVSpace() override {}
+  ~TapeVSpace() override = default;
 
   // Returns the number of elements in the gradient tensor.
   int64_t NumElements(AbstractTensorHandle* tensor) const override;
@@ -481,8 +517,8 @@ absl::Status Execute(AbstractOperation* op_, AbstractContext* ctx,
   forward_op_->attrs.BuildNodeDef();
   std::unique_ptr<GradientFunction> gradient_fn;
   TF_RETURN_IF_ERROR(registry.Lookup(*forward_op_, &gradient_fn));
-  tape->RecordOperation(forward_op_->inputs, retvals, gradient_fn.release(),
-                        op_->Name());
+  tape->RecordOperation(forward_op_->inputs, retvals.subspan(0, *num_retvals),
+                        gradient_fn.release(), op_->Name());
   return absl::OkStatus();
 }
 }  // namespace internal

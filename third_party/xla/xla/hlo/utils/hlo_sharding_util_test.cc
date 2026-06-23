@@ -636,9 +636,8 @@ TEST(HloShardingUtilTest, TransposeShardingReplicated) {
             HloSharding::Replicate());
 
   EXPECT_EQ(
-      TransposeSharding(HloSharding::Replicate({}, /*use_named_sharding=*/true),
-                        {0, 1, 2}),
-      HloSharding::Replicate({}, /*use_named_sharding=*/true));
+      TransposeSharding(HloSharding(NamedSharding::Replicate()), {0, 1, 2}),
+      HloSharding(NamedSharding::Replicate()));
 }
 
 TEST(HloShardingUtilTest, TransposeShardingTiled1) {
@@ -1454,8 +1453,7 @@ TEST(HloShardingUtilTest, IsSubShardingTiledReplicated) {
 
   {
     Mesh mesh({4}, {"x"});
-    HloSharding rhs_sharding =
-        HloSharding::Replicate({}, /*use_named_sharding=*/true);
+    HloSharding rhs_sharding = HloSharding(NamedSharding::Replicate());
     HloSharding lhs_sharding =
         HloSharding(test_utils::FromAxisNames(mesh, {{"x"}}));
 
@@ -1474,8 +1472,7 @@ TEST(HloShardingUtilTest, IsSubShardingReplicatedTiled) {
     Mesh mesh({4}, {"x"});
     HloSharding rhs_sharding =
         HloSharding(test_utils::FromAxisNames(mesh, {{"x"}}));
-    HloSharding lhs_sharding =
-        HloSharding::Replicate({}, /*use_named_sharding=*/true);
+    HloSharding lhs_sharding = HloSharding(NamedSharding::Replicate());
 
     EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
   }
@@ -1511,8 +1508,7 @@ TEST(HloShardingUtilTest, IsSubShardingReplicatedTiledPartial) {
     Mesh mesh({2, 2}, {"x", "y"});
     HloSharding rhs_sharding =
         HloSharding(test_utils::FromAxisNames(mesh, {{"x"}}));
-    HloSharding lhs_sharding =
-        HloSharding::Replicate({}, /*use_named_sharding=*/true);
+    HloSharding lhs_sharding = HloSharding(NamedSharding::Replicate());
 
     EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
   }

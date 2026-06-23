@@ -34,6 +34,17 @@ class CompilationProviderOptions {
   };
 
   CompilationProviderOptions() = default;
+
+  CompilationProviderOptions(
+      NvJitLinkMode nvjitlink_mode, bool enable_libnvptxcompiler,
+      bool enable_driver_compilation, std::string cuda_data_dir,
+      stream_executor::StreamExecutor* stream_exec = nullptr)
+      : nvjitlink_mode_(nvjitlink_mode),
+        enable_libnvptxcompiler_(enable_libnvptxcompiler),
+        enable_llvm_module_compilation_parallelism_(false),
+        enable_driver_compilation_(enable_driver_compilation),
+        cuda_data_dir_(cuda_data_dir),
+        stream_exec_(stream_exec) {}
   CompilationProviderOptions(
       NvJitLinkMode nvjitlink_mode, bool enable_libnvptxcompiler,
       bool enable_llvm_module_compilation_parallelism,

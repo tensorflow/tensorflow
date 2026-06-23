@@ -81,6 +81,7 @@ class ReserveSemantic {
 
   TfLiteStatus Compute(SemanticOutType& result) const {
     // Parse element type from custom options.
+    TF_LITE_ENSURE(context_, node_->custom_initial_data != nullptr);
     auto* options =
         reinterpret_cast<const ListReserveOptions*>(node_->custom_initial_data);
     TfLiteType element_type = ConvertTensorType(options->element_type);
@@ -99,7 +100,10 @@ class ReserveSemantic {
     TF_LITE_ENSURE_OK(context_,
                       GetInputSafe(context_, node_, kElementShapeInput,
                                    &element_shape_tensor));
-    IntArrayUniquePtr element_shape = TensorAsShape(*element_shape_tensor);
+    IntArrayUniquePtr element_shape;
+    TF_LITE_ENSURE_OK(context_, TensorAsShape(context_, *element_shape_tensor,
+                                              element_shape));
+    TF_LITE_ENSURE(context_, element_shape != nullptr);
 
     result = SemanticOutType{element_type, std::move(element_shape),
                              num_elements_value};
@@ -135,6 +139,7 @@ class ZerosLikeSemantic {
     const TfLiteTensor* list_input;
     TF_LITE_ENSURE_OK(context_,
                       GetInputSafe(context_, node_, kListInput, &list_input));
+    TF_LITE_ENSURE(context_, list_input->data.data != nullptr);
     const TensorArray* const input =
         reinterpret_cast<const TensorArray*>(list_input->data.data);
 
@@ -148,6 +153,7 @@ class ZerosLikeSemantic {
     const TfLiteTensor* list_input;
     TF_LITE_ENSURE_OK(context_,
                       GetInputSafe(context_, node_, kListInput, &list_input));
+    TF_LITE_ENSURE(context_, list_input->data.data != nullptr);
     const TensorArray* const input =
         reinterpret_cast<const TensorArray*>(list_input->data.data);
     for (int i = 0; i < input->NumElements(); ++i) {
@@ -159,7 +165,11 @@ class ZerosLikeSemantic {
       // for later.
       TensorUniquePtr output_at = BuildTfLiteTensor(
           at->type, BuildTfLiteArray(*at->dims), kTfLiteDynamic);
-      memset(output_at->data.data, 0, output_at->bytes);
+      TF_LITE_ENSURE(context_, output_at != nullptr);
+      if (output_at->bytes > 0) {
+        TF_LITE_ENSURE(context_, output_at->data.data != nullptr);
+        memset(output_at->data.data, 0, output_at->bytes);
+      }
       TF_LITE_ENSURE(context_, output->Set(i, std::move(output_at)));
     }
     return kTfLiteOk;

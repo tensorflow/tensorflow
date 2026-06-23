@@ -42,7 +42,6 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
-#include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
@@ -122,7 +121,7 @@ TFE_Context* GetContextHandle(PyObject* py_context) {
   }
 
   auto* ctx = reinterpret_cast<TFE_Context*>(
-      PyCapsule_GetPointer(py_context_handle.get(), nullptr));
+      PyCapsule_GetPointer(py_context_handle.get(), "TFE_Context"));
   if (ctx == nullptr) {
     PyErr_SetString(
         PyExc_TypeError,
@@ -672,10 +671,16 @@ static PyObject* EagerTensor_handle_data(EagerTensor* self, void* unused) {
 }
 
 static int EagerTensor_sethandle_data(EagerTensor* self, PyObject* value,
-                                      void* unused) {
-  Py_DECREF(self->handle_data);
+                                      void* /*unused*/) {
+  if (value == nullptr) {
+    PyErr_SetString(PyExc_AttributeError,
+                    "Cannot delete attribute '_handle_data'");
+    return -1;
+  }
+  PyObject* tmp = self->handle_data;
   Py_INCREF(value);
   self->handle_data = value;
+  Py_XDECREF(tmp);
   return 0;
 }
 
@@ -685,10 +690,16 @@ static PyObject* EagerTensor_tensor_shape(EagerTensor* self, void* unused) {
 }
 
 static int EagerTensor_settensor_shape(EagerTensor* self, PyObject* value,
-                                       void* unused) {
-  Py_DECREF(self->tensor_shape);
+                                       void* /*unused*/) {
+  if (value == nullptr) {
+    PyErr_SetString(PyExc_AttributeError,
+                    "Cannot delete attribute '_tensor_shape'");
+    return -1;
+  }
+  PyObject* tmp = self->tensor_shape;
   Py_INCREF(value);
   self->tensor_shape = value;
+  Py_XDECREF(tmp);
   return 0;
 }
 
@@ -699,7 +710,7 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
   if (!_PyArg_NoKeywords("copy_to_device", kwds)) return nullptr;
 #else
   const char* keyname = "copy_to_device";
-  if (kwds != NULL && PyDict_Size(kwds) > 0) {
+  if (kwds != nullptr && PyDict_Size(kwds) > 0) {
     PyErr_SetString(PyExc_TypeError, "Function does not accept keyword args.");
     return nullptr;
   }
@@ -1183,14 +1194,15 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
 }
 
 PyObject* TFE_Py_SetEagerTensorProfiler(PyObject* profiler) {
-  Py_XDECREF(eager_tensor_profiler);
+  PyObject* tmp = eager_tensor_profiler;
 
-  if (profiler == Py_None) {
+  if (profiler == Py_None || profiler == nullptr) {
     eager_tensor_profiler = nullptr;
   } else {
     eager_tensor_profiler = profiler;
     Py_INCREF(eager_tensor_profiler);
   }
+  Py_XDECREF(tmp);
   Py_RETURN_NONE;
 }
 

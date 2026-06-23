@@ -146,4 +146,37 @@ def InsertPDLPass : Pass<"xla-gpu-insert-pdl", "mlir::ModuleOp"> {
   let constructor = "CreateInsertPDLPass()";
 }
 
+def PromoteShuffleToDPPPass
+    : Pass<"xla-gpu-promote-shuffle-to-dpp", "mlir::ModuleOp"> {
+  let summary = "Promotes gpu.shuffle down to DPP/swizzle on AMD GPUs.";
+
+  let description = [{
+    Replaces gpu.shuffle ops with ShuffleMode::DOWN with faster AMD-specific
+    instructions, chosen by offset:
+
+      Offsets 1-15:  amdgpu.dpp row_shr  (register-to-register, ALU-fusible)
+      Offset 16:     amdgpu.swizzle_bitmode with XOR semantics (ds_swizzle)
+      Offset 32:     left as gpu.shuffle (falls through to ds_bpermute)
+
+    DPP row_shr operates within 16-lane rows. For offset 16, ds_swizzle is
+    used instead: it operates within 32-lane groups using bitwise lane-ID
+    transforms. The shuffle-down is re-expressed as XOR, which is valid for
+    the reduction use case because lane+d == lane^d for all lanes where
+    bit log2(d) is zero -- exactly the lanes whose results matter in a
+    tree reduction.
+
+    The transformation is applied only when the validity predicate (second
+    result of gpu.shuffle) has no users, which is always the case in XLA's
+    shuffle-reduce lowering.
+  }];
+
+  let dependentDialects = [
+    "mlir::gpu::GPUDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::amdgpu::AMDGPUDialect",
+  ];
+
+  let constructor = "CreatePromoteShuffleToDPPPass()";
+}
+
 #endif  // XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_TD_

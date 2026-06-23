@@ -62,58 +62,28 @@ class ReduceWindowRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  // Helper methods to optimize ReduceWindow ops.
+  int64_t base_length_;
+};
 
-  // Transposes the inputs if the scan dimension is not the last dimension.
-  // Returns the permutation of the dimensions.
-  std::vector<int64_t> GetTransposedInputs(HloComputation* hlo_computation,
-                                           std::vector<HloInstruction*>& inputs,
-                                           int64_t rank, int64_t scan_dim,
-                                           int64_t last_dim);
+// Decompose associative scan instructions into a single reduce-window op
+// or (if 0 < base_length < scan_length) into a reduce-window tree.
+class AssociativeScanRewriter : public HloModulePass {
+ public:
+  // `base_length` is a size of a reduce-window we are comfortable with
+  // executing.
+  explicit AssociativeScanRewriter(int64_t base_length)
+      : base_length_(base_length) {}
 
-  // Adds padding (if necessary) to enable further rewrites working properly.
-  int64_t PreparePaddingForRewrite(
-      HloComputation* hlo_computation,
-      absl::Span<HloInstruction* const> init_values,
-      std::vector<HloInstruction*>& inputs, int64_t scan_length,
-      int64_t last_dim);
+  absl::string_view name() const override {
+    return "associative-scan-rewriter";
+  }
 
-  // [x, y] -> [x, y/base, base]
-  int64_t ExpandToNewMajorDimension(HloComputation* hlo_computation,
-                                    std::vector<HloInstruction*>& inputs,
-                                    std::vector<HloInstruction*>& tiled_inputs,
-                                    std::vector<Shape>& tiled_shapes,
-                                    int64_t padded_length, int64_t last_dim);
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
-  // reduce_window ( [x, y/base, base] window [1, 1, base] )
-  HloInstruction* GenerateNewReduceWindowWithTiledInputs(
-      HloComputation* hlo_computation,
-      std::vector<HloInstruction*>& tiled_inputs,
-      absl::Span<HloInstruction* const> init_values, HloComputation* to_apply,
-      std::vector<Shape>& tiled_shapes, bool forward_scan,
-      bool is_tuple_result);
-
-  // Slice out the last (first if reverse scan) column.
-  // slices [x, y/base, base] -> [x, y/base, 1] slice {x, y/base}
-  // reshape [x, y/base, 1] -> [x, y/base]
-  void SliceOutLastColumn(HloComputation* hlo_computation,
-                          const Shape& subshape, HloInstruction* outer_shape,
-                          int64_t rank, int64_t last_dim, bool forward_scan,
-                          int64_t num_columns,
-                          std::vector<Shape>& column_shapes,
-                          std::vector<HloInstruction*>& last_cols);
-
-  absl::StatusOr<bool> TryOptimizeCumSumOrProd(
-      HloReduceWindowInstruction* reduce_window);
-
-  absl::StatusOr<bool> TryOptimizeAssociativeScan(HloScanInstruction* scan);
-
-  absl::StatusOr<HloInstruction*> RewriteScanAsTreeReduction(
-      HloComputation* parent, std::vector<HloInstruction*> sources,
-      absl::Span<HloInstruction* const> init_values, HloComputation* to_apply,
-      const Shape& result_shape, int64_t rank, int64_t scan_dim,
-      int64_t scan_length, bool forward_scan, bool is_exclusive);
-
+ private:
   int64_t base_length_;
 };
 

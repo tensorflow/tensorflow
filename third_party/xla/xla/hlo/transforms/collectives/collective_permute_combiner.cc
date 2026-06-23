@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_combiner_utils.h"
@@ -134,13 +135,12 @@ absl::Status CombineCollectivePermutes(
   // CollectivePermute or elements of the tuple output.
   for (int64_t i = 0; i < to_combine.size(); ++i) {
     if (operands.size() == 1) {
-      TF_RETURN_IF_ERROR(
-          computation.ReplaceInstruction(to_combine[i], combined));
+      RETURN_IF_ERROR(computation.ReplaceInstruction(to_combine[i], combined));
     } else {
       int64_t index = enable_enzyme_comms_opt ? forward_indices[i] : i;
       auto replace_with = HloInstruction::CreateGetTupleElement(
           to_combine[i]->shape(), combined, index);
-      TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
+      RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
           to_combine[i], std::move(replace_with)));
     }
   }
@@ -175,7 +175,7 @@ absl::StatusOr<bool> CollectivePermuteCombiner::RunImpl(
       return GetCollectivePermuteKey(instruction);
     };
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bool computation_changed,
         CombineInstructionsByKey<CollectivePermuteKey>(
             computation, key_fn, &CombineCollectivePermutes,

@@ -643,6 +643,17 @@ class Tensor {
   absl::string_view tensor_data() const;
   void* data() const;
 
+  /// \brief Returns an `absl::Cord` mapping the current tensor's buffer.
+  ///
+  /// Like `tensor_data()`, the returned `Cord` may reference memory on
+  /// devices that the CPU cannot address directly. Unlike `tensor_data()`,
+  /// the returned `Cord` holds its own reference to the underlying tensor
+  /// buffer, so the buffer is kept alive for as long as the `Cord` (or any
+  /// copy of it) exists, even if the originating `Tensor` is destroyed.
+  ///
+  /// REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
+  absl::Cord tensor_data_cord() const;
+
   /// Copy the other tensor into this tensor, reshape it and reinterpret the
   /// buffer's datatype. If an ok Status is returned, the two tensors now share
   /// the same underlying storage.

@@ -17,13 +17,16 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -36,6 +39,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.pb.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -52,9 +56,12 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/trace_command_buffer_factory.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -205,7 +212,7 @@ CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info,
                                  std::vector<Buffer> buffers,
                                  CommunicationId communication_id,
                                  CollectivesMode collectives_mode)
-    : Thunk(kind, thunk_info),
+    : Command(kind, std::move(thunk_info)),
       buffers_(std::move(buffers)),
       communication_id_(communication_id),
       collectives_mode_(collectives_mode) {}
@@ -308,13 +315,13 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
   if (CanUseSymmetricBuffer() && config().use_symmetric_buffer) {
     for (const Buffer& buffer : buffers_) {
       if (buffer.source_memory_space == kCollectiveMemorySpaceColor) {
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             params.collective_memory_requests->RequestSymmetricAllocation(
                 clique_key, buffer.source_buffer.slice.index()));
       }
 
       if (buffer.destination_memory_space == kCollectiveMemorySpaceColor) {
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             params.collective_memory_requests->RequestSymmetricAllocation(
                 clique_key, buffer.destination_buffer.slice.index()));
       }
@@ -332,10 +339,46 @@ absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {
   return InitializeCollective(params, clique_key);
 }
 
-absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
-  XLA_VLOG_DEVICE(1, params.stream->parent()->device_ordinal())
-      << absl::StreamFormat("Starting %v.", kind());
+absl::Status CollectiveThunk::FirstCallRendezvous(
+    const ExecuteParams& params, const GpuCliqueKey& clique_key,
+    absl::string_view label, RendezvousFlag& flag) {
+  if (!RequiresRendezvous() || flag.IsCompleted()) {
+    return absl::OkStatus();
+  }
 
+  int32_t device_ordinal = params.stream->parent()->device_ordinal();
+  size_t num_local_participants = clique_key.num_local_participants();
+  auto global_device_id = params.collective_params->global_device_id;
+  RankId rank = clique_key.rank(global_device_id).value_or(RankId(-1));
+
+  XLA_VLOG_DEVICE(1, device_ordinal) << absl::StreamFormat(
+      "First call rendezvous %s %v; run_id=%d; num_local_participants=%d; "
+      "rank=%d; clique_key=%s",
+      label, kind(), params.collective_params->run_id.ToInt(),
+      num_local_participants, rank.value(), clique_key.ToString());
+
+  auto rendezvous_key = FirstCallRendezvousKey{clique_key};
+  auto rendezvous_name = absl::StrFormat(
+      "[%d] first call %s collective operation: kind=%v; run_id=%ld",
+      device_ordinal, label, kind(), params.collective_params->run_id.ToInt());
+
+  const xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+
+  return Rendezvous(
+      flag, rendezvous_name, rendezvous_key, num_local_participants,
+      /*warn_stuck_timeout=*/
+      absl::Seconds(
+          debug_options
+              .xla_gpu_first_collective_call_warn_stuck_timeout_seconds()),
+      /*terminate_timeout=*/
+      absl::Seconds(
+          debug_options
+              .xla_gpu_first_collective_call_terminate_timeout_seconds()));
+}
+
+absl::Status CollectiveThunk::RunWithCommAndRendezvous(
+    const ExecuteParams& params,
+    absl::FunctionRef<absl::Status(const GpuCliqueKey&, Communicator&)> fn) {
   ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
@@ -345,66 +388,54 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
                        clique_key, params.collective_params->global_device_id));
   DCHECK(comm) << "Failed to get communicator for collective operation";
 
-  // Rendezvous with other local participants before and after the first call
-  // to the collective operation to avoid NCCL deadlocks. See the comment on
-  // RequiresRendezvous() for details.
-  auto first_call_rendezvous = [&](absl::string_view label,
-                                   RendezvousFlag& flag) -> absl::Status {
-    if (!RequiresRendezvous() || flag.IsCompleted()) {
-      return absl::OkStatus();
-    }
-
-    int32_t device_ordinal = params.stream->parent()->device_ordinal();
-    size_t num_local_participants = clique_key.num_local_participants();
-    auto global_device_id = params.collective_params->global_device_id;
-    RankId rank = clique_key.rank(global_device_id).value_or(RankId(-1));
-
-    XLA_VLOG_DEVICE(1, device_ordinal) << absl::StreamFormat(
-        "First call rendezvous %s %v; run_id=%d; num_local_participants=%d; "
-        "rank=%d; clique_key=%s",
-        label, kind(), params.collective_params->run_id.ToInt(),
-        num_local_participants, rank.value(), clique_key.ToString());
-
-    auto rendezvous_key = FirstCallRendezvousKey{clique_key};
-    auto rendezvous_name = absl::StrFormat(
-        "[%d] first call %s collective operation: kind=%v; run_id=%ld",
-        device_ordinal, label, kind(),
-        params.collective_params->run_id.ToInt());
-
-    const xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
-
-    return Rendezvous(
-        flag, rendezvous_name, rendezvous_key, num_local_participants,
-        /*warn_stuck_timeout=*/
-        absl::Seconds(
-            debug_options
-                .xla_gpu_first_collective_call_warn_stuck_timeout_seconds()),
-        /*terminate_timeout=*/
-        absl::Seconds(
-            debug_options
-                .xla_gpu_first_collective_call_terminate_timeout_seconds()));
-  };
-
-  RETURN_IF_ERROR(first_call_rendezvous("before", pre_call_rendezvous_flag_));
-
-  // Launch collective operation on the compute stream.
-  RETURN_IF_ERROR(RunCollective(params, clique_key, *params.stream, *comm));
-
-  RETURN_IF_ERROR(first_call_rendezvous("after", post_call_rendezvous_flag_));
-
+  RETURN_IF_ERROR(FirstCallRendezvous(params, clique_key, "before",
+                                      pre_call_rendezvous_flag_));
+  RETURN_IF_ERROR(fn(clique_key, *comm));
+  RETURN_IF_ERROR(FirstCallRendezvous(params, clique_key, "after",
+                                      post_call_rendezvous_flag_));
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<Communicator*>> CollectiveThunk::GetCommunicators(
-    const ExecuteParams& params) const {
-  ASSIGN_OR_RETURN(
-      GpuCliqueKey clique_key,
-      GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode, communication_id_));
-  ASSIGN_OR_RETURN(Communicator * comm,
-                   params.collective_cliques->GetComm(
-                       clique_key, params.collective_params->global_device_id));
-  return std::vector<Communicator*>{comm};
+absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
+  XLA_VLOG_DEVICE(1, params.stream->parent()->device_ordinal())
+      << absl::StreamFormat("Starting %v.", kind());
+
+  return RunWithCommAndRendezvous(
+      params, [&](const GpuCliqueKey& clique_key, Communicator& comm) {
+        return RunCollective(params, clique_key, *params.stream, comm);
+      });
+}
+
+absl::StatusOr<const se::CommandBuffer::Command*> CollectiveThunk::Record(
+    const ExecuteParams& execute_params, const RecordParams& record_params,
+    RecordAction record_action, se::CommandBuffer* command_buffer) {
+  std::unique_ptr<se::CommandBuffer> nested_cmd;
+  RETURN_IF_ERROR(RunWithCommAndRendezvous(
+      execute_params,
+      [&](const GpuCliqueKey& clique_key, Communicator& comm) -> absl::Status {
+        ASSIGN_OR_RETURN(nested_cmd,
+                         se::TraceCommandBufferFactory::Create(
+                             execute_params.stream->parent(),
+                             execute_params.command_buffer_trace_stream,
+                             [&](se::Stream* stream) {
+                               return RunCollective(execute_params, clique_key,
+                                                    *stream, comm);
+                             }));
+        return absl::OkStatus();
+      }));
+
+  RETURN_IF_ERROR(nested_cmd->SetPriority(se::StreamPriority::Highest));
+
+  if (auto* create = std::get_if<RecordCreate>(&record_action)) {
+    return command_buffer->CreateChildCommand(*nested_cmd,
+                                              create->dependencies);
+  }
+  if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
+    RETURN_IF_ERROR(
+        command_buffer->UpdateChildCommand(update->command, *nested_cmd));
+    return update->command;
+  }
+  return Internal("Invalid record action");
 }
 
 Thunk::BufferUses CollectiveThunk::buffer_uses() const {
@@ -417,6 +448,12 @@ Thunk::BufferUses CollectiveThunk::buffer_uses() const {
                                     buffer.destination_buffer.shape));
   }
   return uses;
+}
+
+absl::StatusOr<GpuCliqueKey> CollectiveThunk::GetCliqueKey(
+    const ExecuteParams& params) const {
+  return GetGpuCliqueKey(*params.collective_params, config().replica_groups,
+                         config().group_mode, communication_id_);
 }
 
 std::string CollectiveThunk::GetDeviceString(

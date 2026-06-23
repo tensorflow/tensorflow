@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/service/computation_placer.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/tpu_topology.h"
 
 namespace tensorflow {
 namespace tpu {

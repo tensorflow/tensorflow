@@ -169,26 +169,40 @@ cc_library(
 tf_kernel_library(
     name = "adjust_hue_op",
     prefix = "adjust_hue_op",
-    deps = IMAGE_DEPS + [":adjust_hsv_gpu_lib"],
+    deps = IMAGE_DEPS + [
+        ":adjust_hsv_gpu_lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
     name = "adjust_saturation_op",
     prefix = "adjust_saturation_op",
-    deps = IMAGE_DEPS + [":adjust_hsv_gpu_lib"],
+    deps = IMAGE_DEPS + [
+        ":adjust_hsv_gpu_lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
     name = "attention_ops",
     prefix = "attention_ops",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
     name = "colorspace_op",
     gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "colorspace_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -216,7 +230,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "draw_bounding_box_op",
     prefix = "draw_bounding_box_op",
-    deps = IMAGE_DEPS + ["@com_google_absl//absl/log"],
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -274,7 +292,13 @@ tf_kernel_library(
     name = "non_max_suppression_op",
     features = ["-layering_check"],
     prefix = "non_max_suppression_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda_or_rocm([
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:gpu_prim_hdrs",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+    ] + if_cuda_or_rocm([
         "@com_google_absl//absl/strings",
     ]),
 )
@@ -282,13 +306,20 @@ tf_kernel_library(
 tf_kernel_library(
     name = "scale_and_translate_op",
     prefix = "scale_and_translate_op",
-    deps = IMAGE_DEPS + [":sampling_kernels"],
+    deps = IMAGE_DEPS + [
+        ":sampling_kernels",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )
 
 tf_kernel_library(
     name = "random_crop_op",
     prefix = "random_crop_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -324,19 +355,29 @@ tf_kernel_library(
     deps = IMAGE_DEPS + [
         "//tensorflow/core/kernels:stateless_random_ops",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
 tf_kernel_library(
     name = "image_ops",
     prefix = "image_ops",
-    deps = IMAGE_DEPS + ["@com_google_absl//absl/log"],
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
     name = "mirror_pad_op",
     prefix = "mirror_pad_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 # Tests ------------------------
@@ -457,7 +498,6 @@ cc_library(
     name = "android_tensorflow_image_op",
     srcs = if_android(["decode_image_op.cc"]),
     copts = tf_copts(),
-    features = if_android(["-layering_check"]),
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
     deps = [

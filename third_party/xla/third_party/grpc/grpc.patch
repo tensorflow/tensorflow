@@ -54,24 +54,71 @@ diff --git a/src/python/grpcio/grpc/BUILD.bazel b/src/python/grpcio/grpc/BUILD.b
      deps = [
          ":_observability",
 
-diff --git a/MODULE.bazel b/MODULE.bazel
---- a/MODULE.bazel
-+++ b/MODULE.bazel
-@@ -60,7 +60,7 @@ bazel_dep(name = "rules_shell", version = "0.4.0", dev_dependency = True)
- # Python dependencies
- # ===================
+diff --git a/src/core/resolver/dns/dns_resolver_plugin.cc b/src/core/resolver/dns/dns_resolver_plugin.cc
+--- a/src/core/resolver/dns/dns_resolver_plugin.cc
++++ b/src/core/resolver/dns/dns_resolver_plugin.cc
+@@ -48,6 +48,9 @@
+     return;
+   }
+   auto resolver = ConfigVars::Get().DnsResolver();
++  if (resolver.empty()) {
++    resolver = "native";
++  }
+   // ---- Ares resolver ----
+   if (ShouldUseAresDnsResolver(resolver)) {
+     VLOG(2) << "Using ares dns resolver";
+
+
+
+
+
+diff --git a/bazel/cython_library.bzl b/bazel/cython_library.bzl
+--- a/bazel/cython_library.bzl
++++ b/bazel/cython_library.bzl
+@@ -69,5 +69,6 @@ def pyx_library(name, deps = [], py_deps
  
--bazel_dep(name = "rules_python", version = "1.5.4")
-+bazel_dep(name = "rules_python", version = "1.6.3")
- 
- PYTHON_VERSIONS = [
-     "3.9",
-@@ -68,7 +68,7 @@ PYTHON_VERSIONS = [
-     "3.11",
-     "3.12",
-     "3.13",
--    "3.14.0b2",
-+    "3.14",
- ]
- 
- python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+     shared_objects = []
+     defines = kwargs.pop("defines", [])
++    copts = kwargs.pop("copts", [])
+     for src in pyx_srcs:
+         stem = src.split(".")[0]
+@@ -81,9 +81,16 @@ def pyx_library(name, deps = [], py_deps
+             defines = defines,
++            copts = copts,
++            features = kwargs.get("features", []),
+             linkshared = 1,
+-            linkopts = select({
+-                # The "-undefined dynamic_lookup" flag allows the shared library to use symbols
+-                # that are not defined at link time but will be resolved at runtime.
+-                # This is necessary for Python extensions on macOS to access Python C API symbols.
+-                "@platforms//os:macos": ["-undefined", "dynamic_lookup"],
+-                "//conditions:default": [],
+-            }),
++            linkopts = select({
++                # The "-undefined dynamic_lookup" flag allows the shared library to use symbols
++                # that are not defined at link time but will be resolved at runtime.
++                # This is necessary for Python extensions on macOS to access Python C API symbols.
++                "@platforms//os:macos": ["-undefined", "dynamic_lookup"],
++                "@platforms//os:windows": [
++                    "/NODEFAULTLIB:python3.lib",
++                    "/OPT:REF",
++                    "/OPT:ICF",
++                ],
++                "//conditions:default": [],
++            }),
+        )
+        shared_objects.append(shared_object_name)
+diff --git a/src/python/grpcio/grpc/_cython/BUILD.bazel b/src/python/grpcio/grpc/_cython/BUILD.bazel
+--- a/src/python/grpcio/grpc/_cython/BUILD.bazel
++++ b/src/python/grpcio/grpc/_cython/BUILD.bazel
+@@ -35,1 +35,10 @@
+     defines = ["GRPC_PYTHON_BUILD=1"],
++    # -Wno-unused-result is needed because Cython generated code triggers unused result warnings.
++    copts = select({
++        "@platforms//os:windows": [],
++        "//conditions:default": ["-Wno-unused-result"],
++    }),
++    features = select({
++        "@platforms//os:windows": ["-layering_check", "force_no_whole_archive"],
++        "//conditions:default": ["-layering_check"],
++    }),

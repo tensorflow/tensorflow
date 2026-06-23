@@ -13,14 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 // Register a factory that provides CPU devices.
-#include "absl/memory/memory.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/public/session_options.h"
 

@@ -19,10 +19,40 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
+#include <limits>
 #include <type_traits>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/types/half.h"
+
+namespace std {
+template <>
+class numeric_limits<tflite::half> {
+ public:
+  static constexpr bool is_specialized =
+      true;  // NOLINT(readability-identifier-naming)
+  static constexpr tflite::half min() noexcept {
+    return tflite::half::smallest_normal();
+  }
+  static constexpr tflite::half max() noexcept { return tflite::half::max(); }
+  static constexpr tflite::half lowest() noexcept {
+    return tflite::half::min();
+  }
+  static constexpr tflite::half epsilon() noexcept {
+    return tflite::half::epsilon();
+  }
+  static constexpr tflite::half quiet_NaN() noexcept {
+#if TFLITE_ARCH_FLOAT16
+    return tflite::half(__builtin_nanf(""));
+#else
+    return tflite::half::from_bits(0x7e00);
+#endif
+  }
+  static constexpr bool is_signed =
+      true;  // NOLINT(readability-identifier-naming)
+};
+}  // namespace std
 
 namespace tflite {
 
@@ -170,11 +200,13 @@ inline bool NextIndex(const int num_dims, const int* dims, IndexType* current) {
   }
   TFLITE_DCHECK(dims != nullptr);
   TFLITE_DCHECK(current != nullptr);
+  for (int i = 0; i < num_dims; ++i) {
+    TFLITE_DCHECK_GE(dims[i], 0);
+  }
   int carry = 1;
   for (int idx = num_dims - 1; idx >= 0; --idx) {
     IndexType current_val = current[idx] + carry;
-    TFLITE_DCHECK_GE(dims[idx], current_val);
-    if (dims[idx] == current_val) {
+    if (current_val >= dims[idx]) {
       current[idx] = 0;
     } else {
       current[idx] = current_val;
@@ -999,7 +1031,7 @@ struct TanhParams {
   int input_left_shift;
 };
 
-constexpr int kTransposeMaxDimensions = 6;
+constexpr int kTransposeMaxDimensions = 8;
 
 struct TransposeParams {
   int8_t perm_count;
@@ -1073,6 +1105,12 @@ template <typename P>
 inline void GetActivationParams(const P& params, float* min, float* max) {
   *min = params.float_activation_min;
   *max = params.float_activation_max;
+}
+
+template <typename P>
+inline void GetActivationParams(const P& params, half* min, half* max) {
+  *min = static_cast<half>(params.float_activation_min);
+  *max = static_cast<half>(params.float_activation_max);
 }
 
 template <typename P>

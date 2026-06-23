@@ -676,7 +676,7 @@ cc_library_with_tflite(
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/delegates:telemetry",
+        # copybara:uncomment "//tensorflow/lite/delegates:telemetry",
         "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qs8",
         "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qu8",
         "//tensorflow/lite/experimental/resource",

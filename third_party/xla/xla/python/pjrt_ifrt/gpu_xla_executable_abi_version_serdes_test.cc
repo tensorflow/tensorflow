@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/gpu_xla_executable_abi_version.h"
 #include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
+#include "xla/stream_executor/abi/executable_abi_version.pb.h"
 #include "xla/stream_executor/abi/runtime_abi_version.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_runtime_abi_version.h"

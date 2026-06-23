@@ -1,8 +1,10 @@
 // RUN: xla-opt %s -split-input-file \
 // RUN: -stablehlo-lower-to-triton="warp_specialization_allowed=false" \
+// RUN: -triton-xla-fold-reshape-around-for-loop \
 // RUN: | FileCheck %s
 // RUN: xla-opt %s -split-input-file \
 // RUN: -stablehlo-lower-to-triton="warp_specialization_allowed=true" \
+// RUN: -triton-xla-fold-reshape-around-for-loop \
 // RUN: | FileCheck %s --check-prefix=WARP
 
 // CHECK: func @lower_transpose(%[[ARG:.*]]: tensor<2x4x8xf32>) -> tensor<8x2x4xf32>
@@ -312,4 +314,47 @@ func.func @lower_dot_with_warp_specialization_to_triton(
     scf.yield %add : tensor<2x8xf32>
   }
   return %res : tensor<2x8xf32>
+}
+
+// CHECK-LABEL: func @lower_dot_with_non_canonical_operands
+func.func @lower_dot_with_non_canonical_operands(
+    %arg0: tensor<1x4x2xf32>,
+    %arg1: tensor<1x4x8xf32>,
+    %arg2: tensor<1x2x8xf32>) -> tensor<1x2x8xf32> {
+  // CHECK-DAG: %[[LHS_RESHAPE:.*]] = tt.reshape %arg0 : tensor<1x4x2xf32> -> tensor<4x2xf32>
+  // CHECK-DAG: %[[LHS_TRANSPOSE:.*]] = tt.trans %[[LHS_RESHAPE]] {order = array<i32: 1, 0>} : tensor<4x2xf32> -> tensor<2x4xf32>
+  // CHECK-DAG: %[[RHS_RESHAPE:.*]] = tt.reshape %arg1 : tensor<1x4x8xf32> -> tensor<4x8xf32>
+  // CHECK-DAG: %[[ACC_RESHAPE:.*]] = tt.reshape %arg2 : tensor<1x2x8xf32> -> tensor<2x8xf32>
+  // CHECK: %[[DOT:.*]] = tt.dot %[[LHS_TRANSPOSE]], %[[RHS_RESHAPE]], %[[ACC_RESHAPE]], inputPrecision = tf32 : tensor<2x4xf32> * tensor<4x8xf32> -> tensor<2x8xf32>
+  // CHECK: %[[FINAL_R:.*]] = tt.reshape %[[DOT]] : tensor<2x8xf32> -> tensor<1x2x8xf32>
+  %0 = stablehlo.dot_general %arg0, %arg1, batching_dims = [0] x [0], contracting_dims = [1] x [1], precision = [DEFAULT, DEFAULT] : (tensor<1x4x2xf32>, tensor<1x4x8xf32>) -> tensor<1x2x8xf32>
+  %1 = arith.addf %0, %arg2 : tensor<1x2x8xf32>
+  // CHECK: return %[[FINAL_R]] : tensor<1x2x8xf32>
+  return %1 : tensor<1x2x8xf32>
+}
+
+// CHECK-LABEL: func @lower_fused_dot_in_loop_non_canonical
+func.func @lower_fused_dot_in_loop_non_canonical(
+    %arg0: tensor<1x4x2xf32>,
+    %arg1: tensor<4x8xf32>,
+    %arg2: tensor<1x2x8xf32>) -> tensor<1x2x8xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  // CHECK: %[[INIT_R:.*]] = tt.reshape %arg2 : tensor<1x2x8xf32> -> tensor<2x8xf32>
+  // CHECK: %[[LOOP:.*]] = scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC_2D:.*]] = %[[INIT_R]]) -> (tensor<2x8xf32>) {
+  %res = scf.for %iv = %c0 to %c4 step %c1 iter_args(%accum = %arg2) -> tensor<1x2x8xf32> {
+    // CHECK-DAG: %[[RESTORED:.*]] = tt.reshape %[[ACC_2D]] : tensor<2x8xf32> -> tensor<1x2x8xf32>
+    // CHECK-DAG: %[[LHS_R:.*]] = tt.reshape %arg0 : tensor<1x4x2xf32> -> tensor<4x2xf32>
+    // CHECK-DAG: %[[LHS_T:.*]] = tt.trans %[[LHS_R]] {order = array<i32: 1, 0>} : tensor<4x2xf32> -> tensor<2x4xf32>
+    // CHECK: %[[DOT_ACC:.*]] = tt.reshape %[[RESTORED]] : tensor<1x2x8xf32> -> tensor<2x8xf32>
+    // CHECK: %[[DOT:.*]] = tt.dot %[[LHS_T]], %arg1, %[[DOT_ACC]], inputPrecision = tf32 : tensor<2x4xf32> * tensor<4x8xf32> -> tensor<2x8xf32>
+    %dot = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<1x4x2xf32>, tensor<4x8xf32>) -> tensor<1x2x8xf32>
+    %add = arith.addf %dot, %accum : tensor<1x2x8xf32>
+    // CHECK: scf.yield %[[DOT]] : tensor<2x8xf32>
+    scf.yield %add : tensor<1x2x8xf32>
+  }
+  // CHECK: %[[FINAL_R:.*]] = tt.reshape %[[LOOP]] : tensor<2x8xf32> -> tensor<1x2x8xf32>
+  // CHECK: return %[[FINAL_R]]
+  return %res : tensor<1x2x8xf32>
 }

@@ -2,11 +2,11 @@ path: "tensorflow.lite"
 tf_module {
   member {
     name: "Interpreter"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "OpHint"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "OpsSet"
@@ -18,27 +18,27 @@ tf_module {
   }
   member {
     name: "RepresentativeDataset"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "TFLiteConverter"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "TargetSpec"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "TocoConverter"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "constants"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member {
     name: "experimental"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member_method {
     name: "toco_convert"

@@ -25,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -75,8 +75,8 @@ class TilingFromBlockParametersTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(TilingFromBlockParametersTest, GeneratesTilingForSimpleMap) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
 HloModule m
 
 fused_computation {
@@ -97,9 +97,8 @@ ENTRY entry_computation {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16, 32}};
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Tiling tiling,
-      TilingFromAnnotatedFusion(*analysis, block_level_parameters));
+  ASSERT_OK_AND_ASSIGN(Tiling tiling, TilingFromAnnotatedFusion(
+                                          *analysis, block_level_parameters));
 
   const HloInstruction* log = module->entry_computation()
                                   ->root_instruction()
@@ -111,8 +110,8 @@ ENTRY entry_computation {
 }
 
 TEST_F(TilingFromBlockParametersTest, GeneratesTilingForDot) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
 HloModule m
 
 fused_computation {
@@ -136,9 +135,8 @@ ENTRY entry_computation {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16, 16}};
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Tiling tiling,
-      TilingFromAnnotatedFusion(*analysis, block_level_parameters));
+  ASSERT_OK_AND_ASSIGN(Tiling tiling, TilingFromAnnotatedFusion(
+                                          *analysis, block_level_parameters));
 
   const HloInstruction* dot = module->entry_computation()
                                   ->root_instruction()
@@ -147,6 +145,46 @@ ENTRY entry_computation {
 
   EXPECT_THAT(tiling.TileSizesForInstruction(dot),
               IsOkAndHolds(ElementsAre(32, 16, 16)));
+}
+
+TEST_F(TilingFromBlockParametersTest, GeneratesTilingForDotWithTilingOverride) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule m
+
+fused_computation {
+  p0 = f32[128,128] parameter(0)
+  p1 = f32[128,128] parameter(1)
+  ROOT dot = f32[128,128] dot(p0, p1),
+   lhs_contracting_dims={1}, rhs_contracting_dims={0}}
+
+ENTRY entry_computation {
+  param_0 = f32[128,128] parameter(0)
+  param_1 = f32[128,128] parameter(1)
+  ROOT fusion = f32[128,128] fusion(param_0, param_1), kind=kCustom, calls=fused_computation
+}
+)hlo"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{16, 16}};
+
+  Tile tile_override;
+  tile_override.add_sizes(64);
+
+  ASSERT_OK_AND_ASSIGN(Tiling tiling,
+                       TilingFromAnnotatedFusion(
+                           *analysis, block_level_parameters, &tile_override));
+
+  const HloInstruction* dot = module->entry_computation()
+                                  ->root_instruction()
+                                  ->fused_instructions_computation()
+                                  ->root_instruction();
+
+  EXPECT_THAT(tiling.TileSizesForInstruction(dot),
+              IsOkAndHolds(ElementsAre(64, 16, 16)));
 }
 
 class GetTileTilingSpaceConcreteSizesTest
@@ -159,14 +197,14 @@ class GetTileTilingSpaceConcreteSizesTest
   absl::StatusOr<llvm::SmallVector<int64_t>> ComputeConcreteTileSizesOfFusion(
       const HloInstruction* fusion) {
     TF_RET_CHECK(fusion->opcode() == HloOpcode::kFusion) << fusion->ToString();
-    TF_ASSIGN_OR_RETURN(auto backend_config,
-                        fusion->backend_config<GpuBackendConfig>());
+    ASSIGN_OR_RETURN(auto backend_config,
+                     fusion->backend_config<GpuBackendConfig>());
     BlockLevelParameters block_level_parameters =
         BlockLevelParameters::FromBlockLevelFusionConfig(
             backend_config.fusion_backend_config().block_level_fusion_config());
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
-    auto tiling_space =
-        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    ASSIGN_OR_RETURN(auto tiling_space, experimental::TilingSpace::Create(
+                                            *fusion_adaptor, &mlir_context_));
     return GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters);
   }
 
@@ -174,8 +212,8 @@ class GetTileTilingSpaceConcreteSizesTest
 };
 
 TEST_F(GetTileTilingSpaceConcreteSizesTest, DotWithBackendConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
 f {
   p0 = f32[64,128] parameter(0)
   p1 = f32[128,256] parameter(1)
@@ -201,8 +239,8 @@ ENTRY entry {
 }
 
 TEST_F(GetTileTilingSpaceConcreteSizesTest, DotWithoutBackendConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
 f {
   p0 = f32[64,128] parameter(0)
   p1 = f32[128,256] parameter(1)
@@ -227,8 +265,8 @@ ENTRY entry {
 }
 
 TEST_F(GetTileTilingSpaceConcreteSizesTest, ReductionWithTwoReductionDims) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
 add {
   lhs = f32[] parameter(0)
   rhs = f32[] parameter(1)

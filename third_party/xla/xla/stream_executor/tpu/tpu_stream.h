@@ -25,13 +25,13 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/tpu/c_api_conversions.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/status_helper.h"
-#include "xla/stream_executor/tpu/tpu_executor_api.h"
-#include "xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "xla/stream_executor/tpu/tpu_platform.h"
 #include "xla/stream_executor/tpu/tpu_stream_interface.h"
+#include "xla/tpu/c_api_conversions.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/status_helper.h"
+#include "xla/tpu/tpu_executor_api.h"
+#include "xla/tpu/tpu_executor_c_api.h"
 
 namespace tensorflow {
 namespace tpu {

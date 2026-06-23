@@ -205,6 +205,22 @@ gpu_device_info {
         ops_per_clock: 2048
       }
     }
+    rate_infos {
+      key: 35
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 2048
+      }
+    }
+    rate_infos {
+      key: 36
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 2048
+      }
+    }
   }
   thread_dim_limit_x: 1024
   thread_dim_limit_y: 1024

@@ -18,14 +18,18 @@ xla_cc_binary(
     # symlinked from the lit_lib directory.
     linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     deps = [
+        "//xla:debug_options_flags",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/codegen/triton:triton_kernel_source",
         "//xla/backends/gpu/codegen/triton:xtile_compiler",
+        "//xla/backends/gpu/target_config",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu/model:block_level_parameters",
+        "//xla/stream_executor:device_description",
         "//xla/tools:hlo_module_loader",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/util:command_line_flags",

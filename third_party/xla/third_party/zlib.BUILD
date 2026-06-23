@@ -43,3 +43,8 @@ cc_library(
     }),
     includes = ["."],
 )
+
+alias(
+    name = "zlib-ng",
+    actual = ":zlib",
+)

@@ -58,10 +58,11 @@ class DynamicStitchOpImplBase : public OpKernel {
       expected.push_back(dt);
     }
     OP_REQUIRES_OK(c, c->MatchSignature(expected, {dt}));
-    OP_REQUIRES(c, c->num_inputs() > 0,
-                errors::InvalidArgument(op_name + ": Must have some inputs"));
+    OP_REQUIRES(
+        c, c->num_inputs() > 0,
+        absl::InvalidArgumentError(op_name + ": Must have some inputs"));
     OP_REQUIRES(c, c->num_inputs() % 2 == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     op_name + ": Must have even number of arguments"));
   }
 
@@ -111,9 +112,9 @@ class DynamicStitchOpImplBase : public OpKernel {
 
       for (int i = 0; i < indices_vec.size(); i++) {
         int32_t index = internal::SubtleMustCopy(indices_vec(i));
-        OP_REQUIRES(
-            c, FastBoundsCheck(index, *first_dim_size),
-            errors::InvalidArgument("indices[", i, "] is out of range"));
+        OP_REQUIRES(c, FastBoundsCheck(index, *first_dim_size),
+                    absl::InvalidArgumentError(
+                        absl::StrCat("indices[", i, "] is out of range")));
       }
     }
 
@@ -126,10 +127,10 @@ class DynamicStitchOpImplBase : public OpKernel {
       const Tensor& data = (*data_inputs)[input_num];
       OP_REQUIRES(
           c, TensorShapeUtils::StartsWith(data.shape(), indices.shape()),
-          errors::InvalidArgument("data[", input_num,
-                                  "].shape = ", data.shape().DebugString(),
-                                  " does not start with indices[", input_num,
-                                  "].shape = ", indices.shape().DebugString()));
+          absl::InvalidArgumentError(absl::StrCat(
+              "data[", input_num, "].shape = ", data.shape().DebugString(),
+              " does not start with indices[", input_num,
+              "].shape = ", indices.shape().DebugString())));
       OP_REQUIRES(
           c, input_num == 0 || SameExtraShape(data0, indices0, data, indices),
           errors::InvalidArgument(

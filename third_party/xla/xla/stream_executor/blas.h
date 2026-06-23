@@ -32,14 +32,15 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/blas.pb.h"
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace Eigen {
 struct half;
@@ -414,9 +415,9 @@ class BlasSupport {
       int64_t stride_c, int batch_count, blas::ComputationType computation_type,
       blas::AlgorithmType algorithm, const EngineOptions& engine_options,
       blas::ProfileResult* output_profile_result, blas::CallContext context) {
-    TF_RETURN_IF_ERROR(
-        CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
-            computation_type));
+    RETURN_IF_ERROR(
+        (CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
+            computation_type)));
 
     void *alpha_ptr = &alpha;
     void *beta_ptr = &beta;
@@ -496,9 +497,9 @@ class BlasSupport {
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,
       const EngineOptions& engine_options,
       blas::ProfileResult* output_profile_result, blas::CallContext context) {
-    TF_RETURN_IF_ERROR(
-        CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
-            computation_type));
+    RETURN_IF_ERROR(
+        (CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
+            computation_type)));
 
     void *alpha_ptr = &alpha;
     void *beta_ptr = &beta;

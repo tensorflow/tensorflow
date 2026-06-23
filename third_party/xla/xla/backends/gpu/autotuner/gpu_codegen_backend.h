@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -98,7 +99,7 @@ class GpuCodegenBackend : public CodegenBackend {
       hlo_module = ExtractInstructionIntoNewModule(hlo_instruction);
       instruction_to_tune = hlo_module->entry_computation()->root_instruction();
     }
-    TF_RETURN_IF_ERROR(ApplyConfig(*instruction_to_tune, config));
+    RETURN_IF_ERROR(ApplyConfig(*instruction_to_tune, config));
 
     hlo_module->mutable_config().set_debug_options(debug_options_);
     AdjustDebugOptionsForAutotuning(
@@ -107,8 +108,8 @@ class GpuCodegenBackend : public CodegenBackend {
     Compiler::CompileOptions options;
     options.gpu_topology = GetSingleDeviceGpuTopology("", target_config_);
     options.embed_hlo_module = false;
-    TF_ASSIGN_OR_RETURN(auto optimized_module,
-                        RunHloPasses(std::move(hlo_module), options));
+    ASSIGN_OR_RETURN(auto optimized_module,
+                     RunHloPasses(std::move(hlo_module), options));
     return compiler_->RunBackend(std::move(optimized_module), stream_executor_,
                                  options);
   }
@@ -137,6 +138,7 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.set_xla_gpu_dump_autotune_results_to("");
     debug_options.set_xla_gpu_load_autotune_results_from("");
     debug_options.set_xla_gpu_dump_autotune_logs_to("");
+    debug_options.clear_xla_run_hlo_passes_starting_from();
   }
 
  private:

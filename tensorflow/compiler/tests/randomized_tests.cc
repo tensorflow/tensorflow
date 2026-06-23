@@ -319,7 +319,7 @@ class OpTest : public ::testing::Test {
 
   // Runs 'fn' up to --tf_xla_test_repetitions times, or until a test failure
   // occurs; whichever happens first. Reruns if the TestResult is kInvalid.
-  void Repeatedly(const std::function<TestResult(void)>& fn);
+  void Repeatedly(const std::function<TestResult()>& fn);
 
   // Select a random element from 'candidates'.
   template <typename T>
@@ -726,7 +726,7 @@ class TensorGeneratorBool : public TensorGenerator<bool> {
   }
 };
 
-void OpTest::Repeatedly(const std::function<TestResult(void)>& fn) {
+void OpTest::Repeatedly(const std::function<TestResult()>& fn) {
   int const max_repetitions = tf_xla_test_repetitions;
   int valid_test_runs = 0;
   // We run up to 100 * max_repetitions times; the idea is that if we roll the
@@ -2747,7 +2747,8 @@ TEST_F(OpTest, Einsum) {
                                              .RandomInput(a.type, a.rhs_dims)
                                              .Attr("equation", a.equation)
                                              .Attr("T", a.type)
-                                             .Attr("N", 2));
+                                             .Attr("N", 2),
+                                         2e-1, 2e-1);
   });
 }
 

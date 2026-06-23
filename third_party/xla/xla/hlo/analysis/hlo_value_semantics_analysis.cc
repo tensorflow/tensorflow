@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -175,9 +176,9 @@ absl::Status HloPreOrderDFS::Run(const HloComputation& computation,
         stack_.push_back(operand);
       }
     }
-    TF_RETURN_IF_ERROR(visitor->Preprocess(to_visit));
-    TF_RETURN_IF_ERROR(to_visit->Visit(visitor));
-    TF_RETURN_IF_ERROR(visitor->Postprocess(to_visit));
+    RETURN_IF_ERROR(visitor->Preprocess(to_visit));
+    RETURN_IF_ERROR(to_visit->Visit(visitor));
+    RETURN_IF_ERROR(visitor->Postprocess(to_visit));
   }
   return absl::OkStatus();
 }
@@ -215,9 +216,9 @@ absl::Status EinsumDepthAnalysis::RunInternal(
   for (HloInstruction* root : roots) {
     if (root == computation.root_instruction()) {
       if (root_depth.has_value()) {
-        TF_RETURN_IF_ERROR(SetInstructionDepth(root, *root_depth));
+        RETURN_IF_ERROR(SetInstructionDepth(root, *root_depth));
       } else {
-        TF_RETURN_IF_ERROR(SetInstructionDepth(root, 0));
+        RETURN_IF_ERROR(SetInstructionDepth(root, 0));
       }
     } else {
       GetOrCreateDepthTree(root);
@@ -233,7 +234,7 @@ absl::StatusOr<std::unique_ptr<EinsumDepthAnalysis>> EinsumDepthAnalysis::Run(
   EinsumDepthAnalysis* analysis_ptr =
       new EinsumDepthAnalysis(send_recv_group_map);
   std::unique_ptr<EinsumDepthAnalysis> analysis(analysis_ptr);
-  TF_RETURN_IF_ERROR(analysis->RunInternal(computation, std::nullopt));
+  RETURN_IF_ERROR(analysis->RunInternal(computation, std::nullopt));
   return analysis;
 }
 
@@ -355,7 +356,7 @@ absl::Status EinsumDepthAnalysis::DefaultAction(HloInstruction* instruction) {
   for (int operand_index = 0; operand_index < instruction->operand_count();
        ++operand_index) {
     const HloInstruction* operand = instruction->operand(operand_index);
-    TF_RETURN_IF_ERROR(SetInstructionDepth(operand, max_depth));
+    RETURN_IF_ERROR(SetInstructionDepth(operand, max_depth));
   }
   return absl::OkStatus();
 }
@@ -409,9 +410,9 @@ absl::Status EinsumDepthAnalysis::HandleDepthIncrementInstruction(
   ShapeTree<int>& depth_tree = GetDepthTreeOrDie(instruction);
   int instruction_depth = depth_tree.element({});
   for (HloInstruction* operand : instruction->mutable_operands()) {
-    TF_RETURN_IF_ERROR(SetInstructionDepth(
-        operand, instruction_depth >= 0 ? instruction_depth + 1
-                                        : instruction_depth - 1));
+    RETURN_IF_ERROR(SetInstructionDepth(operand, instruction_depth >= 0
+                                                     ? instruction_depth + 1
+                                                     : instruction_depth - 1));
   }
   return absl::OkStatus();
 }
@@ -447,7 +448,7 @@ absl::Status EinsumDepthAnalysis::HandleWhile(HloInstruction* xla_while) {
   HloComputation* condition_computation = xla_while->while_condition();
   HloInstruction* condition_root = condition_computation->root_instruction();
   ShapeTree<int> condition_depth(condition_root->shape(), max_depth);
-  TF_RETURN_IF_ERROR(HandleCalledComputation(
+  RETURN_IF_ERROR(HandleCalledComputation(
       *condition_computation, condition_depth, xla_while->operands()));
   const ShapeTree<int>* root_depth_ptr = &depth_tree;
   HloComputation* body_computation = xla_while->while_body();
@@ -456,8 +457,8 @@ absl::Status EinsumDepthAnalysis::HandleWhile(HloInstruction* xla_while) {
       GetOrCreateDepthTree(body_computation->root_instruction());
   while (run_depth_propagation_on_body) {
     run_depth_propagation_on_body = false;
-    TF_RETURN_IF_ERROR(HandleCalledComputation(
-        *body_computation, *root_depth_ptr, xla_while->operands()));
+    RETURN_IF_ERROR(HandleCalledComputation(*body_computation, *root_depth_ptr,
+                                            xla_while->operands()));
     // Elements of while loop outputs may only be used within the while loop.
     // If such elements exist, we set its root depth to it operand depth. Then
     // recompute while loop instruction depths.
@@ -486,10 +487,9 @@ absl::Status EinsumDepthAnalysis::HandleConditional(
   const ShapeTree<int>& depth_tree = GetDepthTreeOrDie(conditional);
   // Conditionals have one more operand than the number of branches. The first
   // operand is the pred.
-  TF_RETURN_IF_ERROR(
-      SetInstructionDepth(conditional->operands()[0], depth_tree));
+  RETURN_IF_ERROR(SetInstructionDepth(conditional->operands()[0], depth_tree));
   for (int i = 0; i < conditional->branch_count(); ++i) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         HandleCalledComputation(*conditional->called_computations()[i],
                                 depth_tree, {conditional->operands()[i + 1]}));
   }
@@ -499,13 +499,13 @@ absl::Status EinsumDepthAnalysis::HandleConditional(
 absl::Status EinsumDepthAnalysis::HandleCalledComputation(
     const HloComputation& called_computation, const ShapeTree<int>& root_depth,
     absl::Span<HloInstruction* const> operands) {
-  TF_RETURN_IF_ERROR(RunInternal(called_computation,
-                                 std::optional<ShapeTree<int>>(root_depth)));
+  RETURN_IF_ERROR(RunInternal(called_computation,
+                              std::optional<ShapeTree<int>>(root_depth)));
   for (int i = 0; i < operands.size(); ++i) {
     HloInstruction* operand = operands[i];
     HloInstruction* parameter = called_computation.parameter_instruction(i);
     const ShapeTree<int>& parameter_depth = GetOrCreateDepthTree(parameter);
-    TF_RETURN_IF_ERROR(SetInstructionDepth(operand, parameter_depth));
+    RETURN_IF_ERROR(SetInstructionDepth(operand, parameter_depth));
   }
   return absl::OkStatus();
 }
@@ -515,7 +515,7 @@ absl::Status EinsumDepthAnalysis::HandleAfterAll(HloInstruction* after_all) {
   int max_depth = GetMaxDepth(depth_tree);
   for (HloInstruction* operand_token : after_all->mutable_operands()) {
     CHECK(operand_token->shape().IsToken());
-    TF_RETURN_IF_ERROR(SetInstructionDepth(operand_token, max_depth));
+    RETURN_IF_ERROR(SetInstructionDepth(operand_token, max_depth));
   }
   return absl::OkStatus();
 }
@@ -532,8 +532,8 @@ absl::Status EinsumDepthAnalysis::HandleSend(HloInstruction* send) {
 
 absl::Status EinsumDepthAnalysis::HandleRecv(HloInstruction* recv) {
   const ShapeTree<int>& depth_tree = GetDepthTreeOrDie(recv);
-  TF_ASSIGN_OR_RETURN(HloInstruction * send,
-                      send_recv_group_map_->GetMatchingSendOrRecv(recv));
+  ASSIGN_OR_RETURN(HloInstruction * send,
+                   send_recv_group_map_->GetMatchingSendOrRecv(recv));
   if (send == nullptr) {
     return absl::NotFoundError(
         absl::StrCat("Send pairing with Recv not found: ", recv->name()));
@@ -584,8 +584,8 @@ absl::Status EinsumDepthAnalysis::HandleRecvDone(HloInstruction* recv_done) {
 absl::Status EinsumDepthAnalysis::HandleAsyncStart(
     HloInstruction* async_start) {
   const ShapeTree<int>& depth_tree = GetDepthTreeOrDie(async_start);
-  TF_ASSIGN_OR_RETURN(ShapeTree<int> output_depth_tree,
-                      depth_tree.SubShapeTree({1}));
+  ASSIGN_OR_RETURN(ShapeTree<int> output_depth_tree,
+                   depth_tree.SubShapeTree({1}));
   return HandleCalledComputation(*(async_start->async_wrapped_computation()),
                                  output_depth_tree, async_start->operands());
 }
@@ -678,8 +678,8 @@ absl::StatusOr<std::unique_ptr<EinsumHeightAnalysis>> EinsumHeightAnalysis::Run(
   EinsumHeightAnalysis* analysis_ptr =
       new EinsumHeightAnalysis(send_recv_group_map);
   std::unique_ptr<EinsumHeightAnalysis> analysis(analysis_ptr);
-  TF_RETURN_IF_ERROR(analysis->RunInternal(computation, {}));
-  TF_RETURN_IF_ERROR(analysis->RunInternal(computation, {}));
+  RETURN_IF_ERROR(analysis->RunInternal(computation, {}));
+  RETURN_IF_ERROR(analysis->RunInternal(computation, {}));
   return analysis;
 }
 
@@ -758,12 +758,12 @@ absl::Status EinsumHeightAnalysis::HandleCalledComputation(
           computation.parameter_instruction(parameter_index);
       HloInstruction* operand = operands[parameter_index];
       const ShapeTree<int>& operand_height_tree = GetHeightTreeOrDie(operand);
-      TF_RETURN_IF_ERROR(SetInstructionHeight(parameter, operand_height_tree));
+      RETURN_IF_ERROR(SetInstructionHeight(parameter, operand_height_tree));
     }
   }
   for (HloInstruction* instruction : computation.instructions()) {
     if (instruction->user_count() == 0) {
-      TF_RETURN_IF_ERROR(instruction->Accept(this));
+      RETURN_IF_ERROR(instruction->Accept(this));
     }
   }
   return absl::OkStatus();
@@ -825,11 +825,11 @@ absl::Status EinsumHeightAnalysis::HandleCustomCall(
 
 absl::Status EinsumHeightAnalysis::HandleCall(HloInstruction* call) {
   RETURN_IF_HEIGHT_EXISTS(call);
-  TF_RETURN_IF_ERROR(HandleCalledComputation(*(call->called_computations()[0]),
-                                             call->mutable_operands()));
+  RETURN_IF_ERROR(HandleCalledComputation(*(call->called_computations()[0]),
+                                          call->mutable_operands()));
   const ShapeTree<int>& root_height_tree =
       GetHeightTreeOrDie(call->called_computations()[0]->root_instruction());
-  TF_RETURN_IF_ERROR(SetInstructionHeight(call, root_height_tree));
+  RETURN_IF_ERROR(SetInstructionHeight(call, root_height_tree));
   return absl::OkStatus();
 }
 
@@ -840,10 +840,10 @@ absl::Status EinsumHeightAnalysis::HandleFusion(HloInstruction* fusion) {
 
 absl::Status EinsumHeightAnalysis::HandleWhile(HloInstruction* xla_while) {
   RETURN_IF_HEIGHT_EXISTS(xla_while);
-  TF_RETURN_IF_ERROR(HandleCalledComputation(*(xla_while->while_condition()),
-                                             xla_while->mutable_operands()));
-  TF_RETURN_IF_ERROR(HandleCalledComputation(*(xla_while->while_body()),
-                                             xla_while->mutable_operands()));
+  RETURN_IF_ERROR(HandleCalledComputation(*(xla_while->while_condition()),
+                                          xla_while->mutable_operands()));
+  RETURN_IF_ERROR(HandleCalledComputation(*(xla_while->while_body()),
+                                          xla_while->mutable_operands()));
   const ShapeTree<int>& root_height_tree =
       GetHeightTreeOrDie(xla_while->while_body()->root_instruction());
   return SetInstructionHeight(xla_while, root_height_tree);
@@ -860,7 +860,7 @@ absl::Status EinsumHeightAnalysis::HandleConditional(
     // operands correspond to arguments to be passed to each of the N branch
     // computations, if they are executed. So the (i + 1)th operand corresponds
     // to the ith branch computation.
-    TF_RETURN_IF_ERROR(HandleCalledComputation(
+    RETURN_IF_ERROR(HandleCalledComputation(
         *computation, {conditional->mutable_operands()[i + 1]}));
     ShapeTree<int>& branch_root_height_tree =
         GetHeightTreeOrDie(computation->root_instruction());
@@ -882,9 +882,9 @@ absl::Status EinsumHeightAnalysis::HandleSend(HloInstruction* send) {
 
 absl::Status EinsumHeightAnalysis::HandleRecv(HloInstruction* recv) {
   RETURN_IF_HEIGHT_EXISTS(recv);
-  TF_ASSIGN_OR_RETURN(HloInstruction * send,
-                      send_recv_group_map_->GetMatchingSendOrRecv(recv));
-  TF_RETURN_IF_ERROR(send->Accept(this));
+  ASSIGN_OR_RETURN(HloInstruction * send,
+                   send_recv_group_map_->GetMatchingSendOrRecv(recv));
+  RETURN_IF_ERROR(send->Accept(this));
   HloInstruction* send_buffer = send->mutable_operand(0);
   const ShapeTree<int>& send_buffer_height_tree =
       GetHeightTreeOrDie(send_buffer);
@@ -919,7 +919,7 @@ absl::Status EinsumHeightAnalysis::HandleAllReduce(HloInstruction* all_reduce) {
 absl::Status EinsumHeightAnalysis::HandleAsyncStart(
     HloInstruction* async_start) {
   RETURN_IF_HEIGHT_EXISTS(async_start);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       HandleCalledComputation(*(async_start->async_wrapped_computation()),
                               async_start->mutable_operands()));
   const ShapeTree<int>& root_height_tree = GetHeightTreeOrDie(
@@ -1017,28 +1017,26 @@ HloValueSemanticsAnalysis::Run(
       absl::WrapUnique(
           new HloValueSemanticsAnalysis(module, execution_threads));
   value_semantics_analysis->InitializeSendRecvGroups();
-  TF_RETURN_IF_ERROR(value_semantics_analysis->InitializeEinsumDepth());
-  TF_RETURN_IF_ERROR(value_semantics_analysis->InitializeEinsumHeight());
+  RETURN_IF_ERROR(value_semantics_analysis->InitializeEinsumDepth());
+  RETURN_IF_ERROR(value_semantics_analysis->InitializeEinsumHeight());
   value_semantics_analysis->AnnotateWeights();
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       value_semantics_analysis->RunOnComputation(*module.entry_computation()));
   return value_semantics_analysis;
 }
 
 absl::Status HloValueSemanticsAnalysis::InitializeEinsumDepth() {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
-      EinsumDepthAnalysis::Run(*module_.entry_computation(),
-                               *send_recv_group_map_));
+  ASSIGN_OR_RETURN(std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
+                   EinsumDepthAnalysis::Run(*module_.entry_computation(),
+                                            *send_recv_group_map_));
   einsum_depth_map_ = einsum_depth_analysis->GetEinsumDepthMap();
   return absl::OkStatus();
 }
 
 absl::Status HloValueSemanticsAnalysis::InitializeEinsumHeight() {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<EinsumHeightAnalysis> einsum_height_analysis,
-      EinsumHeightAnalysis::Run(*module_.entry_computation(),
-                                *send_recv_group_map_));
+  ASSIGN_OR_RETURN(std::unique_ptr<EinsumHeightAnalysis> einsum_height_analysis,
+                   EinsumHeightAnalysis::Run(*module_.entry_computation(),
+                                             *send_recv_group_map_));
   einsum_height_map_ = einsum_height_analysis->GetEinsumHeightMap();
   return absl::OkStatus();
 }
@@ -1197,10 +1195,10 @@ HloValueSemanticsPropagation::HloValueSemanticsPropagation(
 
 absl::Status HloValueSemanticsPropagation::Run(
     const HloComputation& computation) {
-  TF_RETURN_IF_ERROR(computation.root_instruction()->Accept(this));
+  RETURN_IF_ERROR(computation.root_instruction()->Accept(this));
   for (HloInstruction* instruction : computation.instructions()) {
     if (instruction->user_count() == 0) {
-      TF_RETURN_IF_ERROR(instruction->Accept(this));
+      RETURN_IF_ERROR(instruction->Accept(this));
     }
   }
   return absl::OkStatus();
@@ -1519,7 +1517,7 @@ HloValueSemanticsPropagation::MergeSemanticsForAnInstruction(
         };
     if (auto index =
             find_operand_index_with_label(HloValueSemanticLabel::kStatic)) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           HloValueSemantics semantics,
           ComputeSemanticsFromStaticAndOther(
               operand_list[*index], operand_list[1 - *index], instruction));
@@ -1528,7 +1526,7 @@ HloValueSemanticsPropagation::MergeSemanticsForAnInstruction(
     }
     if (auto index =
             find_operand_index_with_label(HloValueSemanticLabel::kRandom)) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           HloValueSemantics semantics,
           ComputeSemanticsFromRandomAndOther(
               operand_list[*index], operand_list[1 - *index], instruction));
@@ -1537,7 +1535,7 @@ HloValueSemanticsPropagation::MergeSemanticsForAnInstruction(
     }
     if (auto index =
             find_operand_index_with_label(HloValueSemanticLabel::kWeight)) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           HloValueSemantics semantics,
           ComputeSemanticsFromWeightAndOther(
               operand_list[*index], operand_list[1 - *index], instruction));
@@ -1546,7 +1544,7 @@ HloValueSemanticsPropagation::MergeSemanticsForAnInstruction(
     }
     if (auto index =
             find_operand_index_with_label(HloValueSemanticLabel::kActivation)) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           HloValueSemantics semantics,
           ComputeSemanticsFromActivationAndOther(
               operand_list[*index], operand_list[1 - *index], instruction));
@@ -1555,7 +1553,7 @@ HloValueSemanticsPropagation::MergeSemanticsForAnInstruction(
     }
     if (auto index = find_operand_index_with_label(
             HloValueSemanticLabel::kActivationGradient)) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           HloValueSemantics semantics,
           ComputeSemanticsFromActivationGradientAndOther(
               operand_list[*index], operand_list[1 - *index], instruction));
@@ -1564,7 +1562,7 @@ HloValueSemanticsPropagation::MergeSemanticsForAnInstruction(
     }
     if (auto index = find_operand_index_with_label(
             HloValueSemanticLabel::kWeightGradient)) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           HloValueSemantics semantics,
           ComputeSemanticsFromWeightGradientAndOther(
               operand_list[*index], operand_list[1 - *index], instruction));
@@ -1629,9 +1627,8 @@ absl::Status HloValueSemanticsPropagation::DefaultAction(
   RETURN_IF_ALREADY_PROPAGATED(instruction);
   std::vector<int64_t> operand_indices(instruction->operand_count());
   std::iota(operand_indices.begin(), operand_indices.end(), 0);
-  TF_ASSIGN_OR_RETURN(
-      HloValueSemantics semantics,
-      ComputeSemanticsFromOperands(instruction, operand_indices));
+  ASSIGN_OR_RETURN(HloValueSemantics semantics,
+                   ComputeSemanticsFromOperands(instruction, operand_indices));
 
   if (instruction->shape().IsTuple()) {
     ShapeTree<const HloValueSemantics*> semantics_shape_tree(
@@ -1690,9 +1687,8 @@ absl::Status HloValueSemanticsPropagation::HandleSparseDenseMatmul(
             << ", height: " << ToString(operand_height_iter->second);
     semantics_vec.push_back(*operand_semantics);
   }
-  TF_ASSIGN_OR_RETURN(
-      HloValueSemantics semantics,
-      MergeSemanticsForAnInstruction(instruction, semantics_vec));
+  ASSIGN_OR_RETURN(HloValueSemantics semantics,
+                   MergeSemanticsForAnInstruction(instruction, semantics_vec));
 
   // Set the semantics for the instruction.
   if (instruction->shape().IsTuple()) {
@@ -1798,9 +1794,8 @@ absl::Status HloValueSemanticsPropagation::HandleGetTupleElement(
   int64_t tuple_index = get_tuple_element->tuple_index();
   const ShapeTree<const HloValueSemantics*>& tuple_semantics =
       analysis_->GetInstructionSemantics(tuple);
-  TF_ASSIGN_OR_RETURN(
-      ShapeTree<const HloValueSemantics*> tuple_element_semantics,
-      tuple_semantics.SubShapeTree({tuple_index}));
+  ASSIGN_OR_RETURN(ShapeTree<const HloValueSemantics*> tuple_element_semantics,
+                   tuple_semantics.SubShapeTree({tuple_index}));
   analysis_->DeepCopyHloValueSemantics(get_tuple_element,
                                        tuple_element_semantics);
   return absl::OkStatus();
@@ -1809,8 +1804,7 @@ absl::Status HloValueSemanticsPropagation::HandleGetTupleElement(
 absl::Status HloValueSemanticsPropagation::HandleCall(HloInstruction* call) {
   RETURN_IF_ALREADY_PROPAGATED(call);
   HloComputation* computation = call->called_computations()[0];
-  TF_RETURN_IF_ERROR(
-      analysis_->RunOnComputation(*computation, call->operands()));
+  RETURN_IF_ERROR(analysis_->RunOnComputation(*computation, call->operands()));
   const ShapeTree<const HloValueSemantics*>& root_semantics =
       analysis_->GetInstructionSemantics(computation->root_instruction());
   analysis_->DeepCopyHloValueSemantics(call, root_semantics);
@@ -1825,10 +1819,10 @@ absl::Status HloValueSemanticsPropagation::HandleFusion(
 absl::Status HloValueSemanticsPropagation::HandleWhile(
     HloInstruction* xla_while) {
   RETURN_IF_ALREADY_PROPAGATED(xla_while);
-  TF_RETURN_IF_ERROR(analysis_->RunOnComputation(*xla_while->while_condition(),
-                                                 xla_while->operands()));
+  RETURN_IF_ERROR(analysis_->RunOnComputation(*xla_while->while_condition(),
+                                              xla_while->operands()));
   HloComputation* computation = xla_while->while_body();
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       analysis_->RunOnComputation(*computation, xla_while->operands()));
   const ShapeTree<const HloValueSemantics*>& root_semantics =
       analysis_->GetInstructionSemantics(computation->root_instruction());
@@ -1861,7 +1855,7 @@ absl::Status HloValueSemanticsPropagation::HandleConditional(
   std::vector<ShapeTree<const HloValueSemantics*>> semantics_tree_vec;
   for (int i = 0; i < conditional->called_computations().size(); ++i) {
     HloComputation* computation = conditional->called_computations()[i];
-    TF_RETURN_IF_ERROR(analysis_->RunOnComputation(
+    RETURN_IF_ERROR(analysis_->RunOnComputation(
         *computation, {conditional->operands()[i + 1]}));
     const ShapeTree<const HloValueSemantics*>& root_semantics =
         analysis_->GetInstructionSemantics(computation->root_instruction());
@@ -1869,7 +1863,7 @@ absl::Status HloValueSemanticsPropagation::HandleConditional(
   }
 
   std::vector<HloValueSemantics> merged_semantics_leaves;
-  TF_RETURN_IF_ERROR(semantics_tree_vec[0].ForEachElementWithStatus(
+  RETURN_IF_ERROR(semantics_tree_vec[0].ForEachElementWithStatus(
       [&](const ShapeIndex& index,
           const HloValueSemantics* semantics) -> absl::Status {
         std::vector<HloValueSemantics> semantics_vector;
@@ -1878,7 +1872,7 @@ absl::Status HloValueSemanticsPropagation::HandleConditional(
           semantics_vector.push_back(
               *(semantics_tree_vec[i].find(index)->second));
         }
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             HloValueSemantics merged,
             MergeSemanticsForAnInstruction(conditional, semantics_vector));
         merged_semantics_leaves.push_back(merged);
@@ -1899,8 +1893,8 @@ absl::Status HloValueSemanticsPropagation::HandleConditional(
 absl::Status HloValueSemanticsPropagation::HandleSelect(
     HloInstruction* select) {
   RETURN_IF_ALREADY_PROPAGATED(select);
-  TF_ASSIGN_OR_RETURN(HloValueSemantics semantics,
-                      ComputeSemanticsFromOperands(select, {1, 2}));
+  ASSIGN_OR_RETURN(HloValueSemantics semantics,
+                   ComputeSemanticsFromOperands(select, {1, 2}));
   const HloValueSemantics* semantics_ptr = AddSemantics(semantics);
   ShapeTree<const HloValueSemantics*> semantics_shape_tree(select->shape(),
                                                            semantics_ptr);
@@ -1933,9 +1927,8 @@ absl::Status HloValueSemanticsPropagation::HandleDynamicSlice(
 absl::Status HloValueSemanticsPropagation::HandleDynamicUpdateSlice(
     HloInstruction* dynamic_update_slice) {
   RETURN_IF_ALREADY_PROPAGATED(dynamic_update_slice);
-  TF_ASSIGN_OR_RETURN(
-      HloValueSemantics semantics,
-      ComputeSemanticsFromOperands(dynamic_update_slice, {0, 1}));
+  ASSIGN_OR_RETURN(HloValueSemantics semantics,
+                   ComputeSemanticsFromOperands(dynamic_update_slice, {0, 1}));
   const HloValueSemantics* semantics_ptr = AddSemantics(semantics);
   ShapeTree<const HloValueSemantics*> semantics_shape_tree(
       dynamic_update_slice->shape(), semantics_ptr);
@@ -2023,8 +2016,8 @@ absl::Status HloValueSemanticsPropagation::HandleGather(
 absl::Status HloValueSemanticsPropagation::HandleScatter(
     HloInstruction* scatter) {
   RETURN_IF_ALREADY_PROPAGATED(scatter);
-  TF_ASSIGN_OR_RETURN(HloValueSemantics semantics,
-                      ComputeSemanticsFromOperands(scatter, {0, 2}));
+  ASSIGN_OR_RETURN(HloValueSemantics semantics,
+                   ComputeSemanticsFromOperands(scatter, {0, 2}));
   const HloValueSemantics* semantics_ptr = AddSemantics(semantics);
   ShapeTree<const HloValueSemantics*> semantics_shape_tree(scatter->shape(),
                                                            semantics_ptr);
@@ -2062,7 +2055,7 @@ absl::Status HloValueSemanticsPropagation::HandleAsyncStart(
   const bool is_thread_included = HloInstruction::IsThreadIncluded(
       computation->execution_thread(), analysis_->execution_threads_);
   if (is_thread_included) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         analysis_->RunOnComputation(*computation, async_start->operands()));
     const ShapeTree<const HloValueSemantics*>& root_semantics =
         analysis_->GetInstructionSemantics(computation->root_instruction());
@@ -2191,9 +2184,9 @@ absl::Status HloValueSemanticsPropagation::HandleRecv(HloInstruction* recv) {
   // We use RETURN_IF_ALREADY_PROPAGATED to avoid processing an HLO more than
   // once.
   RETURN_IF_ALREADY_PROPAGATED(recv);
-  TF_ASSIGN_OR_RETURN(HloInstruction * send,
-                      analysis_->GetMatchingSendOrRecv(recv));
-  TF_RETURN_IF_ERROR(send->Accept(this));
+  ASSIGN_OR_RETURN(HloInstruction * send,
+                   analysis_->GetMatchingSendOrRecv(recv));
+  RETURN_IF_ERROR(send->Accept(this));
   ShapeTree<const HloValueSemantics*> semantics_tree(recv->shape(), nullptr);
   const ShapeTree<const HloValueSemantics*>& send_buffer_semantics =
       analysis_->GetInstructionSemantics(send);

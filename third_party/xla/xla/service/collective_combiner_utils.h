@@ -28,8 +28,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -181,7 +184,7 @@ absl::StatusOr<bool> CombineInstructionsByKey(
     }
 
     if (to_combine.size() > 1) {
-      TF_RETURN_IF_ERROR(combine_fn(to_combine));
+      RETURN_IF_ERROR(combine_fn(to_combine));
       changed = true;
     }
   }

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -75,6 +76,7 @@ using ::tensorflow::test::AsTensor;
 using ::tensorflow::test::TensorEq;
 using ::testing::_;
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 using ::testing::NiceMock;
 using ::testing::Return;
 
@@ -291,6 +293,51 @@ TEST_P(IfrtServingExecutableTest, ReturnFailOnUncompiledShapeAfterFrozen) {
 
   EXPECT_THAT(status,
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST_P(IfrtServingExecutableTest,
+       FrozenErrorMessageContainsRequestedAndCachedShapes) {
+  int64_t program_id = 123456;
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
+  auto executable =
+      helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
+
+  // Warm up with shape {1, 3} x {3, 1}.
+  auto x1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
+  auto y1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
+  std::vector<tensorflow::Tensor> inputs1{x1, y1};
+  for (int i = 0; i < helper_->num_cores(); i++) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto result, Execute(executable.get(), absl::MakeSpan(inputs1), {}));
+  }
+
+  // Freeze the model.
+  executable->Freeze();
+
+  // Try to execute with a new, uncompiled shape {1, 4} x {4, 1}.
+  auto x2 = AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({1, 4}));
+  auto y2 = AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({4, 1}));
+  std::vector<tensorflow::Tensor> inputs2{x2, y2};
+
+  auto status = Execute(executable.get(), absl::MakeSpan(inputs2), {});
+
+  ASSERT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  // Verify the error message contains the requested (offending) input shapes.
+  std::string error_message(status.status().message());
+  EXPECT_THAT(error_message, HasSubstr("Requested input shapes:"));
+  EXPECT_THAT(error_message, HasSubstr("[1,4]"));
+  EXPECT_THAT(error_message, HasSubstr("[4,1]"));
+
+  // Verify the error message contains the count of cached shape sets.
+  EXPECT_THAT(error_message,
+              HasSubstr("Number of already compiled shape sets: 1"));
+
+  // Verify the error message contains the already compiled shapes.
+  EXPECT_THAT(error_message, HasSubstr("Already compiled:"));
+  EXPECT_THAT(error_message, HasSubstr("[1,3]"));
+  EXPECT_THAT(error_message, HasSubstr("[3,1]"));
 }
 
 TEST_P(IfrtServingExecutableTest, Spmd) {

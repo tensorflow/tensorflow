@@ -35,8 +35,11 @@ cc_library(
     hdrs = ["lowering_utils.h"],
     deps = [
         "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:MathDialect",
     ],
 )
 
@@ -121,6 +124,8 @@ cc_library(
         "//xla/tsl/platform:logging",
         "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AMDGPUDialect",
+        "@llvm-project//mlir:AMDGPUToROCDL",
         "@llvm-project//mlir:AMDGPUUtils",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:ArithToLLVM",
@@ -194,6 +199,7 @@ cc_library(
         "//xla/codegen:device_spec",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
         "//xla/codegen/emitters:implicit_arith_op_builder",
+        "//xla/codegen/emitters:kernel_api_builder",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/intrinsic:erf",
         "//xla/codegen/intrinsic:exp",
@@ -202,6 +208,7 @@ cc_library(
         "//xla/codegen/intrinsic:rsqrt",
         "//xla/codegen/intrinsic:tanh",
         "//xla/codegen/intrinsic:type",
+        "//xla/codegen/intrinsic/cpp:_intrinsic_declarations",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/mlir_hlo",

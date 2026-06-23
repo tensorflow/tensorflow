@@ -48,7 +48,7 @@ class HloProgram : public llvm::RTTIExtends<HloProgram, Program> {
         mlir_module_(*owning_mlir_module_),
         module_name_(GetModuleName(mlir_module_)) {}
 
-  HloProgram(std::unique_ptr<mlir::MLIRContext> context,
+  HloProgram(std::shared_ptr<mlir::MLIRContext> context,
              mlir::OwningOpRef<mlir::ModuleOp> module)
       : mlir_context_(std::move(context)),
         owning_mlir_module_(std::move(module)),
@@ -72,7 +72,7 @@ class HloProgram : public llvm::RTTIExtends<HloProgram, Program> {
   // provided, the method creates a new MLIR context just for this program.
   static absl::StatusOr<std::unique_ptr<HloProgram>> FromBytes(
       absl::string_view bytes,
-      std::unique_ptr<mlir::MLIRContext> context = nullptr);
+      std::shared_ptr<mlir::MLIRContext> context = nullptr);
 
   // Returns a fingerprint of the HLO program. Two HLO programs are equivalent
   // if their fingerprints are the same. May ignore debug info.
@@ -98,7 +98,7 @@ class HloProgram : public llvm::RTTIExtends<HloProgram, Program> {
                            reinterpret_cast<uintptr_t>(module.getOperation()));
   }
 
-  std::unique_ptr<mlir::MLIRContext> mlir_context_;
+  std::shared_ptr<mlir::MLIRContext> mlir_context_;
   mlir::OwningOpRef<mlir::ModuleOp> owning_mlir_module_;
   mlir::ModuleOp mlir_module_;
   std::string module_name_;

@@ -71,20 +71,20 @@ REGISTER_OP("AddN")
             shapes_and_types = shapes_and_types_i;
           } else if (shapes_and_types && shapes_and_types_i) {
             if (shapes_and_types_i->size() != shapes_and_types->size()) {
-              return errors::InvalidArgument(
-                  "shapes_and_types[", i,
-                  "].size() == ", shapes_and_types_i->size(),
-                  " != shapes_and_types[0].size() == ",
-                  shapes_and_types->size());
+              return absl::InvalidArgumentError(
+                  absl::StrCat("shapes_and_types[", i,
+                               "].size() == ", shapes_and_types_i->size(),
+                               " != shapes_and_types[0].size() == ",
+                               shapes_and_types->size()));
             }
             for (int j = 0; j < shapes_and_types->size(); ++j) {
               if (shapes_and_types->at(j).dtype !=
                   shapes_and_types_i->at(j).dtype) {
-                return errors::InvalidArgument(
+                return absl::InvalidArgumentError(absl::StrCat(
                     "shapes_and_types[", i, "][", j, "].dtype() == ",
                     DataTypeString(shapes_and_types_i->at(j).dtype),
                     " != shapes_and_types[0][", j, "].dtype == ",
-                    DataTypeString(shapes_and_types->at(j).dtype));
+                    DataTypeString(shapes_and_types->at(j).dtype)));
               }
               TF_RETURN_WITH_CONTEXT_IF_ERROR(
                   c->Merge(shapes_and_types_i->at(j).shape,
@@ -734,7 +734,7 @@ REGISTER_OP("Select")
         const auto size = handle_data_1->size();
         std::vector<shape_inference::ShapeAndType> merged_handle_data(size);
         if (size != handle_data_2->size()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "Trying to merge handles pointing to different numbers of "
               "tensors.");
         }
@@ -744,7 +744,7 @@ REGISTER_OP("Select")
           const shape_inference::ShapeAndType& s2 = (*handle_data_2)[i];
           if (s1.dtype != s2.dtype) {
             // TODO(apassos) resolve this in the manner of b/32476923
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(
                 "Trying to merge handles pointing to different dtypes.");
           }
           merged_handle_data[i].dtype = s1.dtype;
@@ -823,7 +823,7 @@ REGISTER_OP("SelectV2")
         const auto size = handle_data_1->size();
         std::vector<shape_inference::ShapeAndType> merged_handle_data(size);
         if (size != handle_data_2->size()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "Trying to merge handles pointing to different numbers of "
               "tensors.");
         }
@@ -833,7 +833,7 @@ REGISTER_OP("SelectV2")
           const shape_inference::ShapeAndType& s2 = (*handle_data_2)[i];
           if (s1.dtype != s2.dtype) {
             // TODO(apassos) resolve this in the manner of b/32476923
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(
                 "Trying to merge handles pointing to different dtypes.");
           }
           merged_handle_data[i].dtype = s1.dtype;
@@ -1036,10 +1036,10 @@ absl::Status ArgOpShape(shape_inference::InferenceContext* c) {
 
   int64_t axis = dimension_val < 0 ? dimension_val + input_rank : dimension_val;
   if (axis < 0 || axis >= input_rank) {
-    return errors::InvalidArgument(
-        "Dimension (", dimension_val, ") must be in the range [", -input_rank,
-        ", ", input_rank, "), where ", input_rank,
-        " is the number of dimensions in the input.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Dimension (", dimension_val, ") must be in the range [",
+                     -input_rank, ", ", input_rank, "), where ", input_rank,
+                     " is the number of dimensions in the input."));
   }
 
   // Return the input shape without the dimension being reduced.
@@ -1144,7 +1144,7 @@ absl::Status SparseSegmentReductionGradShapeFnImpl(
   } else {
     auto dim0_value = dim0->scalar<int32_t>()();
     if (dim0_value < 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Cannot specify a negative value for output_dim0");
     }
     dim0_shape = c->Vector(dim0_value);
@@ -1200,7 +1200,7 @@ absl::Status SparseSegmentReductionWithNumSegmentsShapeFn(InferenceContext* c) {
   } else {
     auto dim0_value = dim0->scalar<int32_t>()();
     if (dim0_value < 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Cannot specify a negative value for num_segments");
     }
     TF_RETURN_IF_ERROR(c->Concatenate(c->Vector(dim0_value), subshape, &out));
@@ -1509,7 +1509,7 @@ absl::Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
         "Requires start >= limit when delta < 0: ", start, "/", limit);
   }
   if (delta == T(0)) {
-    return errors::InvalidArgument("Requires delta != 0");
+    return absl::InvalidArgumentError("Requires delta != 0");
   }
 
   int64_t size;
@@ -1525,16 +1525,18 @@ absl::Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
     uint64_t size_unsigned =
         Eigen::divup(range, static_cast<uint64_t>(Eigen::numext::abs(delta)));
     if (size_unsigned > std::numeric_limits<int64_t>::max()) {
-      return errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
-                                     std::numeric_limits<int64_t>::max());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Requires ((limit - start) / delta) <= ",
+                       std::numeric_limits<int64_t>::max()));
     }
     size = static_cast<int64_t>(size_unsigned);
   } else {
     auto size_auto =
         Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
     if (size_auto > std::numeric_limits<int64_t>::max()) {
-      return errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
-                                     std::numeric_limits<int64_t>::max());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Requires ((limit - start) / delta) <= ",
+                       std::numeric_limits<int64_t>::max()));
     }
     size = static_cast<int64_t>(size_auto);
   }
@@ -1593,7 +1595,8 @@ REGISTER_OP("Range")
       } else if (dtype == DT_BFLOAT16) {
         return RangeSize<bfloat16>(start_t, limit_t, delta_t, c);
       } else {
-        return errors::InvalidArgument("Unsupported dtype", dtype);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unsupported dtype", dtype));
       }
       return absl::OkStatus();
     });
@@ -1625,7 +1628,9 @@ REGISTER_OP("LinSpace")
       } else {
         num = num_t->scalar<int64_t>()();
       }
-      if (num <= 0) return errors::InvalidArgument("Requires num > 0: ", num);
+      if (num <= 0)
+        return absl::InvalidArgumentError(
+            absl::StrCat("Requires num > 0: ", num));
       c->set_output(0, c->Vector(num));
       return absl::OkStatus();
     });
@@ -1727,7 +1732,8 @@ REGISTER_OP("HistogramFixedWidth")
         TF_RETURN_IF_ERROR(c->GetScalarFromTensor(nbins_input, &nbins));
         // nbins has to be positive.
         if (nbins <= 0) {
-          return errors::InvalidArgument("Requires nbins > 0: ", nbins);
+          return absl::InvalidArgumentError(
+              absl::StrCat("Requires nbins > 0: ", nbins));
         }
         c->set_output(0, c->Vector(nbins));
       } else {
@@ -1755,15 +1761,15 @@ REGISTER_OP("Bincount")
       }
 
       if (size_tensor->dims() != 0) {
-        return errors::InvalidArgument("Shape must be rank 0 but is rank ",
-                                       size_tensor->dims());
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Shape must be rank 0 but is rank ", size_tensor->dims()));
       }
 
       // Return `[size]` shape if size is known.
       int32_t size_val = size_tensor->scalar<int32_t>()();
       if (size_val < 0) {
-        return errors::InvalidArgument("size (", size_val,
-                                       ") must be non-negative");
+        return absl::InvalidArgumentError(
+            absl::StrCat("size (", size_val, ") must be non-negative"));
       }
       c->set_output(0, c->MakeShape({size_val}));
       return absl::OkStatus();
@@ -1793,8 +1799,8 @@ REGISTER_OP("DenseBincount")
         return absl::OkStatus();
       }
       if (size_tensor->dims() != 0) {
-        return errors::InvalidArgument("Shape must be rank 0 but is rank ",
-                                       size_tensor->dims());
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Shape must be rank 0 but is rank ", size_tensor->dims()));
       }
 
       int64_t size_val;
@@ -1805,12 +1811,12 @@ REGISTER_OP("DenseBincount")
       } else if (dtype == DT_INT64) {
         size_val = size_tensor->scalar<int64_t>()();
       } else {
-        return errors::InvalidArgument("size dtype must be int32 or int64");
+        return absl::InvalidArgumentError("size dtype must be int32 or int64");
       }
       // Return `[size]` shape if size is known.
       if (size_val < 0) {
-        return errors::InvalidArgument("size (", size_val,
-                                       ") must be non-negative");
+        return absl::InvalidArgumentError(
+            absl::StrCat("size (", size_val, ") must be non-negative"));
       }
       if (c->Rank(c->input(0)) == 1 || c->Rank(c->input(0)) == 0) {
         c->set_output(0, c->MakeShape({size_val}));
@@ -1838,8 +1844,8 @@ REGISTER_OP("SparseBincount")
         return absl::OkStatus();
       }
       if (size_tensor->dims() != 0) {
-        return errors::InvalidArgument("Shape must be rank 0 but is rank ",
-                                       size_tensor->dims());
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Shape must be rank 0 but is rank ", size_tensor->dims()));
       }
 
       int64_t size_val;
@@ -1850,12 +1856,12 @@ REGISTER_OP("SparseBincount")
       } else if (dtype == DT_INT64) {
         size_val = size_tensor->scalar<int64_t>()();
       } else {
-        return errors::InvalidArgument("size dtype must be int32 or int64");
+        return absl::InvalidArgumentError("size dtype must be int32 or int64");
       }
       // Return `[size]` shape if size is known.
       if (size_val < 0) {
-        return errors::InvalidArgument("size (", size_val,
-                                       ") must be non-negative");
+        return absl::InvalidArgumentError(
+            absl::StrCat("size (", size_val, ") must be non-negative"));
       }
 
       const Tensor* shape_tensor = c->input_tensor(2);
@@ -1870,7 +1876,7 @@ REGISTER_OP("SparseBincount")
         c->set_output(
             0, c->MakeShape({shape_tensor->flat<int64_t>()(0), size_val}));
       } else {
-        return errors::InvalidArgument("Input must be less than rank 2");
+        return absl::InvalidArgumentError("Input must be less than rank 2");
       }
       return absl::OkStatus();
     });

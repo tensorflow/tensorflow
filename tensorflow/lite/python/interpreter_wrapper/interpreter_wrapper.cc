@@ -90,7 +90,8 @@ std::unique_ptr<Interpreter> CreateInterpreter(
     const tflite::MutableOpResolver& resolver, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
     bool default_delegate_latest_features,
-    bool compress_quantization_zero_points) {
+    bool compress_quantization_zero_points, bool disable_delegate_node_fusion,
+    bool force_delegate_node_profiling) {
   if (!model) {
     return nullptr;
   }
@@ -110,6 +111,8 @@ std::unique_ptr<Interpreter> CreateInterpreter(
   options.SetPreserveAllTensors(preserve_all_tensors);
   options.SetDisableDelegateClustering(disable_delegate_clustering);
   options.SetCompressQuantizationZeroPoints(compress_quantization_zero_points);
+  options.SetDisableDelegateNodeFusion(disable_delegate_node_fusion);
+  options.SetForceDelegateNodeProfiling(force_delegate_node_profiling);
   InterpreterBuilder builder(*model, resolver, &options);
   if (default_delegate_latest_features) {
     builder.AddDelegate(xnnpack_delegate);
@@ -259,7 +262,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
     bool default_delegate_latest_features,
-    bool compress_quantization_zero_points) {
+    bool compress_quantization_zero_points, bool disable_delegate_node_fusion,
+    bool force_delegate_node_profiling) {
   if (!model) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -300,7 +304,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
   auto interpreter = CreateInterpreter(
       model.get(), *resolver, preserve_all_tensors, disable_delegate_clustering,
       num_threads, default_delegate_latest_features,
-      compress_quantization_zero_points);
+      compress_quantization_zero_points, disable_delegate_node_fusion,
+      force_delegate_node_profiling);
   if (!interpreter) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -625,13 +630,20 @@ PyObject* InterpreterWrapper::SetTensor(int tensor_index, PyObject* value,
 
   TfLiteType incoming_type = python_utils::TfLiteTypeFromPyArray(array);
   if (incoming_type != tensor->type) {
-    PyErr_Format(PyExc_ValueError,
-                 "Cannot set tensor:"
-                 " Got value of type %s"
-                 " but expected type %s for input %d, name: %s ",
-                 TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
-                 TfLiteTypeGetName(tensor->type), tensor_index, tensor->name);
-    return nullptr;
+    bool allow_raw_bytes =
+        (tensor->type == kTfLiteFloat8E4M3FN ||
+         tensor->type == kTfLiteFloat8E5M2) &&
+        (incoming_type == kTfLiteInt8 || incoming_type == kTfLiteUInt8);
+    if (!allow_raw_bytes) {
+      PyErr_Format(
+          PyExc_ValueError,
+          "Cannot set tensor:"
+          " Got value of type %s"
+          " but expected type %s for input %d, name: %s ",
+          TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
+          TfLiteTypeGetName(tensor->type), tensor_index, tensor->name);
+      return nullptr;
+    }
   }
 
   if (PyArray_NDIM(array) != tensor->dims->size) {
@@ -829,6 +841,10 @@ PyObject* InterpreterWrapper::GetTensor(int tensor_index,
       // Numpy doesn't have int4 type, so we double the size of the buffer
       // to hold int8 type for each (4-bit packed) element.
       numpy_bytes *= 2;
+    } else if (tensor->type == kTfLiteInt2) {
+      // Numpy doesn't have int2 type, so we quadruple the size of the buffer
+      // to hold int8 type for each (2-bit packed) element.
+      numpy_bytes *= 4;
     }
     void* data = malloc(numpy_bytes);
     if (!data) {
@@ -856,6 +872,21 @@ PyObject* InterpreterWrapper::GetTensor(int tensor_index,
         uint8_t upper = byte >> 4;
         numpy_data[2 * i] = lower;
         numpy_data[2 * i + 1] = upper;
+      }
+    } else if (tensor->type == kTfLiteInt2) {
+      int8_t* tensor_data = reinterpret_cast<int8_t*>(tensor->data.raw);
+      int8_t* numpy_data = static_cast<int8_t*>(data);
+      // Unpack each 2-bit value to an 8-bit container.
+      for (size_t i = 0; i < tensor->bytes; i++) {
+        int8_t byte = tensor_data[i];
+        int8_t first = static_cast<int8_t>(byte << 6) >> 6;
+        int8_t second = static_cast<int8_t>(byte << 4) >> 6;
+        int8_t third = static_cast<int8_t>(byte << 2) >> 6;
+        int8_t fourth = static_cast<int8_t>(byte) >> 6;
+        numpy_data[4 * i] = first;
+        numpy_data[4 * i + 1] = second;
+        numpy_data[4 * i + 2] = third;
+        numpy_data[4 * i + 3] = fourth;
       }
     } else {
       memcpy(data, tensor->data.raw, tensor->bytes);
@@ -941,7 +972,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
     bool default_delegate_latest_features,
-    bool compress_quantization_zero_points) {
+    bool compress_quantization_zero_points, bool disable_delegate_node_fusion,
+    bool force_delegate_node_profiling) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
   std::unique_ptr<InterpreterWrapper::Model> model =
       Model::BuildFromFile(model_path, error_reporter.get());
@@ -949,7 +981,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
       std::move(model), op_resolver_id, std::move(error_reporter),
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
       disable_delegate_clustering, num_threads,
-      default_delegate_latest_features, compress_quantization_zero_points);
+      default_delegate_latest_features, compress_quantization_zero_points,
+      disable_delegate_node_fusion, force_delegate_node_profiling);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
@@ -960,7 +993,9 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
       model_path, op_resolver_id, registerers, {} /*registerers_by_func*/,
       error_msg, preserve_all_tensors, disable_delegate_clustering,
       /*num_threads=*/1, /*default_delegate_latest_features=*/false,
-      /*compress_quantization_zero_points=*/false);
+      /*compress_quantization_zero_points=*/false,
+      /*disable_delegate_node_fusion=*/false,
+      /*force_delegate_node_profiling=*/false);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
@@ -970,7 +1005,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
     bool default_delegate_latest_features,
-    bool compress_quantization_zero_points) {
+    bool compress_quantization_zero_points, bool disable_delegate_node_fusion,
+    bool force_delegate_node_profiling) {
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
@@ -985,7 +1021,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
       std::move(model), op_resolver_id, std::move(error_reporter),
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
       disable_delegate_clustering, num_threads,
-      default_delegate_latest_features, compress_quantization_zero_points);
+      default_delegate_latest_features, compress_quantization_zero_points,
+      disable_delegate_node_fusion, force_delegate_node_profiling);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
@@ -996,7 +1033,9 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
       data, op_resolver_id, registerers, {}, error_msg, preserve_all_tensors,
       disable_delegate_clustering, /*num_threads=*/1,
       /*default_delegate_latest_features=*/false,
-      /*compress_quantization_zero_points=*/false);
+      /*compress_quantization_zero_points=*/false,
+      /*disable_delegate_node_fusion=*/false,
+      /*force_delegate_node_profiling=*/false);
 }
 
 PyObject* InterpreterWrapper::ResetVariableTensors() {

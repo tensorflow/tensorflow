@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/matmul_util.h"
 
-#if GOOGLE_CUDA || TF_HIPBLASLT
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <optional>
 #include <string>
@@ -107,7 +107,7 @@ absl::StatusOr<stream_executor::blas::ComputationType> GetBlasComputationType(
     case se::blas::DataType::kComplexDouble:
       return ComputationType::kF64;
     default:
-      return errors::Internal("Unsupported dtype for Blas Plans.");
+      return absl::InternalError("Unsupported dtype for Blas Plans.");
   }
 }
 
@@ -177,12 +177,12 @@ PlanAndAlgorithms::GetOrCreate(se::Stream* stream,
         .compute_type = computation_type,
     };
 
-    TF_ASSIGN_OR_RETURN(auto plan, se::gpu::BlasLt::GetMatmulPlan(
-                                       stream, cfg, params.epilogue));
-
+    TF_ASSIGN_OR_RETURN(auto blas_lt, se::gpu::BlasLt::Get(stream->parent()));
+    TF_ASSIGN_OR_RETURN(auto plan,
+                        blas_lt->GetMatmulPlan(cfg, params.epilogue));
     TF_ASSIGN_OR_RETURN(
         auto algorithms,
-        plan->GetAlgorithms(stream, *max_algorithm_count, max_scratch_size));
+        plan->GetAlgorithms(*max_algorithm_count, max_scratch_size));
 
     *ptr->second = {std::move(plan), std::move(algorithms)};
   }
@@ -191,28 +191,33 @@ PlanAndAlgorithms::GetOrCreate(se::Stream* stream,
 }
 
 absl::Status PlanAndAlgorithms::ExecuteOnStream(
-    se::Stream* stream, const stream_executor::DeviceAddressBase& a,
-    const stream_executor::DeviceAddressBase& b,
-    stream_executor::DeviceAddressBase& c, size_t algorithm_idx,
-    se::ScratchAllocator& scratch_allocator,
-    const stream_executor::DeviceAddressBase& bias,
+    se::Stream* stream, const se::DeviceAddressBase& a,
+    const se::DeviceAddressBase& b, se::DeviceAddressBase& c,
+    size_t algorithm_idx, se::ScratchAllocator& scratch_allocator,
+    const se::DeviceAddressBase& bias,
     se::blas::ProfileResult* profile_result) const {
   if (!plan || algorithm_idx >= algorithms.size()) {
-    return errors::Internal("MatmulPlan or algorithms are not initialized!");
+    return absl::InternalError("MatmulPlan or algorithms are not initialized!");
   }
   TF_RETURN_IF_ERROR(plan->SetAlgorithm(algorithms[algorithm_idx]));
   return plan->ExecuteOnStream(
-      stream, a, b, c, c,
-      bias,                                  // bias_buffer
-      stream_executor::DeviceAddressBase{},  // aux_buffer
-      stream_executor::DeviceAddressBase{},  // a_scale_buffer
-      stream_executor::DeviceAddressBase{},  // b_scale_buffer
-      stream_executor::DeviceAddressBase{},  // c_scale_buffer
-      stream_executor::DeviceAddressBase{},  // d_scale_buffer
-      stream_executor::DeviceAddressBase{},  // d_amax_buffer
-      scratch_allocator, profile_result);
+      stream,
+      se::gpu::BlasLt::MemoryArgs{a,
+                                  b,
+                                  c,
+                                  c,
+                                  bias,
+                                  se::DeviceAddressBase{},    // aux
+                                  se::DeviceAddressBase{},    // a_scale
+                                  se::DeviceAddressBase{},    // b_scale
+                                  se::DeviceAddressBase{},    // c_scale
+                                  se::DeviceAddressBase{},    // d_scale
+                                  {se::DeviceAddressBase{}},  // d_amax
+                                  se::DeviceAddressBase{},    // workspace
+                                  &scratch_allocator},
+      profile_result);
 }
 
 }  // namespace tensorflow
 
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

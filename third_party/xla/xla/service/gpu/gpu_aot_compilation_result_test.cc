@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "riegeli/bytes/string_reader.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
@@ -42,7 +43,9 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -57,10 +60,10 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util/split_proto/split_proto_reader.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -132,7 +135,6 @@ class GpuAotCompilationResultTest : public ::testing::Test {
 
     GpuExecutable::Params params;
     params.debug_module = std::move(hlo_module);
-    params.asm_text = "test_asm_text";
     params.binary = {1, 2, 3};
     params.dnn_compiled_graphs = {{"test_dnn_compiled_graph", "test_json"}};
 
@@ -158,6 +160,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
             events { kind: FREE }
           }
         )pb");
+    params.buffer_allocations_debug_summary = "dummy_summary";
 
     ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
                      GpuExecutable::Create(std::move(params)));
@@ -233,9 +236,10 @@ TEST_F(GpuAotCompilationResultTest, LoadExecutable) {
 
   EnsureCudaSymbolIsRegistered();
 
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                       std::move(*result).LoadExecutable(
-                           platform_.id(), GetDeviceDescription()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      std::move(*result).LoadExecutable(platform_.id(), GetDeviceDescription(),
+                                        DebugOptions()));
 
   {
     ASSERT_OK_AND_ASSIGN(

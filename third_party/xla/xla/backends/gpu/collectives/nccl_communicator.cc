@@ -27,47 +27,46 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/functional/function_ref.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
+#include "xla/backends/gpu/collectives/nccl_group.h"
+#include "xla/backends/gpu/collectives/nccl_registered_memory.h"
 #include "xla/backends/gpu/collectives/nccl_symmetric_memory.h"
 #include "xla/backends/gpu/collectives/nccl_types.h"
 #include "xla/backends/gpu/collectives/single_threaded_executor.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/primitive_util.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 // Include NCCL after XLA headers.
-#include "third_party/nccl/nccl.h"
-
-#if NCCL_VERSION_CODE >= 22800
-// Device initiated collective operations were added in NCCL 2.28.0.
-#include "third_party/nccl/nccl_device.h"
-#endif  // NCCL_VERSION_CODE >= 22800
+#include "third_party/nccl/nccl.h"         // IWYU pragma: keep
+#include "third_party/nccl/nccl_device.h"  // IWYU pragma: keep
 
 namespace xla::gpu {
 namespace {
@@ -77,10 +76,82 @@ CUstream AsCudaStream(se::Stream* stream) {
 }
 
 se::Stream* ToStream(const Communicator::Executor& executor) {
-  return tsl::down_cast<const GpuCollectives::Executor&>(executor).stream();
+  return absl::down_cast<const GpuCollectives::Executor&>(executor).stream();
+}
+
+NcclCapabilities GetCapabilities(ncclComm_t comm) {
+  bool support_device_comm = false;
+  bool support_one_sided_comm = false;
+  std::string one_sided_comm_unsupported_reason = "";
+
+#if NCCL_VERSION_CODE >= 22907
+  ncclCommProperties_t props = NCCL_COMM_PROPERTIES_INITIALIZER;
+  ncclResult_t status = ncclCommQueryProperties(comm, &props);
+  if (status != ncclSuccess) {
+    return {
+        /*supports_device_comm=*/false,
+        /*supports_one_sided_comm=*/false,
+        /*one_sided_comm_unsupported_reason=*/
+        absl::StrFormat("NCCL failed to query communicator properties: %s",
+                        ncclGetErrorString(status)),
+    };
+  }
+
+  if (props.hostRmaSupport) {
+    support_one_sided_comm = true;
+  } else {
+    one_sided_comm_unsupported_reason = absl::StrFormat(
+        "NCCL reports this communicator does not support host "
+        "RMA (hostRmaSupport=false). This is typically caused "
+        "by the hardware, network fabric, or NCCL runtime "
+        "configuration not supporting one-sided communication "
+        "(NCCL version: %d)",
+        NCCL_VERSION_CODE);
+  }
+
+  if (props.deviceApiSupport) {
+    support_device_comm = true;
+  }
+
+  return {
+      /*supports_device_comm=*/support_device_comm,
+      /*supports_one_sided_comm=*/support_one_sided_comm,
+      /*one_sided_comm_unsupported_reason=*/one_sided_comm_unsupported_reason,
+  };
+#elif NCCL_VERSION_CODE >= 22900
+  return {
+      /*supports_device_comm=*/true,
+      /*supports_one_sided_comm=*/false,
+      /*one_sided_comm_unsupported_reason=*/
+      absl::StrFormat("NCCL >= 2.29.7 is required (current: %d)",
+                      NCCL_VERSION_CODE),
+  };
+#elif NCCL_VERSION_CODE >= 22800
+  return {
+      /*supports_device_comm=*/true,
+      /*supports_one_sided_comm=*/false,
+      /*one_sided_comm_unsupported_reason=*/
+      absl::StrFormat("NCCL >= 2.29.0 is required (current: %d)",
+                      NCCL_VERSION_CODE),
+  };
+#else
+  return {
+      /*supports_device_comm=*/false,
+      /*supports_one_sided_comm=*/false,
+      /*one_sided_comm_unsupported_reason=*/
+      absl::StrFormat("NCCL >= 2.29.0 is required (current: %d)",
+                      NCCL_VERSION_CODE),
+  };
+#endif
 }
 
 }  // namespace
+
+absl::Status NcclCapabilities::GetOneSidedCommUnsupportedError(
+    absl::string_view op) const {
+  return Unimplemented("%s is not supported: %s", op,
+                       one_sided_comm_unsupported_reason);
+}
 
 //==-----------------------------------------------------------------------===//
 // NCCL Communicator
@@ -94,66 +165,72 @@ NcclCommunicator::NcclCommunicator(se::StreamExecutor* stream_executor,
       comm_(comm),
       executor_(std::move(executor)),
       cancel_(std::move(cancel)),
-      supports_one_sided_comm_(QuerySupportsOneSidedComm()) {
-  VLOG(1) << absl::StreamFormat("[%d] Created NCCL communicator %s",
-                                stream_executor_->device_ordinal(),
-                                this->ToString());
+      capabilities_(GetCapabilities(comm_)) {
+  VLOG(1) << absl::StreamFormat("[%d] Created NCCL communicator %v",
+                                stream_executor_->device_ordinal(), *this);
 }
 
 bool NcclCommunicator::SupportsDeviceComm() const {
-#if NCCL_VERSION_CODE >= 22800
-  return true;
-#else
-  return false;
-#endif  // NCCL_VERSION_CODE >= 22800
-}
-
-bool NcclCommunicator::SupportsOneSidedComm() const {
-  return supports_one_sided_comm_;
-}
-
-bool NcclCommunicator::QuerySupportsOneSidedComm() const {
-#if NCCL_VERSION_CODE >= 22907
-  ncclCommProperties_t props = NCCL_COMM_PROPERTIES_INITIALIZER;
-  if (ncclCommQueryProperties(comm_, &props) == ncclSuccess) {
-    return props.hostRmaSupport;
-  }
-  return false;
-#elif NCCL_VERSION_CODE >= 22900
-  return true;
-#else
-  return false;
-#endif
+  return capabilities_.supports_device_comm;
 }
 
 absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
 NcclCommunicator::CreateDeviceComm(
     const GpuDeviceCommunicator::Requirements& requirements) {
-#if NCCL_VERSION_CODE >= 22800
-  return NcclDeviceCommunicator::CreateFrom(*this, requirements);
-#else
-  return Unimplemented(
-      "NCCL version %d does not support collective communication",
-      NCCL_VERSION_CODE);
-#endif  // NCCL_VERSION_CODE >= 22800
+  return ExecuteAwait<std::unique_ptr<GpuDeviceCommunicator>>(
+      [this, requirements]()
+          -> absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>> {
+        VLOG(5) << "Creating device communicator with requirements: "
+                << requirements;
+        if (cancel_->IsCancelled()) {
+          return FailedPrecondition("NcclCommunicator aborted");
+        }
+
+        return NcclDeviceCommunicator::CreateFrom(*this, requirements);
+      });
+}
+
+absl::StatusOr<std::unique_ptr<RegisteredMemory>>
+NcclCommunicator::CreateRegisteredMemory(se::DeviceAddressBase addr) {
+  return ExecuteAwait<std::unique_ptr<RegisteredMemory>>(
+      [this, addr]() -> absl::StatusOr<std::unique_ptr<RegisteredMemory>> {
+        VLOG(5) << "Registering buffer for device address: " << addr.opaque();
+        if (cancel_->IsCancelled()) {
+          return FailedPrecondition("NcclCommunicator aborted");
+        }
+
+        return NcclRegisteredMemory::Create(comm_, addr);
+      });
 }
 
 absl::StatusOr<std::unique_ptr<SymmetricMemory>>
 NcclCommunicator::CreateSymmetricMemory(se::DeviceAddressBase addr) {
-  return NcclSymmetricMemory::Create(comm_, addr);
+  return ExecuteAwait<std::unique_ptr<SymmetricMemory>>(
+      [this, addr]() -> absl::StatusOr<std::unique_ptr<SymmetricMemory>> {
+        VLOG(5) << "Creating symmetric memory for device address: "
+                << addr.opaque();
+        if (cancel_->IsCancelled()) {
+          return FailedPrecondition("NcclCommunicator aborted");
+        }
+
+        return NcclSymmetricMemory::Create(comm_, addr, executor_);
+      });
 }
 
 absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
     se::StreamExecutor* stream_executor,
     absl::AnyInvocable<absl::StatusOr<ncclComm_t>()> make_comm,
     std::shared_ptr<CancellationToken> cancel, bool is_async, tsl::Env& env) {
+  if (cancel == nullptr) {
+    cancel = std::make_shared<CancellationToken>();
+  }
   auto f = [cancel, &make_comm]() -> absl::StatusOr<ncclComm_t> {
-    TF_ASSIGN_OR_RETURN(ncclComm_t comm, make_comm());
+    ASSIGN_OR_RETURN(ncclComm_t comm, make_comm());
     if (cancel) {
-      TF_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, *cancel));
+      RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, *cancel));
     } else {
       CancellationToken never_cancelled;
-      TF_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, never_cancelled));
+      RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, never_cancelled));
     }
     return comm;
   };
@@ -161,7 +238,7 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
   if (!is_async) {
     // If this NcclCommunicator is synchronous, construct ncclComm_t in the
     // calling thread.
-    TF_ASSIGN_OR_RETURN(ncclComm_t comm, f());
+    ASSIGN_OR_RETURN(ncclComm_t comm, f());
     return absl::WrapUnique(new NcclCommunicator(stream_executor, comm, nullptr,
                                                  std::move(cancel)));
   }
@@ -170,8 +247,8 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
   // underlying ncclComm_t, including its creation, must take place on the
   // single threaded executor.
   auto executor = std::make_unique<SingleThreadedExecutor>(env);
-  TF_ASSIGN_OR_RETURN(ncclComm_t comm,
-                      MakeFutureOn<ncclComm_t>(*executor, f).Await());
+  ASSIGN_OR_RETURN(ncclComm_t comm,
+                   MakeFutureOn<ncclComm_t>(*executor, f).Await());
   return absl::WrapUnique(new NcclCommunicator(
       stream_executor, comm, std::move(executor), std::move(cancel)));
 }
@@ -250,13 +327,19 @@ absl::StatusOr<size_t> NcclCommunicator::NumRanks() const {
 }
 
 Future<> NcclCommunicator::GroupExecute(
-    absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) {
-  return Execute([f = std::move(f), this]() mutable -> absl::Status {
-    TF_RETURN_IF_ERROR(GroupStart());
-    TF_RETURN_IF_ERROR(f(this));
-    TF_RETURN_IF_ERROR(GroupEnd());
-    return absl::OkStatus();
+    absl::AnyInvocable<absl::Status() &&> group) {
+  return Execute([group = std::move(group), this]() mutable {
+    return GroupLaunch([&] { return std::move(group)(); });
   });
+}
+
+absl::Status NcclCommunicator::GroupLaunch(
+    absl::FunctionRef<absl::Status()> group) {
+  ASSIGN_OR_RETURN(bool launched, NcclGroupLaunch(group));
+  if (launched) {
+    return PollUntilDone();
+  }
+  return absl::OkStatus();
 }
 
 Future<> NcclCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
@@ -367,29 +450,6 @@ Future<> NcclCommunicator::WaitSignal(RankId peer, int op_cnt,
   });
 }
 
-absl::Status NcclCommunicator::GroupStart() {
-  VLOG(5) << "Start NCCL group";
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
-  group_nesting_level_++;
-  return absl::OkStatus();
-}
-
-absl::Status NcclCommunicator::GroupEnd() {
-  VLOG(5) << "End NCCL group";
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
-  group_nesting_level_--;
-  if (group_nesting_level_ > 0) {
-    // Though NCCL allows groups to be nested, no operations are actually
-    // performed until the outermost group ends. The inner calls to
-    // GroupStart() and GroupEnd() are effectively noops.
-    //
-    // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/groups.html
-    return absl::OkStatus();
-  }
-  // Wait for the communicator to finish.
-  return PollUntilDone();
-}
-
 absl::Status NcclCommunicator::LaunchAllReduce(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
@@ -407,18 +467,18 @@ absl::Status NcclCommunicator::LaunchAllReduce(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, reduction_kind, comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, /*is_reduction_op=*/true,
           stream->parent()->GetDeviceDescription().cuda_compute_capability()));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclAllReduce(
+  RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclAllReduce(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, ToNcclReduction(reduction_kind), comm_,
       AsCudaStream(stream))));
-  if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+  if (!IsInsideNcclGroupLaunch()) {
+    RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -439,17 +499,17 @@ absl::Status NcclCommunicator::LaunchBroadcast(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, root.value(), comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, false,
           stream->parent()->GetDeviceDescription().cuda_compute_capability()));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclBroadcast(
+  RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclBroadcast(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, root.value(), comm_, AsCudaStream(stream))));
-  if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+  if (!IsInsideNcclGroupLaunch()) {
+    RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -471,18 +531,18 @@ absl::Status NcclCommunicator::LaunchReduceScatter(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, reduction_kind, comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, /*is_reduction_op=*/true,
           stream->parent()->GetDeviceDescription().cuda_compute_capability()));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclReduceScatter(
+  RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclReduceScatter(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, ToNcclReduction(reduction_kind), comm_,
       AsCudaStream(stream))));
-  if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+  if (!IsInsideNcclGroupLaunch()) {
+    RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -502,17 +562,17 @@ absl::Status NcclCommunicator::LaunchAllGather(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, false,
           stream->parent()->GetDeviceDescription().cuda_compute_capability()));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclAllGather(
+  RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclAllGather(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, comm_, AsCudaStream(stream))));
-  if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+  if (!IsInsideNcclGroupLaunch()) {
+    RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -585,7 +645,7 @@ absl::Status NcclCommunicator::LaunchAllToAll(
         send_buffers.size(), num_ranks);
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, false,
@@ -598,25 +658,28 @@ absl::Status NcclCommunicator::LaunchAllToAll(
     XLA_NCCL_RETURN_IF_ERROR(ncclAlltoAll(
         send_contiguous->opaque(), recv_contiguous->opaque(),
         ToNcclCount(dtype, count), nccl_dtype, comm_, AsCudaStream(stream)));
+    if (!IsInsideNcclGroupLaunch()) {
+      RETURN_IF_ERROR(PollUntilDone());
+    }
     return absl::OkStatus();
   }
 #endif
 
-  TF_RETURN_IF_ERROR(GroupStart());
-  for (size_t i = 0; i < send_buffers.size(); ++i) {
-    se::DeviceAddressBase send_buffer = send_buffers[i];
-    se::DeviceAddressBase recv_buffer = recv_buffers[i];
+  auto group = [&] {
+    for (size_t i = 0; i < send_buffers.size(); ++i) {
+      se::DeviceAddressBase send_buffer = send_buffers[i];
+      se::DeviceAddressBase recv_buffer = recv_buffers[i];
 
-    XLA_NCCL_RETURN_IF_ERROR(ncclSend(send_buffer.opaque(),
-                                      ToNcclCount(dtype, count), nccl_dtype, i,
-                                      comm_, AsCudaStream(stream)));
-
-    XLA_NCCL_RETURN_IF_ERROR(ncclRecv(recv_buffer.opaque(),
-                                      ToNcclCount(dtype, count), nccl_dtype, i,
-                                      comm_, AsCudaStream(stream)));
-  }
-  TF_RETURN_IF_ERROR(GroupEnd());
-  return absl::OkStatus();
+      XLA_NCCL_RETURN_IF_ERROR(ncclSend(send_buffer.opaque(),
+                                        ToNcclCount(dtype, count), nccl_dtype,
+                                        i, comm_, AsCudaStream(stream)));
+      XLA_NCCL_RETURN_IF_ERROR(ncclRecv(recv_buffer.opaque(),
+                                        ToNcclCount(dtype, count), nccl_dtype,
+                                        i, comm_, AsCudaStream(stream)));
+    }
+    return absl::OkStatus();
+  };
+  return GroupLaunch(group);
 }
 
 absl::Status NcclCommunicator::LaunchCollectivePermute(
@@ -642,7 +705,7 @@ absl::Status NcclCommunicator::LaunchCollectivePermute(
       source_rank ? absl::StrCat(source_rank->value()) : "<empty>",
       absl::StrJoin(target_ranks, ", ", rank_formatter), count, comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, false,
@@ -653,23 +716,23 @@ absl::Status NcclCommunicator::LaunchCollectivePermute(
     return absl::OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(GroupStart());
+  auto group = [&] {
+    if (source_rank) {
+      XLA_NCCL_RETURN_IF_ERROR(
+          ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
+                   source_rank->value(), comm_, AsCudaStream(stream)));
+    }
 
-  if (source_rank) {
-    XLA_NCCL_RETURN_IF_ERROR(
-        ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
-                 source_rank->value(), comm_, AsCudaStream(stream)));
-  }
+    for (RankId target_rank : target_ranks) {
+      XLA_NCCL_RETURN_IF_ERROR(
+          ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
+                   target_rank.value(), comm_, AsCudaStream(stream)));
+    }
 
-  for (auto target_rank : target_ranks) {
-    XLA_NCCL_RETURN_IF_ERROR(
-        ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
-                 target_rank.value(), comm_, AsCudaStream(stream)));
-  }
+    return absl::OkStatus();
+  };
 
-  TF_RETURN_IF_ERROR(GroupEnd());
-
-  return absl::OkStatus();
+  return GroupLaunch(group);
 }
 
 absl::Status NcclCommunicator::LaunchSend(se::DeviceAddressBase send_buffer,
@@ -688,17 +751,17 @@ absl::Status NcclCommunicator::LaunchSend(se::DeviceAddressBase send_buffer,
       primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
       comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, false,
           stream->parent()->GetDeviceDescription().cuda_compute_capability()));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(
+  RETURN_IF_ERROR(XLA_NCCL_STATUS(
       ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
                peer.value(), comm_, AsCudaStream(stream))));
-  if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+  if (!IsInsideNcclGroupLaunch()) {
+    RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -719,17 +782,17 @@ absl::Status NcclCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
       primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
       comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, false,
           stream->parent()->GetDeviceDescription().cuda_compute_capability()));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(
+  RETURN_IF_ERROR(XLA_NCCL_STATUS(
       ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
                peer.value(), comm_, AsCudaStream(stream))));
-  if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+  if (!IsInsideNcclGroupLaunch()) {
+    RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -739,16 +802,15 @@ absl::Status NcclCommunicator::LaunchPut(se::DeviceAddressBase send_buffer,
                                          size_t offset, size_t count,
                                          RankId peer,
                                          const Executor& executor) {
-  if (!SupportsOneSidedComm()) {
-    return Unimplemented("Put requires NCCL >= 2.29.0 (current: %d)",
-                         NCCL_VERSION_CODE);
+  if (!capabilities_.supports_one_sided_comm) {
+    return capabilities_.GetOneSidedCommUnsupportedError("Put");
   }
   if (cancel_->IsCancelled()) {
     return FailedPrecondition("NcclCommunicator aborted");
   }
   se::Stream* stream = ToStream(executor);
 
-  auto& peer_win = tsl::down_cast<NcclSymmetricMemory&>(*recv_buffer);
+  auto& peer_win = absl::down_cast<NcclSymmetricMemory&>(*recv_buffer);
 
   VLOG(3) << absl::StreamFormat(
       "[%d] Launch NCCL Put operation; send_buffer=%p; peer_win=%v; "
@@ -763,8 +825,8 @@ absl::Status NcclCommunicator::LaunchPut(se::DeviceAddressBase send_buffer,
 #else
   return Unimplemented("Put requires NCCL >= 2.29.0");
 #endif
-  if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+  if (!IsInsideNcclGroupLaunch()) {
+    RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -772,16 +834,15 @@ absl::Status NcclCommunicator::LaunchPut(se::DeviceAddressBase send_buffer,
 absl::Status NcclCommunicator::LaunchSignal(RankId peer,
                                             const SignalDesc& signal_desc,
                                             const Executor& executor) {
-  if (!SupportsOneSidedComm()) {
-    return Unimplemented("Signal requires NCCL >= 2.29.0 (current: %d)",
-                         NCCL_VERSION_CODE);
+  if (!capabilities_.supports_one_sided_comm) {
+    return capabilities_.GetOneSidedCommUnsupportedError("Signal");
   }
   if (cancel_->IsCancelled()) {
     return FailedPrecondition("NcclCommunicator aborted");
   }
   se::Stream* stream = ToStream(executor);
 
-  const auto& nccl_desc = tsl::down_cast<const GpuSignalDesc&>(signal_desc);
+  const auto& nccl_desc = absl::down_cast<const GpuSignalDesc&>(signal_desc);
 
   VLOG(3) << absl::StreamFormat(
       "[%d] Launch NCCL Signal operation; peer=%d; sig_idx=%d; ctx=%d; "
@@ -796,8 +857,8 @@ absl::Status NcclCommunicator::LaunchSignal(RankId peer,
 #else
   return Unimplemented("Signal requires NCCL >= 2.29.0");
 #endif
-  if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+  if (!IsInsideNcclGroupLaunch()) {
+    RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -805,16 +866,15 @@ absl::Status NcclCommunicator::LaunchSignal(RankId peer,
 absl::Status NcclCommunicator::LaunchWaitSignal(RankId peer, int op_cnt,
                                                 const SignalDesc& signal_desc,
                                                 const Executor& executor) {
-  if (!SupportsOneSidedComm()) {
-    return Unimplemented("WaitSignal requires NCCL >= 2.29.0 (current: %d)",
-                         NCCL_VERSION_CODE);
+  if (!capabilities_.supports_one_sided_comm) {
+    return capabilities_.GetOneSidedCommUnsupportedError("WaitSignal");
   }
   if (cancel_->IsCancelled()) {
     return FailedPrecondition("NcclCommunicator aborted");
   }
   se::Stream* stream = ToStream(executor);
 
-  const auto& nccl_desc = tsl::down_cast<const GpuSignalDesc&>(signal_desc);
+  const auto& nccl_desc = absl::down_cast<const GpuSignalDesc&>(signal_desc);
 
   VLOG(3) << absl::StreamFormat(
       "[%d] Launch NCCL WaitSignal operation; peer=%d; op_cnt=%d; "
@@ -834,8 +894,8 @@ absl::Status NcclCommunicator::LaunchWaitSignal(RankId peer, int op_cnt,
 #else
   return Unimplemented("WaitSignal requires NCCL >= 2.29.0");
 #endif
-  if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+  if (!IsInsideNcclGroupLaunch()) {
+    RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -872,21 +932,29 @@ Future<T> NcclCommunicator::Execute(
 
 #if NCCL_VERSION_CODE >= 22800
 
-NcclDeviceCommunicator::NcclDeviceCommunicator(const NcclCommunicator* comm,
-                                               ncclDevComm dev_comm)
-    : comm_(comm), dev_comm_(dev_comm) {}
+NcclDeviceCommunicator::NcclDeviceCommunicator(
+    ncclComm_t parent_comm, se::StreamExecutor* stream_executor,
+    std::shared_ptr<tsl::Executor> executor, ncclDevComm dev_comm)
+    : parent_comm_(parent_comm),
+      stream_executor_(stream_executor),
+      executor_(std::move(executor)),
+      dev_comm_(dev_comm) {}
 
 NcclDeviceCommunicator::~NcclDeviceCommunicator() {
-  VLOG(3) << absl::StreamFormat(
-      "Destroy NCCL device comm %s constructed for %s", this->ToString(),
-      comm_->ToString());
+  VLOG(3) << absl::StreamFormat("Destroy NCCL device comm %v", *this);
 
-  DCHECK(comm_ && comm_->stream_executor()) << "StreamExecutor is unavailable";
-  auto activation = comm_->stream_executor()->Activate();
+  auto destroy_fn = [this]() -> absl::Status {
+    DCHECK(stream_executor_) << "StreamExecutor is unavailable";
+    auto activation = stream_executor_->Activate();
+    return XLA_NCCL_STATUS(ncclDevCommDestroy(parent_comm_, &dev_comm_));
+  };
 
-  auto status = XLA_NCCL_STATUS(ncclDevCommDestroy(comm_->comm(), &dev_comm_));
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to destroy device comm: " << status.message();
+  auto future = executor_
+                    ? MakeFutureOn<void>(*executor_, std::move(destroy_fn))
+                    : Future<>(std::move(destroy_fn)());
+  absl::Status s = future.Await();
+  if (!s.ok()) {
+    LOG(ERROR) << "Failed to destroy device comm: " << s;
   }
 }
 
@@ -894,7 +962,7 @@ absl::StatusOr<std::unique_ptr<NcclDeviceCommunicator>>
 NcclDeviceCommunicator::CreateFrom(const NcclCommunicator& comm,
                                    const Requirements& requirements) {
   VLOG(3) << absl::StreamFormat(
-      "Create NCCL device comm from %s: lsa_barrier_count=%d", comm.ToString(),
+      "Create NCCL device comm from %v: lsa_barrier_count=%d", comm,
       requirements.lsa_barrier_count);
 
   DCHECK(comm.stream_executor()) << "StreamExecutor is unavailable";
@@ -908,10 +976,11 @@ NcclDeviceCommunicator::CreateFrom(const NcclCommunicator& comm,
   reqs.lsaBarrierCount = requirements.lsa_barrier_count;
 
   ncclDevComm dev_comm{};
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       XLA_NCCL_STATUS(ncclDevCommCreate(comm.comm(), &reqs, &dev_comm)));
 
-  return absl::WrapUnique(new NcclDeviceCommunicator(&comm, dev_comm));
+  return absl::WrapUnique(new NcclDeviceCommunicator(
+      comm.comm(), comm.stream_executor(), comm.executor(), dev_comm));
 }
 
 PlatformCommunicatorHandle NcclDeviceCommunicator::platform_comm() const {

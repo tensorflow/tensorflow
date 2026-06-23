@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/select_k_exec.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -118,7 +119,7 @@ absl::StatusOr<ThunkProto> SelectKThunk::ToProto() const {
   select_k_proto->set_dtype(dtype_);
 
   for (const BufferAllocation::Slice& arg : args_) {
-    TF_ASSIGN_OR_RETURN(*select_k_proto->add_args(), arg.ToProto());
+    ASSIGN_OR_RETURN(*select_k_proto->add_args(), arg.ToProto());
   }
   return proto;
 }
@@ -130,7 +131,7 @@ absl::StatusOr<std::unique_ptr<SelectKThunk>> SelectKThunk::FromProto(
   arguments.reserve(proto.args().size());
   for (const xla::buffer_assignment::BufferAllocationSliceProto& arg :
        proto.args()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         BufferAllocation::Slice::FromProto(arg, buffer_allocations));
     emitters::KernelArgument argument{Shape{}, slice};

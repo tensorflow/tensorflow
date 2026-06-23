@@ -15,20 +15,26 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 
+#include <array>
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/collectives/allocator_memory_registration.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
+#include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique_id.h"
@@ -36,9 +42,11 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
@@ -59,13 +67,13 @@ namespace {
 static constexpr GlobalDeviceId kD0(0);
 static constexpr GlobalDeviceId kD1(1);
 static constexpr GlobalDeviceId kD2(2);
-static constexpr GlobalDeviceId kD3(2);
+static constexpr GlobalDeviceId kD3(3);
 
 static absl::StatusOr<std::vector<se::StreamExecutor*>> CreateExecutors(
     se::Platform* platform, size_t n) {
   std::vector<se::StreamExecutor*> executors(n);
   for (size_t d = 0; d < n; ++d) {
-    TF_ASSIGN_OR_RETURN(executors[d], platform->ExecutorForDevice(d));
+    ASSIGN_OR_RETURN(executors[d], platform->ExecutorForDevice(d));
   }
   return executors;
 }
@@ -103,8 +111,7 @@ CreateCommunicators(absl::Span<se::StreamExecutor* const> executors,
 
   CliqueIds clique_ids;
   for (size_t i = 0; i < num_ids; ++i) {
-    TF_ASSIGN_OR_RETURN(CliqueId clique_id,
-                        collectives->CreateUniqueCliqueId());
+    ASSIGN_OR_RETURN(CliqueId clique_id, collectives->CreateUniqueCliqueId());
     clique_ids.Add(clique_id);
   }
 
@@ -114,10 +121,9 @@ CreateCommunicators(absl::Span<se::StreamExecutor* const> executors,
   config.blocking_communicators = blocking;
   config.async_execution = !blocking;
 
-  TF_ASSIGN_OR_RETURN(auto comms,
-                      collectives->CreateCommunicatorsWithCancel(
-                          clique_key, clique_ids, device_ranks, config,
-                          std::make_shared<CancellationToken>()));
+  ASSIGN_OR_RETURN(auto comms, collectives->CreateCommunicatorsWithCancel(
+                                   clique_key, clique_ids, device_ranks, config,
+                                   std::make_shared<CancellationToken>()));
   return DowncastComms(std::move(comms));
 }
 
@@ -156,10 +162,10 @@ SplitCommunicators(
     existing_comms_ptrs[i] = existing_comms[i].get();
   }
 
-  TF_ASSIGN_OR_RETURN(auto comms,
-                      collectives->SplitCommunicatorsWithCancel(
-                          existing_comms_ptrs, /*color=*/0, keys, config,
-                          device_ranks, std::make_shared<CancellationToken>()));
+  ASSIGN_OR_RETURN(auto comms,
+                   collectives->SplitCommunicatorsWithCancel(
+                       existing_comms_ptrs, /*color=*/0, keys, config,
+                       device_ranks, std::make_shared<CancellationToken>()));
   return DowncastComms(std::move(comms));
 }
 
@@ -170,7 +176,7 @@ CreateMemoryAllocators(absl::Span<se::StreamExecutor* const> executors) {
   std::vector<std::unique_ptr<se::MemoryAllocator>> allocators;
   allocators.reserve(executors.size());
   for (se::StreamExecutor* executor : executors) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         allocators.emplace_back(),
         executor->CreateMemoryAllocator(se::MemorySpace::kCollective));
   }
@@ -184,8 +190,8 @@ Allocate(absl::Span<const std::unique_ptr<se::MemoryAllocator>> allocators,
   std::vector<std::unique_ptr<se::MemoryAllocation>> allocations;
   allocations.reserve(allocators.size());
   for (auto& allocator : allocators) {
-    TF_ASSIGN_OR_RETURN(allocations.emplace_back(),
-                        allocator->Allocate(num_bytes));
+    ASSIGN_OR_RETURN(allocations.emplace_back(),
+                     allocator->Allocate(num_bytes));
   }
   return allocations;
 }
@@ -217,7 +223,7 @@ AwaitSymmetricMemory(
   symm.reserve(futures.size());
 
   for (auto& future : futures) {
-    TF_ASSIGN_OR_RETURN(symm.emplace_back(), std::move(future).Await());
+    ASSIGN_OR_RETURN(symm.emplace_back(), std::move(future).Await());
   }
 
   return symm;
@@ -266,6 +272,98 @@ TEST(GpuCollectivesTest, SplitCommunicators) {
   EXPECT_TRUE(split_comms[1]->platform_comm().handle);
 }
 
+TEST(GpuCollectivesTest, GroupLaunchMultipleCommunicators) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  if (platform->VisibleDeviceCount() < 4) {
+    GTEST_SKIP() << "Test requires at least 4 GPUs";
+  }
+
+  GpuCollectives* collectives = GpuCollectives::Default("GPU");
+
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors_vec,
+                       CreateExecutors(platform, 4));
+  absl::Span<se::StreamExecutor*> executors(executors_vec);
+
+  ASSERT_OK_AND_ASSIGN(auto comms01,
+                       CreateCommunicators(executors.first(2), {kD0, kD1}));
+  ASSERT_OK_AND_ASSIGN(auto comms23,
+                       CreateCommunicators(executors.last(2), {kD2, kD3}));
+
+  std::vector<std::unique_ptr<se::Stream>> streams;
+  streams.reserve(executors.size());
+  for (se::StreamExecutor* executor : executors) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                         executor->CreateStream());
+    streams.push_back(std::move(stream));
+  }
+
+  constexpr size_t kCount = 4;
+  constexpr size_t kNumBytes = kCount * sizeof(float);
+  std::vector<std::array<float, kCount>> inputs = {
+      std::array<float, kCount>{1.0f, 2.0f, 3.0f, 4.0f},
+      std::array<float, kCount>{10.0f, 20.0f, 30.0f, 40.0f},
+      std::array<float, kCount>{5.0f, 6.0f, 7.0f, 8.0f},
+      std::array<float, kCount>{50.0f, 60.0f, 70.0f, 80.0f},
+  };
+
+  std::vector<se::DeviceAddress<float>> send_buffers;
+  std::vector<se::DeviceAddress<float>> recv_buffers;
+  send_buffers.reserve(executors.size());
+  recv_buffers.reserve(executors.size());
+  for (size_t i = 0; i < executors.size(); ++i) {
+    send_buffers.push_back(executors[i]->AllocateArray<float>(kCount));
+    recv_buffers.push_back(executors[i]->AllocateArray<float>(kCount));
+    ASSERT_OK(
+        streams[i]->Memcpy(&send_buffers[i], inputs[i].data(), kNumBytes));
+    ASSERT_OK(streams[i]->MemZero(&recv_buffers[i], kNumBytes));
+    ASSERT_OK(streams[i]->BlockHostUntilDone());
+  }
+
+  std::vector<const GpuCommunicator*> group_comms = {
+      comms01[0].get(), comms01[1].get(), comms23[0].get(), comms23[1].get()};
+
+  ASSERT_OK(collectives->GroupLaunch(group_comms, [&]() -> absl::Status {
+    GpuCollectives::Executor executor0(streams[0].get());
+    GpuCollectives::Executor executor1(streams[1].get());
+    GpuCollectives::Executor executor2(streams[2].get());
+    GpuCollectives::Executor executor3(streams[3].get());
+
+    RETURN_IF_ERROR(comms01[0]->LaunchAllReduce(send_buffers[0],
+                                                recv_buffers[0], F32, kCount,
+                                                ReductionKind::SUM, executor0));
+    RETURN_IF_ERROR(comms01[1]->LaunchAllReduce(send_buffers[1],
+                                                recv_buffers[1], F32, kCount,
+                                                ReductionKind::SUM, executor1));
+    RETURN_IF_ERROR(comms23[0]->LaunchAllReduce(send_buffers[2],
+                                                recv_buffers[2], F32, kCount,
+                                                ReductionKind::SUM, executor2));
+    return comms23[1]->LaunchAllReduce(send_buffers[3], recv_buffers[3], F32,
+                                       kCount, ReductionKind::SUM, executor3);
+  }));
+
+  std::vector<std::array<float, kCount>> expected = {
+      std::array<float, kCount>{11.0f, 22.0f, 33.0f, 44.0f},
+      std::array<float, kCount>{11.0f, 22.0f, 33.0f, 44.0f},
+      std::array<float, kCount>{55.0f, 66.0f, 77.0f, 88.0f},
+      std::array<float, kCount>{55.0f, 66.0f, 77.0f, 88.0f},
+  };
+
+  for (size_t i = 0; i < executors.size(); ++i) {
+    ASSERT_OK(streams[i]->BlockHostUntilDone());
+    std::array<float, kCount> output;
+    ASSERT_OK(streams[i]->Memcpy(output.data(), recv_buffers[i], kNumBytes));
+    ASSERT_OK(streams[i]->BlockHostUntilDone());
+    EXPECT_THAT(output, testing::ElementsAreArray(expected[i]));
+  }
+
+  for (size_t i = 0; i < executors.size(); ++i) {
+    executors[i]->Deallocate(&send_buffers[i]);
+    executors[i]->Deallocate(&recv_buffers[i]);
+  }
+}
+
 TEST(GpuCollectivesTest, CreateSymmetricMemory) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
                        se::PlatformManager::PlatformWithName("CUDA"));
@@ -301,6 +399,37 @@ TEST(GpuCollectivesTest, CreateSymmetricMemory) {
   // Register allocated buffers as symmetric memory.
   auto fsymm = CreateSymmetricMemory(exec, comms, allocs);
   ASSERT_OK_AND_ASSIGN(auto symm, AwaitSymmetricMemory(std::move(fsymm)));
+}
+
+TEST(GpuCollectivesTest, CreateRegisteredMemory) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
+
+  ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1}));
+
+  EXPECT_TRUE(comms[0]->platform_comm().handle);
+  EXPECT_TRUE(comms[1]->platform_comm().handle);
+
+  ASSERT_OK_AND_ASSIGN(auto allocators, CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(auto allocs, Allocate(allocators, 1024));
+
+  // Unlike symmetric memory, buffer registration is not a collective operation:
+  // each rank may register independently. The returned handle keeps the buffer
+  // registered until it is destroyed.
+  std::vector<std::unique_ptr<RegisteredMemory>> registered;
+  for (size_t i = 0; i < comms.size(); ++i) {
+    ASSERT_OK_AND_ASSIGN(
+        auto reg, comms[i]->CreateRegisteredMemory(allocs[i]->address()));
+    EXPECT_EQ(reg->addr(), allocs[i]->address());
+    registered.push_back(std::move(reg));
+  }
 }
 
 TEST(GpuCollectivesTest, CreateSymmetricMemoryOnDifferentComms) {
@@ -461,14 +590,14 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
 
   ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
                        CreateExecutors(platform, 2));
-
   if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
     GTEST_SKIP() << "Test requires peer access between devices";
   }
-
-  GpuCollectives* collectives = GpuCollectives::Default("GPU");
-  if (!collectives->SupportsOneSidedComm()) {
-    GTEST_SKIP() << "GPU collectives do not support one-sided RMA";
+  if (!executors[0]
+           ->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastHopper()) {
+    GTEST_SKIP() << "Test requires at least Hopper architecture";
   }
 
   ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1}));
@@ -514,19 +643,19 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
 
   auto f0 = MakeFutureOn<void>(exec, [&]() -> absl::Status {
     GpuCollectives::Executor gpu_exec(stream0.get());
-    TF_RETURN_IF_ERROR(comms[0]
-                           ->Put(send0_addr, symm_recv[0].get(), 0, kNumBytes,
-                                 RankId(1), gpu_exec)
-                           .Await());
+    RETURN_IF_ERROR(comms[0]
+                        ->Put(send0_addr, symm_recv[0].get(), 0, kNumBytes,
+                              RankId(1), gpu_exec)
+                        .Await());
     return comms[0]->WaitSignal(RankId(1), 1, signal_desc, gpu_exec).Await();
   });
 
   auto f1 = MakeFutureOn<void>(exec, [&]() -> absl::Status {
     GpuCollectives::Executor gpu_exec(stream1.get());
-    TF_RETURN_IF_ERROR(comms[1]
-                           ->Put(send1_addr, symm_recv[1].get(), 0, kNumBytes,
-                                 RankId(0), gpu_exec)
-                           .Await());
+    RETURN_IF_ERROR(comms[1]
+                        ->Put(send1_addr, symm_recv[1].get(), 0, kNumBytes,
+                              RankId(0), gpu_exec)
+                        .Await());
     return comms[1]->WaitSignal(RankId(0), 1, signal_desc, gpu_exec).Await();
   });
 
@@ -545,6 +674,46 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
 
   EXPECT_THAT(h_recv0, testing::ElementsAre(5.0f, 6.0f, 7.0f, 8.0f));
   EXPECT_THAT(h_recv1, testing::ElementsAre(1.0f, 2.0f, 3.0f, 4.0f));
+}
+
+// Verifies that AllocatorMemoryRegistration registers recorded allocator ranges
+// with the clique communicator that runs on the same device.
+TEST(GpuCollectivesTest, AllocatorMemoryRegistrationRegistersWithClique) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
+
+  ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1}));
+
+  ASSERT_OK_AND_ASSIGN(auto allocators, CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(auto allocs, Allocate(allocators, 1024));
+
+  // Record one allocator range per device through the suballocator visitor, the
+  // same way the BFC preallocation path would.
+  auto registration = std::make_shared<AllocatorMemoryRegistration>();
+  auto alloc_visitor = registration->alloc_visitor();
+  for (size_t i = 0; i < executors.size(); ++i) {
+    alloc_visitor(allocs[i]->address().opaque(), executors[i]->device_ordinal(),
+                  allocs[i]->address().size());
+  }
+
+  // Build a clique from the real communicators and register memory with it.
+  absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators;
+  for (size_t i = 0; i < comms.size(); ++i) {
+    communicators.emplace(RankId(i), std::move(comms[i]));
+  }
+  GpuClique clique(GpuCliqueKey({kD0, kD1}, /*num_local_participants=*/2),
+                   std::nullopt, std::move(communicators),
+                   /*peer_access_enabled=*/true,
+                   std::make_shared<CancellationToken>());
+
+  ASSERT_OK(registration->RegisterWithClique(clique));
 }
 
 }  // namespace

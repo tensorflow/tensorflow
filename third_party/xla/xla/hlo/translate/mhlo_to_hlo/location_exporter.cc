@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Visitors.h"
@@ -125,6 +126,16 @@ xla::OpMetadata CreateOpMetadataFromLocation(
   metadata.set_op_name(name);
   std::string op_type = GetOpTypeFromLoc(loc);
   metadata.set_op_type(op_type);
+
+  // TODO(b/503147499): Consider plumbing metadata payload directly from the
+  // frontend.
+  if (auto attrs =
+          op->getAttrOfType<mlir::DictionaryAttr>("mhlo.frontend_attributes")) {
+    if (auto payload = mlir::dyn_cast_or_null<mlir::StringAttr>(
+            attrs.get("xla_metadata_payload"))) {
+      metadata.mutable_metadata_payload()->set_value(payload.getValue().str());
+    }
+  }
 
   // Skip all leading names that are not frame names, e.g., op name and op type
   // attributes found above.

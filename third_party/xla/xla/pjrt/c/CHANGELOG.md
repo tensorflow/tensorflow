@@ -1,10 +1,41 @@
 # PJRT C API changelog
 
+## 0.113
+
+*   Added `peak_allocated_bytes` and `peak_allocated_bytes_is_set` to `PJRT_Device_MemoryStats_Args`.
+
+## 0.112
+
+*   Added PJRT_HloOutputCallbackInfo to PJRT_ExecuteOptions.
+
+## 0.111
+
+* Added `PJRT_LoadOptions` and `load_options` to `PJRT_Executable_DeserializeAndLoad_Args`.
+
+## 0.110
+
+* Added GetMemorySpaceKindIds() const to PJRT_TopologyDescription.
+
+## 0.109
+
+*   Added MakeCanonicalShapeForMemorySpace to PJRT_TopologyDescription..
+
+## 0.108
+
+*   Added use_major_to_minor_data_layout_for_callbacks to PJRT_ExecuteOptions.
+
+## 0.107
+
+*   Added PJRT_Error_FunctionTable*.
+
+## 0.106
+
+*   Added `PJRT_Device_ClearMemoryStats` to `PJRT_Api` to allow resetting peak
+    memory tracking.
+
 ## 0.105
 
 *   Added PJRT_Memory_FunctionTable*.
-*   Added `PJRT_Device_ClearMemoryStats` to `PJRT_Api` to allow resetting peak
-    memory tracking.
 
 ## 0.104
 

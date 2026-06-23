@@ -71,9 +71,10 @@ absl::Status FeedInputs(
     }
     Node* n = iter->second;
     DCHECK_EQ(n->name(), id.first);
-    if (id.second >= n->num_outputs()) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "FeedInputs: ", t, " should have output index < ", n->num_outputs()));
+    if (id.second < 0 || id.second >= n->num_outputs()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("FeedInputs: ", t, " should have output index < ",
+                       n->num_outputs(), " and >= 0"));
     }
 
     Node* feed_node;
@@ -152,10 +153,10 @@ absl::Status FetchOutputs(
           t,
           "' as an argument to the 'target_node_names' argument of the "
           "Session::Run API."));
-    } else if (id.second >= n->num_outputs()) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "FetchOutputs ", t, ": output index too large, must be < ",
-          n->num_outputs()));
+    } else if (id.second < 0 || id.second >= n->num_outputs()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("FetchOutputs ", t, ": output index must be < ",
+                       n->num_outputs(), " and >= 0"));
     }
 
     // Create the fetch Node and connect it up

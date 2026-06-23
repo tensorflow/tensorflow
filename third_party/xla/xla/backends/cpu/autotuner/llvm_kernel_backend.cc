@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -66,13 +67,12 @@ LlvmKernelBackend::GetSupportedConfigs(const HloInstruction& instr) {
   for (const auto& disable_loop_unrolling : boolean_options) {
     for (const auto& slp_vectorizer_disabled : boolean_options) {
       for (const auto& optimize_for_size : boolean_options) {
-        Config config;
-        config.set_disable_loop_unrolling(disable_loop_unrolling);
-        config.set_slp_vectorizer_disabled(slp_vectorizer_disabled);
-        config.set_optimize_for_size(optimize_for_size);
-        auto any = std::make_unique<xla::BackendConfig>();
-        any->PackFrom(config);
-        configs.push_back(std::move(any));
+        auto config = std::make_unique<xla::BackendConfig>();
+        auto* llvm_config = config->mutable_llvm_kernel();
+        llvm_config->set_disable_loop_unrolling(disable_loop_unrolling);
+        llvm_config->set_slp_vectorizer_disabled(slp_vectorizer_disabled);
+        llvm_config->set_optimize_for_size(optimize_for_size);
+        configs.push_back(std::move(config));
       }
     }
   }
@@ -81,26 +81,28 @@ LlvmKernelBackend::GetSupportedConfigs(const HloInstruction& instr) {
 
 absl::StatusOr<std::unique_ptr<xla::BackendConfig>>
 LlvmKernelBackend::GetDefaultConfig(const HloInstruction& instr) {
-  auto config = std::make_unique<Config>();
-  config->set_disable_loop_unrolling(false);
-  config->set_slp_vectorizer_disabled(false);
-  config->set_optimize_for_size(false);
-  auto any = std::make_unique<xla::BackendConfig>();
-  any->PackFrom(*config);
-  return any;
+  auto config = std::make_unique<xla::BackendConfig>();
+  auto* llvm_config = config->mutable_llvm_kernel();
+  llvm_config->set_disable_loop_unrolling(false);
+  llvm_config->set_slp_vectorizer_disabled(false);
+  llvm_config->set_optimize_for_size(false);
+  return config;
 }
 
 absl::Status LlvmKernelBackend::ApplyConfig(HloInstruction& instr,
                                             const xla::BackendConfig& config) {
-  TF_ASSIGN_OR_RETURN(auto backend_config,
-                      instr.backend_config<xla::cpu::BackendConfig>());
+  ASSIGN_OR_RETURN(auto backend_config,
+                   instr.backend_config<xla::cpu::BackendConfig>());
 
-  LlvmKernelBackend::Config llvm_kernel_config;
-  config.UnpackTo(&llvm_kernel_config);
+  if (!config.has_llvm_kernel()) {
+    return absl::InvalidArgumentError(
+        "Expected LlvmKernelOptions config for LlvmKernelBackend.");
+  }
+  const LlvmKernelBackend::Config& llvm_kernel_config = config.llvm_kernel();
 
   *backend_config.mutable_llvm_kernel_options() = llvm_kernel_config;
 
-  TF_RETURN_IF_ERROR(instr.set_backend_config(backend_config));
+  RETURN_IF_ERROR(instr.set_backend_config(backend_config));
 
   return absl::OkStatus();
 }

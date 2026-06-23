@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/tpu/tpu_api.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 

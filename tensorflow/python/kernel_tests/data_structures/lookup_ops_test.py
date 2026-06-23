@@ -111,9 +111,10 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
 
     exported_keys_tensor, exported_values_tensor = table.export()
 
-    self.assertItemsEqual([b"brain", b"salad", b"surgery"],
-                          self.evaluate(exported_keys_tensor))
-    self.assertItemsEqual([0, 1, 2], self.evaluate(exported_values_tensor))
+    self.assertCountEqual(
+        [b"brain", b"salad", b"surgery"], self.evaluate(exported_keys_tensor)
+    )
+    self.assertCountEqual([0, 1, 2], self.evaluate(exported_values_tensor))
 
   def testStaticHashTableFindHighRank(self, is_anonymous):
     if is_anonymous and not tf2.enabled():
@@ -608,6 +609,52 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertLen(inferred_shapes, 2)
     self.assertTrue(inferred_shapes[0].is_compatible_with(actual_shapes[0]))
     self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
+
+  def testImportInvalidNumBuckets(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
+    table = lookup_ops.DenseHashTable(
+        dtypes.string,
+        dtypes.float32,
+        default_value=-1.5,
+        empty_key="",
+        deleted_key="$",
+        experimental_is_anonymous=is_anonymous,
+    )
+
+    # Test empty keys (num_buckets = 0)
+    empty_keys = constant_op.constant([], dtypes.string)
+    empty_values = constant_op.constant([], dtypes.float32)
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      self.evaluate(
+          gen_lookup_ops.lookup_table_import_v2(
+              table.resource_handle, empty_keys, empty_values
+          )
+      )
+
+    # Test num_buckets < 4 (e.g. 2)
+    invalid_keys = constant_op.constant(["a", "b"], dtypes.string)
+    invalid_values = constant_op.constant([1.0, 2.0], dtypes.float32)
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      self.evaluate(
+          gen_lookup_ops.lookup_table_import_v2(
+              table.resource_handle, invalid_keys, invalid_values
+          )
+      )
+
+    # Test num_buckets not power of 2 (e.g. 5)
+    invalid_keys = constant_op.constant(
+        ["a", "b", "c", "d", "e"], dtypes.string
+    )
+    invalid_values = constant_op.constant(
+        [1.0, 2.0, 3.0, 4.0, 5.0], dtypes.float32
+    )
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      self.evaluate(
+          gen_lookup_ops.lookup_table_import_v2(
+              table.resource_handle, invalid_keys, invalid_values
+          )
+      )
 
   @test_util.run_v2_only
   def testSavedModelSaveRestore(self, is_anonymous):

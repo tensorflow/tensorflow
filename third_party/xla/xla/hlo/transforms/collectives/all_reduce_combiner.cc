@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/service/hlo_domain_map.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -95,7 +97,7 @@ absl::Status CombineAllReduces(
   combined->set_metadata(MergeMetadata(to_combine));
   combined->set_frontend_attributes(MergeFrontendAttributes(to_combine));
   if (post_combine != nullptr) {
-    TF_RETURN_IF_ERROR(post_combine(to_combine, combined));
+    RETURN_IF_ERROR(post_combine(to_combine, combined));
   }
 
   // We have to propagate the sharding manually because Domain instructions are
@@ -109,7 +111,7 @@ absl::Status CombineAllReduces(
   for (int64_t i = 0; i < to_combine.size(); ++i) {
     auto replace_with = HloInstruction::CreateGetTupleElement(
         to_combine[i]->shape(), combined, i);
-    TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
+    RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
         to_combine[i], std::move(replace_with)));
   }
   return absl::OkStatus();
@@ -164,17 +166,20 @@ absl::StatusOr<bool> AllReduceCombiner::RunWithKeyCombiner(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
+    ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&domain_map, &combine_key](const HloInstruction* instruction)
         -> std::optional<AllReduceCombiner::GroupKey> {
-      if (instruction->opcode() != HloOpcode::kAllReduce) {
+      if (instruction->opcode() != HloOpcode::kAllReduce ||
+          (instruction->has_frontend_attributes() &&
+           instruction->frontend_attributes().map().contains(
+               kXlaSchedulingGroupIdAttr))) {
         return std::nullopt;
       }
       return combine_key(instruction, *domain_map);
     };
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bool computation_changed,
         CombineInstructionsByKey<AllReduceCombiner::GroupKey>(
             computation, key_fn,

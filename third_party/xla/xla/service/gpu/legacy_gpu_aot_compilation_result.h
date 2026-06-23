@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -52,7 +53,8 @@ class LegacyGpuAotCompilationResult : public CompiledModule {
  public:
   static absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
   FromModule(const HloModule* hlo_module,
-             const BufferAssignment* buffer_assignment,
+             BufferAssignmentProto buffer_assignment_proto,
+             std::string buffer_allocations_debug_summary,
              absl::string_view asm_text, absl::Span<const uint8_t> binary,
              const BinaryMap& dnn_compiled_graphs, int pointer_size,
              Compiler* compiler);
@@ -74,8 +76,9 @@ class LegacyGpuAotCompilationResult : public CompiledModule {
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       se::Platform::Id platform_id,
-      const se::DeviceDescription& device_description) &&
-      override;
+      const se::DeviceDescription& device_description,
+      const DebugOptions& debug_options) &&
+      final;
 
   const HloModule* optimized_module() const override { return module_.get(); }
   std::shared_ptr<HloModule> shared_optimized_module() override {

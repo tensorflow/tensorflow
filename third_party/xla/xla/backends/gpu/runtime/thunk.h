@@ -40,13 +40,11 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
-#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/scratch_memory.h"
 #include "xla/backends/gpu/runtime/scratch_memory_requests.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_kind.pb.h"
-#include "xla/core/collectives/communicator.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -119,6 +117,7 @@ class Thunk {
     kCustomCall,
     kCustomKernel,
     kDynamicSlice,
+    kDynamicSliceFusion,
     kFft,
     kGemm,
     kGroup,
@@ -133,16 +132,13 @@ class Thunk {
     kMemset32BitValue,
     kMemzero,
     kNorm,
-    kNvshmemAllReduce,
-    kNvshmemCollectivePermute,
-    kNvshmemRecv,
-    kNvshmemSend,
     kOutfeed,
     kPartitionId,
     kRaggedAllToAll,
     kRecv,
     kReduceScatter,
     kReplicaId,
+    kRngSeed,
     kSelectK,
     kSend,
     kSequential,
@@ -180,6 +176,9 @@ class Thunk {
     std::string profile_annotation;
 
     ThunkId thunk_id = ThunkId{0};
+    // Only used in kConcurrentRegions mode to determine dependencies between
+    // thunks. See Thunk::concurrent_region_id() for more details.
+    std::optional<int64_t> concurrent_region_id;
 
     // Serializes a ThunkInfo to a ThunkInfoProto.
     ThunkInfoProto ToProto() const;
@@ -338,8 +337,9 @@ class Thunk {
     ExecutionScopedState* execution_scoped_state = nullptr;
 
     bool mock_collectives = false;
-
     int64_t execution_id = 0;
+
+    uint64_t rng_seed = 0;
 
    private:
     friend class CommandBufferThunk;
@@ -356,7 +356,8 @@ class Thunk {
                   const ffi::ExecutionContext* ffi_execution_context,
                   std::vector<se::Stream*> additional_compute_streams = {},
                   ExecutionScopedState* execution_scoped_state = nullptr,
-                  bool mock_collectives = false, int64_t execution_id = 0);
+                  bool mock_collectives = false, RunId execution_id = RunId(0),
+                  uint64_t rng_seed = 0);
   };
 
   //===--------------------------------------------------------------------===//
@@ -428,12 +429,6 @@ class Thunk {
   // Returns `true` if this thunk requires inter-GPU communication.
   bool IsCollective() const;
 
-  // Returns any communicators used during execution.
-  virtual absl::StatusOr<std::vector<Communicator*>> GetCommunicators(
-      const ExecuteParams& params) const {
-    return std::vector<Communicator*>();
-  }
-
   // Type predicate for `Walk` callback.
   template <typename F, typename Arg>
   using WalkCallback =
@@ -460,7 +455,7 @@ class Thunk {
   }
 
   // Serializes the thunk into a `ThunkProto`.
-  virtual absl::StatusOr<ThunkProto> ToProto() const;
+  virtual absl::StatusOr<ThunkProto> ToProto() const = 0;
 
   // Serializes the metadata of the thunk into a `ThunkMetadataProto`.
   ThunkMetadataProto ToMetadataProto() const;
@@ -478,11 +473,12 @@ class Thunk {
   // In scheduling mode kConcurrentRegions, thunks sequences are divided into
   // regions. Thunks can be executed concurrently within the same region, but
   // regions will be executed sequentially.
+  // See ConcurrentRegionsHloOrdering::Initialize for how these are assigned.
   std::optional<uint64_t> concurrent_region_id() const {
-    return concurrent_region_id_;
+    return thunk_info_.concurrent_region_id;
   }
   void set_concurrent_region_id(uint64_t concurrent_region_id) {
-    concurrent_region_id_ = concurrent_region_id;
+    thunk_info_.concurrent_region_id = concurrent_region_id;
   }
 
   void set_profile_annotation(absl::string_view profile_annotation) {
@@ -499,10 +495,6 @@ class Thunk {
  private:
   Kind kind_;
   ThunkInfo thunk_info_;
-
-  // Used in scheduling mode kConcurrentRegions only. More details in the
-  // comments on the getter method above.
-  std::optional<uint64_t> concurrent_region_id_;
 };
 
 // A sequence of thunks.
@@ -514,7 +506,7 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
       : std::vector<std::unique_ptr<Thunk>>(std::move(thunks)) {};
   ThunkSequence(const ThunkSequence&) = delete;
 
-  ThunkSequence& operator=(ThunkSequence&) = delete;
+  ThunkSequence& operator=(const ThunkSequence&) = delete;
   ThunkSequence& operator=(ThunkSequence&&) = default;
 
   explicit ThunkSequence(int64_t len)

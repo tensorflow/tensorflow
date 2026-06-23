@@ -42,10 +42,10 @@ const std::string GetOpName(const OpSignature& op_sig) {
   return tflite::EnumNamesBuiltinOperator()[op_sig.op];
 }
 
-int NumElements(const std::vector<int32_t>& dims) {
-  int count = 1;
-  for (int i = 0; i < dims.size(); ++i) {
-    count *= dims.at(i);
+int64_t NumElements(const std::vector<int32_t>& dims) {
+  int64_t count = 1;
+  for (int32_t dim : dims) {
+    count *= dim;
   }
   return count;
 }
@@ -427,9 +427,21 @@ absl::Status CheckCustomOpsGpuDelegateCompatibility(const OpSignature& op_sig) {
     return absl::OkStatus();
   }
   if (op_sig.custom_name == "Resampler") {
-    return CheckInputsOutputs(op_sig,
-                              /*required_runtime_inputs=*/2,
-                              /*required_outputs=*/1);
+    RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
+                                       /*required_runtime_inputs=*/2,
+                                       /*required_outputs=*/1));
+    const auto* src = &op_sig.inputs[0];
+    const auto* warp = &op_sig.inputs[1];
+    if (src->dims.size() != 4 || warp->dims.size() != 4) {
+      return absl::InvalidArgumentError("src or warp dims size != 4");
+    }
+    if (src->dims[0] != warp->dims[0]) {
+      return absl::InvalidArgumentError("src.b != warp.b");
+    }
+    if (warp->dims[3] < 2) {
+      return absl::InvalidArgumentError("warp.c < 2");
+    }
+    return absl::OkStatus();
   }
   return absl::InvalidArgumentError(
       absl::StrCat("Not supported custom op ", op_sig.custom_name));
@@ -851,6 +863,11 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
               CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/3,
                                        /*required_const_inputs=*/2,
                                        /*required_outputs=*/4));
+          if (!op_sig.outputs[3].dims.empty() &&
+              op_sig.outputs[3].dims.back() % 4 != 0) {
+            return absl::UnimplementedError(
+                "BasicLSTM activation depth must be a multiple of 4.");
+          }
           if (tf_options->activation != kTfLiteActTanh) {
             return absl::UnimplementedError(
                 absl::StrCat("Only TANH activation is supported. but node has ",

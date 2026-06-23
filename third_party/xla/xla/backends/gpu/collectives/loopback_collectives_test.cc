@@ -213,7 +213,7 @@ TEST(LoopbackCollectivesTest, AllReduce) {
   ASSERT_OK_AND_ASSIGN(auto comms,
                        CreateCommunicators(&collectives, executors, {kD0}));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
   constexpr size_t kCount = 4;
   se::DeviceAddress<float> send = executors[0]->AllocateArray<float>(kCount);
@@ -262,7 +262,7 @@ TEST(LoopbackCollectivesTest, AllGather) {
   ASSERT_OK_AND_ASSIGN(auto comms2,
                        CreateCommunicators(&collectives, executors, {kD0}));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
   constexpr size_t kCount = 2;
   constexpr size_t kNumRanks = 1;
@@ -304,7 +304,7 @@ TEST(LoopbackCollectivesTest, CollectivePermute) {
   ASSERT_OK_AND_ASSIGN(auto comms,
                        CreateCommunicators(&collectives, executors, {kD0}));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
   constexpr size_t kCount = 4;
   se::DeviceAddress<float> send = executors[0]->AllocateArray<float>(kCount);

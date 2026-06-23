@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -31,8 +32,6 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -57,7 +56,7 @@ void GatherFusionInstructions(
 LogicalBufferAnalysis::Run(const HloModule* module) {
   std::unique_ptr<LogicalBufferAnalysis> analysis(
       new LogicalBufferAnalysis(module));
-  TF_RETURN_IF_ERROR(analysis->Analyze());
+  RETURN_IF_ERROR(analysis->Analyze());
   return analysis;
 }
 
@@ -73,7 +72,7 @@ absl::Status LogicalBufferAnalysis::Analyze() {
   // fusion computations, and we don't want to try to assign buffers to those.
   std::vector<HloInstruction*> fusion_instructions;
   for (auto* computation : module_->MakeNonfusionComputations()) {
-    TF_RETURN_IF_ERROR(computation->Accept(this));
+    RETURN_IF_ERROR(computation->Accept(this));
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kFusion) {
         continue;
@@ -82,7 +81,7 @@ absl::Status LogicalBufferAnalysis::Analyze() {
     }
   }
   for (auto* instruction : fusion_instructions) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         instruction->fused_instructions_computation()->Accept(this));
   }
   return absl::OkStatus();

@@ -114,6 +114,9 @@ class IfrtIrLoadedExecutable
       absl::Span<ArrayRef> args, const ExecuteOptions& options,
       std::optional<DeviceListRef> devices) override;
 
+  absl::StatusOr<ExecuteBundleResult> ExecuteBundle(
+      absl::Span<BundleRef> args, const ExecuteOptions& options) override;
+
   std::optional<DeviceListRef> devices() const override;
 
   absl::Span<Device* const> addressable_devices() const override;

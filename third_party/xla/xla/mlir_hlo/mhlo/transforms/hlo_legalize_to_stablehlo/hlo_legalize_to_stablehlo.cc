@@ -147,6 +147,11 @@ std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
     // Version 1: Initial version for AsinhOp.
     return 1;
   }
+  // StableHLO doesn't support Mulhi yet.
+  if constexpr (std::is_same<HloOpTy, mhlo::MulhiOp>::value) {
+    // Version 1: Initial version for MulhiOp.
+    return 1;
+  }
   return std::nullopt;
 }
 
@@ -368,6 +373,9 @@ Attribute convertAttr(Attribute hloAttr) {
     return stablehlo::AxisRefAttr::get(attr.getContext(), attr.getName(),
                                        subAxisInfo);
   }
+  if (auto attr = mlir::dyn_cast<mhlo::OriginalValueAttr>(hloAttr)) {
+    return attr;
+  }
   if (hloAttr.getDialect().getNamespace() ==
       mhlo::MhloDialect::getDialectNamespace()) {
     // Our guiding principle is to support all StableHLO functionality in MHLO.
@@ -520,7 +528,8 @@ LogicalResult convertAttributes(ConversionPatternRewriter& rewriter,
                   !std::is_same<HloOpTy, mhlo::AsinOp>::value &&
                   !std::is_same<HloOpTy, mhlo::AsinhOp>::value &&
                   !std::is_same<HloOpTy, mhlo::ErfOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::TopKOp>::value) {
+                  !std::is_same<HloOpTy, mhlo::TopKOp>::value &&
+                  !std::is_same<HloOpTy, mhlo::MulhiOp>::value) {
       if (!stablehloAttr) {
         stablehloAttr = convertDenseArray<HloToStablehloOp<HloOpTy>>(
             hloAttr.getName(), hloAttr.getValue());
@@ -814,7 +823,7 @@ void populateHloToStablehloPatterns(RewritePatternSet* patterns,
 
   populateHloToStablehloCustomCallPatterns<
       mhlo::AcosOp, mhlo::AcoshOp, mhlo::AsinOp, mhlo::AsinhOp, mhlo::AtanhOp,
-      mhlo::CoshOp, mhlo::SinhOp, mhlo::ErfOp, mhlo::TopKOp>(
+      mhlo::CoshOp, mhlo::SinhOp, mhlo::ErfOp, mhlo::TopKOp, mhlo::MulhiOp>(
       patterns, converter, context, allowExperimentalFeatures);
 }
 

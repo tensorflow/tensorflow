@@ -21,13 +21,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/executable_run_options.h"
 #include "xla/service/backend.h"
-#include "xla/service/stream_pool.h"
-#include "xla/stream_executor/device_address_allocator.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
-#include "tsl/platform/macros.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -60,14 +57,14 @@ class TpuNodeContext final {
 
   stream_executor::StreamExecutor* stream_executor() const;
 
-  bool CompactionSupported(int device_ordinal) const;
+  bool CompactionSupported() const;
 
  private:
   const int device_ordinal_;
   XLA_TpuNodeContext* const node_context_;
 
   TpuNodeContext(const TpuNodeContext&) = delete;
-  void operator=(const TpuNodeContext&) = delete;
+  TpuNodeContext& operator=(const TpuNodeContext&) = delete;
 };
 
 }  // namespace tpu

@@ -15,17 +15,16 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -44,7 +43,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::Not;
 
@@ -295,6 +293,53 @@ TEST_F(HloInstructionTest, GetStackTraceStringNoSourceInfo) {
   EXPECT_THAT(stack_trace, HasSubstr("    <no source information>"));
 }
 
+TEST_F(HloInstructionTest, PostOrderDFSDataflowErrorLocation) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p"));
+  auto sqrt = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {1}), HloOpcode::kSqrt, param));
+  module->AddEntryComputation(builder.Build());
+
+  // Add stack frames to the module
+  StackFrameIndexProto index;
+  index.add_file_names("file.py");
+  index.add_function_names("func");
+  auto loc = index.add_file_locations();
+  loc->set_file_name_id(1);
+  loc->set_function_name_id(1);
+  loc->set_line(100);
+  auto frame = index.add_stack_frames();
+  frame->set_file_location_id(1);
+  frame->set_parent_frame_id(0);
+  ASSERT_OK_AND_ASSIGN(auto stack_frames, StackFrames::FromProto(index));
+  module->set_stack_frames(std::move(stack_frames));
+
+  // Set metadata on the instruction
+  OpMetadata metadata;
+  metadata.set_stack_frame_id(1);
+  sqrt->set_metadata(metadata);
+
+  class FailingVisitor : public DfsHloVisitorWithDefault {
+   public:
+    absl::Status DefaultAction(HloInstruction* hlo) override {
+      if (hlo->opcode() == HloOpcode::kSqrt) {
+        return absl::Status(absl::StatusCode::kInvalidArgument,
+                            "Injected error");
+      }
+      return absl::OkStatus();
+    }
+  };
+
+  FailingVisitor visitor;
+  absl::Status status = sqrt->Accept(&visitor);
+
+  EXPECT_THAT(status.message(), HasSubstr("Injected error"));
+  EXPECT_THAT(status.message(), HasSubstr("Python Code Location:"));
+  EXPECT_THAT(status.message(), HasSubstr("file.py:100 [func]"));
+}
+
 TEST_F(HloInstructionTest, SetFrontendAttribute) {
   HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
   instr.set_frontend_attribute("key1", "value1");
@@ -488,6 +533,49 @@ TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
             "type=TOTALORDER");
 }
 
+TEST_F(HloInstructionTest, CanonicalPrintingSupportsCustomCall) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           R"(
+    HloModule custom_call_with_comp
+
+    max_F32 {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT maximum = f32[] maximum(lhs, rhs)
+    }
+
+    ENTRY CustomCall {
+      constant = f32[1]{0} constant({12345})
+      ROOT custom-call = f32[1,2,3]{0,2,1} custom-call(constant), custom_call_target="foo\"bar", called_computations={max_F32}
+    }
+  )"));
+
+  xla::HloPrintOptions hlo_print_options =
+      xla::HloPrintOptions(xla::HloPrintOptions::Canonical());
+  hlo_print_options.set_is_in_nested_computation(true);
+
+  xla::CanonicalNameMap new_map;
+  xla::StringPrinter printer;
+  module->entry_computation()
+      ->root_instruction()
+      ->operand(0)
+      ->PrintWithCanonicalNameMap(&printer, hlo_print_options, &new_map);
+  std::string param1_to_string = std::move(printer).ToString();
+
+  printer = StringPrinter();
+  // CustomCall Root Instruction
+  module->entry_computation()->root_instruction()->PrintWithCanonicalNameMap(
+      &printer, hlo_print_options, &new_map);
+  std::string param2_to_string = std::move(printer).ToString();
+
+  EXPECT_EQ(param1_to_string, "tmp_0 = f32[1]{0} constant({12345})");
+  EXPECT_EQ(param2_to_string,
+            "tmp_1 = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} tmp_0), "
+            "custom_call_target=\"foo\\\"bar\", called_computations={\n{\n  "
+            "tmp_0 = f32[] parameter(0)\n  tmp_1 = f32[] parameter(1)\n  ROOT "
+            "tmp_2 = f32[] maximum(f32[] tmp_0, f32[] tmp_1)\n}\n}");
+}
+
 TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimConvert) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
   auto param = HloInstruction::CreateParameter(0, shape, "p");
@@ -559,6 +647,26 @@ TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimReshapeMixed) {
   EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(0), 1);
   EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(1), std::nullopt);
   EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(2), 2);
+}
+
+TEST_F(HloInstructionTest, PrecisionConfigMethodConsistency) {
+  // 1. Test a valid opcode (kParameter) that does not have PrecisionConfig.
+  std::unique_ptr<HloInstruction> param = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "param");
+  EXPECT_FALSE(param->SupportsPrecisionConfig());
+  EXPECT_DEATH(param->precision_config(), "");
+  EXPECT_DEATH(param->mutable_precision_config(), "");
+
+  // 2. Test an opcode (kDot) that does have PrecisionConfig.
+  std::unique_ptr<HloInstruction> lhs = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {2, 2}), "lhs");
+  std::unique_ptr<HloInstruction> rhs = HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {2, 2}), "rhs");
+  DotDimensionNumbers dnums;
+  std::unique_ptr<HloInstruction> dot =
+      HloInstruction::CreateDot(ShapeUtil::MakeShape(F32, {2, 2}), lhs.get(),
+                                rhs.get(), dnums, PrecisionConfig());
+  EXPECT_TRUE(dot->SupportsPrecisionConfig());
 }
 
 }  // namespace

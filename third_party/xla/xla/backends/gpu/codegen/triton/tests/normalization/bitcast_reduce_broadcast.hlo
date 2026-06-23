@@ -1,5 +1,7 @@
-// RUN: hlo_to_xtileir %s | FileCheck %s
-// RUN: triton_test_correctness %s
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation %s
 
 fusion {
   p0 = bf16[128,4,256]{2,1,0} parameter(0)

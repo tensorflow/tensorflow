@@ -393,7 +393,7 @@ void* TFE_TensorHandleDevicePointer(TFE_TensorHandle* h, TF_Status* status) {
       tensorflow::unwrap(h);
   // TODO(b/175427838): It would be nice to be able to use tensorflow::isa here.
   if (tensorflow::CustomDeviceTensorHandle::classof(unwrapped_handle)) {
-    return tensorflow::down_cast<tensorflow::CustomDeviceTensorHandle*>(
+    return absl::down_cast<tensorflow::CustomDeviceTensorHandle*>(
                unwrapped_handle)
         ->DevicePointer();
   }

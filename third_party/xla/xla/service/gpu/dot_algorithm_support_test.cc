@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -95,7 +96,8 @@ std::string TestParamsToString(
       primitive_util::LowercasePrimitiveTypeName(params.rhs_storage_type),
       primitive_util::LowercasePrimitiveTypeName(params.output_storage_type),
       params.min_cuda_capability.major, params.min_cuda_capability.minor,
-      params.min_rocm_version.major(), params.min_rocm_version.minor(),
+      params.min_rocm_version.major_version(),
+      params.min_rocm_version.minor_version(),
       BackendRestrictionToString(params.backend_restriction),
       params.sizes.contracting_size, params.sizes.non_contracting_size);
 }

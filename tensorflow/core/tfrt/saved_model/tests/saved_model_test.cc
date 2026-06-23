@@ -74,6 +74,95 @@ struct TestParams {
 
 class SavedModelTest : public ::testing::TestWithParam<TestParams> {};
 
+TEST(SavedModelTest, LoadSavedModel_PathTraversal) {
+  std::string saved_model_dir = "some/path/../to/model";
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+
+  auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                                    /*tags=*/{"serve"});
+  EXPECT_FALSE(saved_model.ok());
+  EXPECT_TRUE(absl::IsInvalidArgument(saved_model.status()));
+  EXPECT_THAT(saved_model.status().message(),
+              ::testing::HasSubstr("cannot contain '..'"));
+}
+
+TEST(SavedModelTest, LoadSavedModel_MetaGraph_PathTraversal) {
+  std::string saved_model_dir = "some/path/../to/model";
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+  tensorflow::MetaGraphDef meta_graph_def;
+
+  auto saved_model =
+      SavedModelImpl::LoadSavedModel(options, meta_graph_def, saved_model_dir);
+  EXPECT_FALSE(saved_model.ok());
+  EXPECT_TRUE(absl::IsInvalidArgument(saved_model.status()));
+  EXPECT_THAT(saved_model.status().message(),
+              ::testing::HasSubstr("cannot contain '..'"));
+}
+
+TEST(SavedModelTest, ReadSavedModel_PathTraversal) {
+  std::string saved_model_dir = "some/path/../to/model";
+  auto meta_graph_def = ReadSavedModel(saved_model_dir, {"serve"});
+  EXPECT_FALSE(meta_graph_def.ok());
+  EXPECT_TRUE(absl::IsInvalidArgument(meta_graph_def.status()));
+  EXPECT_THAT(meta_graph_def.status().message(),
+              ::testing::HasSubstr("cannot contain '..'"));
+}
+
+TEST(SavedModelTest, DeserializeAoTMlirModule_PathTraversal) {
+  std::string saved_model_dir = "some/path/../to/model";
+  mlir::DialectRegistry registry;
+  mlir::MLIRContext context(registry);
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
+  auto status =
+      DeserializeAoTMlirModule(saved_model_dir, &context, &mlir_module);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("cannot contain '..'"));
+}
+
+TEST(SavedModelTest, GetInitializersAndSignatures_PathTraversal) {
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/hash_table_asset_v1");
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.graph_execution_options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.hoist_invariant_ops = true;
+
+  auto session_options =
+      CreateDefaultSessionOptions(options.graph_execution_options);
+
+  auto meta_graph_def_or = ReadSavedModel(saved_model_dir, {"serve"});
+  TF_ASSERT_OK(meta_graph_def_or.status());
+  auto meta_graph_def = std::move(meta_graph_def_or.value());
+
+  const auto& fdef_lib = meta_graph_def.graph_def().library();
+  auto fallback_state_or = FallbackState::Create(session_options, fdef_lib);
+  TF_ASSERT_OK(fallback_state_or.status());
+  auto fallback_state = std::move(fallback_state_or.value());
+
+  mlir::DialectRegistry registry;
+  RegisterMlirDialect(
+      registry,
+      options.graph_execution_options.compile_options.backend_compiler);
+  mlir::MLIRContext context(registry);
+
+  auto mlir_module_or =
+      ImportSavedModel(&context, meta_graph_def, *fallback_state,
+                       saved_model_dir, true, false, {}, nullptr);
+  TF_ASSERT_OK(mlir_module_or.status());
+  auto mlir_module = std::move(mlir_module_or.value());
+
+  auto result =
+      GetInitializersAndSignatures(mlir_module.get(), "some/path/../to/model");
+  EXPECT_FALSE(result.ok());
+  EXPECT_TRUE(absl::IsInvalidArgument(result.status()));
+  EXPECT_THAT(result.status().message(),
+              ::testing::HasSubstr("cannot contain '..'"));
+}
+
 TEST_P(SavedModelTest, BasicV1) {
   // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
   // using the following python code:

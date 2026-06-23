@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/buffer_allocation_info.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -130,7 +131,8 @@ class CpuAotCompilationResult : public CompiledModule {
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       se::Platform::Id platform_id,
-      const se::DeviceDescription& device_description) &&
+      const se::DeviceDescription& device_description,
+      const DebugOptions& debug_options) &&
       override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
@@ -168,9 +170,8 @@ class CpuAotCompilationResult : public CompiledModule {
   static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> FromProto(
       CompilationResultProto proto,
       std::unique_ptr<FunctionLibrary> function_library) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloModule> module,
-        HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
 
     return std::unique_ptr<CpuAotCompilationResult>(new CpuAotCompilationResult(
         proto, std::move(module), std::move(function_library)));

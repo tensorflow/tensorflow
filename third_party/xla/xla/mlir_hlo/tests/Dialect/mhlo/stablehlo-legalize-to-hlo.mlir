@@ -179,6 +179,8 @@ func.func @attr_custom_call_api_version_status_returning_unified(%arg0: tensor<f
 
 // -----
 
+func.func private @mesh()
+
 // CHECK-LABEL: "attr_replica_groups_mesh_axes"
 func.func @attr_replica_groups_mesh_axes(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK: "mhlo.custom_call"([[ARG0:%arg[0-9]+]])

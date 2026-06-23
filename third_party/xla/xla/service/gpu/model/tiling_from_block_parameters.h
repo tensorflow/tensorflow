@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 
 namespace xla::gpu {
@@ -35,9 +36,13 @@ namespace xla::gpu {
 // case, though, if this logic gets stale, or if the fusion does not contain
 // the required annotations. Checking constraints is not cheap, so we left it up
 // to the caller to decide when to check the constraints.
+//
+// `dot_tiling_config_override` allows to override tiling parameters. Note that
+// if there are several dots present they will all use this override.
 absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     const SymbolicTileAnalysis& symbolic_tile_analysis,
-    const BlockLevelParameters& block_level_parameters);
+    const BlockLevelParameters& block_level_parameters,
+    const Tile* dot_tiling_config_override = nullptr);
 
 // Returns concrete tiles sizes tiling space dimensions - in the order of
 // dimensions in the tiling space.

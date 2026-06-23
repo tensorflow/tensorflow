@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -538,8 +539,10 @@ HloAsyncStartInstruction::CloneWithNewOperandsImpl(
           context->FindComputation(async_wrapped_computation());
     }
     if (new_wrapped_computation == nullptr) {
+      const std::string& suffix =
+          context != nullptr ? context->suffix() : "clone";
       new_wrapped_computation = module->AddEmbeddedComputation(
-          async_wrapped_computation()->Clone("clone", context));
+          async_wrapped_computation()->Clone(suffix, context));
       // Give the trampoline a trivial schedule if it already had one.
       if (module->has_schedule() && module->schedule().is_computation_scheduled(
                                         async_wrapped_computation())) {
@@ -2376,6 +2379,7 @@ HloCallableInstruction::GetOrCloneCalledComputations(
     HloCloneContext* context) const {
   HloModule* module = context != nullptr ? context->module() : GetModule();
   absl::InlinedVector<HloComputation*, 1> new_called_computations;
+  const std::string& suffix = context != nullptr ? context->suffix() : "clone";
   for (auto* comp : called_computations()) {
     HloComputation* new_custom_call_computation = nullptr;
     if (context != nullptr) {
@@ -2383,7 +2387,7 @@ HloCallableInstruction::GetOrCloneCalledComputations(
     }
     if (new_custom_call_computation == nullptr) {
       new_custom_call_computation =
-          module->AddEmbeddedComputation(comp->Clone("clone", context));
+          module->AddEmbeddedComputation(comp->Clone(suffix, context));
     }
     new_called_computations.push_back(new_custom_call_computation);
   }
@@ -2501,7 +2505,7 @@ HloInstruction* HloFusionInstruction::AddFusionOperand(
 }
 
 void HloFusionInstruction::MergeFusionInstruction(
-    HloFusionInstruction* instruction_to_merge) {
+    HloFusionInstruction* instruction_to_merge, bool remove_computation) {
   CHECK(absl::c_linear_search(operands(), instruction_to_merge));
   // Clone the instruction from which to merge fused instructions.
   std::unique_ptr<HloInstruction> cloned = instruction_to_merge->Clone();
@@ -2561,12 +2565,14 @@ void HloFusionInstruction::MergeFusionInstruction(
     CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
   CHECK_EQ(0, cloned_fusion->user_count());
-  CHECK_OK(GetModule()->RemoveEmbeddedComputation(
-      cloned_fusion->fused_instructions_computation()));
+  if (remove_computation) {
+    CHECK_OK(GetModule()->RemoveEmbeddedComputation(
+        cloned_fusion->fused_instructions_computation()));
+  }
 }
 
 void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
-    HloFusionInstruction* instruction_to_merge) {
+    HloFusionInstruction* instruction_to_merge, bool remove_computation) {
   // Add all non-parameter fused instructions to 'unfused_instructions' to be
   // merged into 'this'. `old_to_new' maps the instructions in the fused node
   // to the disassembled fusion instructions.
@@ -2656,7 +2662,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
   }
   CHECK_OK(
       instruction_to_merge->parent()->RemoveInstruction(instruction_to_merge));
-  if (GetModule()) {
+  if (GetModule() && remove_computation) {
     CHECK_OK(GetModule()->RemoveEmbeddedComputation(computation_to_merge));
   }
   for (int64_t i = unfused_instructions.size() - 1; i >= 0; --i) {
@@ -2759,7 +2765,7 @@ absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   for (int i = 0; i < count; ++i) {
     auto emplace_result = operand_indices.emplace(operand(i), i);
     if (!emplace_result.second) {
-      TF_RETURN_IF_ERROR(fused_parameter(i)->ReplaceAllUsesWith(
+      RETURN_IF_ERROR(fused_parameter(i)->ReplaceAllUsesWith(
           fused_parameter(emplace_result.first->second)));
       operands_to_remove.push_back(i);
     }
@@ -2767,8 +2773,8 @@ absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   if (operands_to_remove.empty()) {
     return absl::OkStatus();
   }
-  TF_RETURN_IF_ERROR(fused_instructions_computation()
-                         ->RemoveUnusedParametersFromFusedComputation());
+  RETURN_IF_ERROR(fused_instructions_computation()
+                      ->RemoveUnusedParametersFromFusedComputation());
   RemoveOperandsAtAscendingIndices(operands_to_remove);
   return absl::OkStatus();
 }
@@ -2789,7 +2795,7 @@ absl::Status HloFusionInstruction::PermuteFusionOperands(
     seen[permutation[i]] = true;
   }
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       fused_instructions_computation()->PermuteParameters(permutation));
   InstructionVector new_operands(operand_count());
   for (int64_t i = 0; i < operand_count(); ++i) {

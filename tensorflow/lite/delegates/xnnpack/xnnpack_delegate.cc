@@ -311,6 +311,12 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
                   return xnn_datatype_invalid;
                 }
                 return xnn_datatype_qint4;
+              case kTfLiteInt2:
+                if (!CheckZeroPointForPerTensorQuantization(
+                        context, tensor, t, -2, 1, *quantization_zero_point)) {
+                  return xnn_datatype_invalid;
+                }
+                return xnn_datatype_qint2;
               default:
                 TF_LITE_KERNEL_LOG(
                     context,
@@ -537,6 +543,7 @@ TfLiteStatus DefineXNNPACKValue(TfLiteContext* context, xnn_subgraph_t subgraph,
 
   xnn_status status = xnn_status_success;
   switch (datatype) {
+    case xnn_datatype_qint2:
     case xnn_datatype_qint4:
     case xnn_datatype_qint8:
     case xnn_datatype_quint8:
@@ -701,7 +708,7 @@ class Delegate {
 
         options_.weights_cache =
             reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(
-                weight_cache_provider_->GetCacheProvider().context);
+                &weight_cache_provider_->GetCacheProvider());
         options_.weight_cache_file_path =
             weight_cache_provider_->GetFilePath().data();
       } else {
@@ -948,10 +955,19 @@ class Subgraph {
     }
     // Map tensors identifiers before packing anything.
     if (delegate.weight_cache_provider_->IsActive()) {
-      delegate.weight_cache_provider_->MapTensorIdentifiers(
-          context->tensors, context->tensors_size,
-          reinterpret_cast<tflite::Subgraph*>(context->impl_)
-              ->GetTensorBufferIdentifiers());
+      const auto* subgraph =
+          reinterpret_cast<tflite::Subgraph*>(context->impl_);
+      auto tensor_buffer_identifiers = subgraph->GetTensorBufferIdentifiers();
+      for (const auto& [tensor_index, external_buffer_id] :
+           subgraph->GetExternalTensorBufferIdentifiers()) {
+        tensor_buffer_identifiers.insert_or_assign(tensor_index,
+                                                   external_buffer_id);
+      }
+      if (!delegate.weight_cache_provider_->MapTensorIdentifiers(
+              context->tensors, context->tensors_size,
+              tensor_buffer_identifiers)) {
+        return nullptr;
+      }
     }
 
     // Convert subgraph inputs and outputs to hash sets for faster lookup.
@@ -2916,6 +2932,7 @@ class Subgraph {
       case kTfLiteBuiltinHardSwish:
       case kTfLiteBuiltinLeakyRelu:
       case kTfLiteBuiltinLogistic:
+      case kTfLiteBuiltinLog:
       case kTfLiteBuiltinNeg:
       case kTfLiteBuiltinQuantize:
       case kTfLiteBuiltinRelu:
@@ -4263,6 +4280,7 @@ class Subgraph {
       case BuiltinOperator_FLOOR:
       case BuiltinOperator_GELU:
       case BuiltinOperator_HARD_SWISH:
+      case BuiltinOperator_LOG:
       case BuiltinOperator_NEG:
       case BuiltinOperator_RELU_N1_TO_1:
       case BuiltinOperator_RELU:
@@ -4441,6 +4459,9 @@ class Subgraph {
           unary_op_type = xnn_unary_leaky_relu;
           break;
         }
+        case BuiltinOperator_LOG:
+          unary_op_type = xnn_unary_log;
+          break;
         case BuiltinOperator_LOGISTIC:
           unary_op_type = xnn_unary_sigmoid;
           break;
@@ -4732,10 +4753,12 @@ class Subgraph {
         xnn_datatype filter_datatype = GetXNNPackDatatype(
             logging_context, filter_tensor, filter_tensor_id);
         if (filter_datatype == xnn_datatype_qint8 ||
-            filter_datatype == xnn_datatype_qint4) {
-          filter_datatype = filter_datatype == xnn_datatype_qint8
-                                ? xnn_datatype_qcint8
-                                : xnn_datatype_qcint4;
+            filter_datatype == xnn_datatype_qint4 ||
+            filter_datatype == xnn_datatype_qint2) {
+          filter_datatype =
+              filter_datatype == xnn_datatype_qint8   ? xnn_datatype_qcint8
+              : filter_datatype == xnn_datatype_qint4 ? xnn_datatype_qcint4
+                                                      : xnn_datatype_qcint2;
           // Check whether we have to re-allocated the scale..
           if (output_channels > 1) {
             TfLiteFloatArrayFree(filter_quant_params->scale);

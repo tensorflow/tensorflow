@@ -20,40 +20,48 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/backends.pb.h"
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/literal.h"
-#include "xla/service/backend.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
-#include "xla/service/platform_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
-class DeterminismTest : public GpuCodegenTest {
+class DeterminismTest : public HloPjRtGpuTestBase {
  public:
-  DeterminismTest() : debug_options_(GpuCodegenTest::GetDebugOptionsForTest()) {
+  DeterminismTest()
+      : debug_options_(HloPjRtGpuTestBase::GetDebugOptionsForTest()) {
     debug_options_.set_xla_gpu_exclude_nondeterministic_ops(true);
   }
 
+  se::StreamExecutor* stream_executor() const {
+    auto platform =
+        se::PlatformManager::PlatformWithId(stream_executor_platform_id());
+    CHECK_OK(platform);
+    auto executor = (*platform)->ExecutorForDevice(0);
+    CHECK_OK(executor);
+    return *executor;
+  }
+
   se::CudaComputeCapability get_cuda_cc() const {
-    se::StreamExecutor* executor = backend().default_stream_executor();
-    return executor->GetDeviceDescription().cuda_compute_capability();
+    return device_description().cuda_compute_capability();
   }
 
   // Runs the HLO several times with the same random inputs, and asserts the
@@ -69,17 +77,18 @@ class DeterminismTest : public GpuCodegenTest {
       // is deterministic.
       AutotunerCache::ClearAutotuneResults();
 
-      TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                              ParseAndReturnVerifiedModule(hlo_string));
+      ASSERT_OK_AND_ASSIGN(
+          std::unique_ptr<HloModule> module,
+          ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest()));
       if (i == 0) {
-        fake_arguments = MakeFakeArguments(module.get()).value();
+        ASSERT_OK_AND_ASSIGN(fake_arguments, MakeFakeArguments(module.get()));
         for (Literal& literal : fake_arguments) {
           fake_arguments_ptrs.push_back(&literal);
         }
       }
 
-      TF_ASSERT_OK_AND_ASSIGN(Literal output,
-                              Execute(std::move(module), fake_arguments_ptrs));
+      ASSERT_OK_AND_ASSIGN(Literal output,
+                           Execute(std::move(module), fake_arguments_ptrs));
       if (!canonical_output.has_value()) {
         canonical_output = std::move(output);
       } else {
@@ -106,14 +115,15 @@ class DeterminismTest : public GpuCodegenTest {
                          absl::string_view expected_hlo_regex,
                          TimerCreation timer_creation) {
     if (timer_creation == TimerCreation::kAllowed) {
-      GpuCodegenTest::MatchOptimizedHlo(hlo_string, expected_hlo_regex);
+      HloPjRtGpuTestBase::MatchOptimizedHlo(hlo_string, expected_hlo_regex);
       return;
     }
 
     // If timer creation is forbidden we inject a mock GPU executor that
     // prevents timer creation.
-    TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * default_platform,
-                            PlatformUtil::GetDefaultPlatform());
+    ASSERT_OK_AND_ASSIGN(
+        stream_executor::Platform * default_platform,
+        se::PlatformManager::PlatformWithId(stream_executor_platform_id()));
     stream_executor::MockStreamExecutor executor;
     EXPECT_CALL(executor, GetPlatform).WillRepeatedly([&] {
       return default_platform;
@@ -121,60 +131,58 @@ class DeterminismTest : public GpuCodegenTest {
     EXPECT_CALL(executor, CreateEventBasedTimer).Times(0);
     EXPECT_CALL(executor, GetDeviceDescription)
         .WillRepeatedly([this]() -> const se::DeviceDescription& {
-          return backend().default_stream_executor()->GetDeviceDescription();
+          return device_description();
         });
     EXPECT_CALL(executor, GetPlatform).WillRepeatedly([&]() {
       return default_platform;
     });
     EXPECT_CALL(executor, AsDnn).WillRepeatedly([&]() {
-      return backend().default_stream_executor()->AsDnn();
+      return stream_executor()->AsDnn();
     });
     EXPECT_CALL(executor, device_ordinal).WillRepeatedly([]() { return 0; });
     EXPECT_CALL(executor, SynchronizeAllActivity).WillRepeatedly([&]() -> bool {
       return true;
     });
     EXPECT_CALL(executor, CreateStream).WillRepeatedly([&] {
-      return backend().default_stream_executor()->CreateStream();
+      return stream_executor()->CreateStream();
     });
     EXPECT_CALL(executor, AsBlas).WillRepeatedly([&] {
-      return backend().default_stream_executor()->AsBlas();
+      return stream_executor()->AsBlas();
     });
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_string));
-    TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
-                            backend().compiler()->RunHloPasses(
-                                std::move(module), &executor, GetAllocator()));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(
+        auto optimized_module,
+        compiler()->RunHloPasses(std::move(module), &executor, nullptr));
     absl::StatusOr<bool> filecheck_result =
         RunFileCheck(optimized_module->ToString(), expected_hlo_regex);
-    TF_ASSERT_OK(filecheck_result.status());
-    EXPECT_TRUE(filecheck_result.value());
+    ASSERT_OK(filecheck_result.status());
+    EXPECT_TRUE(*filecheck_result);
   }
 
   bool IsAmpereOrLater() const { return get_cuda_cc().IsAtLeastAmpere(); }
 
   bool IsRocm() const {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability()
-        .IsRocm();
+    return device_description().gpu_compute_capability().IsRocm();
   }
 
   bool HasHipblasLt() const {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .rocm_compute_capability()
-        .has_hipblaslt();
+    return device_description().rocm_compute_capability().has_hipblaslt();
   }
 };
 
-TEST_F(DeterminismTest, CublasDot) {
-  // This test expects to use Cublas. Disable other backends, including Triton.
+TEST_F(DeterminismTest, CublasLtDot) {
   debug_options_.clear_xla_gpu_experimental_autotune_backends();
-  debug_options_.add_xla_gpu_experimental_autotune_backends(
-      autotuner::Backend::CUBLAS);
+  if (IsRocm()) {
+    if (!HasHipblasLt()) {
+      GTEST_SKIP() << "No hipblas-lt support on this architecture!";
+    }
+  }
+  auto backend =
+      IsRocm() ? autotuner::Backend::HIPBLASLT : autotuner::Backend::CUBLASLT;
+  debug_options_.add_xla_gpu_experimental_autotune_backends(backend);
+
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f32[128,128] parameter(0)
@@ -182,15 +190,10 @@ ENTRY e {
   ROOT d = f32[128,128] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  if (IsRocm()) {
-    if (!HasHipblasLt()) {
-      GTEST_SKIP() << "No hipblas-lt support on this architecture!";
-    }
-    debug_options_.set_xla_gpu_enable_triton_gemm(false);
-  }
+  debug_options_.set_xla_gpu_enable_triton_gemm(false);
 
-  debug_options_.set_xla_gpu_enable_cublaslt(false);
-  MatchOptimizedHlo(kHloText, R"(; CHECK: custom_call_target="__cublas$gemm")",
+  MatchOptimizedHlo(kHloText,
+                    R"(; CHECK: custom_call_target="__cublas$lt$matmul")",
                     TimerCreation::kForbidden);
   AssertDeterminism(kHloText);
 }
@@ -224,8 +227,8 @@ ENTRY e {
   MatchOptimizedHlo(kHloText, R"(
     CHECK: ENTRY
     CHECK: __triton_nested_gemm_fusion
-    CHECK-SAME: "num_warps":"2","output_tiles":[{"sizes":["16","16"]}]
-    CHECK-SAME: "num_ctas":1,"num_stages":4,"is_tma_allowed":false
+    CHECK-SAME: "num_warps":"2","output_tiles":[{"sizes":["1","16","8"]}]
+    CHECK-SAME: "num_ctas":1,"num_stages":1,"is_tma_allowed":false
   )",
                     TimerCreation::kForbidden);
   AssertDeterminism(kHloText, /*num_runs=*/3);
@@ -272,5 +275,4 @@ ENTRY e {
   AssertDeterminism(kHloText);
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

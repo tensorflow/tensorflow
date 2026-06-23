@@ -40,11 +40,11 @@ limitations under the License.
 namespace xla {
 
 class SVDTest : public ClientLibraryTestRunnerMixin<
-                    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                    HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  protected:
   void SetUp() override {
     ClientLibraryTestRunnerMixin<
-        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>::SetUp();
+        HloPjRtInterpreterReferenceMixin<HloTestBase>>::SetUp();
     batch_3d_4x5_ = Array3D<float>{
         {
             {4, 6, 8, 10, 1},

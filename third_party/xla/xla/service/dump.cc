@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/Transforms/LocationSnapshot.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/text_format.h"
+#include "riegeli/bytes/writer.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
+#include "xla/service/riegeli_file_writer_factory.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
@@ -64,6 +66,7 @@ limitations under the License.
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
 #include "xla/util.h"
+#include "xla/util/split_proto/split_hlo_writer.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
@@ -184,19 +187,19 @@ static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
                                       DataProducer& data_producer,
                                       bool compressed) {
   std::unique_ptr<tsl::WritableFile> file;
-  TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
+  RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
   if (compressed) {
     auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
     tsl::io::ZlibOutputBuffer gz_file(file.get(), gz_opts.input_buffer_size,
                                       gz_opts.output_buffer_size, gz_opts);
-    TF_RETURN_IF_ERROR(gz_file.Init());
+    RETURN_IF_ERROR(gz_file.Init());
     while (auto next_producer = data_producer.Next()) {
-      TF_RETURN_IF_ERROR(gz_file.Append(next_producer()));
+      RETURN_IF_ERROR(gz_file.Append(next_producer()));
     }
     return gz_file.Close();
   }
   while (auto next_producer = data_producer.Next()) {
-    TF_RETURN_IF_ERROR(file->Append(next_producer()));
+    RETURN_IF_ERROR(file->Append(next_producer()));
   }
   return file->Close();
 }
@@ -207,12 +210,12 @@ static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
     return tsl::WriteStringToFile(env, fname, data);
   }
   std::unique_ptr<tsl::WritableFile> file;
-  TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
+  RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
   auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
   tsl::io::ZlibOutputBuffer gz_file(file.get(), gz_opts.input_buffer_size,
                                     gz_opts.output_buffer_size, gz_opts);
-  TF_RETURN_IF_ERROR(gz_file.Init());
-  TF_RETURN_IF_ERROR(gz_file.Append(data));
+  RETURN_IF_ERROR(gz_file.Init());
+  RETURN_IF_ERROR(gz_file.Append(data));
   return gz_file.Close();
 }
 
@@ -267,6 +270,28 @@ static std::optional<std::string> DumpToFileInDirImpl(string_view filename,
     return std::nullopt;
   }
 
+  return file_path;
+}
+
+static std::optional<std::string> DumpHloModuleRiegeli(
+    string_view filename, const HloModule& module, const DumpOptions& opts) {
+  auto file_path = GetDumpFilePath(filename, opts);
+  if (!file_path) {
+    return std::nullopt;
+  }
+
+  std::unique_ptr<riegeli::Writer> writer = CreateRiegeliFileWriter(*file_path);
+  if (writer == nullptr) {
+    return std::nullopt;
+  }
+
+  absl::Status status =
+      WriteSplitHloProto(MakeHloProto(module), std::move(writer));
+  if (!status.ok()) {
+    LOG(ERROR) << "Could not write XLA debug data to " << *file_path << ": "
+               << status;
+    return std::nullopt;
+  }
   return file_path;
 }
 
@@ -407,6 +432,11 @@ static std::vector<std::string> DumpHloModuleImpl(
                                : "-memory-usage-report.pb"),
           memory_report_pb, opts, opts.dump_compress_protos));
     }
+  }
+
+  if (opts.dump_as_riegeli) {
+    file_paths.push_back(
+        DumpHloModuleRiegeli(StrCat(filename, ".riegeli"), module, opts));
   }
 
   if (opts.dump_as_dot) {
@@ -1121,8 +1151,8 @@ absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
                                   absl::string_view file_name,
                                   std::string* full_path) {
   tsl::Env* env = tsl::Env::Default();
-  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
-  TF_RETURN_IF_ERROR(CreateDirIfNeeded(directory, env));
+  RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
+  RETURN_IF_ERROR(CreateDirIfNeeded(directory, env));
   std::string safe_file_name = SanitizeFileName(std::string(file_name)) + ".pb";
   std::string full_path_impl;
   if (!full_path) {

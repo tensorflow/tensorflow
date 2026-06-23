@@ -1,7 +1,7 @@
 // RUN: litert-opt %s -canonicalize | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: @elementwise_unary_ops
-func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
+func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
   %0 = arith.constant dense<-1.0> : tensor<f32>
   %1 = arith.constant dense<1.0> : tensor<f32>
   %2 = arith.constant dense<1.0> : tensor<f32>
@@ -19,7 +19,8 @@ func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, te
   // CHECK-DAG: [[cst5:%.*]] = arith.constant dense<5.000000e-01> : tensor<f32>
   // CHECK-DAG: [[cst6:%.*]] = arith.constant dense<4.000000e+00> : tensor<f32>
   // CHECK-DAG: [[cst7:%.*]] = arith.constant dense<0.761594176> : tensor<f32>
-  // CHECK: return [[cst0]], [[cst1]], [[cst2]], [[cst3]], [[cst4]], [[cst5]], [[cst6]], [[cst7]]
+  // CHECK-DAG: [[cst8:%.*]] = arith.constant dense<0.73105859{{[78]}}> : tensor<f32>
+  // CHECK: return [[cst0]], [[cst1]], [[cst2]], [[cst3]], [[cst4]], [[cst5]], [[cst6]], [[cst7]], [[cst8]]
 
   %7 = "tfl.abs"(%0) : (tensor<f32>) -> tensor<f32>
   %8 = "tfl.sin"(%1) : (tensor<f32>) -> tensor<f32>
@@ -29,8 +30,27 @@ func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, te
   %12 = "tfl.rsqrt"(%5) : (tensor<f32>) -> tensor<f32>
   %13 = "tfl.square"(%6) : (tensor<f32>) -> tensor<f32>
   %14 = "tfl.tanh"(%one) : (tensor<f32>) -> tensor<f32>
+  %15 = "tfl.logistic"(%one) : (tensor<f32>) -> tensor<f32>
 
-  func.return %7, %8, %9, %10, %11, %12, %13, %14 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
+  func.return %7, %8, %9, %10, %11, %12, %13, %14, %15 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
+}
+
+// CHECK-LABEL: @cumsum_chained_pipeline
+func.func @cumsum_chained_pipeline() -> tensor<3xf32> {
+  %input = arith.constant dense<[1.0, 2.0, 3.0]> : tensor<3xf32>
+  %axis = arith.constant dense<0> : tensor<i32>
+  %cst_two = arith.constant dense<2.0> : tensor<3xf32>
+  %one_tensor = arith.constant dense<1.0> : tensor<3xf32>
+
+  // CHECK: %[[PIPELINE_RES:.*]] = arith.constant dense<[0.982013761, 0.999664664, 0.999999165]> : tensor<3xf32>
+  // CHECK: return %[[PIPELINE_RES]]
+
+  %0 = "tfl.cumsum"(%input, %axis) {exclusive = false, reverse = false} : (tensor<3xf32>, tensor<i32>) -> tensor<3xf32>
+  %add = "tfl.add"(%0, %cst_two) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %sub = "tfl.sub"(%add, %one_tensor) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %mul = "tfl.mul"(%sub, %cst_two) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %res_pipeline = "tfl.logistic"(%mul) : (tensor<3xf32>) -> tensor<3xf32>
+  func.return %res_pipeline : tensor<3xf32>
 }
 
 // CHECK-LABEL: @rank

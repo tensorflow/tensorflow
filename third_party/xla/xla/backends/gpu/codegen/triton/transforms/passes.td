@@ -28,6 +28,8 @@ def TritonXLAExtractInsertToTritonPass : Pass<"triton-xla-extract-insert-to-trit
   let options = [
     Option<"allow_tma_", "allow_tma", "bool", "false",
            "Whether to permit lowering to TMA.">,
+    Option<"allow_tdm_", "allow_tdm", "bool", "false",
+           "Whether to permit lowering to TDM (device-side tensor descriptors).">,
     Option<"num_stages_", "num_stages", "int", "1",
            "Number of stages for pipelining.">,
   ];
@@ -284,10 +286,34 @@ def TritonXLAImplementExternElementWisePass
   let description = [{
     This pass implements custom atomic functions declared by tt.extern_elementwise
     operations using LLVM IR intrinsics and atomic operations with proper memory
-    ordering and sync scopes. It supports CUDA (NVPTX) backend.
+    ordering and sync scopes. It supports CUDA (NVPTX) and ROCM backends.
     It runs in the Triton pipeline after MLIR has been converted to LLVM dialect.
     The target backend must be specified via the target option.
   }];
+  let options = [
+    Option<"target_", "target", "TargetBackend", "TargetBackend::CUDA",
+           "Target backend (CUDA or ROCm).",
+           [{llvm::cl::values(
+               clEnumValN(TargetBackend::CUDA, "cuda", "CUDA (NVPTX) backend"),
+               clEnumValN(TargetBackend::ROCM, "rocm", "ROCm (AMDGPU) backend")
+           )}]>,
+  ];
+}
+
+def TritonXLAFoldReshapeAroundForLoopPass
+    : Pass<"triton-xla-fold-reshape-around-for-loop", "mlir::ModuleOp"> {
+  let summary = "Lifts tt.reshape operations out of scf.for loops.";
+  let description = [{
+    This pass identifies loops where a result is reshaped before being yielded,
+    and 'sinks' the equivalent reshape into the loop initialization.
+    This ensures the loop body operates strictly in the lower-rank space
+    (e.g. 2D hardware space), hoisting the rank fixup to the loop boundaries.
+  }];
+  let dependentDialects = [
+    "::mlir::scf::SCFDialect",
+    "::mlir::triton::TritonDialect"
+  ];
+  let constructor = "CreateTritonXLAFoldReshapeAroundForLoopPass()";
 }
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

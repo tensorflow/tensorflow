@@ -53,7 +53,7 @@ struct BincountFunctor<CPUDevice, Tidx, T, true> {
     all_nonneg_t.scalar<bool>().device(context->eigen_cpu_device()) =
         (arr >= Tidx(0)).all();
     if (!all_nonneg_t.scalar<bool>()()) {
-      return errors::InvalidArgument("Input arr must be non-negative!");
+      return absl::InvalidArgumentError("Input arr must be non-negative!");
     }
 
     // Allocate partial output bin sums for each worker thread. Worker ids in
@@ -98,7 +98,7 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
     all_nonneg_t.scalar<bool>().device(context->eigen_cpu_device()) =
         (arr >= Tidx(0)).all();
     if (!all_nonneg_t.scalar<bool>()()) {
-      return errors::InvalidArgument("Input arr must be non-negative!");
+      return absl::InvalidArgumentError("Input arr must be non-negative!");
     }
 
     // Allocate partial output bin sums for each worker thread. Worker ids in
@@ -110,7 +110,7 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
     const std::ptrdiff_t arr_size = arr.size();
     const T* weight_data = weights.data();
     if (weights.size() && weights.size() != arr_size) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Input indices and weights must have the same size.");
     }
     if (num_threads == 1) {
@@ -204,7 +204,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
         });
 
     if (err_neg_val < 0) {
-      return errors::InvalidArgument(absl::StrCat(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Input 'in' must be non-negative! Negative input value found: ",
           static_cast<int>(err_neg_val)));
     }
@@ -224,12 +224,12 @@ class BincountOp : public OpKernel {
     const Tensor& arr_t = ctx->input(0);
     const Tensor& size_tensor = ctx->input(1);
     OP_REQUIRES(ctx, size_tensor.dims() == 0,
-                errors::InvalidArgument("Shape must be rank 0 but is rank ",
-                                        size_tensor.dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Shape must be rank 0 but is rank ", size_tensor.dims())));
     int32_t size = size_tensor.scalar<int32_t>()();
-    OP_REQUIRES(
-        ctx, size >= 0,
-        errors::InvalidArgument("size (", size, ") must be non-negative"));
+    OP_REQUIRES(ctx, size >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("size (", size, ") must be non-negative")));
 
     const Tensor& weights_t = ctx->input(2);
     const auto arr = arr_t.flat<int32_t>();
@@ -275,7 +275,7 @@ class DenseBincountOp : public OpKernel {
     if (std::is_same<Device, GPUDevice>::value) {
       OP_REQUIRES(
           ctx, !OpDeterminismRequired(),
-          errors::Unimplemented(
+          absl::UnimplementedError(
               "Determinism is not yet supported in GPU implementation of "
               "DenseBincount."));
     }
@@ -284,22 +284,22 @@ class DenseBincountOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& data = ctx->input(0);
     OP_REQUIRES(ctx, data.dims() <= 2,
-                errors::InvalidArgument(
-                    "Shape must be at most rank 2 but is rank ", data.dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Shape must be at most rank 2 but is rank ", data.dims())));
 
     const Tensor& size_t = ctx->input(1);
     const Tensor& weights = ctx->input(2);
 
     OP_REQUIRES(ctx, size_t.dims() == 0,
-                errors::InvalidArgument("Shape must be rank 0 but is rank ",
-                                        size_t.dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Shape must be rank 0 but is rank ", size_t.dims())));
     OP_REQUIRES(ctx,
                 weights.shape() == data.shape() || weights.NumElements() == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "`weights` must be the same shape as `arr` or a length-0 "
                     "`Tensor`, in which case it acts as all weights equal to "
                     "1. Received ",
-                    weights.shape().DebugString()));
+                    weights.shape().DebugString())));
 
     Tidx size = size_t.scalar<Tidx>()();
     OP_REQUIRES(
@@ -399,8 +399,8 @@ class SparseBincountOp : public OpKernel {
     const int64_t weights_size = weights.size();
 
     OP_REQUIRES(ctx, size_t.dims() == 0,
-                errors::InvalidArgument("Shape must be rank 0 but is rank ",
-                                        size_t.dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Shape must be rank 0 but is rank ", size_t.dims())));
     Tidx size = size_t.scalar<Tidx>()();
     OP_REQUIRES(
         ctx, size >= 0,
@@ -490,8 +490,8 @@ class RaggedBincountOp : public OpKernel {
     const int64_t weights_size = weights.size();
 
     OP_REQUIRES(ctx, size_t.dims() == 0,
-                errors::InvalidArgument("Shape must be rank 0 but is rank ",
-                                        size_t.dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Shape must be rank 0 but is rank ", size_t.dims())));
     Tidx size = size_t.scalar<Tidx>()();
     OP_REQUIRES(
         ctx, size >= 0,
@@ -502,16 +502,16 @@ class RaggedBincountOp : public OpKernel {
     int batch_idx = 0;
 
     OP_REQUIRES(ctx, splits.size() > 0,
-                errors::InvalidArgument("Splits must be non-empty"));
+                absl::InvalidArgumentError("Splits must be non-empty"));
 
     OP_REQUIRES(ctx, splits(0) == 0,
-                errors::InvalidArgument("Splits must start with 0, not with ",
-                                        splits(0)));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Splits must start with 0, not with ", splits(0))));
 
     OP_REQUIRES(ctx, splits(num_rows) == num_values,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Splits must end with the number of values, got ",
-                    splits(num_rows), " instead of ", num_values));
+                    splits(num_rows), " instead of ", num_values)));
 
     Tensor* out_t;
     OP_REQUIRES_OK(
@@ -526,7 +526,7 @@ class RaggedBincountOp : public OpKernel {
       }
       Tidx bin = values(idx);
       OP_REQUIRES(ctx, bin >= 0,
-                  errors::InvalidArgument("Input must be non-negative"));
+                  absl::InvalidArgumentError("Input must be non-negative"));
       if (bin < size) {
         if (binary_output_) {
           out(batch_idx - 1, bin) = T(1);

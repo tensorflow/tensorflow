@@ -15,10 +15,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "xla/backends/profiler/subprocess/subprocess_registry.h"
 #include "xla/backends/profiler/util/metadata_registry.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/exceptions.h"
@@ -176,6 +179,21 @@ NB_MODULE(_profiler, m) {
         ") -> None"
           // clang-format on
           ));
+  m.def(
+      "register_subprocess",
+      [](int pid, int port) -> nb::object {
+        absl::StatusOr<profiler::subprocess::SubprocessCleanup> unregister_fn =
+            xla::profiler::subprocess::RegisterSubprocess(pid, port,
+                                                          std::nullopt);
+        xla::ThrowIfError(unregister_fn.status());
+        auto cleanup =
+            std::make_shared<profiler::subprocess::SubprocessCleanup>(
+                std::move(*unregister_fn));
+        return nb::cpp_function([cleanup]() { cleanup->Invoke(); });
+      },
+      nb::arg("pid"), nb::arg("port"),
+      nb::sig("def register_subprocess(pid: int, port: int) -> "
+              "collections.abc.Callable[[], None]"));
 
   nb::class_<ProfilerSessionWrapper> profiler_session_class(m,
                                                             "ProfilerSession");

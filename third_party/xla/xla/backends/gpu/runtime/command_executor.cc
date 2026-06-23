@@ -31,12 +31,14 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla::gpu {
@@ -264,11 +267,11 @@ absl::StatusOr<CommandExecutor> CommandExecutor::Create(
   // sequence of commands and derive the structure of command dependencies
   // from the buffer use conflicts.
   if (synchronization_mode != SynchronizationMode::kSerialize) {
-    TF_ASSIGN_OR_RETURN(auto operations,
-                        CreateCommandOperations(commands, synchronization_mode,
-                                                extra_resources));
-    TF_ASSIGN_OR_RETURN(execution_graph,
-                        ExecutionGraph::Create<CommandOperation>(operations));
+    ASSIGN_OR_RETURN(auto operations,
+                     CreateCommandOperations(commands, synchronization_mode,
+                                             extra_resources));
+    ASSIGN_OR_RETURN(execution_graph,
+                     ExecutionGraph::Create<CommandOperation>(operations));
     VLOG(3) << "Execution graph: " << execution_graph->ToString();
   }
 
@@ -316,7 +319,7 @@ CommandExecutor::CommandExecutor(
 
 absl::Status CommandExecutor::Prepare(const Thunk::PrepareParams& params) {
   for (auto& command : commands_) {
-    TF_RETURN_IF_ERROR(command->Prepare(params));
+    RETURN_IF_ERROR(command->Prepare(params));
   }
   return absl::OkStatus();
 }
@@ -324,7 +327,7 @@ absl::Status CommandExecutor::Prepare(const Thunk::PrepareParams& params) {
 absl::Status CommandExecutor::Initialize(
     const Thunk::InitializeParams& params) {
   for (auto& command : commands_) {
-    TF_RETURN_IF_ERROR(command->Initialize(params));
+    RETURN_IF_ERROR(command->Initialize(params));
   }
   return absl::OkStatus();
 }
@@ -369,7 +372,7 @@ static void VlogCommandSequenceDetails(const CommandSequence& commands) {
       }
     }
 
-    std::string cmd_name = CommandTypeString(cmd->command_type());
+    std::string cmd_name = std::string(Thunk::KindToString(cmd->kind()));
 
     if (has_input && !has_output && !has_temp) {
       input_count++;
@@ -434,17 +437,16 @@ absl::Status CommandExecutor::Record(const Thunk::ExecuteParams& execute_params,
                                      se::CommandBuffer* command_buffer,
                                      RecordId record_id) {
   if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
-    TF_RETURN_IF_ERROR(command_buffer->Update());
+    RETURN_IF_ERROR(command_buffer->Update());
   }
 
   if (command_buffer->state() == se::CommandBuffer::State::kUpdate) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         RecordUpdate(execute_params, record_params, command_buffer, record_id));
   } else {
-    TF_RETURN_IF_ERROR(RecordCreate(execute_params, record_params,
-                                    command_buffer, /*dependencies=*/{},
-                                    record_id)
-                           .status());
+    RETURN_IF_ERROR(RecordCreate(execute_params, record_params, command_buffer,
+                                 /*dependencies=*/{}, record_id)
+                        .status());
   }
 
   return command_buffer->Finalize();
@@ -458,8 +460,8 @@ CommandExecutor::RecordCreate(
     absl::Span<const se::CommandBuffer::Command* const> dependencies,
     RecordId record_id) const {
   // Command buffer must be in create state.
-  TF_RETURN_IF_ERROR(CheckCommandBufferState(
-      command_buffer, se::CommandBuffer::State::kCreate));
+  RETURN_IF_ERROR(CheckCommandBufferState(command_buffer,
+                                          se::CommandBuffer::State::kCreate));
 
   VLOG(1) << absl::StreamFormat(
       "Record create %d commands into command buffer %p: dependencies=%d, "
@@ -495,7 +497,7 @@ CommandExecutor::RecordCreate(
         GetKernelAnnotation(command->profile_annotation());
 
     // Skip recording collective commands if mock collectives are enabled.
-    if (execute_params.mock_collectives && IsCollectiveCommand(*command)) {
+    if (execute_params.mock_collectives && command->IsCollective()) {
       continue;
     }
 
@@ -509,10 +511,9 @@ CommandExecutor::RecordCreate(
                              ? Command::RecordCreate{dependencies}
                              : Command::RecordCreate{command_dependencies};
 
-    TF_ASSIGN_OR_RETURN(
-        const se::CommandBuffer::Command* recorded_command,
-        command->Record(execute_params, record_params, std::move(record_action),
-                        command_buffer));
+    ASSIGN_OR_RETURN(const se::CommandBuffer::Command* recorded_command,
+                     command->Record(execute_params, record_params,
+                                     std::move(record_action), command_buffer));
 
     // Collect sink commands as external dependencies for the next command
     // sequence recorded into the same command buffer.
@@ -546,8 +547,8 @@ absl::Status CommandExecutor::RecordUpdate(
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   // Command buffer must be already prepared for recording updates.
-  TF_RETURN_IF_ERROR(CheckCommandBufferState(
-      command_buffer, se::CommandBuffer::State::kUpdate));
+  RETURN_IF_ERROR(CheckCommandBufferState(command_buffer,
+                                          se::CommandBuffer::State::kUpdate));
 
   // Short-circuit if there are no commands to update.
   if (commands_.empty()) {
@@ -567,13 +568,17 @@ absl::Status CommandExecutor::RecordUpdate(
 
     Command* command = commands_[id];
 
+    if (command->requires_update()) {
+      return false;
+    }
+
     // For CAPTURE_CMD_NEVER_UPDATE mode, always skip updates for commands
-    // implemented via tracing (TracedCommand subclasses) or collective
-    // operations (CollectiveCmd subclasses). Their buffer allocations are
-    // VA-remapped to fixed offsets within the reserved VA range, so their
-    // recorded addresses remain valid across executions — no update is needed.
+    // implemented via tracing. This includes CollectiveThunk command/thunk
+    // hybrids: their buffer allocations are VA-remapped to fixed offsets within
+    // the reserved VA range, so their recorded addresses remain valid across
+    // executions and no update is needed.
     //
-    // Note: CollectiveCmd satisfies both IsTracedCommand() and
+    // Note: CollectiveThunk satisfies both IsTracedCommand() and
     // requires_initialization(), but the requires_initialization() check below
     // is intentionally unreachable for traced commands in this mode. Because
     // their buffer addresses are stable (VA-mapped), re-initialization is
@@ -628,7 +633,7 @@ absl::Status CommandExecutor::RecordUpdate(
         GetKernelAnnotation(command->profile_annotation());
 
     // Skip updating collective commands if mock collectives are enabled.
-    if (execute_params.mock_collectives && IsCollectiveCommand(*command)) {
+    if (execute_params.mock_collectives && command->IsCollective()) {
       continue;
     }
 
@@ -640,10 +645,9 @@ absl::Status CommandExecutor::RecordUpdate(
     }
 
     Command::RecordUpdate record_action{recorded_commands[id]};
-    TF_ASSIGN_OR_RETURN(
-        recorded_commands[id],
-        command->Record(execute_params, record_params, std::move(record_action),
-                        command_buffer));
+    ASSIGN_OR_RETURN(recorded_commands[id],
+                     command->Record(execute_params, record_params,
+                                     std::move(record_action), command_buffer));
   }
 
   uint64_t end_micros = tsl::Env::Default()->NowMicros();
@@ -740,9 +744,9 @@ absl::StatusOr<std::string> CommandExecutor::RenderExecutionGraph() const {
         "concurrent/LHS synchronization mode");
   }
 
-  TF_ASSIGN_OR_RETURN(auto operations,
-                      CreateCommandOperations(commands_, synchronization_mode_,
-                                              extra_resources_));
+  ASSIGN_OR_RETURN(auto operations,
+                   CreateCommandOperations(commands_, synchronization_mode_,
+                                           extra_resources_));
   absl::InlinedVector<const ExecutionGraph::Operation*, 32> operations_ptrs;
   operations_ptrs.reserve(operations.size());
   for (const auto& operation : operations) {

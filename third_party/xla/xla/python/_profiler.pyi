@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Self, overload
 
 from typing_extensions import CapsuleType
@@ -24,6 +24,7 @@ class ProfilerServer:
 
 def start_server(port: int) -> ProfilerServer: ...
 def register_plugin_profiler(arg: CapsuleType, /) -> None: ...
+def register_subprocess(pid: int, port: int) -> Callable[[], None]: ...
 
 class ProfilerSession:
   @overload

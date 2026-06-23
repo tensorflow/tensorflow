@@ -21,11 +21,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
@@ -53,7 +55,7 @@ namespace xla::cpu {
 namespace {
 
 absl::Status YnnFusionThunkToProto(const Thunk& thunk, ThunkProto& proto) {
-  const auto& ynn_fusion_thunk = tsl::down_cast<const YnnFusionThunk&>(thunk);
+  const auto& ynn_fusion_thunk = absl::down_cast<const YnnFusionThunk&>(thunk);
   YnnFusionThunkProto* ynn_fusion_proto = proto.mutable_ynn_fusion_thunk();
   ynn_fusion_proto->mutable_options()->set_use_threadpool(
       ynn_fusion_thunk.options().use_threadpool);
@@ -61,13 +63,13 @@ absl::Status YnnFusionThunkToProto(const Thunk& thunk, ThunkProto& proto) {
 
   for (const YnnFusionThunk::Argument& argument :
        ynn_fusion_thunk.arguments()) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         SerializeSliceShapeIntoProto(argument.slice, argument.shape,
                                      ynn_fusion_proto->add_arguments_shapes()));
   }
 
   for (const YnnFusionThunk::Result& result : ynn_fusion_thunk.results()) {
-    TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+    RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
         result.slice, result.shape, ynn_fusion_proto->add_results_shapes()));
   }
 
@@ -85,7 +87,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> YnnFusionThunkFromProto(
       ynn_fusion_proto.options().use_threadpool(),
   };
 
-  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
   if (hlo_module == nullptr) {
     return Internal(
@@ -111,16 +113,16 @@ absl::StatusOr<std::unique_ptr<Thunk>> YnnFusionThunkFromProto(
 
   std::vector<YnnFusionThunk::Argument> arguments;
   for (auto& argument_shape_proto : ynn_fusion_proto.arguments_shapes()) {
-    TF_ASSIGN_OR_RETURN(auto argument_shape,
-                        DeserializeSliceShapeFromProto(argument_shape_proto,
-                                                       buffer_allocations));
+    ASSIGN_OR_RETURN(auto argument_shape,
+                     DeserializeSliceShapeFromProto(argument_shape_proto,
+                                                    buffer_allocations));
     arguments.push_back(
         YnnFusionThunk::Argument{argument_shape.first, argument_shape.second});
   }
 
   std::vector<YnnFusionThunk::Result> results;
   for (auto& result_shape_proto : ynn_fusion_proto.results_shapes()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto result_shape,
         DeserializeSliceShapeFromProto(result_shape_proto, buffer_allocations));
     results.push_back(
@@ -143,8 +145,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> YnnFusionThunkFromProto(
   }
 
   // Construct YNNPACK subgraph builder from the fusion computation.
-  TF_ASSIGN_OR_RETURN(
-      builder, EmitYnnFusionBuilder(computation, captured_arguments_ids));
+  ASSIGN_OR_RETURN(builder,
+                   EmitYnnFusionBuilder(computation, captured_arguments_ids));
 
   return YnnFusionThunk::Create(
       std::move(options), std::move(info), hlo, std::move(arguments),

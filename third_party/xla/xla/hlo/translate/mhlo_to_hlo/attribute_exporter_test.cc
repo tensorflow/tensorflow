@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 
@@ -22,6 +23,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -57,6 +60,7 @@ class AttributeExporterTest : public ::testing::Test {
                      mlir::mhlo::MhloDialect>();
     mlir::stablehlo::registerAllDialects(registry_);
     context_ = std::make_unique<mlir::MLIRContext>(registry_);
+    context_->loadDialect<mlir::mhlo::MhloDialect>();
   }
 
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModule(
@@ -64,7 +68,7 @@ class AttributeExporterTest : public ::testing::Test {
     mlir::BaseScopedDiagnosticHandler diagnostic_handler(context_.get());
     auto module =
         mlir::parseSourceString<mlir::ModuleOp>(mlir_source, context_.get());
-    TF_RETURN_IF_ERROR(diagnostic_handler.ConsumeStatus());
+    RETURN_IF_ERROR(diagnostic_handler.ConsumeStatus());
     return module;
   }
 
@@ -283,6 +287,7 @@ TEST_F(AttributeExporterTest, ConvertReplicaGroups_MeshAxesFromFrontendAttrs) {
         xla.sdy.meshes = "{mesh = #sdy.mesh<[\"data\"=2, \"seq\"=2]>}"
       }
     } {
+      func.func private @mesh()
       func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
         %0 = "stablehlo.all_reduce"(%arg0) <{
           channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>,
@@ -315,6 +320,141 @@ TEST_F(AttributeExporterTest, ConvertReplicaGroups_MeshAxesFromFrontendAttrs) {
   EXPECT_EQ(device_list->version(),
             xla::CollectiveDeviceListVersion::kMeshAxes);
   EXPECT_EQ(device_list->ToString(), "mesh['data'=2,'seq'=2] {'seq'}");
+}
+
+TEST_F(AttributeExporterTest,
+       ConvertReplicaGroupsStableHloMeshAxesMultipleMeshes) {
+  constexpr absl::string_view mlir_source = R"mlir(
+    module @jit_f {
+      sdy.mesh @mesh = <["replica"=1, "data"=2, "seq"=1, "model"=1]>
+      sdy.mesh @mesh_1 = <["replica"=1, "data"=1, "seq"=2, "model"=1]>
+      func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+        %0 = "stablehlo.all_reduce"(%arg0) <{
+          channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>,
+          replica_groups = #stablehlo.replica_group_mesh_axes<
+            mesh = @mesh_1,
+            axes = [#stablehlo.axis_ref<name = "seq">]
+          >,
+          use_global_device_ids
+        }> ({
+        ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+          %1 = "stablehlo.add"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+          "stablehlo.return"(%1) : (tensor<f32>) -> ()
+        }) : (tensor<f32>) -> tensor<f32>
+        return %0 : tensor<f32>
+      }
+    }
+  )mlir";
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModule(mlir_source));
+
+  mlir::func::FuncOp main = module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_THAT(main, NotNull());
+
+  mlir::Operation* op = &main.getBody().front().front();
+  auto replica_groups = op->getAttr("replica_groups");
+  ASSERT_TRUE(replica_groups);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto device_list,
+                          xla::ConvertReplicaGroups(replica_groups, op));
+  EXPECT_EQ(device_list->version(),
+            xla::CollectiveDeviceListVersion::kMeshAxes);
+  EXPECT_EQ(device_list->ToString(),
+            "mesh['replica'=1,'data'=1,'seq'=2,'model'=1] {'seq'}");
+  EXPECT_EQ(device_list->ToString(true), "{{0,1}}");
+}
+
+TEST_F(AttributeExporterTest, ConvertReplicaGroupsMhloMeshAxesMultipleMeshes) {
+  constexpr absl::string_view mlir_source = R"mlir(
+    module @jit_f {
+      sdy.mesh @mesh = <["replica"=1, "data"=2, "seq"=1, "model"=1]>
+      sdy.mesh @mesh_1 = <["replica"=1, "data"=1, "seq"=2, "model"=1]>
+
+      func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+        %0 = "mhlo.all_reduce"(%arg0) <{
+          channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+          replica_groups = #mhlo.replica_group_mesh_axes<
+            mesh = @mesh_1,
+            axes = [#mhlo.axis_ref<name = "seq">]
+          >,
+          use_global_device_ids
+        }> ({
+        ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+          %1 = "mhlo.add"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+          "mhlo.return"(%1) : (tensor<f32>) -> ()
+        }) : (tensor<f32>) -> tensor<f32>
+        return %0 : tensor<f32>
+      }
+    }
+  )mlir";
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModule(mlir_source));
+
+  mlir::func::FuncOp main = module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_THAT(main, NotNull());
+
+  mlir::Operation* op = &main.getBody().front().front();
+  auto replica_groups = op->getAttr("replica_groups");
+  ASSERT_TRUE(replica_groups);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto device_list,
+                          xla::ConvertReplicaGroups(replica_groups, op));
+  EXPECT_EQ(device_list->version(),
+            xla::CollectiveDeviceListVersion::kMeshAxes);
+  EXPECT_EQ(device_list->ToString(),
+            "mesh['replica'=1,'data'=1,'seq'=2,'model'=1] {'seq'}");
+  EXPECT_EQ(device_list->ToString(true), "{{0,1}}");
+}
+
+TEST_F(AttributeExporterTest, ConvertOriginalValueNullAttr) {
+  mlir::mhlo::OriginalValueAttr attr;
+  std::optional<xla::OriginalValueProto> proto = ConvertOriginalValue(attr);
+  EXPECT_FALSE(proto.has_value());
+}
+
+TEST_F(AttributeExporterTest, ConvertOriginalValueSyntheticCall) {
+  mlir::mhlo::OriginalValueAttr attr = mlir::mhlo::OriginalValueAttr::get(
+      context_.get(), /*is_synthetic_call=*/true,
+      /*elements=*/llvm::ArrayRef<mlir::mhlo::OriginalValueElementAttr>());
+
+  std::optional<xla::OriginalValueProto> proto = ConvertOriginalValue(attr);
+  ASSERT_TRUE(proto.has_value());
+  EXPECT_TRUE(proto->is_synthetic_call());
+  EXPECT_EQ(proto->elements_size(), 0);
+}
+
+TEST_F(AttributeExporterTest, ConvertOriginalValueWithElements) {
+  mlir::mhlo::OriginalArrayAttr array_attr = mlir::mhlo::OriginalArrayAttr::get(
+      context_.get(), mlir::StringAttr::get(context_.get(), "inst1"),
+      llvm::ArrayRef<int64_t>({1, 2}));
+
+  mlir::mhlo::OriginalValueElementAttr el_attr1 =
+      mlir::mhlo::OriginalValueElementAttr::get(
+          context_.get(), llvm::ArrayRef<int64_t>({0}), array_attr);
+
+  mlir::mhlo::OriginalValueElementAttr el_attr2 =
+      mlir::mhlo::OriginalValueElementAttr::get(
+          context_.get(), llvm::ArrayRef<int64_t>({1}), std::nullopt);
+
+  mlir::mhlo::OriginalValueAttr attr = mlir::mhlo::OriginalValueAttr::get(
+      context_.get(), /*is_synthetic_call=*/false,
+      llvm::ArrayRef<mlir::mhlo::OriginalValueElementAttr>(
+          {el_attr1, el_attr2}));
+
+  std::optional<xla::OriginalValueProto> proto = ConvertOriginalValue(attr);
+  ASSERT_TRUE(proto.has_value());
+  EXPECT_FALSE(proto->is_synthetic_call());
+  ASSERT_EQ(proto->elements_size(), 2);
+
+  const auto& el1 = proto->elements(0);
+  EXPECT_THAT(el1.shape_index(), ::testing::ElementsAre(0));
+  ASSERT_TRUE(el1.has_original_array());
+  EXPECT_EQ(el1.original_array().instruction_name(), "inst1");
+  EXPECT_THAT(el1.original_array().shape_index(), ::testing::ElementsAre(1, 2));
+
+  const auto& el2 = proto->elements(1);
+  EXPECT_THAT(el2.shape_index(), ::testing::ElementsAre(1));
+  EXPECT_FALSE(el2.has_original_array());
 }
 
 }  // namespace

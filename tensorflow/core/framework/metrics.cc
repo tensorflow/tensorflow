@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -262,6 +263,22 @@ auto* tf_data_service_data_transfer_protocol_error =
         "The number of times a tf.data service worker client got this type "
         "of non-retriable error with this message when using this protocol.",
         "data_transfer_protocol", "error_type", "error_message");
+
+auto* tf_data_service_client_routing_outcome_counter =
+    tsl::monitoring::Counter<4>::New(
+        "/tensorflow/data/service/client_routing_outcome",
+        "The number of times a tf.data client GetElement request resulted in "
+        "success, skip_empty_buffer, or skip_error, broken down by client ID, "
+        "worker address, and thread ID.",
+        "outcome", "client_id", "worker_address", "thread_id");
+
+auto* tf_data_prefetch_residence_time_usecs_histogram =
+    tsl::monitoring::Sampler<1>::New(
+        {"/tensorflow/data/prefetch_residence_time_usecs",
+         "Microseconds a specific element spent waiting in the prefetch buffer "
+         "before being consumed.",
+         "node_name"},
+        {tsl::monitoring::Buckets::Exponential(1000, 2, 30)});
 
 auto* tf_data_service_optimal_number_of_workers =
     monitoring::Gauge<int64_t, 0>::New(
@@ -666,6 +683,21 @@ void RecordTFDataServiceDataTransferProtocolError(
       ->IncrementBy(1);
 }
 
+void RecordTFDataClientGetElementAction(const std::string& action,
+                                        const std::string& client_id,
+                                        const std::string& worker_address,
+                                        const std::string& thread_id) {
+  tf_data_service_client_routing_outcome_counter
+      ->GetCell(action, client_id, worker_address, thread_id)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataPrefetchResidenceTime(const std::string& node_name,
+                                       int64_t duration_us) {
+  tf_data_prefetch_residence_time_usecs_histogram->GetCell(node_name)->Add(
+      duration_us);
+}
+
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit) {
   std::string cache_hit_str = cache_hit ? "true" : "false";
   tf_data_service_cross_trainer_cache_queries_counter->GetCell(cache_hit_str)
@@ -995,7 +1027,7 @@ void IncrementTfMlirBridgeSecondPhaseCounter(
       };
 
   mlir_second_phase_count
-      ->GetCell(std::string(mlir_bridge_second_phase_metric_names->at(metric)))
+      ->GetCell(mlir_bridge_second_phase_metric_names->at(metric))
       ->IncrementBy(1);
 }
 
@@ -1020,8 +1052,7 @@ void IncrementPhase2XlaCompilerCounter(Phase2XlaCompilerMetric metric) {
            "kCompileFunctionMlirFailure"},
       };
 
-  phase_2_xla_compiler_count->GetCell(std::string(metric_names->at(metric)))
-      ->IncrementBy(1);
+  phase_2_xla_compiler_count->GetCell(metric_names->at(metric))->IncrementBy(1);
 }
 
 void UpdateTpuErrorCounter(const std::string& op,

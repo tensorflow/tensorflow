@@ -50,16 +50,16 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/tpu/c_api_conversions.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/c_api_defn.h"
-#include "xla/stream_executor/tpu/proto_helper.h"
-#include "xla/stream_executor/tpu/status_helper.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_node_context.h"
 #include "xla/stream_executor/tpu/tpu_op_executable.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "xla/tpu/c_api_conversions.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/c_api_defn.h"
+#include "xla/tpu/proto_helper.h"
+#include "xla/tpu/status_helper.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/statusor.h"
@@ -478,7 +478,7 @@ absl::StatusOr<xla::ExecutionOutput> TPUExecute(
   SE_DeviceAddressBase* device_memory_addrs = nullptr;
   size_t device_memory_addrs_count;
   auto device_memory_cleanup =
-      absl::MakeCleanup([device_memory_addrs, device_ordinal]() {
+      absl::MakeCleanup([&device_memory_addrs, device_ordinal]() {
         if (device_memory_addrs != nullptr) {
           stream_executor::tpu::OpsApiFn()
               ->TpuExecute_FreeTpuEmbeddingMemoryAllocationsFn(

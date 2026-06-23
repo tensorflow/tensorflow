@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
 #include "xla/runtime/buffer_use.h"
@@ -64,7 +65,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> OutfeedThunk::Execute(
   int64_t outfeed_num = 0;
 
   for (OutfeedBuffer& outfeed_buffer : outfeed_buffers_) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         se::DeviceAddressBase outfeed_data,
         params.buffer_allocations->GetDeviceAddress(outfeed_buffer.slice));
 

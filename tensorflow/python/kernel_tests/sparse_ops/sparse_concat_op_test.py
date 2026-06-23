@@ -396,6 +396,22 @@ class SparseConcatTest(test.TestCase):
     z = sparse_ops.sparse_concat(-1, [x, y])
     self.assertEqual(z.get_shape().as_list(), [2, 4])
 
+  @test_util.run_deprecated_v1
+  def testDivisionByZeroMalformedShape(self):
+    with self.session():
+      sp1 = sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=[1.0], dense_shape=[0, 1]
+      )
+      sp2 = sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=[2.0], dense_shape=[0, 1]
+      )
+      concat_op = sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2])
+      with self.assertRaisesOpError(
+          "SparseTensor cannot have non-zero indices if dense shape has zero"
+          " volume"
+      ):
+        self.evaluate(concat_op)
+
 
 if __name__ == "__main__":
   test.main()

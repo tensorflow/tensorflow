@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/function_api_info.h"
 
+#include <memory>
 #include <string>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -23,8 +25,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-FunctionApiInfo::FunctionApiInfo() {}
-FunctionApiInfo::~FunctionApiInfo() {}
+FunctionApiInfo::FunctionApiInfo() = default;
+FunctionApiInfo::~FunctionApiInfo() = default;
 
 absl::Status FunctionApiInfo::Init(const FunctionDef& function_def) {
   function_type_ = FunctionApiInfo::FunctionType::INFERENCE;
@@ -86,8 +88,8 @@ const DataTypeVector& FunctionApiInfo::output_arg_dtypes() const {
   return output_arg_dtypes_;
 }
 
-FunctionLibraryApiInfo::FunctionLibraryApiInfo() {}
-FunctionLibraryApiInfo::~FunctionLibraryApiInfo() {}
+FunctionLibraryApiInfo::FunctionLibraryApiInfo() = default;
+FunctionLibraryApiInfo::~FunctionLibraryApiInfo() = default;
 
 namespace {
 bool IsSameArgDef(const OpDef::ArgDef& arg1, const OpDef::ArgDef& arg2) {
@@ -160,7 +162,8 @@ absl::Status FunctionLibraryApiInfo::Init(
   std::unordered_map<std::string, std::vector<const FunctionDef*>> fwd_funcs;
   std::unordered_map<std::string, std::vector<const FunctionDef*>> bwd_funcs;
   for (const auto& function : function_library.function()) {
-    std::unique_ptr<FunctionApiInfo> func_info(new FunctionApiInfo);
+    std::unique_ptr<FunctionApiInfo> func_info =
+        std::make_unique<FunctionApiInfo>();
     TF_RETURN_IF_ERROR(func_info->Init(function));
     // Ignore the function if it does not implement any interface.
     if (func_info->interface_name().empty()) continue;

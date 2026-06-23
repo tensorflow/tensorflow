@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/backends/gpu/transforms/estimate_cub_scratch_size.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -80,11 +79,10 @@ std::string GetNumpyOrderComparator(
                       absl::Substitute(kBody, type_name, direction), "}");
 }
 
-class SortRewriterTestBase
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+class SortRewriterTestBase : public HloInterpreterReferenceMixin<HloTestBase> {
  public:
   void SetUp() override {
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>::SetUp();
+    HloInterpreterReferenceMixin<HloTestBase>::SetUp();
     SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   }
 

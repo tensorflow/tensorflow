@@ -13,7 +13,7 @@ distribute_py_strict_test(
     srcs = ["saved_model_test.py"],
     exec_properties = select({
         # copybara:uncomment_begin(google-only)
-        # "//tools/cpp:asan_build": {"mem": "16g"},
+        # "@bazel_tools//tools/cpp:asan_build": {"mem": "16g"},
         # copybara:uncomment_end
         "//conditions:default": None,
     }),

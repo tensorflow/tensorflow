@@ -24,35 +24,48 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
 class GpuKernelTilingTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+    : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_autotune_level(0);
+    return debug_options;
+  }
+
  protected:
   // Most tests in this file want to skip layout assignment, but a few need it
   // enabled.
   HloModuleConfig ConfigWithLayoutAssignment() {
     HloModuleConfig config;
-    auto debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
-    config.set_debug_options(debug_options);
+    config.set_debug_options(GetDebugOptionsForTest());
     return config;
   }
 
   HloModuleConfig ConfigWithoutLayoutAssignment() {
     HloModuleConfig config;
-    auto debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
+    auto debug_options = GetDebugOptionsForTest();
     // Disable layout_assignment to use the preassigned layouts.
     debug_options.add_xla_disable_hlo_passes("layout-assignment");
     config.set_debug_options(debug_options);
     return config;
   }
+
+  HloModuleConfig ConfigDisableAutotuning() {
+    HloModuleConfig config;
+    config.set_debug_options(GetDebugOptionsForTest());
+    return config;
+  }
 };
 
 TEST_F(GpuKernelTilingTest, UnnestedTransposeWithProperDimensionsTiled) {
-  const char *const kHloString = R"(
+  const char* const kHloString = R"(
     HloModule unnested_transpose_1
 
     ENTRY unnested_transpose_1 {
@@ -69,11 +82,6 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithProperDimensionsTiled) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithLayoutAssignment())
           .value();
-  // This test is meant to test the native transpose emitter, not the triton
-  // emitter, so we disable autotuning.
-  hlo_module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_autotune_level(0);
 
   auto expected_ir = R"(
 ; CHECK: call void BARRIER()
@@ -87,7 +95,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithProperDimensionsTiled) {
 }
 
 TEST_F(GpuKernelTilingTest, UnnestedTransposeWithSmallDimensionsNotTiled) {
-  const char *const kHloString = R"(
+  const char* const kHloString = R"(
     HloModule unnested_transpose_2
 
     ENTRY unnested_transpose_2 {
@@ -110,7 +118,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithSmallDimensionsNotTiled) {
 }
 
 TEST_F(GpuKernelTilingTest, UnnestedTransposeC128TypeRun) {
-  const char *const kHloString = R"(
+  const char* const kHloString = R"(
     HloModule unnested_transpose_3
 
     ENTRY unnested_transpose_3 {
@@ -132,7 +140,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeC128TypeRun) {
 }
 
 TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
-  const char *const kHloString = R"(
+  const char* const kHloString = R"(
     HloModule multiple_output_fusion_1
     fused_computation.1 {
       param0 = f32[4,30,56]{2,1,0} parameter(0)
@@ -149,12 +157,7 @@ TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
-  // Disable autotuning because this test is checking for that the native
-  // emitter generates a kernel correctly. Autotuning may change it to generate
-  // a triton kernel instead, which uses a different barrier.
-  hlo_module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_autotune_level(0);
+
   // Check that a call to llvm.nvvm.barrier0 is generated.
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
@@ -170,7 +173,7 @@ TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
 }
 
 TEST_F(GpuKernelTilingTest, MultipleOutputFusionWithOnePossibleTransposeTiled) {
-  const char *const kHloString = R"(
+  const char* const kHloString = R"(
     HloModule multiple_output_fusion_1
     fused_computation.1 {
       param0 = f16[8,961,65]{2,1,0} parameter(0)
@@ -206,7 +209,7 @@ TEST_F(GpuKernelTilingTest, MultipleOutputFusionWithOnePossibleTransposeTiled) {
 }
 
 TEST_F(GpuKernelTilingTest, TransposedInputWithUserReverseNotTiled) {
-  const char *const kHloString = R"(
+  const char* const kHloString = R"(
     HloModule FusionTransposeWithReverseNotTiled
     fused_computation.1 {
       arg0 = f32[128,64]{1,0} parameter(0)
@@ -235,7 +238,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithUserReverseNotTiled) {
 }
 
 TEST_F(GpuKernelTilingTest, TransposedInputWithUserBitcastNotTiled) {
-  const char *const kHloString = R"(
+  const char* const kHloString = R"(
     HloModule TransposedInputWithUserBitcast
 
     fused_computation {
@@ -267,7 +270,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithUserBitcastNotTiled) {
 }
 
 TEST_F(GpuKernelTilingTest, TransposedInputWithoutUnsafeUseTiled) {
-  const char *const kHloString = R"(
+  const char* const kHloString = R"(
     HloModule TwoTransposedInputs
 
     fused_computation {
@@ -303,7 +306,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithoutUnsafeUseTiled) {
 }
 
 TEST_F(GpuKernelTilingTest, MofReduceDifferentType) {
-  const char *const kHloString = R"(
+  const char* const kHloString = R"(
 HloModule module, entry_computation_layout={(f32[128,1024]{1,0})->(f16[128]{0}, f32[128]{0})}
 
 scalar_add_computation_f16 {
@@ -336,7 +339,7 @@ ENTRY entry {
 }
 
 TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
-  const char *const kHloString = R"(
+  const char* const kHloString = R"(
     HloModule reduce_with_layout_change
     reduction0 {
       x0 = f32[] parameter(0)
@@ -355,7 +358,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
-  const char *expected_ir = R"(
+  const char* expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @
 ; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK: }
@@ -369,7 +372,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
 }
 
 TEST_F(GpuKernelTilingTest, Hlo021CopyNoOobAccess) {
-  const char *const kHloString = R"(
+  const char* const kHloString = R"(
 HloModule primitive_computation_svd.38
 
 %fused_computation (param_0.7: f32[841,3], param_1.10: pred[3]) -> f32[3,841] {
@@ -410,7 +413,8 @@ ENTRY RowLargeReduce {
   CC = s32[] constant(0)
   ROOT R = s32[262144,512]{1,0} reduce(BB, CC), dimensions={2}, to_apply=reduceOp
 })";
-  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnVerifiedModule(
+                                            kHlo, ConfigDisableAutotuning()));
   EXPECT_TRUE(Run(std::move(hlo_module), /*run_hlo_passes*/ true));
 }
 
@@ -432,7 +436,8 @@ ENTRY RowLargeReduce {
   R = s32[762145,999]{1,0} reduce(BB, CC), dimensions={2}, to_apply=reduceOp
   ROOT O = s16[762145,999] convert(R)
 })";
-  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnVerifiedModule(
+                                            kHlo, ConfigDisableAutotuning()));
   EXPECT_TRUE(Run(std::move(hlo_module), /*run_hlo_passes*/ true));
 }
 
@@ -454,7 +459,8 @@ ENTRY MultiRowLargeReduce {
   R = s32[262144,4096]{1,0} reduce(BB, CC), dimensions={2}, to_apply=reduceOp
   ROOT O = s16[262144,4096]{1,0} convert(R)
 })";
-  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnVerifiedModule(
+                                            kHlo, ConfigDisableAutotuning()));
   EXPECT_TRUE(Run(std::move(hlo_module), /*run_hlo_passes*/ true));
 }
 
@@ -475,7 +481,8 @@ ENTRY MultiRowLargeReduce {
   CC = s32[] constant(0)
   ROOT R = s32[762145,999]{1,0} reduce(BB, CC), dimensions={2}, to_apply=reduceOp
 })";
-  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnVerifiedModule(
+                                            kHlo, ConfigDisableAutotuning()));
   EXPECT_OK(CompileToExecutable(std::move(hlo_module), true));
 }
 
@@ -486,7 +493,8 @@ ENTRY LargeLoop {
   C = bf16[] constant(0)
   ROOT B = bf16[80,7,8192,8192]{3,2,1,0} broadcast(C), dimensions={}
 })";
-  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnVerifiedModule(
+                                            kHlo, ConfigDisableAutotuning()));
   EXPECT_OK(CompileToExecutable(std::move(hlo_module), true));
 }
 
@@ -506,13 +514,8 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
     ROOT reduce = f32[1048576,1048576,1024] reduce(parameter, init_value), dimensions={3}, to_apply=Sum
   }
   )";
-  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnVerifiedModule(kHlo));
-  // Disable autotuning because this is checking for an error returned by the
-  // Native Emitter. With autotuning enabled, the error is that autotuning
-  // itself fails to find a config because all the backends return failure.
-  hlo_module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_autotune_level(0);
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnVerifiedModule(
+                                            kHlo, ConfigDisableAutotuning()));
   absl::Status status =
       CompileToExecutable(std::move(hlo_module), true).status();
 

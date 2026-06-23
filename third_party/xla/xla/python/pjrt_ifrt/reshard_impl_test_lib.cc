@@ -34,9 +34,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
@@ -69,14 +72,12 @@ using ::testing::HasSubstr;
 absl::StatusOr<ArrayRef> MakeArrayFromLiteral(Client* absl_nonnull client,
                                               const xla::LiteralBase& literal,
                                               const ShardingRef& sharding) {
-  TF_ASSIGN_OR_RETURN(const DType dtype,
-                      ToDType(literal.shape().element_type()));
+  ASSIGN_OR_RETURN(const DType dtype, ToDType(literal.shape().element_type()));
   const Shape shape(literal.shape().dimensions());
 
-  TF_ASSIGN_OR_RETURN(
-      const std::vector<IndexDomain> index_domains,
-      sharding->IndexDomains(shape,
-                             SingleDeviceShardSemantics::kAddressableShards));
+  ASSIGN_OR_RETURN(const std::vector<IndexDomain> index_domains,
+                   sharding->IndexDomains(
+                       shape, SingleDeviceShardSemantics::kAddressableShards));
 
   Client::MakeArraysFromHostBufferShardsSpec spec = {
       /*buffers=*/{},
@@ -107,7 +108,7 @@ absl::StatusOr<ArrayRef> MakeArrayFromLiteral(Client* absl_nonnull client,
     spec.buffers.push_back({{i}, std::move(host_buffer)});
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<ArrayRef> arrays,
       client->MakeArraysFromHostBufferShards(
           absl::MakeSpan(&spec, 1),
@@ -116,38 +117,38 @@ absl::StatusOr<ArrayRef> MakeArrayFromLiteral(Client* absl_nonnull client,
 }
 
 absl::StatusOr<xla::Literal> CopyArrayToLiteral(ArrayRef array) {
-  TF_ASSIGN_OR_RETURN(const xla::PrimitiveType element_type,
-                      ToPrimitiveType(array->dtype()));
+  ASSIGN_OR_RETURN(const xla::PrimitiveType element_type,
+                   ToPrimitiveType(array->dtype()));
   const auto xla_shape =
       xla::ShapeUtil::MakeShape(element_type, array->shape().dims());
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       const std::vector<IndexDomain> index_domains,
       array->sharding().IndexDomains(
           array->shape(), SingleDeviceShardSemantics::kAddressableShards));
-  TF_ASSIGN_OR_RETURN(std::vector<ArrayRef> shards,
-                      array->DisassembleIntoSingleDeviceArrays(
-                          ArrayCopySemantics::kReuseInput,
-                          SingleDeviceShardSemantics::kAddressableShards));
+  ASSIGN_OR_RETURN(std::vector<ArrayRef> shards,
+                   array->DisassembleIntoSingleDeviceArrays(
+                       ArrayCopySemantics::kReuseInput,
+                       SingleDeviceShardSemantics::kAddressableShards));
 
-  TF_ASSIGN_OR_RETURN(xla::Literal literal, xla::Literal::Make(xla_shape));
+  ASSIGN_OR_RETURN(xla::Literal literal, xla::Literal::Make(xla_shape));
   absl::flat_hash_set<IndexDomain> seen;
 
   for (int i = 0; i < shards.size(); ++i) {
     const Index& offset = index_domains[i].origin();
     const Shape& shard_shape = index_domains[i].shape();
 
-    TF_ASSIGN_OR_RETURN(xla::Literal slice,
-                        xla::Literal::Make(xla::ShapeUtil::MakeShape(
-                            element_type, shard_shape.dims())));
+    ASSIGN_OR_RETURN(xla::Literal slice,
+                     xla::Literal::Make(xla::ShapeUtil::MakeShape(
+                         element_type, shard_shape.dims())));
     tsl::Future<> future = shards[i]->CopyToHostBuffer(
         slice.untyped_data(), std::nullopt, ArrayCopySemantics::kAlwaysCopy);
-    TF_RETURN_IF_ERROR(future.Await());
+    RETURN_IF_ERROR(future.Await());
     VLOG(2) << "Slice #" << i << " (" << index_domains[i]
             << "): " << slice.ToString();
 
     if (seen.insert(index_domains[i]).second) {
-      TF_RETURN_IF_ERROR(literal.CopySliceFrom(
+      RETURN_IF_ERROR(literal.CopySliceFrom(
           slice, Index::Zeros(shard_shape.dims().size()).elements(),
           offset.elements(), shard_shape.dims()));
     } else {
@@ -166,10 +167,10 @@ absl::StatusOr<xla::Literal> CopyArrayToLiteral(ArrayRef array) {
 
 absl::StatusOr<xla::Literal> CreateIotaLiteral(xla::PrimitiveType element_type,
                                                absl::Span<const int64_t> dims) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       xla::Literal literal,
       xla::Literal::Make(xla::ShapeUtil::MakeShape(element_type, dims)));
-  TF_RETURN_IF_ERROR(xla::primitive_util::IntegralTypeSwitch(
+  RETURN_IF_ERROR(xla::primitive_util::IntegralTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         using T = xla::primitive_util::NativeTypeOf<primitive_type_constant>;
         T value(0);
@@ -389,15 +390,29 @@ TEST_F(ReshardTest, DifferentDestinationLayout) {
 
   TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
                           client_->MakeDeviceList(client_->devices()));
+
+  xla::Layout layout = xla::LayoutUtil::MakeAscendingLayout(2);
+  if (auto ifrt_topology = client_->GetTopologyForDevices(dst_device_list);
+      ifrt_topology.ok()) {
+    const xla::PjRtTopologyDescription* topology =
+        (*ifrt_topology)->description().get();
+    TF_ASSERT_OK_AND_ASSIGN(
+        xla::Shape shape,
+        topology->MakeCanonicalShapeForMemorySpace(
+            topology->GetDefaultMemorySpaceKindId(),
+            xla::ShapeUtil::MakeShape(xla::PrimitiveType::S32,
+                                      src_array->shape().dims()),
+            &layout));
+    layout = shape.layout();
+  }
+
   ArraySpec dst_array_spec = {
       /*dtype=*/src_array->dtype(),
       /*shape=*/src_array->shape(),
       /*sharding=*/
       HloSharding::Create(dst_device_list, MemoryKind(),
                           xla::HloSharding::Replicate()),
-      /*layout=*/
-      std::make_shared<xla::PjRtLayout>(
-          xla::LayoutUtil::MakeAscendingLayout(2)),
+      /*layout=*/std::make_shared<const xla::PjRtLayout>(std::move(layout)),
   };
 
   // Make sure that the destination layout is actually different from the source
@@ -579,6 +594,14 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(     //
         testing::Values(  //
             ReshardTestParam{
+                /*name=*/"Scalar",
+                /*shape=*/Shape({}),
+                /*src_sharding=*/xla::HloSharding::Replicate(),
+                /*src_device_indices=*/{0, 1, 2, 3, 4, 5, 6, 7},
+                /*dst_sharding=*/xla::HloSharding::Replicate(),
+                /*dst_device_indices=*/{0, 1, 2, 3, 4, 5, 6, 7},
+            },
+            ReshardTestParam{
                 /*name=*/"ReplicateToReplicate",
                 /*shape=*/Shape({4, 8}),
                 /*src_sharding=*/xla::HloSharding::Replicate(),
@@ -639,6 +662,14 @@ INSTANTIATE_TEST_SUITE_P(
     DifferentDeviceCount, ReshardParameterizedTest,
     testing::Combine(     //
         testing::Values(  //
+            ReshardTestParam{
+                /*name=*/"Scalar",
+                /*shape=*/Shape({}),
+                /*src_sharding=*/xla::HloSharding::Replicate(),
+                /*src_device_indices=*/{0, 1},
+                /*dst_sharding=*/xla::HloSharding::Replicate(),
+                /*dst_device_indices=*/{0, 1, 2, 3, 4, 5, 6, 7},
+            },
             ReshardTestParam{
                 /*name=*/"ReplicateToReplicate",
                 /*shape=*/Shape({4, 8}),

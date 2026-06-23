@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/cord.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -1946,6 +1948,48 @@ BENCHMARK(BM_Assign);
 TEST(Tensor, EmptyTensorData) {
   Tensor empty;
   EXPECT_EQ(empty.tensor_data().size(), 0);
+}
+
+// Ensure tensor_data_cord() returns an empty Cord for an empty tensor.
+TEST(Tensor, EmptyTensorDataCord) {
+  Tensor empty;
+  absl::Cord cord = empty.tensor_data_cord();
+  EXPECT_TRUE(cord.empty());
+  EXPECT_EQ(cord.size(), 0);
+}
+
+// Ensure tensor_data_cord() returns a Cord whose contents match tensor_data().
+TEST(Tensor, TensorDataCordMatchesTensorData) {
+  Tensor t(DT_FLOAT, TensorShape({2, 3}));
+  auto flat = t.flat<float>();
+  for (int i = 0; i < flat.size(); ++i) {
+    flat(i) = static_cast<float>(i);
+  }
+
+  absl::string_view sv = t.tensor_data();
+  absl::Cord cord = t.tensor_data_cord();
+  EXPECT_EQ(cord.size(), sv.size());
+  EXPECT_EQ(std::string(cord), std::string(sv));
+}
+
+// Ensure tensor_data_cord() keeps the underlying buffer alive after the
+// originating Tensor has been destroyed.
+TEST(Tensor, TensorDataCordKeepsBufferAlive) {
+  absl::Cord cord;
+  std::string expected;
+  {
+    Tensor t(DT_INT32, TensorShape({4}));
+    auto flat = t.flat<int32_t>();
+    for (int i = 0; i < flat.size(); ++i) {
+      flat(i) = i + 1;
+    }
+    expected = std::string(t.tensor_data());
+    cord = t.tensor_data_cord();
+  }
+  // Tensor `t` is now out of scope; the Cord should still hold a valid
+  // reference to the data.
+  EXPECT_EQ(cord.size(), expected.size());
+  EXPECT_EQ(std::string(cord), expected);
 }
 
 // Benchmark create and destroy a tensor, with an allocated buffer.

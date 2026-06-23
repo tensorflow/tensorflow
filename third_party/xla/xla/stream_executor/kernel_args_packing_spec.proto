@@ -13,7 +13,7 @@ message KernelArgPackingRelocationProto {
 
   Kind kind = 1;
   int32 argument_index = 2;
-  int64 offset = 3;
+  reserved 3;
 }
 
 message KernelArgPackingSpecProto {

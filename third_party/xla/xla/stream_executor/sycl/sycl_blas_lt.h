@@ -35,9 +35,11 @@ class BlasLt : public gpu::BlasLt {
   absl::StatusOr<BlasLt::MatmulPlanPtr> GetMatmulPlan(
       const gpu::GemmConfig& config, Epilogue epilogue) const override;
 
-  absl::StatusOr<MatmulPlanPtr> GetGroupedMatmulPlan(
-      gpu::GroupedGemmConfig& config,
-      const std::vector<Epilogue>& epilogues) const override;
+  absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(
+      const gpu::GroupedGemmConfig& cfg, Epilogue epilogue) const override {
+    return absl::UnimplementedError(
+        "Grouped GEMM is not supported for Sycl BlasLt");
+  }
 
   ~BlasLt() override = default;
 
@@ -52,8 +54,7 @@ class BlasLt : public gpu::BlasLt {
         blas::ProfileResult* profile_result) const override;
 
     absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
-        const Stream* stream, size_t max_algorithm_count,
-        size_t max_workspace_size) const override;
+        size_t max_algorithm_count, size_t max_workspace_size) const override;
 
     absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) override {
       // TODO(intel-tf): Do we need a lock here?

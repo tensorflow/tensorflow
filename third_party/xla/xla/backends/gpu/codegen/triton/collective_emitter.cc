@@ -23,22 +23,25 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -58,7 +61,6 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
-#include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -66,7 +68,6 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/layout_util.h"
 #include "xla/mlir/utils/type_util.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -76,8 +77,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -98,9 +97,10 @@ using ReductionComputationEmitter = absl::AnyInvocable<xtile::TensorValue(
     mlir::ImplicitLocOpBuilder&, xtile::TensorValue, xtile::TensorValue)>;
 
 // The main memory space on a device (HBM).
+// Use GPU dialect address space which is platform-independent.
 static constexpr auto kGlobalAddressSpace =
-    static_cast<std::underlying_type_t<mlir::NVVM::NVVMMemorySpace>>(
-        mlir::NVVM::NVVMMemorySpace::Global);
+    static_cast<std::underlying_type_t<mlir::gpu::AddressSpace>>(
+        mlir::gpu::AddressSpace::Global);
 
 // Metadata arguments for the collective emitter.
 // device_rank, signal_value, signal_buffers.
@@ -222,8 +222,8 @@ GetBlockLevelFusionConfigForAllReduce(
             << maybe_all_reduce_info.status();
     return std::nullopt;
   }
-  TF_ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
-                      std::move(maybe_all_reduce_info));
+  ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
+                   std::move(maybe_all_reduce_info));
   const Shape& output_shape = all_reduce->shape();
   const LaunchDimensions launch_dims = AllReduceLaunchDimensions(
       all_reduce_info.num_elements, all_reduce_info.num_devices,
@@ -402,8 +402,8 @@ class AllReduceEmitter {
         ttir::PointerType::get(builder_.getI64Type(), kGlobalAddressSpace);
     ptr_to_elem_type_ =
         ttir::PointerType::get(elem_storage_type_, kGlobalAddressSpace);
-    TF_ASSIGN_OR_RETURN(layout_, xtile::GetPermutationMinorToMajor(
-                                     ctx_.input_extract.getSource().getType()));
+    ASSIGN_OR_RETURN(layout_, xtile::GetPermutationMinorToMajor(
+                                  ctx_.input_extract.getSource().getType()));
 
     const llvm::ArrayRef<int64_t>& input_tile_shape_dims =
         ctx_.input_tile.getType().getShape();
@@ -918,6 +918,45 @@ class AllReduceEmitter {
 
 }  // namespace
 
+absl::Status FlattenCollectiveFusion(
+    HloFusionInstruction* absl_nonnull fusion_instr) {
+  HloComputation* entry_computation = fusion_instr->parent();
+  HloComputation* fused_computation =
+      fusion_instr->fused_instructions_computation();
+  Shape original_shape = fusion_instr->shape();
+  const int64_t total_elements = ShapeUtil::ElementsIn(original_shape);
+  if (fused_computation->parameter_instructions().size() != 1) {
+    return absl::InternalError(
+        "Flattening to 1D is not supported for variadic fused computations "
+        "with more than one parameter instruction");
+  }
+  DCHECK_EQ(fusion_instr->operand_count(), 1);
+  // Flatten all instructions in the fused computation to 1D.
+  for (HloInstruction* instr : fused_computation->instructions()) {
+    if (ShapeUtil::SameDimensions(instr->shape(), original_shape)) {
+      *instr->mutable_shape() = ShapeUtil::MakeShapeWithDenseLayout(
+          instr->shape().element_type(), {total_elements}, {0});
+    }
+  }
+  *fusion_instr->mutable_shape() = ShapeUtil::MakeShapeWithDenseLayout(
+      original_shape.element_type(), {total_elements}, {0});
+  HloInstruction* fusion_operand = fusion_instr->mutable_operand(0);
+  Shape flat_input_shape = ShapeUtil::MakeShapeWithDenseLayout(
+      fusion_operand->shape().element_type(), {total_elements}, {0});
+  HloInstruction* bitcast_to_1d = entry_computation->AddInstruction(
+      HloInstruction::CreateBitcast(flat_input_shape, fusion_operand));
+  RETURN_IF_ERROR(
+      fusion_instr->ReplaceOperandWithDifferentShape(0, bitcast_to_1d));
+  HloInstruction* bitcast_to_original_shape = entry_computation->AddInstruction(
+      HloInstruction::CreateBitcast(original_shape, fusion_instr));
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "Flattening original shape : " << original_shape.ToString()
+            << " to 1D shape: " << flat_input_shape.ToString();
+  }
+  return fusion_instr->ReplaceAllUsesWithDifferentShape(
+      bitcast_to_original_shape);
+}
+
 llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
                                                  int32_t num_blocks) {
   CHECK_GT(num_blocks, 0) << "num_blocks must be positive. Was " << num_blocks;
@@ -962,7 +1001,7 @@ GetCollectiveBlockLevelFusionConfig(const se::DeviceDescription& device_info,
 absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
     const se::DeviceDescription& device_info,
     HloFusionInstruction* fusion_instr) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       const std::optional<BlockLevelFusionConfig> block_config,
       GetCollectiveBlockLevelFusionConfig(device_info, fusion_instr));
   if (!block_config.has_value()) {
@@ -971,13 +1010,13 @@ absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
             << ". Not using Triton collective fusion.";
     return false;
   }
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
-                      fusion_instr->backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                   fusion_instr->backend_config<GpuBackendConfig>());
   gpu_backend_config.mutable_fusion_backend_config()->set_kind(
       kTritonCollectiveFusionKind);
   *gpu_backend_config.mutable_fusion_backend_config()
        ->mutable_block_level_fusion_config() = *std::move(block_config);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       fusion_instr->set_backend_config(std::move(gpu_backend_config)));
   return true;
 }
@@ -1014,7 +1053,7 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
     } else if (type == S4) {
       ir_type = b.getI4Type();
     } else {
-      TF_ASSIGN_OR_RETURN(ir_type, xtile::PrimitiveTypeToMlirType(b, type));
+      ASSIGN_OR_RETURN(ir_type, xtile::PrimitiveTypeToMlirType(b, type));
     }
     // Also add the remote/scratch buffers for collectives.
     // !tt.ptr<!tt.ptr<type>>

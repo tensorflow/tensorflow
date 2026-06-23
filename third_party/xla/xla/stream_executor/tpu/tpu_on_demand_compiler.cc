@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
@@ -27,14 +28,14 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/tpu/c_api_conversions.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/proto_helper.h"
-#include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_executable.h"
 #include "xla/stream_executor/tpu/tpu_executor.h"
-#include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_id.h"
+#include "xla/tpu/c_api_conversions.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/proto_helper.h"
+#include "xla/tpu/status_helper.h"
+#include "xla/tpu/tpu_executor_api.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -163,8 +164,8 @@ class TpuCompiler : public Compiler {
         ExecutorApiFn()->TpuExecutable_HloModuleFn(se_executables[0]);
     auto cleanup_c_module =
         absl::MakeCleanup([&c_module]() { ApiConverter::Destroy(&c_module); });
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        ApiConverter::FromC(c_module));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ApiConverter::FromC(c_module));
     std::shared_ptr<HloModule> module_shared(module.release());
     executables.emplace_back(std::make_unique<legacy::TpuExecutable>(
         se_executables[0], std::move(module_shared)));

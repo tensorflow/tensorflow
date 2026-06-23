@@ -27,10 +27,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/AsmParser/AsmParser.h"
@@ -358,10 +360,10 @@ absl::StatusOr<std::vector<xla::AxisRef>> BuildAxisRefs(
 absl::StatusOr<std::unique_ptr<xla::CollectiveDeviceListBase>>
 ConvertMhloMeshAxes(mlir::mhlo::ReplicaGroupMeshAxesAttr attr,
                     mlir::Operation* op) {
-  TF_ASSIGN_OR_RETURN(auto mesh_attr, FindSdyMeshAttribute(attr, op));
+  ASSIGN_OR_RETURN(auto mesh_attr, FindSdyMeshAttribute(attr, op));
   auto info = ExtractSdyMeshInfo(mesh_attr);
   auto xla_mesh = BuildXlaMesh(info);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto group_axes,
       (BuildAxisRefs<mlir::mhlo::ReplicaGroupMeshAxesAttr,
                      mlir::mhlo::AxisRefAttr>(attr, info.axes_names)));
@@ -372,10 +374,10 @@ ConvertMhloMeshAxes(mlir::mhlo::ReplicaGroupMeshAxesAttr attr,
 absl::StatusOr<std::unique_ptr<xla::CollectiveDeviceListBase>>
 ConvertStablehloMeshAxes(mlir::stablehlo::ReplicaGroupMeshAxesAttr attr,
                          mlir::Operation* op) {
-  TF_ASSIGN_OR_RETURN(auto mesh_attr, FindStablehloMeshAttribute(attr, op));
+  ASSIGN_OR_RETURN(auto mesh_attr, FindStablehloMeshAttribute(attr, op));
   auto info = ExtractStablehloMeshInfo(mesh_attr);
   auto xla_mesh = BuildXlaMesh(info);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto group_axes,
       (BuildAxisRefs<mlir::stablehlo::ReplicaGroupMeshAxesAttr,
                      mlir::stablehlo::AxisRefAttr>(attr, info.axes_names)));
@@ -536,8 +538,8 @@ ConvertReplicaGroups(mlir::Attribute replica_groups, mlir::Operation* op) {
 
   if (auto dense_attr =
           mlir::dyn_cast<mlir::DenseIntElementsAttr>(replica_groups)) {
-    TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> groups,
-                        ConvertReplicaGroups(dense_attr));
+    ASSIGN_OR_RETURN(std::vector<ReplicaGroup> groups,
+                     ConvertReplicaGroups(dense_attr));
     return std::make_unique<xla::CollectiveDeviceList>(std::move(groups));
   }
 
@@ -586,8 +588,7 @@ absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroupsToV1(
           mlir::dyn_cast_or_null<mlir::DenseIntElementsAttr>(replica_groups)) {
     return ConvertReplicaGroups(dense_attr);
   }
-  TF_ASSIGN_OR_RETURN(auto device_list,
-                      ConvertReplicaGroups(replica_groups, op));
+  ASSIGN_OR_RETURN(auto device_list, ConvertReplicaGroups(replica_groups, op));
   return device_list->replica_groups();
 }
 
@@ -698,14 +699,53 @@ std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
 }
 
 std::optional<xla::OriginalValueProto> ConvertOriginalValue(
-    llvm::StringRef original_value) {
-  absl::StatusOr<std::shared_ptr<xla::OriginalValue>> hlo_original_value =
-      xla::ParseOriginalValue(
-          absl::string_view(original_value.data(), original_value.size()));
-  if (!hlo_original_value.ok()) {
+    const mlir::mhlo::OriginalValueAttr& original_value_attr) {
+  if (!original_value_attr) {
     return std::nullopt;
   }
-  return hlo_original_value.value()->ToProto();
+
+  bool is_synthetic_call = original_value_attr.getIsSyntheticCall();
+  xla::OriginalValueProto original_value;
+  original_value.set_is_synthetic_call(is_synthetic_call);
+
+  if (is_synthetic_call) {
+    if (!original_value_attr.getElements().empty()) {
+      LOG(WARNING) << "Synthetic call has original arrays.\n";
+    }
+    return original_value;
+  }
+
+  llvm::ArrayRef<mlir::mhlo::OriginalValueElementAttr>
+      original_value_element_attrs = original_value_attr.getElements();
+  if (original_value_element_attrs.empty()) {
+    LOG(WARNING) << "Empty original value.\n";
+    return original_value;
+  }
+
+  for (const auto& original_value_element_attr : original_value_element_attrs) {
+    // Skip if the element is not set. This should not happen if the original
+    // value attribute is well-formed.
+    if (!original_value_element_attr) {
+      continue;
+    }
+    OriginalValueElementProto* original_value_element =
+        original_value.add_elements();
+
+    for (const auto& i : original_value_element_attr.getShapeIndex()) {
+      original_value_element->add_shape_index(i);
+    }
+    std::optional<mlir::mhlo::OriginalArrayAttr> original_array_attr =
+        original_value_element_attr.getOriginalArray();
+    if (original_array_attr.has_value()) {
+      OriginalArray original_array = {
+          original_array_attr->getInstructionName().str(),
+          ShapeIndex(original_array_attr->getShapeIndex())};
+      *original_value_element->mutable_original_array() =
+          original_array.ToProto();
+    }
+  }
+
+  return original_value;
 }
 
 std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(

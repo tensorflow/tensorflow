@@ -188,6 +188,11 @@ struct DeviceInterconnectInfo {
   // ID of the fabric clique to which this GPU belongs.
   std::string clique_id;
 
+  bool is_in_cluster() const {
+    return !cluster_uuid.empty() &&
+           cluster_uuid != "00000000-0000-0000-0000-000000000000";
+  }
+
   bool operator==(const DeviceInterconnectInfo& other) const {
     return active_links == other.active_links &&
            cluster_uuid == other.cluster_uuid && clique_id == other.clique_id;

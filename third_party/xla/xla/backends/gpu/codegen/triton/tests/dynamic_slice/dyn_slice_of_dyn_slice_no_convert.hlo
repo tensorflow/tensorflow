@@ -1,8 +1,8 @@
-// RUN: hlo_to_xtileir %s | FileCheck %s --check-prefix=CHECK-OLD
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s --check-prefix=CHECK-OLD
 // We do not run this test with the current emitter, because it generates
 // incorrect code.
 
-// RUN: hlo_to_xtileir %s --use_experimental_tiling \
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation \
 // RUN:   | FileCheck %s --check-prefixes=CHECK-NEW
 // RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 

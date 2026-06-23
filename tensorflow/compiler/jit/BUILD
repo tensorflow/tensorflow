@@ -55,6 +55,13 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "defs.cc",
+    ],
+    visibility = [":friends"],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
         "defs.h",
     ],
     visibility = [":friends"],
@@ -68,6 +75,7 @@ cc_library(
     visibility = internal_visibility([
         ":legacy_jit_users",
         "//tensorflow/python/profiler:__pkg__",
+        "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
     ]),
     deps = [
         ":xla_cpu_device",
@@ -219,13 +227,13 @@ cc_library(
         "//tensorflow/core/tpu:virtual_device",
         "@com_google_absl//absl/types:optional",
         "@tsl//tsl/platform:statusor",
-        "@xla//xla/stream_executor/tpu:c_api_conversions",
-        "@xla//xla/stream_executor/tpu:status_helper",
-        "@xla//xla/stream_executor/tpu:tpu_api",
         "@xla//xla/stream_executor/tpu:tpu_executor_base",
         "@xla//xla/stream_executor/tpu:tpu_node_context",
         "@xla//xla/stream_executor/tpu:tpu_platform_interface",
         "@xla//xla/stream_executor/tpu:tpu_stream_interface",
+        "@xla//xla/tpu:c_api_conversions",
+        "@xla//xla/tpu:status_helper",
+        "@xla//xla/tpu:tpu_api",
     ] + if_static([
         "//tensorflow/core/common_runtime:copy_tensor",
         ":jit_compilation_passes",

@@ -24,18 +24,20 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.pb.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla.pb.h"
@@ -87,7 +90,13 @@ struct FirstCallRendezvousKey {
 //===----------------------------------------------------------------------===//
 
 // Thunk base class for XLA:GPU collective operations.
-class CollectiveThunk : public Thunk {
+//
+// Also implements Command so it can be recorded directly into command buffers.
+// ExecuteOnStream launches the collective eagerly on the compute stream;
+// Record() traces RunCollective into a nested CUDA graph and attaches it as a
+// child command. Both paths share the first-call rendezvous via
+// RunWithCommAndRendezvous to avoid NCCL bootstrap races.
+class CollectiveThunk : public Command {
  public:
   struct Buffer {
     int64_t element_count;
@@ -116,12 +125,16 @@ class CollectiveThunk : public Thunk {
     return {};
   }
 
+  bool IsTracedCommand() const override { return true; }
+  bool requires_initialization() const override { return true; }
+  bool requires_warmup() const override { return true; }
+
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-
-  absl::StatusOr<std::vector<Communicator*>> GetCommunicators(
-      const ExecuteParams& params) const override;
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const ExecuteParams& execute_params, const RecordParams& record_params,
+      RecordAction record_action, se::CommandBuffer* command_buffer) override;
 
   const std::vector<Buffer>& buffers() const { return buffers_; }
 
@@ -129,6 +142,9 @@ class CollectiveThunk : public Thunk {
 
   CommunicationId communication_id() const { return communication_id_; }
   CollectivesMode collectives_mode() const { return collectives_mode_; }
+
+  // Returns the clique key used by this collective thunk at run time.
+  absl::StatusOr<GpuCliqueKey> GetCliqueKey(const ExecuteParams& params) const;
 
   // Shorthands for checking the collectives memory mode of this thunk.
   bool use_private_memory() const;
@@ -185,6 +201,24 @@ class CollectiveThunk : public Thunk {
   virtual bool CanUseSymmetricBuffer() const { return false; }
 
  private:
+  // Rendezvous with other local participants before/after the first call to
+  // the collective operation to avoid NCCL deadlocks. See the comment on
+  // RequiresRendezvous() for details. `flag` is `pre_call_rendezvous_flag_`
+  // when called before the collective, and `post_call_rendezvous_flag_` after.
+  // Does nothing if !RequiresRendezvous() or the flag is already completed.
+  absl::Status FirstCallRendezvous(const ExecuteParams& params,
+                                   const GpuCliqueKey& clique_key,
+                                   absl::string_view label,
+                                   RendezvousFlag& flag);
+
+  // Resolves the clique key and communicator for this collective, performs the
+  // pre-call first-call rendezvous, invokes `fn` with the resolved clique/comm,
+  // and then performs the post-call rendezvous. Shared by ExecuteOnStream (for
+  // eager execution) and Record (for command-buffer tracing).
+  absl::Status RunWithCommAndRendezvous(
+      const ExecuteParams& params,
+      absl::FunctionRef<absl::Status(const GpuCliqueKey&, Communicator&)> fn);
+
   const std::vector<Buffer> buffers_;
   // Before and after a first call to this particular instance of a collective
   // thunk we do a round of rendezvous to make sure that all participants are

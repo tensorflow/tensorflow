@@ -55,6 +55,7 @@ cc_library(
         "//xla/service:topk_rewriter",
         "//xla/service:triangular_solve_expander",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -71,6 +72,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:path",
     ],
 )
 

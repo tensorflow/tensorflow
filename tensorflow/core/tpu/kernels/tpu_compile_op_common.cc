@@ -34,8 +34,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep

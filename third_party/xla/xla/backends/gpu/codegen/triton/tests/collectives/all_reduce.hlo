@@ -1,5 +1,5 @@
-// RUN: hlo_to_xtileir %s | FileCheck %s
-// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
 
 sum {
   x = f32[] parameter(0)

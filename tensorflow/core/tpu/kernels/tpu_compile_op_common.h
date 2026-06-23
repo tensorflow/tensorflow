@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/tpu/c_api_decl.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/attr_value.pb.h"

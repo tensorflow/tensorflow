@@ -17,8 +17,10 @@ limitations under the License.
 #define XLA_CODEGEN_TILING_EXPERIMENTAL_RESHAPE_ANALYSIS_H_
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/shape.h"
@@ -51,6 +53,11 @@ struct DimensionRange {
   }
 
   int64_t end() const { return start + count - 1; }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const DimensionRange& range) {
+    absl::Format(&sink, "[%d, %d]", range.start, range.count);
+  }
 };
 
 // Represents a "minimal" reshape (subshape from reshape), i.e. a reshape that
@@ -65,6 +72,13 @@ struct MinimalReshape {
   bool operator==(const MinimalReshape& other) const {
     return input_dim_ids == other.input_dim_ids &&
            output_dim_ids == other.output_dim_ids && category == other.category;
+  }
+
+  std::string ToString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const MinimalReshape& reshape) {
+    sink.Append(reshape.ToString());
   }
 };
 

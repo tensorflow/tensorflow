@@ -71,7 +71,7 @@ static void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
     auto tensorType = RankedTensorType::get({}, returnType.getElementType());
     assert(mlir::isa<FloatType>(complexTy.getElementType()) &&
            "unexpected int complex in StableHLO");
-    auto complexVal = attr.getSplatValue<std::complex<APFloat>>();
+    auto complexVal = attr.getSplatValue<mlir::Complex<APFloat>>();
     cst = stablehlo::ConstantOp::create(
         b, DenseElementsAttr::get(tensorType, complexVal));
   } else {

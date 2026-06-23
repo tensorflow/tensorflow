@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
@@ -43,6 +44,9 @@ class TestThunk : public Thunk {
       : Thunk(Thunk::kAllReduce, std::move(thunk_info)) {}
   absl::Status ExecuteOnStream(const ExecuteParams&) override {
     return absl::OkStatus();
+  }
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    return absl::UnimplementedError("TestThunk::ToProto is not implemented");
   }
 };
 

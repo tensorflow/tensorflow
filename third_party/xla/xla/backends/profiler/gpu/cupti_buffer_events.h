@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
 #include "xla/tsl/profiler/utils/buffer_pool.h"
 #include "xla/tsl/profiler/utils/lock_free_queue.h"
 #include "tsl/platform/thread_annotations.h"
@@ -338,7 +339,11 @@ class CuptiActivityBufferManager {
   struct ActivityBufferAndSize {
     std::unique_ptr<uint8_t, std::function<void(uint8_t*)>> buffer;
     size_t size;  // size in bytes for the events filled by CUPTI.
-    explicit ActivityBufferAndSize(uint8_t* p = nullptr, size_t sz = 0);
+    CUpti_SubscriberHandle subscriber;
+    bool use_v2_records;
+    explicit ActivityBufferAndSize(uint8_t* p = nullptr, size_t sz = 0,
+                                   CUpti_SubscriberHandle sub = nullptr,
+                                   bool use_v2 = false);
   };
 
   explicit CuptiActivityBufferManager(size_t buffer_size_in_bytes)
@@ -350,9 +355,11 @@ class CuptiActivityBufferManager {
 
   void ReclaimBuffer(uint8_t* p) { buffer_pool_.ReclaimBuffer(p); }
 
-  void CacheCuptiFilledActivityBuffer(uint8_t* p, size_t sz) {
+  void CacheCuptiFilledActivityBuffer(uint8_t* p, size_t sz,
+                                      CUpti_SubscriberHandle subscriber,
+                                      bool use_v2_records) {
     absl::MutexLock lock(buffer_mutex_);
-    cached_buffers_.emplace_back(p, sz);
+    cached_buffers_.emplace_back(p, sz, subscriber, use_v2_records);
   }
 
   std::list<ActivityBufferAndSize> PopCachedBuffers() {

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -72,7 +73,7 @@ absl::StatusOr<bool> CollectivesScheduleLinearizer::RunImpl(
 
       if (prev_done && !reachability->IsConnected(start, prev_done)) {
         // If prev_done and start are independent, enforce ordering.
-        TF_RETURN_IF_ERROR(prev_done->AddControlDependencyTo(next));
+        RETURN_IF_ERROR(prev_done->AddControlDependencyTo(next));
         // Adding control dependency does not update the reachability map.
         reachability->UpdateReachabilityThroughInstruction(start);
 

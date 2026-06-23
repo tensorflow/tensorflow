@@ -190,7 +190,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
         if (hasMatch_) {
           return absl::OkStatus();
         } else {
-          return errors::NotFound("Don't find any matched files");
+          return absl::NotFoundError("Don't find any matched files");
         }
       }
 
@@ -329,7 +329,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
             // we don't need to explore this path.
             if (!absl::StartsWith(child_path, fixed_prefix)) {
               children_dir_status[i] =
-                  errors::Cancelled("Operation not needed");
+                  absl::CancelledError("Operation not needed");
             } else {
               children_dir_status[i] = fs->IsDirectory(child_path);
             }

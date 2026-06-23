@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -92,14 +93,13 @@ absl::StatusOr<ScopedShapedBuffer> CreateTestBuffer(
     se::DeviceAddressAllocator* allocator, se::StreamExecutor* stream_exec,
     se::Stream* stream, int32_t value) {
   Shape test_shape = ShapeUtil::MakeShape(S32, {});
-  TF_ASSIGN_OR_RETURN(auto* transfer_manager, TransferManager::GetForPlatform(
-                                                  stream_exec->GetPlatform()));
-  TF_ASSIGN_OR_RETURN(
-      ScopedShapedBuffer output,
-      transfer_manager->AllocateScopedShapedBuffer(
-          test_shape, allocator, stream_exec->device_ordinal()));
+  ASSIGN_OR_RETURN(auto* transfer_manager,
+                   TransferManager::GetForPlatform(stream_exec->GetPlatform()));
+  ASSIGN_OR_RETURN(ScopedShapedBuffer output,
+                   transfer_manager->AllocateScopedShapedBuffer(
+                       test_shape, allocator, stream_exec->device_ordinal()));
   Literal literal = LiteralUtil::CreateR0<int32_t>(value);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       transfer_manager->TransferLiteralToDevice(stream, literal, output));
   return output;
 }
@@ -109,16 +109,16 @@ absl::StatusOr<ScopedShapedBuffer> CreateTupleTestBuffer(
     se::Stream* stream, int32_t value1, int32_t value2) {
   Shape test_shape = ShapeUtil::MakeShape(S32, {});
   Shape test_shape_tuple = ShapeUtil::MakeTupleShape({test_shape, test_shape});
-  TF_ASSIGN_OR_RETURN(auto* transfer_manager, TransferManager::GetForPlatform(
-                                                  stream_exec->GetPlatform()));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(auto* transfer_manager,
+                   TransferManager::GetForPlatform(stream_exec->GetPlatform()));
+  ASSIGN_OR_RETURN(
       ScopedShapedBuffer output,
       transfer_manager->AllocateScopedShapedBuffer(
           test_shape_tuple, allocator, stream_exec->device_ordinal()));
   Literal literal1 = LiteralUtil::CreateR0<int32_t>(value1);
   Literal literal2 = LiteralUtil::CreateR0<int32_t>(value2);
   Literal tuple_literal = LiteralUtil::MakeTuple({&literal1, &literal2});
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       transfer_manager->TransferLiteralToDevice(stream, tuple_literal, output));
   return output;
 }

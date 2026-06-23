@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/btree_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -37,6 +38,19 @@ limitations under the License.
 #include "xla/types.h"  // IWYU pragma: keep
 
 namespace xla::gpu {
+
+// A callback that is called every time a new GPU clique is created for the
+// current process. This allows process-wide observability hooks to track how
+// many GPU cliques are used for communication.
+using GpuCliqueCreatedCallback =  // NOLINT
+    absl::AnyInvocable<void(GpuClique& clique)>;
+
+// Registers a process-wide callback that is invoked once for each newly
+// constructed GPU clique, before it is inserted into the clique cache.
+// If cleanup is needed, use the TiedRef hooks provided by GpuClique::Tie to
+// attach an object whose destructor implements the corresponding on-destroy
+// behavior.
+void RegisterOnGpuCliqueCreatedCallback(GpuCliqueCreatedCallback callback);
 
 // A sorted container of acquired cliques. We keep cliques ordered by the key,
 // so that all participants are guaranteed to iterate over the cliques in the

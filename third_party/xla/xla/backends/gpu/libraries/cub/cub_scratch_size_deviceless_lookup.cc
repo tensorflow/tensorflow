@@ -19,9 +19,12 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -31,10 +34,13 @@ limitations under the License.
 #include "riegeli/zstd/zstd_reader.h"
 #include "xla/backends/gpu/libraries/cub/cub_sort_utils.h"
 #include "xla/backends/gpu/libraries/cub/embed_cub_scratch_size_lookup_table.h"
+#include "xla/backends/gpu/libraries/cub/scratch_space_lookup_table.pb.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/util/file_toc.h"
 
 namespace xla::gpu {
+using internal::LookupKey;
+using internal::ScratchSizeRecord;
 
 namespace {
 absl::StatusOr<CubScratchSizeDevicelessLookup> CreateFromBundledData() {
@@ -63,6 +69,8 @@ CubScratchSizeDevicelessLookup::CreateFromProto(
     return absl::InvalidArgumentError("No entries found in proto");
   }
 
+  absl::flat_hash_map<LookupKey, std::vector<ScratchSizeRecord>> lookup_table;
+
   for (const auto& entry : proto.entries()) {
     for (int i = 1; i < entry.scratch_size_recordings_size(); ++i) {
       if (entry.scratch_size_recordings(i).num_items() <=
@@ -71,8 +79,28 @@ CubScratchSizeDevicelessLookup::CreateFromProto(
             "scratch_size_recordings must be sorted by num_items");
       }
     }
+
+    std::vector<ScratchSizeRecord> recordings;
+    recordings.reserve(entry.scratch_size_recordings_size());
+    for (const auto& record : entry.scratch_size_recordings()) {
+      recordings.push_back({record.num_items(), record.scratch_space_bytes()});
+    }
+
+    for (const std::string& version_str : entry.cub_version()) {
+      auto cub_version_or =
+          stream_executor::SemanticVersion::ParseFromString(version_str);
+      if (!cub_version_or.ok()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Failed to parse CUB version: ", version_str));
+      }
+
+      LookupKey key{*cub_version_or, entry.device_name(), entry.key_type_size(),
+                    entry.value_type_size(), entry.is_segmented()};
+      lookup_table[key] = recordings;
+    }
   }
-  return CubScratchSizeDevicelessLookup(std::move(proto));
+
+  return CubScratchSizeDevicelessLookup(std::move(lookup_table));
 }
 
 absl::StatusOr<const CubScratchSizeDevicelessLookup&>
@@ -86,8 +114,8 @@ CubScratchSizeDevicelessLookup::GetInstance() {
 }
 
 CubScratchSizeDevicelessLookup::CubScratchSizeDevicelessLookup(
-    CubScratchSizeLookupTable proto)
-    : proto_(std::move(proto)) {}
+    absl::flat_hash_map<LookupKey, std::vector<ScratchSizeRecord>> lookup_table)
+    : lookup_table_(std::move(lookup_table)) {}
 
 namespace {
 absl::string_view StripMigSuffix(absl::string_view device_name) {
@@ -99,51 +127,36 @@ absl::string_view StripMigSuffix(absl::string_view device_name) {
 }
 }  // namespace
 
-const CubScratchSizeEntry* CubScratchSizeDevicelessLookup::FindEntry(
-    stream_executor::SemanticVersion cub_version, absl::string_view device_name,
-    int32_t key_type_size, std::optional<int32_t> value_type_size,
-    bool is_segmented) const {
-  // The scratch size doesn't actually differ between MIG and non-MIG devices,
-  // so just lookup the non-MIG device name.
-  device_name = StripMigSuffix(device_name);
-
-  for (const CubScratchSizeEntry& entry : proto_.entries()) {
-    bool version_matched =
-        std::find(entry.cub_version().begin(), entry.cub_version().end(),
-                  cub_version.ToString()) != entry.cub_version().end();
-
-    if (version_matched && entry.device_name() == device_name &&
-        entry.key_type_size() == key_type_size &&
-        entry.value_type_size() == value_type_size.value_or(0) &&
-        entry.is_segmented() == is_segmented) {
-      return &entry;
-    }
-  }
-  return nullptr;
-}
-
 std::optional<int64_t> CubScratchSizeDevicelessLookup::Lookup(
     stream_executor::SemanticVersion cub_version, absl::string_view device_name,
     int32_t key_type_size, std::optional<int32_t> value_type_size,
     int64_t num_items, int64_t batch_size) const {
-  const CubScratchSizeEntry* entry =
-      FindEntry(cub_version, device_name, key_type_size, value_type_size,
-                /*is_segmented=*/batch_size > 1);
-  if (entry == nullptr) {
+  // The scratch size doesn't actually differ between MIG and non-MIG devices,
+  // so just lookup the non-MIG device name.
+  device_name = StripMigSuffix(device_name);
+
+  LookupKey key{cub_version, std::string(device_name), key_type_size,
+                value_type_size.value_or(0),
+                /*is_segmented=*/batch_size > 1};
+
+  auto it = lookup_table_.find(key);
+  if (it == lookup_table_.end()) {
     return std::nullopt;
   }
 
-  auto it = std::lower_bound(
-      entry->scratch_size_recordings().begin(),
-      entry->scratch_size_recordings().end(), num_items,
-      [](const CubScratchSizeEntry::ScratchSizeRecord& record,
-         int64_t num_items) { return record.num_items() < num_items; });
+  const std::vector<ScratchSizeRecord>& recordings = it->second;
 
-  if (it == entry->scratch_size_recordings().end()) {
+  auto rec_it =
+      std::lower_bound(recordings.begin(), recordings.end(), num_items,
+                       [](const ScratchSizeRecord& record, int64_t num_items) {
+                         return record.num_items < num_items;
+                       });
+
+  if (rec_it == recordings.end()) {
     return std::nullopt;
   }
 
-  return AddSegmentedSortOffsetsToScratchSize(it->scratch_space_bytes(),
+  return AddSegmentedSortOffsetsToScratchSize(rec_it->scratch_space_bytes,
                                               batch_size);
 }
 
@@ -151,15 +164,17 @@ bool CubScratchSizeDevicelessLookup::CanLookup(
     stream_executor::SemanticVersion cub_version, absl::string_view device_name,
     int32_t key_type_size, std::optional<int32_t> value_type_size,
     int64_t num_items, int64_t batch_size) const {
-  const CubScratchSizeEntry* entry = FindEntry(
-      cub_version, device_name, key_type_size, value_type_size, batch_size > 1);
-  if (entry == nullptr || entry->scratch_size_recordings().empty()) {
+  device_name = StripMigSuffix(device_name);
+
+  LookupKey key{cub_version, std::string(device_name), key_type_size,
+                value_type_size.value_or(0), batch_size > 1};
+
+  auto it = lookup_table_.find(key);
+  if (it == lookup_table_.end() || it->second.empty()) {
     return false;
   }
 
-  return entry->scratch_size_recordings()
-             .Get(entry->scratch_size_recordings().size() - 1)
-             .num_items() >= num_items;
+  return it->second.back().num_items >= num_items;
 }
 
 }  // namespace xla::gpu

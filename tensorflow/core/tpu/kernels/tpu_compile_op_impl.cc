@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/statusor.h"

@@ -548,7 +548,7 @@ func.func @invalid_merge(%arg0: tensor<*xi32>, %arg1: i32) -> tensor<*xi32> {
 func.func @invalid_merge(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> i32 {
   %result = tf_executor.graph {
     %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<*xi32>, tensor<i32>) -> (i32, tensor<i32>, !tf_executor.control)
-// expected-error@-1 {{'tf_executor.Merge' op result #0 must be tensor of any type values, but got 'i32'}}
+// expected-error@-1 {{'tf_executor.Merge' op result #0 must be tensor of any non-token type values, but got 'i32'}}
     tf_executor.fetch %value : i32
   }
   func.return %result : i32

@@ -122,6 +122,7 @@ namespace xla {
   V(kMap, "map", kHloOpcodeIsVariadic)                                         \
   V(kMaximum, "maximum", 2)                                                    \
   V(kMinimum, "minimum", 2)                                                    \
+  V(kMulhi, "mulhi", 2)                                                        \
   V(kMultiply, "multiply", 2)                                                  \
   V(kNegate, "negate", 1)                                                      \
   V(kNot, "not", 1)                                                            \
@@ -224,6 +225,7 @@ inline bool HloOpcodeIsBinaryCommutative(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kAdd:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kAnd:

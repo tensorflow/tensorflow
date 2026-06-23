@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -240,10 +241,6 @@ bool IfrtCallOpInfo::isEqual(CallOp lhs, CallOp rhs) {
   if (lhs == rhs) {
     return true;
   }
-  if (lhs == getEmptyKey() || lhs == getTombstoneKey() ||
-      rhs == getEmptyKey() || rhs == getTombstoneKey()) {
-    return false;
-  }
   // Verify that the input and output types are the same.
   if (lhs.getInputs().getTypes() != rhs.getInputs().getTypes()) {
     return false;
@@ -282,6 +279,9 @@ void UpdateFunctionType(mlir::func::FuncOp func_op) {
 }
 
 absl::StatusOr<DType> ToIfrtDType(mlir::Type type) {
+  if (llvm::isa<IfrtTokenType>(type)) {
+    return ToDType(xla::PrimitiveType::TOKEN);
+  }
   xla::PrimitiveType primitive_type = xla::ConvertMlirTypeToPrimitiveType(type);
   return ToDType(primitive_type);
 }
@@ -378,13 +378,13 @@ absl::StatusOr<ShardingRef> ShardingFromIfrtArrayType(
       TF_RET_CHECK(devices[logical_id] != nullptr);
       array_devices.push_back(devices[logical_id]);
     }
-    TF_ASSIGN_OR_RETURN(array_device_list,
-                        client->MakeDeviceList(std::move(array_devices)));
+    ASSIGN_OR_RETURN(array_device_list,
+                     client->MakeDeviceList(std::move(array_devices)));
   }
 
   IfrtShardingParamAttr sharding_attr = GetShardingParamAttr(array_type);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       xla::HloSharding hlo_sharding,
       xla::ifrt::support::ToHloSharding(sharding_attr.getSharding()));
   return xla::ifrt::HloSharding::Create(std::move(array_device_list),
@@ -396,10 +396,10 @@ absl::StatusOr<ArraySpec> ArraySpecFromMlirType(
     mlir::Type array_type, Client* client, const DeviceListRef& device_list) {
   IfrtArrayType ifrt_array_type = GetArrayType(array_type);
 
-  TF_ASSIGN_OR_RETURN(DType dtype,
-                      ToIfrtDType(ifrt_array_type.getShape().getElementType()));
+  ASSIGN_OR_RETURN(DType dtype,
+                   ToIfrtDType(ifrt_array_type.getShape().getElementType()));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ShardingRef sharding,
       ShardingFromIfrtArrayType(ifrt_array_type, client, device_list));
   return ArraySpec{

@@ -24,7 +24,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "rocm/include/hip/hip_runtime.h"
+#include "rocm/include/rocprofiler-sdk/context.h"
+#include "rocm/include/rocprofiler-sdk/fwd.h"
 #include "xla/backends/profiler/gpu/rocm_collector.h"
 #include "xla/backends/profiler/gpu/rocm_tracer_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -247,6 +251,90 @@ TEST(RocmTracerTest, CapturesHipEvents) {
 
   EXPECT_GT(collector_ptr->event_count(), 0)
       << "Expected to capture at least one trace event";
+}
+
+// Regression guards: Disable() must stop the rocprofiler context it started
+// in Enable(). Otherwise the buffer keeps collecting events between sessions
+// and the next Enable()'s collector receives stale events.
+
+TEST(RocmTracerTest, DisableStopsRocprofilerContext) {
+  RocmTracer& tracer = RocmTracer::GetRocmTracerSingleton();
+  ASSERT_TRUE(tracer.IsAvailable());
+
+  auto collector = CreateTestCollector();
+  RocmTracerOptions tracer_options{/*max_annotation_strings=*/128};
+  TF_ASSERT_OK(tracer.Enable(tracer_options, collector.get()));
+
+  int active = -1;
+  ASSERT_EQ(rocprofiler_context_is_active(tracer.context_, &active),
+            ROCPROFILER_STATUS_SUCCESS);
+  EXPECT_NE(active, 0) << "Context should be active after Enable()";
+
+  tracer.Disable();
+
+  active = -1;
+  ASSERT_EQ(rocprofiler_context_is_active(tracer.context_, &active),
+            ROCPROFILER_STATUS_SUCCESS);
+  EXPECT_EQ(active, 0)
+      << "Disable() should call rocprofiler_stop_context(context_)";
+}
+
+TEST(RocmTracerTest, DisableIsolatesNextSession) {
+  int device_count = 0;
+  ASSERT_EQ(hipGetDeviceCount(&device_count), hipSuccess);
+  ASSERT_GT(device_count, 0) << "No HIP devices available";
+
+  RocmTracer& tracer = RocmTracer::GetRocmTracerSingleton();
+  ASSERT_TRUE(tracer.IsAvailable());
+
+  RocmTracerOptions tracer_options{/*max_annotation_strings=*/1024 * 1024};
+  constexpr size_t kNumFloats = 1024;
+  constexpr size_t kSize = kNumFloats * sizeof(float);
+  std::vector<float> host_data(kNumFloats, 1.0f);
+  void* device_data = nullptr;
+  ASSERT_EQ(hipMalloc(&device_data, kSize), hipSuccess);
+
+  // Session 1: minimal Enable -> Disable to put the rocprofiler context
+  // into the post-Disable state. The 100 ms sleep before Disable lets the
+  // async HIP_OPS activity record land in the buffer in time for the flush.
+  auto collector1 = CreateEventCapturingCollector();
+  TF_ASSERT_OK(tracer.Enable(tracer_options, collector1.get()));
+  ASSERT_EQ(
+      hipMemcpy(device_data, host_data.data(), kSize, hipMemcpyHostToDevice),
+      hipSuccess);
+  ASSERT_EQ(hipDeviceSynchronize(), hipSuccess);
+  absl::SleepFor(absl::Milliseconds(100));
+  tracer.Disable();
+  ASSERT_GT(collector1->event_count(), 0)
+      << "Sanity: profiler should capture events during a normal session";
+
+  // No profiler. If Disable() stopped the context correctly, these HIP calls
+  // must not be recorded into the rocprofiler-owned buffer.
+  constexpr int kLeakedPairs = 50;
+  for (int i = 0; i < kLeakedPairs; ++i) {
+    ASSERT_EQ(
+        hipMemcpy(device_data, host_data.data(), kSize, hipMemcpyHostToDevice),
+        hipSuccess);
+    ASSERT_EQ(
+        hipMemcpy(host_data.data(), device_data, kSize, hipMemcpyDeviceToHost),
+        hipSuccess);
+  }
+  ASSERT_EQ(hipDeviceSynchronize(), hipSuccess);
+
+  // Session 2: Enable -> Disable with no user HIP activity. With the fix
+  // the buffer is empty here so collector2 receives zero events; with the
+  // bug, leaked-window events drain into collector2.
+  auto collector2 = CreateEventCapturingCollector();
+  TF_ASSERT_OK(tracer.Enable(tracer_options, collector2.get()));
+  tracer.Disable();
+
+  ASSERT_EQ(hipFree(device_data), hipSuccess);
+
+  EXPECT_EQ(collector2->event_count(), 0)
+      << "Session 2 captured " << collector2->event_count()
+      << " events despite no HIP activity between its Enable() and Disable();"
+      << " these must have leaked from the preceding no-profiler window of "
+      << kLeakedPairs << " hipMemcpy pairs";
 }
 
 }  // namespace

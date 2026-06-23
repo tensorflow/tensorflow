@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
@@ -119,7 +120,6 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/dump.h"
@@ -215,8 +215,8 @@ static std::unique_ptr<::mlir::Pass> CreateConvertMathToLLVMPass() {
 // their LLVM equivalent.
 static void AddGenericLoweringPasses(mlir::OpPassManager& pm,
                                      bool fast_min_max) {
-  pm.addNestedPass<mlir::func::FuncOp>(
-      emitters::CreateSimplifyArithPass(fast_min_max));
+  pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateSimplifyArithPass(
+      fast_min_max, /*explicit_nan_propagation=*/false));
   pm.addPass(emitters::CreateExpandIntegerPowerPass());
   pm.addPass(emitters::CreateSimplifyAffinePass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -514,7 +514,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
     pm.printAsTextualPipeline(log_stream);
     log_stream.write("\n\n", 2);
   }
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       RunPassPipeline(mlir_module, pm, nullptr, options_.verification_level));
 
   if (should_dump_mlir_passes) {
@@ -577,8 +577,8 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
 absl::StatusOr<LlvmKernelSource> FusionCompiler::Compile(
     MlirKernelSource mlir_kernel_source) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
-                      Compile(*llvm_context, mlir_kernel_source.module()));
+  ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
+                   Compile(*llvm_context, mlir_kernel_source.module()));
   return LlvmKernelSource(std::move(llvm_context), std::move(llvm_module));
 }
 
@@ -592,7 +592,6 @@ std::unique_ptr<mlir::MLIRContext> FusionCompiler::CreateContext() {
 
   context->appendDialectRegistry(CreateDialectRegistry());
   context->loadAllAvailableDialects();
-  RegisterSymbolicExprStorage(context.get());
 
   return context;
 }

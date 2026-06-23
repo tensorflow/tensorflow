@@ -18,6 +18,7 @@ cc_library(
     deps = [
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
+        "//xla/tsl/profiler/utils:traceme_global_flags",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:thread_annotations",
@@ -48,6 +49,7 @@ cc_library(
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:lock_free_queue",
         "//xla/tsl/profiler/utils:per_thread",
+        "//xla/tsl/profiler/utils:traceme_global_flags",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
     alwayslink = True,
@@ -62,14 +64,15 @@ tsl_cc_test(
         "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:math_utils",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/profiler/utils:time_utils_impl",
+        "//xla/tsl/profiler/utils:traceme_global_flags",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 

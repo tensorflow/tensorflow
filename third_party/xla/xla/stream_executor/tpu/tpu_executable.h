@@ -31,9 +31,9 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_executable_interface.h"
-#include "xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/tpu_executor_c_api.h"
 
 namespace xla::legacy {
 

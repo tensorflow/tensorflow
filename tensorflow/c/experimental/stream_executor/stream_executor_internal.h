@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -202,9 +203,20 @@ class CStream : public StreamCommon {
     Destroy();
   }
 
-  absl::Status Create() {
+  absl::Status Create(SP_StreamOptions* options) {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
-    stream_executor_->create_stream(device_, &stream_handle_, c_status.get());
+    if (stream_executor_->struct_size >=
+            TF_OFFSET_OF_END(SP_StreamExecutor, create_stream_with_options) &&
+        stream_executor_->create_stream_with_options != nullptr) {
+      stream_executor_->create_stream_with_options(
+          device_, options, &stream_handle_, c_status.get());
+    } else if (options != nullptr && options->has_priority) {
+      return absl::InvalidArgumentError(
+          "Stream executor does not implement `create_stream_with_options`, "
+          "priority is not supported.");
+    } else {
+      stream_executor_->create_stream(device_, &stream_handle_, c_status.get());
+    }
     return tensorflow::StatusFromTF_Status(c_status.get());
   }
 

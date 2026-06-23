@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 
 #include <array>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -28,7 +27,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -351,11 +349,13 @@ absl::Status VerifyCallbackArguments(int my_attribute,
                                      xla::gpu::TestState* state) {
   EXPECT_EQ(my_attribute, 42);
   EXPECT_EQ(my_operand.element_type(), xla::PrimitiveType::U8);
-  EXPECT_EQ(my_operand.device_memory().opaque(),
-            absl::bit_cast<void*>(static_cast<intptr_t>(0xDEADBEEF)));
+  EXPECT_EQ(
+      reinterpret_cast<std::uintptr_t>(my_operand.device_memory().opaque()),
+      static_cast<std::uintptr_t>(0xDEADBEEF));
   EXPECT_EQ(my_result->element_type(), xla::PrimitiveType::U16);
-  EXPECT_EQ(my_result->device_memory().opaque(),
-            absl::bit_cast<void*>(static_cast<intptr_t>(0xABCDEF)));
+  EXPECT_EQ(
+      reinterpret_cast<std::uintptr_t>(my_result->device_memory().opaque()),
+      static_cast<std::uintptr_t>(0xABCDEF));
   EXPECT_EQ(called_computation->name(), "test_computation");
   EXPECT_EQ(state->value, "some state");
   return absl::OkStatus();

@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -65,6 +66,7 @@ TEST_F(KernelReuseTest, ExportAndLoadWork) {
                     launch_dimensions { num_blocks: 1 num_threads_per_block: 1 }
                   }
                 }
+                compatibility_version: 3
               )pb"));
 
   TF_EXPECT_OK(cache.Load(proto));
@@ -89,25 +91,25 @@ TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
     const CompilationCacheProto proto = [](std::string kernel_name) {
       KernelReuseCache cache;
       auto [result, was_cached] = cache.GetWithStatus("fingerprint", [&]() {
-        return KernelReuseCache::Entry{.kernel_name = kernel_name};
+        return KernelReuseCache::Entry{.kernel_name = kernel_name,
+                                       .binary = {5, 6}};
       });
       return cache.Export();
     }("k1");
-    TF_EXPECT_OK(UpdateDiskKernelCache(cache_file_path, /*do_append=*/false,
-                                       proto,
-                                       {{.name = "k1", .binary = {5, 6}}}));
+    TF_EXPECT_OK(
+        UpdateDiskKernelCache(cache_file_path, /*do_append=*/false, proto));
   }
   {
     const CompilationCacheProto proto = [](std::string kernel_name) {
       KernelReuseCache cache;
-      auto [result, was_cached] = cache.GetWithStatus("fingerprint", [&]() {
-        return KernelReuseCache::Entry{.kernel_name = kernel_name};
+      auto [result, was_cached] = cache.GetWithStatus("fingerprint1", [&]() {
+        return KernelReuseCache::Entry{.kernel_name = kernel_name,
+                                       .binary = {7, 8}};
       });
       return cache.Export();
     }("k2");
-    TF_EXPECT_OK(UpdateDiskKernelCache(cache_file_path, /*do_append=*/true,
-                                       proto,
-                                       {{.name = "k2", .binary = {7, 8}}}));
+    TF_EXPECT_OK(
+        UpdateDiskKernelCache(cache_file_path, /*do_append=*/true, proto));
   }
   std::string serialized;
   TF_EXPECT_OK(

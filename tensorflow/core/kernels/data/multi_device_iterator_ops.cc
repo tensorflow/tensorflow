@@ -13,11 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -32,8 +39,11 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -225,6 +235,13 @@ class MultiDeviceIterator : public ResourceBase {
                           int64_t incarnation_id,
                           MultiDeviceIteratorCallback callback) {
       HostBufferElement elem;
+      if (shard_num < 0 || shard_num >= buffer_.size()) {
+        elem.status = absl::InvalidArgumentError(
+            absl::StrCat("Invalid shard_num. Provided: ", shard_num,
+                         "; Expected 0 <= shard_num < buffer_.size();"));
+        callback(elem);
+        return;
+      }
       if (incarnation_id_ != incarnation_id) {
         elem.status = absl::InvalidArgumentError(
             absl::StrCat("Invalid incarnation id. Provided: ", incarnation_id,
@@ -657,8 +674,9 @@ class MultiDeviceIteratorInitOp : public OpKernel {
     DatasetBase* dataset;
     OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
     core::RefCountPtr<MultiDeviceIterator> resource;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 1), &resource));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 1, &handle));
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &resource));
 
     IteratorContext::Params params(ctx);
     params.flr = resource->flr();
@@ -713,8 +731,9 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
     int64_t incarnation_id = tensor_incarnation_id->scalar<int64_t>()();
 
     MultiDeviceIterator* iterator;
-    OP_REQUIRES_OK_ASYNC(
-        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
+    ResourceHandle handle;
+    OP_REQUIRES_OK_ASYNC(ctx, HandleFromInput(ctx, 0, &handle), done);
+    OP_REQUIRES_OK_ASYNC(ctx, LookupResource(ctx, handle, &iterator), done);
 
     background_worker_.Schedule(std::bind(
         [ctx, iterator, shard_num, incarnation_id](DoneCallback done) {
@@ -774,8 +793,9 @@ class MultiDeviceIteratorToStringHandleOp : public OpKernel {
     // Validate that the handle corresponds to a real resource, and
     // that it is an MultiDeviceIterator.
     core::RefCountPtr<MultiDeviceIterator> resource;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &resource));
 
     Tensor* string_handle_t;
     OP_REQUIRES_OK(ctx,

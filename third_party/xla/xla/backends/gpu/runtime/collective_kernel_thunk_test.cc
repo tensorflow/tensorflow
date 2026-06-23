@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
@@ -66,10 +67,10 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -232,14 +233,14 @@ absl::StatusOr<std::vector<uint8_t>> CompilePtxToCubin(
     const DebugOptions& debug_options) {
   se::cuda::CompilationProviderOptions options =
       se::cuda::CompilationProviderOptions::FromDebugOptions(debug_options);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<se::cuda::CompilationProvider> compilation_provider,
       se::cuda::AssembleCompilationProvider(options));
   se::CudaComputeCapability cc =
       *device_description.gpu_compute_capability().cuda_compute_capability();
   se::cuda::CompilationOptions compilation_options =
       PtxCompileOptionsFromDebugOptions(debug_options);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       se::cuda::Assembly assembly,
       compilation_provider->Compile(cc, ptx_string, compilation_options));
   return std::move(assembly.cubin);
@@ -255,7 +256,7 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
       std::make_pair(LocalDeviceId(0), GlobalDeviceId(0)),
       std::make_pair(LocalDeviceId(1), GlobalDeviceId(1))});
 
-  TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+  ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
   ServiceExecutableRunOptions run_options;
   run_options.mutable_run_options()->set_stream(stream.get());
   DeviceAssignment device_assignment(/*replica_count=*/metadata.num_devices,
@@ -269,7 +270,7 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
   run_options.mutable_run_options()->set_gpu_executable_run_options(
       &gpu_options);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       CollectiveParams collective_params,
       CollectiveParams::Create(run_options, /*async_streams=*/{},
                                LocalDeviceId(executor->device_ordinal())));
@@ -293,9 +294,9 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
 
   if (!input_data.empty()) {
     VLOG(3) << "Copying input data to the device";
-    TF_RETURN_IF_ERROR(stream->Memcpy(&input_buffer, input_data.data(),
-                                      metadata.input_data_size_bytes));
-    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    RETURN_IF_ERROR(stream->Memcpy(&input_buffer, input_data.data(),
+                                   metadata.input_data_size_bytes));
+    RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
 
   CollectiveCliqueRequests clique_requests;
@@ -305,7 +306,7 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
     all_replica_groups.add_replica_ids(i);
   }
   // Request a clique that covers all devices (this test runs on 2 gpus).
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       xla::gpu::GetGpuCliqueKey(
           collective_params, {all_replica_groups},
@@ -314,7 +315,7 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
   for (int i = 0; i < metadata.num_devices; ++i) {
     all_device_groups.push_back(GlobalDeviceId(i));
   }
-  TF_RETURN_IF_ERROR(clique_requests.RequestClique(
+  RETURN_IF_ERROR(clique_requests.RequestClique(
       clique_key, /*device_groups=*/{all_device_groups}));
   CollectiveMemoryRequests memory_requests(buffer_allocations);
   ScratchMemoryRequests scratch_memory_requests;
@@ -322,13 +323,12 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
       &collective_params,       &clique_requests, &memory_requests,
       &scratch_memory_requests, executor,         &buffer_allocations};
 
-  TF_RETURN_IF_ERROR(metadata.thunk->Prepare(prepare_params));
+  RETURN_IF_ERROR(metadata.thunk->Prepare(prepare_params));
   CollectiveMemoryCache collective_memory_cache;
   CollectiveCliques collective_cliques;
-  TF_ASSIGN_OR_RETURN(
-      collective_cliques,
-      AcquireCollectiveCliques(collective_params, clique_requests));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(collective_cliques, AcquireCollectiveCliques(
+                                           collective_params, clique_requests));
+  ASSIGN_OR_RETURN(
       CollectiveMemory collective_memory,
       AcquireCollectiveMemory(collective_params, collective_cliques,
                               memory_requests, collective_memory_cache));
@@ -350,19 +350,18 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
 
   std::vector<uint8_t> cubin;
   if (!metadata.use_ptx) {
-    TF_ASSIGN_OR_RETURN(
-        cubin,
-        CompilePtxToCubin(kKernelSource, executor->GetDeviceDescription(),
-                          DebugOptions()));
+    ASSIGN_OR_RETURN(cubin, CompilePtxToCubin(kKernelSource,
+                                              executor->GetDeviceDescription(),
+                                              DebugOptions()));
     initialize_params.src.binary = cubin;
   }
-  TF_RETURN_IF_ERROR(metadata.thunk->Initialize(initialize_params));
+  RETURN_IF_ERROR(metadata.thunk->Initialize(initialize_params));
 
   auto execute_params = Thunk::ExecuteParams::Create(
       run_options, buffer_allocations, stream.get(),
       /*command_buffer_trace_stream=*/nullptr, &collective_params,
       /*collective_cliques=*/nullptr, /*collective_memory=*/&collective_memory);
-  TF_RETURN_IF_ERROR(metadata.thunk->ExecuteOnStream(execute_params));
+  RETURN_IF_ERROR(metadata.thunk->ExecuteOnStream(execute_params));
   return output_buffer;
 }
 

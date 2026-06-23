@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/SymbolTable.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -137,6 +138,10 @@ mlir::NamedAttribute ConvertSourceTargetPairs(
     mlir::Builder* builder);
 
 mlir::NamedAttribute ConvertUseGlobalDeviceIds(mlir::Builder* builder);
+
+// Converts the original value to an MLIR attribute.
+mlir::mhlo::OriginalValueAttr ConvertOriginalValue(
+    const xla::OriginalValue& original_value, mlir::Builder* builder);
 
 // Extracts layouts from shapes and converts it into layout attributes (array of
 // rank-1 index tensors). Returns an error if any of the shapes is a tuple.

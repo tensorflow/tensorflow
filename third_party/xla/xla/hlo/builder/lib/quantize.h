@@ -21,6 +21,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/types.h"
@@ -90,7 +91,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
                std::numeric_limits<T>::min() + 1) /
                   2.0f;
     const int64_t unpack_size = sizeof(uint32_t) / sizeof(T);
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(input));
+    ASSIGN_OR_RETURN(Shape shape, builder->GetShape(input));
 
     auto element_type = shape.element_type();
     if (element_type != U32) {

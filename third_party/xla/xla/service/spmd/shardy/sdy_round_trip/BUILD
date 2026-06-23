@@ -127,6 +127,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@shardy//shardy/dialect/sdy/transforms/common:sharding_walker",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -144,6 +145,7 @@ cc_library(
         ":shard_map_import",
         "//xla/mlir_hlo:stablehlo_extension_passes",
         "//xla/service:hlo_proto_cc",
+        "//xla/service/spmd/shardy:utils",
         "//xla/service/spmd/shardy/round_trip_common:import_constants",
         "//xla/service/spmd/shardy/round_trip_common:import_sdy_custom_calls",
         "//xla/service/spmd/shardy/round_trip_common:open_while_free_vars_sharding",
@@ -154,6 +156,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@shardy//shardy/dialect/sdy/transforms/export:passes",
         "@shardy//shardy/dialect/sdy/transforms/import:passes",
     ],
 )

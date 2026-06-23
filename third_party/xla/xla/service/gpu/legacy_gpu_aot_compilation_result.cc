@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -36,8 +35,8 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -45,14 +44,16 @@ namespace gpu {
 
 absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
 LegacyGpuAotCompilationResult::FromModule(
-    const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-    absl::string_view asm_text, absl::Span<const uint8_t> binary,
-    const BinaryMap& dnn_compiled_graphs, int pointer_size,
-    Compiler* compiler) {
+    const HloModule* hlo_module, BufferAssignmentProto buffer_assignment_proto,
+    std::string buffer_allocations_debug_summary, absl::string_view asm_text,
+    absl::Span<const uint8_t> binary, const BinaryMap& dnn_compiled_graphs,
+    int pointer_size, Compiler* compiler) {
   tsl::profiler::TraceMe traceme("ResultFromModule");
   GpuExecutableProto proto;
   *proto.mutable_hlo_module_with_config() = hlo_module->ToProtoWithConfig();
-  *proto.mutable_buffer_assignment() = buffer_assignment->ToProto();
+  *proto.mutable_buffer_assignment() = std::move(buffer_assignment_proto);
+  proto.set_buffer_allocations_debug_summary(
+      std::move(buffer_allocations_debug_summary));
   proto.set_asm_text(asm_text);
   proto.set_binary(binary.data(), binary.size());
   proto.mutable_dnn_compiled_graphs()->insert(dnn_compiled_graphs.cbegin(),
@@ -80,7 +81,7 @@ absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
 LegacyGpuAotCompilationResult::FromProto(const GpuExecutableProto& proto,
                                          int pointer_size, Compiler* compiler) {
   tsl::profiler::TraceMe traceme("ResultFromProto");
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProtoWithConfig(proto.hlo_module_with_config()));
   return std::unique_ptr<LegacyGpuAotCompilationResult>(
@@ -101,8 +102,10 @@ absl::StatusOr<std::string> LegacyGpuAotCompilationResult::SerializeAsString()
 absl::StatusOr<std::unique_ptr<Executable>>
 LegacyGpuAotCompilationResult::LoadExecutable(
     se::Platform::Id platform_id,
-    const se::DeviceDescription& device_description) && {
-  return compiler_->LoadExecutableFromAotResult(*this, device_description);
+    const se::DeviceDescription& device_description,
+    const DebugOptions& debug_options) && {
+  return compiler_->LoadExecutableFromLegacyAotResult(*this,
+                                                      device_description);
 }
 
 absl::StatusOr<CompiledMemoryStats>

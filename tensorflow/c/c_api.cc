@@ -298,7 +298,7 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
     mutex_lock session_lock(session->mu);
     const Graph& graph = session->graph->graph;
 
-    const string& mutation_warning = session->graph->sessions[session];
+    const std::string& mutation_warning = session->graph->sessions[session];
     if (!mutation_warning.empty()) {
       // TODO(b/74949947): turn this back into an error status
       LOG(WARNING) << mutation_warning;
@@ -1855,6 +1855,7 @@ void TF_GraphImportGraphDefWithReturnOutputs(
   TF_ImportGraphDefResults results;
   mutex_lock l(graph->mu);
   GraphImportGraphDefLocked(graph, def, options, &results, status);
+  if (!status->status.ok()) return;
   DCHECK_EQ(results.return_tensors.size(), num_return_outputs);
   memcpy(return_outputs, results.return_tensors.data(),
          num_return_outputs * sizeof(TF_Output));

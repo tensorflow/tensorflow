@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_clique_key.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/collectives/gloo_kv_store.h"
@@ -77,7 +78,7 @@ absl::StatusOr<std::unique_ptr<Communicator>> GetCommunicator(
   CpuCliqueKey clique_key(global_devices);
   CpuCollectives::DeviceRank device_rank(nullptr, RankId(rank));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto communicators,
       collectives->CreateCommunicators(clique_key, std::nullopt, {device_rank},
                                        CpuCollectives::Config()));
@@ -105,7 +106,7 @@ absl::StatusOr<std::vector<uint8_t>> AllReduce(
     std::vector<GlobalDeviceId> global_devices, int rank) {
   std::vector<uint8_t> output_buffer(kBufferSize);
   RendezvousKey rendezvous_key = MakeRendezvousKey(global_devices);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto communicator,
       GetCommunicator(kNumParticipants, global_devices, kv_store, rank));
 
@@ -114,7 +115,7 @@ absl::StatusOr<std::vector<uint8_t>> AllReduce(
       AsDeviceMemory(input_buffer), AsDeviceMemory(output_buffer),
       xla::PrimitiveType::U8, kBufferSize, xla::ReductionKind::SUM, executor);
 
-  TF_RETURN_IF_ERROR(event.Await());
+  RETURN_IF_ERROR(event.Await());
 
   return output_buffer;
 }

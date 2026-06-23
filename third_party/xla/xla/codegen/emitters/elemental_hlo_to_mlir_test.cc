@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -111,14 +112,14 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
     auto& entry_pc =
         partitioned_computations.FindPartitionedComputation(entry_computation);
     auto call_targets = partitioned_computations.CreateCallTargetProvider(fns);
-    TF_RETURN_IF_ERROR(
-        SubgraphToMlirFunction(entry_pc, entry_pc.GetRootSubgraph(), entry_func,
-                               call_targets, &mlir_context_));
+    RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, entry_pc.GetRootSubgraph(),
+                                           entry_func, call_targets,
+                                           &mlir_context_));
 
     if (!partitioned_computations.epilogues().empty()) {
       const auto& epilogue = partitioned_computations.epilogues().front();
-      TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
-          entry_pc, epilogue, fns[&epilogue], call_targets, &mlir_context_));
+      RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, epilogue, fns[&epilogue],
+                                             call_targets, &mlir_context_));
     }
 
     // Canonicalize and CSE for better readability of check tests.
@@ -131,8 +132,7 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
     llvm::raw_string_ostream stream(out);
     stream << module.get();
 
-    TF_ASSIGN_OR_RETURN(auto filecheck_result,
-                        RunFileCheck(out, filecheck_str));
+    ASSIGN_OR_RETURN(auto filecheck_result, RunFileCheck(out, filecheck_str));
     TF_RET_CHECK(filecheck_result);
     return absl::OkStatus();
   }
@@ -300,7 +300,7 @@ TEST_F(ElementalHloToMlirTest, ReduceWindowWithRescaling) {
     // due to the base dilation of 2 and the applied symbol rescaling:
     // CHECK:      scf.for %[[I:.*]] = %[[C0]] to %[[C4]] step %[[C1]]
     // If symbol rescaling wasn't working we would have a
-    // `d1 floordiv <base_dilation>` in the map:
+    // `d1 / <base_dilation>` in the map:
     // CHECK:      %[[K:.*]] = xla.apply_indexing
     // CHECK-SAME:   #xla.indexing_map<"(d0, d1) -> (d0 * 2 + d1),
     // CHECK-SAME:   d0 in [0, 18], d1 in [0, 3]">(%[[X]], %[[I]])
@@ -496,7 +496,7 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4
     // CHECK-DAG:    %[[C7:.*]] = arith.constant 7
     // CHECK:        %[[CONSTRAINT_VAL:.*]] = xla.apply_indexing
-    // CHECK-SAME:     <"(d0) -> ((d0 - 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:     <"(d0) -> ((d0 + 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
     // CHECK:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
     // CHECK:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
@@ -508,7 +508,7 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
     // CHECK:          %[[IN0:.*]] = xla.apply_indexing
-    // CHECK-SAME:         <"(d0) -> ((d0 - 1) floordiv 2), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:         <"(d0) -> ((d0 - 1) / 2), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:          %[[IN1:.*]] = xla.apply_indexing
     // CHECK-SAME:         <"(d0) -> (d0 - 4), domain: d0 in [4, 7]">(%[[Y]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
@@ -538,7 +538,7 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4
     // CHECK-DAG:    %[[C7:.*]] = arith.constant 7
     // CHECK:        %[[CONSTRAINT_VAL:.*]] = xla.apply_indexing
-    // CHECK-SAME:     <"(d0) -> ((d0 - 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:     <"(d0) -> ((d0 + 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
     // CHECK:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
     // CHECK:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
@@ -550,7 +550,7 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
     // CHECK:          %[[IN0:.*]] = xla.apply_indexing
-    // CHECK-SAME:         <"(d0) -> ((d0 - 1) floordiv 2), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:         <"(d0) -> ((d0 - 1) / 2), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:          %[[IN1:.*]] = xla.apply_indexing
     // CHECK-SAME:         <"(d0) -> (d0 - 4), domain: d0 in [4, 7]">(%[[Y]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
@@ -1022,10 +1022,10 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithLhsDilation) {
     // CHECK-DAG:  %[[TY:.+]] = arith.cmpi eq, %[[TESTY]], %[[C0]] : index
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
     // CHECK:        %[[XX0:.+]] = xla.apply_indexing
-    // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> ((d0 + d1) floordiv 2),
+    // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> ((d0 + d1) / 2),
     // CHECK-SAME:     d0 in [0, 12], d1 in [0, 2]">(%[[W]], %[[X]])
     // CHECK:        %[[XX1:.+]] = xla.apply_indexing
-    // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> ((d0 + d1) floordiv 2),
+    // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> ((d0 + d1) / 2),
     // CHECK-SAME:     d0 in [0, 18], d1 in [0, 4]">(%[[H]], %[[Y]])
     // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
@@ -1120,7 +1120,7 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithFeatureGroupCount) {
     // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> (d0 + d1),
     // CHECK-SAME:     d0 in [0, 7], d1 in [0, 4]">(%[[H]], %[[Y]])
     // CHECK:        %[[XX2:.+]] = xla.apply_indexing
-    // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> ((d0 floordiv 8) * 2 + d1),
+    // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> ((d0 / 8) * 2 + d1),
     // CHECK-SAME:     d0 in [0, 15], d1 in [0, 1]">(%[[O]], %[[I]])
     // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[XX2]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<2x3x5x16xf32>

@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 
@@ -48,6 +49,10 @@ class HloPjRtGpuTestBase : public HloRunnerAgnosticTestBase,
   }
 
   Compiler* compiler() const override { return compiler_.get(); }
+
+  se::Platform::Id stream_executor_platform_id() const {
+    return compiler()->PlatformId();
+  }
 
  private:
   HloPjRtGpuTestBase(PjRtClient* client, HloPjRtTestBaseOptions options);

@@ -22,16 +22,6 @@ gentbl_cc_library(
     ],
 )
 
-gentbl_cc_library(
-    name = "tensorflow_reduce_patterns_inc_gen",
-    tbl_outs = {"reducer/tf_reduce_patterns.inc": ["-gen-rewriters"]},
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "reducer/tf_mlir_reduce_patterns.td",
-    deps = [
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
-    ],
-)
-
 cc_library(
     name = "tfe_legalize_tfg",
     srcs = [
@@ -1042,14 +1032,15 @@ cc_library(
     hdrs = ["set_tpu_infeed_layout.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@xla//xla:shape_util",
         "@xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@xla//xla/mlir_hlo",
-        "@xla//xla/stream_executor/tpu:c_api_conversions",
-        "@xla//xla/stream_executor/tpu:tpu_api",
+        "@xla//xla/tpu:c_api_conversions",
+        "@xla//xla/tpu:c_api_decl",
+        "@xla//xla/tpu:tpu_executor_api",
+        "@xla//xla/tpu:tpu_executor_c_api_hdrs",
     ],
 )
 

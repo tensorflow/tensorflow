@@ -25,6 +25,10 @@ load("@//tensorflow:workspace3.bzl", "tf_workspace3")
 
 tf_workspace3()
 
+load("@bazel_features//:deps.bzl", "bazel_features_deps")
+
+bazel_features_deps()
+
 load("@rules_shell//shell:repositories.bzl", "rules_shell_dependencies", "rules_shell_toolchains")
 
 rules_shell_dependencies()
@@ -153,7 +157,7 @@ load(
     "nccl_redist_init_repository",
 )
 
-nccl_redist_init_repository()
+nccl_redist_init_repository(patches = ["//third_party/nccl:nccl_wheel.patch"])
 
 load(
     "@rules_ml_toolchain//gpu/nccl:nccl_configure.bzl",

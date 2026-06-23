@@ -3,7 +3,7 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
-load("//xla/util:build_defs.bzl", "embed_files")
+load("//xla/tsl/util:cc_embed_data.bzl", "cc_embed_data")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -22,11 +22,16 @@ exports_files(glob([
     "specs/*.txtpb",
 ]))
 
-embed_files(
+cc_embed_data(
     name = "embed_gpu_specs",
     srcs = glob(["specs/*.txtpb"]),
+    outs = [
+        "embed_gpu_specs.cc",
+        "embed_gpu_specs.h",
+    ],
     compatible_with = get_compatible_with_portable() + if_google(["//buildenv/target:libtpu"]),
-    cpp_namespace = "xla::gpu",
+    embedopts = ["--namespace=xla::gpu"],
+    flatten = True,
 )
 
 cc_library(

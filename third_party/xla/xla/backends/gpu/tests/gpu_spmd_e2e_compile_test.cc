@@ -15,29 +15,30 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
-class GpuSpmdE2ECompileTest : public GpuCodegenTest {
+class GpuSpmdE2ECompileTest : public HloPjRtTestBase {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
@@ -45,7 +46,7 @@ class GpuSpmdE2ECompileTest : public GpuCodegenTest {
 
 TEST_F(GpuSpmdE2ECompileTest, SinglePartition) {
   // Module with "Sharding" custom call and use_spmd_partitioning enabled.
-  const char *const hlo_string = R"(
+  const char* const hlo_string = R"(
 HloModule module
 
 ENTRY entry {
@@ -57,16 +58,17 @@ ENTRY entry {
 
   HloModuleConfig config;
   config.set_use_spmd_partitioning(true);
-  auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
-
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
   // Verify that compilation succeeded.
-  absl::StatusOr<std::unique_ptr<Executable>> executable =
-      CompileToExecutable(std::move(hlo_module));
+  absl::StatusOr<std::unique_ptr<OpaqueExecutable>> executable =
+      CreateExecutable(std::move(hlo_module),
+                       /*run_hlo_passes=*/true);
   TF_EXPECT_OK(executable.status());
 }
 
 TEST_F(GpuSpmdE2ECompileTest, DotSharding) {
-  const char *const hlo_string = R"(
+  const char* const hlo_string = R"(
 HloModule test
 
 ENTRY main {
@@ -83,16 +85,21 @@ ENTRY main {
   config.set_use_spmd_partitioning(true);
   config.set_num_partitions(2);
   config.set_debug_options(GetDebugOptionsForTest());
-  auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(hlo_module)));
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/2);
+  device_assignment(0, 0) = 0;
+  device_assignment(0, 1) = 0;
+  config.set_static_device_assignment(device_assignment);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_string, config));
 
   // Validate that no collective communication operations are generated in this
   // module.
   const bool has_collective_ops = absl::c_any_of(
       optimized_module->entry_computation()->instructions(),
-      [](const HloInstruction *inst) {
+      [](const HloInstruction* inst) {
         return hlo_query::IsCollectiveCommunicationOp(inst->opcode());
       });
   EXPECT_FALSE(has_collective_ops);
@@ -101,7 +108,7 @@ ENTRY main {
 TEST_F(GpuSpmdE2ECompileTest, CollectivesScheduleLinearizerNoDeps) {
   // Setup the module such that we will need to generate > 1 collective for
   // sharding
-  const char *const hlo_string = R"(
+  const char* const hlo_string = R"(
 HloModule test
 
 ENTRY main {
@@ -116,14 +123,21 @@ ENTRY main {
   config.set_use_spmd_partitioning(true);
   config.set_num_partitions(4);
   config.set_debug_options(GetDebugOptionsForTest());
-  auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(hlo_module)));
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/4);
+  device_assignment(0, 0) = 0;
+  device_assignment(0, 1) = 0;
+  device_assignment(0, 2) = 0;
+  device_assignment(0, 3) = 0;
+  config.set_static_device_assignment(device_assignment);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_string, config));
   // Verify that none of the collective operations generated have control
   // dependencies.
-  const HloComputation *entry = optimized_module->entry_computation();
-  for (const HloInstruction *instr : entry->instructions()) {
+  const HloComputation* entry = optimized_module->entry_computation();
+  for (const HloInstruction* instr : entry->instructions()) {
     if (!hlo_query::IsCollectiveCommunicationOp(instr->opcode())) {
       continue;
     }
@@ -136,7 +150,7 @@ TEST_F(GpuSpmdE2ECompileTest, CollectivesScheduleLinearizerDepsWithConv) {
   // Setup the module such that we will need to generate > 1 collective for
   // sharding, and verify that linearizer inserts control deps as there are
   // convolutions that can be auto tuned.
-  const char *const hlo_string = R"(
+  const char* const hlo_string = R"(
 HloModule test
 
 ENTRY main {
@@ -154,14 +168,25 @@ ENTRY main {
   config.set_use_spmd_partitioning(true);
   config.set_num_partitions(4);
   config.set_debug_options(GetDebugOptionsFromFlags());
-  auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
+  // The test needs the autotuning level to be > 0 to generate control
+  // dependencies for collectives, hence we effectively disable it for non-gemm
+  // fusions here by setting the top_k_configs to 1.
+  config.mutable_debug_options().set_xla_gpu_fusion_autotune_top_k_configs(1);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(hlo_module)));
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/4);
+  device_assignment(0, 0) = 0;
+  device_assignment(0, 1) = 0;
+  device_assignment(0, 2) = 0;
+  device_assignment(0, 3) = 0;
+  config.set_static_device_assignment(device_assignment);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_string, config));
   // Verify that control dependencies are inserted for collectives.
   bool has_control_deps = false;
-  const HloComputation *entry = optimized_module->entry_computation();
-  for (const HloInstruction *instr : entry->instructions()) {
+  const HloComputation* entry = optimized_module->entry_computation();
+  for (const HloInstruction* instr : entry->instructions()) {
     if (!hlo_query::IsCollectiveCommunicationOp(instr->opcode())) {
       continue;
     }
@@ -172,5 +197,4 @@ ENTRY main {
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

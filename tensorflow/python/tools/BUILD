@@ -4,10 +4,6 @@
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
-load(
-    "//tensorflow:strict.default.bzl",
-    "py_strict_binary",  # @unused
-)
 load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "py_test", "tf_cc_test", "tf_py_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
@@ -374,6 +370,8 @@ py_library(
         "@absl_py//absl/flags",
         "@absl_py//absl/flags:argparse_flags",
         "//third_party/py/numpy",
+        "//tensorflow/core/example:example_protos_py_proto",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python",
         "//tensorflow/python/client:session",
@@ -438,6 +436,8 @@ py_test(
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/example:example_protos_py_proto",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/debug/wrappers:local_cli_wrapper",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
@@ -474,12 +474,12 @@ py_binary(
 )
 
 # copybara:comment_begin(oss-only)
-py_strict_binary(
+py_binary(
     name = "grpc_tpu_worker",
     srcs = ["grpc_tpu_worker.py"],
 )
 
-py_strict_binary(
+py_binary(
     name = "grpc_tpu_worker_service",
     srcs = ["grpc_tpu_worker_service.py"],
 )

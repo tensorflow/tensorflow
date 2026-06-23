@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
@@ -88,27 +89,27 @@ class ChecksumKernelTest : public ::testing::Test {
     // Load kernel
     gpu::GpuKernelRegistry registry =
         gpu::GpuKernelRegistry::GetGlobalRegistry();
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto kernel,
         registry.LoadKernel<gpu::BufferDebugXorChecksumKernel>(executor_));
 
     // Setup device buffers
-    TF_ASSIGN_OR_RETURN(se::DeviceAddress<uint8_t> device_input,
-                        CheckNotNull(executor_->AllocateArray<uint8_t>(
-                                         input.size() * sizeof(input[0])),
-                                     "input"));
+    ASSIGN_OR_RETURN(se::DeviceAddress<uint8_t> device_input,
+                     CheckNotNull(executor_->AllocateArray<uint8_t>(
+                                      input.size() * sizeof(input[0])),
+                                  "input"));
     auto cleanup_input =
         absl::MakeCleanup([&]() { executor_->Deallocate(&device_input); });
 
     // Call kernel
-    TF_RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
-                                       input.size() * sizeof(input[0])));
-    TF_RETURN_IF_ERROR(kernel.Launch(dim, stream_executor::BlockDim(1, 1, 1),
-                                     stream_.get(), entry_id, device_input,
-                                     device_input.ElementCount(),
-                                     buffer_debug_log.GetDeviceHeader(),
-                                     buffer_debug_log.GetDeviceEntries()));
-    TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
+                                    input.size() * sizeof(input[0])));
+    RETURN_IF_ERROR(kernel.Launch(dim, stream_executor::BlockDim(1, 1, 1),
+                                  stream_.get(), entry_id, device_input,
+                                  device_input.ElementCount(),
+                                  buffer_debug_log.GetDeviceHeader(),
+                                  buffer_debug_log.GetDeviceEntries()));
+    RETURN_IF_ERROR(stream_->BlockHostUntilDone());
 
     // The result gets stored in `buffer_debug_log`.
     return absl::OkStatus();

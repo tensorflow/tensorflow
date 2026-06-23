@@ -48,6 +48,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/descriptor.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
@@ -174,6 +175,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
     case HloOpcode::kPad:
     case HloOpcode::kPartitionId:
@@ -1814,6 +1816,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kAdd:
     case HloOpcode::kDivide:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kSubtract:
     case HloOpcode::kAtan2:
     case HloOpcode::kComplex:
@@ -2283,6 +2286,10 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kDynamicReshape: {
       if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+      if (operands.empty()) {
+        TokenError("DynamicReshape requires at least one operand.");
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateDynamicReshape(
@@ -4179,20 +4186,20 @@ bool HloParserImpl::ParseAxisRef(
                   "expected '(' before pre_size in sub axis")) {
     return false;
   }
-    int64_t pre_size;
-    if (!ParseInt64(&pre_size)) {
-      return false;
-    }
-    if (!ParseToken(TokKind::kRparen,
-                    "expected ')' after pre_size in sub axis")) {
-      return false;
-    }
-    int64_t size;
-    if (!ParseInt64(&size)) {
-      return false;
-    }
-    axis = AxisRef(axis_index, {pre_size, size});
-    return true;
+  int64_t pre_size;
+  if (!ParseInt64(&pre_size)) {
+    return false;
+  }
+  if (!ParseToken(TokKind::kRparen,
+                  "expected ')' after pre_size in sub axis")) {
+    return false;
+  }
+  int64_t size;
+  if (!ParseInt64(&size)) {
+    return false;
+  }
+  axis = AxisRef(axis_index, {pre_size, size});
+  return true;
 }
 
 bool HloParserImpl::ParseAxisRefList(const Mesh& mesh,
@@ -5395,7 +5402,7 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
 // operands1
 //   ::= /*empty*/
 //   ::= operand (, operand)*
-// operand ::= (shape)? name
+// operand ::= (shape)? name ('#' integer)*
 //         ::= (shape)? opcode operands
 bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
                                   HloComputation::Builder* builder) {
@@ -5445,10 +5452,70 @@ bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
             return false;
           }
         }
-        std::pair<HloInstruction*, LocTy>* instruction =
-            FindInstruction(name, shape);
-        if (instruction == nullptr) {
+
+        // Parse optional compact GTE suffix (e.g., "%operand#index1#index2").
+        // We collect all indices first, then resolve/create the GTE
+        // instructions.
+        std::vector<int64_t> gte_indices;
+        while (lexer_.GetKind() == TokKind::kOctothorp) {
+          lexer_.Lex();  // consume '#'
+          int64_t index;
+          if (!ParseInt64(&index)) {
+            return false;
+          }
+          gte_indices.push_back(index);
+        }
+
+        std::pair<HloInstruction*, LocTy>* base_instruction =
+            FindInstruction(name, gte_indices.empty() ? shape : std::nullopt);
+        if (base_instruction == nullptr) {
           return Error(loc, StrCat("instruction does not exist: ", name));
+        }
+
+        HloInstruction* current_instruction = base_instruction->first;
+        std::string current_name = name;
+        for (int64_t index : gte_indices) {
+          if (!current_instruction->shape().IsTuple()) {
+            return Error(
+                loc,
+                StrCat("GTE operand must be tuple, but has shape: ",
+                       ShapeUtil::HumanString(current_instruction->shape())));
+          }
+          if (index < 0 ||
+              index >= current_instruction->shape().tuple_shapes().size()) {
+            return Error(
+                loc,
+                StrCat("GTE index ", index, " out of bounds for shape: ",
+                       ShapeUtil::HumanString(current_instruction->shape())));
+          }
+
+          absl::StrAppend(&current_name, "#", index);
+          auto [it, inserted] =
+              current_name_table().try_emplace(current_name, nullptr, loc);
+
+          if (!inserted) {
+            current_instruction = it->second.first;
+          } else {
+            Shape gte_shape = current_instruction->shape().tuple_shapes(index);
+            HloInstruction* gte =
+                builder->AddInstruction(HloInstruction::CreateGetTupleElement(
+                    gte_shape, current_instruction, index));
+            // Registering with '#' in the name table is safe for lookups. The
+            // instruction name will be sanitized (replacing '#' with '_') and
+            // uniqued by HloModule.
+            gte->SetAndSanitizeName(current_name);
+            it->second.first = gte;
+            current_instruction = gte;
+          }
+        }
+
+        if (!gte_indices.empty() && shape.has_value() &&
+            !ShapeUtil::Compatible(current_instruction->shape(), *shape)) {
+          return Error(
+              loc,
+              StrCat("operand shape ", ShapeUtil::HumanString(*shape),
+                     " does not match instruction shape ",
+                     ShapeUtil::HumanString(current_instruction->shape())));
         }
 
         // If this is a regular named operand, it must be followed by a comma or
@@ -5460,7 +5527,7 @@ bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
           return false;
         }
 
-        operands->push_back(instruction->first);
+        operands->push_back(current_instruction);
         return true;
       }();
 
@@ -7506,6 +7573,7 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   optional<std::vector<int64_t>> profile_type;
   optional<std::string> deduplicated_name;
   optional<std::string> scheduling_name;
+  optional<std::string> metadata_payload;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
   attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
@@ -7523,6 +7591,8 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
                               &scheduling_name};
   attrs["stack_frame_id"] = {/*required=*/false, AttrTy::kInt32,
                              &stack_frame_id};
+  attrs["metadata_payload"] = {/*required=*/false, AttrTy::kString,
+                               &metadata_payload};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -7563,6 +7633,9 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   }
   if (stack_frame_id) {
     metadata.set_stack_frame_id(*stack_frame_id);
+  }
+  if (metadata_payload) {
+    metadata.mutable_metadata_payload()->set_value(*metadata_payload);
   }
   return true;
 }
@@ -7650,6 +7723,19 @@ bool HloParserImpl::ParseOpcode(
         *opcode = async_opcode;
         std::string wrapped_opcode(wrapped_opcode_view);
         status_or_result = StringToHloOpcode(wrapped_opcode);
+        // These ops do not support async wrapping.
+        // TODO(b/319466293): Remove this logic once these opcodes are migrated.
+        if (status_or_result.ok() &&
+            (status_or_result.value() == HloOpcode::kAllGather ||
+             status_or_result.value() == HloOpcode::kAllReduce ||
+             status_or_result.value() == HloOpcode::kCollectivePermute ||
+             status_or_result.value() == HloOpcode::kCopy ||
+             status_or_result.value() == HloOpcode::kRecv ||
+             status_or_result.value() == HloOpcode::kSend)) {
+          status_or_result = InvalidArgument("Unknown opcode: %s", val);
+          return false;
+        }
+
         return true;
       }
       return false;
@@ -8215,7 +8301,6 @@ HloParserImpl::ParseCollectiveDeviceListBaseOnly() {
   return base_list;
 }
 
-
 absl::StatusOr<Window> HloParserImpl::ParseWindowOnly() {
   lexer_.Lex();
   Window window;
@@ -8318,7 +8403,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     const HloParserOptions& options) {
   auto module = std::make_unique<HloModule>(/*name=*/"_", config);
   HloParserImpl parser(str, options);
-  TF_RETURN_IF_ERROR(parser.Run(module.get()));
+  RETURN_IF_ERROR(parser.Run(module.get()));
   return module;
 }
 
@@ -8361,7 +8446,6 @@ absl::StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
   HloParserImpl parser(str);
   return parser.ParseReplicaGroupsOnly();
 }
-
 
 absl::StatusOr<Window> ParseWindow(absl::string_view str) {
   HloParserImpl parser(str);

@@ -584,7 +584,13 @@ def tf_portable_deps_no_runtime():
 def tf_google_mobile_srcs_no_runtime():
     return []
 
+def tf_google_mobile_hdrs_no_runtime():
+    return []
+
 def tf_google_mobile_srcs_only_runtime():
+    return []
+
+def tf_google_mobile_hdrs_only_runtime():
     return []
 
 def tf_cuda_root_path_deps():

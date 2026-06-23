@@ -19,27 +19,27 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/shape_util.h"
 #include "xla/tests/codegen_utils.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/casts.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 std::unique_ptr<VerifiedHloModule>
 GpuPjRtCodegenTest::CreateNewVerifiedModuleWithFTZ(bool ftz) {
@@ -58,16 +58,23 @@ GpuPjRtCodegenTest::CreateNewVerifiedModuleWithFTZ(bool ftz) {
 void GpuPjRtCodegenTest::CompileAndOptionallyVerifyPtx(
     std::unique_ptr<VerifiedHloModule> hlo_module, absl::string_view pattern,
     bool run_optimization_passes) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> executable,
-      CompileToExecutable(std::move(hlo_module), run_optimization_passes));
-  std::string ptx_str(
-      tensorflow::down_cast<GpuExecutable*>(executable.get())->text());
+  GpuCompiler* gpu_compiler = dynamic_cast<GpuCompiler*>(compiler());
+  CHECK_NOTNULL(gpu_compiler);
 
-  // On the ROCM platform the "ptx" string is not populated for the compiled
-  // executable, and hence the "ptx_str" will be empty. So disabling the
-  // pattern check on the ROCm platform
-  if (!is_built_with_rocm_) {
+  std::string ptx_str;
+  gpu_compiler->SetAsmHook([&](absl::string_view ptx) { ptx_str += ptx; });
+
+  auto status_or_executable =
+      CompileToExecutable(std::move(hlo_module), run_optimization_passes);
+  gpu_compiler->RemoveAsmHook();
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       std::move(status_or_executable));
+
+  // On ROCM and oneAPI platforms the "ptx" string is not populated for the
+  // compiled executable, and hence the "ptx_str" will be empty. So disabling
+  // the pattern check on ROCm and oneAPI platforms
+  if (!IsBuiltWithRocm() && !IsBuiltWithOneAPI()) {
     absl::StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
     ASSERT_TRUE(filecheck_result.ok());
     EXPECT_TRUE(filecheck_result.value());
@@ -79,23 +86,23 @@ std::string GpuPjRtCodegenTest::MakePlatformSpecificLlvm(
   return absl::StrReplaceAll(
       input,
       {{"KERNEL_ANNOTATION",
-        is_built_with_rocm_ ? "amdgpu_kernel void" : "ptx_kernel void"},
-       {"BARRIER()", is_built_with_rocm_
+        IsBuiltWithRocm() ? "amdgpu_kernel void" : "ptx_kernel void"},
+       {"BARRIER()", IsBuiltWithRocm()
                          ? "@llvm.amdgcn.s.barrier()"
                          : "@llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)"},
-       {"SHUFFLE", is_built_with_rocm_ ? "i32 @llvm.amdgcn.ds.swizzle"
-                                       : "float @llvm.nvvm.shfl.sync.down.f32"},
-       {"TIDX", is_built_with_rocm_ ? "@llvm.amdgcn.workitem.id.x"
-                                    : "@llvm.nvvm.read.ptx.sreg.tid.x"},
-       {"LCAL", is_built_with_rocm_ ? "%[[LOGICAL_T1:.*]] = call { i1, i64 } "
-                                      "@llvm.amdgcn.if.i64(i1 %[[LOGICAL_T0]])"
-                                    : "0"},
+       {"SHUFFLE", IsBuiltWithRocm() ? "i32 @llvm.amdgcn.ds.swizzle"
+                                     : "float @llvm.nvvm.shfl.sync.down.f32"},
+       {"TIDX", IsBuiltWithRocm() ? "@llvm.amdgcn.workitem.id.x"
+                                  : "@llvm.nvvm.read.ptx.sreg.tid.x"},
+       {"LCAL", IsBuiltWithRocm() ? "%[[LOGICAL_T1:.*]] = call { i1, i64 } "
+                                    "@llvm.amdgcn.if.i64(i1 %[[LOGICAL_T0]])"
+                                  : "0"},
        {"EXTV",
-        is_built_with_rocm_
+        IsBuiltWithRocm()
             ? "%[[LOGICAL_T2:.*]] = extractvalue { i1, i64 } %[[LOGICAL_T1]], 0"
             : "0"},
-       {"BR_CAL", is_built_with_rocm_ ? "br i1 %[[LOGICAL_T2]],"
-                                      : "br i1 %[[LOGICAL_T0]]"}});
+       {"BR_CAL", IsBuiltWithRocm() ? "br i1 %[[LOGICAL_T2]],"
+                                    : "br i1 %[[LOGICAL_T0]]"}});
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>
@@ -109,7 +116,7 @@ GpuPjRtCodegenTest::CompileToExecutable(std::unique_ptr<HloModule> hlo_module,
 absl::Status GpuPjRtCodegenTest::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, absl::string_view expected_llvm_ir,
     bool match_optimized_ir, bool run_optimization_passes) {
-  auto llvm_compiler = tensorflow::down_cast<LLVMCompiler*>(compiler());
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler());
   return xla::CompileAndVerifyIr(llvm_compiler, compile_options_,
                                  std::move(hlo_module), expected_llvm_ir,
                                  match_optimized_ir, run_optimization_passes);
@@ -118,11 +125,10 @@ absl::Status GpuPjRtCodegenTest::CompileAndVerifyIr(
 absl::Status GpuPjRtCodegenTest::CompileAndVerifyIr(
     absl::string_view hlo_text, absl::string_view expected_llvm_ir,
     bool match_optimized_ir, bool run_optimization_passes) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      ParseAndReturnVerifiedModule(hlo_text));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                   ParseAndReturnVerifiedModule(hlo_text));
   return CompileAndVerifyIr(std::move(hlo_module), expected_llvm_ir,
                             match_optimized_ir, run_optimization_passes);
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

@@ -599,6 +599,22 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
       }
 
       collective->participants.emplace_back(std::move(participant));
+      Participant* p = collective->participants.back().get();
+      if (collective->status.ok()) {
+        if (collective_type == kAllGather &&
+            p->output->NumElements() <
+                p->input->NumElements() * collective->num_global_devices) {
+          collective->status = absl::InternalError(absl::StrCat(
+              "Output tensor must be able to hold ",
+              p->input->NumElements() * collective->num_global_devices,
+              " elements for AllGather, but got ", p->output->NumElements()));
+        } else if (collective_type == kAllToAll &&
+                   p->output->NumElements() < p->input->NumElements()) {
+          collective->status = absl::InternalError(absl::StrCat(
+              "Output tensor must be able to hold ", p->input->NumElements(),
+              " elements for AllToAll, but got ", p->output->NumElements()));
+        }
+      }
       ++collective->available_participants;
 
       if (CheckReady(context.collective_key, collective)) {

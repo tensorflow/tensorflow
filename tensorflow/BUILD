@@ -1259,7 +1259,7 @@ pywrap_aware_tf_cc_shared_object(
         "//tensorflow:windows": [
         ],
         # copybara:uncomment_begin(google-only)
-        # "//tools/cpp:asan_build": [
+        # "@bazel_tools//tools/cpp:asan_build": [
         # "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
         # ],
         # "//tools/cpp:hwasan_build": [

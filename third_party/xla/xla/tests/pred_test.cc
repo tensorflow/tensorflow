@@ -30,7 +30,7 @@ namespace xla {
 namespace {
 
 class PredTest : public ClientLibraryTestRunnerMixin<
-                     HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                     HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  protected:
   void TestCompare(bool lhs, bool rhs, bool expected,
                    std::function<XlaOp(const xla::XlaOp&, const xla::XlaOp&,

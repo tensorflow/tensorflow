@@ -79,6 +79,11 @@ def mlir_convert(
         True
     )
 
+  if options.experimental_unsafe_single_batch_rank_reduction:
+    converter._experimental_unsafe_single_batch_rank_reduction = (  # pylint: disable=protected-access
+        True
+    )
+
   if test_params.get("fully_quantize", False):
     converter.optimizations = [lite.Optimize.DEFAULT]
 

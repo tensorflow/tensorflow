@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
@@ -63,10 +64,10 @@ absl::Status GenericTransferManager::WriteSingleTupleIndexTable(
   for (const se::DeviceAddressBase& element : elements) {
     element_pointers->push_back(element.opaque());
   }
-  TF_RETURN_IF_ERROR(TransferBufferToDevice(
-      stream, GetByteSizeRequirement(shape), element_pointers->data(), region));
+  RETURN_IF_ERROR(TransferBufferToDevice(stream, GetByteSizeRequirement(shape),
+                                         element_pointers->data(), region));
   // Ensure the buffer is transferred before we destroy element_pointers.
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->DoHostCallback([element_pointers{std::move(element_pointers)}]() {
         /* holds reference to element_pointers in closure */
       }));
@@ -85,7 +86,7 @@ void GenericTransferManager::TransferLiteralFromDevice(
     TF_RET_CHECK(stream->parent()->device_ordinal() ==
                  device_buffer.physical_device_ordinal());
 
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+    RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         device_buffer.on_device_shape(),
         [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
           if (subshape.IsArray()) {
@@ -102,7 +103,7 @@ void GenericTransferManager::TransferLiteralFromDevice(
                   /*num_elements=*/ShapeUtil::ElementsIn(subshape),
                   /*destination=*/literal.untyped_data(index));
             } else {
-              TF_RETURN_IF_ERROR(TransferBufferFromDevice(
+              RETURN_IF_ERROR(TransferBufferFromDevice(
                   stream,
                   /*source=*/device_buffer.buffer(index),
                   // With bounded dynamic shapes, the shape of the device buffer
@@ -157,7 +158,7 @@ absl::Status GenericTransferManager::TransferLiteralToDeviceAsync(
   TF_RET_CHECK(stream->parent()->device_ordinal() ==
                device_buffer.physical_device_ordinal());
 
-  TF_RETURN_IF_ERROR(WriteTupleIndexTablesAsync(stream, device_buffer));
+  RETURN_IF_ERROR(WriteTupleIndexTablesAsync(stream, device_buffer));
 
   return ShapeUtil::ForEachSubshapeWithStatus(
       device_buffer.on_device_shape(),
@@ -182,7 +183,7 @@ absl::Status GenericTransferManager::TransferLiteralToDeviceAsync(
                   /*destination=*/&device_memory);
             } else {
               int64_t size = GetByteSizeRequirement(device_subshape);
-              TF_RET_CHECK(size == device_memory.size());
+              TF_RET_CHECK(size <= device_memory.size());
               return TransferBufferToDevice(stream, /*size=*/size,
                                             /*source=*/source,
                                             /*destination=*/&device_memory);
@@ -196,9 +197,9 @@ absl::Status GenericTransferManager::TransferLiteralToDeviceAsync(
             // Relayout data before transferring.
             auto relaid_out = std::make_shared<Literal>(
                 subliteral.Relayout(device_subshape.layout()));
-            TF_RETURN_IF_ERROR(TransferBuffer(relaid_out->untyped_data()));
+            RETURN_IF_ERROR(TransferBuffer(relaid_out->untyped_data()));
             // Ensure the buffer is transferred before we destroy it.
-            TF_RETURN_IF_ERROR(stream->DoHostCallback(
+            RETURN_IF_ERROR(stream->DoHostCallback(
                 [keep_alive = std::move(relaid_out)] {}));
           }
         }
@@ -254,9 +255,9 @@ absl::Status GenericTransferManager::TransferIntNArrayFromDevice(
   int64_t elements_per_byte = 8 / bit_width;
   int64_t packed_size = CeilOfRatio(num_elements, elements_per_byte);
   auto packed_dst_data = std::make_unique<std::vector<char>>(packed_size);
-  TF_RETURN_IF_ERROR(TransferBufferFromDevice(stream, source, packed_size,
-                                              packed_dst_data->data()));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(TransferBufferFromDevice(stream, source, packed_size,
+                                           packed_dst_data->data()));
+  RETURN_IF_ERROR(
       stream->DoHostCallback([destination, bit_width, num_elements,
                               packed_dst_data = std::move(packed_dst_data)]() {
         UnpackIntN(
@@ -277,8 +278,8 @@ absl::Status GenericTransferManager::TransferIntNArrayToDevice(
            absl::MakeSpan(static_cast<const char*>(source), num_elements),
            absl::MakeSpan(*packed_src_data));
   TF_RET_CHECK(packed_src_data->size() == destination->size());
-  TF_RETURN_IF_ERROR(TransferBufferToDevice(
-      stream, packed_src_data->size(), packed_src_data->data(), destination));
+  RETURN_IF_ERROR(TransferBufferToDevice(stream, packed_src_data->size(),
+                                         packed_src_data->data(), destination));
   return stream->DoHostCallback([keep_alive = std::move(packed_src_data)] {});
 }
 

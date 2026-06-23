@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/evaluation_utils.h"
 
+#include <memory>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -37,9 +39,9 @@ DeviceSimple::DeviceSimple() : DeviceBase(Env::Default()) {
   eigen_worker_threads_.num_threads = kDeviceSimpleThreads;
   eigen_worker_threads_.workers = new thread::ThreadPool(
       Env::Default(), "evaluation_utils", eigen_worker_threads_.num_threads);
-  eigen_device_.reset(new Eigen::ThreadPoolDevice(
+  eigen_device_ = std::make_unique<Eigen::ThreadPoolDevice>(
       eigen_worker_threads_.workers->AsEigenThreadPool(),
-      eigen_worker_threads_.num_threads));
+      eigen_worker_threads_.num_threads);
   set_tensorflow_cpu_worker_threads(&eigen_worker_threads_);
   set_eigen_cpu_device(eigen_device_.get());
 }
@@ -66,7 +68,7 @@ absl::Status EvaluateNode(const NodeDef& node, const TensorVector& inputs,
   absl::Status status;
   std::unique_ptr<DeviceBase> device;
   if (cpu_device == nullptr) {
-    device.reset(new DeviceSimple());
+    device = std::make_unique<DeviceSimple>();
     cpu_device = device.get();
   }
 

@@ -7,13 +7,13 @@ upstreamed with that patch. See context in b/504826033.
 
 --- a/lib/Dialect/TritonGPU/Transforms/OptimizeDotOperands.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/OptimizeDotOperands.cpp
-@@ -165,7 +165,7 @@
+@@ -161,7 +161,7 @@ public:
      // `allocType` after a reshape.
      MemDescType innerTy;
      if (failed(MemDescReshapeOp::inferReturnTypes(
 -            getContext(), allocOp.getLoc(), allocType, srcShape, innerTy)))
 +            getContext(), /*loc=*/std::nullopt, allocType, srcShape, innerTy)))
        return failure();
-
+ 
      // For now don't apply the transformation if the new encoding is not an
 

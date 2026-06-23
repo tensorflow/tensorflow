@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -185,6 +186,34 @@ DispatcherConfig ApplyConfigDefaults(const DispatcherConfig& config) {
         kDefaultWorkerMaxConcurrentSnapshots);
   }
   return new_config;
+}
+
+// Validates that the dataset ID is valid to use to construct a file path.
+// It returns INVALID_ARGUMENT if the dataset_id is empty, '.', '..', or
+// contains path separators (e.g. '/' everywhere, and '\\' or ':' on Windows).
+absl::Status ValidateDatasetId(const std::string& dataset_id) {
+  if (dataset_id.empty()) {
+    return absl::InvalidArgumentError("Dataset ID must not be empty.");
+  }
+  if (dataset_id == "." || dataset_id == "..") {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid dataset ID: ", dataset_id,
+                     ". Dataset IDs must not be '.' or '..'."));
+  }
+  if (absl::StrContains(dataset_id, '/')) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid dataset ID: ", dataset_id,
+                     ". Dataset IDs must not contain '/'."));
+  }
+#if defined(_WIN32)
+  if (absl::StrContains(dataset_id, '\\') ||
+      absl::StrContains(dataset_id, ':')) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid dataset ID: ", dataset_id,
+                     ". Dataset IDs must not contain '\\' or ':'."));
+  }
+#endif
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -520,6 +549,9 @@ absl::Status DataServiceDispatcherImpl::WorkerUpdate(
 absl::Status DataServiceDispatcherImpl::GetDatasetDef(
     const GetDatasetDefRequest* request, GetDatasetDefResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
+  if (!request->dataset_id().empty()) {
+    TF_RETURN_IF_ERROR(ValidateDatasetId(request->dataset_id()));
+  }
   mutex_lock l(mu_);
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
@@ -549,6 +581,12 @@ absl::Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
       return absl::FailedPreconditionError(
           absl::StrCat("Cannot get split for iteration ", iteration_id,
                        ", since it is not a distributed_epoch iteration."));
+    }
+    if (provider_index < 0 ||
+        static_cast<size_t>(provider_index) >=
+            iteration->distributed_epoch_state.value().repetitions.size()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid split provider index: ", provider_index));
     }
     current_repetition =
         iteration->distributed_epoch_state.value().repetitions[provider_index];
@@ -607,6 +645,9 @@ absl::Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     const GetOrRegisterDatasetRequest* request,
     GetOrRegisterDatasetResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
+  if (!request->dataset_id().empty()) {
+    TF_RETURN_IF_ERROR(ValidateDatasetId(request->dataset_id()));
+  }
   DatasetDef dataset_def = request->dataset();
   GraphDef* graph = dataset_def.mutable_graph();
   PrepareGraph(graph);
@@ -655,6 +696,8 @@ absl::Status DataServiceDispatcherImpl::RegisterDataset(
   dataset_id = requested_dataset_id;
   if (dataset_id.empty()) {
     dataset_id = state_.NextAvailableDatasetId();
+  } else {
+    TF_RETURN_IF_ERROR(ValidateDatasetId(dataset_id));
   }
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
@@ -668,6 +711,9 @@ absl::Status DataServiceDispatcherImpl::GetDataServiceMetadata(
     const GetDataServiceMetadataRequest* request,
     GetDataServiceMetadataResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
+  if (!request->dataset_id().empty()) {
+    TF_RETURN_IF_ERROR(ValidateDatasetId(request->dataset_id()));
+  }
   std::string dataset_id = request->dataset_id();
   std::shared_ptr<const Dataset> dataset;
 

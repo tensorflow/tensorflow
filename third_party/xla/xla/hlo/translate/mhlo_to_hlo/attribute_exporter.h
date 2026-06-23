@@ -112,7 +112,7 @@ mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op);
 // Returns an OriginalValueProto that represents a value in the unoptimized HLO
 // graph.
 std::optional<xla::OriginalValueProto> ConvertOriginalValue(
-    llvm::StringRef original_value);
+    const mlir::mhlo::OriginalValueAttr& original_value_attr);
 
 std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
     llvm::ArrayRef<mlir::Attribute> aliasing);

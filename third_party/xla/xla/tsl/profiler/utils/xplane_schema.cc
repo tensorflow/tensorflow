@@ -160,6 +160,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"ScheduleWithSplit", kScheduleWithSplit},
       {"ScheduleWithEagerSplit", kScheduleWithEagerSplit},
       {"ASBSQueue::Schedule", kASBSQueueSchedule},
+      {"OrbaxServing::ProcessBatch", kOrbaxProcessBatch},
+      {"OrbaxServing::ConcatInputBuffers", kOrbaxConcatInputBuffers},
       // TFRT related.
       {"TfrtModelRun", kTfrtModelRun},
       // Serving related.
@@ -407,7 +409,9 @@ const StatTypeMap& GetStatTypeMap() {
        {"vdd_core_energy_nj", kVddCoreEnergy},
        {"vdd_core_power_events", kVddCorePowerEvents},
        {"hbm_energy_nj", kHbmEnergy},
-       {"hbm_power_events", kHbmPowerEvents}});
+       {"hbm_power_events", kHbmPowerEvents},
+       {"transaction_with_chip_core_id", kTransactionWithChipCoreId},
+       {"program_counter", kProgramCounter}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }
@@ -439,6 +443,8 @@ const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
        {"delay_budget_us", kMegaScaleDelayBudgetUs},
        {"graph_protos", kMegaScaleGraphProtos},
        {"network_transport_latency_us", kMegaScaleNetworkTransportLatency},
+       {"activation_to_network_receive_duration_us",
+        kMegaScaleActivationToNetworkReceiveDurationUs},
        {"hlo_module", kMegaScaleHloModule},
        {"multi_slice_topology", kMegaScaleMultiSliceTopology}});
   DCHECK_EQ(stat_type_map->size(), kNumMegaScaleStatTypes);

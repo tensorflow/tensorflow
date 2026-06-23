@@ -20,10 +20,12 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
@@ -63,7 +65,7 @@ KernelThunk::KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
                          stream_executor::gpu::TmaMetadata tma_metadata,
                          std::vector<int64_t> zeroed_output_buffer_indices,
                          bool use_pdl)
-    : Command(CommandType::kLaunchCmd, Kind::kKernel, std::move(thunk_info)),
+    : Command(Kind::kKernel, std::move(thunk_info)),
       args_(kernel_arguments.GetArgumentShapedSlices()),
       written_(kernel_arguments.GetArgumentOutputFlags()),
       zeroed_output_buffer_indices_(std::move(zeroed_output_buffer_indices)),
@@ -86,7 +88,7 @@ absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
-  auto* kernel_proto = proto.mutable_kernel_thunk();
+  KernelThunkProto* kernel_proto = proto.mutable_kernel_thunk();
   for (int i = 0; i < args_.size(); i++) {
     ASSIGN_OR_RETURN(*kernel_proto->add_args(), args_[i].slice.ToProto());
     *kernel_proto->add_args_shape() = args_[i].shape.ToProto();
@@ -100,6 +102,10 @@ absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
   kernel_proto->set_shmem_bytes(shmem_bytes_);
   kernel_proto->set_use_pdl(use_pdl_);
   *kernel_proto->mutable_tma_metadata() = tma_metadata_.ToProto();
+
+  kernel_proto->mutable_zeroed_output_buffer_indices()->Assign(
+      zeroed_output_buffer_indices_.begin(),
+      zeroed_output_buffer_indices_.end());
   return proto;
 }
 

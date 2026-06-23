@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/client.h"
@@ -63,7 +64,7 @@ absl::StatusOr<std::optional<int64_t>> Layout::ByteSize(
   }
   if (layout == nullptr) {
     Device* device = sharding->devices()->devices().front();
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         const LayoutRef concrete_default_layout,
         device->client()->GetDefaultLayout(dtype, shard_shape_ptr->dims(),
                                            device, sharding->memory_kind()));
@@ -173,13 +174,13 @@ absl::StatusOr<bool> EquivalentLayouts(DType dtype1, const Shape& shape1,
     }
     // TODO(hyeontaek): Change to IFRT `Layout` comparison once
     // we add `Client::GetDefaultLayout()` that returns a `CustomLayoutRef`.
-    TF_ASSIGN_OR_RETURN(Shape shard_shape1, sharding1->GetShardShape(shape1));
-    TF_ASSIGN_OR_RETURN(Shape shard_shape2, sharding2->GetShardShape(shape2));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(Shape shard_shape1, sharding1->GetShardShape(shape1));
+    ASSIGN_OR_RETURN(Shape shard_shape2, sharding2->GetShardShape(shape2));
+    ASSIGN_OR_RETURN(
         std::shared_ptr<const xla::PjRtLayout> pjrt_layout1,
         device1->client()->GetDefaultPjRtLayout(
             dtype1, shard_shape1.dims(), device1, sharding1->memory_kind()));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::shared_ptr<const xla::PjRtLayout> pjrt_layout2,
         device2->client()->GetDefaultPjRtLayout(
             dtype2, shard_shape2.dims(), device2, sharding2->memory_kind()));

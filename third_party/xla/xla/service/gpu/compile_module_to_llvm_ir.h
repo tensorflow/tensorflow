@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
@@ -36,19 +37,18 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.pb.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
 
 struct CompileModuleResults {
-  std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
-  std::unique_ptr<llvm::Module> llvm_module_constants;
+  std::vector<uint8_t> constants_binary;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::unique_ptr<ExecutionStreamAssignment> execution_stream_assignment;
   std::vector<BufferAllocation> allocations;
@@ -71,19 +71,19 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
 absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     const HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
-    se::Platform::Id platform_id, const se::DeviceDescription& device_desc,
+    se::Platform::Id platform_id, const GpuTopology& gpu_topology,
     const GpuAliasInfo* alias_info,
     BufferValue::SizeFunction buffer_size_bytes_function,
     llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
     KernelCompiler* compiler,
-    xla::cpu::TargetMachineOptions cpu_target_machine_options);
+    xla::cpu::TargetMachineOptions cpu_target_machine_options,
+    ObjectPool<std::unique_ptr<mlir::MLIRContext>>* mlir_context_pool);
 
 void LinkLlvmModulesInPlace(
     std::vector<std::unique_ptr<llvm::Module>>& llvm_modules);
 
 std::unique_ptr<llvm::Module> CopyToContext(const llvm::Module& module,
                                             llvm::LLVMContext& context);
-
 }  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_COMPILE_MODULE_TO_LLVM_IR_H_

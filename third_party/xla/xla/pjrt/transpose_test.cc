@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/array.h"
+#include "xla/ef57.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/permutation_util.h"
 #include "xla/pjrt/transpose_kernels.h"
@@ -101,12 +102,13 @@ TEST(TransposeMicroKernelTest, ExactEquivalence) {
   TestMicroKernelEquivalence<int64_t, 4>();
   TestMicroKernelEquivalence<int8_t, 32>();
 
-  // Avx16x16TransposeMicroKernelImpl is a specialized optimization for 1-byte
-  // elements in a 16x16 tile (128-bit logical rows that fit in __m128i).
+  // SseSquareTransposeMicroKernelImpl or AvxRectangularTransposeMicroKernelImpl
+  // is triggered when a logical row of the tile (bs * sizeof(T)) is exactly
+  // 128 bits. SseSquare operates directly on __m128i when gathering from memory
+  // (lda >= ldb && lda <= 64B) while AvxRectangular packs two rows into __m256i
+  // when scattering to memory (ldb > lda) or for large strides.
   TestMicroKernelEquivalence<int8_t, 16>();
-
-  // AvxRectangularTransposeMicroKernelImpl is triggered when a logical row of
-  // the tile is exactly 128 bits and uses __m256i to process two rows at once.
+  TestMicroKernelEquivalence<int16_t, 8>();
   TestMicroKernelEquivalence<bfloat16, 8>();
   TestMicroKernelEquivalence<float, 4>();
   TestMicroKernelEquivalence<int64_t, 2>();
@@ -1180,7 +1182,7 @@ static void* benchmarks = []() {
           {"BM_Transpose_uint8", BM_Transpose_uint8, {1, 4, 8}},  //
           {"BM_Eigen_float", BM_Eigen_float, {1}},
           {"BM_Transpose_float", BM_Transpose_float, {1, 4, 8}},  //
-  };
+      };
   auto benchmark_cases = BenchmarkCases();
   for (const auto& benchmark_case : benchmark_cases) {
     for (const auto& variant : variants) {
@@ -1201,6 +1203,49 @@ static void* benchmarks = []() {
   }
   return nullptr;
 }();
+
+TEST(TransposeTest, F64ToEf57MemcpyRejection) {
+  TransposePlan::Options options;
+  options.elem_size_in_bytes = sizeof(float);
+  std::vector<int64_t> dims = {2, 2};
+  std::vector<int64_t> permutation = {0, 1};
+  options.dims = dims;
+  options.permutation = permutation;
+  options.transformation = TransposePlan::Transformation::kF64ToEf57;
+
+  auto plan = TransposePlan::Create(options);
+  EXPECT_EQ(plan.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(plan.status().message(),
+              testing::HasSubstr(
+                  "Memcpy-based plans cannot be used with transformations"));
+}
+
+TEST(TransposeTest, F64ToEf57Execution) {
+  TransposePlan::Options options;
+  options.elem_size_in_bytes = sizeof(float);
+  std::vector<int64_t> dims = {2, 2};
+  std::vector<int64_t> permutation = {1, 0};
+  options.dims = dims;
+  options.permutation = permutation;
+  options.transformation = TransposePlan::Transformation::kF64ToEf57;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
+
+  // Input is 2 doubles (16 bytes)
+  std::vector<double> input = {1.2345, 6.7890};
+  // Output is 4 floats (16 bytes)
+  std::vector<float> output(4, 0.0f);
+
+  plan->Execute(reinterpret_cast<const char*>(input.data()), output.data());
+
+  // Expected output
+  std::vector<float> converted(4, 0.0f);
+  ConvertF64ToEf57(input, absl::MakeSpan(converted));
+  std::vector<float> expected_output = {converted[0], converted[2],
+                                        converted[1], converted[3]};
+
+  EXPECT_EQ(output, expected_output);
+}
 
 TEST(TransposePlanCache, Basics) {
   std::vector<int64_t> dims = {1, 2, 3};

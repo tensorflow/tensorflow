@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -94,7 +95,7 @@ ConstraintPropagator::Run(
   ConstraintPropagator propagator(get_index_known_zeroes);
   auto computations = module.MakeComputationPostOrder();
   for (HloComputation* computation : computations) {
-    TF_RETURN_IF_ERROR(propagator.Propagate(computation));
+    RETURN_IF_ERROR(propagator.Propagate(computation));
   }
 
   // Extract only the parameters
@@ -108,12 +109,12 @@ ConstraintPropagator::Run(
 
 absl::Status ConstraintPropagator::Propagate(
     const HloComputation* computation) {
-  TF_RETURN_IF_ERROR(SeedConstraints(computation));
-  TF_RETURN_IF_ERROR(PropagateSeedConstraints(computation));
+  RETURN_IF_ERROR(SeedConstraints(computation));
+  RETURN_IF_ERROR(PropagateSeedConstraints(computation));
   absl::flat_hash_map<const HloInstruction*, ConstraintState> before;
   do {
     before = states_;
-    TF_RETURN_IF_ERROR(PropagateConstraints(computation));
+    RETURN_IF_ERROR(PropagateConstraints(computation));
   } while (before != states_);
   return absl::OkStatus();
 }
@@ -588,7 +589,7 @@ absl::Status ConstraintPropagator::PropagateSeedConstraints(
   auto instructions = computation->MakeInstructionPostOrder();
   for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
     const HloInstruction* inst = *it;
-    TF_RETURN_IF_ERROR(PropagateConstraintsExact(inst));
+    RETURN_IF_ERROR(PropagateConstraintsExact(inst));
   }
   return absl::OkStatus();
 }
@@ -598,8 +599,8 @@ absl::Status ConstraintPropagator::PropagateConstraints(
   auto instructions = computation->MakeInstructionPostOrder();
   for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
     const HloInstruction* inst = *it;
-    TF_RETURN_IF_ERROR(PropagateConstraintsExact(inst));
-    TF_RETURN_IF_ERROR(PropagateConstraintsApprox(inst));
+    RETURN_IF_ERROR(PropagateConstraintsExact(inst));
+    RETURN_IF_ERROR(PropagateConstraintsApprox(inst));
   }
   return absl::OkStatus();
 }

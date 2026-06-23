@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/node_def_util.h"

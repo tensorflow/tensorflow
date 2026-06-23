@@ -53,8 +53,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class TopkRewriterTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
+class TopkRewriterTest : public HloInterpreterReferenceMixin<HloTestBase> {};
 
 std::string getComparator() {
   return R"(

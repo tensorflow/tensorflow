@@ -4,6 +4,7 @@ load("@bazel_features//:deps.bzl", "bazel_features_deps")
 load("@bazel_skylib//lib:versions.bzl", "versions")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 load("@rules_jvm_external//:defs.bzl", "maven_install")
+load("@rules_ml_toolchain//gpu/rocm:hipcc_configure.bzl", "hipcc_configure")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("@xla//third_party/absl:workspace.bzl", absl = "repo")
 load("@xla//third_party/benchmark:workspace.bzl", benchmark = "repo")
@@ -25,6 +26,7 @@ load("@xla//third_party/gpus:sycl_configure.bzl", "sycl_configure")
 load("@xla//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("@xla//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("@xla//third_party/implib_so:workspace.bzl", implib_so = "repo")
+load("@xla//third_party/libdrm:workspace.bzl", libdrm = "repo")
 load("@xla//third_party/llvm:workspace.bzl", llvm = "repo")
 load("@xla//third_party/mkl_dnn:workspace.bzl", onednn = "repo")
 load("@xla//third_party/nanobind:workspace.bzl", nanobind = "repo")
@@ -48,7 +50,6 @@ load("@xla//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("@xla//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("@xla//third_party/triton:workspace.bzl", triton = "repo")
 load("@xla//third_party/xnnpack:workspace.bzl", xnnpack = "repo")
-load("@xla//third_party/xxd:workspace.bzl", xxd = "repo")
 load("@xla//tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
 load("@xla//tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
 load("@xla//tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
@@ -98,6 +99,7 @@ load("//third_party/tflite_ovic_testdata:workspace.bzl", tflite_ovic_testdata = 
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
 load("//third_party/xctestrunner:workspace.bzl", xctestrunner = "repo")
 load("//third_party/xprof:workspace.bzl", xprof = "repo")
+load("//third_party/xxd:workspace.bzl", xxd = "repo")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -118,6 +120,7 @@ def _initialize_third_party():
     hwloc()
     icu()
     implib_so()
+    libdrm()
     jpeg()
     jpegxl()
     kissfft()
@@ -161,6 +164,7 @@ def _tf_toolchains():
     git_configure(name = "local_config_git")
     syslibs_configure(name = "local_config_syslibs")
     python_configure(name = "local_config_python")
+    hipcc_configure(name = "config_rocm_hipcc")  # Must be before rocm_configure.
     rocm_configure(name = "local_config_rocm")
     sycl_configure(name = "local_config_sycl")
     remote_execution_configure(name = "local_config_remote_execution")
@@ -333,9 +337,9 @@ def _tf_repositories():
             "@xla//third_party/protobuf:protobuf.patch",
             "@xla//third_party/protobuf:protobuf_arena.patch",
         ],
-        sha256 = "6e09bbc950ba60c3a7b30280210cd285af8d7d8ed5e0a6ed101c72aff22e8d88",
-        strip_prefix = "protobuf-6.31.1",
-        urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/refs/tags/v6.31.1.zip"),
+        sha256 = "61e5e5b7f29c4a719d9691b97c2b8937b8bd5ab1b6b7586f3f55934011806280",
+        strip_prefix = "protobuf-34.1",
+        urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/releases/download/v34.1/protobuf-34.1.zip"),
         repo_mapping = {
             "@abseil-cpp": "@com_google_absl",
             "@protobuf_pip_deps": "@pypi",
@@ -393,13 +397,13 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_github_grpc_grpc",
-        sha256 = "e2ace790a5f2d0f83259d1390a816a33b013ea34df2e86084d927e58daa4c5d9",
-        strip_prefix = "grpc-1.78.0",
+        sha256 = "41b695614b26652ff9e97ce50cfd4a6c7a3d45a9fe598d1454407746499bbf2c",
+        strip_prefix = "grpc-1.81.0",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
         patch_file = [
             "@xla//third_party/grpc:grpc.patch",
         ],
-        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.78.0.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.81.0.tar.gz"),
     )
 
     linenoise()

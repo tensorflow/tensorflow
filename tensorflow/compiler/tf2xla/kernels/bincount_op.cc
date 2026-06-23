@@ -17,7 +17,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -71,6 +73,14 @@ class DenseBincountOp : public XlaOpKernel {
     OP_REQUIRES(ctx, rank <= 2,
                 absl::InvalidArgumentError(absl::StrCat(
                     "Shape must be at most rank 2 but is rank ", rank)));
+    std::vector<int64_t> input_values;
+    if (ctx->ConstantInputReshapedToIntVector(0, &input_values).ok()) {
+      for (int64_t value : input_values) {
+        OP_REQUIRES(
+            ctx, value >= 0,
+            absl::InvalidArgumentError("Input arr must be non-negative!"));
+      }
+    }
     xla::XlaOp weights = ctx->Input(2);
     absl::StatusOr<xla::Shape> weights_shape_or =
         ctx->builder()->GetShape(weights);

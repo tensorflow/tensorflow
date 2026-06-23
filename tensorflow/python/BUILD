@@ -774,6 +774,7 @@ pywrap_tensorflow_macro(
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
         ":_pywrap_library_dependency_enforcer",
+        "@llvm-project//llvm:FileCheckLib",
     ] + select({
         "//tools/cc_target_os:gce": [],
         "//conditions:default": ["//learning/brain/google/data/service/data_transfer_protocols/void"],
@@ -911,6 +912,7 @@ pywrap_aware_filegroup(
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:safe_ptr",  # checkpoint_reader
         "//tensorflow/c:tf_status_helper",  # tfe
+        "//tensorflow/cc:const_op",  # const_op
         "//tensorflow/cc/saved_model:fingerprinting_impl",  # SavedModel fingerprinting
         "//tensorflow/cc/saved_model:metrics_impl",  # SavedModel metrics
         "//tensorflow/compiler/jit:flags",  # tfe
@@ -982,6 +984,7 @@ pywrap_aware_filegroup(
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
+        "@llvm-project//llvm:FileCheckLib",  # filecheck_wrapper
         "@tsl//tsl/platform:tensor_float_32_utils",  # tensor_float_32
         "@tsl//tsl/profiler/lib:profiler_session_impl",  # profiler
         "@xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",  # profiler
@@ -1130,13 +1133,18 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/compiler/tf2tensorrt:common_utils",
         "//tensorflow/compiler/tf2tensorrt:trt_parameters",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@pybind11",
         "@xla//third_party/python_runtime:headers",
@@ -1387,6 +1395,8 @@ tf_python_pybind_extension(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:graph_constructor",
+        "//tensorflow/core/common_runtime:session",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
@@ -1435,6 +1445,7 @@ tf_pybind_cc_library_wrapper(
 py_library(
     name = "tf2",
     srcs = ["tf2.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         "//tensorflow/python/platform:_pywrap_tf2",
@@ -1540,6 +1551,7 @@ cc_library(
             if_cuda_is_configured([
                 "@xla//xla/tsl/cuda:cupti",
                 "@xla//xla/tsl/cuda:nvshmem_stub",
+                "@xla//xla/tsl/cuda:cusolver",
             ]) + if_nccl([
                 "@xla//xla/tsl/cuda:nccl",
             ])

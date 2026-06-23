@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 
+#include <cstddef>
+#include <cstring>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 
 #include "absl/log/check.h"
@@ -26,6 +30,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 
 namespace pjrt {
 
@@ -55,7 +60,9 @@ absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
 }
 
 absl::StatusCode PjrtErrorCodeToStatusCode(PJRT_Error_Code code) {
-  switch (code) {
+  int int_code;
+  std::memcpy(&int_code, &code, sizeof(code));
+  switch (int_code) {
     case PJRT_Error_Code_OK:
     case PJRT_Error_Code_CANCELLED:
     case PJRT_Error_Code_UNKNOWN:
@@ -73,12 +80,16 @@ absl::StatusCode PjrtErrorCodeToStatusCode(PJRT_Error_Code code) {
     case PJRT_Error_Code_UNAVAILABLE:
     case PJRT_Error_Code_DATA_LOSS:
     case PJRT_Error_Code_UNAUTHENTICATED:
-      return static_cast<absl::StatusCode>(code);
+      return static_cast<absl::StatusCode>(int_code);
+    default:
+      return absl::StatusCode::kUnknown;
   }
 }
 
 PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code) {
-  switch (static_cast<tsl::error::Code>(code)) {
+  int int_code;
+  std::memcpy(&int_code, &code, sizeof(code));
+  switch (int_code) {
     case tsl::error::OK:
     case tsl::error::CANCELLED:
     case tsl::error::UNKNOWN:
@@ -96,7 +107,7 @@ PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code) {
     case tsl::error::INTERNAL:
     case tsl::error::UNAVAILABLE:
     case tsl::error::DATA_LOSS:
-      return static_cast<PJRT_Error_Code>(code);
+      return static_cast<PJRT_Error_Code>(int_code);
     case tensorflow::error::
         DO_NOT_USE_RESERVED_FOR_FUTURE_EXPANSION_USE_DEFAULT_IN_SWITCH_INSTEAD_:
       CHECK(false) << "got DO_NOT_USE_RESERVED_FOR_FUTURE_EXPANSION_"
@@ -105,6 +116,8 @@ PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code) {
       CHECK(false) << "got Code_INT_MIN_SENTINEL_DO_NOT_USE_";
     case tensorflow::error::Code_INT_MAX_SENTINEL_DO_NOT_USE_:
       CHECK(false) << "got Code_INT_MAX_SENTINEL_DO_NOT_USE_";
+    default:
+      return PJRT_Error_Code_UNKNOWN;
   }
 }
 
@@ -150,6 +163,91 @@ absl::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
     }
   }
   return status;
+}
+
+struct PJRT_Error_Impl : public PJRT_Error {
+  absl::Status status;
+
+  static void Destroy(PJRT_Error* error) {
+    delete static_cast<PJRT_Error_Impl*>(error);
+  }
+
+  static void Message(const PJRT_Error* error, const char** message,
+                      size_t* message_size) {
+    const PJRT_Error_Impl* impl = static_cast<const PJRT_Error_Impl*>(error);
+    *message = impl->status.message().data();
+    *message_size = impl->status.message().size();
+  }
+
+  static PJRT_Error_Code GetCode(const PJRT_Error* error) {
+    const PJRT_Error_Impl* impl = static_cast<const PJRT_Error_Impl*>(error);
+    return StatusCodeToPjrtErrorCode(impl->status.code());
+  }
+
+  static void ForEachPayload(const PJRT_Error* error,
+                             PJRT_Error_PayloadVisitor visitor,
+                             void* user_arg) {
+    const PJRT_Error_Impl* impl = static_cast<const PJRT_Error_Impl*>(error);
+    impl->status.ForEachPayload(
+        [&](absl::string_view key, const absl::Cord& value) {
+          std::optional<absl::string_view> value_view = value.TryFlat();
+          if (value_view.has_value()) {
+            visitor(key.data(), key.size(), value_view->data(),
+                    value_view->size(), user_arg);
+          } else {
+            std::string value_str(value);
+            visitor(key.data(), key.size(), value_str.data(), value_str.size(),
+                    user_arg);
+          }
+        });
+  }
+};
+
+static constexpr PJRT_Error_FunctionTable kBuiltinErrorVTable = {
+    /*struct_size=*/PJRT_Error_FunctionTable_STRUCT_SIZE,
+    /*instance_size=*/PJRT_Error_STRUCT_SIZE,
+    /*extension_start=*/nullptr,
+    /*destroy=*/PJRT_Error_Impl::Destroy,
+    /*message=*/PJRT_Error_Impl::Message,
+    /*get_code=*/PJRT_Error_Impl::GetCode,
+    /*for_each_payload=*/PJRT_Error_Impl::ForEachPayload,
+};
+
+absl::Status PjrtErrorToStatus(PJRT_Error* error) {
+  if (error == nullptr) {
+    return absl::OkStatus();
+  }
+  if (error->vtable == &kBuiltinErrorVTable) {
+    PJRT_Error_Impl* impl = static_cast<PJRT_Error_Impl*>(error);
+    absl::Status status = std::move(impl->status);
+    delete impl;
+    return status;
+  }
+  const char* message = nullptr;
+  size_t message_size = 0;
+  error->vtable->message(error, &message, &message_size);
+  PJRT_Error_Code code = error->vtable->get_code(error);
+  absl::Status status(PjrtErrorCodeToStatusCode(code),
+                      absl::string_view(message, message_size));
+  error->vtable->destroy(error);
+  return status;
+}
+
+PJRT_Error* StatusToPjRtError(absl::Status s) {
+  if (s.ok()) {
+    return nullptr;
+  }
+  PJRT_Error_Impl* impl = new PJRT_Error_Impl();
+  impl->vtable = &kBuiltinErrorVTable;
+  impl->status = std::move(s);
+  return impl;
+}
+
+void DestroyPjRtError(PJRT_Error* error) {
+  if (error == nullptr) {
+    return;
+  }
+  error->vtable->destroy(error);
 }
 
 }  // namespace pjrt

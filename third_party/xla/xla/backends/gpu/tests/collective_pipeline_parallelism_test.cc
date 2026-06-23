@@ -29,9 +29,10 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tests/test_utils.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -42,7 +43,7 @@ namespace {
 // Several tests requires at least four GPUs.  For instructions on running this
 // within Google, see go/multi-gpu-unit-test.
 class CollectivePipelineParallelismTest
-    : public HloTestBase,
+    : public HloTestBaseLegacy,
       public ::testing::WithParamInterface<
           DebugOptions::PipelineParallelismOptLevel> {
  public:
@@ -53,8 +54,8 @@ class CollectivePipelineParallelismTest
 
   HloModuleConfig GetModuleConfigForTest(int64_t replica_count = 1,
                                          int64_t num_partitions = 1) const {
-    HloModuleConfig config =
-        HloTestBase::GetModuleConfigForTest(replica_count, num_partitions);
+    HloModuleConfig config = HloTestBaseLegacy::GetModuleConfigForTest(
+        replica_count, num_partitions);
 
     // Set debug options.
     DebugOptions debug_options = GetDebugOptionsForTest();

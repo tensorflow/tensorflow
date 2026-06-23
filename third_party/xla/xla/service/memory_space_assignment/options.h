@@ -77,6 +77,8 @@ using BitcastSplitFn = std::function<absl::StatusOr<int64_t>(
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;
 using AsyncInstructionBwAdjustmentFactorFn =
     std::function<std::optional<float>(const HloInstruction*)>;
+using IsWindowPrefetchableInstructionFunction =
+    std::function<bool(const HloInstruction*)>;
 using HloPositionOrUse = std::variant<HloPosition, HloUse>;
 using OpSpanSizeFn = std::function<int64_t(
     HloInstruction* original_hlo, HloInstruction* hlo_with_memory_spaces,
@@ -407,10 +409,20 @@ struct Options {
   // Min span size for window prefetch operands allowed.
   int64_t window_prefetch_min_span_size = 4096;
 
+  // This function is called to determine whether an instruction is eligible
+  // for window prefetching. If not provided (nullptr), the default logic is
+  // used: output fusions and loop fusions not on sparsecore are eligible.
+  IsWindowPrefetchableInstructionFunction
+      is_window_prefetchable_instruction_fn = nullptr;
+
   // The mode to use for window prefetching.
   WindowPrefetchMode window_prefetch_mode = WindowPrefetchMode::kWindowExposure;
 
   MsaSortOrderOverrides msa_sort_order_overrides;
+
+  // If true, allocates alternate memory colored buffers after pre-colored
+  // buffers but before other buffers.
+  bool allocate_colored_buffers_early = true;
 
   // A mode that enables expanding scoped alternate memory allocations to the
   // largest contiguous open space available.
@@ -431,7 +443,7 @@ struct Options {
   uint64_t reserved_bytes_for_block_prefetches = 0;
 
   // List of hlo positions for block prefetches.
-  std::vector<HloPosition> block_prefetched_positions;
+  absl::flat_hash_set<HloPosition> block_prefetched_positions;
 
   // Determines the bandwidth adjustment factor for an async start instruction.
   // The available bandwidth for instructions between this and the async done

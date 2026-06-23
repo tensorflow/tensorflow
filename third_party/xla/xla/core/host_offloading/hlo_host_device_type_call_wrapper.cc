@@ -21,12 +21,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/core/host_offloading/annotate_host_compute_offload.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -87,39 +89,38 @@ absl::StatusOr<bool> OffloadHostInstructions(
     return host_offload_utils::ComputeTypeIsHost(instr);
   };
 
-  TF_ASSIGN_OR_RETURN(
-      auto offloaded_instructions_and_calls,
-      offloader_util::FindAndWrapOffloadedComputations(
-          computation,
-          /*should_offload=*/should_offload_to_host_compute,
-          /*should_fuse*/
-          [](const HloInstruction&, const HloInstruction& hlo) {
-            // If the computation has a schedule, we cannot fuse.
-            // Otherwise incremental HloSchedule::Update() will
-            // fail. Before:
-            //   a = ...
-            //   copy_a = copy(a) // host-to-host copy
-            //   c = ds(copy_a)
-            //   b = ...
-            //   copy_b = copy(b) // host-to-host copy
-            //   d = ds(copy_b)
-            //
-            // After offloading and fusing:
-            //   a = ...
-            //   b = ...
-            //   host_call = host-call(a, b)
-            //   copy_a = gte(host_call, 0)
-            //   copy_b = gte(host_call, 1)
-            //   c = ds(copy_a)
-            //   d = ds(copy_b)
-            //
-            // Now b has to be scheduled before c, which an
-            // incremental HloSchedule::Update() cannot do since it
-            // only schedules new instructions and doesn't change
-            // the original sequence.
-            return !hlo.GetModule()->has_schedule();
-          },
-          options.clear_backend_config_device_type, "host-call"));
+  ASSIGN_OR_RETURN(auto offloaded_instructions_and_calls,
+                   offloader_util::FindAndWrapOffloadedComputations(
+                       computation,
+                       /*should_offload=*/should_offload_to_host_compute,
+                       /*should_fuse*/
+                       [](const HloInstruction&, const HloInstruction& hlo) {
+                         // If the computation has a schedule, we cannot fuse.
+                         // Otherwise incremental HloSchedule::Update() will
+                         // fail. Before:
+                         //   a = ...
+                         //   copy_a = copy(a) // host-to-host copy
+                         //   c = ds(copy_a)
+                         //   b = ...
+                         //   copy_b = copy(b) // host-to-host copy
+                         //   d = ds(copy_b)
+                         //
+                         // After offloading and fusing:
+                         //   a = ...
+                         //   b = ...
+                         //   host_call = host-call(a, b)
+                         //   copy_a = gte(host_call, 0)
+                         //   copy_b = gte(host_call, 1)
+                         //   c = ds(copy_a)
+                         //   d = ds(copy_b)
+                         //
+                         // Now b has to be scheduled before c, which an
+                         // incremental HloSchedule::Update() cannot do since it
+                         // only schedules new instructions and doesn't change
+                         // the original sequence.
+                         return !hlo.GetModule()->has_schedule();
+                       },
+                       options.clear_backend_config_device_type, "host-call"));
 
   bool modified = false;
   for (const auto& [_, instr_call] : offloaded_instructions_and_calls) {
@@ -138,11 +139,11 @@ absl::StatusOr<bool> OffloadHostInstructions(
         << "Shape mismatch between the host computation and the corresponding "
            "host call.";
 
-    TF_RETURN_IF_ERROR(options.set_backend_config_fn(instr_call));
+    RETURN_IF_ERROR(options.set_backend_config_fn(instr_call));
 
     for (HloComputation* called_computation :
          instr_call->called_computations()) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           offloader_util::RecursivelyClearComputeTypeFrontendAttribute(
               called_computation));
     }
@@ -232,7 +233,7 @@ absl::StatusOr<bool> CleanUpHostComputationDevicePlacementAnnotations(
   const absl::flat_hash_set<HloInstruction*>
       allowed_device_placement_annotations =
           CollectAllowedDevicePlacementAnnotations(computation);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       const std::vector<HloInstruction*> redundant_device_placement_annotations,
       CheckRemainingDevicePlacementAnnotations(
           computation, allowed_device_placement_annotations));
@@ -247,11 +248,11 @@ absl::StatusOr<bool> CleanUpHostComputationDevicePlacementAnnotations(
     for (HloInstruction* user : redundant_annotation->users()) {
       for (int64_t operand_index :
            user->operand_indices(redundant_annotation)) {
-        TF_RETURN_IF_ERROR(user->ReplaceOperandWith(
+        RETURN_IF_ERROR(user->ReplaceOperandWith(
             operand_index, redundant_annotation->mutable_operand(0)));
       }
     }
-    TF_RETURN_IF_ERROR(redundant_annotation->parent()->RemoveInstruction(
+    RETURN_IF_ERROR(redundant_annotation->parent()->RemoveInstruction(
         redundant_annotation));
   }
 
@@ -301,8 +302,8 @@ absl::Status CloneAnnotationToDestination(
     }
     for (int64_t operand_index :
          destination_user->operand_indices(destination_instruction)) {
-      TF_RETURN_IF_ERROR(destination_user->ReplaceOperandWith(
-          operand_index, moved_annotation));
+      RETURN_IF_ERROR(destination_user->ReplaceOperandWith(operand_index,
+                                                           moved_annotation));
     }
     used_new_annotation = true;
   }
@@ -310,7 +311,7 @@ absl::Status CloneAnnotationToDestination(
   // All the places where this annotation would be placed already have this
   // exact annotation.
   if (!used_new_annotation) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         destination_computation->RemoveInstruction(moved_annotation));
   }
 
@@ -349,16 +350,16 @@ absl::StatusOr<bool> MoveAnnotationsToCallerTuple(
           // are currently looking at.
           continue;
         }
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             CloneAnnotationToDestination(caller_computation, caller_instruction,
                                          root_operand, caller_user_gte));
         changed = true;
       }
     }
 
-    TF_RETURN_IF_ERROR(host_computation->root_instruction()->ReplaceOperandWith(
+    RETURN_IF_ERROR(host_computation->root_instruction()->ReplaceOperandWith(
         operand_index, root_operand->mutable_operand(0)));
-    TF_RETURN_IF_ERROR(host_computation->RemoveInstruction(root_operand));
+    RETURN_IF_ERROR(host_computation->RemoveInstruction(root_operand));
     changed = true;
   }
   return changed;
@@ -379,14 +380,14 @@ absl::StatusOr<bool> MoveAnnotationToCallerNonTuple(
   for (HloInstruction* caller_instruction :
        host_computation->caller_instructions()) {
     HloComputation* caller_computation = caller_instruction->parent();
-    TF_RETURN_IF_ERROR(
-        CloneAnnotationToDestination(caller_computation, caller_instruction,
-                                     root_instr, caller_instruction));
+    RETURN_IF_ERROR(CloneAnnotationToDestination(caller_computation,
+                                                 caller_instruction, root_instr,
+                                                 caller_instruction));
   }
 
   // Remove the annotation from inside this computation.
   host_computation->set_root_instruction(root_instr->mutable_operand(0));
-  TF_RETURN_IF_ERROR(host_computation->RemoveInstruction(root_instr));
+  RETURN_IF_ERROR(host_computation->RemoveInstruction(root_instr));
   return true;
 }
 
@@ -394,7 +395,7 @@ absl::StatusOr<bool> MoveAnnotationToCallerNonTuple(
 // computation.
 absl::StatusOr<bool> MoveAnnotationsToCaller(HloComputation* computation) {
   bool changed = false;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       bool cleaned_up,
       CleanUpHostComputationDevicePlacementAnnotations(computation));
   changed = changed || cleaned_up;
@@ -402,13 +403,12 @@ absl::StatusOr<bool> MoveAnnotationsToCaller(HloComputation* computation) {
   if (computation->root_instruction()->opcode() == HloOpcode::kTuple) {
     // When the computation returns a tuple, the annotation is on the operands
     // of the root tuple.
-    TF_ASSIGN_OR_RETURN(bool moved, MoveAnnotationsToCallerTuple(computation));
+    ASSIGN_OR_RETURN(bool moved, MoveAnnotationsToCallerTuple(computation));
     changed = changed || moved;
   } else {
     // When the computation returns a single value, the annotation is the root
     // instruction.
-    TF_ASSIGN_OR_RETURN(bool moved,
-                        MoveAnnotationToCallerNonTuple(computation));
+    ASSIGN_OR_RETURN(bool moved, MoveAnnotationToCallerNonTuple(computation));
     changed = changed || moved;
   }
   return changed;
@@ -445,7 +445,7 @@ absl::StatusOr<bool> RemoveDevicePlacementAnnotationsFromHostComputations(
 
   bool changed = false;
   for (HloComputation* computation : host_computations) {
-    TF_ASSIGN_OR_RETURN(bool moved, MoveAnnotationsToCaller(computation));
+    ASSIGN_OR_RETURN(bool moved, MoveAnnotationsToCaller(computation));
     changed = changed || moved;
   }
   return changed;
@@ -485,7 +485,7 @@ HloHostDeviceTypeCallWrapper::RemoveTupleParameters(HloCallInstruction* call) {
     HloInstruction* called_comp_parameter =
         called_computation->parameter_instruction(tuple_operand_index);
 
-    TF_RETURN_IF_ERROR(operand_tuple_shape_tree.ForEachElementWithStatus(
+    RETURN_IF_ERROR(operand_tuple_shape_tree.ForEachElementWithStatus(
         [&](const ShapeIndex& operand_tuple_index,
             HloInstruction* operand_tuple_element) -> absl::Status {
           HloInstruction* called_comp_leaf_instr =
@@ -514,7 +514,7 @@ HloHostDeviceTypeCallWrapper::RemoveTupleParameters(HloCallInstruction* call) {
                   called_computation->num_parameters(),
                   operand_tuple_element->shape(), "param"));
 
-          TF_RETURN_IF_ERROR(
+          RETURN_IF_ERROR(
               called_comp_leaf_instr->ReplaceAllUsesWith(leaf_param));
 
           new_call_operands.push_back(operand_tuple_element);
@@ -524,17 +524,17 @@ HloHostDeviceTypeCallWrapper::RemoveTupleParameters(HloCallInstruction* call) {
   }
 
   // Remove any unused tuple parameter gte instructions.
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       HloDCE().RunOnComputation(called_computation, false).status());
   // Remove the tuple parameters that are no longer used.
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       called_computation->RemoveUnusedParametersFromAnyComputation());
 
   HloInstruction* new_call = call->parent()->AddInstruction(
       call->CloneWithNewOperands(call->shape(), new_call_operands));
 
-  TF_RETURN_IF_ERROR(call->ReplaceAllUsesWith(new_call));
-  TF_RETURN_IF_ERROR(call->parent()->RemoveInstruction(call));
+  RETURN_IF_ERROR(call->ReplaceAllUsesWith(new_call));
+  RETURN_IF_ERROR(call->parent()->RemoveInstruction(call));
   return absl::down_cast<HloCallInstruction*>(new_call);
 }
 
@@ -551,7 +551,7 @@ HloHostDeviceTypeCallWrapper::MaterializeConstantsOnHostComputation(
     }
   }
   // Remove any existing dead parameters.
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       called_computation->RemoveUnusedParametersFromAnyComputation());
 
   int skipped_params = 0;
@@ -579,7 +579,7 @@ HloHostDeviceTypeCallWrapper::MaterializeConstantsOnHostComputation(
       HloInstruction* called_computation_parameter =
           called_computation->parameter_instruction(operand_no -
                                                     skipped_params);
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           called_computation_parameter->ReplaceAllUsesWith(cloned_constant));
     } else {
       non_constant_operands.push_back(operand);
@@ -591,14 +591,14 @@ HloHostDeviceTypeCallWrapper::MaterializeConstantsOnHostComputation(
   }
 
   // Remove any parameter that were constants and are now unused.
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       called_computation->RemoveUnusedParametersFromAnyComputation());
 
   HloInstruction* new_call = call->parent()->AddInstruction(
       call->CloneWithNewOperands(call->shape(), non_constant_operands));
 
-  TF_RETURN_IF_ERROR(call->ReplaceAllUsesWith(new_call));
-  TF_RETURN_IF_ERROR(call->parent()->RemoveInstruction(call));
+  RETURN_IF_ERROR(call->ReplaceAllUsesWith(new_call));
+  RETURN_IF_ERROR(call->parent()->RemoveInstruction(call));
   return absl::down_cast<HloCallInstruction*>(new_call);
 }
 
@@ -622,7 +622,7 @@ absl::StatusOr<bool> HloHostDeviceTypeCallWrapper::RunImpl(
 
   // Before any other passes run, move device placement annotations out of host
   // computations.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       bool modified,
       RemoveDevicePlacementAnnotationsFromHostComputations(module));
   // At this point, this pass will always modify the module. The return value of
@@ -630,11 +630,11 @@ absl::StatusOr<bool> HloHostDeviceTypeCallWrapper::RunImpl(
   // useful.
   (void)modified;
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       AnnotateHostComputeOffload().Run(module, execution_threads).status());
-  TF_RETURN_IF_ERROR(CallInliner().Run(module, execution_threads).status());
-  TF_RETURN_IF_ERROR(TupleSimplifier().Run(module, execution_threads).status());
-  TF_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
+  RETURN_IF_ERROR(CallInliner().Run(module, execution_threads).status());
+  RETURN_IF_ERROR(TupleSimplifier().Run(module, execution_threads).status());
+  RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   for (HloComputation* computation :
@@ -651,14 +651,13 @@ absl::StatusOr<bool> HloHostDeviceTypeCallWrapper::RunImpl(
       RemoveComputeTypeFrontendAttribute(*computation);
       continue;
     }
-    TF_RETURN_IF_ERROR(
-        OffloadHostInstructions(*computation, options_).status());
+    RETURN_IF_ERROR(OffloadHostInstructions(*computation, options_).status());
   }
 
-  TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
+  RETURN_IF_ERROR(module->RemoveUnusedComputations());
 
   if (module->has_schedule()) {
-    TF_RETURN_IF_ERROR(module->schedule().Update());
+    RETURN_IF_ERROR(module->schedule().Update());
   }
 
   return true;

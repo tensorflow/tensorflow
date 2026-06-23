@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -61,10 +62,10 @@ void ClearSideEffects(HloInstruction* instr) {
 absl::Status RecursivelyClearComputeTypeFrontendAttribute(
     HloComputation* computation) {
   for (HloInstruction* instruction : computation->instructions()) {
-    TF_RETURN_IF_ERROR(ClearComputeTypeFrontendAttribute(instruction));
+    RETURN_IF_ERROR(ClearComputeTypeFrontendAttribute(instruction));
     for (HloComputation* called_computation :
          instruction->called_computations()) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           RecursivelyClearComputeTypeFrontendAttribute(called_computation));
     }
   }
@@ -84,7 +85,7 @@ FindAndWrapOffloadedComputations(
   // only materialize it on TC. This simplifies the dependency chain.
   for (HloInstruction* instr : computation.instructions()) {
     if (instr->IsConstant() && should_offload(instr)) {
-      TF_RETURN_IF_ERROR(clear_backend_config_device_type(instr));
+      RETURN_IF_ERROR(clear_backend_config_device_type(instr));
     }
   }
 
@@ -131,9 +132,8 @@ FindAndWrapOffloadedComputations(
         }
         offloaded_call_instr = absl::down_cast<HloCallInstruction*>(call_instr);
         CHECK_NE(offloaded_call_instr, nullptr);
-        TF_RETURN_IF_ERROR(
-            clear_backend_config_device_type(offloaded_call_instr));
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(clear_backend_config_device_type(offloaded_call_instr));
+        RETURN_IF_ERROR(
             ClearComputeTypeFrontendAttribute(offloaded_call_instr));
         ClearSideEffects(instr);
         offloaded_instr = instr;
@@ -209,13 +209,13 @@ FindAndWrapOffloadedComputations(
       if (instr->IsDead() && (instr->IsCustomCall("Sharding") ||
                               (instr->HasControlDependencies() &&
                                !instr->HasSuccessorControlDependencies()))) {
-        TF_RETURN_IF_ERROR(instr->SafelyDropAllControlDependencies());
-        TF_RETURN_IF_ERROR(computation.RemoveInstruction(instr));
+        RETURN_IF_ERROR(instr->SafelyDropAllControlDependencies());
+        RETURN_IF_ERROR(computation.RemoveInstruction(instr));
       }
     }
 
     // DCE any offloaded instructions that have no remaining un-wrapped uses.
-    TF_RETURN_IF_ERROR(HloDCE().Run(computation.parent()).status());
+    RETURN_IF_ERROR(HloDCE().Run(computation.parent()).status());
 
     VLOG(6) << "After offloading computation after DCE:";
     XLA_VLOG_LINES(6, computation.parent()->ToString());

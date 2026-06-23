@@ -36,6 +36,7 @@ limitations under the License.
 #include "tsl/platform/platform.h"
 
 namespace tsl {
+
 namespace error {
 // NOLINTBEGIN(misc-unused-using-decls)
 // TODO(aminim): figure out the protobuf migration story.
@@ -189,14 +190,19 @@ void AppendToMessage(absl::Status* status, Args... args) {
   *status = std::move(new_status);
 }
 
+ABSL_DEPRECATED(
+    "TF_RETURN_IF_ERROR is deprecated. Call RETURN_IF_ERROR instead")
+inline void TfReturnIfErrorDeprecationMarker() {}
+
 // For propagating errors when calling a function.
-#define TF_RETURN_IF_ERROR(...)            \
-  do {                                     \
-    absl::Status _status = (__VA_ARGS__);  \
-    if (TF_PREDICT_FALSE(!_status.ok())) { \
-      MAYBE_ADD_SOURCE_LOCATION(_status)   \
-      return _status;                      \
-    }                                      \
+#define TF_RETURN_IF_ERROR(...)                        \
+  do {                                                 \
+    ::tsl::errors::TfReturnIfErrorDeprecationMarker(); \
+    absl::Status _status = (__VA_ARGS__);              \
+    if (TF_PREDICT_FALSE(!_status.ok())) {             \
+      MAYBE_ADD_SOURCE_LOCATION(_status)               \
+      return _status;                                  \
+    }                                                  \
   } while (0)
 
 #define TF_RETURN_WITH_CONTEXT_IF_ERROR(expr, ...)           \

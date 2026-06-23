@@ -40,6 +40,8 @@ bool GemmRewriteTestBase::IsCuda() const { return Capability().IsCuda(); }
 
 bool GemmRewriteTestBase::IsRocm() const { return Capability().IsRocm(); }
 
+bool GemmRewriteTestBase::IsSycl() const { return Capability().IsOneAPI(); }
+
 bool GemmRewriteTestBase::IsBlackwell() const {
   if (IsCuda()) {
     return Capability().cuda_compute_capability()->IsBlackwell();
@@ -49,6 +51,7 @@ bool GemmRewriteTestBase::IsBlackwell() const {
 
 stream_executor::GpuComputeCapability
 GemmRewriteTestBase::CudaHopperOrRocmCapability() {
+  // TODO(intel-tf): Add a check for oneAPI.
   if (IsCuda()) {
     return se::CudaComputeCapability::Hopper();
   }
@@ -81,8 +84,13 @@ bool GemmRewriteTestBase::SkipGroupedGemmTest() {
 bool GemmRewriteTestBase::HasFp8Support() const {
   if (IsCuda()) {
     return Capability().cuda_compute_capability()->IsAtLeast(8, 9);
+  } else if (IsSycl()) {
+    // TODO(intel-tf): Use compute capability to find out support when
+    // available.
+    return false;
+  } else {
+    return Capability().rocm_compute_capability()->has_fp8_support();
   }
-  return Capability().rocm_compute_capability()->has_fp8_support();
 }
 
 bool GemmRewriteTestBase::HasCudaComputeCapability(

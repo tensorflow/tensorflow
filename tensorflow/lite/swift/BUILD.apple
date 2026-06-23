@@ -1,6 +1,6 @@
 # TensorFlow Lite for Swift
 
-load("@build_bazel_rules_apple//apple:apple.bzl", "apple_static_xcframework")
+load("@build_bazel_rules_apple//apple:apple_xcframework.bzl", "apple_static_xcframework")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework", "ios_unit_test")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
 load("@rules_cc//cc:objc_library.bzl", "objc_library")
