@@ -56,6 +56,12 @@ tf_to_tflite(
     ],
 )
 
+filegroup(
+    name = "gather_string_exported",
+    srcs = [":gather_string"],
+    visibility = ["//third_party/odml/litert:__subpackages__"],
+)
+
 tf_to_tflite(
     name = "gather_string_0d",
     src = "gather_0d.pbtxt",
