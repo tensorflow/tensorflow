@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/executable_metadata.pb.h"
 #include "xla/pjrt/proto/execute_options.pb.h"
+#include "xla/pjrt/utils.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
@@ -418,7 +419,7 @@ PjRtExecutable::GetParameterLayouts() const {
   }
   ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
   ASSIGN_OR_RETURN(std::vector<Layout> layouts,
-                   comp_layout.FlattenedParameterLayouts());
+                   xla::FlattenedParameterLayouts(comp_layout));
   std::vector<std::shared_ptr<const PjRtLayout>> result;
   result.reserve(layouts.size());
   for (const Layout& layout : layouts) {
@@ -443,7 +444,7 @@ PjRtExecutable::GetOutputLayouts() const {
   }
   ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
   ASSIGN_OR_RETURN(std::vector<Layout> layouts,
-                   comp_layout.FlattenedResultLayouts());
+                   xla::FlattenedResultLayouts(comp_layout));
   std::vector<std::shared_ptr<const PjRtLayout>> result;
   result.reserve(layouts.size());
   for (const Layout& layout : layouts) {

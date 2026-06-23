@@ -349,8 +349,5 @@ class LowerXlaIntrinsicLibPass
 };
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateLowerXlaIntrinsicLibPass() {
-  return std::make_unique<LowerXlaIntrinsicLibPass>();
-}
 }  // namespace emitters
 }  // namespace xla

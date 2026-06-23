@@ -713,3 +713,18 @@ exports_files(
         "//tensorflow/core/platform:__pkg__",
     ]),
 )
+
+cc_library(
+    name = "builddata",
+    srcs = ["builddata.cc"],
+    copts = tsl_copts(),
+    visibility = ["//xla/tsl/builddata:__pkg__"],
+    deps = [
+        "//xla/tsl/builddata:builddata_globals_hdrs",
+        "//xla/tsl/builddata:builddata_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+    ],
+    alwayslink = 1,
+)
