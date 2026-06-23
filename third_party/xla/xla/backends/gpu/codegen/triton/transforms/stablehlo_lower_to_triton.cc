@@ -821,11 +821,4 @@ class StableHLOLowerToTritonPass
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateStableHLOLowerToTritonPass(
-    bool warp_specialization_allowed) {
-  StableHLOLowerToTritonPassOptions options;
-  options.warp_specialization_allowed_ = warp_specialization_allowed;
-  return std::make_unique<StableHLOLowerToTritonPass>(options);
-}
-
 }  // namespace mlir::triton::xla

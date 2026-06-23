@@ -660,8 +660,4 @@ class LoadInt4RewritePass
   }
 };
 
-std::unique_ptr<Pass> CreateInt4ToPackedInt4RewritePass(bool enable_bf16x2) {
-  return createLoadInt4RewritePass(LoadInt4RewritePassOptions{enable_bf16x2});
-}
-
 }  // namespace mlir::triton::xla

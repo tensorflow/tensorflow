@@ -190,8 +190,4 @@ class TritonXLAConvertUnsupportedTypesPass
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateTritonXLAConvertUnsupportedTypesPass() {
-  return std::make_unique<TritonXLAConvertUnsupportedTypesPass>();
-}
-
 }  // namespace mlir::triton::xla

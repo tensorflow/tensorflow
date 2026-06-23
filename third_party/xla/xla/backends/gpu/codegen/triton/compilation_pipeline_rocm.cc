@@ -180,8 +180,11 @@ static void MakeLLIR(mlir::OpPassManager* pm,
 
   // Add XLA custom pass to implement extern_elementwise functions
   // This must run after MLIR->LLVM conversion but before final optimizations
-  pm->addPass(mlir::triton::xla::CreateTritonXLAImplementExternElementWisePass(
-      mlir::triton::xla::TargetBackend::ROCM));
+  mlir::triton::xla::TritonXLAImplementExternElementWisePassOptions
+      impl_extern_options;
+  impl_extern_options.target_ = mlir::triton::xla::TargetBackend::ROCM;
+  pm->addPass(mlir::triton::xla::createTritonXLAImplementExternElementWisePass(
+      impl_extern_options));
 }
 
 void CreateTritonRocmPipeline(

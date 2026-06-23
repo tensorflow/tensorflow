@@ -3,61 +3,95 @@ syntax = "proto3";
 package xla.autotuner;
 
 import "google/protobuf/duration.proto";
-import "xla/backends/autotuner/backends.proto";
 import "xla/backends/autotuner/backend_config.proto";
+import "xla/backends/autotuner/backends.proto";
 
-option java_outer_classname = "Tuning";
+option java_outer_classname = "Autotuning";
 option java_multiple_files = true;
 
-enum FailureKind {
-  FAILURE_KIND_UNSPECIFIED = 0;
-  COMPILATION_FAILED = 1;
-  EXECUTION_FAILED = 2;
-  REDZONE_CHECK_FAILED = 3;
-  WRONG_RESULTS = 4;
-}
-
-message Failure {
-  FailureKind kind = 1;
-  string message = 2;
-}
-
+// TODO(b/444398084): Make BackendConfig self sufficient and use it directly.
 message Config {
   Backend backend = 1;
   BackendConfig backend_config = 2;
+}
+
+message AutotuneTargetKey {
+  string device = 1;
+  // Optional and user specified version, example: xla/jax release version.
+  string explicit_version = 2;
+  string hlo_fingerprint = 3;
+}
+
+message AutotuneEnvironmentKey {
+  // Combined version of all codegen backends
+  string codegen_version = 1;
+  string codegen_options_fingerprint = 2;
+}
+
+message AutotuneKey {
+  AutotuneTargetKey target = 1;            // always matched.
+  AutotuneEnvironmentKey environment = 2;  // conditionally matched.
+}
+
+message AutotuneValue {
+  Config optimal_config = 1;
+  // Version of the optimal config, should be matched when the
+  // environment key is not matched.
+  string optimal_backend_version = 2;
+}
+
+message AutotuneEntry {
+  AutotuneKey key = 1;
+  AutotuneValue value = 2;
+}
+
+// The device and explicit versions are currently used at cahce level as
+// well as key in the cache key. It helps us experiment with different cache
+// granularity, example: spanner database can handle all devices in one single
+// cache well, while for directory based cache, we need to limit the granularity
+// to a single device. We might not need different granularity and in that case
+// we will deprecate the fields from either cache level or key level based on
+// the best granularity we find.
+message AutotuneCache {
+  // Only specified if the cache is per-device.
+  string device_scope = 1;
+  // Only specified if the cache is per-explicit-version.
+  string explicit_version_scope = 2;
+  repeated AutotuneEntry entries = 3;
 }
 
 message ConfigProfile {
   Config config = 1;
   google.protobuf.Duration run_time = 2;
   int64 scratch_bytes = 3;
-  Failure failure = 4;
-  bool is_default_config = 5;
 }
 
-message AutotuningKey {
-  string op_fingerprint = 1;
-  string device = 2;
-  // Optional user-specified version string. If provided, this is used as the
-  // version string in cache lookups, instead of a string derived from
-  // backend_versions. This is useful when strict compatibility guarantees are
-  // required and backend_versions cannot provide it.
-  string explicit_version = 3;
-  // map key is string representation of Backend enum.
-  map<string, string> backend_versions = 4;
+message FailedConfigs {
+  enum FailureKind {
+    FAILURE_KIND_UNSPECIFIED = 0;
+    COMPILATION_FAILED = 1;
+    EXECUTION_FAILED = 2;
+    REDZONE_CHECK_FAILED = 3;
+    WRONG_RESULTS = 4;
+  }
+  Config config = 1;
+  FailureKind kind = 2;
+  string message = 3;
 }
 
-message AutotuningRawProfiles {
-  AutotuningKey key = 1;
-  string hlo_text = 2;
-  repeated ConfigProfile config_profiles = 3;
+message InstructionRawConfigProfiles {
+  string hlo_fingerprint = 1;
+  repeated ConfigProfile config_profiles = 2;  // Used to create AutotuneCache.
+  repeated FailedConfigs failed_configs = 3;   // For debugging.
+  string hlo_text = 4;                         // For debugging.
 }
 
-message ConfigCacheEntry {
-  AutotuningKey key = 1;
-  Config optimal_config = 2;
-}
-
-message ConfigCache {
-  repeated ConfigCacheEntry results = 1;
+message AllRawConfigProfiles {
+  string device = 1;
+  string explicit_version = 2;
+  string codegen_version = 3;
+  string codegen_options_fingerprint = 4;
+  // string representation of Backend enum mapped to version string.
+  map<string, string> per_backend_versions = 5;
+  repeated InstructionRawConfigProfiles instruction_profiles = 6;
 }

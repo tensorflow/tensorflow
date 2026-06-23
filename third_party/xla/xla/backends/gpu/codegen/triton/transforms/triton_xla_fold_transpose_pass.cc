@@ -362,8 +362,4 @@ class TritonXLAFoldTransposePass
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateTritonXLAFoldTransposePass() {
-  return std::make_unique<TritonXLAFoldTransposePass>();
-}
-
 }  // namespace mlir::triton::xla

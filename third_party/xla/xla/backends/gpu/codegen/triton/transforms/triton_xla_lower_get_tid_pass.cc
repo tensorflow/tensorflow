@@ -83,8 +83,4 @@ class TritonXLALowerGetTidPass
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateTritonXLALowerGetTidPass() {
-  return std::make_unique<TritonXLALowerGetTidPass>();
-}
-
 }  // namespace mlir::triton::xla

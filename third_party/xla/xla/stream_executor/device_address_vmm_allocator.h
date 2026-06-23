@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -140,6 +141,19 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
     // this device. Defaults to unlimited.
     uint64_t pa_budget = UINT64_MAX;
   };
+
+  // Creates a platform-appropriate VMM allocator for the given devices,
+  // dispatching to the CUDA or ROCm implementation based on the build platform.
+  // The pa_budget for each device is computed from `memory_fraction` (or
+  // overridden by `gpu_system_memory_size` when set). Returns an error on
+  // platforms without a VMM implementation.
+  //
+  // Defined in device_address_vmm_allocator_factory.cc so this base library
+  // does not depend on the platform-specific subclasses.
+  static absl::StatusOr<std::unique_ptr<DeviceAddressVmmAllocator>> Create(
+      const Platform* platform, double memory_fraction,
+      std::optional<int64_t> gpu_system_memory_size,
+      absl::Span<const std::pair<StreamExecutor*, Stream*>> devices);
 
   ~DeviceAddressVmmAllocator() override;
 

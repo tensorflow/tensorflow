@@ -366,5 +366,78 @@ TEST_F(AutotunerTest, AutotuneCompileErrorWithNoSupportedConfigsTolerance) {
                    .ok());
 }
 
+TEST_F(AutotunerTest, AutotuneMultipleDevicesRoundRobin) {
+  std::vector<std::unique_ptr<BackendConfig>> configs0;
+  configs0.push_back(GetTestConfig("best_config"));
+
+  std::vector<std::unique_ptr<BackendConfig>> configs1;
+  configs1.push_back(GetTestConfig("another_config"));
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
+  EXPECT_CALL(*backend, GetSupportedConfigs(_))
+      .WillOnce(Return(std::move(configs0)))
+      .WillOnce(Return(std::move(configs1)));
+  EXPECT_CALL(*backend, Compile(_, _)).WillRepeatedly([] {
+    return std::unique_ptr<Executable>();
+  });
+
+  auto profiler0 = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler0, CreateInputBuffers(_, _)).WillOnce([] {
+    return std::make_unique<InputBuffers>();
+  });
+  EXPECT_CALL(*profiler0, Profile(_, _)).WillOnce([] {
+    ProfileResult result;
+    result.duration = absl::Microseconds(100);
+    result.output_buffer =
+        ScopedShapedBuffer(ShapeUtil::MakeShape(F32, {2}), nullptr, 0);
+    return result;
+  });
+
+  auto profiler1 = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler1, CreateInputBuffers(_, _)).WillOnce([] {
+    return std::make_unique<InputBuffers>();
+  });
+  EXPECT_CALL(*profiler1, Profile(_, _)).WillOnce([] {
+    ProfileResult result;
+    result.duration = absl::Microseconds(200);
+    result.output_buffer =
+        ScopedShapedBuffer(ShapeUtil::MakeShape(F32, {4}), nullptr, 0);
+    return result;
+  });
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+  ASSERT_OK_AND_ASSIGN(auto orchestrator,
+                       CodegenOrchestrator::Create(std::move(backends), {}));
+
+  std::vector<std::unique_ptr<Profiler>> profilers;
+  profilers.push_back(std::move(profiler0));
+  profilers.push_back(std::move(profiler1));
+
+  ASSERT_OK_AND_ASSIGN(auto autotuner,
+                       Autotuner::Create(std::move(orchestrator),
+                                         std::move(profilers), options_));
+
+  constexpr absl::string_view kHlo = R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[2] parameter(0)
+      p1 = f32[4] parameter(1)
+      copy0 = f32[2] copy(p0)
+      copy1 = f32[4] copy(p1)
+      ROOT tuple = (f32[2], f32[4]) tuple(copy0, copy1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto results,
+      autotuner->TuneConfigs(*module, [](const HloInstruction& instr) {
+        return instr.opcode() == HloOpcode::kCopy;
+      }));
+  EXPECT_EQ(results.size(), 2);
+}
+
 }  // namespace
 }  // namespace xla
