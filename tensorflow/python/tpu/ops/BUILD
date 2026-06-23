@@ -12,10 +12,7 @@ package(
 pytype_strict_library(
     name = "ops",
     srcs = ["tpu_ops.py"],
-    visibility = [
-        "//smartass:__subpackages__",
-        "//tensorflow:__subpackages__",
-    ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/ops:array_ops",
