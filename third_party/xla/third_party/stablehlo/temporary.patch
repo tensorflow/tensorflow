@@ -56,7 +56,37 @@ diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/B
  
  def HLO_ScalarTensor: 0DTensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
  
-@@ -237,7 +237,7 @@
+@@ -197,17 +197,17 @@
+ 
+ def HLO_Buffer : MemRefOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
+ 
+-def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Buffer, HLO_PerAxisQuantizedIntTensor, HLO_Token]>;
++def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Buffer, HLO_PerAxisQuantizedIntTensor, HLO_Token, HLO_Future]>;
+ 
+ def HLO_TensorOrToken : AnyTypeOf<[HLO_Tensor, HLO_Token]>;
+ 
+-def HLO_TensorOrPerAxisQuantizedTensorOrToken : AnyTypeOf<[HLO_Tensor, HLO_PerAxisQuantizedIntTensor, HLO_Token]>;
++def HLO_TensorOrPerAxisQuantizedTensorOrToken : AnyTypeOf<[HLO_Tensor, HLO_PerAxisQuantizedIntTensor, HLO_Token, HLO_Future]>;
+ 
+ def HLO_TensorOrPerAxisQuantizedTensorOrTokenOrBuffer : AnyTypeOf<[HLO_TensorOrPerAxisQuantizedTensorOrToken, HLO_Buffer]>;
+ 
+ def HLO_TensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Token, HLO_Tuple]>;
+ 
+-def HLO_TensorOrPerAxisQuantizedTensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_PerAxisQuantizedIntTensor, HLO_Token, HLO_Tuple]>;
++def HLO_TensorOrPerAxisQuantizedTensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_PerAxisQuantizedIntTensor, HLO_Token, HLO_Future, HLO_Tuple]>;
+ 
+ def HLO_TensorOrPerAxisQuantizedTensorOrTokenOrTupleOrBuffer : AnyTypeOf<[HLO_TensorOrPerAxisQuantizedTensorOrTokenOrTuple, HLO_Buffer]>;
+ 
+@@ -225,6 +225,8 @@
+ def HLO_AnyTensor : TensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt, HLO_PerAxisQuantizedInt],
+     [IsValidQuantizedDimension]>;
+ 
++def HLO_AnyTensorOrFuture : AnyTypeOf<[HLO_AnyTensor, HLO_Future]>;
++
+ def HLO_AnyPredTensor : TensorOf<[HLO_Pred]>;
+ 
+ def HLO_AnyFpTensor : TensorOf<[HLO_Float]>;
+@@ -237,7 +239,7 @@
  
  def HLO_CustomCallTuple : NestedTupleOf<[HLO_AnyTensor, HLO_Buffer, HLO_Token]>;
  
@@ -68,7 +98,15 @@ diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/B
 diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
 --- stablehlo/stablehlo/dialect/ChloOps.cpp
 +++ stablehlo/stablehlo/dialect/ChloOps.cpp
-@@ -93,6 +93,7 @@
+@@ -51,6 +51,7 @@
+ #include "stablehlo/dialect/BroadcastUtils.h"
+ #include "stablehlo/dialect/ChloBytecode.h"
+ #include "stablehlo/dialect/TypeInference.h"
++#include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/transforms/StablehloBroadcastLowering.h"
+ 
+ // Include order matters
+@@ -93,6 +94,7 @@
  INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfcOp)
  INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfInvOp)
  INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LgammaOp)
@@ -76,7 +114,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/diale
  INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NextAfterOp)
  INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(PolygammaOp)
  INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinhOp)
-@@ -751,6 +752,24 @@
+@@ -751,6 +753,24 @@
    return success();
  }
  
@@ -101,6 +139,83 @@ diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/diale
  //===----------------------------------------------------------------------===//
  // TopKOp
  //===----------------------------------------------------------------------===//
+@@ -780,15 +800,14 @@
+   inferredReturnTypes.push_back(type);
+   return success();
+ }
+-
+ //===----------------------------------------------------------------------===//
+ // ScanOp
+ //===----------------------------------------------------------------------===//
+ 
+-LogicalResult ScanOp::inferReturnTypeComponents(
+-    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
++LogicalResult ScanOp::inferReturnTypes(
++    MLIRContext*, std::optional<Location> location, ValueRange operands,
+     DictionaryAttr attributes, PropertyRef properties, RegionRange regions,
+-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
++    SmallVectorImpl<Type>& inferredReturnTypes) {
+   ScanOp::Adaptor adaptor(operands, attributes, properties, regions);
+   if (regions.empty() || regions.front()->empty()) {
+     return emitOptionalError(location, "ScanOp region is empty");
+@@ -823,17 +842,28 @@
+   }
+ 
+   for (auto [i, type] : llvm::enumerate(terminator->getOperands().getTypes())) {
++    if (auto futureType = dyn_cast<mlir::stablehlo::FutureType>(type)) {
++      if (i < numOutputs) {
++        return emitOptionalError(location, "scan output ", i,
++                                 " cannot be a future");
++      }
++      inferredReturnTypes.push_back(futureType);
++      continue;
++    }
+     auto resultType = dyn_cast<RankedTensorType>(type);
+     if (!resultType) {
+       return emitOptionalError(location, "terminator operand ", i,
+                                " is not ranked");
+     }
+-    SmallVector<int64_t> shape(resultType.getShape().begin(),
+-                               resultType.getShape().end());
+     if (i < numOutputs) {
++      SmallVector<int64_t> shape(resultType.getShape().begin(),
++                                 resultType.getShape().end());
+       shape.insert(std::next(shape.begin(), dim), dimSize);
+-    }
+-    inferredReturnShapes.emplace_back(shape, resultType.getElementType());
++      inferredReturnTypes.push_back(
++          RankedTensorType::get(shape, resultType.getElementType()));
++    } else {
++      inferredReturnTypes.push_back(resultType);
++    }
+   }
+ 
+   return success();
+@@ -878,6 +908,14 @@
+   for (auto [i, type] : llvm::enumerate(getOperands().getTypes())) {
+     auto argType = dyn_cast<RankedTensorType>(type);
+     if (!argType) {
++      if (auto futureType = dyn_cast<mlir::stablehlo::FutureType>(type)) {
++        if (!hlo::isCompatibleForHloTypeInference(
++                futureType, bodyBlock.getArgument(i).getType())) {
++          return emitOpError() << "operand and body argument " << i
++                               << " are incompatible";
++        }
++        continue;
++      }
+       return emitOpError() << "operand " << i << " is not ranked";
+     }
+     if (i < getInputs().size()) {
+@@ -891,9 +929,6 @@
+                            << " are incompatible";
+     }
+   }
+-
+-  // Compatibility of terminator operands and result types is checked by
+-  // InferTensorType trait.
+ 
+   return success();
+ }
 diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
 --- stablehlo/stablehlo/dialect/ChloOps.td
 +++ stablehlo/stablehlo/dialect/ChloOps.td
@@ -114,6 +229,33 @@ diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialec
    string summary = "Computes a matmul over a single ragged dimension";
  
    string description = [{
+@@ -938,7 +939,7 @@
+ def CHLO_ScanOp : CHLO_Op<"scan", [
+       AttrSizedOperandSegments,
+       AttrSizedResultSegments,
+-      InferTensorType,
++      DeclareOpInterfaceMethods<InferTypeOpInterface>,
+       IsolatedFromAbove,
+       OpAsmOpInterface,
+       RecursiveMemoryEffects,
+@@ -959,7 +960,7 @@
+ 
+   let arguments = (ins
+     Variadic<HLO_AnyTensor>:$inputs,
+-    Variadic<HLO_AnyTensor>:$inits,
++    Variadic<HLO_AnyTensorOrFuture>:$inits,
+     ConfinedAttr<I64Attr, [IntNonNegative]>:$dimension,
+     OptionalAttr<ConfinedAttr<I64Attr, [IntNonNegative]>>:$scan_dim_size,
+     DefaultValuedOptionalAttr<BoolAttr, "false">:$is_reverse,
+@@ -968,7 +969,7 @@
+ 
+   let results = (outs
+     Variadic<HLO_AnyTensor>:$outputs,
+-    Variadic<HLO_AnyTensor>:$carries
++    Variadic<HLO_AnyTensorOrFuture>:$carries
+   );
+ 
+   let regions = (region SizedRegion<1>:$body);
 @@ -988,4 +989,26 @@
    let hasVerifier = 1;
  }
@@ -336,14 +478,14 @@ diff --ruN a/stablehlo/stablehlo/dialect/Version.h b/stablehlo/stablehlo/dialect
  
    /// Return a Version representing the current VHLO dialect version.
 -  static Version getCurrentVersion() { return Version(1, 16, 3); }
-+  static Version getCurrentVersion() { return Version(1, 17, 0); }
++  static Version getCurrentVersion() { return Version(1, 18, 0); }
  
    /// Return a Version representing the minimum supported VHLO dialect version.
    static Version getMinimumVersion() { return Version(0, 9, 0); }
 diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.cpp b/stablehlo/stablehlo/dialect/VhloOps.cpp
 --- stablehlo/stablehlo/dialect/VhloOps.cpp
 +++ stablehlo/stablehlo/dialect/VhloOps.cpp
-@@ -346,6 +346,19 @@
+@@ -346,6 +346,52 @@
    return success();
  }
  
@@ -360,10 +502,43 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.cpp b/stablehlo/stablehlo/diale
 +  return success();
 +}
 +
++LogicalResult verifyConstraint_1_18_0(mlir::Operation* op,
++                                      Version targetVersion) {
++  if (targetVersion < Version(1, 18, 0)) {
++    auto isOrContainsFuture = [](Type type) -> bool {
++      auto impl = [](auto& self, Type t) -> bool {
++        if (llvm::isa<vhlo::FutureV1Type>(t)) return true;
++        if (auto tuple = llvm::dyn_cast<vhlo::TupleV1Type>(t)) {
++          return llvm::any_of(tuple.getTypes(), [&](Type ele) {
++            return self(self, ele);
++          });
++        }
++        return false;
++      };
++      return impl(impl, type);
++    };
++
++    for (Type type : op->getOperandTypes()) {
++      if (isOrContainsFuture(type)) return failure();
++    }
++    for (Type type : op->getResultTypes()) {
++      if (isOrContainsFuture(type)) return failure();
++    }
++    for (Region& region : op->getRegions()) {
++      for (Block& block : region.getBlocks()) {
++        for (BlockArgument arg : block.getArguments()) {
++          if (isOrContainsFuture(arg.getType())) return failure();
++        }
++      }
++    }
++  }
++  return success();
++}
++
  }  // namespace
  
  LogicalResult AllReduceOpV1::validateConstraint(mlir::Operation* op,
-@@ -380,7 +393,9 @@
+@@ -380,7 +426,24 @@
  
  LogicalResult CustomCallOpV1::validateConstraint(mlir::Operation* op,
                                                   Version targetVersion) {
@@ -371,9 +546,57 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.cpp b/stablehlo/stablehlo/diale
 +  if (failed(verifyConstraint_1_17_0(op, targetVersion))) return failure();
 +  if (failed(verifyConstraint_1_3_0(op, targetVersion))) return failure();
 +  return success();
++}
++
++LogicalResult CaseOpV1::validateConstraint(mlir::Operation* op,
++                                           Version targetVersion) {
++  return verifyConstraint_1_18_0(op, targetVersion);
++}
++
++LogicalResult IfOpV1::validateConstraint(mlir::Operation* op,
++                                         Version targetVersion) {
++  return verifyConstraint_1_18_0(op, targetVersion);
++}
++
++LogicalResult WhileOpV1::validateConstraint(mlir::Operation* op,
++                                            Version targetVersion) {
++  return verifyConstraint_1_18_0(op, targetVersion);
  }
  
  }  // namespace vhlo
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.td b/stablehlo/stablehlo/dialect/VhloOps.td
+--- stablehlo/stablehlo/dialect/VhloOps.td
++++ stablehlo/stablehlo/dialect/VhloOps.td
+@@ -259,7 +259,8 @@
+   let results = (outs Variadic<VHLO_AnyType>:$results);
+ }
+ 
+-def VHLO_CaseOpV1 : VHLO_Op<"case_v1", "0.9.0", "current"> {
++def VHLO_CaseOpV1 : VHLO_Op<"case_v1", "0.9.0", "current",
++    [DeclareOpInterfaceMethods<VHLO_VersionedOpConstraintInterface>]> {
+   let arguments = (ins VHLO_AnyType:$index);
+   let regions = (region VariadicRegion<VHLO_AnyRegion>:$branches);
+   let results = (outs Variadic<VHLO_AnyType>:$results);
+@@ -748,7 +749,8 @@
+   let results = (outs VHLO_AnyType:$result);
+ }
+ 
+-def VHLO_IfOpV1 : VHLO_Op<"if_v1", "0.9.0", "current"> {
++def VHLO_IfOpV1 : VHLO_Op<"if_v1", "0.9.0", "current",
++    [DeclareOpInterfaceMethods<VHLO_VersionedOpConstraintInterface>]> {
+   let arguments = (ins VHLO_AnyType:$pred);
+   let regions = (region
+     VHLO_AnyRegion:$true_branch,
+@@ -1309,7 +1311,8 @@
+   let results = (outs VHLO_AnyType:$result);
+ }
+ 
+-def VHLO_WhileOpV1 : VHLO_Op<"while_v1", "0.9.0", "current"> {
++def VHLO_WhileOpV1 : VHLO_Op<"while_v1", "0.9.0", "current",
++    [DeclareOpInterfaceMethods<VHLO_VersionedOpConstraintInterface>]> {
+   let arguments = (ins Variadic<VHLO_AnyType>:$operand);
+   let regions = (region VHLO_AnyRegion:$cond, VHLO_AnyRegion:$body);
+   let results = (outs Variadic<VHLO_AnyType>:$results);
 diff --ruN a/stablehlo/stablehlo/reference/Ops.h b/stablehlo/stablehlo/reference/Ops.h
 --- stablehlo/stablehlo/reference/Ops.h
 +++ stablehlo/stablehlo/reference/Ops.h
@@ -2615,7 +2838,7 @@ diff --ruN a/stablehlo/stablehlo/tests/interpret/chlo/scan.mlir b/stablehlo/stab
 diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
 --- stablehlo/stablehlo/tests/ops_chlo.mlir
 +++ stablehlo/stablehlo/tests/ops_chlo.mlir
-@@ -558,3 +558,27 @@
+@@ -558,3 +558,39 @@
    } : (tensor<2x3xf32>, tensor<2xf32>) -> (tensor<2x3xf32>, tensor<2xf32>)
    func.return %0#0 : tensor<2x3xf32>
  }
@@ -2643,10 +2866,22 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests
 +  %0 = "chlo.mulhi"(%arg0, %arg1) : (tensor<4xi64>, tensor<4xi64>) -> tensor<4xi64>
 +  func.return %0: tensor<4xi64>
 +}
++
++// -----
++
++// CHECK-LABEL: func @scan_future
++func.func @scan_future(%arg0: tensor<2x3xf32>, %arg1: !stablehlo.future<tensor<3xf32>>) -> (tensor<2x3xf32>, !stablehlo.future<tensor<3xf32>>) {
++  // CHECK: chlo.scan
++  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 attributes {} {
++  ^bb0(%input0: tensor<3xf32>, %carry0: !stablehlo.future<tensor<3xf32>>):
++    stablehlo.return %input0, %carry0 : tensor<3xf32>, !stablehlo.future<tensor<3xf32>>
++  } : (tensor<2x3xf32>, !stablehlo.future<tensor<3xf32>>) -> (tensor<2x3xf32>, !stablehlo.future<tensor<3xf32>>)
++  func.return %0, %1 : tensor<2x3xf32>, !stablehlo.future<tensor<3xf32>>
++}
 diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
 --- stablehlo/stablehlo/tests/ops_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
-@@ -5018,6 +5018,14 @@
+@@ -5018,6 +5018,53 @@
    %0:3 = "stablehlo.custom_call"(%x, %token) {backend_config="", call_target_name = "foo", has_side_effect = false} : (tensor<2xf32>, !stablehlo.token) -> (tensor<2xf32>, tensor<2xf32>, !stablehlo.token)
    %1 = "stablehlo.add"(%0#0, %0#1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
    func.return %1 : tensor<2xf32>
@@ -2657,6 +2892,45 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/
 +// CHECK: func @custom_call_future
 +func.func @custom_call_future(%arg0: !stablehlo.future<tensor<2xf32>>) -> !stablehlo.future<tensor<2xf32>> {
 +  %0 = "stablehlo.custom_call"(%arg0) {call_target_name = "foo"} : (!stablehlo.future<tensor<2xf32>>) -> !stablehlo.future<tensor<2xf32>>
++  func.return %0 : !stablehlo.future<tensor<2xf32>>
++}
++
++// -----
++
++// CHECK: func @while_future
++func.func @while_future(%arg0: !stablehlo.future<tensor<2xf32>>) -> !stablehlo.future<tensor<2xf32>> {
++  %0 = "stablehlo.while"(%arg0) ({
++  ^bb0(%arg1: !stablehlo.future<tensor<2xf32>>):
++    %cond = "stablehlo.constant"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
++    "stablehlo.return"(%cond) : (tensor<i1>) -> ()
++  }, {
++  ^bb0(%arg2: !stablehlo.future<tensor<2xf32>>):
++    "stablehlo.return"(%arg2) : (!stablehlo.future<tensor<2xf32>>) -> ()
++  }) : (!stablehlo.future<tensor<2xf32>>) -> !stablehlo.future<tensor<2xf32>>
++  func.return %0 : !stablehlo.future<tensor<2xf32>>
++}
++
++// -----
++
++// CHECK: func @if_future
++func.func @if_future(%pred: tensor<i1>, %arg0: !stablehlo.future<tensor<2xf32>>) -> !stablehlo.future<tensor<2xf32>> {
++  %0 = "stablehlo.if"(%pred) ({
++    "stablehlo.return"(%arg0) : (!stablehlo.future<tensor<2xf32>>) -> ()
++  }, {
++    "stablehlo.return"(%arg0) : (!stablehlo.future<tensor<2xf32>>) -> ()
++  }) : (tensor<i1>) -> !stablehlo.future<tensor<2xf32>>
++  func.return %0 : !stablehlo.future<tensor<2xf32>>
++}
++
++// -----
++
++// CHECK: func @case_future
++func.func @case_future(%index: tensor<i32>, %arg0: !stablehlo.future<tensor<2xf32>>) -> !stablehlo.future<tensor<2xf32>> {
++  %0 = "stablehlo.case"(%index) ({
++    "stablehlo.return"(%arg0) : (!stablehlo.future<tensor<2xf32>>) -> ()
++  }, {
++    "stablehlo.return"(%arg0) : (!stablehlo.future<tensor<2xf32>>) -> ()
++  }) : (tensor<i32>) -> !stablehlo.future<tensor<2xf32>>
 +  func.return %0 : !stablehlo.future<tensor<2xf32>>
  }
  
@@ -2817,6 +3091,57 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_
 +    %0 = "stablehlo.custom_call"(%arg0) {
 +      call_target_name = "foo"
 +    } : (!stablehlo.future<tensor<f32>>) -> !stablehlo.future<tensor<f32>>
++    func.return %0 : !stablehlo.future<tensor<f32>>
++  }
++}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_17_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_17_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_17_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_17_0.mlir
+@@ -0,0 +1,47 @@
++// RUN: stablehlo-opt --stablehlo-legalize-to-vhlo --vhlo-to-version='target=1.17.0' --verify-diagnostics --split-input-file %s
++
++// expected-error @+1 {{failed to convert VHLO to v1.17.0}}
++module {
++  func.func @while_with_future_type(%arg0: !stablehlo.future<tensor<f32>>) -> !stablehlo.future<tensor<f32>> {
++    // expected-error @+1 {{failed to legalize operation 'vhlo.while_v1' that was explicitly marked illegal}}
++    %0 = "stablehlo.while"(%arg0) ({
++    ^bb0(%arg1: !stablehlo.future<tensor<f32>>):
++      %cond = "stablehlo.constant"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
++      "stablehlo.return"(%cond) : (tensor<i1>) -> ()
++    }, {
++    ^bb0(%arg2: !stablehlo.future<tensor<f32>>):
++      "stablehlo.return"(%arg2) : (!stablehlo.future<tensor<f32>>) -> ()
++    }) : (!stablehlo.future<tensor<f32>>) -> !stablehlo.future<tensor<f32>>
++    func.return %0 : !stablehlo.future<tensor<f32>>
++  }
++}
++
++// -----
++
++// expected-error @+1 {{failed to convert VHLO to v1.17.0}}
++module {
++  func.func @if_with_future_type(%pred: tensor<i1>, %arg0: !stablehlo.future<tensor<f32>>) -> !stablehlo.future<tensor<f32>> {
++    // expected-error @+1 {{failed to legalize operation 'vhlo.if_v1' that was explicitly marked illegal}}
++    %0 = "stablehlo.if"(%pred) ({
++      "stablehlo.return"(%arg0) : (!stablehlo.future<tensor<f32>>) -> ()
++    }, {
++      "stablehlo.return"(%arg0) : (!stablehlo.future<tensor<f32>>) -> ()
++    }) : (tensor<i1>) -> !stablehlo.future<tensor<f32>>
++    func.return %0 : !stablehlo.future<tensor<f32>>
++  }
++}
++
++// -----
++
++// expected-error @+1 {{failed to convert VHLO to v1.17.0}}
++module {
++  func.func @case_with_future_type(%index: tensor<i32>, %arg0: !stablehlo.future<tensor<f32>>) -> !stablehlo.future<tensor<f32>> {
++    // expected-error @+1 {{failed to legalize operation 'vhlo.case_v1' that was explicitly marked illegal}}
++    %0 = "stablehlo.case"(%index) ({
++      "stablehlo.return"(%arg0) : (!stablehlo.future<tensor<f32>>) -> ()
++    }, {
++      "stablehlo.return"(%arg0) : (!stablehlo.future<tensor<f32>>) -> ()
++    }) : (tensor<i32>) -> !stablehlo.future<tensor<f32>>
 +    func.return %0 : !stablehlo.future<tensor<f32>>
 +  }
 +}
