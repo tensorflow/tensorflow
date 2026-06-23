@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -174,6 +175,8 @@ struct SchedulerConfig {
   bool track_sync_op_resource_usage = false;
   // If true, use top down scheduling.
   bool top_down_scheduling = false;
+  // If true, enable schedule by structure.
+  bool enable_schedule_by_structure = false;
   // If set, only log computations that match the given regular expression.
   std::string log_computation_re;
 };
@@ -1024,8 +1027,8 @@ class HloGraphNode {
   // Preference value used for scheduling heuristics,
   // a graph node having a higher preference value means it's scheduled
   // earlier. See ReadySetLt::operator()
-  float preference_ = 0.0;
   bool has_preference_ = false;
+  float preference_ = 0.0;
 
   // Other boolean fields are less performance sensitive so can be stored in
   // bitfields.  These are initialized to default values in InitBitFields() (due
@@ -1200,6 +1203,8 @@ class HloScheduleGraph {
 
   void AnnotateGraph(const AnnotationTracker* annotation_tracker);
 
+  const HloReachabilityMap& reachability() const { return *reachability_; }
+
   // List of instructions in the original scheduled order. (Before scheduling).
   absl::Span<const HloInstruction* const> GetOriginalInstrList() const {
     return absl::MakeConstSpan(original_order_);
@@ -1276,6 +1281,7 @@ class HloScheduleGraph {
                                  const HloGraphNode* possible_predecessor);
   // Scheduling context for the graph.
   std::shared_ptr<const SchedulingContext> scheduling_context_;
+  std::unique_ptr<HloReachabilityMap> reachability_;
 };
 
 // These HloEdge routines need to be defined after HloScheduleGraph, since

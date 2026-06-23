@@ -693,11 +693,5 @@ class ExpandFloatOpsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool aproximate_tanh) {
-  ExpandFloatOpsPassOptions options;
-  options.approximate_tanh_ = aproximate_tanh;
-  return std::make_unique<ExpandFloatOpsPass>(options);
-}
-
 }  // namespace emitters
 }  // namespace xla

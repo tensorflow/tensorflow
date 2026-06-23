@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -288,8 +289,9 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
   for (const HloInstructionAdaptor& root : roots) {
     const Shape& root_shape = root.shape();
     if (!root.shape().IsArray() && root.opcode() != HloOpcode::kReduce) {
-      LOG(FATAL) << "Unsupported root shape " << root_shape.ToString()
-                 << " for root " << root.instruction().ToString();
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported root shape ", root_shape.ToString(),
+                       " for root ", root.instruction().ToString()));
     }
     // TODO(goncharov): why do we only care about the first shape of a tuple?
     absl::Span<const int64_t> dims =

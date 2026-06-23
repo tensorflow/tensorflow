@@ -256,7 +256,9 @@ static auto DevicesToString(absl::Span<const GlobalDeviceId> devices) {
 static ncclComm_t Cast(const Communicator* comm) {
   auto* nccl_communicator = absl::down_cast<const NcclCommunicator*>(comm);
   CHECK(nccl_communicator != nullptr) << "Unsupported XLA communicator";
-  return nccl_communicator->comm();
+  std::shared_ptr<NcclCommState> comm_state = nccl_communicator->comm_state();
+  absl::MutexLock lock(comm_state->mutex);
+  return comm_state->comm;
 }
 
 absl::StatusOr<CliqueId> NcclCollectives::CreateUniqueCliqueId() const {

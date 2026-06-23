@@ -215,10 +215,13 @@ static std::unique_ptr<::mlir::Pass> CreateConvertMathToLLVMPass() {
 // their LLVM equivalent.
 static void AddGenericLoweringPasses(mlir::OpPassManager& pm,
                                      bool fast_min_max) {
-  pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateSimplifyArithPass(
-      fast_min_max, /*explicit_nan_propagation=*/false));
-  pm.addPass(emitters::CreateExpandIntegerPowerPass());
-  pm.addPass(emitters::CreateSimplifyAffinePass());
+  emitters::SimplifyArithPassOptions simplify_arith_options;
+  simplify_arith_options.fast_min_max_ = fast_min_max;
+  simplify_arith_options.explicit_nan_propagation_ = false;
+  pm.addNestedPass<mlir::func::FuncOp>(
+      emitters::createSimplifyArithPass(simplify_arith_options));
+  pm.addPass(emitters::createExpandIntegerPowerPass());
+  pm.addPass(emitters::createSimplifyAffinePass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // simplify-affine lowers most affine.apply ops, but if it can't prove a
@@ -230,14 +233,16 @@ static void AddGenericLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
 
   pm.addNestedPass<mlir::func::FuncOp>(cpu::CreateExpandFloatOpsPass());
-  pm.addPass(emitters::CreateExpandFloatOpsPass(/*aproximate_tanh=*/false));
-  pm.addPass(emitters::CreateEraseDeadFunctionsPass());
+  emitters::ExpandFloatOpsPassOptions expand_float_ops_options;
+  expand_float_ops_options.approximate_tanh_ = false;
+  pm.addPass(emitters::createExpandFloatOpsPass(expand_float_ops_options));
+  pm.addPass(emitters::createEraseDeadFunctionsPass());
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createSCFToControlFlowPass());
-  pm.addPass(emitters::CreateLowerXlaIntrinsicLibPass());
+  pm.addPass(emitters::createLowerXlaIntrinsicLibPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateConvertMathToLLVMPass());
   pm.addPass(mlir::createConvertMathToLibmPass());
-  pm.addPass(emitters::CreateLowerToLLVMCPUPass());
+  pm.addPass(emitters::createLowerToLLVMCPUPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
@@ -263,25 +268,27 @@ static void AddScalarOptimizationPasses(mlir::OpPassManager& pm,
   pm.addPass(CreateInlinerAndCsePass());
   pm.addNestedPass<mlir::func::FuncOp>(CreatePeelWorkgroupLoopPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateLowerXlaSharedPass());
-  pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateLowerXlaToScfPass());
+  pm.addNestedPass<mlir::func::FuncOp>(emitters::createLowerXlaToScfPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      emitters::CreateLowerXlaLoopsToScfPass());
+      emitters::createLowerXlaLoopsToScfPass());
   pm.addPass(mlir::stablehlo::createStablehloConvertToSignlessPass());
-  pm.addPass(emitters::CreatePropagateSliceIndicesPass());
-  pm.addPass(emitters::CreateFlattenTensorsPass());
+  pm.addPass(emitters::createPropagateSliceIndicesPass());
+  pm.addPass(emitters::createFlattenTensorsPass());
   // We need LICM before unswitching loops, because our loop unswitcher only
   // detects for loops with a single if inside them.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-  pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateUnswitchLoopsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(emitters::createUnswitchLoopsPass());
   // We need LICM again after unswitching, because that can introduce new
   // opportunities for LICM. This would not be necessary if LICM also moved
   // instructions over ifs.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   // TODO(willfroom): Re-enable vectorization once b/431961172 is fixed.
+  // emitters::VectorizeLoadsAndStoresPassOptions vectorize_options;
+  // vectorize_options.target_type_ = "cpu";
   // pm.addNestedPass<mlir::func::FuncOp>(
-  //     emitters::CreateVectorizeLoadsAndStoresPass(/*target_type=*/"cpu"));
+  //     emitters::createVectorizeLoadsAndStoresPass(vectorize_options));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateAddLoopUnrollFlagsPass());
@@ -294,12 +301,14 @@ static void AddScalarOptimizationPasses(mlir::OpPassManager& pm,
 static void AddScalarLoweringPasses(mlir::OpPassManager& pm,
                                     int32_t vector_width, bool fast_min_max) {
   pm.addNestedPass<mlir::func::FuncOp>(
-      emitters::CreateConvertPureCallOpsPass());
+      emitters::createConvertPureCallOpsPass());
   pm.addPass(cpu::createLowerToLLVMPass(
       cpu::LowerToLLVMPassOptions{/*prefer_vector_width =*/vector_width}));
-  pm.addPass(emitters::CreateLowerTensorsPass(/*target_type=*/"cpu"));
+  emitters::LowerTensorsPassOptions lower_tensors_options;
+  lower_tensors_options.target_type_ = "cpu";
+  pm.addPass(emitters::createLowerTensorsPass(lower_tensors_options));
   pm.addPass(mlir::createConvertComplexToStandardPass());
-  pm.addPass(emitters::CreateMergePointersToSameSlicePass());
+  pm.addPass(emitters::createMergePointersToSameSlicePass());
 
   // LowerTensors creates new affine.apply ops. Fold and CSE them so
   // simplify-affine has maximally folded expressions to work with.
@@ -400,7 +409,7 @@ static void AddTiledLoweringPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(mlir::memref::createExpandStridedMetadataPass());
 
-  pm.addPass(emitters::CreateSafeIntegerArithmeticPass());
+  pm.addPass(emitters::createSafeIntegerArithmeticPass());
 
   AddGenericLoweringPasses(pm, fast_min_max);
 }
