@@ -2177,14 +2177,16 @@ StreamExecutorGpuClient::RunAsync(
     RETURN_IF_ERROR(set_result({}, 0));
   }
 
-  RETURN_IF_ERROR(allocation_scope.ExecuteWithBufferAllocations(
+  absl::Status execute_status = allocation_scope.ExecuteWithBufferAllocations(
       buffer_allocations, device_ordinal,
       [&](const gpu::BufferAllocations& execution_buffers) {
         return gpu_exec->ExecuteThunks(execution_buffers, run_options);
-      }));
+      });
+  absl::Status teardown_status = buffer_allocations.TearDown(
+      buffers_in_result, gpu_exec->GetAllocations());
 
-  RETURN_IF_ERROR(buffer_allocations.TearDown(buffers_in_result,
-                                              gpu_exec->GetAllocations()));
+  RETURN_IF_ERROR(execute_status);
+  RETURN_IF_ERROR(teardown_status);
 
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
 
