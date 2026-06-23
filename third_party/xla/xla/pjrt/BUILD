@@ -459,6 +459,7 @@ cc_library(
         ":pjrt_compiler",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:alignment",
         "//xla/hlo/builder:xla_builder",

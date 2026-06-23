@@ -264,6 +264,22 @@ cc_library(
 )
 
 xla_test(
+    name = "pjrt_client_test_gpu",
+    srcs = ["pjrt_client_test_gpu.cc"],
+    backends = ["gpu"],
+    tags = [
+        "multi_gpu",
+        "no_oss",
+    ],
+    deps = [
+        ":se_gpu_pjrt_client",
+        ":se_gpu_pjrt_client_test_lib",
+        "//xla/pjrt:pjrt_client_test_common",
+        "//xla/tsl/platform:test_main",
+    ],
+)
+
+xla_test(
     name = "se_gpu_pjrt_client_test",
     srcs = ["se_gpu_pjrt_client_test.cc"],
     backends = ["gpu"],
