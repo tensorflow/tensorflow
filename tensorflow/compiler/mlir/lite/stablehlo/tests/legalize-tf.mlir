@@ -1,5 +1,5 @@
 // RUN: odml-to-stablehlo-opt --tf-stablehlo \
-// RUN:     %s | FILECHECK_OPTS="" FileCheck %s
+// RUN:     %s | env FILECHECK_OPTS="" FileCheck %s
 
 //===----------------------------------------------------------------------===//
 // BatchNorm op legalizations.
