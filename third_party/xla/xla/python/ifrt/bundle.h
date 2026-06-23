@@ -133,24 +133,9 @@ class Bundle : public tsl::ReferenceCounted<Bundle>,
       absl::Span<const int> slice_sizes, absl::Span<const CopySpec> copy_specs,
       ArrayCopySemantics semantics) = 0;
 
-  // Specification for resharding a slice of the bundle.
-  struct ReshardSpec {
-    // New array specs for the values in this slice.
-    //
-    // The size of the span must match the number of values in this slice.
-    //
-    // TODO(hyeontaek): Generalize it when we support non-array values.
-    std::vector<ArraySpec> array_specs;
-  };
-
   // Reshards the arrays in this `Bundle` to create a new `Bundle`.
   //
   // Fails if this `Bundle` contains any non-`Array` value.
-  //
-  // This `Bundle` is logically sliced according to `slice_sizes`, with each
-  // sliced `Bundle` resharded using the corresponding `reshard_specs`. Then,
-  // the resharded `Bundle`s are logically concatenated to a single result
-  // `Bundle`.
   //
   // It is also semantically equivalent to applying a sequence of
   // `Bundle::GetValues()`, `Client::ReshardArrays()`s, and `Client::Bundle()`,
@@ -159,8 +144,7 @@ class Bundle : public tsl::ReferenceCounted<Bundle>,
   // The size of `slice_sizes` must be equal to the size of `reshard_specs`. The
   // sum of `slice_sizes` must be equal to `num_values()`.
   virtual absl::StatusOr<BundleRef> ReshardArrays(
-      absl::Span<const int> slice_sizes,
-      absl::Span<const ReshardSpec> reshard_specs,
+      absl::Span<const xla::ifrt::ArraySpec> array_specs,
       ArrayCopySemantics semantics) = 0;
 
   static char ID;  // NOLINT

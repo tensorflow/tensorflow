@@ -117,12 +117,9 @@ inline void BroadcastComparison4DSlowImpl(
     const RuntimeShape& unextended_input1_shape, const T* input1_data,
     const RuntimeShape& unextended_input2_shape, const T* input2_data,
     const RuntimeShape& unextended_output_shape, bool* output_data) {
-  ForEachBroadcastedElement(
-      unextended_input1_shape, unextended_input2_shape, unextended_output_shape,
-      [&](int output_index, int input1_index, int input2_index) {
-        output_data[output_index] =
-            F(input1_data[input1_index], input2_data[input2_index]);
-      });
+  BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
+                          unextended_input2_shape, input2_data,
+                          unextended_output_shape, output_data, F);
 }
 
 template <ComparisonFn<float> F>
@@ -152,21 +149,23 @@ inline void BroadcastComparison4DSlowWithScaling(
   int32_t input2_multiplier = op_params.input2_multiplier;
   int input2_shift = op_params.input2_shift;
 
-  ForEachBroadcastedElement(
-      unextended_input1_shape, unextended_input2_shape, unextended_output_shape,
-      [&](int output_index, int input1_index, int input2_index) {
-        const int32_t input1_val = input1_offset + input1_data[input1_index];
-        const int32_t input2_val = input2_offset + input2_data[input2_index];
-        const int32_t shifted_input1_val = input1_val * (1 << left_shift);
-        const int32_t shifted_input2_val = input2_val * (1 << left_shift);
-        const int32_t scaled_input1_val =
-            MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                shifted_input1_val, input1_multiplier, input1_shift);
-        const int32_t scaled_input2_val =
-            MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                shifted_input2_val, input2_multiplier, input2_shift);
-        output_data[output_index] = F(scaled_input1_val, scaled_input2_val);
-      });
+  auto op = [=](T a, T b) {
+    const int32_t input1_val = input1_offset + a;
+    const int32_t input2_val = input2_offset + b;
+    const int32_t shifted_input1_val = input1_val * (1 << left_shift);
+    const int32_t shifted_input2_val = input2_val * (1 << left_shift);
+    const int32_t scaled_input1_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input1_val, input1_multiplier, input1_shift);
+    const int32_t scaled_input2_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input2_val, input2_multiplier, input2_shift);
+    return F(scaled_input1_val, scaled_input2_val);
+  };
+
+  BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
+                          unextended_input2_shape, input2_data,
+                          unextended_output_shape, output_data, op);
 }
 
 #define TFLITE_COMPARISON_OP(name)                                             \

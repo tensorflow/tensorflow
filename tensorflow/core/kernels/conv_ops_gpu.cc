@@ -216,7 +216,7 @@ template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv<float>(
     se::DeviceMemory<float> output_ptr, se::DeviceMemory<float> bias_ptr,
     se::DeviceMemory<float> side_input_ptr, int64_t scratch_size_limit);
 
-template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
+template absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedConvOp>>
 AutotuneFusedConv<Eigen::half>(
     bool cudnn_use_autotune,
     AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*

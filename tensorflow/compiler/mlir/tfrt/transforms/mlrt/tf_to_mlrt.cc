@@ -237,26 +237,9 @@ class TFCallOpConversion : public mlir::OpConversionPattern<TFCallOp> {
         return mlir::failure();
     }
 
-    llvm::SmallVector<mlir::Value, 4> materialized_operands;
-    for (int i = 0; i < adaptor.getOperands().size(); ++i) {
-      auto operand = adaptor.getOperands()[i];
-      auto expected_type =
-          type_converter_.convertType(op.getOperand(i).getType());
-      if (operand.getType() != expected_type) {
-        auto materialized = type_converter_.materializeTargetConversion(
-            rewriter, op.getLoc(), expected_type, operand);
-        if (!materialized) {
-          return mlir::failure();
-        }
-        materialized_operands.push_back(materialized);
-      } else {
-        materialized_operands.push_back(operand);
-      }
-    }
-
     auto new_op = mlir::func::CallOp::create(
         rewriter, op.getLoc(), result_types,
-        callee.getRootReference().getValue(), materialized_operands);
+        callee.getRootReference().getValue(), adaptor.getOperands());
     rewriter.replaceOp(op, new_op.getResults());
     return mlir::success();
   }

@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REVERSE_H_
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
@@ -25,8 +26,9 @@ namespace tflite {
 namespace reference_ops {
 
 template <typename Scalar>
-void Reverse(const int32_t* axes, int num_axes, const RuntimeShape& input_shape,
-             const Scalar* input_data, Scalar* output_data) {
+void Reverse(std::array<int32_t, 8>& axes, int num_axes,
+             const RuntimeShape& input_shape, const Scalar* input_data,
+             Scalar* output_data) {
   ruy::profiler::ScopeLabel label("Reverse");
   bool is_upper = (axes[num_axes - 1] == input_shape.DimensionsCount() - 1);
   bool is_lower = (axes[0] == 0);

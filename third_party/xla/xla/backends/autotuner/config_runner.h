@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_AUTOTUNER_TUNER_H_
-#define XLA_BACKENDS_AUTOTUNER_TUNER_H_
+#ifndef XLA_BACKENDS_AUTOTUNER_CONFIG_RUNNER_H_
+#define XLA_BACKENDS_AUTOTUNER_CONFIG_RUNNER_H_
 
 #include <memory>
 #include <optional>
@@ -36,20 +36,18 @@ limitations under the License.
 
 namespace xla {
 
-// Tuner is responsible for profiling and picking the best config for a given
-// HLO instruction.
-class Tuner {
+// ConfigRunner is responsible for running and profiling a given set of
+// executable candidates on device.
+class ConfigRunner {
  public:
-  struct Options {
+  struct CorrectnessCheckOptions {
     // Whether to check the correctness of the output buffers and OOM reads on
     // Input Buffers.
-    bool check_buffers = true;
+    bool enable_correctness_check = true;
     // Relative tolerance for correctness check.
     float relative_tolerance = 1e-6;
     // Whether to crash the process on check failure.
-    bool crash_on_check_failure = false;
-    // Window size in microseconds to consider for scratch bytes optimization.
-    int scratch_bytes_window_size_us = 2;
+    bool crash_on_failure = false;
   };
 
   // TODO(b/519057668): Move these types to a shared header file.
@@ -86,18 +84,16 @@ class Tuner {
     AutotuneResult ToProto() const;
   };
 
-  static absl::StatusOr<std::unique_ptr<Tuner>> Create(
-      std::unique_ptr<Profiler> profiler, Options options);
+  static absl::StatusOr<std::unique_ptr<ConfigRunner>> Create(
+      std::unique_ptr<Profiler> profiler, CorrectnessCheckOptions options);
 
   absl::StatusOr<std::vector<ConfigProfile>> ProfileAll(
       std::vector<ExecutableCandidate> candidates,
       const HloInstruction* instr = nullptr);
 
-  absl::StatusOr<ConfigProfile> PickBestConfig(
-      std::vector<ConfigProfile>& results);
-
  private:
-  Tuner(std::unique_ptr<Profiler> profiler, Options options)
+  ConfigRunner(std::unique_ptr<Profiler> profiler,
+               CorrectnessCheckOptions options)
       : profiler_(std::move(profiler)), options_(options) {}
 
   struct OutputCluster {
@@ -123,10 +119,10 @@ class Tuner {
 
  public:
   std::unique_ptr<Profiler> profiler_ ABSL_GUARDED_BY(profiler_m_);
-  Options options_;
+  CorrectnessCheckOptions options_;
   absl::Mutex profiler_m_;
 };
 
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_AUTOTUNER_TUNER_H_
+#endif  // XLA_BACKENDS_AUTOTUNER_CONFIG_RUNNER_H_

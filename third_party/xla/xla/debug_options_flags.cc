@@ -202,6 +202,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
   opts.set_xla_dump_hlo_as_long_text(true);
+  opts.set_xla_dump_hlo_as_riegeli(false);
   opts.set_xla_dump_large_constants(false);
   opts.set_xla_dump_enable_mlir_pretty_form(true);
   opts.set_xla_dump_full_hlo_config(true);
@@ -305,7 +306,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
   opts.set_xla_gpu_enable_allocator_spatial_partitioning(true);
   opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(false);
-  opts.set_xla_gpu_experimental_enable_nvshmem(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(true);
   opts.set_xla_gpu_nccl_init_max_rank_per_root_ratio(0);
 
@@ -1038,6 +1038,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
     if (value == "fail") {
       return DebugOptions::DETECTION_MODE_FAIL;
     }
+    if (value == "dump") {
+      return DebugOptions::DETECTION_MODE_DUMP;
+    }
     return std::nullopt;
   };
   auto setter_for_xla_detect_unstable_reductions =
@@ -1583,6 +1586,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 "Dumps HLO modules as HloProtos to the directory specified by "
                 "--xla_dump_to."));
   flag_list->push_back(
+      tsl::Flag("xla_dump_hlo_as_riegeli",
+                bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_riegeli),
+                debug_options->xla_dump_hlo_as_riegeli(),
+                "Dumps HLO modules as riegeli to the directory specified by "
+                "--xla_dump_to."));
+  flag_list->push_back(
       tsl::Flag("xla_gpu_experimental_dump_fdo_profiles",
                 bool_setter_for(
                     &DebugOptions::set_xla_gpu_experimental_dump_fdo_profiles),
@@ -2071,11 +2080,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "only compiles up to the HLO optimization stage, before Thunk "
       "generation."));
 
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_nvshmem",
-      bool_setter_for(&DebugOptions::set_xla_gpu_experimental_enable_nvshmem),
-      debug_options->xla_gpu_experimental_enable_nvshmem(),
-      "Enables NVSHMEM."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_temp_buffer_use_separate_color",
       bool_setter_for(
@@ -3253,9 +3257,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       DebugOptions::DetectionMode_Name(debug_options->xla_gpu_detect_nan()),
       "Controls the behavior of the NaN detector pass that checks for presence "
       "of NaN values in kernel outputs. Acceptable values are: 'none', "
-      "'warning', and 'fail'. 'none' is the default. If other than 'none' "
-      "value is provided, additional thunks will be added to detect and "
-      "warn or fail the execution if NaNs are detected."));
+      "'warning', 'fail', and 'dump'. 'none' is the default. If other than "
+      "'none' value is provided, additional thunks will be added to detect and "
+      "warn or crash (possibly creating a crash dump) if NaNs are detected."));
   auto setter_for_xla_gpu_detect_inf =
       [debug_options, detection_mode](const std::string& value) {
         if (auto mode = detection_mode(debug_options, value)) {
@@ -3269,9 +3273,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       DebugOptions::DetectionMode_Name(debug_options->xla_gpu_detect_inf()),
       "Controls the behavior of the Inf detector pass that checks for presence "
       "of Inf values in kernel outputs. Acceptable values are: 'none', "
-      "'warning', and 'fail'. 'none' is the default. If other than 'none' "
-      "value is provided, additional thunks will be added to detect and "
-      "warn or fail the execution if Infs are detected."));
+      "'warning', 'fail', and 'dump'. 'none' is the default. If other than "
+      "'none' value is provided, additional thunks will be added to detect and "
+      "warn or crash (possibly creating a crash dump) if Infs are detected."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_log_minmax",
                 bool_setter_for(&DebugOptions::set_xla_gpu_log_minmax),

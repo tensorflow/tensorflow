@@ -871,12 +871,10 @@ inline void BroadcastPow4DSlow(const RuntimeShape& unextended_input1_shape,
                                const T* input2_data,
                                const RuntimeShape& unextended_output_shape,
                                T* output_data) {
-  ForEachBroadcastedElement(
-      unextended_input1_shape, unextended_input2_shape, unextended_output_shape,
-      [&](int output_index, int input1_index, int input2_index) {
-        output_data[output_index] =
-            std::pow(input1_data[input1_index], input2_data[input2_index]);
-      });
+  auto op = [](T a, T b) { return std::pow(a, b); };
+  BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
+                          unextended_input2_shape, input2_data,
+                          unextended_output_shape, output_data, op);
 }
 
 template <typename Scalar, typename TS>

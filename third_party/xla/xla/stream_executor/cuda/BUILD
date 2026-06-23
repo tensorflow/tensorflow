@@ -78,24 +78,6 @@ bool_flag(
     ),
 )
 
-# Allows to explicitely disable nvshmem collectives using invocation flag.
-bool_flag(
-    name = "nvshmem_enabled",
-    build_setting_default = True,
-)
-
-# NVSHMEM requires builtin functions since it uses printf's for debugging.
-config_setting(
-    name = "no_builtin_used",
-    values = {"copt": "-fno-builtin"},
-)
-
-config_setting(
-    name = "nvshmem_supported",
-    constraint_values = ["@platforms//os:linux"],
-    flag_values = {":nvshmem_enabled": "True"},
-)
-
 config_setting(
     name = "libnvjitlink_support_enabled",
     flag_values = {
@@ -1358,33 +1340,6 @@ xla_test(
         "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "nvshmem",
-    srcs = ["nvshmem.cc"],
-    hdrs = ["nvshmem.h"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = [
-        "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/runtime:process_id",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/time",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@nvshmem//:nvshmem_lib",
     ],
 )
 

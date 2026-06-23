@@ -68,6 +68,32 @@ cc_library(
 )
 
 cc_library(
+    name = "autotuner",
+    srcs = ["autotuner.cc"],
+    hdrs = ["autotuner.h"],
+    deps = [
+        ":codegen_orchestrator",
+        ":config_runner",
+        ":config_selector",
+        ":hlo_extractor",
+        ":profiler",
+        "//xla:status_macros",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/concurrency:executor",
+        "//xla/tsl/concurrency:future",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "config_assigner",
     srcs = ["config_assigner.cc"],
     hdrs = ["config_assigner.h"],
@@ -75,9 +101,10 @@ cc_library(
         ":autotuner_cache_interface",
         ":codegen_backend",
         ":codegen_orchestrator",
+        ":config_runner",
+        ":config_selector",
         ":hlo_extractor",
         ":profiler",
-        ":tuner",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/distributed:key_value_store_interface",
@@ -155,6 +182,36 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "autotuner_test",
+    srcs = ["autotuner_test.cc"],
+    deps = [
+        ":autotuner",
+        ":backends_proto_cc",
+        ":codegen_backend",
+        ":codegen_orchestrator",
+        ":profiler",
+        "//xla:autotune_results_proto_cc",
+        "//xla:autotuning_proto_cc",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:executable",
+        "//xla/service:shaped_buffer",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "profiler",
     hdrs = ["profiler.h"],
@@ -184,9 +241,9 @@ cc_library(
 )
 
 cc_library(
-    name = "tuner",
-    srcs = ["tuner.cc"],
-    hdrs = ["tuner.h"],
+    name = "config_runner",
+    srcs = ["config_runner.cc"],
+    hdrs = ["config_runner.h"],
     deps = [
         ":codegen_backend",
         ":codegen_orchestrator",
@@ -212,6 +269,20 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_protobuf//:any_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "config_selector",
+    srcs = ["config_selector.cc"],
+    hdrs = ["config_selector.h"],
+    deps = [
+        ":config_runner",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 

@@ -12,13 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/kernels/internal/reference/reverse.h"
 
 #include <stdint.h>
 
 #include <algorithm>
+#include <array>
 #include <cstring>
-#include <vector>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -45,6 +44,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* axis;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kAxisTensor, &axis));
   TF_LITE_ENSURE_EQ(context, NumDimensions(axis), 1);
+  TF_LITE_ENSURE(context, NumDimensions(input) <= 8);
   TF_LITE_ENSURE(context, NumDimensions(input) >= NumElements(axis));
 
   if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32 &&
@@ -80,8 +80,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                     GetInputSafe(context, node, kAxisTensor, &axis_tensor));
   TF_LITE_ENSURE_EQ(context, axis_tensor->type, kTfLiteInt32);
   const int num_axes = NumElements(axis_tensor);
+  TF_LITE_ENSURE(context, num_axes <= 8);
 
-  std::vector<int32_t> axes(num_axes);
+  std::array<int32_t, 8> axes;
   memcpy(axes.data(), GetTensorData<int32_t>(axis_tensor),
          num_axes * sizeof(int32_t));
   const int rank = NumDimensions(input);
@@ -112,27 +113,27 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (TfLiteTypeGetSizeBits(output->type)) {
     case 8: {
-      reference_ops::Reverse<uint8_t>(
-          axes.data(), num_axes, GetTensorShape(input),
-          GetTensorData<uint8_t>(input), GetTensorData<uint8_t>(output));
+      reference_ops::Reverse<uint8_t>(axes, num_axes, GetTensorShape(input),
+                                      GetTensorData<uint8_t>(input),
+                                      GetTensorData<uint8_t>(output));
       break;
     }
     case 16: {
-      reference_ops::Reverse<int16_t>(
-          axes.data(), num_axes, GetTensorShape(input),
-          GetTensorData<int16_t>(input), GetTensorData<int16_t>(output));
+      reference_ops::Reverse<int16_t>(axes, num_axes, GetTensorShape(input),
+                                      GetTensorData<int16_t>(input),
+                                      GetTensorData<int16_t>(output));
       break;
     }
     case 32: {
-      reference_ops::Reverse<int32_t>(
-          axes.data(), num_axes, GetTensorShape(input),
-          GetTensorData<int32_t>(input), GetTensorData<int32_t>(output));
+      reference_ops::Reverse<int32_t>(axes, num_axes, GetTensorShape(input),
+                                      GetTensorData<int32_t>(input),
+                                      GetTensorData<int32_t>(output));
       break;
     }
     case 64: {
-      reference_ops::Reverse<int64_t>(
-          axes.data(), num_axes, GetTensorShape(input),
-          GetTensorData<int64_t>(input), GetTensorData<int64_t>(output));
+      reference_ops::Reverse<int64_t>(axes, num_axes, GetTensorShape(input),
+                                      GetTensorData<int64_t>(input),
+                                      GetTensorData<int64_t>(output));
       break;
     }
     default: {

@@ -54,17 +54,29 @@ inline void ComparisonStringImpl(bool (*F)(const StringRef&, const StringRef&),
   }
 }
 
+struct TfLiteTensorStringPointer {
+  const TfLiteTensor* tensor;
+  int index;
+
+  TfLiteTensorStringPointer operator+(int offset) const {
+    return {tensor, index + offset};
+  }
+  StringRef operator*() const { return GetString(tensor, index); }
+  StringRef operator[](int offset) const {
+    return GetString(tensor, index + offset);
+  }
+};
+
 inline void BroadcastComparison4DSlowStringImpl(
     bool (*F)(const StringRef&, const StringRef&),
     const RuntimeShape& unextended_input1_shape, const TfLiteTensor* input1,
     const RuntimeShape& unextended_input2_shape, const TfLiteTensor* input2,
     const RuntimeShape& unextended_output_shape, bool* output_data) {
-  ForEachBroadcastedElement(
-      unextended_input1_shape, unextended_input2_shape, unextended_output_shape,
-      [&](int output_index, int input1_index, int input2_index) {
-        output_data[output_index] =
-            F(GetString(input1, input1_index), GetString(input2, input2_index));
-      });
+  auto op = [F](const StringRef& a, const StringRef& b) { return F(a, b); };
+  BroadcastBinaryOpSimple(
+      unextended_input1_shape, TfLiteTensorStringPointer{input1, 0},
+      unextended_input2_shape, TfLiteTensorStringPointer{input2, 0},
+      unextended_output_shape, output_data, op);
 }
 
 }  // namespace reference_ops

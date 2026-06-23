@@ -399,7 +399,7 @@ int64_t SumBufferSizes(const HloInstruction* hlo, const HloValueSet& value_set,
 }  // namespace
 
 absl::StatusOr<HloSchedule> ComputationSchedulerAlgorithm::Run(
-    const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
+    HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     int64_t* peak_memory) const {
@@ -571,7 +571,7 @@ absl::StatusOr<HloInstructionSequence> PostOrderScheduler::Run(
 }
 
 absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
-    const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
+    HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     int64_t* peak_memory) const {
@@ -626,7 +626,7 @@ absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
 }
 
 absl::StatusOr<HloSchedule> ScheduleModule(
-    const HloModule* module, const ModuleSchedulerAlgorithm& algorithm,
+    HloModule* module, const ModuleSchedulerAlgorithm& algorithm,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     int64_t* peak_memory) {
   tsl::profiler::ScopedAnnotation annotation([&] {
@@ -648,7 +648,7 @@ absl::StatusOr<HloSchedule> ScheduleModule(
 }
 
 absl::StatusOr<HloSchedule> ScheduleModule(
-    const HloModule* module, const AliasInfo* alias_info,
+    HloModule* module, const AliasInfo* alias_info,
     BufferValue::SizeFunction size_function,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     int64_t* peak_memory) {
