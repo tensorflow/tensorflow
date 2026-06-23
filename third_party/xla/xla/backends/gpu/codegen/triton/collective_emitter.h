@@ -36,11 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
-namespace xla {
-class DeviceAssignment;
-class GpuTopology;
-}  // namespace xla
-
 namespace xla::gpu {
 
 // Flattens instructions inside a > 1D collective fusion to 1D instructions
@@ -69,9 +64,8 @@ llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
 // If an std::nullopt is returned, it implies that the collective kernel is
 // not supported and cannot be emitted.
 absl::StatusOr<std::optional<xla::gpu::BlockLevelFusionConfig>>
-GetCollectiveBlockLevelFusionConfig(
-    const GpuTopology& gpu_topology, const HloFusionInstruction* fusion_instr,
-    const DeviceAssignment* device_assignment = nullptr);
+GetCollectiveBlockLevelFusionConfig(const se::DeviceDescription& device_info,
+                                    const HloFusionInstruction* fusion_instr);
 
 // Sets the BlockLevelFusionConfig for a collective op inside the
 // GpuBackendConfig for the fusion instruction.
@@ -80,8 +74,8 @@ GetCollectiveBlockLevelFusionConfig(
 // in this case.
 // Returns an error in case of an internal error or invalid arguments.
 absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
-    const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
-    const DeviceAssignment* device_assignment = nullptr);
+    const se::DeviceDescription& device_info,
+    HloFusionInstruction* fusion_instr);
 
 // Adds the metadata arguments to the function's argument list.
 // For collective some extra metadata arguments are needed such as rank,

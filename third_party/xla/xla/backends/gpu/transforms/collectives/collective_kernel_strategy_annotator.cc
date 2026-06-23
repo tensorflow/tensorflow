@@ -18,7 +18,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -32,8 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu_topology.h"
-#include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 
 namespace xla {
@@ -64,24 +62,18 @@ CollectiveBackendConfig::CollectiveKernelStrategy ToProtoStrategy(
 // Tries to determine the Triton kernel strategy for `instr` (which must be an
 // AllReduce or AllReduceStart) and writes the result into backend_config.
 // Returns true if the annotation was written.
-absl::StatusOr<bool> TryAnnotateAllReduce(HloInstruction* instr,
-                                          const GpuTopology& gpu_topology,
-                                          bool is_multimem_enabled) {
+absl::StatusOr<bool> TryAnnotateAllReduce(
+    HloInstruction* instr, const se::DeviceDescription& device_info,
+    bool is_multimem_enabled) {
   // Both kAllReduce and kAllReduceStart are HloAllReduceInstruction.
   const auto* all_reduce = DynCast<HloAllReduceInstruction>(instr);
   if (all_reduce == nullptr) {
     return false;
   }
 
-  const DeviceAssignment* device_assignment = nullptr;
-  if (instr->GetModule()->config().has_static_device_assignment()) {
-    device_assignment =
-        &instr->GetModule()->config().static_device_assignment();
-  }
-
   absl::StatusOr<AllReduceInfo> maybe_info = BuildAllReduceInfo(
-      /*is_collective_kernel_enabled=*/true, is_multimem_enabled, gpu_topology,
-      all_reduce, device_assignment);
+      /*is_collective_kernel_enabled=*/true, is_multimem_enabled, device_info,
+      all_reduce);
   if (absl::IsUnimplemented(maybe_info.status())) {
     VLOG(3) << "[CollectiveKernelStrategyAnnotator] Collective kernel not "
                "supported for "
@@ -109,14 +101,12 @@ absl::StatusOr<bool> TryAnnotateAllReduce(HloInstruction* instr,
 }  // namespace
 
 CollectiveKernelStrategyAnnotator::CollectiveKernelStrategyAnnotator(
-    const GpuTopology& gpu_topology, bool is_multimem_enabled)
-    : gpu_topology_(gpu_topology), is_multimem_enabled_(is_multimem_enabled) {}
+    const se::DeviceDescription& device_info, bool is_multimem_enabled)
+    : device_info_(device_info), is_multimem_enabled_(is_multimem_enabled) {}
 
 absl::StatusOr<bool> CollectiveKernelStrategyAnnotator::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_RET_CHECK(gpu_topology_.has_gpu_target_config())
-      << "GpuTopology must have a target config for the strategy annotator.";
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
@@ -127,7 +117,7 @@ absl::StatusOr<bool> CollectiveKernelStrategyAnnotator::RunImpl(
       }
       ASSIGN_OR_RETURN(
           bool annotated,
-          TryAnnotateAllReduce(instr, gpu_topology_, is_multimem_enabled_));
+          TryAnnotateAllReduce(instr, device_info_, is_multimem_enabled_));
       changed |= annotated;
     }
   }

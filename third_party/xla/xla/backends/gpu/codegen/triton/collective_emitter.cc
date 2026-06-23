@@ -72,7 +72,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu_topology.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -210,23 +209,14 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
 // where only the last dimension is used as a tiling dimension.
 absl::StatusOr<std::optional<BlockLevelFusionConfig>>
 GetBlockLevelFusionConfigForAllReduce(
-    const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
-    const DeviceAssignment* device_assignment) {
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                   all_reduce->backend_config<GpuBackendConfig>());
-  if (gpu_config.collective_backend_config().kernel_strategy() ==
-      CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT) {
-    VLOG(3) << "All-reduce is not annotated with Triton strategy. Skipping.";
-    return std::nullopt;
-  }
-
+    const se::DeviceDescription& device_info,
+    const HloAllReduceInstruction* all_reduce) {
   absl::StatusOr<AllReduceInfo> maybe_all_reduce_info = BuildAllReduceInfo(
       /*is_collective_kernel_enabled=*/all_reduce->GetModule()
           ->config()
           .debug_options()
           .xla_gpu_unsupported_use_all_reduce_one_shot_kernel(),
-      /*is_multimem_enabled=*/false, gpu_topology, all_reduce,
-      device_assignment);
+      /*is_multimem_enabled=*/false, device_info, all_reduce);
   if (absl::IsUnimplemented(maybe_all_reduce_info.status())) {
     VLOG(3) << "Codegen for all-reduce is not supported: "
             << maybe_all_reduce_info.status();
@@ -238,8 +228,6 @@ GetBlockLevelFusionConfigForAllReduce(
   const LaunchDimensions launch_dims = AllReduceLaunchDimensions(
       all_reduce_info.num_elements, all_reduce_info.num_devices,
       all_reduce_info.all_reduce_strategy);
-  const se::DeviceDescription& device_info =
-      gpu_topology.gpu_target_config().device_description;
   BlockLevelFusionConfig block_level_config;
   block_level_config.set_num_warps(xla::CeilOfRatio(
       static_cast<int64_t>(launch_dims.num_threads_per_block()),
@@ -998,25 +986,24 @@ llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
 }
 
 absl::StatusOr<std::optional<BlockLevelFusionConfig>>
-GetCollectiveBlockLevelFusionConfig(const GpuTopology& gpu_topology,
-                                    const HloFusionInstruction* fusion_instr,
-                                    const DeviceAssignment* device_assignment) {
+GetCollectiveBlockLevelFusionConfig(const se::DeviceDescription& device_info,
+                                    const HloFusionInstruction* fusion_instr) {
   const HloInstruction* root = fusion_instr->fused_expression_root();
   switch (root->opcode()) {
     case HloOpcode::kAllReduceStart:
       return GetBlockLevelFusionConfigForAllReduce(
-          gpu_topology, Cast<HloAllReduceInstruction>(root), device_assignment);
+          device_info, Cast<HloAllReduceInstruction>(root));
     default:
       return std::nullopt;
   }
 }
 
 absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
-    const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
-    const DeviceAssignment* device_assignment) {
-  ASSIGN_OR_RETURN(const std::optional<BlockLevelFusionConfig> block_config,
-                   GetCollectiveBlockLevelFusionConfig(
-                       gpu_topology, fusion_instr, device_assignment));
+    const se::DeviceDescription& device_info,
+    HloFusionInstruction* fusion_instr) {
+  ASSIGN_OR_RETURN(
+      const std::optional<BlockLevelFusionConfig> block_config,
+      GetCollectiveBlockLevelFusionConfig(device_info, fusion_instr));
   if (!block_config.has_value()) {
     VLOG(3) << "No block level fusion config calculated for collective: "
             << fusion_instr->ToString()

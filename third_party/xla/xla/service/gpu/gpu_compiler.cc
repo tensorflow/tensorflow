@@ -1358,8 +1358,8 @@ void AddCollectiveCombinerPasses(
     HloPassPipeline& pipeline, const HloModule& module,
     const se::DeviceDescription& device_description,
     const GpuAliasInfo* alias_info, int pointer_size,
-    const GpuCompiler::CompileOptions& options, const GpuTopology& gpu_topology,
-    mlir::MLIRContext* mlir_context) {
+    const GpuCompiler::CompileOptions& options,
+    int num_visible_devices_per_process, mlir::MLIRContext* mlir_context) {
   const DebugOptions& opts = module.config().debug_options();
 
   if (EnableHeuristicCollectiveCombining(module.config(), device_description,
@@ -1399,23 +1399,24 @@ void AddCollectiveCombinerPasses(
   // KERNEL_STRATEGY_DEFAULT.
   if (opts.xla_gpu_unsupported_use_all_reduce_one_shot_kernel()) {
     pipeline.AddPass<CollectiveKernelStrategyAnnotator>(
-        gpu_topology, /*is_multimem_enabled=*/false);
+        device_description, /*is_multimem_enabled=*/false);
   }
 }
 
 absl::Status RunPostFusionPasses(
     HloModule* hlo_module, const se::DeviceDescription& device_description,
     const GpuAliasInfo* alias_info, int pointer_size,
-    const GpuCompiler::CompileOptions& options, const GpuTopology& gpu_topology,
-    mlir::MLIRContext* mlir_context, CompilationStats* compilation_stats) {
+    const GpuCompiler::CompileOptions& options,
+    int num_visible_devices_per_process, mlir::MLIRContext* mlir_context,
+    CompilationStats* compilation_stats) {
   HloPassPipeline pipeline("post-fusion optimization", compilation_stats);
   pipeline.AddPass<RenameFusions>();
   pipeline.AddPass<DusAccumulatorZeroInitElimination>();
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<TupleSimplifier>();
   AddCollectiveCombinerPasses(pipeline, *hlo_module, device_description,
-                              alias_info, pointer_size, options, gpu_topology,
-                              mlir_context);
+                              alias_info, pointer_size, options,
+                              num_visible_devices_per_process, mlir_context);
 
   pipeline.AddPass<AllReduceContiguous>();
 
@@ -1781,7 +1782,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
       ShapeSizeBytesFunction(), alias_info, mlir_context, compilation_stats));
   RETURN_IF_ERROR(RunPostFusionPasses(
       hlo_module, device_description, alias_info, pointer_size_, options,
-      gpu_topology, mlir_context, compilation_stats));
+      gpu_topology.number_of_devices(), mlir_context, compilation_stats));
   RETURN_IF_ERROR(RunAsyncCollectivesConversionPasses(hlo_module));
   RETURN_IF_ERROR(RunPostFusionSimplificationPasses(
       hlo_module,
