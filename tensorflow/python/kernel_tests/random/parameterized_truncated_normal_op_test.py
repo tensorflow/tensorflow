@@ -23,6 +23,8 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
@@ -406,6 +408,70 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
         minval=-epsilon,
         maxval=stddev_inside_bounds_before_using_randn + epsilon,
         use_stateless=True)
+
+  def testIntegerOverflow(self):
+    # This test catches the 32-bit integer overflow bug (b/512811415),
+    # where num_elements overflows 32-bit signed int, bypassing the
+    # execution loop and returning uninitialized memory.
+    # To bypass the scalar batching check, we pass
+    # minvals/maxvals/means/stddevs as vectors of size 1.
+    means = [0.0]
+    stddevs = [1.0]
+    minvals = [-2.0]
+    maxvals = [2.0]
+
+    def run_and_assert(shape):
+      x = random_ops.parameterized_truncated_normal(
+          shape=shape,
+          means=means,
+          stddevs=stddevs,
+          minvals=minvals,
+          maxvals=maxvals,
+          dtype=dtypes.float32,
+      )
+      # Slice to avoid pagefaulting the 8GB tensor.
+      slice_x = x[0, :100]
+      evaluated_slice = self.evaluate(slice_x)
+
+      # 1. All elements must be within the specified bounds and not NaN.
+      self.assertTrue(
+          np.all(evaluated_slice >= -2.0),
+          msg=f"Values outside lower bound: {evaluated_slice}",
+      )
+      self.assertTrue(
+          np.all(evaluated_slice <= 2.0),
+          msg=f"Values outside upper bound: {evaluated_slice}",
+      )
+      self.assertFalse(
+          np.any(np.isnan(evaluated_slice)),
+          msg=f"Values contain NaN: {evaluated_slice}",
+      )
+
+      # Check that generation is active (standard deviation > 0).
+      self.assertGreater(
+          np.std(evaluated_slice),
+          0.0,
+          msg=(
+              "Operation returned uninitialized/zeroed memory without"
+              " generating samples."
+          ),
+      )
+
+    # 1. Run a small shape to cover all the code path of evaluation/assertions.
+    run_and_assert([2, 50])
+
+    # 2. Run the large shape that overflows 32-bit: [2, 1073741824]
+    # Runs the op. Must either OOM cleanly or generate valid values.
+    # On buggy code, it returns immediately with uninitialized memory.
+    try:
+      run_and_assert([2, 1073741824])
+    except (
+        errors.ResourceExhaustedError,
+        ValueError,
+        errors.InvalidArgumentError,
+    ) as e:
+      # OOM is a valid result.
+      tf_logging.info("Caught expected resource/error: %s", str(e))
 
 
 # Benchmarking code

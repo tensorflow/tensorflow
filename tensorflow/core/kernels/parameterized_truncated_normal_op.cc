@@ -26,7 +26,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include <limits>
+#endif
 #include <memory>
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include <type_traits>
+#endif
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -635,13 +641,22 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
     TensorShape tensor_shape;
     OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_tensor, &tensor_shape));
 
-    int32_t num_batches = tensor_shape.dim_size(0);
-    int32_t samples_per_batch = 1;
+    int64_t num_batches = tensor_shape.dim_size(0);
+    int64_t samples_per_batch = 1;
     const int32_t num_dims = tensor_shape.dims();
     for (int32_t i = 1; i < num_dims; i++) {
       samples_per_batch *= tensor_shape.dim_size(i);
     }
-    const int32_t num_elements = num_batches * samples_per_batch;
+    const int64_t num_elements = num_batches * samples_per_batch;
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    if constexpr (std::is_same_v<Device, GPUDevice>) {
+      OP_REQUIRES(
+          ctx, num_elements <= std::numeric_limits<int>::max(),
+          absl::InvalidArgumentError(
+              "Number of elements exceeds std::numeric_limits<int>::max()"));
+    }
+#endif
 
     // Allocate the output before fudging num_batches and samples_per_batch.
     Tensor* samples_tensor;
@@ -671,10 +686,11 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
       // All batches have the same parameters, so we can update the batch size
       // to a reasonable value to improve parallelism (ensure enough batches,
       // and no very small batches which have high overhead).
-      int32_t size = num_batches * samples_per_batch;
-      int32_t adjusted_samples = kDesiredBatchSize;
+      int64_t size = num_batches * samples_per_batch;
+      int64_t adjusted_samples = kDesiredBatchSize;
       // Ensure adjusted_batches * adjusted_samples >= size.
-      int32_t adjusted_batches = Eigen::divup(size, adjusted_samples);
+      int64_t adjusted_batches =
+          (size + adjusted_samples - 1) / adjusted_samples;
       num_batches = adjusted_batches;
       samples_per_batch = adjusted_samples;
     } else {
@@ -800,6 +816,15 @@ class StatelessParameterizedTruncatedNormal : public OpKernel {
       num_batches *= output_shape.dim_size(i);
     }
     const int64_t num_elements = num_batches * samples_per_batch;
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    if constexpr (std::is_same_v<Device, GPUDevice>) {
+      OP_REQUIRES(
+          ctx, num_elements <= std::numeric_limits<int>::max(),
+          absl::InvalidArgumentError(
+              "Number of elements exceeds std::numeric_limits<int>::max()"));
+    }
+#endif
 
     Tensor* samples_tensor;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &samples_tensor));

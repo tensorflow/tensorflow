@@ -234,6 +234,7 @@ tf_cuda_library(
                 "//tensorflow/compiler/tf2xla:layout_util",
                 "//tensorflow/compiler/jit:flags",
                 "//tensorflow/compiler/jit:pjrt_device_context",
+                "//tensorflow/compiler/jit:pjrt_tensor_buffer",
                 "@xla//xla/stream_executor/integrations:tf_allocator_adapter",
                 "//tensorflow/core/tfrt/common:pjrt_util",
             ],
