@@ -313,8 +313,10 @@ static std::vector<bool> MakeDynamicDimensions(
                                  : -1;
 
   // Verify that array-based lookup is consistent with public API.
-  DCHECK_EQ(dense_shape_size, ByteSizeOfPrimitiveType(element_type))
-      << element_type;
+  if (primitive_util::IsArrayType(element_type)) {
+    DCHECK_EQ(dense_shape_size, ByteSizeOfPrimitiveType(element_type))
+        << element_type;
+  }
 
   shape.set_element_type(element_type);
   const int ndims = dimensions.size();
