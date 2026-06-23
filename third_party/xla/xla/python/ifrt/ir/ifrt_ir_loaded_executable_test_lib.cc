@@ -548,12 +548,9 @@ module {
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
-  // Not using `CopyToHostBuffer` because some implementations don't support it.
   ASSERT_FALSE(input->IsDeleted());
-  EXPECT_THAT(input->DisassembleIntoSingleDeviceArrays(
-                  ArrayCopySemantics::kAlwaysCopy,
-                  SingleDeviceShardSemantics::kAddressableShards),
-              IsOk());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(input, dtype, shard_shape,
+                                                  {{0, 1}, {2, 3}}, devices));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, CopyArraysOpDonationOverride) {
@@ -597,12 +594,9 @@ module {
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
-  // Not using `CopyToHostBuffer` because some implementations don't support it.
   ASSERT_FALSE(input->IsDeleted());
-  EXPECT_THAT(input->DisassembleIntoSingleDeviceArrays(
-                  ArrayCopySemantics::kAlwaysCopy,
-                  SingleDeviceShardSemantics::kAddressableShards),
-              IsOk());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(input, dtype, shard_shape,
+                                                  {{0, 1}, {2, 3}}, devices));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, RemapArraysOpDonationOverride) {
@@ -662,12 +656,9 @@ module {
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[1], dtype,
                                                   shard_shape, {{2, 3}},
                                                   std::move(device_list1)));
-  // Not using `CopyToHostBuffer` because some implementations don't support it.
   ASSERT_FALSE(input->IsDeleted());
-  EXPECT_THAT(input->DisassembleIntoSingleDeviceArrays(
-                  ArrayCopySemantics::kAlwaysCopy,
-                  SingleDeviceShardSemantics::kAddressableShards),
-              IsOk());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(input, dtype, shard_shape,
+                                                  {{0, 1}, {2, 3}}, devices));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest,
