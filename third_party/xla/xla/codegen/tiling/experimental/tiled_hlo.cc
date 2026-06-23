@@ -196,16 +196,6 @@ void SortTiledHloInstructionsInPostOrder(
   }
 }
 
-bool IsControlFlowLoop(const TiledHloInstruction& tiled_hlo) {
-  const HloOpcode hlo_opcode = tiled_hlo.hlo()->opcode();
-  return hlo_opcode == HloOpcode::kDot || hlo_opcode == HloOpcode::kScaledDot;
-}
-
-bool IsControlFlowCondition(const TiledHloInstruction& tiled_hlo) {
-  const HloOpcode hlo_opcode = tiled_hlo.hlo()->opcode();
-  return hlo_opcode == HloOpcode::kConcatenate;
-}
-
 // Recursively populates `tile_names` with unique names for `tiled_hlo` and
 // all instructions within its regions.
 void PrepopulateTileNames(
@@ -302,40 +292,40 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
         PropagateTileToInput(tiling_space, *hlo, tiled_hlo->tile(), 0));
 
     HloInstructionAdaptor instruction_adaptor(*hlo, &fusion);
-    const bool hlo_is_condition = IsControlFlowCondition(*tiled_hlo);
+    const HloOpcode parent_opcode = hlo->opcode();
     for (const auto& [operand_id, tile_and_operand] : llvm::enumerate(
              llvm::zip(operands_tiles, instruction_adaptor.GetOperands()))) {
       auto& [tile, operand] = tile_and_operand;
       const HloInstruction* operand_hlo = &operand.instruction();
       auto tiled_operand =
           std::make_unique<TiledHloInstruction>(operand_hlo, tile);
-      const bool operand_is_loop = IsControlFlowLoop(*tiled_operand);
+      const HloOpcode operand_opcode = operand_hlo->opcode();
 
-      if (hlo_is_condition || operand_is_loop) {
+      if (parent_opcode == HloOpcode::kConcatenate) {
+        // Case 1: Concatenate operand.
+        // Each operand introduces a new branch/sub-region in `tiled_hlo`.
         ASSIGN_OR_RETURN(auto region,
                          CreateHloRegion(std::move(tiled_operand), fusion,
                                          tiling_space, rt_symbol_to_tiled_hlo));
+        CHECK(!region.empty()) << "CreateHloRegion: returned empty region for "
+                               << operand_hlo->ToString();
+        tiled_hlo->AddOperand(region.back().get());
+        tiled_hlo->AddHloRegion(std::move(region));
 
-        if (hlo_is_condition) {
-          // Case 1: HLO is a condition (e.g., concat).
-          // Each operand introduces a new branch/sub-region in `tiled_hlo`.
-          CHECK(!region.empty())
-              << "CreateHloRegion: returned empty region for "
-              << operand_hlo->ToString();
-          tiled_hlo->AddOperand(region.back().get());
-          tiled_hlo->AddHloRegion(std::move(region));
-
-        } else {
-          // Case 2: Operand is a loop (e.g., dot/scaled_dot/reduce).
-          // Operand has its loop-body as a region. Operand itself is added as a
-          // node to the current flat list.
-          CHECK(region.size() == 1)
-              << "CreateHloRegion: expected exactly 1 region for "
-              << operand_hlo->ToString() << " but got " << region.size();
-          auto [operand_tiled_hlo, inserted] =
-              tiled_hlo_instructions_set.Insert(std::move(region.back()));
-          tiled_hlo->AddOperand(operand_tiled_hlo);
-        }
+      } else if (operand_opcode == HloOpcode::kDot ||
+                 operand_opcode == HloOpcode::kScaledDot) {
+        // Case 2: Operand is a loop.
+        // Operand has its loop-body as a region. Operand itself is added as a
+        // node to the current flat list.
+        ASSIGN_OR_RETURN(auto region,
+                         CreateHloRegion(std::move(tiled_operand), fusion,
+                                         tiling_space, rt_symbol_to_tiled_hlo));
+        CHECK(region.size() == 1)
+            << "CreateHloRegion: expected exactly 1 region for "
+            << operand_hlo->ToString() << " but got " << region.size();
+        auto [operand_tiled_hlo, inserted] =
+            tiled_hlo_instructions_set.Insert(std::move(region.back()));
+        tiled_hlo->AddOperand(operand_tiled_hlo);
 
       } else {
         // Case 3: No new region introduced when processing this operand.
@@ -360,7 +350,8 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
   TiledHloRegion tiled_hlo_instructions{
       tiled_hlo_instructions_set.ExtractData()};
   SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions, tiled_root.get());
-  if (IsControlFlowLoop(*tiled_root)) {
+  const HloOpcode root_opcode = tiled_root->hlo()->opcode();
+  if (root_opcode == HloOpcode::kDot || root_opcode == HloOpcode::kScaledDot) {
     tiled_root->AddHloRegion(std::move(tiled_hlo_instructions));
     tiled_hlo_instructions.clear();
   }
