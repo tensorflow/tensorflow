@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/map_util.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/dump.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_buffer.h"
@@ -127,7 +128,6 @@ bool IsNopInstruction(HloOpcode op, const HloInstruction& hlo) {
          (op == HloOpcode::kTuple && hlo.user_count() == 1 &&
           hlo.users().front()->opcode() == HloOpcode::kWhile);
 }
-
 }  // namespace
 
 bool MemoryPressureTracker::InstructionTransitivelyDefines(
@@ -1608,6 +1608,19 @@ class ReadySetLt {
                       bn->GetForceDelayAfterTarget(), "kForceDelayAfterTarget");
     }
 
+    if (config.enable_schedule_by_structure) {
+      if (top_down_scheduling_) {
+        CMP_EXPLICIT(!an->IsSupportedAsyncDone() && bn->IsSupportedAsyncDone(),
+                     an->IsSupportedAsyncDone() && !bn->IsSupportedAsyncDone(),
+                     "kDelayAsyncDoneOfSamePreference");
+      } else {
+        CMP_EXPLICIT(
+            !an->IsSupportedAsyncStart() && bn->IsSupportedAsyncStart(),
+            an->IsSupportedAsyncStart() && !bn->IsSupportedAsyncStart(),
+            "kDelayAsyncStartOfSamePreference");
+      }
+    }
+
     // Some heuristic that try to prioritize unlocking "done" instructions
     // so that we can perform overlap. More fancy heuristics can be used by
     // discovering the closest "done" to every instruction and prioritize
@@ -1778,6 +1791,14 @@ class ReadySetLt {
                    DefaultSchedulerCore::ScheduleCandidate& b,
                    const char** reason) const {
     bool result = AIsBetterThanB(a, b, reason);
+    if (a.node->IsSupportedAsyncStart() || a.node->IsSupportedAsyncDone() ||
+        b.node->IsSupportedAsyncStart() || b.node->IsSupportedAsyncDone() ||
+        IsCollective(&a.node->GetInstr()) ||
+        IsCollective(&b.node->GetInstr())) {
+      VLOG(1) << "Async comparison: a: " << a.node->GetInstr().name()
+              << " b: " << b.node->GetInstr().name() << " result: " << result
+              << " reason: " << *reason;
+    }
     if (result) {
       // Based on profiling, memcpy is faster than "b = a"
       static_assert(
@@ -2913,7 +2934,8 @@ HloScheduleGraph::HloScheduleGraph(
                       post_order_instructions->end()),
       scheduling_context_(scheduling_context) {
   HloComputation* comp = (*post_order_instructions)[0]->parent();
-  auto reachability = HloReachabilityMap::Build(comp);
+  reachability_ = HloReachabilityMap::Build(comp);
+  const HloReachabilityMap* reachability = reachability_.get();
   std::vector<const HloInstruction*> while_instrs;
   auto latency_estimator = scheduling_context->GetLatencyEstimator();
   auto async_tracker = scheduling_context->GetAsyncTracker();
@@ -3540,7 +3562,7 @@ absl::Status DefaultSchedulerCore::SchedulingStep(
                        *sched_state, /*should_skip_node=*/nullptr));
   CHECK(node != nullptr);
   ASSIGN_OR_RETURN(sched_state->current_time, ScheduleNode(node, sched_state));
-  VLOG(2) << "Scheduled: " << node->GetInstr().name();
+  VLOG(1) << "Scheduled: " << node->GetInstr().name();
   XLA_VLOG_LINES(5, node->ToString());
   return absl::OkStatus();
 }

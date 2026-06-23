@@ -49,7 +49,7 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   // Runs the logical buffer analysis on the given `HloModule` and returns
   // the completed analysis result.
   static absl::StatusOr<std::unique_ptr<LogicalBufferAnalysis>> Run(
-      const HloModule* module);
+      const HloModule* module, bool alias_buffer_across_dataflow = false);
 
   // Returns a reference to the `LogicalBuffer` with the given ID.
   //
@@ -74,7 +74,10 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   size_t num_logical_buffers() const { return logical_buffers_.size(); }
 
  private:
-  explicit LogicalBufferAnalysis(const HloModule* module) : module_(module) {}
+  explicit LogicalBufferAnalysis(const HloModule* module,
+                                 bool alias_buffer_across_dataflow)
+      : module_(module),
+        alias_buffer_across_dataflow_(alias_buffer_across_dataflow) {}
 
   // Performs the DFS analysis over all non-fusion and fusion computations
   // of the module.

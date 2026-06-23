@@ -13,6 +13,7 @@
 # limitations under the License.
 """Lit runner configuration."""
 
+import inspect
 import os
 import platform
 import sys
@@ -30,7 +31,17 @@ from lit.llvm.subst import ToolSubst
 # name: The name of this test suite.
 config.name = 'MLIR ' + os.path.basename(config.mlir_test_dir)
 
-config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+# Check if lit.formats.ShTest supports force_execute_external argument.
+# This argument is needed for newer lit versions to run tests externally,
+# but older lit versions (e.g. in some OSS environments) do not support it.
+sh_test_kwargs = {'execute_external': True}
+if (
+    'force_execute_external'
+    in inspect.signature(lit.formats.ShTest.__init__).parameters
+):
+  sh_test_kwargs['force_execute_external'] = True
+
+config.test_format = lit.formats.ShTest(**sh_test_kwargs)
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = ['.cc', '.hlo', '.json', '.mlir', '.pbtxt', '.py']
