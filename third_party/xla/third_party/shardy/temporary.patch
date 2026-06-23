@@ -1,2001 +1,259 @@
-diff --git a/shardy/dialect/mpmd/transforms/export/BUILD b/shardy/dialect/mpmd/transforms/export/BUILD
-index d26ed8b3..59f6a8b9 100644
---- a/shardy/dialect/mpmd/transforms/export/BUILD
-+++ b/shardy/dialect/mpmd/transforms/export/BUILD
-@@ -59,7 +59,6 @@ cc_library(
-         "//shardy/dialect/mpmd/transforms/common:utils",
-         "//shardy/dialect/mpmd/transforms/import:passes",
-         "//shardy/dialect/sdy/ir:dialect",
--        "//shardy/dialect/sdy/transforms/common:sharding_walker",
-         "@llvm-project//llvm:Support",
-         "@llvm-project//mlir:Analysis",
-         "@llvm-project//mlir:FuncDialect",
-diff --git a/shardy/dialect/mpmd/transforms/export/lower_to_fragment_calls.cc b/shardy/dialect/mpmd/transforms/export/lower_to_fragment_calls.cc
-index 4c7a09c3..c91ce180 100644
---- a/shardy/dialect/mpmd/transforms/export/lower_to_fragment_calls.cc
-+++ b/shardy/dialect/mpmd/transforms/export/lower_to_fragment_calls.cc
-@@ -46,9 +46,7 @@ limitations under the License.
- #include "shardy/dialect/sdy/ir/constants.h"
- #include "shardy/dialect/sdy/ir/dialect.h"
- #include "shardy/dialect/sdy/ir/utils.h"
--#include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
- #include "mlir/Support/WalkResult.h"
--#include "llvm/Support/Casting.h"
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/run_sdy_interpreter_test.sh b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/run_sdy_interpreter_test.sh
+old mode 100755
+new mode 100644
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reverse.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reverse.mlir
+index e6dd8d84..c61e98e5 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reverse.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reverse.mlir
+@@ -1,5 +1,7 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
++// TODO(b/489770982): Currently this test fails due to missing functionality in pad-for-divisibility.
++// RdisabledUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RdisabledUN: %S/run_sdy_interpreter_test.sh %s %t "false"
++// RUN: cat %s
  
- namespace mlir::mpmd {
+ //--- part1.mlir
  
-@@ -406,42 +404,6 @@ class LowerToFragmentCallsPass
+@@ -29,7 +31,7 @@ func.func @sequential_reverse(%arg0: tensor<4x6x8xi32>) -> tensor<4x6x5xi32> {
+ //--- part2.mlir
  
-         sdy::inlineRegionAndConvertTerminatorOp<func::ReturnOp>(
-             fragment.getRegion(), func_op.getBody());
--
--        // After inlining the fragment body, rewrite references to the global
--        // mesh inside sdy_manual_computation ops to use the fragment mesh.
--        sdy::MeshAttr fragmentMesh = *mpmd::GetMeshAttr(fragment);
--        StringRef fragmentMeshName = fragment.getMeshName();
--
--        // Create an sdy.MeshOp for the fragment mesh lazily.
--        auto ensureMeshOpExists = [&]() {
--          if (!module_op.lookupSymbol<sdy::MeshOp>(fragmentMeshName)) {
--            OpBuilder meshBuilder(&ctx);
--            meshBuilder.setInsertionPointToStart(module_op.getBody());
--            sdy::MeshOp::create(meshBuilder, module_op.getLoc(),
--                                fragmentMeshName, fragmentMesh);
--          }
--        };
--
--        func_op.walk([&](sdy::ManualComputationOp manualOp) {
--          sdy::transformShardings(
--              manualOp,
--              [&](sdy::TensorShardingAttr sharding) -> sdy::TensorShardingAttr {
--                if (auto symbolRef = llvm::dyn_cast<FlatSymbolRefAttr>(
--                        sharding.getMeshOrRef())) {
--                  if (symbolRef.getValue() != fragmentMeshName) {
--                    ensureMeshOpExists();
--                    return sdy::TensorShardingAttr::get(
--                        sharding.getContext(),
--                        FlatSymbolRefAttr::get(&ctx, fragmentMeshName),
--                        sharding.getDimShardings(),
--                        sharding.getReplicatedAxes(),
--                        sharding.getUnreducedAxes());
--                  }
--                }
--                return sharding;
--              });
--        });
--
-         symbol_table.insert(func_op);
-       }
-       rewriter.setInsertionPoint(fragment);
-diff --git a/shardy/dialect/mpmd/transforms/export/test/lower_to_fragment_calls.mlir b/shardy/dialect/mpmd/transforms/export/test/lower_to_fragment_calls.mlir
-index 99e8de9f..9ea73e8b 100644
---- a/shardy/dialect/mpmd/transforms/export/test/lower_to_fragment_calls.mlir
-+++ b/shardy/dialect/mpmd/transforms/export/test/lower_to_fragment_calls.mlir
-@@ -1,4 +1,4 @@
--// RUN: mpmd_opt %s -mpmd-lower-to-fragment-calls -split-input-file --allow-unregistered-dialect 2>&1 | FileCheck %s
-+// RUN: mpmd_opt %s -mpmd-lower-to-fragment-calls -split-input-file 2>&1 | FileCheck %s
+ func.func @main() {
+-  %input_seq = stablehlo.iota dim = 0 : tensor<192xi32>
++  %input_seq = stablehlo.iota dims = [0] : tensor<192xi32>
+   %input = stablehlo.reshape %input_seq : (tensor<192xi32>) -> tensor<4x6x8xi32>
  
- !mesh_1_tensor = !mpmd.mesh_tensor<"m1", tensor<4x8xf32>>
+   %seq = func.call @sequential_reverse(%input) : (tensor<4x6x8xi32>) -> tensor<4x6x5xi32>
+@@ -63,14 +65,7 @@ func.func @main() {
+       @parallel_reverse, @parallel_reverse, @parallel_reverse, @parallel_reverse,
+       @parallel_reverse, @parallel_reverse, @parallel_reverse, @parallel_reverse
+     ]]
+-  } : (tensor<2x3x2xi32>, tensor<2x3x2xi32>, tensor<2x3x2xi32>, tensor<2x3x2xi32>,
+-       tensor<2x3x2xi32>, tensor<2x3x2xi32>, tensor<2x3x2xi32>, tensor<2x3x2xi32>,
+-       tensor<2x3x2xi32>, tensor<2x3x2xi32>, tensor<2x3x2xi32>, tensor<2x3x2xi32>,
+-       tensor<2x3x2xi32>, tensor<2x3x2xi32>, tensor<2x3x2xi32>, tensor<2x3x2xi32>) ->
+-      (tensor<4x6x5xi32>, tensor<4x6x5xi32>, tensor<4x6x5xi32>, tensor<4x6x5xi32>,
+-       tensor<4x6x5xi32>, tensor<4x6x5xi32>, tensor<4x6x5xi32>, tensor<4x6x5xi32>,
+-       tensor<4x6x5xi32>, tensor<4x6x5xi32>, tensor<4x6x5xi32>, tensor<4x6x5xi32>,
+-       tensor<4x6x5xi32>, tensor<4x6x5xi32>, tensor<4x6x5xi32>, tensor<4x6x5xi32>)
++  } : (tensor<2x3x2xi32>) -> (tensor<4x6x5xi32>)
  
-@@ -505,73 +505,3 @@ module {
+   check.expect_eq %seq, %pars#0 : tensor<4x6x5xi32>
  
- // CHECK: func.func @[[FRAGMENT0:.*]](%arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {?}]>}) ->
- // CHECK-SAME: (tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {?}]>}) attributes {mesh_shape = #sdy.mesh<["x"=2]>}
--
--// -----
--
--!mesh_tensor = !mpmd.mesh_tensor<"m1", tensor<4x8xf32>, sharding=<@mesh, [{"x"}, {?}]>>
--
--module {
--  // CHECK:      sdy.mesh @m1 = <["x"=2]>
--  // CHECK-NEXT: sdy.mesh @mesh = <["x"=2]>
--  sdy.mesh @mesh = <["x"=2]>
--
--  // CHECK-LABEL: func @sdy_manual_computation
--  func.func @sdy_manual_computation(%arg0: !mesh_tensor) -> (!mesh_tensor)
--      attributes {"topology"=#mpmd.topology< <"m1": <["x"=2]>>>} {
--    // CHECK: mpmd.fragment_call<mesh="m1", origin=["f1"]>
--    %0 = mpmd.fragment<mesh="m1", origin=["f1"]> (%arg0) (%arg1: tensor<4x8xf32>) {
--      %1 = sdy.manual_computation(%arg1) in_shardings=[<@mesh, [{"x"}, {}]>] out_shardings=[<@mesh, [{"x"}, {}]>] manual_axes={"x"} (%arg2: tensor<2x8xf32>) {
--        %2 = stablehlo.add %arg2, %arg2 : tensor<2x8xf32>
--        sdy.return %2 : tensor<2x8xf32>
--      } : (tensor<4x8xf32>) -> tensor<4x8xf32>
--      mpmd.return %1 : tensor<4x8xf32>
--    } : (!mesh_tensor) -> (!mesh_tensor)
--
--    func.return %0 : !mesh_tensor
--  }
--}
--
--// CHECK: func.func @[[FRAGMENT1:.*]](%arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {?}]>})
--// CHECK-NEXT: %[[MC:.*]] = sdy.manual_computation(%arg0) in_shardings=[<@m1, [{"x"}, {}]>] out_shardings=[<@m1, [{"x"}, {}]>] manual_axes={"x"}
--// CHECK-SAME: (%arg1: tensor<2x8xf32>) {
--// CHECK-NEXT:   %[[ADD:.*]] = stablehlo.add %arg1, %arg1
--// CHECK-NEXT:   sdy.return %[[ADD]]
--// CHECK-NEXT: } : (tensor<4x8xf32>) -> tensor<4x8xf32>
--// CHECK-NEXT: return %[[MC]] : tensor<4x8xf32>
--
--// -----
--
--!mesh_tensor = !mpmd.mesh_tensor<"m1", tensor<4x8xf32>, sharding=<@mesh, [{"x"}, {?}]>>
--
--module {
--  sdy.mesh @mesh = <["x"=2]>
--
--  // CHECK-LABEL: func @unregistered_op_with_region
--  func.func @unregistered_op_with_region(%arg0: !mesh_tensor) -> (!mesh_tensor)
--      attributes {"topology"=#mpmd.topology< <"m1": <["x"=2]>>>} {
--    // CHECK: mpmd.fragment_call<mesh="m1", origin=["f1"]>
--    %0 = mpmd.fragment<mesh="m1", origin=["f1"]> (%arg0) (%arg1: tensor<4x8xf32>) {
--      // An unregistered operation with a region. This tests that the pass does not
--      // crash on unregistered operations when renaming mesh symbols.
--      "custom.unregistered_op"() ({
--        %1 = sdy.manual_computation(%arg1) in_shardings=[<@mesh, [{"x"}, {}]>] out_shardings=[<@mesh, [{"x"}, {}]>] manual_axes={"x"} (%arg2: tensor<2x8xf32>) {
--          %2 = stablehlo.add %arg2, %arg2 : tensor<2x8xf32>
--          sdy.return %2 : tensor<2x8xf32>
--        } : (tensor<4x8xf32>) -> tensor<4x8xf32>
--        "custom.unregistered_yield"() : () -> ()
--      }) : () -> ()
--      mpmd.return %arg1 : tensor<4x8xf32>
--    } : (!mesh_tensor) -> (!mesh_tensor)
--
--    func.return %0 : !mesh_tensor
--  }
--}
--
--// CHECK: func.func @[[FRAGMENT2:.*]](%arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {?}]>})
--// CHECK: "custom.unregistered_op"() ({
--// CHECK-NEXT: %[[MC:.*]] = sdy.manual_computation(%arg0) in_shardings=[<@m1, [{"x"}, {}]>] out_shardings=[<@m1, [{"x"}, {}]>] manual_axes={"x"}
--// CHECK-SAME: (%arg1: tensor<2x8xf32>) {
--// CHECK-NEXT:   %[[ADD:.*]] = stablehlo.add %arg1, %arg1
--// CHECK-NEXT:   sdy.return %[[ADD]]
--// CHECK-NEXT: } : (tensor<4x8xf32>) -> tensor<4x8xf32>
--
+diff --git a/shardy/integrations/python/jax/mpmd/ops.py b/shardy/integrations/python/jax/mpmd/ops.py
+index 3ea90752..6d038611 100644
+--- a/shardy/integrations/python/jax/mpmd/ops.py
++++ b/shardy/integrations/python/jax/mpmd/ops.py
+@@ -544,7 +544,7 @@ def _call_get_cached_jaxpr(fn, in_avals, in_tree):
+ def _call_abstract_eval(*args, call_jaxpr, **kwargs):
+   """Abstract evaluation rule for the call op."""
+   del args, kwargs
+-  return call_jaxpr.out_avals, jax_core.positional_effects(call_jaxpr)
++  return call_jaxpr.out_avals, call_jaxpr.effects
+ 
+ 
+ def _call_impl(*args, call_jaxpr, **kwargs):
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 506ffede..6bfca71b 100644
+index 6bfca71b..eda28950 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,1797 +1,32 @@
+@@ -1,32 +1,37 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/SimpleLoopUnswitch.cpp b/llvm/lib/Transforms/Scalar/SimpleLoopUnswitch.cpp
----- a/llvm/lib/Transforms/Scalar/SimpleLoopUnswitch.cpp
--+++ b/llvm/lib/Transforms/Scalar/SimpleLoopUnswitch.cpp
--@@ -553,9 +553,8 @@
-- ///
-- /// This routine should only be called when loop code leading to the branch has
-- /// been validated as trivial (no side effects). This routine checks if the
---/// condition is invariant and one of the successors is a loop exit or a loop
---/// latch with no side-effects. This allows us to unswitch without duplicating
---/// the loop, making it trivial.
--+/// condition is invariant and one of the successors is a loop exit. This
--+/// allows us to unswitch without duplicating the loop, making it trivial.
-- ///
-- /// If this routine fails to unswitch the branch it returns false.
-- ///
--@@ -592,46 +591,6 @@
--     }
--   }
+-diff -ruN --strip-trailing-cr a/clang/test/AST/ByteCode/command-line-options.cpp b/clang/test/AST/ByteCode/command-line-options.cpp
+---- a/clang/test/AST/ByteCode/command-line-options.cpp
+-+++ b/clang/test/AST/ByteCode/command-line-options.cpp
+-@@ -6,11 +6,11 @@
+- /// All this should be true if the driver is used or -cc1.
++diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py b/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py
++--- a/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py
+++++ b/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py
++@@ -4,6 +4,9 @@
++ TypeSystems tied to that process.
++ """
+  
+++import os
+++import time
+++
++ import lldb
++ from lldbsuite.test.lldbtest import *
++ from lldbsuite.test import lldbutil
++@@ -61,6 +64,12 @@
++             }
++         )
+  
+--// RUN: %clang -c   -fexperimental-new-constant-interpreter %s -Xclang -verify=bc
+--// RUN: %clang -cc1 -fexperimental-new-constant-interpreter %s         -verify=bc
+-+// RUN: %clang -fsyntax-only -fexperimental-new-constant-interpreter %s -Xclang -verify=bc
+-+// RUN: %clang -cc1          -fexperimental-new-constant-interpreter %s         -verify=bc
+++        # Age the library file to 10 seconds in the past so that it is rebuilt
+++        # and reloaded even on filesystems with 1s resolution.
+++        fpath = self.getBuildArtifact(FULL_DYLIB_NAME)
+++        old_mtime = time.time() - 10
+++        os.utime(fpath, (old_mtime, old_mtime))
+++
++         # Build a.out
++         self.build(
++             dictionary={
++@@ -84,9 +93,6 @@
++             result_children=[ValueCheck(name="m_val", value="42")],
++         )
+  
+--// RUN: %clang -c   -fno-experimental-new-constant-interpreter %s -Xclang -verify=nobc
+--// RUN: %clang -cc1 -fno-experimental-new-constant-interpreter %s         -verify=nobc
+-+// RUN: %clang -fsyntax-only -fno-experimental-new-constant-interpreter %s -Xclang -verify=nobc
+-+// RUN: %clang -cc1          -fno-experimental-new-constant-interpreter %s         -verify=nobc
 - 
---  std::optional<int> LatchIdx = std::nullopt;
---  auto *LoopLatch = L.getLoopLatch();
---  auto *ULExit = L.getUniqueLatchExitBlock();
---  if (SE && FullUnswitch && ULExit) {
---    if (BI.getSuccessor(0) == LoopLatch && L.contains(BI.getSuccessor(1)))
---      LatchIdx = 0;
---    else if (BI.getSuccessor(1) == LoopLatch && L.contains(BI.getSuccessor(0)))
---      LatchIdx = 1;
---  }
---
---  bool ModifiedBranch = false;
---  if (LatchIdx && areLoopExitPHIsLoopInvariant(L, *LoopLatch, *ULExit) &&
---      !llvm::any_of(*LoopLatch,
---                    [](Instruction &I) { return I.mayHaveSideEffects(); })) {
---
---    // We need to prove the loop is finite, otherwise this change will convert
---    // it to a finite loop. This conservative check is good enough as we are
---    // mostly interested in perfect countable loop nests that perform
---    // calculations on arrays.
---    const SCEV *MaxBECount = SE->getConstantMaxBackedgeTakenCount(&L);
---    if (!isa<SCEVCouldNotCompute>(MaxBECount)) {
---      SmallVector<cfg::Update<BasicBlock *>, 2> Updates;
---      Updates.push_back({cfg::UpdateKind::Delete, BI.getParent(),
---                         BI.getSuccessor(*LatchIdx)});
---      Updates.push_back({cfg::UpdateKind::Insert, BI.getParent(), ULExit});
---      LoopLatch->removePredecessor(BI.getParent());
---      BI.setSuccessor(*LatchIdx, ULExit);
---      for (PHINode &PN : ULExit->phis()) {
---        Value *V = PN.getIncomingValueForBlock(LoopLatch);
---        PN.addIncoming(V, BI.getParent());
---      }
---      if (MSSAU)
---        MSSAU->applyUpdates(Updates, DT);
---      else
---        DT.applyUpdates(Updates);
---
---      ModifiedBranch = true;
---    }
---  }
---
--   // Check that one of the branch's successors exits, and which one.
--   bool ExitDirection = true;
--   int LoopExitSuccIdx = 0;
--@@ -642,16 +601,13 @@
--     LoopExitBB = BI.getSuccessor(1);
--     if (L.contains(LoopExitBB)) {
--       LLVM_DEBUG(dbgs() << "   Branch doesn't exit the loop!\n");
---      assert(!ModifiedBranch && "Modified the branch but didn't unswitch");
--       return false;
--     }
--   }
--   auto *ContinueBB = BI.getSuccessor(1 - LoopExitSuccIdx);
--   auto *ParentBB = BI.getParent();
---  if (!ModifiedBranch &&
---      !areLoopExitPHIsLoopInvariant(L, *ParentBB, *LoopExitBB)) {
--+  if (!areLoopExitPHIsLoopInvariant(L, *ParentBB, *LoopExitBB)) {
--     LLVM_DEBUG(dbgs() << "   Loop exit PHI's aren't loop-invariant!\n");
---    assert(!ModifiedBranch && "Modified the branch but didn't unswitch");
--     return false;
--   }
 - 
--@@ -665,7 +621,6 @@
--                       : !match(Cond, m_LogicalAnd())) {
--       LLVM_DEBUG(dbgs() << "   Branch condition is in improper form for "
--                            "non-full unswitch!\n");
---      assert(!ModifiedBranch && "Modified the branch but didn't unswitch");
--       return false;
--     }
--   }
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PhaseOrdering/AArch64/loopflatten.ll b/llvm/test/Transforms/PhaseOrdering/AArch64/loopflatten.ll
----- a/llvm/test/Transforms/PhaseOrdering/AArch64/loopflatten.ll
--+++ b/llvm/test/Transforms/PhaseOrdering/AArch64/loopflatten.ll
--@@ -11,13 +11,13 @@
-- ; CHECK-NEXT:    [[CMP21:%.*]] = icmp sgt i32 [[M:%.*]], 0
-- ; CHECK-NEXT:    [[OR_COND:%.*]] = select i1 [[CMP3]], i1 [[CMP21]], i1 false
-- ; CHECK-NEXT:    br i1 [[OR_COND]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT_US:%.*]], label [[FOR_COND_CLEANUP:%.*]]
---; CHECK:       for.cond1.preheader.lr.ph.split:
--+; CHECK:       for.cond1.preheader.lr.ph.split.us:
-- ; CHECK-NEXT:    [[TMP0:%.*]] = zext nneg i32 [[M]] to i64
-- ; CHECK-NEXT:    [[TMP1:%.*]] = zext nneg i32 [[N]] to i64
-- ; CHECK-NEXT:    [[FLATTEN_TRIPCOUNT:%.*]] = mul nuw nsw i64 [[TMP0]], [[TMP1]]
-- ; CHECK-NEXT:    br label [[FOR_COND1_PREHEADER_US:%.*]]
---; CHECK:       for.cond1.preheader:
---; CHECK-NEXT:    [[INDVAR6:%.*]] = phi i64 [ 0, [[FOR_COND1_PREHEADER_LR_PH_SPLIT_US]] ], [ [[INDVAR_NEXT7:%.*]], [[FOR_COND1_PREHEADER_US]] ]
--+; CHECK:       for.cond1.preheader.us:
--+; CHECK-NEXT:    [[INDVAR6:%.*]] = phi i64 [ [[INDVAR_NEXT7:%.*]], [[FOR_COND1_PREHEADER_US]] ], [ 0, [[FOR_COND1_PREHEADER_LR_PH_SPLIT_US]] ]
-- ; CHECK-NEXT:    [[ARRAYIDX_US:%.*]] = getelementptr inbounds nuw [4 x i8], ptr [[A:%.*]], i64 [[INDVAR6]]
-- ; CHECK-NEXT:    [[TMP2:%.*]] = load i32, ptr [[ARRAYIDX_US]], align 4
-- ; CHECK-NEXT:    tail call void @_Z1fi(i32 [[TMP2]])
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PhaseOrdering/AArch64/matrix-extract-insert.ll b/llvm/test/Transforms/PhaseOrdering/AArch64/matrix-extract-insert.ll
----- a/llvm/test/Transforms/PhaseOrdering/AArch64/matrix-extract-insert.ll
--+++ b/llvm/test/Transforms/PhaseOrdering/AArch64/matrix-extract-insert.ll
--@@ -86,7 +86,7 @@
-- ; CHECK-NEXT:    [[CMP210_NOT:%.*]] = icmp eq i32 [[I:%.*]], 0
-- ; CHECK-NEXT:    [[CONV6:%.*]] = zext i32 [[I]] to i64
-- ; CHECK-NEXT:    br i1 [[CMP210_NOT]], label [[FOR_COND_CLEANUP:%.*]], label [[VECTOR_MEMCHECK:%.*]]
---; CHECK:       for.cond1.preheader.preheader:
--+; CHECK:       for.cond1.preheader.us.preheader:
-- ; CHECK-NEXT:    [[TMP0:%.*]] = shl nuw nsw i64 [[CONV6]], 3
-- ; CHECK-NEXT:    [[TMP1:%.*]] = add nuw nsw i64 [[TMP0]], 360
-- ; CHECK-NEXT:    [[SCEVGEP:%.*]] = getelementptr i8, ptr [[B:%.*]], i64 [[TMP1]]
--@@ -129,12 +129,25 @@
-- ; CHECK:       middle.block:
-- ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[N_VEC]], [[CONV6]]
-- ; CHECK-NEXT:    br i1 [[CMP_N]], label [[VECTOR_MEMCHECK_1:%.*]], label [[FOR_BODY4_US_PREHEADER]]
---; CHECK:       for.body4.preheader:
--+; CHECK:       for.body4.us.preheader:
-- ; CHECK-NEXT:    [[INDVARS_IV_PH:%.*]] = phi i64 [ 0, [[FOR_COND1_PREHEADER_US_PREHEADER]] ], [ 0, [[VECTOR_MEMCHECK]] ], [ [[N_VEC]], [[MIDDLE_BLOCK]] ]
-- ; CHECK-NEXT:    br label [[FOR_BODY4_US:%.*]]
---; CHECK:       for.cond.cleanup.split:
---; CHECK-NEXT:    ret void
---; CHECK:       for.cond1.for.cond.cleanup3_crit_edge:
--+; CHECK:       for.body4.us:
--+; CHECK-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ [[INDVARS_IV_NEXT:%.*]], [[FOR_BODY4_US]] ], [ [[INDVARS_IV_PH]], [[FOR_BODY4_US_PREHEADER]] ]
--+; CHECK-NEXT:    [[TMP27:%.*]] = icmp samesign ult i64 [[INDVARS_IV]], 225
--+; CHECK-NEXT:    tail call void @llvm.assume(i1 [[TMP27]])
--+; CHECK-NEXT:    [[TMP28:%.*]] = getelementptr inbounds nuw [8 x i8], ptr [[A]], i64 [[INDVARS_IV]]
--+; CHECK-NEXT:    [[MATRIXEXT_US:%.*]] = load double, ptr [[TMP28]], align 8
--+; CHECK-NEXT:    [[MATRIXEXT8_US:%.*]] = load double, ptr [[TMP3]], align 8
--+; CHECK-NEXT:    [[MUL_US:%.*]] = fmul double [[MATRIXEXT_US]], [[MATRIXEXT8_US]]
--+; CHECK-NEXT:    [[TMP29:%.*]] = getelementptr inbounds nuw [8 x i8], ptr [[B]], i64 [[INDVARS_IV]]
--+; CHECK-NEXT:    [[MATRIXEXT11_US:%.*]] = load double, ptr [[TMP29]], align 8
--+; CHECK-NEXT:    [[SUB_US:%.*]] = fsub double [[MATRIXEXT11_US]], [[MUL_US]]
--+; CHECK-NEXT:    store double [[SUB_US]], ptr [[TMP29]], align 8
--+; CHECK-NEXT:    [[INDVARS_IV_NEXT]] = add nuw nsw i64 [[INDVARS_IV]], 1
--+; CHECK-NEXT:    [[EXITCOND_NOT:%.*]] = icmp eq i64 [[INDVARS_IV_NEXT]], [[CONV6]]
--+; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label [[VECTOR_MEMCHECK_1]], label [[FOR_BODY4_US]], !llvm.loop [[LOOP10:![0-9]+]]
--+; CHECK:       for.cond1.for.cond.cleanup3_crit_edge.us:
-- ; CHECK-NEXT:    [[TMP31:%.*]] = icmp samesign ult i32 [[I]], 210
-- ; CHECK-NEXT:    tail call void @llvm.assume(i1 [[TMP31]])
-- ; CHECK-NEXT:    [[TMP61:%.*]] = getelementptr inbounds nuw [8 x i8], ptr [[B]], i64 [[CONV6]]
--@@ -175,10 +188,10 @@
-- ; CHECK:       middle.block.1:
-- ; CHECK-NEXT:    [[CMP_N_1:%.*]] = icmp eq i64 [[N_VEC_1]], [[CONV6]]
-- ; CHECK-NEXT:    br i1 [[CMP_N_1]], label [[VECTOR_MEMCHECK_2:%.*]], label [[FOR_BODY4_US_PREHEADER_1]]
---; CHECK:       for.body4.preheader.1:
--+; CHECK:       for.body4.us.preheader.1:
-- ; CHECK-NEXT:    [[INDVARS_IV_PH_1:%.*]] = phi i64 [ 0, [[FOR_COND1_FOR_COND_CLEANUP3_CRIT_EDGE_US]] ], [ 0, [[VECTOR_MEMCHECK_1]] ], [ [[N_VEC_1]], [[MIDDLE_BLOCK_1]] ]
-- ; CHECK-NEXT:    br label [[FOR_BODY4_US_1:%.*]]
---; CHECK:       for.body4.1:
--+; CHECK:       for.body4.us.1:
-- ; CHECK-NEXT:    [[INDVARS_IV_1:%.*]] = phi i64 [ [[INDVARS_IV_NEXT_1:%.*]], [[FOR_BODY4_US_1]] ], [ [[INDVARS_IV_PH_1]], [[FOR_BODY4_US_PREHEADER_1]] ]
-- ; CHECK-NEXT:    [[TMP57:%.*]] = add nuw nsw i64 [[INDVARS_IV_1]], 15
-- ; CHECK-NEXT:    [[TMP58:%.*]] = icmp samesign ult i64 [[INDVARS_IV_1]], 210
--@@ -193,8 +206,8 @@
-- ; CHECK-NEXT:    store double [[SUB_US_1]], ptr [[TMP60]], align 8
-- ; CHECK-NEXT:    [[INDVARS_IV_NEXT_1]] = add nuw nsw i64 [[INDVARS_IV_1]], 1
-- ; CHECK-NEXT:    [[EXITCOND_NOT_1:%.*]] = icmp eq i64 [[INDVARS_IV_NEXT_1]], [[CONV6]]
---; CHECK-NEXT:    br i1 [[EXITCOND_NOT_1]], label [[VECTOR_MEMCHECK_2]], label [[FOR_BODY4_US_1]], !llvm.loop [[LOOP10:![0-9]+]]
---; CHECK:       for.cond1.for.cond.cleanup3_crit_edge.1:
--+; CHECK-NEXT:    br i1 [[EXITCOND_NOT_1]], label [[VECTOR_MEMCHECK_2]], label [[FOR_BODY4_US_1]], !llvm.loop [[LOOP10]]
--+; CHECK:       for.cond1.for.cond.cleanup3_crit_edge.us.1:
-- ; CHECK-NEXT:    [[TMP62:%.*]] = icmp samesign ult i32 [[I]], 195
-- ; CHECK-NEXT:    tail call void @llvm.assume(i1 [[TMP62]])
-- ; CHECK-NEXT:    [[TMP92:%.*]] = getelementptr inbounds nuw [8 x i8], ptr [[B]], i64 [[CONV6]]
--@@ -235,10 +248,10 @@
-- ; CHECK:       middle.block.2:
-- ; CHECK-NEXT:    [[CMP_N_2:%.*]] = icmp eq i64 [[N_VEC_2]], [[CONV6]]
-- ; CHECK-NEXT:    br i1 [[CMP_N_2]], label [[VECTOR_MEMCHECK_3:%.*]], label [[FOR_BODY4_US_PREHEADER_2]]
---; CHECK:       for.body4.preheader.2:
--+; CHECK:       for.body4.us.preheader.2:
-- ; CHECK-NEXT:    [[INDVARS_IV_PH_2:%.*]] = phi i64 [ 0, [[FOR_COND1_FOR_COND_CLEANUP3_CRIT_EDGE_US_1]] ], [ 0, [[VECTOR_MEMCHECK_2]] ], [ [[N_VEC_2]], [[MIDDLE_BLOCK_2]] ]
-- ; CHECK-NEXT:    br label [[FOR_BODY4_US_2:%.*]]
---; CHECK:       for.body4.2:
--+; CHECK:       for.body4.us.2:
-- ; CHECK-NEXT:    [[INDVARS_IV_2:%.*]] = phi i64 [ [[INDVARS_IV_NEXT_2:%.*]], [[FOR_BODY4_US_2]] ], [ [[INDVARS_IV_PH_2]], [[FOR_BODY4_US_PREHEADER_2]] ]
-- ; CHECK-NEXT:    [[TMP88:%.*]] = add nuw nsw i64 [[INDVARS_IV_2]], 30
-- ; CHECK-NEXT:    [[TMP89:%.*]] = icmp samesign ult i64 [[INDVARS_IV_2]], 195
--@@ -254,7 +267,7 @@
-- ; CHECK-NEXT:    [[INDVARS_IV_NEXT_2]] = add nuw nsw i64 [[INDVARS_IV_2]], 1
-- ; CHECK-NEXT:    [[EXITCOND_NOT_2:%.*]] = icmp eq i64 [[INDVARS_IV_NEXT_2]], [[CONV6]]
-- ; CHECK-NEXT:    br i1 [[EXITCOND_NOT_2]], label [[VECTOR_MEMCHECK_3]], label [[FOR_BODY4_US_2]], !llvm.loop [[LOOP10]]
---; CHECK:       for.cond1.for.cond.cleanup3_crit_edge.2:
--+; CHECK:       for.cond1.for.cond.cleanup3_crit_edge.us.2:
-- ; CHECK-NEXT:    [[TMP93:%.*]] = icmp samesign ult i32 [[I]], 180
-- ; CHECK-NEXT:    tail call void @llvm.assume(i1 [[TMP93]])
-- ; CHECK-NEXT:    [[TMP123:%.*]] = getelementptr inbounds nuw [8 x i8], ptr [[B]], i64 [[CONV6]]
--@@ -295,10 +308,10 @@
-- ; CHECK:       middle.block.3:
-- ; CHECK-NEXT:    [[CMP_N_3:%.*]] = icmp eq i64 [[N_VEC_3]], [[CONV6]]
-- ; CHECK-NEXT:    br i1 [[CMP_N_3]], label [[FOR_COND_CLEANUP]], label [[FOR_BODY4_US_PREHEADER_3]]
---; CHECK:       for.body4.preheader.3:
--+; CHECK:       for.body4.us.preheader.3:
-- ; CHECK-NEXT:    [[INDVARS_IV_PH_3:%.*]] = phi i64 [ 0, [[FOR_COND1_FOR_COND_CLEANUP3_CRIT_EDGE_US_2]] ], [ 0, [[VECTOR_MEMCHECK_3]] ], [ [[N_VEC_3]], [[MIDDLE_BLOCK_3]] ]
-- ; CHECK-NEXT:    br label [[FOR_BODY4_US_3:%.*]]
---; CHECK:       for.body4.3:
--+; CHECK:       for.body4.us.3:
-- ; CHECK-NEXT:    [[INDVARS_IV_3:%.*]] = phi i64 [ [[INDVARS_IV_NEXT_3:%.*]], [[FOR_BODY4_US_3]] ], [ [[INDVARS_IV_PH_3]], [[FOR_BODY4_US_PREHEADER_3]] ]
-- ; CHECK-NEXT:    [[TMP119:%.*]] = add nuw nsw i64 [[INDVARS_IV_3]], 45
-- ; CHECK-NEXT:    [[TMP120:%.*]] = icmp samesign ult i64 [[INDVARS_IV_3]], 180
--@@ -314,21 +327,8 @@
-- ; CHECK-NEXT:    [[INDVARS_IV_NEXT_3]] = add nuw nsw i64 [[INDVARS_IV_3]], 1
-- ; CHECK-NEXT:    [[EXITCOND_NOT_3:%.*]] = icmp eq i64 [[INDVARS_IV_NEXT_3]], [[CONV6]]
-- ; CHECK-NEXT:    br i1 [[EXITCOND_NOT_3]], label [[FOR_COND_CLEANUP]], label [[FOR_BODY4_US_3]], !llvm.loop [[LOOP10]]
---; CHECK:       for.body4:
---; CHECK-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ [[INDVARS_IV_NEXT:%.*]], [[FOR_BODY4_US]] ], [ [[INDVARS_IV_PH]], [[FOR_BODY4_US_PREHEADER]] ]
---; CHECK-NEXT:    [[TMP68:%.*]] = icmp samesign ult i64 [[INDVARS_IV]], 225
---; CHECK-NEXT:    tail call void @llvm.assume(i1 [[TMP68]])
---; CHECK-NEXT:    [[TMP69:%.*]] = getelementptr inbounds nuw [8 x i8], ptr [[A]], i64 [[INDVARS_IV]]
---; CHECK-NEXT:    [[MATRIXEXT:%.*]] = load double, ptr [[TMP69]], align 8
---; CHECK-NEXT:    [[MATRIXEXT8:%.*]] = load double, ptr [[TMP3]], align 8
---; CHECK-NEXT:    [[MUL:%.*]] = fmul double [[MATRIXEXT]], [[MATRIXEXT8]]
---; CHECK-NEXT:    [[TMP70:%.*]] = getelementptr inbounds nuw [8 x i8], ptr [[B]], i64 [[INDVARS_IV]]
---; CHECK-NEXT:    [[MATRIXEXT11:%.*]] = load double, ptr [[TMP70]], align 8
---; CHECK-NEXT:    [[SUB:%.*]] = fsub double [[MATRIXEXT11]], [[MUL]]
---; CHECK-NEXT:    store double [[SUB]], ptr [[TMP70]], align 8
---; CHECK-NEXT:    [[INDVARS_IV_NEXT]] = add nuw nsw i64 [[INDVARS_IV]], 1
---; CHECK-NEXT:    [[EXITCOND_NOT:%.*]] = icmp eq i64 [[INDVARS_IV_NEXT]], [[CONV6]]
---; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label [[VECTOR_MEMCHECK_1]], label [[FOR_BODY4_US]], !llvm.loop [[LOOP10]]
--+; CHECK:       for.cond.cleanup:
--+; CHECK-NEXT:    ret void
-- ;
-- entry:
--   %i.addr = alloca i32, align 4
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PhaseOrdering/unswitch-cold-func.ll b/llvm/test/Transforms/PhaseOrdering/unswitch-cold-func.ll
----- a/llvm/test/Transforms/PhaseOrdering/unswitch-cold-func.ll
--+++ b/llvm/test/Transforms/PhaseOrdering/unswitch-cold-func.ll
--@@ -3,9 +3,8 @@
-- ; RUN: opt < %s -passes='pgo-force-function-attrs,function(loop-mssa(simple-loop-unswitch<nontrivial>))' -pgo-kind=pgo-instr-use-pipeline -pgo-cold-func-opt=optsize -S | FileCheck %s
-- ; RUN: opt < %s -passes='pgo-force-function-attrs,function(loop-mssa(simple-loop-unswitch<nontrivial>))' -pgo-kind=pgo-instr-use-pipeline -pgo-cold-func-opt=minsize -S | FileCheck %s
-- 
---;; Check that trivial loop unswitching is applied to a cold loop in a
---;; cold loop nest. Another testcase, unswitch-cold-func.ll, ensures that
---;; non-trivial unswitching is not applied to a cold loop.
--+;; Check that non-trivial loop unswitching is not applied to a cold loop in a
--+;; cold loop nest.
-- 
-- ;; IR was generated from the following loop nest, profiled when called
-- ;; with M=0 and N=0.
--@@ -19,23 +18,19 @@
-- 
-- define void @_Z11functionbiiPiS_S_(i1 %cond, i32 %M, i32 %N, ptr %A, ptr %B, ptr %C) !prof !36 {
-- ; CHECK-LABEL: define void @_Z11functionbiiPiS_S_
---; CHECK-SAME: (i1 [[COND:%.*]], i32 [[M:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]], ptr [[C:%.*]]) #[[ATTR0:[0-9]+]] {{.*}}{
--+; CHECK-SAME: (i1 [[COND:%.*]], i32 [[M:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]], ptr [[C:%.*]]) {{.*}}{
-- ; CHECK-NEXT:  entry:
-- ; CHECK-NEXT:    [[CMP19_NOT:%.*]] = icmp eq i32 [[M]], 0
-- ; CHECK-NEXT:    br i1 [[CMP19_NOT]], label [[FOR_COND_CLEANUP:%.*]], label [[FOR_COND1_PREHEADER_LR_PH:%.*]], !prof [[PROF17:![0-9]+]]
-- ; CHECK:       for.cond1.preheader.lr.ph:
-- ; CHECK-NEXT:    [[CMP217_NOT:%.*]] = icmp eq i32 [[N]], 0
---; CHECK-NEXT:    br i1 [[CMP217_NOT]], label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT:%.*]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT:%.*]]
---; CHECK:       for.cond1.preheader.lr.ph.split:
-- ; CHECK-NEXT:    br label [[FOR_COND1_PREHEADER:%.*]]
-- ; CHECK:       for.cond1.preheader:
---; CHECK-NEXT:    [[J_020:%.*]] = phi i32 [ 0, [[FOR_COND1_PREHEADER_LR_PH_SPLIT]] ], [ [[INC10:%.*]], [[FOR_COND_CLEANUP3:%.*]] ]
---; CHECK-NEXT:    br label [[FOR_BODY4_PREHEADER:%.*]]
--+; CHECK-NEXT:    [[J_020:%.*]] = phi i32 [ 0, [[FOR_COND1_PREHEADER_LR_PH]] ], [ [[INC10:%.*]], [[FOR_COND_CLEANUP3:%.*]] ]
--+; CHECK-NEXT:    br i1 [[CMP217_NOT]], label [[FOR_COND_CLEANUP3]], label [[FOR_BODY4_PREHEADER:%.*]]
-- ; CHECK:       for.body4.preheader:
-- ; CHECK-NEXT:    br label [[FOR_BODY4:%.*]]
-- ; CHECK:       for.cond.cleanup.loopexit:
---; CHECK-NEXT:    br label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT]]
---; CHECK:       for.cond.cleanup.loopexit.split:
-- ; CHECK-NEXT:    br label [[FOR_COND_CLEANUP]]
-- ; CHECK:       for.cond.cleanup:
-- ; CHECK-NEXT:    ret void
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PhaseOrdering/unswitch-nontrivial-cold-func.ll b/llvm/test/Transforms/PhaseOrdering/unswitch-nontrivial-cold-func.ll
----- a/llvm/test/Transforms/PhaseOrdering/unswitch-nontrivial-cold-func.ll
--+++ b/llvm/test/Transforms/PhaseOrdering/unswitch-nontrivial-cold-func.ll
--@@ -1,114 +0,0 @@
---; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --scrub-attributes --version 2
---
---; RUN: opt < %s -passes='pgo-force-function-attrs,function(loop-mssa(simple-loop-unswitch<nontrivial>))' -pgo-kind=pgo-instr-use-pipeline -pgo-cold-func-opt=optsize -S | FileCheck %s
---; RUN: opt < %s -passes='pgo-force-function-attrs,function(loop-mssa(simple-loop-unswitch<nontrivial>))' -pgo-kind=pgo-instr-use-pipeline -pgo-cold-func-opt=minsize -S | FileCheck %s
---
---;; Check that genuinely non-trivial loop unswitching - where the optimizer
---;; would have to duplicate the entire loop body - is suppressed for cold
---;; (optsize/minsize) functions.
---;;
---;; The branch on %cond in the loop header is loop-invariant, but both of its
---;; successors (if.then, if.else) stay inside the loop, so unswitching it
---;; requires producing two full copies of the loop.  That code-size increase
---;; must be blocked when the function is cold.
---;;
---;; Contrast with unswitch-cold-func.ll, where the invariant condition can be
---;; hoisted via a latch-bypass rewrite that introduces no code duplication and
---;; is therefore allowed even for cold functions.
---;;
---;; Source:
---;;   void function(bool cond, int N, int *A, int *B) {
---;;     for (int i = 0; i < N; i++) {
---;;       if (cond) A[i]++;
---;;       else      B[i]++;
---;;     }
---;;   }
---;; profiled when called with N=0 (cold).
---
---define void @function(i1 %cond, i32 %N, ptr %A, ptr %B) !prof !16 {
---; CHECK-LABEL: define void @function
---; CHECK-SAME: (i1 [[COND:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]]) #[[ATTR0:[0-9]+]] {{.*}}{
---; CHECK-NEXT:  entry:
---; CHECK-NEXT:    [[CMP_NOT:%.*]] = icmp sle i32 [[N]], 0
---; CHECK-NEXT:    br i1 [[CMP_NOT]], label [[EXIT:%.*]], label [[LOOP_PREHEADER:%.*]], !prof [[PROF17:![0-9]+]]
---; CHECK:       loop.preheader:
---; CHECK-NEXT:    br label [[LOOP_HEADER:%.*]]
---; CHECK:       loop.header:
---; CHECK-NEXT:    [[I:%.*]] = phi i32 [ 0, [[LOOP_PREHEADER]] ], [ [[I_NEXT:%.*]], [[LOOP_LATCH:%.*]] ]
---; CHECK-NEXT:    br i1 [[COND]], label [[IF_THEN:%.*]], label [[IF_ELSE:%.*]]
---; CHECK:       if.then:
---; CHECK-NEXT:    [[GEP_A:%.*]] = getelementptr inbounds i32, ptr [[A]], i32 [[I]]
---; CHECK-NEXT:    [[VAL_A:%.*]] = load i32, ptr [[GEP_A]], align 4
---; CHECK-NEXT:    [[INC_A:%.*]] = add i32 [[VAL_A]], 1
---; CHECK-NEXT:    store i32 [[INC_A]], ptr [[GEP_A]], align 4
---; CHECK-NEXT:    br label [[LOOP_LATCH]]
---; CHECK:       if.else:
---; CHECK-NEXT:    [[GEP_B:%.*]] = getelementptr inbounds i32, ptr [[B]], i32 [[I]]
---; CHECK-NEXT:    [[VAL_B:%.*]] = load i32, ptr [[GEP_B]], align 4
---; CHECK-NEXT:    [[INC_B:%.*]] = add i32 [[VAL_B]], 1
---; CHECK-NEXT:    store i32 [[INC_B]], ptr [[GEP_B]], align 4
---; CHECK-NEXT:    br label [[LOOP_LATCH]]
---; CHECK:       loop.latch:
---; CHECK-NEXT:    [[I_NEXT]] = add nuw i32 [[I]], 1
---; CHECK-NEXT:    [[EXITCOND_NOT:%.*]] = icmp eq i32 [[I_NEXT]], [[N]]
---; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label [[EXIT_LOOPEXIT:%.*]], label [[LOOP_HEADER]], !prof [[PROF17]]
---; CHECK:       exit.loopexit:
---; CHECK-NEXT:    br label [[EXIT]]
---; CHECK:       exit:
---; CHECK-NEXT:    ret void
---;
---entry:
---  %cmp.not = icmp sle i32 %N, 0
---  br i1 %cmp.not, label %exit, label %loop.preheader, !prof !17
---
---loop.preheader:
---  br label %loop.header
---
---loop.header:
---  %i = phi i32 [ 0, %loop.preheader ], [ %i.next, %loop.latch ]
---  br i1 %cond, label %if.then, label %if.else
---
---if.then:
---  %gep.a = getelementptr inbounds i32, ptr %A, i32 %i
---  %val.a = load i32, ptr %gep.a, align 4
---  %inc.a = add i32 %val.a, 1
---  store i32 %inc.a, ptr %gep.a, align 4
---  br label %loop.latch
---
---if.else:
---  %gep.b = getelementptr inbounds i32, ptr %B, i32 %i
---  %val.b = load i32, ptr %gep.b, align 4
---  %inc.b = add i32 %val.b, 1
---  store i32 %inc.b, ptr %gep.b, align 4
---  br label %loop.latch
---
---loop.latch:
---  %i.next = add nuw i32 %i, 1
---  %exitcond.not = icmp eq i32 %i.next, %N
---  br i1 %exitcond.not, label %exit, label %loop.header, !prof !17
---
---exit:
---  ret void
---}
---
---!llvm.module.flags = !{!0}
---
---!0  = !{i32 1, !"ProfileSummary", !1}
---!1  = !{!2, !3, !4, !5, !6, !7, !8, !9, !10, !11}
---!2  = !{!"ProfileFormat",       !"InstrProf"}
---!3  = !{!"TotalCount",          i64 1002}
---!4  = !{!"MaxCount",            i64 1000}
---!5  = !{!"MaxInternalCount",    i64 1000}
---!6  = !{!"MaxFunctionCount",    i64 1}
---!7  = !{!"NumCounts",           i64 6}
---!8  = !{!"NumFunctions",        i64 3}
---!9  = !{!"IsPartialProfile",    i64 0}
---!10 = !{!"PartialProfileRatio", double 0.000000e+00}
---!11 = !{!"DetailedSummary",     !12}
---!12 = !{!13, !14, !15}
---!13 = !{i32 10000,  i64 1000, i32 1}
---!14 = !{i32 999000, i64 1000, i32 1}
---!15 = !{i32 999999, i64 1,    i32 3}
---!16 = !{!"function_entry_count", i64 1}
---!17 = !{!"branch_weights", i32 1, i32 0}
---
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PhaseOrdering/X86/hoist-load-of-baseptr.ll b/llvm/test/Transforms/PhaseOrdering/X86/hoist-load-of-baseptr.ll
----- a/llvm/test/Transforms/PhaseOrdering/X86/hoist-load-of-baseptr.ll
--+++ b/llvm/test/Transforms/PhaseOrdering/X86/hoist-load-of-baseptr.ll
--@@ -19,42 +19,42 @@
-- ; O1-NEXT:  [[ENTRY:.*]]:
-- ; O1-NEXT:    [[CMP24_NOT:%.*]] = icmp eq i64 [[NUMELEMS]], 0
-- ; O1-NEXT:    [[TMP0:%.*]] = load ptr, ptr [[DATA]], align 8
---; O1-NEXT:    br i1 [[CMP24_NOT]], label %[[FOR_COND_CLEANUP3:.*]], label %[[FOR_BODY4:.*]]
---; O1:       [[FOR_BODY4]]:
---; O1-NEXT:    [[I_06:%.*]] = phi i64 [ [[INC7:%.*]], %[[FOR_COND1_FOR_COND_CLEANUP3_CRIT_EDGE:.*]] ], [ 0, %[[ENTRY]] ]
---; O1-NEXT:    br label %[[FOR_BODY5:.*]]
---; O1:       [[FOR_COND_CLEANUP3]]:
--+; O1-NEXT:    br label %[[FOR_COND1_PREHEADER:.*]]
--+; O1:       [[FOR_COND1_PREHEADER]]:
--+; O1-NEXT:    [[I_06:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[INC7:%.*]], %[[FOR_COND_CLEANUP3:.*]] ]
--+; O1-NEXT:    br i1 [[CMP24_NOT]], label %[[FOR_COND_CLEANUP3]], label %[[FOR_BODY4:.*]]
--+; O1:       [[FOR_COND_CLEANUP:.*]]:
-- ; O1-NEXT:    ret void
---; O1:       [[FOR_COND1_FOR_COND_CLEANUP3_CRIT_EDGE]]:
--+; O1:       [[FOR_COND_CLEANUP3]]:
-- ; O1-NEXT:    [[INC7]] = add nuw nsw i64 [[I_06]], 1
-- ; O1-NEXT:    [[EXITCOND7_NOT:%.*]] = icmp eq i64 [[INC7]], 100
---; O1-NEXT:    br i1 [[EXITCOND7_NOT]], label %[[FOR_COND_CLEANUP3]], label %[[FOR_BODY4]], !llvm.loop [[LOOP0:![0-9]+]]
---; O1:       [[FOR_BODY5]]:
---; O1-NEXT:    [[J_05:%.*]] = phi i64 [ 0, %[[FOR_BODY4]] ], [ [[INC5:%.*]], %[[FOR_BODY5]] ]
--+; O1-NEXT:    br i1 [[EXITCOND7_NOT]], label %[[FOR_COND_CLEANUP]], label %[[FOR_COND1_PREHEADER]], !llvm.loop [[LOOP0:![0-9]+]]
--+; O1:       [[FOR_BODY4]]:
--+; O1-NEXT:    [[J_05:%.*]] = phi i64 [ [[INC5:%.*]], %[[FOR_BODY4]] ], [ 0, %[[FOR_COND1_PREHEADER]] ]
-- ; O1-NEXT:    [[ADD_PTR_I:%.*]] = getelementptr inbounds [4 x i8], ptr [[TMP0]], i64 [[J_05]]
-- ; O1-NEXT:    [[TMP1:%.*]] = load i32, ptr [[ADD_PTR_I]], align 4, !tbaa [[INT_TBAA2:![0-9]+]]
-- ; O1-NEXT:    [[INC:%.*]] = add nsw i32 [[TMP1]], 1
-- ; O1-NEXT:    store i32 [[INC]], ptr [[ADD_PTR_I]], align 4, !tbaa [[INT_TBAA2]]
-- ; O1-NEXT:    [[INC5]] = add nuw i64 [[J_05]], 1
-- ; O1-NEXT:    [[EXITCOND_NOT:%.*]] = icmp eq i64 [[INC5]], [[NUMELEMS]]
---; O1-NEXT:    br i1 [[EXITCOND_NOT]], label %[[FOR_COND1_FOR_COND_CLEANUP3_CRIT_EDGE]], label %[[FOR_BODY5]], !llvm.loop [[LOOP6:![0-9]+]]
--+; O1-NEXT:    br i1 [[EXITCOND_NOT]], label %[[FOR_COND_CLEANUP3]], label %[[FOR_BODY4]], !llvm.loop [[LOOP6:![0-9]+]]
-- ;
-- ; O2-LABEL: define dso_local void @_Z7computeRSt6vectorIiSaIiEEy(
-- ; O2-SAME: ptr nofree noundef nonnull readonly align 8 captures(none) dereferenceable(24) [[DATA:%.*]], i64 noundef [[NUMELEMS:%.*]]) local_unnamed_addr #[[ATTR0:[0-9]+]] {
-- ; O2-NEXT:  [[ENTRY:.*]]:
-- ; O2-NEXT:    [[CMP24_NOT:%.*]] = icmp eq i64 [[NUMELEMS]], 0
-- ; O2-NEXT:    [[TMP0:%.*]] = load ptr, ptr [[DATA]], align 8
---; O2-NEXT:    br i1 [[CMP24_NOT]], label %[[FOR_COND_CLEANUP:.*]], label %[[FOR_COND1_PREHEADER_PREHEADER:.*]]
---; O2:       [[FOR_COND1_PREHEADER_PREHEADER]]:
-- ; O2-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ult i64 [[NUMELEMS]], 8
-- ; O2-NEXT:    [[N_VEC:%.*]] = and i64 [[NUMELEMS]], -8
-- ; O2-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[NUMELEMS]], [[N_VEC]]
-- ; O2-NEXT:    br label %[[FOR_COND1_PREHEADER:.*]]
-- ; O2:       [[FOR_COND1_PREHEADER]]:
---; O2-NEXT:    [[I_06:%.*]] = phi i64 [ [[INC7:%.*]], %[[FOR_COND_CLEANUP3:.*]] ], [ 0, %[[FOR_COND1_PREHEADER_PREHEADER]] ]
--+; O2-NEXT:    [[I_06:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[INC7:%.*]], %[[FOR_COND_CLEANUP3:.*]] ]
--+; O2-NEXT:    br i1 [[CMP24_NOT]], label %[[FOR_COND_CLEANUP3]], label %[[FOR_BODY4_PREHEADER:.*]]
--+; O2:       [[FOR_BODY4_PREHEADER]]:
-- ; O2-NEXT:    br i1 [[MIN_ITERS_CHECK]], label %[[FOR_BODY4_PREHEADER9:.*]], label %[[VECTOR_BODY:.*]]
-- ; O2:       [[VECTOR_BODY]]:
---; O2-NEXT:    [[INDEX:%.*]] = phi i64 [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ], [ 0, %[[FOR_COND1_PREHEADER]] ]
--+; O2-NEXT:    [[INDEX:%.*]] = phi i64 [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ], [ 0, %[[FOR_BODY4_PREHEADER]] ]
-- ; O2-NEXT:    [[TMP1:%.*]] = getelementptr inbounds [4 x i8], ptr [[TMP0]], i64 [[INDEX]]
-- ; O2-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw i8, ptr [[TMP1]], i64 16
-- ; O2-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i32>, ptr [[TMP1]], align 4, !tbaa [[INT_TBAA0:![0-9]+]]
--@@ -69,9 +69,9 @@
-- ; O2:       [[MIDDLE_BLOCK]]:
-- ; O2-NEXT:    br i1 [[CMP_N]], label %[[FOR_COND_CLEANUP3]], label %[[FOR_BODY4_PREHEADER9]]
-- ; O2:       [[FOR_BODY4_PREHEADER9]]:
---; O2-NEXT:    [[J_05_PH:%.*]] = phi i64 [ 0, %[[FOR_COND1_PREHEADER]] ], [ [[N_VEC]], %[[MIDDLE_BLOCK]] ]
--+; O2-NEXT:    [[J_05_PH:%.*]] = phi i64 [ 0, %[[FOR_BODY4_PREHEADER]] ], [ [[N_VEC]], %[[MIDDLE_BLOCK]] ]
-- ; O2-NEXT:    br label %[[FOR_BODY4:.*]]
---; O2:       [[FOR_COND_CLEANUP]]:
--+; O2:       [[FOR_COND_CLEANUP:.*]]:
-- ; O2-NEXT:    ret void
-- ; O2:       [[FOR_COND_CLEANUP3]]:
-- ; O2-NEXT:    [[INC7]] = add nuw nsw i64 [[I_06]], 1
--@@ -117,23 +117,23 @@
-- ; O3:       [[MIDDLE_BLOCK]]:
-- ; O3-NEXT:    br i1 [[CMP_N]], label %[[FOR_COND1_FOR_COND_CLEANUP3_CRIT_EDGE_US]], label %[[FOR_BODY4_US_PREHEADER]]
-- ; O3:       [[FOR_BODY4_US_PREHEADER]]:
---; O3-NEXT:    [[J_05_PH:%.*]] = phi i64 [ 0, %[[FOR_COND1_PREHEADER_US]] ], [ [[N_VEC]], %[[MIDDLE_BLOCK]] ]
--+; O3-NEXT:    [[J_05_US_PH:%.*]] = phi i64 [ 0, %[[FOR_COND1_PREHEADER_US]] ], [ [[N_VEC]], %[[MIDDLE_BLOCK]] ]
-- ; O3-NEXT:    br label %[[FOR_BODY4_US:.*]]
---; O3:       [[FOR_COND_CLEANUP]]:
---; O3-NEXT:    ret void
--+; O3:       [[FOR_BODY4_US]]:
--+; O3-NEXT:    [[J_05_US:%.*]] = phi i64 [ [[INC5_US:%.*]], %[[FOR_BODY4_US]] ], [ [[J_05_US_PH]], %[[FOR_BODY4_US_PREHEADER]] ]
--+; O3-NEXT:    [[ADD_PTR_I_US:%.*]] = getelementptr inbounds [4 x i8], ptr [[TMP0]], i64 [[J_05_US]]
--+; O3-NEXT:    [[TMP6:%.*]] = load i32, ptr [[ADD_PTR_I_US]], align 4, !tbaa [[INT_TBAA0]]
--+; O3-NEXT:    [[INC_US:%.*]] = add nsw i32 [[TMP6]], 1
--+; O3-NEXT:    store i32 [[INC_US]], ptr [[ADD_PTR_I_US]], align 4, !tbaa [[INT_TBAA0]]
--+; O3-NEXT:    [[INC5_US]] = add nuw i64 [[J_05_US]], 1
--+; O3-NEXT:    [[EXITCOND_NOT:%.*]] = icmp eq i64 [[INC5_US]], [[NUMELEMS]]
--+; O3-NEXT:    br i1 [[EXITCOND_NOT]], label %[[FOR_COND1_FOR_COND_CLEANUP3_CRIT_EDGE_US]], label %[[FOR_BODY4_US]], !llvm.loop [[LOOP8:![0-9]+]]
-- ; O3:       [[FOR_COND1_FOR_COND_CLEANUP3_CRIT_EDGE_US]]:
-- ; O3-NEXT:    [[INC7_US]] = add nuw nsw i64 [[I_06_US]], 1
-- ; O3-NEXT:    [[EXITCOND8_NOT:%.*]] = icmp eq i64 [[INC7_US]], 100
---; O3-NEXT:    br i1 [[EXITCOND8_NOT]], label %[[FOR_COND_CLEANUP]], label %[[FOR_COND1_PREHEADER_US]], !llvm.loop [[LOOP8:![0-9]+]]
---; O3:       [[FOR_BODY4_US]]:
---; O3-NEXT:    [[J_05:%.*]] = phi i64 [ [[INC5:%.*]], %[[FOR_BODY4_US]] ], [ [[J_05_PH]], %[[FOR_BODY4_US_PREHEADER]] ]
---; O3-NEXT:    [[ADD_PTR_I:%.*]] = getelementptr inbounds [4 x i8], ptr [[TMP0]], i64 [[J_05]]
---; O3-NEXT:    [[TMP6:%.*]] = load i32, ptr [[ADD_PTR_I]], align 4, !tbaa [[INT_TBAA0]]
---; O3-NEXT:    [[INC:%.*]] = add nsw i32 [[TMP6]], 1
---; O3-NEXT:    store i32 [[INC]], ptr [[ADD_PTR_I]], align 4, !tbaa [[INT_TBAA0]]
---; O3-NEXT:    [[INC5]] = add nuw i64 [[J_05]], 1
---; O3-NEXT:    [[EXITCOND_NOT:%.*]] = icmp eq i64 [[INC5]], [[NUMELEMS]]
---; O3-NEXT:    br i1 [[EXITCOND_NOT]], label %[[FOR_COND1_FOR_COND_CLEANUP3_CRIT_EDGE_US]], label %[[FOR_BODY4_US]], !llvm.loop [[LOOP9:![0-9]+]]
--+; O3-NEXT:    br i1 [[EXITCOND8_NOT]], label %[[FOR_COND_CLEANUP]], label %[[FOR_COND1_PREHEADER_US]], !llvm.loop [[LOOP9:![0-9]+]]
--+; O3:       [[FOR_COND_CLEANUP]]:
--+; O3-NEXT:    ret void
-- ;
-- entry:
--   %data.addr = alloca ptr, align 8
--@@ -265,6 +265,6 @@
-- ; O3: [[META5]] = !{!"llvm.loop.mustprogress"}
-- ; O3: [[META6]] = !{!"llvm.loop.isvectorized", i32 1}
-- ; O3: [[META7]] = !{!"llvm.loop.unroll.runtime.disable"}
---; O3: [[LOOP8]] = distinct !{[[LOOP8]], [[META5]]}
---; O3: [[LOOP9]] = distinct !{[[LOOP9]], [[META5]], [[META7]], [[META6]]}
--+; O3: [[LOOP8]] = distinct !{[[LOOP8]], [[META5]], [[META7]], [[META6]]}
--+; O3: [[LOOP9]] = distinct !{[[LOOP9]], [[META5]]}
-- ;.
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SimpleLoopUnswitch/AMDGPU/uniform-unswitch.ll b/llvm/test/Transforms/SimpleLoopUnswitch/AMDGPU/uniform-unswitch.ll
----- a/llvm/test/Transforms/SimpleLoopUnswitch/AMDGPU/uniform-unswitch.ll
--+++ b/llvm/test/Transforms/SimpleLoopUnswitch/AMDGPU/uniform-unswitch.ll
--@@ -20,7 +20,7 @@
-- 
-- define amdgpu_kernel void @uniform_unswitch(ptr nocapture %out, i32 %n, i32 %x) {
-- ; CHECK-LABEL: define amdgpu_kernel void @uniform_unswitch(
---; CHECK-SAME: ptr nofree captures(none) [[OUT:%.*]], i32 [[N:%.*]], i32 [[X:%.*]]) local_unnamed_addr #[[ATTR0:[0-9]+]] {
--+; CHECK-SAME: ptr nofree writeonly captures(none) [[OUT:%.*]], i32 [[N:%.*]], i32 [[X:%.*]]) local_unnamed_addr #[[ATTR0:[0-9]+]] {
-- ; CHECK-NEXT:  entry:
-- ; CHECK-NEXT:    [[OUT_GLOBAL:%.*]] = addrspacecast ptr [[OUT]] to ptr addrspace(1)
-- ; CHECK-NEXT:    [[CMP6:%.*]] = icmp sgt i32 [[N]], 0
--@@ -32,16 +32,12 @@
-- ; CHECK-NEXT:    ret void
-- ; CHECK:       for.body:
-- ; CHECK-NEXT:    [[I_07:%.*]] = phi i32 [ 0, [[FOR_BODY_LR_PH]] ], [ [[INC:%.*]], [[FOR_INC:%.*]] ]
--+; CHECK-NEXT:    br i1 [[CMP1]], label [[IF_THEN:%.*]], label [[FOR_INC]]
--+; CHECK:       if.then:
-- ; CHECK-NEXT:    [[TMP0:%.*]] = zext nneg i32 [[I_07]] to i64
-- ; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [4 x i8], ptr addrspace(1) [[OUT_GLOBAL]], i64 [[TMP0]]
---; CHECK-NEXT:    br i1 [[CMP1]], label [[IF_THEN:%.*]], label [[IF_ELSE:%.*]]
---; CHECK:       if.then:
-- ; CHECK-NEXT:    store i32 [[I_07]], ptr addrspace(1) [[ARRAYIDX]], align 4
-- ; CHECK-NEXT:    br label [[FOR_INC]]
---; CHECK:       if.else:
---; CHECK-NEXT:    [[TMP2:%.*]] = addrspacecast ptr addrspace(1) [[ARRAYIDX]] to ptr
---; CHECK-NEXT:    store volatile i32 0, ptr [[TMP2]], align 4
---; CHECK-NEXT:    br label [[FOR_INC]]
-- ; CHECK:       for.inc:
-- ; CHECK-NEXT:    [[INC]] = add nuw nsw i32 [[I_07]], 1
-- ; CHECK-NEXT:    [[EXITCOND:%.*]] = icmp eq i32 [[INC]], [[N]]
--@@ -63,19 +59,14 @@
-- 
-- for.body:                                         ; preds = %for.inc, %for.body.lr.ph
--   %i.07 = phi i32 [ 0, %for.body.lr.ph ], [ %inc, %for.inc ]
---  br i1 %cmp1, label %if.then, label %if.else
--+  br i1 %cmp1, label %if.then, label %for.inc
-- 
-- if.then:                                          ; preds = %for.body
--   %arrayidx = getelementptr inbounds i32, ptr %out, i32 %i.07
--   store i32 %i.07, ptr %arrayidx, align 4
--   br label %for.inc
-- 
---if.else:                                          ; preds = %for.body
---  %arrayidx2 = getelementptr inbounds i32, ptr %out, i32 %i.07
---  store volatile i32 0, ptr %arrayidx2, align 4
---  br label %for.inc
---
---for.inc:                                          ; preds = %if.else, %if.then
--+for.inc:                                          ; preds = %for.body, %if.then
--   %inc = add nuw nsw i32 %i.07, 1
--   %exitcond = icmp eq i32 %inc, %n
--   br i1 %exitcond, label %for.cond.cleanup.loopexit, label %for.body, !llvm.loop !0
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SimpleLoopUnswitch/PGO-nontrivial-unswitch2.ll b/llvm/test/Transforms/SimpleLoopUnswitch/PGO-nontrivial-unswitch2.ll
----- a/llvm/test/Transforms/SimpleLoopUnswitch/PGO-nontrivial-unswitch2.ll
--+++ b/llvm/test/Transforms/SimpleLoopUnswitch/PGO-nontrivial-unswitch2.ll
--@@ -17,28 +17,39 @@
-- 
-- define void @_Z11hotFunctionbiiPiS_S_(i1 %cond, i32 %M, i32 %N, ptr %A, ptr %B, ptr %C) !prof !36 {
-- ; CHECK-LABEL: define void @_Z11hotFunctionbiiPiS_S_
---; CHECK-SAME: (i1 [[COND:%.*]], i32 [[M:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]], ptr [[C:%.*]]) {{.*}}{
--+; CHECK-SAME: (i1 [[COND:%.*]], i32 [[M:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]], ptr [[C:%.*]]) !prof [[PROF33:![0-9]+]] {
-- ; CHECK-NEXT:  entry:
-- ; CHECK-NEXT:    [[CMP19_NOT:%.*]] = icmp eq i32 [[M]], 0
---; CHECK-NEXT:    br i1 [[CMP19_NOT]], label [[FOR_COND_CLEANUP:%.*]], label [[FOR_COND1_PREHEADER_LR_PH:%.*]], !prof [[PROF17:![0-9]+]]
--+; CHECK-NEXT:    br i1 [[CMP19_NOT]], label [[FOR_COND_CLEANUP:%.*]], label [[FOR_COND1_PREHEADER_LR_PH:%.*]], !prof [[PROF34:![0-9]+]]
-- ; CHECK:       for.cond1.preheader.lr.ph:
-- ; CHECK-NEXT:    [[CMP217_NOT:%.*]] = icmp eq i32 [[N]], 0
---; CHECK-NEXT:    br i1 [[CMP217_NOT]], label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT:%.*]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT:%.*]], !prof [[PROF18:![0-9]+]]
---; CHECK:       for.cond1.preheader.lr.ph.split:
---; CHECK-NEXT:    br i1 [[COND]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT_SPLIT_US:%.*]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT_SPLIT:%.*]]
---; CHECK:       for.cond1.preheader.lr.ph.split.split.us:
--+; CHECK-NEXT:    br i1 [[CMP217_NOT]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT_US:%.*]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT:%.*]], !prof [[PROF35:![0-9]+]]
--+; CHECK:       for.cond1.preheader.lr.ph.split.us:
-- ; CHECK-NEXT:    br label [[FOR_COND1_PREHEADER_US:%.*]]
-- ; CHECK:       for.cond1.preheader.us:
---; CHECK-NEXT:    [[J_020_US:%.*]] = phi i32 [ 0, [[FOR_COND1_PREHEADER_LR_PH_SPLIT_SPLIT_US]] ], [ [[INC10_US:%.*]], [[FOR_COND_CLEANUP3_US:%.*]] ]
---; CHECK-NEXT:    br label [[FOR_BODY4_PREHEADER_US:%.*]]
--+; CHECK-NEXT:    [[J_020_US:%.*]] = phi i32 [ 0, [[FOR_COND1_PREHEADER_LR_PH_SPLIT_US]] ], [ [[INC10_US:%.*]], [[FOR_COND_CLEANUP3_US:%.*]] ]
--+; CHECK-NEXT:    br label [[FOR_COND_CLEANUP3_US]]
-- ; CHECK:       for.cond.cleanup3.us:
-- ; CHECK-NEXT:    [[INC10_US]] = add nuw i32 [[J_020_US]], 1
-- ; CHECK-NEXT:    [[EXITCOND22_NOT_US:%.*]] = icmp eq i32 [[INC10_US]], [[M]]
---; CHECK-NEXT:    br i1 [[EXITCOND22_NOT_US]], label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT2_US:%.*]], label [[FOR_COND1_PREHEADER_US]], !prof [[PROF17]]
--+; CHECK-NEXT:    br i1 [[EXITCOND22_NOT_US]], label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT_US:%.*]], label [[FOR_COND1_PREHEADER_US]], !prof [[PROF34]]
--+; CHECK:       for.cond.cleanup.loopexit.split.us:
--+; CHECK-NEXT:    br label [[FOR_COND_CLEANUP_LOOPEXIT:%.*]]
--+; CHECK:       for.cond1.preheader.lr.ph.split:
--+; CHECK-NEXT:    br i1 [[COND]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT_SPLIT_US:%.*]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT_SPLIT:%.*]]
--+; CHECK:       for.cond1.preheader.lr.ph.split.split.us:
--+; CHECK-NEXT:    br label [[FOR_COND1_PREHEADER_US1:%.*]]
--+; CHECK:       for.cond1.preheader.us1:
--+; CHECK-NEXT:    [[J_020_US2:%.*]] = phi i32 [ 0, [[FOR_COND1_PREHEADER_LR_PH_SPLIT_SPLIT_US]] ], [ [[INC10_US4:%.*]], [[FOR_COND_CLEANUP3_US3:%.*]] ]
--+; CHECK-NEXT:    br label [[FOR_BODY4_PREHEADER_US:%.*]]
--+; CHECK:       for.cond.cleanup3.us3:
--+; CHECK-NEXT:    [[INC10_US4]] = add nuw i32 [[J_020_US2]], 1
--+; CHECK-NEXT:    [[EXITCOND22_NOT_US5:%.*]] = icmp eq i32 [[INC10_US4]], [[M]]
--+; CHECK-NEXT:    br i1 [[EXITCOND22_NOT_US5]], label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT_SPLIT_US:%.*]], label [[FOR_COND1_PREHEADER_US1]], !prof [[PROF34]]
-- ; CHECK:       for.body4.preheader.us:
-- ; CHECK-NEXT:    br label [[FOR_BODY4_PREHEADER_SPLIT_US_US:%.*]]
-- ; CHECK:       for.cond.cleanup3.loopexit.us:
---; CHECK-NEXT:    br label [[FOR_COND_CLEANUP3_US]]
--+; CHECK-NEXT:    br label [[FOR_COND_CLEANUP3_US3]]
-- ; CHECK:       for.body4.preheader.split.us.us:
-- ; CHECK-NEXT:    br label [[FOR_BODY4_US_US:%.*]]
-- ; CHECK:       for.body4.us.us:
--@@ -58,11 +69,11 @@
-- ; CHECK-NEXT:    [[WIDE_TRIP_COUNT_US_US:%.*]] = zext i32 [[N]] to i64
-- ; CHECK-NEXT:    [[INDVARS_IV_NEXT_US_US]] = add nuw nsw i64 [[INDVARS_IV_US_US]], 1
-- ; CHECK-NEXT:    [[EXITCOND_NOT_US_US:%.*]] = icmp eq i64 [[INDVARS_IV_NEXT_US_US]], [[WIDE_TRIP_COUNT_US_US]]
---; CHECK-NEXT:    br i1 [[EXITCOND_NOT_US_US]], label [[FOR_COND_CLEANUP3_LOOPEXIT_SPLIT_US_US:%.*]], label [[FOR_BODY4_US_US]], !prof [[PROF18]]
--+; CHECK-NEXT:    br i1 [[EXITCOND_NOT_US_US]], label [[FOR_COND_CLEANUP3_LOOPEXIT_SPLIT_US_US:%.*]], label [[FOR_BODY4_US_US]], !prof [[PROF35]]
-- ; CHECK:       for.cond.cleanup3.loopexit.split.us.us:
-- ; CHECK-NEXT:    br label [[FOR_COND_CLEANUP3_LOOPEXIT_US:%.*]]
---; CHECK:       for.cond.cleanup.loopexit.split2.us:
---; CHECK-NEXT:    br label [[FOR_COND_CLEANUP_LOOPEXIT:%.*]]
--+; CHECK:       for.cond.cleanup.loopexit.split.split.us:
--+; CHECK-NEXT:    br label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT:%.*]]
-- ; CHECK:       for.cond1.preheader.lr.ph.split.split:
-- ; CHECK-NEXT:    br label [[FOR_COND1_PREHEADER:%.*]]
-- ; CHECK:       for.cond1.preheader:
--@@ -72,11 +83,11 @@
-- ; CHECK-NEXT:    br label [[FOR_BODY4_PREHEADER_SPLIT:%.*]]
-- ; CHECK:       for.body4.preheader.split:
-- ; CHECK-NEXT:    br label [[FOR_BODY4:%.*]]
---; CHECK:       for.cond.cleanup.loopexit.split2:
---; CHECK-NEXT:    br label [[FOR_COND_CLEANUP_LOOPEXIT]]
---; CHECK:       for.cond.cleanup.loopexit:
--+; CHECK:       for.cond.cleanup.loopexit.split.split:
-- ; CHECK-NEXT:    br label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT]]
-- ; CHECK:       for.cond.cleanup.loopexit.split:
--+; CHECK-NEXT:    br label [[FOR_COND_CLEANUP_LOOPEXIT]]
--+; CHECK:       for.cond.cleanup.loopexit:
-- ; CHECK-NEXT:    br label [[FOR_COND_CLEANUP]]
-- ; CHECK:       for.cond.cleanup:
-- ; CHECK-NEXT:    ret void
--@@ -87,7 +98,7 @@
-- ; CHECK:       for.cond.cleanup3:
-- ; CHECK-NEXT:    [[INC10]] = add nuw i32 [[J_020]], 1
-- ; CHECK-NEXT:    [[EXITCOND22_NOT:%.*]] = icmp eq i32 [[INC10]], [[M]]
---; CHECK-NEXT:    br i1 [[EXITCOND22_NOT]], label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT2:%.*]], label [[FOR_COND1_PREHEADER]], !prof [[PROF17]]
--+; CHECK-NEXT:    br i1 [[EXITCOND22_NOT]], label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT_SPLIT:%.*]], label [[FOR_COND1_PREHEADER]], !prof [[PROF34]]
-- ; CHECK:       for.body4:
-- ; CHECK-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ [[INDVARS_IV_NEXT:%.*]], [[FOR_INC:%.*]] ], [ 0, [[FOR_BODY4_PREHEADER_SPLIT]] ]
-- ; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds i32, ptr [[B]], i64 [[INDVARS_IV]]
--@@ -102,7 +113,7 @@
-- ; CHECK-NEXT:    [[WIDE_TRIP_COUNT:%.*]] = zext i32 [[N]] to i64
-- ; CHECK-NEXT:    [[INDVARS_IV_NEXT]] = add nuw nsw i64 [[INDVARS_IV]], 1
-- ; CHECK-NEXT:    [[EXITCOND_NOT:%.*]] = icmp eq i64 [[INDVARS_IV_NEXT]], [[WIDE_TRIP_COUNT]]
---; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label [[FOR_COND_CLEANUP3_LOOPEXIT_SPLIT:%.*]], label [[FOR_BODY4]], !prof [[PROF18]]
--+; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label [[FOR_COND_CLEANUP3_LOOPEXIT_SPLIT:%.*]], label [[FOR_BODY4]], !prof [[PROF35]]
-- ;
-- entry:
--   %cmp19.not = icmp eq i32 %M, 0
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SimpleLoopUnswitch/PGO-nontrivial-unswitch3.ll b/llvm/test/Transforms/SimpleLoopUnswitch/PGO-nontrivial-unswitch3.ll
----- a/llvm/test/Transforms/SimpleLoopUnswitch/PGO-nontrivial-unswitch3.ll
--+++ b/llvm/test/Transforms/SimpleLoopUnswitch/PGO-nontrivial-unswitch3.ll
--@@ -17,28 +17,39 @@
-- 
-- define void @_Z11hotFunctionbiiPiS_S_(i1 %cond, i32 %M, i32 %N, ptr %A, ptr %B, ptr %C) !prof !36 {
-- ; CHECK-LABEL: define void @_Z11hotFunctionbiiPiS_S_
---; CHECK-SAME: (i1 [[COND:%.*]], i32 [[M:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]], ptr [[C:%.*]]) {{.*}}{
--+; CHECK-SAME: (i1 [[COND:%.*]], i32 [[M:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]], ptr [[C:%.*]]) !prof [[PROF18:![0-9]+]] {
-- ; CHECK-NEXT:  entry:
-- ; CHECK-NEXT:    [[CMP19_NOT:%.*]] = icmp eq i32 [[M]], 0
-- ; CHECK-NEXT:    br i1 [[CMP19_NOT]], label [[FOR_COND_CLEANUP:%.*]], label [[FOR_COND1_PREHEADER_LR_PH:%.*]], !prof [[PROF19:![0-9]+]]
-- ; CHECK:       for.cond1.preheader.lr.ph:
-- ; CHECK-NEXT:    [[CMP217_NOT:%.*]] = icmp eq i32 [[N]], 0
---; CHECK-NEXT:    br i1 [[CMP217_NOT]], label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT:%.*]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT:%.*]], !prof [[PROF20:![0-9]+]]
---; CHECK:       for.cond1.preheader.lr.ph.split:
---; CHECK-NEXT:    br i1 [[COND]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT_SPLIT_US:%.*]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT_SPLIT:%.*]]
---; CHECK:       for.cond1.preheader.lr.ph.split.split.us:
--+; CHECK-NEXT:    br i1 [[CMP217_NOT]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT_US:%.*]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT:%.*]], !prof [[PROF20:![0-9]+]]
--+; CHECK:       for.cond1.preheader.lr.ph.split.us:
-- ; CHECK-NEXT:    br label [[FOR_COND1_PREHEADER_US:%.*]]
-- ; CHECK:       for.cond1.preheader.us:
---; CHECK-NEXT:    [[J_020_US:%.*]] = phi i32 [ 0, [[FOR_COND1_PREHEADER_LR_PH_SPLIT_SPLIT_US]] ], [ [[INC10_US:%.*]], [[FOR_COND_CLEANUP3_US:%.*]] ]
---; CHECK-NEXT:    br label [[FOR_BODY4_PREHEADER_US:%.*]]
--+; CHECK-NEXT:    [[J_020_US:%.*]] = phi i32 [ 0, [[FOR_COND1_PREHEADER_LR_PH_SPLIT_US]] ], [ [[INC10_US:%.*]], [[FOR_COND_CLEANUP3_US:%.*]] ]
--+; CHECK-NEXT:    br label [[FOR_COND_CLEANUP3_US]]
-- ; CHECK:       for.cond.cleanup3.us:
-- ; CHECK-NEXT:    [[INC10_US]] = add nuw i32 [[J_020_US]], 1
-- ; CHECK-NEXT:    [[EXITCOND22_NOT_US:%.*]] = icmp eq i32 [[INC10_US]], [[M]]
---; CHECK-NEXT:    br i1 [[EXITCOND22_NOT_US]], label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT2_US:%.*]], label [[FOR_COND1_PREHEADER_US]], !prof [[PROF19]]
--+; CHECK-NEXT:    br i1 [[EXITCOND22_NOT_US]], label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT_US:%.*]], label [[FOR_COND1_PREHEADER_US]], !prof [[PROF19]]
--+; CHECK:       for.cond.cleanup.loopexit.split.us:
--+; CHECK-NEXT:    br label [[FOR_COND_CLEANUP_LOOPEXIT:%.*]]
--+; CHECK:       for.cond1.preheader.lr.ph.split:
--+; CHECK-NEXT:    br i1 [[COND]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT_SPLIT_US:%.*]], label [[FOR_COND1_PREHEADER_LR_PH_SPLIT_SPLIT:%.*]]
--+; CHECK:       for.cond1.preheader.lr.ph.split.split.us:
--+; CHECK-NEXT:    br label [[FOR_COND1_PREHEADER_US1:%.*]]
--+; CHECK:       for.cond1.preheader.us1:
--+; CHECK-NEXT:    [[J_020_US2:%.*]] = phi i32 [ 0, [[FOR_COND1_PREHEADER_LR_PH_SPLIT_SPLIT_US]] ], [ [[INC10_US4:%.*]], [[FOR_COND_CLEANUP3_US3:%.*]] ]
--+; CHECK-NEXT:    br label [[FOR_BODY4_PREHEADER_US:%.*]]
--+; CHECK:       for.cond.cleanup3.us3:
--+; CHECK-NEXT:    [[INC10_US4]] = add nuw i32 [[J_020_US2]], 1
--+; CHECK-NEXT:    [[EXITCOND22_NOT_US5:%.*]] = icmp eq i32 [[INC10_US4]], [[M]]
--+; CHECK-NEXT:    br i1 [[EXITCOND22_NOT_US5]], label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT_SPLIT_US:%.*]], label [[FOR_COND1_PREHEADER_US1]], !prof [[PROF19]]
-- ; CHECK:       for.body4.preheader.us:
-- ; CHECK-NEXT:    br label [[FOR_BODY4_PREHEADER_SPLIT_US_US:%.*]]
-- ; CHECK:       for.cond.cleanup3.loopexit.us:
---; CHECK-NEXT:    br label [[FOR_COND_CLEANUP3_US]]
--+; CHECK-NEXT:    br label [[FOR_COND_CLEANUP3_US3]]
-- ; CHECK:       for.body4.preheader.split.us.us:
-- ; CHECK-NEXT:    br label [[FOR_BODY4_US_US:%.*]]
-- ; CHECK:       for.body4.us.us:
--@@ -61,8 +72,8 @@
-- ; CHECK-NEXT:    br i1 [[EXITCOND_NOT_US_US]], label [[FOR_COND_CLEANUP3_LOOPEXIT_SPLIT_US_US:%.*]], label [[FOR_BODY4_US_US]], !prof [[PROF20]]
-- ; CHECK:       for.cond.cleanup3.loopexit.split.us.us:
-- ; CHECK-NEXT:    br label [[FOR_COND_CLEANUP3_LOOPEXIT_US:%.*]]
---; CHECK:       for.cond.cleanup.loopexit.split2.us:
---; CHECK-NEXT:    br label [[FOR_COND_CLEANUP_LOOPEXIT:%.*]]
--+; CHECK:       for.cond.cleanup.loopexit.split.split.us:
--+; CHECK-NEXT:    br label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT:%.*]]
-- ; CHECK:       for.cond1.preheader.lr.ph.split.split:
-- ; CHECK-NEXT:    br label [[FOR_COND1_PREHEADER:%.*]]
-- ; CHECK:       for.cond1.preheader:
--@@ -72,11 +83,11 @@
-- ; CHECK-NEXT:    br label [[FOR_BODY4_PREHEADER_SPLIT:%.*]]
-- ; CHECK:       for.body4.preheader.split:
-- ; CHECK-NEXT:    br label [[FOR_BODY4:%.*]]
---; CHECK:       for.cond.cleanup.loopexit.split2:
---; CHECK-NEXT:    br label [[FOR_COND_CLEANUP_LOOPEXIT]]
---; CHECK:       for.cond.cleanup.loopexit:
--+; CHECK:       for.cond.cleanup.loopexit.split.split:
-- ; CHECK-NEXT:    br label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT]]
-- ; CHECK:       for.cond.cleanup.loopexit.split:
--+; CHECK-NEXT:    br label [[FOR_COND_CLEANUP_LOOPEXIT]]
--+; CHECK:       for.cond.cleanup.loopexit:
-- ; CHECK-NEXT:    br label [[FOR_COND_CLEANUP]]
-- ; CHECK:       for.cond.cleanup:
-- ; CHECK-NEXT:    ret void
--@@ -87,7 +98,7 @@
-- ; CHECK:       for.cond.cleanup3:
-- ; CHECK-NEXT:    [[INC10]] = add nuw i32 [[J_020]], 1
-- ; CHECK-NEXT:    [[EXITCOND22_NOT:%.*]] = icmp eq i32 [[INC10]], [[M]]
---; CHECK-NEXT:    br i1 [[EXITCOND22_NOT]], label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT2:%.*]], label [[FOR_COND1_PREHEADER]], !prof [[PROF19]]
--+; CHECK-NEXT:    br i1 [[EXITCOND22_NOT]], label [[FOR_COND_CLEANUP_LOOPEXIT_SPLIT_SPLIT:%.*]], label [[FOR_COND1_PREHEADER]], !prof [[PROF19]]
-- ; CHECK:       for.body4:
-- ; CHECK-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ [[INDVARS_IV_NEXT:%.*]], [[FOR_INC:%.*]] ], [ 0, [[FOR_BODY4_PREHEADER_SPLIT]] ]
-- ; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds i32, ptr [[B]], i64 [[INDVARS_IV]]
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SimpleLoopUnswitch/trivial-unswitch-loop-guard.ll b/llvm/test/Transforms/SimpleLoopUnswitch/trivial-unswitch-loop-guard.ll
----- a/llvm/test/Transforms/SimpleLoopUnswitch/trivial-unswitch-loop-guard.ll
--+++ b/llvm/test/Transforms/SimpleLoopUnswitch/trivial-unswitch-loop-guard.ll
--@@ -1,1031 +0,0 @@
---; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 6
---; RUN: opt -passes='loop-mssa(simple-loop-unswitch),verify<loops>' -S < %s | FileCheck %s
---
---;; Check that a loop-invariant guard branch in a perfect nest is trivially
---;; unswitched.  The outer loop's header branches to the latch (skipping the
---;; inner loop entirely) when N == 0, or falls through into the inner loop.
---;; Because N is loop-invariant, the new code in unswitchTrivialBranch rewires
---;; the latch arm to point at the outer-loop exit, making the branch look like
---;; an ordinary exit branch and allowing the standard trivial-unswitch logic to
---;; hoist it out of the outer loop.
---;;
---;; Source:
---;;   void f(int M, int N, int *A, int *B) {
---;;     for (int j = 0; j < M; j++) {
---;;       if (N <= 0) continue;          // invariant guard branches to latch
---;;       for (int i = 0; i < N; i++)
---;;         A[i] = B[i] + 1;
---;;     }
---;;   }
---;; The key CFG edge is: outer.header --[N==0]--> outer.latch (the latch),
---;; outer.header --[N!=0]--> inner.preheader (inside the outer loop).
---
---define void @perfect_nest_guard(i32 %M, i32 %N, ptr %A, ptr %B) {
---; CHECK-LABEL: define void @perfect_nest_guard(
---; CHECK-SAME: i32 [[M:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]]) {
---; CHECK-NEXT:  [[ENTRY:.*:]]
---; CHECK-NEXT:    [[CMP_M:%.*]] = icmp sle i32 [[M]], 0
---; CHECK-NEXT:    br i1 [[CMP_M]], label %[[EXIT:.*]], label %[[OUTER_PREHEADER:.*]]
---; CHECK:       [[OUTER_PREHEADER]]:
---; CHECK-NEXT:    [[GUARD:%.*]] = icmp sle i32 [[N]], 0
---; CHECK-NEXT:    br i1 [[GUARD]], label %[[EXIT_LOOPEXIT_SPLIT:.*]], label %[[OUTER_PREHEADER_SPLIT:.*]]
---; CHECK:       [[OUTER_PREHEADER_SPLIT]]:
---; CHECK-NEXT:    br label %[[OUTER_HEADER:.*]]
---; CHECK:       [[OUTER_HEADER]]:
---; CHECK-NEXT:    [[J:%.*]] = phi i32 [ 0, %[[OUTER_PREHEADER_SPLIT]] ], [ [[J_NEXT:%.*]], %[[OUTER_LATCH:.*]] ]
---; CHECK-NEXT:    br label %[[INNER_PREHEADER:.*]]
---; CHECK:       [[INNER_PREHEADER]]:
---; CHECK-NEXT:    br label %[[INNER_HEADER:.*]]
---; CHECK:       [[INNER_HEADER]]:
---; CHECK-NEXT:    [[I:%.*]] = phi i32 [ 0, %[[INNER_PREHEADER]] ], [ [[I_NEXT:%.*]], %[[INNER_LATCH:.*]] ]
---; CHECK-NEXT:    [[GEP_B:%.*]] = getelementptr inbounds i32, ptr [[B]], i32 [[I]]
---; CHECK-NEXT:    [[VAL:%.*]] = load i32, ptr [[GEP_B]], align 4
---; CHECK-NEXT:    [[INC:%.*]] = add i32 [[VAL]], 1
---; CHECK-NEXT:    [[GEP_A:%.*]] = getelementptr inbounds i32, ptr [[A]], i32 [[I]]
---; CHECK-NEXT:    store i32 [[INC]], ptr [[GEP_A]], align 4
---; CHECK-NEXT:    br label %[[INNER_LATCH]]
---; CHECK:       [[INNER_LATCH]]:
---; CHECK-NEXT:    [[I_NEXT]] = add nuw i32 [[I]], 1
---; CHECK-NEXT:    [[EXITCOND_INNER:%.*]] = icmp eq i32 [[I_NEXT]], [[N]]
---; CHECK-NEXT:    br i1 [[EXITCOND_INNER]], label %[[OUTER_LATCH_LOOPEXIT:.*]], label %[[INNER_HEADER]]
---; CHECK:       [[OUTER_LATCH_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[OUTER_LATCH]]
---; CHECK:       [[OUTER_LATCH]]:
---; CHECK-NEXT:    [[J_NEXT]] = add nuw i32 [[J]], 1
---; CHECK-NEXT:    [[EXITCOND_OUTER:%.*]] = icmp eq i32 [[J_NEXT]], [[M]]
---; CHECK-NEXT:    br i1 [[EXITCOND_OUTER]], label %[[EXIT_LOOPEXIT:.*]], label %[[OUTER_HEADER]]
---; CHECK:       [[EXIT_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[EXIT_LOOPEXIT_SPLIT]]
---; CHECK:       [[EXIT_LOOPEXIT_SPLIT]]:
---; CHECK-NEXT:    br label %[[EXIT]]
---; CHECK:       [[EXIT]]:
---; CHECK-NEXT:    ret void
---;
---entry:
---  %cmp.M = icmp sle i32 %M, 0
---  br i1 %cmp.M, label %exit, label %outer.preheader
---
---outer.preheader:
---  %guard = icmp sle i32 %N, 0
---  br label %outer.header
---
---outer.header:
---  %j = phi i32 [ 0, %outer.preheader ], [ %j.next, %outer.latch ]
---  br i1 %guard, label %outer.latch, label %inner.preheader
---
---inner.preheader:
---  br label %inner.header
---
---inner.header:
---  %i = phi i32 [ 0, %inner.preheader ], [ %i.next, %inner.latch ]
---  %gep.B = getelementptr inbounds i32, ptr %B, i32 %i
---  %val = load i32, ptr %gep.B, align 4
---  %inc = add i32 %val, 1
---  %gep.A = getelementptr inbounds i32, ptr %A, i32 %i
---  store i32 %inc, ptr %gep.A, align 4
---  br label %inner.latch
---
---inner.latch:
---  %i.next = add nuw i32 %i, 1
---  %exitcond.inner = icmp eq i32 %i.next, %N
---  br i1 %exitcond.inner, label %outer.latch, label %inner.header
---
---outer.latch:
---  %j.next = add nuw i32 %j, 1
---  %exitcond.outer = icmp eq i32 %j.next, %M
---  br i1 %exitcond.outer, label %exit, label %outer.header
---
---exit:
---  ret void
---}
---
---;; This loopnest is similar to @perfect_nest_guard, except that the outer loop
---;; is infinite. So the trivial unswitching of the inner loop guard is not
---;; legal.
---;;
---;; Source:
---;;   void f(int N, int *A, int *B) {
---;;     while (true) {
---;;       if (N <= 0) continue;          // invariant guard branches to latch
---;;       for (int i = 0; i < N; i++)
---;;         A[i] = B[i] + 1;
---;;     }
---;;   }
---define void @perfect_nest_guard2(i32 %M, i32 %N, ptr %A, ptr %B) {
---; CHECK-LABEL: define void @perfect_nest_guard2(
---; CHECK-SAME: i32 [[M:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]]) {
---; CHECK-NEXT:  [[ENTRY:.*:]]
---; CHECK-NEXT:    [[GUARD:%.*]] = icmp sle i32 [[N]], 0
---; CHECK-NEXT:    br label %[[INNER_PREHEADER:.*]]
---; CHECK:       [[INNER_PREHEADER]]:
---; CHECK-NEXT:    br i1 [[GUARD]], label %[[OUTER_LATCH:.*]], label %[[INNER_PREHEADER1:.*]]
---; CHECK:       [[INNER_PREHEADER1]]:
---; CHECK-NEXT:    br label %[[INNER_HEADER:.*]]
---; CHECK:       [[INNER_HEADER]]:
---; CHECK-NEXT:    [[I:%.*]] = phi i32 [ 0, %[[INNER_PREHEADER1]] ], [ [[I_NEXT:%.*]], %[[INNER_LATCH:.*]] ]
---; CHECK-NEXT:    [[GEP_B:%.*]] = getelementptr inbounds i32, ptr [[B]], i32 [[I]]
---; CHECK-NEXT:    [[VAL:%.*]] = load i32, ptr [[GEP_B]], align 4
---; CHECK-NEXT:    [[INC:%.*]] = add i32 [[VAL]], 1
---; CHECK-NEXT:    [[GEP_A:%.*]] = getelementptr inbounds i32, ptr [[A]], i32 [[I]]
---; CHECK-NEXT:    store i32 [[INC]], ptr [[GEP_A]], align 4
---; CHECK-NEXT:    br label %[[INNER_LATCH]]
---; CHECK:       [[INNER_LATCH]]:
---; CHECK-NEXT:    [[I_NEXT]] = add nuw i32 [[I]], 1
---; CHECK-NEXT:    [[EXITCOND_INNER:%.*]] = icmp eq i32 [[I_NEXT]], [[N]]
---; CHECK-NEXT:    br i1 [[EXITCOND_INNER]], label %[[OUTER_LATCH_LOOPEXIT:.*]], label %[[INNER_HEADER]]
---; CHECK:       [[OUTER_LATCH_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[OUTER_LATCH]]
---; CHECK:       [[OUTER_LATCH]]:
---; CHECK-NEXT:    br label %[[INNER_PREHEADER]]
---; CHECK:       [[EXIT:.*:]]
---; CHECK-NEXT:    ret void
---;
---entry:
---  %guard = icmp sle i32 %N, 0
---  br label %outer.header
---
---outer.header:
---  br i1 %guard, label %outer.latch, label %inner.preheader
---
---inner.preheader:
---  br label %inner.header
---
---inner.header:
---  %i = phi i32 [ 0, %inner.preheader ], [ %i.next, %inner.latch ]
---  %gep.B = getelementptr inbounds i32, ptr %B, i32 %i
---  %val = load i32, ptr %gep.B, align 4
---  %inc = add i32 %val, 1
---  %gep.A = getelementptr inbounds i32, ptr %A, i32 %i
---  store i32 %inc, ptr %gep.A, align 4
---  br label %inner.latch
---
---inner.latch:
---  %i.next = add nuw i32 %i, 1
---  %exitcond.inner = icmp eq i32 %i.next, %N
---  br i1 %exitcond.inner, label %outer.latch, label %inner.header
---
---outer.latch:
---  br label %outer.header
---
---exit:
---  ret void
---}
---
---;; A negative test in which trivial unswitching cannot be done because there is
---;; side effect before the branch
---;;
---;; Source:
---;;   void f(int N, int *A, int *B) {
---;;     while (true) {
---;;       B[0] = 1;
---;;       if (N <= 0) continue;          // invariant guard branches to latch
---;;       for (int i = 0; i < N; i++)
---;;         A[i] = B[i] + 1;
---;;     }
---;;   }
---define void @not_perfect_nest_guard(i32 %M, i32 %N, ptr %A, ptr %B) {
---; CHECK-LABEL: define void @not_perfect_nest_guard(
---; CHECK-SAME: i32 [[M:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]]) {
---; CHECK-NEXT:  [[ENTRY:.*:]]
---; CHECK-NEXT:    [[GUARD:%.*]] = icmp sle i32 [[N]], 0
---; CHECK-NEXT:    br label %[[OUTER_HEADER:.*]]
---; CHECK:       [[OUTER_HEADER]]:
---; CHECK-NEXT:    store i32 0, ptr [[B]], align 4
---; CHECK-NEXT:    br i1 [[GUARD]], label %[[OUTER_LATCH:.*]], label %[[INNER_PREHEADER:.*]]
---; CHECK:       [[INNER_PREHEADER]]:
---; CHECK-NEXT:    br label %[[INNER_HEADER:.*]]
---; CHECK:       [[INNER_HEADER]]:
---; CHECK-NEXT:    [[I:%.*]] = phi i32 [ 0, %[[INNER_PREHEADER]] ], [ [[I_NEXT:%.*]], %[[INNER_LATCH:.*]] ]
---; CHECK-NEXT:    [[GEP_B:%.*]] = getelementptr inbounds i32, ptr [[B]], i32 [[I]]
---; CHECK-NEXT:    [[VAL:%.*]] = load i32, ptr [[GEP_B]], align 4
---; CHECK-NEXT:    [[INC:%.*]] = add i32 [[VAL]], 1
---; CHECK-NEXT:    [[GEP_A:%.*]] = getelementptr inbounds i32, ptr [[A]], i32 [[I]]
---; CHECK-NEXT:    store i32 [[INC]], ptr [[GEP_A]], align 4
---; CHECK-NEXT:    br label %[[INNER_LATCH]]
---; CHECK:       [[INNER_LATCH]]:
---; CHECK-NEXT:    [[I_NEXT]] = add nuw i32 [[I]], 1
---; CHECK-NEXT:    [[EXITCOND_INNER:%.*]] = icmp eq i32 [[I_NEXT]], [[N]]
---; CHECK-NEXT:    br i1 [[EXITCOND_INNER]], label %[[OUTER_LATCH_LOOPEXIT:.*]], label %[[INNER_HEADER]]
---; CHECK:       [[OUTER_LATCH_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[OUTER_LATCH]]
---; CHECK:       [[OUTER_LATCH]]:
---; CHECK-NEXT:    br label %[[OUTER_HEADER]]
---; CHECK:       [[EXIT:.*:]]
---; CHECK-NEXT:    ret void
---;
---entry:
---  %guard = icmp sle i32 %N, 0
---  br label %outer.header
---
---outer.header:
---  store i32 0, ptr %B, align 4
---  br i1 %guard, label %outer.latch, label %inner.preheader
---
---inner.preheader:
---  br label %inner.header
---
---inner.header:
---  %i = phi i32 [ 0, %inner.preheader ], [ %i.next, %inner.latch ]
---  %gep.B = getelementptr inbounds i32, ptr %B, i32 %i
---  %val = load i32, ptr %gep.B, align 4
---  %inc = add i32 %val, 1
---  %gep.A = getelementptr inbounds i32, ptr %A, i32 %i
---  store i32 %inc, ptr %gep.A, align 4
---  br label %inner.latch
---
---inner.latch:
---  %i.next = add nuw i32 %i, 1
---  %exitcond.inner = icmp eq i32 %i.next, %N
---  br i1 %exitcond.inner, label %outer.latch, label %inner.header
---
---outer.latch:
---  br label %outer.header
---
---exit:
---  ret void
---}
---
---;; A negative test in which trivial unswitching cannot be done because there is
---;; side effect in the latch of the outer loop
---;;
---;; Source:
---;;   void f(int N, int *A, int *B) {
---;;     while (true) {
---;;       if (N > 0) {         // invariant guard branches to latch
---;;         for (int i = 0; i < N; i++)
---;;           A[i] = B[i] + 1;
---;;       }
---;;       B[0] = 1;
---;;     }
---;;   }
---;;
---define void @not_perfect_nest_guard2(i32 %M, i32 %N, ptr %A, ptr %B) {
---; CHECK-LABEL: define void @not_perfect_nest_guard2(
---; CHECK-SAME: i32 [[M:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]]) {
---; CHECK-NEXT:  [[ENTRY:.*:]]
---; CHECK-NEXT:    [[GUARD:%.*]] = icmp sgt i32 [[N]], 0
---; CHECK-NEXT:    br label %[[OUTER_HEADER:.*]]
---; CHECK:       [[OUTER_HEADER]]:
---; CHECK-NEXT:    br i1 [[GUARD]], label %[[INNER_PREHEADER:.*]], label %[[OUTER_LATCH:.*]]
---; CHECK:       [[INNER_PREHEADER]]:
---; CHECK-NEXT:    br label %[[INNER_HEADER:.*]]
---; CHECK:       [[INNER_HEADER]]:
---; CHECK-NEXT:    [[I:%.*]] = phi i32 [ 0, %[[INNER_PREHEADER]] ], [ [[I_NEXT:%.*]], %[[INNER_LATCH:.*]] ]
---; CHECK-NEXT:    [[GEP_B:%.*]] = getelementptr inbounds i32, ptr [[B]], i32 [[I]]
---; CHECK-NEXT:    [[VAL:%.*]] = load i32, ptr [[GEP_B]], align 4
---; CHECK-NEXT:    [[INC:%.*]] = add i32 [[VAL]], 1
---; CHECK-NEXT:    [[GEP_A:%.*]] = getelementptr inbounds i32, ptr [[A]], i32 [[I]]
---; CHECK-NEXT:    store i32 [[INC]], ptr [[GEP_A]], align 4
---; CHECK-NEXT:    br label %[[INNER_LATCH]]
---; CHECK:       [[INNER_LATCH]]:
---; CHECK-NEXT:    [[I_NEXT]] = add nuw i32 [[I]], 1
---; CHECK-NEXT:    [[EXITCOND_INNER:%.*]] = icmp eq i32 [[I_NEXT]], [[N]]
---; CHECK-NEXT:    br i1 [[EXITCOND_INNER]], label %[[OUTER_LATCH_LOOPEXIT:.*]], label %[[INNER_HEADER]]
---; CHECK:       [[OUTER_LATCH_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[OUTER_LATCH]]
---; CHECK:       [[OUTER_LATCH]]:
---; CHECK-NEXT:    store i32 0, ptr [[B]], align 4
---; CHECK-NEXT:    br label %[[OUTER_HEADER]]
---; CHECK:       [[EXIT:.*:]]
---; CHECK-NEXT:    ret void
---;
---entry:
---  %guard = icmp sgt i32 %N, 0
---  br label %outer.header
---
---outer.header:
---  br i1 %guard, label %inner.preheader, label %outer.latch
---
---inner.preheader:
---  br label %inner.header
---
---inner.header:
---  %i = phi i32 [ 0, %inner.preheader ], [ %i.next, %inner.latch ]
---  %gep.B = getelementptr inbounds i32, ptr %B, i32 %i
---  %val = load i32, ptr %gep.B, align 4
---  %inc = add i32 %val, 1
---  %gep.A = getelementptr inbounds i32, ptr %A, i32 %i
---  store i32 %inc, ptr %gep.A, align 4
---  br label %inner.latch
---
---inner.latch:
---  %i.next = add nuw i32 %i, 1
---  %exitcond.inner = icmp eq i32 %i.next, %N
---  br i1 %exitcond.inner, label %outer.latch, label %inner.header
---
---outer.latch:
---  store i32 0, ptr %B, align 4
---  br label %outer.header
---
---exit:
---  ret void
---}
---
---;; A negative test in which trivial unswitching cannot be done because the
---;; latch of the outer loop has multiple exit blocks.
---;;
---;; void bad_outer_latch(int M, int N, int *A, int *B) {
---;;   while (true) {
---;;     if (N > 0) {         // invariant guard branches to latch
---;;       for (int i = 0; i < N; i++)
---;;         A[i] = B[i] + 1;
---;;     }
---;;
---;;     // The latch now has multiple exit edges based on B[0]
---;;     switch (B[0]) {
---;;       case 0:
---;;         A[0] = 1;
---;;         return;          // branches to %exit
---;;       case 1:
---;;         return;          // branches to %exit2
---;;       default:
---;;         break;           // loops back to %outer.header
---;;     }
---;;   }
---;; }
---;;
---define void @bad_outer_latch(i32 %N, ptr %A, ptr %B) {
---; CHECK-LABEL: define void @bad_outer_latch(
---; CHECK-SAME: i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]]) {
---; CHECK-NEXT:  [[ENTRY:.*:]]
---; CHECK-NEXT:    [[GUARD:%.*]] = icmp sgt i32 [[N]], 0
---; CHECK-NEXT:    br label %[[OUTER_HEADER:.*]]
---; CHECK:       [[OUTER_HEADER]]:
---; CHECK-NEXT:    br i1 [[GUARD]], label %[[INNER_PREHEADER:.*]], label %[[OUTER_LATCH:.*]]
---; CHECK:       [[INNER_PREHEADER]]:
---; CHECK-NEXT:    br label %[[INNER_HEADER:.*]]
---; CHECK:       [[INNER_HEADER]]:
---; CHECK-NEXT:    [[I:%.*]] = phi i32 [ 0, %[[INNER_PREHEADER]] ], [ [[I_NEXT:%.*]], %[[INNER_LATCH:.*]] ]
---; CHECK-NEXT:    [[GEP_B:%.*]] = getelementptr inbounds i32, ptr [[B]], i32 [[I]]
---; CHECK-NEXT:    [[VAL:%.*]] = load i32, ptr [[GEP_B]], align 4
---; CHECK-NEXT:    [[INC:%.*]] = add i32 [[VAL]], 1
---; CHECK-NEXT:    [[GEP_A:%.*]] = getelementptr inbounds i32, ptr [[A]], i32 [[I]]
---; CHECK-NEXT:    store i32 [[INC]], ptr [[GEP_A]], align 4
---; CHECK-NEXT:    br label %[[INNER_LATCH]]
---; CHECK:       [[INNER_LATCH]]:
---; CHECK-NEXT:    [[I_NEXT]] = add nuw i32 [[I]], 1
---; CHECK-NEXT:    [[EXITCOND_INNER:%.*]] = icmp eq i32 [[I_NEXT]], [[N]]
---; CHECK-NEXT:    br i1 [[EXITCOND_INNER]], label %[[OUTER_LATCH_LOOPEXIT:.*]], label %[[INNER_HEADER]]
---; CHECK:       [[OUTER_LATCH_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[OUTER_LATCH]]
---; CHECK:       [[OUTER_LATCH]]:
---; CHECK-NEXT:    [[M:%.*]] = load i32, ptr [[B]], align 4
---; CHECK-NEXT:    switch i32 [[M]], label %[[OUTER_HEADER]] [
---; CHECK-NEXT:      i32 0, label %[[EXIT:.*]]
---; CHECK-NEXT:      i32 1, label %[[EXIT2:.*]]
---; CHECK-NEXT:    ]
---; CHECK:       [[EXIT]]:
---; CHECK-NEXT:    store i32 1, ptr [[A]], align 4
---; CHECK-NEXT:    br label %[[EXIT3:.*]]
---; CHECK:       [[EXIT2]]:
---; CHECK-NEXT:    br label %[[EXIT3]]
---; CHECK:       [[EXIT3]]:
---; CHECK-NEXT:    ret void
---;
---entry:
---  %guard = icmp sgt i32 %N, 0
---  br label %outer.header
---
---outer.header:
---  br i1 %guard, label %inner.preheader, label %outer.latch
---
---inner.preheader:
---  br label %inner.header
---
---inner.header:
---  %i = phi i32 [ 0, %inner.preheader ], [ %i.next, %inner.latch ]
---  %gep.B = getelementptr inbounds i32, ptr %B, i32 %i
---  %val = load i32, ptr %gep.B, align 4
---  %inc = add i32 %val, 1
---  %gep.A = getelementptr inbounds i32, ptr %A, i32 %i
---  store i32 %inc, ptr %gep.A, align 4
---  br label %inner.latch
---
---inner.latch:
---  %i.next = add nuw i32 %i, 1
---  %exitcond.inner = icmp eq i32 %i.next, %N
---  br i1 %exitcond.inner, label %outer.latch, label %inner.header
---
---outer.latch:
---  %sw = load i32, ptr %B, align 4
---  switch i32 %sw, label %outer.header [
---  i32 0, label %exit
---  i32 1, label %exit2
---  ]
---
---exit:
---  store i32 1, ptr %A, align 4
---  br label %exit2
---
---exit2:
---  ret void
---}
---
---;; A negative test in which trivial unswitching cannot be done because a value
---;; calculated in the loop is used in a phi in the exit block of the loop.
---;;
---;; Source:
---;;   int f(int M, int N, int *A, int *B) {
---;;     int sum = 42;              // 1. Initialized before the outer loop
---;;     while (M > 0) {
---;;       sum = sum + 1;           // 2. Updated in the outer header to a new initial value
---;;       if (N > 0) {             // invariant guard branches to latch
---;;         for (int i = 0; i < N; i++) {
---;;           A[i] = B[i] + 1;
---;;           sum += A[i];         // 3. Calculated/Accumulated in the inner loop
---;;         }
---;;       }
---;;       B[0] = 0;
---;;       M--;
---;;     }
---;;     return sum;                // 4. Used in outer loop exit block
---;;   }
---;;
---define i32 @exit_phi(i32 %M, i32 %N, ptr %A, ptr %B) {
---; CHECK-LABEL: define i32 @exit_phi(
---; CHECK-SAME: i32 [[M:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]]) {
---; CHECK-NEXT:  [[ENTRY:.*]]:
---; CHECK-NEXT:    [[OUTER_COND:%.*]] = icmp sgt i32 [[M]], 0
---; CHECK-NEXT:    [[GUARD:%.*]] = icmp sgt i32 [[N]], 0
---; CHECK-NEXT:    br i1 [[OUTER_COND]], label %[[OUTER_HEADER_PREHEADER:.*]], label %[[EXIT:.*]]
---; CHECK:       [[OUTER_HEADER_PREHEADER]]:
---; CHECK-NEXT:    br label %[[OUTER_HEADER:.*]]
---; CHECK:       [[OUTER_HEADER]]:
---; CHECK-NEXT:    [[IV_M:%.*]] = phi i32 [ [[IV_M_NEXT:%.*]], %[[OUTER_LATCH:.*]] ], [ [[M]], %[[OUTER_HEADER_PREHEADER]] ]
---; CHECK-NEXT:    [[SUM_OUTER:%.*]] = phi i32 [ [[SUM_LATCH:%.*]], %[[OUTER_LATCH]] ], [ 42, %[[OUTER_HEADER_PREHEADER]] ]
---; CHECK-NEXT:    [[SUM_NEW_INIT:%.*]] = add i32 [[SUM_OUTER]], 1
---; CHECK-NEXT:    br i1 [[GUARD]], label %[[INNER_PREHEADER:.*]], label %[[OUTER_LATCH]]
---; CHECK:       [[INNER_PREHEADER]]:
---; CHECK-NEXT:    br label %[[INNER_HEADER:.*]]
---; CHECK:       [[INNER_HEADER]]:
---; CHECK-NEXT:    [[I:%.*]] = phi i32 [ 0, %[[INNER_PREHEADER]] ], [ [[I_NEXT:%.*]], %[[INNER_LATCH:.*]] ]
---; CHECK-NEXT:    [[SUM_INNER:%.*]] = phi i32 [ [[SUM_NEW_INIT]], %[[INNER_PREHEADER]] ], [ [[SUM_NEXT:%.*]], %[[INNER_LATCH]] ]
---; CHECK-NEXT:    [[GEP_B:%.*]] = getelementptr inbounds i32, ptr [[B]], i32 [[I]]
---; CHECK-NEXT:    [[VAL:%.*]] = load i32, ptr [[GEP_B]], align 4
---; CHECK-NEXT:    [[INC:%.*]] = add i32 [[VAL]], 1
---; CHECK-NEXT:    [[GEP_A:%.*]] = getelementptr inbounds i32, ptr [[A]], i32 [[I]]
---; CHECK-NEXT:    store i32 [[INC]], ptr [[GEP_A]], align 4
---; CHECK-NEXT:    [[SUM_NEXT]] = add i32 [[SUM_INNER]], [[INC]]
---; CHECK-NEXT:    br label %[[INNER_LATCH]]
---; CHECK:       [[INNER_LATCH]]:
---; CHECK-NEXT:    [[I_NEXT]] = add nuw i32 [[I]], 1
---; CHECK-NEXT:    [[EXITCOND_INNER:%.*]] = icmp eq i32 [[I_NEXT]], [[N]]
---; CHECK-NEXT:    br i1 [[EXITCOND_INNER]], label %[[OUTER_LATCH_LOOPEXIT:.*]], label %[[INNER_HEADER]]
---; CHECK:       [[OUTER_LATCH_LOOPEXIT]]:
---; CHECK-NEXT:    [[SUM_NEXT_LCSSA:%.*]] = phi i32 [ [[SUM_NEXT]], %[[INNER_LATCH]] ]
---; CHECK-NEXT:    br label %[[OUTER_LATCH]]
---; CHECK:       [[OUTER_LATCH]]:
---; CHECK-NEXT:    [[SUM_LATCH]] = phi i32 [ [[SUM_NEW_INIT]], %[[OUTER_HEADER]] ], [ [[SUM_NEXT_LCSSA]], %[[OUTER_LATCH_LOOPEXIT]] ]
---; CHECK-NEXT:    [[IV_M_NEXT]] = sub nsw i32 [[IV_M]], 1
---; CHECK-NEXT:    [[OUTER_COND2:%.*]] = icmp sgt i32 [[IV_M_NEXT]], 0
---; CHECK-NEXT:    br i1 [[OUTER_COND2]], label %[[OUTER_HEADER]], label %[[EXIT_LOOPEXIT:.*]]
---; CHECK:       [[EXIT_LOOPEXIT]]:
---; CHECK-NEXT:    [[SUM_OUTER_LCSSA:%.*]] = phi i32 [ [[SUM_OUTER]], %[[OUTER_LATCH]] ]
---; CHECK-NEXT:    br label %[[EXIT]]
---; CHECK:       [[EXIT]]:
---; CHECK-NEXT:    [[SUM_EXIT:%.*]] = phi i32 [ 0, %[[ENTRY]] ], [ [[SUM_OUTER_LCSSA]], %[[EXIT_LOOPEXIT]] ]
---; CHECK-NEXT:    ret i32 [[SUM_EXIT]]
---;
---entry:
---  %outer.cond = icmp sgt i32 %M, 0
---  %guard = icmp sgt i32 %N, 0
---  br i1 %outer.cond, label %outer.header, label %exit
---
---outer.header:
---  %iv.M = phi i32 [ %M, %entry ], [ %iv.M.next, %outer.latch ]
---  ; 1. Initialized before the outer loop (starts at 42 from entry)
---  %sum.outer = phi i32 [ 42, %entry ], [ %sum.latch, %outer.latch ]
---
---  ; 2. Updated in the outer loop header to a new initial value
---  %sum.new_init = add i32 %sum.outer, 1
---  br i1 %guard, label %inner.preheader, label %outer.latch
---
---inner.preheader:
---  br label %inner.header
---
---inner.header:
---  %i = phi i32 [ 0, %inner.preheader ], [ %i.next, %inner.latch ]
---  %sum.inner = phi i32 [ %sum.new_init, %inner.preheader ], [ %sum.next, %inner.latch ]
---
---  %gep.B = getelementptr inbounds i32, ptr %B, i32 %i
---  %val = load i32, ptr %gep.B, align 4
---  %inc = add i32 %val, 1
---  %gep.A = getelementptr inbounds i32, ptr %A, i32 %i
---  store i32 %inc, ptr %gep.A, align 4
---
---  ; 3. Calculated in the inner loop
---  %sum.next = add i32 %sum.inner, %inc
---  br label %inner.latch
---
---inner.latch:
---  %i.next = add nuw i32 %i, 1
---  %exitcond.inner = icmp eq i32 %i.next, %N
---  br i1 %exitcond.inner, label %outer.latch, label %inner.header
---
---outer.latch:
---  ; Merging the bypassed inner loop value with the executed inner loop reduction
---  %sum.latch = phi i32 [ %sum.new_init, %outer.header], [ %sum.next, %inner.latch ]
---  %iv.M.next = sub nsw i32 %iv.M, 1
---  %outer.cond2 = icmp sgt i32 %iv.M.next, 0
---  br i1 %outer.cond2, label %outer.header, label %exit
---
---exit:
---  ; 4. Used in a phi node in the outer loop exit block (LCSSA form)
---  %sum.exit = phi i32 [%sum.outer, %outer.latch], [0, %entry]
---  ret i32 %sum.exit
---}
---
---;; A positive test that includes a phi in the exit block of the outer loop
---;;
---;; Source:
---;;   int f(int M, int N, int *A, int *B) {
---;;     int sum = 42;
---;;     while (M > 0) {
---;;       sum = 10;
---;;       if (N > 0) {
---;;         for (int i = 0; i < N; i++) {
---;;           A[i] = B[i] + 1;
---;;         }
---;;       }
---;;       B[0] = 0;
---;;       M--;
---;;     }
---;;     return sum;
---;;   }
---;;
---define i32 @exit_phi2(i32 %M, i32 %N, ptr %A, ptr %B) {
---; CHECK-LABEL: define i32 @exit_phi2(
---; CHECK-SAME: i32 [[M:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]]) {
---; CHECK-NEXT:  [[ENTRY:.*]]:
---; CHECK-NEXT:    [[OUTER_COND:%.*]] = icmp sgt i32 [[M]], 0
---; CHECK-NEXT:    [[GUARD:%.*]] = icmp sgt i32 [[N]], 0
---; CHECK-NEXT:    br i1 [[OUTER_COND]], label %[[OUTER_HEADER_PREHEADER:.*]], label %[[EXIT:.*]]
---; CHECK:       [[OUTER_HEADER_PREHEADER]]:
---; CHECK-NEXT:    br i1 [[GUARD]], label %[[OUTER_HEADER_PREHEADER_SPLIT:.*]], label %[[EXIT_LOOPEXIT_SPLIT:.*]]
---; CHECK:       [[OUTER_HEADER_PREHEADER_SPLIT]]:
---; CHECK-NEXT:    br label %[[OUTER_HEADER:.*]]
---; CHECK:       [[OUTER_HEADER]]:
---; CHECK-NEXT:    [[IV_M:%.*]] = phi i32 [ [[IV_M_NEXT:%.*]], %[[OUTER_LATCH:.*]] ], [ [[M]], %[[OUTER_HEADER_PREHEADER_SPLIT]] ]
---; CHECK-NEXT:    br label %[[INNER_PREHEADER:.*]]
---; CHECK:       [[INNER_PREHEADER]]:
---; CHECK-NEXT:    br label %[[INNER_HEADER:.*]]
---; CHECK:       [[INNER_HEADER]]:
---; CHECK-NEXT:    [[I:%.*]] = phi i32 [ 0, %[[INNER_PREHEADER]] ], [ [[I_NEXT:%.*]], %[[INNER_LATCH:.*]] ]
---; CHECK-NEXT:    [[GEP_B:%.*]] = getelementptr inbounds i32, ptr [[B]], i32 [[I]]
---; CHECK-NEXT:    [[VAL:%.*]] = load i32, ptr [[GEP_B]], align 4
---; CHECK-NEXT:    [[INC:%.*]] = add i32 [[VAL]], 1
---; CHECK-NEXT:    [[GEP_A:%.*]] = getelementptr inbounds i32, ptr [[A]], i32 [[I]]
---; CHECK-NEXT:    store i32 [[INC]], ptr [[GEP_A]], align 4
---; CHECK-NEXT:    br label %[[INNER_LATCH]]
---; CHECK:       [[INNER_LATCH]]:
---; CHECK-NEXT:    [[I_NEXT]] = add nuw i32 [[I]], 1
---; CHECK-NEXT:    [[EXITCOND_INNER:%.*]] = icmp eq i32 [[I_NEXT]], [[N]]
---; CHECK-NEXT:    br i1 [[EXITCOND_INNER]], label %[[OUTER_LATCH_LOOPEXIT:.*]], label %[[INNER_HEADER]]
---; CHECK:       [[OUTER_LATCH_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[OUTER_LATCH]]
---; CHECK:       [[OUTER_LATCH]]:
---; CHECK-NEXT:    [[IV_M_NEXT]] = sub nsw i32 [[IV_M]], 1
---; CHECK-NEXT:    [[OUTER_COND2:%.*]] = icmp sgt i32 [[IV_M_NEXT]], 0
---; CHECK-NEXT:    br i1 [[OUTER_COND2]], label %[[OUTER_HEADER]], label %[[EXIT_LOOPEXIT:.*]]
---; CHECK:       [[EXIT_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[EXIT_LOOPEXIT_SPLIT]]
---; CHECK:       [[EXIT_LOOPEXIT_SPLIT]]:
---; CHECK-NEXT:    br label %[[EXIT]]
---; CHECK:       [[EXIT]]:
---; CHECK-NEXT:    [[SUM_EXIT:%.*]] = phi i32 [ 42, %[[ENTRY]] ], [ 10, %[[EXIT_LOOPEXIT_SPLIT]] ]
---; CHECK-NEXT:    ret i32 [[SUM_EXIT]]
---;
---entry:
---  %outer.cond = icmp sgt i32 %M, 0
---  %guard = icmp sgt i32 %N, 0
---  br i1 %outer.cond, label %outer.header, label %exit
---
---outer.header:
---  %iv.M = phi i32 [ %M, %entry ], [ %iv.M.next, %outer.latch ]
---  br i1 %guard, label %inner.preheader, label %outer.latch
---
---inner.preheader:
---  br label %inner.header
---
---inner.header:
---  %i = phi i32 [ 0, %inner.preheader ], [ %i.next, %inner.latch ]
---  %gep.B = getelementptr inbounds i32, ptr %B, i32 %i
---  %val = load i32, ptr %gep.B, align 4
---  %inc = add i32 %val, 1
---  %gep.A = getelementptr inbounds i32, ptr %A, i32 %i
---  store i32 %inc, ptr %gep.A, align 4
---  br label %inner.latch
---
---inner.latch:
---  %i.next = add nuw i32 %i, 1
---  %exitcond.inner = icmp eq i32 %i.next, %N
---  br i1 %exitcond.inner, label %outer.latch, label %inner.header
---
---outer.latch:
---  %iv.M.next = sub nsw i32 %iv.M, 1
---  %outer.cond2 = icmp sgt i32 %iv.M.next, 0
---  br i1 %outer.cond2, label %outer.header, label %exit
---
---exit:
---  %sum.exit = phi i32 [10, %outer.latch], [42, %entry]
---  ret i32 %sum.exit
---}
---
---
---;; A negative test in which we have two inner loops both guarded with different
---;; guard conditions. The first guard doesn't branch to loop latch so this cannot
---;; be unswitched. Unswitching either of the branches will be non-trivial
---;; and requires loop versioning
---;;
---;; Source:
---;;   void f(int M, int N, int N2, int *A, int *B) {
---;;     for (int j = 0; j < M; j++) {
---;;       if (N > 0) {                   // invariant guard
---;;         for (int i = 0; i < N; i++)
---;;           A[i] = B[i] + 1;
---;;       }
---;;
---;;       if (N2 > 0) {                  // invariant guard branches to latch
---;;         for (int i = 0; i < N; i++)
---;;           A[i] = B[i] + 1;
---;;       }
---;;     }
---;;   }
---
---define void @multiple_inner_loops(i32 %M, i32 %N, i32 %N2, ptr %A, ptr %B) {
---; CHECK-LABEL: define void @multiple_inner_loops(
---; CHECK-SAME: i32 [[M:%.*]], i32 [[N:%.*]], i32 [[N2:%.*]], ptr [[A:%.*]], ptr [[B:%.*]]) {
---; CHECK-NEXT:  [[ENTRY:.*:]]
---; CHECK-NEXT:    [[CMP_M:%.*]] = icmp sle i32 [[M]], 0
---; CHECK-NEXT:    br i1 [[CMP_M]], label %[[EXIT:.*]], label %[[OUTER_PREHEADER:.*]]
---; CHECK:       [[OUTER_PREHEADER]]:
---; CHECK-NEXT:    [[GUARD:%.*]] = icmp sle i32 [[N]], 0
---; CHECK-NEXT:    [[GUARD2:%.*]] = icmp sle i32 [[N2]], 0
---; CHECK-NEXT:    br label %[[OUTER_HEADER:.*]]
---; CHECK:       [[OUTER_HEADER]]:
---; CHECK-NEXT:    [[J:%.*]] = phi i32 [ 0, %[[OUTER_PREHEADER]] ], [ [[J_NEXT:%.*]], %[[OUTER_LATCH:.*]] ]
---; CHECK-NEXT:    br i1 [[GUARD]], label %[[INNER2_GUARD:.*]], label %[[INNER_PREHEADER:.*]]
---; CHECK:       [[INNER_PREHEADER]]:
---; CHECK-NEXT:    br label %[[INNER_HEADER:.*]]
---; CHECK:       [[INNER_HEADER]]:
---; CHECK-NEXT:    [[I:%.*]] = phi i32 [ 0, %[[INNER_PREHEADER]] ], [ [[I_NEXT:%.*]], %[[INNER_LATCH:.*]] ]
---; CHECK-NEXT:    [[GEP_B:%.*]] = getelementptr inbounds i32, ptr [[B]], i32 [[I]]
---; CHECK-NEXT:    [[VAL:%.*]] = load i32, ptr [[GEP_B]], align 4
---; CHECK-NEXT:    [[INC:%.*]] = add i32 [[VAL]], 1
---; CHECK-NEXT:    [[GEP_A:%.*]] = getelementptr inbounds i32, ptr [[A]], i32 [[I]]
---; CHECK-NEXT:    store i32 [[INC]], ptr [[GEP_A]], align 4
---; CHECK-NEXT:    br label %[[INNER_LATCH]]
---; CHECK:       [[INNER_LATCH]]:
---; CHECK-NEXT:    [[I_NEXT]] = add nuw i32 [[I]], 1
---; CHECK-NEXT:    [[EXITCOND_INNER:%.*]] = icmp eq i32 [[I_NEXT]], [[N]]
---; CHECK-NEXT:    br i1 [[EXITCOND_INNER]], label %[[INNER2_GUARD_LOOPEXIT:.*]], label %[[INNER_HEADER]]
---; CHECK:       [[INNER2_GUARD_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[INNER2_GUARD]]
---; CHECK:       [[INNER2_GUARD]]:
---; CHECK-NEXT:    br i1 [[GUARD2]], label %[[OUTER_LATCH]], label %[[INNER2_PREHEADER:.*]]
---; CHECK:       [[INNER2_PREHEADER]]:
---; CHECK-NEXT:    br label %[[INNER2_HEADER:.*]]
---; CHECK:       [[INNER2_HEADER]]:
---; CHECK-NEXT:    [[I2:%.*]] = phi i32 [ 0, %[[INNER2_PREHEADER]] ], [ [[I_NEXT2:%.*]], %[[INNER2_LATCH:.*]] ]
---; CHECK-NEXT:    [[GEP_B2:%.*]] = getelementptr inbounds i32, ptr [[B]], i32 [[I2]]
---; CHECK-NEXT:    [[VAL2:%.*]] = load i32, ptr [[GEP_B2]], align 4
---; CHECK-NEXT:    [[INC2:%.*]] = add i32 [[VAL2]], 1
---; CHECK-NEXT:    [[GEP_A2:%.*]] = getelementptr inbounds i32, ptr [[A]], i32 [[I2]]
---; CHECK-NEXT:    store i32 [[INC2]], ptr [[GEP_A2]], align 4
---; CHECK-NEXT:    br label %[[INNER2_LATCH]]
---; CHECK:       [[INNER2_LATCH]]:
---; CHECK-NEXT:    [[I_NEXT2]] = add nuw i32 [[I2]], 1
---; CHECK-NEXT:    [[EXITCOND_INNER2:%.*]] = icmp eq i32 [[I_NEXT2]], [[N2]]
---; CHECK-NEXT:    br i1 [[EXITCOND_INNER2]], label %[[OUTER_LATCH_LOOPEXIT:.*]], label %[[INNER2_HEADER]]
---; CHECK:       [[OUTER_LATCH_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[OUTER_LATCH]]
---; CHECK:       [[OUTER_LATCH]]:
---; CHECK-NEXT:    [[J_NEXT]] = add nuw i32 [[J]], 1
---; CHECK-NEXT:    [[EXITCOND_OUTER:%.*]] = icmp eq i32 [[J_NEXT]], [[M]]
---; CHECK-NEXT:    br i1 [[EXITCOND_OUTER]], label %[[EXIT_LOOPEXIT:.*]], label %[[OUTER_HEADER]]
---; CHECK:       [[EXIT_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[EXIT]]
---; CHECK:       [[EXIT]]:
---; CHECK-NEXT:    ret void
---;
---entry:
---  %cmp.M = icmp sle i32 %M, 0
---  br i1 %cmp.M, label %exit, label %outer.preheader
---
---outer.preheader:
---  %guard = icmp sle i32 %N, 0
---  %guard2 = icmp sle i32 %N2, 0
---  br label %outer.header
---
---outer.header:
---  %j = phi i32 [ 0, %outer.preheader ], [ %j.next, %outer.latch ]
---  br i1 %guard, label %inner2.guard, label %inner.preheader
---
---inner.preheader:
---  br label %inner.header
---
---inner.header:
---  %i = phi i32 [ 0, %inner.preheader ], [ %i.next, %inner.latch ]
---  %gep.B = getelementptr inbounds i32, ptr %B, i32 %i
---  %val = load i32, ptr %gep.B, align 4
---  %inc = add i32 %val, 1
---  %gep.A = getelementptr inbounds i32, ptr %A, i32 %i
---  store i32 %inc, ptr %gep.A, align 4
---  br label %inner.latch
---
---inner.latch:
---  %i.next = add nuw i32 %i, 1
---  %exitcond.inner = icmp eq i32 %i.next, %N
---  br i1 %exitcond.inner, label %inner2.guard, label %inner.header
---
---inner2.guard:
---  br i1 %guard2, label %outer.latch, label %inner2.preheader
---
---inner2.preheader:
---  br label %inner2.header
---
---inner2.header:
---  %i2 = phi i32 [ 0, %inner2.preheader ], [ %i.next2, %inner2.latch ]
---  %gep.B2 = getelementptr inbounds i32, ptr %B, i32 %i2
---  %val2 = load i32, ptr %gep.B2, align 4
---  %inc2 = add i32 %val2, 1
---  %gep.A2 = getelementptr inbounds i32, ptr %A, i32 %i2
---  store i32 %inc2, ptr %gep.A2, align 4
---  br label %inner2.latch
---
---inner2.latch:
---  %i.next2 = add nuw i32 %i2, 1
---  %exitcond.inner2 = icmp eq i32 %i.next2, %N2
---  br i1 %exitcond.inner2, label %outer.latch, label %inner2.header
---
---outer.latch:
---  %j.next = add nuw i32 %j, 1
---  %exitcond.outer = icmp eq i32 %j.next, %M
---  br i1 %exitcond.outer, label %exit, label %outer.header
---
---exit:
---  ret void
---}
---
---;; A negative test in which we have two inner loops both guarded but the guards
---;; have the same conditions. The first guard doesn't branch to loop latch so
---;; this cannot be unswitched. If the control flow is optimized before the loop
---;; unswitching, and the second branch is eliminated then this will be a case of
---;; trivial unswitching.
---;;
---;; Source:
---;;   void f(int M, int N, int *A, int *B) {
---;;     for (int j = 0; j < M; j++) {
---;;       if (N > 0) {                   // invariant guard
---;;         for (int i = 0; i < N; i++)
---;;           A[i] = B[i] + 1;
---;;       }
---;;
---;;       if (N > 0) {                   // invariant guard branches to latch
---;;         for (int i = 0; i < N; i++)
---;;           A[i] = B[i] + 1;
---;;       }
---;;     }
---;;   }
---
---define void @multiple_inner_loops2(i32 %M, i32 %N, ptr %A, ptr %B) {
---; CHECK-LABEL: define void @multiple_inner_loops2(
---; CHECK-SAME: i32 [[M:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]]) {
---; CHECK-NEXT:  [[ENTRY:.*:]]
---; CHECK-NEXT:    [[CMP_M:%.*]] = icmp sle i32 [[M]], 0
---; CHECK-NEXT:    br i1 [[CMP_M]], label %[[EXIT:.*]], label %[[OUTER_PREHEADER:.*]]
---; CHECK:       [[OUTER_PREHEADER]]:
---; CHECK-NEXT:    [[GUARD:%.*]] = icmp sle i32 [[N]], 0
---; CHECK-NEXT:    br label %[[OUTER_HEADER:.*]]
---; CHECK:       [[OUTER_HEADER]]:
---; CHECK-NEXT:    [[J:%.*]] = phi i32 [ 0, %[[OUTER_PREHEADER]] ], [ [[J_NEXT:%.*]], %[[OUTER_LATCH:.*]] ]
---; CHECK-NEXT:    br i1 [[GUARD]], label %[[INNER2_GUARD:.*]], label %[[INNER_PREHEADER:.*]]
---; CHECK:       [[INNER_PREHEADER]]:
---; CHECK-NEXT:    br label %[[INNER_HEADER:.*]]
---; CHECK:       [[INNER_HEADER]]:
---; CHECK-NEXT:    [[I:%.*]] = phi i32 [ 0, %[[INNER_PREHEADER]] ], [ [[I_NEXT:%.*]], %[[INNER_LATCH:.*]] ]
---; CHECK-NEXT:    [[GEP_B:%.*]] = getelementptr inbounds i32, ptr [[B]], i32 [[I]]
---; CHECK-NEXT:    [[VAL:%.*]] = load i32, ptr [[GEP_B]], align 4
---; CHECK-NEXT:    [[INC:%.*]] = add i32 [[VAL]], 1
---; CHECK-NEXT:    [[GEP_A:%.*]] = getelementptr inbounds i32, ptr [[A]], i32 [[I]]
---; CHECK-NEXT:    store i32 [[INC]], ptr [[GEP_A]], align 4
---; CHECK-NEXT:    br label %[[INNER_LATCH]]
---; CHECK:       [[INNER_LATCH]]:
---; CHECK-NEXT:    [[I_NEXT]] = add nuw i32 [[I]], 1
---; CHECK-NEXT:    [[EXITCOND_INNER:%.*]] = icmp eq i32 [[I_NEXT]], [[N]]
---; CHECK-NEXT:    br i1 [[EXITCOND_INNER]], label %[[INNER2_GUARD_LOOPEXIT:.*]], label %[[INNER_HEADER]]
---; CHECK:       [[INNER2_GUARD_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[INNER2_GUARD]]
---; CHECK:       [[INNER2_GUARD]]:
---; CHECK-NEXT:    br i1 [[GUARD]], label %[[OUTER_LATCH]], label %[[INNER2_PREHEADER:.*]]
---; CHECK:       [[INNER2_PREHEADER]]:
---; CHECK-NEXT:    br label %[[INNER2_HEADER:.*]]
---; CHECK:       [[INNER2_HEADER]]:
---; CHECK-NEXT:    [[I2:%.*]] = phi i32 [ 0, %[[INNER2_PREHEADER]] ], [ [[I_NEXT2:%.*]], %[[INNER2_LATCH:.*]] ]
---; CHECK-NEXT:    [[GEP_B2:%.*]] = getelementptr inbounds i32, ptr [[B]], i32 [[I2]]
---; CHECK-NEXT:    [[VAL2:%.*]] = load i32, ptr [[GEP_B2]], align 4
---; CHECK-NEXT:    [[INC2:%.*]] = add i32 [[VAL2]], 1
---; CHECK-NEXT:    [[GEP_A2:%.*]] = getelementptr inbounds i32, ptr [[A]], i32 [[I2]]
---; CHECK-NEXT:    store i32 [[INC2]], ptr [[GEP_A2]], align 4
---; CHECK-NEXT:    br label %[[INNER2_LATCH]]
---; CHECK:       [[INNER2_LATCH]]:
---; CHECK-NEXT:    [[I_NEXT2]] = add nuw i32 [[I2]], 1
---; CHECK-NEXT:    [[EXITCOND_INNER2:%.*]] = icmp eq i32 [[I_NEXT2]], [[N]]
---; CHECK-NEXT:    br i1 [[EXITCOND_INNER2]], label %[[OUTER_LATCH_LOOPEXIT:.*]], label %[[INNER2_HEADER]]
---; CHECK:       [[OUTER_LATCH_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[OUTER_LATCH]]
---; CHECK:       [[OUTER_LATCH]]:
---; CHECK-NEXT:    [[J_NEXT]] = add nuw i32 [[J]], 1
---; CHECK-NEXT:    [[EXITCOND_OUTER:%.*]] = icmp eq i32 [[J_NEXT]], [[M]]
---; CHECK-NEXT:    br i1 [[EXITCOND_OUTER]], label %[[EXIT_LOOPEXIT:.*]], label %[[OUTER_HEADER]]
---; CHECK:       [[EXIT_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[EXIT]]
---; CHECK:       [[EXIT]]:
---; CHECK-NEXT:    ret void
---;
---entry:
---  %cmp.M = icmp sle i32 %M, 0
---  br i1 %cmp.M, label %exit, label %outer.preheader
---
---outer.preheader:
---  %guard = icmp sle i32 %N, 0
---  br label %outer.header
---
---outer.header:
---  %j = phi i32 [ 0, %outer.preheader ], [ %j.next, %outer.latch ]
---  br i1 %guard, label %inner2.guard, label %inner.preheader
---
---inner.preheader:
---  br label %inner.header
---
---inner.header:
---  %i = phi i32 [ 0, %inner.preheader ], [ %i.next, %inner.latch ]
---  %gep.B = getelementptr inbounds i32, ptr %B, i32 %i
---  %val = load i32, ptr %gep.B, align 4
---  %inc = add i32 %val, 1
---  %gep.A = getelementptr inbounds i32, ptr %A, i32 %i
---  store i32 %inc, ptr %gep.A, align 4
---  br label %inner.latch
---
---inner.latch:
---  %i.next = add nuw i32 %i, 1
---  %exitcond.inner = icmp eq i32 %i.next, %N
---  br i1 %exitcond.inner, label %inner2.guard, label %inner.header
---
---inner2.guard:
---  br i1 %guard, label %outer.latch, label %inner2.preheader
---
---inner2.preheader:
---  br label %inner2.header
---
---inner2.header:
---  %i2 = phi i32 [ 0, %inner2.preheader ], [ %i.next2, %inner2.latch ]
---  %gep.B2 = getelementptr inbounds i32, ptr %B, i32 %i2
---  %val2 = load i32, ptr %gep.B2, align 4
---  %inc2 = add i32 %val2, 1
---  %gep.A2 = getelementptr inbounds i32, ptr %A, i32 %i2
---  store i32 %inc2, ptr %gep.A2, align 4
---  br label %inner2.latch
---
---inner2.latch:
---  %i.next2 = add nuw i32 %i2, 1
---  %exitcond.inner2 = icmp eq i32 %i.next2, %N
---  br i1 %exitcond.inner2, label %outer.latch, label %inner2.header
---
---outer.latch:
---  %j.next = add nuw i32 %j, 1
---  %exitcond.outer = icmp eq i32 %j.next, %M
---  br i1 %exitcond.outer, label %exit, label %outer.header
---
---exit:
---  ret void
---}
---
---;; This is modified from the previous test, @multiple_inner_loops2. Here
---;; the second branch is optimzied away. The first branch is technically not a
---;; loop guard anymore, but still this is an invariant branch and both loops
---;; are control flow dependent on it. This is a case of trivial unswitching again.
---;;
---;; Source:
---;;   void f(int M, int N, int *A, int *B) {
---;;     for (int j = 0; j < M; j++) {
---;;       if (N > 0) {                   // invariant branch
---;;         for (int i = 0; i < N; i++)
---;;           A[i] = B[i] + 1;
---;;
---;;         for (int i = 0; i < N; i++)
---;;           A[i] = B[i] + 1;
---;;       }
---;;     }
---;;   }
---
---define void @multiple_inner_loops3(i32 %M, i32 %N, ptr %A, ptr %B) {
---; CHECK-LABEL: define void @multiple_inner_loops3(
---; CHECK-SAME: i32 [[M:%.*]], i32 [[N:%.*]], ptr [[A:%.*]], ptr [[B:%.*]]) {
---; CHECK-NEXT:  [[ENTRY:.*:]]
---; CHECK-NEXT:    [[CMP_M:%.*]] = icmp sle i32 [[M]], 0
---; CHECK-NEXT:    br i1 [[CMP_M]], label %[[EXIT:.*]], label %[[OUTER_PREHEADER:.*]]
---; CHECK:       [[OUTER_PREHEADER]]:
---; CHECK-NEXT:    [[GUARD:%.*]] = icmp sle i32 [[N]], 0
---; CHECK-NEXT:    br i1 [[GUARD]], label %[[EXIT_LOOPEXIT_SPLIT:.*]], label %[[OUTER_PREHEADER_SPLIT:.*]]
---; CHECK:       [[OUTER_PREHEADER_SPLIT]]:
---; CHECK-NEXT:    br label %[[OUTER_HEADER:.*]]
---; CHECK:       [[OUTER_HEADER]]:
---; CHECK-NEXT:    [[J:%.*]] = phi i32 [ 0, %[[OUTER_PREHEADER_SPLIT]] ], [ [[J_NEXT:%.*]], %[[OUTER_LATCH:.*]] ]
---; CHECK-NEXT:    br label %[[INNER_PREHEADER:.*]]
---; CHECK:       [[INNER_PREHEADER]]:
---; CHECK-NEXT:    br label %[[INNER_HEADER:.*]]
---; CHECK:       [[INNER_HEADER]]:
---; CHECK-NEXT:    [[I:%.*]] = phi i32 [ 0, %[[INNER_PREHEADER]] ], [ [[I_NEXT:%.*]], %[[INNER_LATCH:.*]] ]
---; CHECK-NEXT:    [[GEP_B:%.*]] = getelementptr inbounds i32, ptr [[B]], i32 [[I]]
---; CHECK-NEXT:    [[VAL:%.*]] = load i32, ptr [[GEP_B]], align 4
---; CHECK-NEXT:    [[INC:%.*]] = add i32 [[VAL]], 1
---; CHECK-NEXT:    [[GEP_A:%.*]] = getelementptr inbounds i32, ptr [[A]], i32 [[I]]
---; CHECK-NEXT:    store i32 [[INC]], ptr [[GEP_A]], align 4
---; CHECK-NEXT:    br label %[[INNER_LATCH]]
---; CHECK:       [[INNER_LATCH]]:
---; CHECK-NEXT:    [[I_NEXT]] = add nuw i32 [[I]], 1
---; CHECK-NEXT:    [[EXITCOND_INNER:%.*]] = icmp eq i32 [[I_NEXT]], [[N]]
---; CHECK-NEXT:    br i1 [[EXITCOND_INNER]], label %[[INNER2_PREHEADER:.*]], label %[[INNER_HEADER]]
---; CHECK:       [[INNER2_PREHEADER]]:
---; CHECK-NEXT:    br label %[[INNER2_HEADER:.*]]
---; CHECK:       [[INNER2_HEADER]]:
---; CHECK-NEXT:    [[I2:%.*]] = phi i32 [ 0, %[[INNER2_PREHEADER]] ], [ [[I_NEXT2:%.*]], %[[INNER2_LATCH:.*]] ]
---; CHECK-NEXT:    [[GEP_B2:%.*]] = getelementptr inbounds i32, ptr [[B]], i32 [[I2]]
---; CHECK-NEXT:    [[VAL2:%.*]] = load i32, ptr [[GEP_B2]], align 4
---; CHECK-NEXT:    [[INC2:%.*]] = add i32 [[VAL2]], 1
---; CHECK-NEXT:    [[GEP_A2:%.*]] = getelementptr inbounds i32, ptr [[A]], i32 [[I2]]
---; CHECK-NEXT:    store i32 [[INC2]], ptr [[GEP_A2]], align 4
---; CHECK-NEXT:    br label %[[INNER2_LATCH]]
---; CHECK:       [[INNER2_LATCH]]:
---; CHECK-NEXT:    [[I_NEXT2]] = add nuw i32 [[I2]], 1
---; CHECK-NEXT:    [[EXITCOND_INNER2:%.*]] = icmp eq i32 [[I_NEXT2]], [[N]]
---; CHECK-NEXT:    br i1 [[EXITCOND_INNER2]], label %[[OUTER_LATCH_LOOPEXIT:.*]], label %[[INNER2_HEADER]]
---; CHECK:       [[OUTER_LATCH_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[OUTER_LATCH]]
---; CHECK:       [[OUTER_LATCH]]:
---; CHECK-NEXT:    [[J_NEXT]] = add nuw i32 [[J]], 1
---; CHECK-NEXT:    [[EXITCOND_OUTER:%.*]] = icmp eq i32 [[J_NEXT]], [[M]]
---; CHECK-NEXT:    br i1 [[EXITCOND_OUTER]], label %[[EXIT_LOOPEXIT:.*]], label %[[OUTER_HEADER]]
---; CHECK:       [[EXIT_LOOPEXIT]]:
---; CHECK-NEXT:    br label %[[EXIT_LOOPEXIT_SPLIT]]
---; CHECK:       [[EXIT_LOOPEXIT_SPLIT]]:
---; CHECK-NEXT:    br label %[[EXIT]]
---; CHECK:       [[EXIT]]:
---; CHECK-NEXT:    ret void
---;
---entry:
---  %cmp.M = icmp sle i32 %M, 0
---  br i1 %cmp.M, label %exit, label %outer.preheader
---
---outer.preheader:
---  %guard = icmp sle i32 %N, 0
---  br label %outer.header
---
---outer.header:
---  %j = phi i32 [ 0, %outer.preheader ], [ %j.next, %outer.latch ]
---  br i1 %guard, label %outer.latch, label %inner.preheader
---
---inner.preheader:
---  br label %inner.header
---
---inner.header:
---  %i = phi i32 [ 0, %inner.preheader ], [ %i.next, %inner.latch ]
---  %gep.B = getelementptr inbounds i32, ptr %B, i32 %i
---  %val = load i32, ptr %gep.B, align 4
---  %inc = add i32 %val, 1
---  %gep.A = getelementptr inbounds i32, ptr %A, i32 %i
---  store i32 %inc, ptr %gep.A, align 4
---  br label %inner.latch
---
---inner.latch:
---  %i.next = add nuw i32 %i, 1
---  %exitcond.inner = icmp eq i32 %i.next, %N
---  br i1 %exitcond.inner, label %inner2.preheader, label %inner.header
---
---inner2.preheader:
---  br label %inner2.header
---
---inner2.header:
---  %i2 = phi i32 [ 0, %inner2.preheader ], [ %i.next2, %inner2.latch ]
---  %gep.B2 = getelementptr inbounds i32, ptr %B, i32 %i2
---  %val2 = load i32, ptr %gep.B2, align 4
---  %inc2 = add i32 %val2, 1
---  %gep.A2 = getelementptr inbounds i32, ptr %A, i32 %i2
---  store i32 %inc2, ptr %gep.A2, align 4
---  br label %inner2.latch
---
---inner2.latch:
---  %i.next2 = add nuw i32 %i2, 1
---  %exitcond.inner2 = icmp eq i32 %i.next2, %N
---  br i1 %exitcond.inner2, label %outer.latch, label %inner2.header
---
---outer.latch:
---  %j.next = add nuw i32 %j, 1
---  %exitcond.outer = icmp eq i32 %j.next, %M
---  br i1 %exitcond.outer, label %exit, label %outer.header
---
---exit:
---  ret void
---}
---
--diff -ruN --strip-trailing-cr a/polly/test/Support/pipelineposition.ll b/polly/test/Support/pipelineposition.ll
----- a/polly/test/Support/pipelineposition.ll
--+++ b/polly/test/Support/pipelineposition.ll
--@@ -79,4 +79,4 @@
-- 
-- ; INLINED3-LABEL: Function: caller
-- ; INLINED3:       Schedule :=
---; INLINED3-NEXT:    [n] -> { Stmt_body_i[i0, i1] -> [i0, i1] };
--+; INLINED3-NEXT:    [n] -> { Stmt_body_i_us[i0, i1] -> [i0, i1] };
-+diff -ruN --strip-trailing-cr a/clang/test/AST/ByteCode/command-line-options.cpp b/clang/test/AST/ByteCode/command-line-options.cpp
-+--- a/clang/test/AST/ByteCode/command-line-options.cpp
-++++ b/clang/test/AST/ByteCode/command-line-options.cpp
-+@@ -6,11 +6,11 @@
-+ /// All this should be true if the driver is used or -cc1.
-+ 
-+ 
-+-// RUN: %clang -c   -fexperimental-new-constant-interpreter %s -Xclang -verify=bc
-+-// RUN: %clang -cc1 -fexperimental-new-constant-interpreter %s         -verify=bc
-++// RUN: %clang -fsyntax-only -fexperimental-new-constant-interpreter %s -Xclang -verify=bc
-++// RUN: %clang -cc1          -fexperimental-new-constant-interpreter %s         -verify=bc
-+ 
-+-// RUN: %clang -c   -fno-experimental-new-constant-interpreter %s -Xclang -verify=nobc
-+-// RUN: %clang -cc1 -fno-experimental-new-constant-interpreter %s         -verify=nobc
-++// RUN: %clang -fsyntax-only -fno-experimental-new-constant-interpreter %s -Xclang -verify=nobc
-++// RUN: %clang -cc1          -fno-experimental-new-constant-interpreter %s         -verify=nobc
-+ 
-+ 
-+ /// Note that we're not testing the behavior without those command line options since that
-+diff -ruN --strip-trailing-cr a/clang-tools-extra/clangd/test/did-change-configuration-params.test b/clang-tools-extra/clangd/test/did-change-configuration-params.test
-+--- a/clang-tools-extra/clangd/test/did-change-configuration-params.test
-++++ b/clang-tools-extra/clangd/test/did-change-configuration-params.test
-+@@ -48,7 +48,7 @@
-+ #
-+ # ERR: ASTWorker building file {{.*}}foo.c version 0 with command
-+ # ERR: [{{.*}}clangd-test2]
-+-# ERR: clang -c -Wall -Werror {{.*}} -- {{.*}}foo.c
-++# ERR: clang -c -Wall -Werror{{.*}} -- {{.*}}foo.c
-+ ---
-+ {"jsonrpc":"2.0","id":5,"method":"shutdown"}
-+ ---
+- /// Note that we're not testing the behavior without those command line options since that
+-diff -ruN --strip-trailing-cr a/clang-tools-extra/clangd/test/did-change-configuration-params.test b/clang-tools-extra/clangd/test/did-change-configuration-params.test
+---- a/clang-tools-extra/clangd/test/did-change-configuration-params.test
+-+++ b/clang-tools-extra/clangd/test/did-change-configuration-params.test
+-@@ -48,7 +48,7 @@
+- #
+- # ERR: ASTWorker building file {{.*}}foo.c version 0 with command
+- # ERR: [{{.*}}clangd-test2]
+--# ERR: clang -c -Wall -Werror {{.*}} -- {{.*}}foo.c
+-+# ERR: clang -c -Wall -Werror{{.*}} -- {{.*}}foo.c
+- ---
+- {"jsonrpc":"2.0","id":5,"method":"shutdown"}
+- ---
++-        # Delete the dylib to force make to rebuild it.
++-        remove_file(self.getBuildArtifact(FULL_DYLIB_NAME))
++-
++         # Re-build libfoo.dylib
++         self.build(
++             dictionary={
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index eedda829..5be0349a 100644
+index 5be0349a..01841ec2 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "140fc5aa2a0a754db87c68b2e3861c70dd94360b"
--    LLVM_SHA256 = "dd594a2c2a1af4713349d103d83fae765843ff9874e3d37cbd3b05f9da48a0df"
-+    LLVM_COMMIT = "0b1fe74f079fd330e4d4d85ce33b7f5702da1be7"
-+    LLVM_SHA256 = "849452cc51d3994aaff858e607d1148cd38b84ebae18f4b00b028c09879caec4"
+-    LLVM_COMMIT = "0b1fe74f079fd330e4d4d85ce33b7f5702da1be7"
+-    LLVM_SHA256 = "849452cc51d3994aaff858e607d1148cd38b84ebae18f4b00b028c09879caec4"
++    LLVM_COMMIT = "93b1f81e03ef4c717a9d222b46f78c38bcff0a3f"
++    LLVM_SHA256 = "de1e67f7290d93340a408ba5841966d129127de2104c304d7f761a4de101ece2"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index d76d16d2..5e581bd9 100644
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -2672,50 +2672,6 @@ diff --ruN a/stablehlo/stablehlo/tests/replica_groups_mesh_axes.mlir b/stablehlo
+  
+  // CHECK-LABEL: @test_replica_groups_mesh_axes
+  func.func @test_replica_groups_mesh_axes(%arg0: tensor<f32>) -> tensor<f32> {
+-diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+---- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+-+++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+-@@ -1469,3 +1469,40 @@
+-   }
+-   return %1 : tensor<i64>
+- }
+-+
+-+////////
+-+// XorOp
+-+
+-+// CHECK-LABEL: @xor_fold_splat_cst
+-+func.func @xor_fold_splat_cst() -> tensor<3x2xi32> {
+-+  // CHECK: stablehlo.constant dense<1> : tensor<3x2xi32>
+-+  // CHECK-NOT: stablehlo.xor
+-+  %operand_1 = stablehlo.constant dense<1> : tensor<3x2xi32>
+-+  %operand_2 = stablehlo.constant dense<0> : tensor<3x2xi32>
+-+  %result = stablehlo.xor %operand_1, %operand_2 : tensor<3x2xi32>
+-+  return %result : tensor<3x2xi32>
+-+}
+-+
+-+// -----
+-+
+-+// CHECK-LABEL: @xor_fold_cst
+-+func.func @xor_fold_cst() -> tensor<3xi32> {
+-+  // CHECK: stablehlo.constant dense<[0, 0, 3]> : tensor<3xi32>
+-+  // CHECK-NOT: stablehlo.xor
+-+  %operand_1 = stablehlo.constant dense<[1, 2, 1]> : tensor<3xi32>
+-+  %operand_2 = stablehlo.constant dense<[1, 2, 2]> : tensor<3xi32>
+-+  %result = stablehlo.xor %operand_1, %operand_2 : tensor<3xi32>
+-+  return %result : tensor<3xi32>
+-+}
+-+
+-+// -----
+-+
+-+// CHECK-LABEL: @xor_fold_boolean_cst
+-+func.func @xor_fold_boolean_cst() -> tensor<4xi1> {
+-+  // CHECK: stablehlo.constant dense<[true, false, true, false]> : tensor<4xi1>
+-+  // CHECK-NOT: stablehlo.xor
+-+  %operand_1 = stablehlo.constant dense<[true, true, false, false]> : tensor<4xi1>
+-+  %operand_2 = stablehlo.constant dense<[false, true, true, false]> : tensor<4xi1>
+-+  %result = stablehlo.xor %operand_1, %operand_2 : tensor<4xi1>
+-+  return %result : tensor<4xi1>
+-+}
+ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+ --- stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+ +++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+@@ -3439,63 +3395,4 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
+    patterns->add<RefineDynamicBroadcastInDimOpPattern>(context);
+    patterns->add<RefineDynamicConvOpPattern>(context);
+    patterns->add<RefineDynamicIotaOpPattern>(context);
+-diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+---- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+-+++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+-@@ -2114,6 +2114,47 @@
+-   }
+- };
+- 
+-+struct FoldXorOpPattern : public ShapeOpRewritePattern<XorOp> {
+-+  using ShapeOpRewritePattern::ShapeOpRewritePattern;
+-+
+-+  LogicalResult matchAndRewrite(XorOp op,
+-+                                PatternRewriter& rewriter) const override {
+-+    auto resultType = op.getType();
+-+    auto resultElementType = resultType.getElementType();
+-+    FailureOr<TypedAttr> result;
+-+
+-+    if (resultElementType.isInteger(/*width=*/1)) {
+-+      result = foldBinaryOpIntOrFloat(rewriter, op, FoldLogicalXor{});
+-+    } else if (resultElementType.isInteger()) {
+-+      result = foldBinaryOpIntOrFloat(rewriter, op, FoldBitwiseXor{});
+-+    } else {
+-+      return rewriter.notifyMatchFailure(op, "Expected integral element type.");
+-+    }
+-+
+-+    if (failed(result)) return failure();
+-+    rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op,
+-+                                                             result.value());
+-+    return success();
+-+  }
+-+
+-+  struct FoldLogicalXor {
+-+    APInt operator()(APInt lhs, APInt rhs) const {
+-+      return APInt(lhs.getBitWidth(), !lhs.isZero() ^ !rhs.isZero());
+-+    }
+-+    std::optional<APFloat> operator()(APFloat lhs, APFloat rhs) const {
+-+      return std::nullopt;
+-+    }
+-+  };
+-+
+-+  struct FoldBitwiseXor {
+-+    APInt operator()(APInt lhs, APInt rhs) const { return lhs ^ rhs; }
+-+
+-+    std::optional<APFloat> operator()(APFloat lhs, APFloat rhs) const {
+-+      return std::nullopt;
+-+    }
+-+  };
+-+};
+-+
+- struct StablehloAggressiveFolderPass
+-     : public impl::StablehloAggressiveFolderPassBase<
+-           StablehloAggressiveFolderPass> {
+-@@ -2178,6 +2219,7 @@
+-                 FoldTransposeOpPattern,               //
+-                 FoldWhileOpIfDeadAndPresumedPure,     //
+-                 FoldWhileOpPattern,                   //
+-+                FoldXorOpPattern,                     //
+-                 InlineCaseOpWithConstantBranchIndex,  //
+-                 LowerBoolSplatConstantsIntoReduceOpRegion>(context, options,
+-                                                            benefit);
+ 

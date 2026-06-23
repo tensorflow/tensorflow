@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/pjrt/stream_executor_pjrt_abi_version.h"
+#include "xla/pjrt/utils.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
@@ -281,7 +282,7 @@ StreamExecutorExecutable::GetParameterMemoryKinds() const {
   for (const auto& module : modules) {
     const ComputationLayout& comp_layout = module->entry_computation_layout();
     ASSIGN_OR_RETURN(std::vector<Layout> layouts,
-                     comp_layout.FlattenedParameterLayouts());
+                     xla::FlattenedParameterLayouts(comp_layout));
     std::vector<absl::string_view>& memory_kinds = out.emplace_back();
     memory_kinds.reserve(layouts.size());
     for (const xla::Layout& layout : layouts) {
