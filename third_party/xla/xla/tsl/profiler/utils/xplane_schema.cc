@@ -278,6 +278,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"flow", kFlow},
        {"step_name", kStepName},
        {"tf_op", kTfOp},
+       {"original_op", kOriginalOp},
        {"hlo_op", kHloOp},
        {"deduplicated_name", kDeduplicatedName},
        {"hlo_category", kHloCategory},
