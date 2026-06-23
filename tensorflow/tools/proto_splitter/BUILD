@@ -188,11 +188,9 @@ cc_library(
     name = "merge",
     hdrs = ["merge.h"],
     visibility = [
-        "//platforms/darwinn/contrib/waymo:__subpackages__",
         "//tensorflow:internal",
         "//tensorflow/cc/experimental/tf2:__subpackages__",
         "//tensorflow/cc/saved_model/image_format:__subpackages__",
-        "//waymo/onboard/ml/chauffeur_net/utils:__subpackages__",
     ],
     deps = [
         ":chunk_proto_cc",
