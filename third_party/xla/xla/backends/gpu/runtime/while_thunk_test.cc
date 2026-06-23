@@ -311,7 +311,6 @@ TEST(WhileThunkTest, PreparePropagatesToCommandBufferExecutors) {
   Thunk::PrepareParams prepare_params{/*collective_params=*/nullptr,
                                       /*collective_clique_requests=*/nullptr,
                                       /*collective_memory_requests=*/nullptr,
-                                      /*scratch_memory_requests=*/nullptr,
                                       /*executor=*/executor,
                                       /*buffer_allocations=*/&allocations};
   ASSERT_OK(thunk.Prepare(prepare_params));

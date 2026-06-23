@@ -50,6 +50,10 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
+
+#define GEN_PASS_DEF_SIMPLIFYAFFINEPASS
+#include "xla/codegen/emitters/transforms/passes.h.inc"
+
 namespace {
 
 using mlir::AffineMap;
@@ -65,9 +69,6 @@ using mlir::ValueRange;
 using mlir::affine::AffineApplyOp;
 
 namespace arith = mlir::arith;
-
-#define GEN_PASS_DEF_SIMPLIFYAFFINEPASS
-#include "xla/codegen/emitters/transforms/passes.h.inc"
 
 int Distance(ImplicitLocOpBuilder& builder, Value a) {
   auto* block = builder.getInsertionBlock();
@@ -315,10 +316,6 @@ struct SimplifyAffinePass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass() {
-  return std::make_unique<SimplifyAffinePass>();
-}
 
 }  // namespace emitters
 }  // namespace xla

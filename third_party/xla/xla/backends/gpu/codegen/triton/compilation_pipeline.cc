@@ -44,7 +44,7 @@ void CreateTritonXlaPipeline(
       warp_specialization_allowed));
   pm->addPass(mlir::triton::xla::CreateTritonXLAFoldReshapeAroundForLoopPass());
 
-  pm->addPass(emitters::CreateSafeIntegerArithmeticPass());
+  pm->addPass(emitters::createSafeIntegerArithmeticPass());
   pm->addPass(mlir::triton::xla::CreateUnsupportedElementwiseToTritonPass());
 
   auto* cuda_cc = gpu_cc.cuda_compute_capability();
@@ -65,14 +65,14 @@ void CreateTritonXlaPipeline(
       /*allow_tma=*/allow_tma && is_at_least_hopper,
       /*allow_tdm=*/rocm_supports_tdm, num_stages));
   if (enable_pdl) {
-    pm->addPass(emitters::CreateLowerPdlWaitPass());
+    pm->addPass(emitters::createLowerPdlWaitPass());
   }
 
   // Lower affine expressions into arithmetic ops.
   pm->addPass(mlir::createLowerAffinePass());
 
   // Lower xla_gpu.apply_indexing into arithmetic ops.
-  pm->addPass(emitters::CreateSimplifyAffinePass());
+  pm->addPass(emitters::createSimplifyAffinePass());
   pm->addPass(CreateConvertIndexTypePass());
   pm->addPass(mlir::createCompositeFixedPointPass(
       "TritonXLAUnswitchLoopsComposite", [](mlir::OpPassManager& pm) {

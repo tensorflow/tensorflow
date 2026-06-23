@@ -82,6 +82,13 @@ class TritonEmitterConstraintsTest : public HloHardwareIndependentTestBase {
     return std::nullopt;
   }
 
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(false);
+    return debug_options;
+  }
+
   mlir::MLIRContext mlir_context_;
   se::DeviceDescription device_description_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
