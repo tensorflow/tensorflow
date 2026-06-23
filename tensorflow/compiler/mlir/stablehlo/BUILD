@@ -19,6 +19,7 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//platforms/darwinn/tools/visualization/graph_conversions/...",
         "//tensorflow/compiler/mlir/lite/...",
         "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/quantization/tensorflow/...",

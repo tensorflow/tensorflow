@@ -33,9 +33,11 @@ default_visibility = [
     # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
     "@xla//xla/tsl/lib:__subpackages__",
     # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
+    # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
     # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",
     "//tensorflow/cc/saved_model:__subpackages__",
     #internal starburst clustering service,
+    "//waymo/ml/deploy/benchmark:__subpackages__",
     # copybara:uncomment #internal tuning service,
     # copybara:uncomment "//third_party/odml/experimental:__subpackages__",
     #internal nexus library,
@@ -753,10 +755,13 @@ cc_library(
         "//learning/processing/hydra/tensorflow:__pkg__",
         "//learning/sibyl/tfx/state/kernels:__pkg__",
         "//learning/sibyl/tfx/transformation/kernels:__pkg__",
+        "//robotics/datasets/stepstable/tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__pkg__",
         "//tensorflow/compiler/tf2xla:__pkg__",
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
         "//third_party/py/grain/_src/tensorflow/ops:__pkg__",
+        "//waymo/ml:__subpackages__",
+        "//waymo/sim/simulator/sensor/rendering_engine:__pkg__",
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
@@ -1728,6 +1733,7 @@ tf_proto_library(
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
+        "//waymo/ml/deploy/benchmark:__subpackages__",
     ],
     deps = [
         ":resource_handle_proto",

@@ -9,6 +9,7 @@ package(
     # copybara:uncomment_begin(google-only)
     # default_visibility = [
     # "//learning/brain/mlir/quantization:__subpackages__",
+    # "//platforms/darwinn/compiler:__subpackages__",
     # "//third_party/odml/litert:__subpackages__",
     # "//tensorflow:__subpackages__",
     # ],

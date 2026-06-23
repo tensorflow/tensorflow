@@ -83,6 +83,7 @@ mlir_to_bef(
 #         "no_gpu",
 #     ],
 #     deps = [
+#         "//base",
 #         "//devtools/build/runtime:get_runfiles_dir",
 #         "@com_google_absl//absl/log:check",
 #         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
