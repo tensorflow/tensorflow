@@ -1612,7 +1612,7 @@ AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
   opts.set_enable_unconditional_reduce_of_concat_replacement(false);
   opts.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
   opts.set_enable_conditional_simplification(true);
-  opts.set_enable_fold_transpose_into_scatter(true);
+  opts.set_enable_fold_transpose_into_scatter(false);
 
   switch (mode) {
     case AlgebraicSimplifierMode::kPostFusionSimplification:
