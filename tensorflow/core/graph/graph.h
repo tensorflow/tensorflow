@@ -455,7 +455,7 @@ class Edge {
   std::string DebugString() const;
 
  private:
-  Edge() {}
+  Edge() = default;
 
   friend class EdgeSetTest;
   friend class GraphTest;

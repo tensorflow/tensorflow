@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/control_flow.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -55,7 +56,7 @@ TEST(ValidateControlFlowTest, InputsFromDifferentFrames) {
   TF_ASSERT_OK(ops::BuildWhileLoop(scope.NewSubScope("outer"), inputs,
                                    LessThanTenCond, NestedLoopBody,
                                    "outer_loop", &outputs));
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(scope.ToGraph(graph.get()));
   // {inner/Enter', 'outer/Switch'} --> 'inner/Merge'. 'inner/Enter' is in frame
   // 'inner_loop'. 'outer/Switch' is in frame 'outer_loop'.
@@ -82,7 +83,7 @@ TEST(ValidateControlFlowTest, MismatchedParentFrames) {
   std::vector<Output> outputs;
   TF_ASSERT_OK(ops::BuildWhileLoop(scope, inputs, LessThanTenCond, AddOneBody,
                                    "test_loop", &outputs));
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(scope.ToGraph(graph.get()));
   Node* enter_1 = nullptr;
   for (Node* node : graph->op_nodes()) {
@@ -128,7 +129,7 @@ TEST(ValidateControlFlowTest, TwoLoopCond) {
   TF_ASSERT_OK(ops::BuildWhileLoop(scope.NewSubScope("sub"), inputs,
                                    LessThanTenCond, AddOneBody, "test_loop",
                                    &outputs, false));
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(scope.ToGraph(graph.get()));
   std::vector<ControlFlowInfo> info;
   absl::Status status = BuildControlFlowInfo(graph.get(), &info);

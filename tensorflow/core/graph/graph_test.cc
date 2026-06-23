@@ -57,7 +57,7 @@ REGISTER_OP("TwoInputsOneOutput")
 class GraphTest : public ::testing::Test {
  protected:
   GraphTest() : graph_(OpRegistry::Global()) {}
-  ~GraphTest() override {}
+  ~GraphTest() override = default;
 
   static void VerifyNodes(Node* node, const std::vector<Node*>& expected_in,
                           const std::vector<Node*>& expected_out) {

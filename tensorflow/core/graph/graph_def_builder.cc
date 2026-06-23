@@ -24,7 +24,7 @@ namespace tensorflow {
 
 GraphDefBuilder::Options::Options(Graph* graph, absl::Status* status)
     : graph_(graph), status_(status) {}
-GraphDefBuilder::Options::~Options() {}
+GraphDefBuilder::Options::~Options() = default;
 
 GraphDefBuilder::Options GraphDefBuilder::Options::WithName(
     absl::string_view name) const {
