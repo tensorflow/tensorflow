@@ -78,6 +78,14 @@ class GpuIndexingPerformanceModelTest
       &mlir_context_, use_experimental_tiling()};
 
   size_t WarpSize() const { return ::xla::gpu::WarpSize(device_info_); }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
+        use_experimental_tiling());
+    return debug_options;
+  }
 };
 
 INSTANTIATE_TEST_SUITE_P(GpuIndexingPerformanceModelTest,

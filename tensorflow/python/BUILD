@@ -55,7 +55,6 @@ load(
 # TODO(mdan): Break into per-directory files.
 
 visibility = [
-    "//engedu/ml/tf_from_scratch:__pkg__",
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     "//third_party/mlperf:__subpackages__",
     "//tensorflow:internal",
@@ -82,7 +81,6 @@ visibility = [
     "//third_party/py/tensorflow_privacy:__subpackages__",
     "//third_party/reverb:__subpackages__",
     "//tensorflow_minigo:__subpackages__",
-    "//research/graph/fairness/inproc_fair_reg:__subpackages__",
 ]
 
 package(
@@ -883,7 +881,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/platform:enable_tf2_utils",
     ]) + if_google([
-        "//base",
         "//tensorflow/core/util/tensor_bundle",
     ]) + if_oss([
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",

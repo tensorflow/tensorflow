@@ -491,6 +491,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -576,7 +577,7 @@ cc_library(
 xla_cc_test(
     name = "support_test",
     srcs = ["support_test.cc"],
-    shard_count = 25,
+    shard_count = 50,  # TODO: b/514293537 - change to 25 after disabling symblic analysis.
     deps = [
         ":support",
         ":support_test_base",
@@ -599,6 +600,7 @@ xla_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
