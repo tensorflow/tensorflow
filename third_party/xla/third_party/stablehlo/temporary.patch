@@ -374,6 +374,25 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.cpp b/stablehlo/stablehlo/diale
  }
  
  }  // namespace vhlo
+diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/reference/Ops.cpp
+--- stablehlo/stablehlo/reference/Ops.cpp
++++ stablehlo/stablehlo/reference/Ops.cpp
+@@ -1459,6 +1459,15 @@
+     auto from = processGroup[0];
+     auto to = processGroup[1];
+     if (from != process->getId() && to != process->getId()) continue;
++
++    // When a self-loop is present, we do not invoke `rendezvous` because
++    // it would result in a deadlock: a process waiting on two processes to
++    // finish when there exists only one.
++    if (from == to) {
++      result = operand;
++      continue;
++    }
++
+     auto rendezvousResult =
+         process->rendezvous(processGroup, channelId, {operand});
+     if (to != process->getId()) continue;
 diff --ruN a/stablehlo/stablehlo/reference/Ops.h b/stablehlo/stablehlo/reference/Ops.h
 --- stablehlo/stablehlo/reference/Ops.h
 +++ stablehlo/stablehlo/reference/Ops.h
@@ -2612,6 +2631,80 @@ diff --ruN a/stablehlo/stablehlo/tests/interpret/chlo/scan.mlir b/stablehlo/stab
 +  check.expect_eq_const %0#1, dense<10> : tensor<i32>
 +  func.return
 +}
+diff --ruN a/stablehlo/stablehlo/tests/interpret/collective_permute.mlir b/stablehlo/stablehlo/tests/interpret/collective_permute.mlir
+--- stablehlo/stablehlo/tests/interpret/collective_permute.mlir
++++ stablehlo/stablehlo/tests/interpret/collective_permute.mlir
+@@ -1,9 +1,9 @@
+ // RUN: stablehlo-translate --interpret -split-input-file %s
+ 
+-module @cross_replica {
++module @cross_replica_with_self_loops {
+   func.func @collective_permute(%operand : tensor<2x2xi64>) -> tensor<2x2xi64> {
+     %result = "stablehlo.collective_permute"(%operand) {
+-      source_target_pairs = dense<[[0, 1], [1, 2]]> : tensor<2x2xi64>,
++      source_target_pairs = dense<[[0, 1], [1, 2], [3, 3], [4, 4]]> : tensor<4x2xi64>,
+       channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>
+     } : (tensor<2x2xi64>) -> tensor<2x2xi64>
+     return %result : tensor<2x2xi64>
+@@ -12,23 +12,29 @@
+     %inputs0 = stablehlo.constant dense<[[1, 2], [3, 4]]> : tensor<2x2xi64>
+     %inputs1 = stablehlo.constant dense<[[5, 6], [7, 8]]> : tensor<2x2xi64>
+     %inputs2 = stablehlo.constant dense<[[9, 10], [11, 12]]> : tensor<2x2xi64>
+-    %results:3 = "interpreter.run_parallel"(%inputs0, %inputs1, %inputs2) {
+-      programs=[[@collective_permute], [@collective_permute], [@collective_permute]]
+-    } : (tensor<2x2xi64>, tensor<2x2xi64>, tensor<2x2xi64>) ->
+-        (tensor<2x2xi64>, tensor<2x2xi64>, tensor<2x2xi64>)
++    %inputs3 = stablehlo.constant dense<[[13, 14], [15, 16]]> : tensor<2x2xi64>
++    %inputs4 = stablehlo.constant dense<[[17, 18], [19, 20]]> : tensor<2x2xi64>
++    %results:5 = "interpreter.run_parallel"(%inputs0, %inputs1, %inputs2, %inputs3, %inputs4) {
++      programs=[[@collective_permute], [@collective_permute], [@collective_permute],
++                [@collective_permute], [@collective_permute]]
++    } : (tensor<2x2xi64>, tensor<2x2xi64>, tensor<2x2xi64>, tensor<2x2xi64>, tensor<2x2xi64>) ->
++        (tensor<2x2xi64>, tensor<2x2xi64>, tensor<2x2xi64>,
++         tensor<2x2xi64>, tensor<2x2xi64>)
+     check.expect_eq_const %results#0, dense<[[0, 0], [0, 0]]> : tensor<2x2xi64>
+     check.expect_eq_const %results#1, dense<[[1, 2], [3, 4]]> : tensor<2x2xi64>
+     check.expect_eq_const %results#2, dense<[[5, 6], [7, 8]]> : tensor<2x2xi64>
++    check.expect_eq_const %results#3, dense<[[13, 14], [15, 16]]> : tensor<2x2xi64>
++    check.expect_eq_const %results#4, dense<[[17, 18], [19, 20]]> : tensor<2x2xi64>
+     func.return
+   }
+ }
+ 
+ // -----
+ 
+-module @cross_partition {
++module @cross_partition_with_self_loops {
+   func.func @collective_permute(%operand : tensor<2x2xi64>) -> tensor<2x2xi64> {
+     %result = "stablehlo.collective_permute"(%operand) {
+-      source_target_pairs = dense<[[0, 1], [1, 2]]> : tensor<2x2xi64>,
++      source_target_pairs = dense<[[0, 1], [1, 2], [3, 3], [4, 4]]> : tensor<4x2xi64>,
+       channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>
+     } : (tensor<2x2xi64>) -> tensor<2x2xi64>
+     return %result : tensor<2x2xi64>
+@@ -37,13 +43,18 @@
+     %inputs0 = stablehlo.constant dense<[[1, 2], [3, 4]]> : tensor<2x2xi64>
+     %inputs1 = stablehlo.constant dense<[[5, 6], [7, 8]]> : tensor<2x2xi64>
+     %inputs2 = stablehlo.constant dense<[[9, 10], [11, 12]]> : tensor<2x2xi64>
+-    %results:3 = "interpreter.run_parallel"(%inputs0, %inputs1, %inputs2) {
+-      programs=[[@collective_permute, @collective_permute, @collective_permute]]
+-    } : (tensor<2x2xi64>, tensor<2x2xi64>, tensor<2x2xi64>) ->
+-        (tensor<2x2xi64>, tensor<2x2xi64>, tensor<2x2xi64>)
++    %inputs3 = stablehlo.constant dense<[[13, 14], [15, 16]]> : tensor<2x2xi64>
++    %inputs4 = stablehlo.constant dense<[[17, 18], [19, 20]]> : tensor<2x2xi64>
++    %results:5 = "interpreter.run_parallel"(%inputs0, %inputs1, %inputs2, %inputs3, %inputs4) {
++      programs=[[@collective_permute, @collective_permute, @collective_permute, @collective_permute, @collective_permute]]
++    } : (tensor<2x2xi64>, tensor<2x2xi64>, tensor<2x2xi64>, tensor<2x2xi64>, tensor<2x2xi64>) ->
++        (tensor<2x2xi64>, tensor<2x2xi64>, tensor<2x2xi64>,
++         tensor<2x2xi64>, tensor<2x2xi64>)
+     check.expect_eq_const %results#0, dense<[[0, 0], [0, 0]]> : tensor<2x2xi64>
+     check.expect_eq_const %results#1, dense<[[1, 2], [3, 4]]> : tensor<2x2xi64>
+     check.expect_eq_const %results#2, dense<[[5, 6], [7, 8]]> : tensor<2x2xi64>
++    check.expect_eq_const %results#3, dense<[[13, 14], [15, 16]]> : tensor<2x2xi64>
++    check.expect_eq_const %results#4, dense<[[17, 18], [19, 20]]> : tensor<2x2xi64>
+     func.return
+   }
+ }
 diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
 --- stablehlo/stablehlo/tests/ops_chlo.mlir
 +++ stablehlo/stablehlo/tests/ops_chlo.mlir
