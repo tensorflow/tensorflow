@@ -53,9 +53,10 @@ void GatherFusionInstructions(
 }  // namespace
 
 /* static */ absl::StatusOr<std::unique_ptr<LogicalBufferAnalysis>>
-LogicalBufferAnalysis::Run(const HloModule* module) {
+LogicalBufferAnalysis::Run(const HloModule* module,
+                           bool alias_buffer_across_dataflow) {
   std::unique_ptr<LogicalBufferAnalysis> analysis(
-      new LogicalBufferAnalysis(module));
+      new LogicalBufferAnalysis(module, alias_buffer_across_dataflow));
   RETURN_IF_ERROR(analysis->Analyze());
   return analysis;
 }
