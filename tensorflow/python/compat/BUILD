@@ -10,7 +10,10 @@ py_library(
     name = "v2_compat",
     srcs = ["v2_compat.py"],
     strict_deps = True,
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//smartass/brain/ops:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:monitoring",

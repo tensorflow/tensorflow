@@ -1048,7 +1048,10 @@ py_library(
     name = "tpu_values",
     srcs = ["tpu_values.py"],
     strict_deps = True,
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//smartass/brain/ops:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":packed_distributed_variable",
         ":tpu_replicated_variable",
@@ -1216,7 +1219,10 @@ py_library(
     name = "multi_worker_test_base",
     srcs = ["multi_worker_test_base.py"],
     strict_deps = True,
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//smartass/brain/ops:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":distribute_coordinator",
         ":multi_process_runner",
@@ -2270,7 +2276,10 @@ py_library(
     tags = [
         "no_oss",  # b/241013307 disable flaky under docker
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//smartass/brain/ops:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":multi_process_lib",
         ":multi_worker_util",
@@ -2500,7 +2509,10 @@ distribute_py_strict_test(
 pytype_strict_library(
     name = "parameter_server_strategy_v2",
     srcs = ["parameter_server_strategy_v2.py"],
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//smartass/brain/ops:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":cross_device_ops",
         ":device_util",

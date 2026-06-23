@@ -365,6 +365,7 @@ py_library(
     ],
     strict_deps = True,
     visibility = visibility + [
+        "//smartass:__subpackages__",
         "//tensorflow:internal",
         "//third_party/py/tf_slim:__subpackages__",
     ],
@@ -430,6 +431,7 @@ py_library(
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//ads/adsml/ab:atls_configs",
+    # "//smartass:__subpackages__",
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     # "//third_party/mlperf:__subpackages__",
     # "//third_party/py/tf_slim:__subpackages__",
@@ -467,6 +469,7 @@ py_library(
     strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
+    # "//smartass/brain/ops:__subpackages__",
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     # "//third_party/py/tf_slim:__subpackages__",
     # "//tensorflow:internal",
@@ -513,6 +516,7 @@ py_library(
     data = [":_native_proto_caster"],  # copybara:comment
     strict_deps = True,
     visibility = visibility + [
+        "//smartass/brain:__subpackages__",
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
@@ -630,6 +634,7 @@ py_library(
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//learning/deepmind/deepfunc:__subpackages__",
+    # "//platforms/darwinn:__subpackages__",
     # "//tensorflow:internal",
     # ],
     # copybara:uncomment_end_and_comment_begin
@@ -1854,6 +1859,7 @@ py_library(
     strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = [
+    # "//smartass/brain/configure/python:__pkg__",
     # "//third_party/py/reverb:__subpackages__",
     # "//third_party/py/tf_agents:__subpackages__",
     # "//third_party/py/tf_slim:__subpackages__",

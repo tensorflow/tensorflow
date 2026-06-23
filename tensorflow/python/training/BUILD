@@ -1038,7 +1038,10 @@ py_library(
     name = "server_lib",
     srcs = ["server_lib.py"],
     strict_deps = True,
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//smartass/brain/ops:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:pywrap_tf_session",

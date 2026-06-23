@@ -555,7 +555,9 @@ tf_cc_test(
         "@xla//xla/tsl/lib/monitoring:test_utils",
         "@xla//xla/tsl/platform:criticality",
         "@xla//xla/tsl/platform:statusor",
-    ],
+    ] + if_google([
+        "//base:context",
+    ]),
 )
 
 tf_cc_test(
