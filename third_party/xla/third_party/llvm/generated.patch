@@ -1,32 +1,37 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/test/AST/ByteCode/command-line-options.cpp b/clang/test/AST/ByteCode/command-line-options.cpp
---- a/clang/test/AST/ByteCode/command-line-options.cpp
-+++ b/clang/test/AST/ByteCode/command-line-options.cpp
-@@ -6,11 +6,11 @@
- /// All this should be true if the driver is used or -cc1.
+diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py b/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py
+--- a/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py
++++ b/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py
+@@ -4,6 +4,9 @@
+ TypeSystems tied to that process.
+ """
  
++import os
++import time
++
+ import lldb
+ from lldbsuite.test.lldbtest import *
+ from lldbsuite.test import lldbutil
+@@ -61,6 +64,12 @@
+             }
+         )
  
--// RUN: %clang -c   -fexperimental-new-constant-interpreter %s -Xclang -verify=bc
--// RUN: %clang -cc1 -fexperimental-new-constant-interpreter %s         -verify=bc
-+// RUN: %clang -fsyntax-only -fexperimental-new-constant-interpreter %s -Xclang -verify=bc
-+// RUN: %clang -cc1          -fexperimental-new-constant-interpreter %s         -verify=bc
++        # Age the library file to 10 seconds in the past so that it is rebuilt
++        # and reloaded even on filesystems with 1s resolution.
++        fpath = self.getBuildArtifact(FULL_DYLIB_NAME)
++        old_mtime = time.time() - 10
++        os.utime(fpath, (old_mtime, old_mtime))
++
+         # Build a.out
+         self.build(
+             dictionary={
+@@ -84,9 +93,6 @@
+             result_children=[ValueCheck(name="m_val", value="42")],
+         )
  
--// RUN: %clang -c   -fno-experimental-new-constant-interpreter %s -Xclang -verify=nobc
--// RUN: %clang -cc1 -fno-experimental-new-constant-interpreter %s         -verify=nobc
-+// RUN: %clang -fsyntax-only -fno-experimental-new-constant-interpreter %s -Xclang -verify=nobc
-+// RUN: %clang -cc1          -fno-experimental-new-constant-interpreter %s         -verify=nobc
- 
- 
- /// Note that we're not testing the behavior without those command line options since that
-diff -ruN --strip-trailing-cr a/clang-tools-extra/clangd/test/did-change-configuration-params.test b/clang-tools-extra/clangd/test/did-change-configuration-params.test
---- a/clang-tools-extra/clangd/test/did-change-configuration-params.test
-+++ b/clang-tools-extra/clangd/test/did-change-configuration-params.test
-@@ -48,7 +48,7 @@
- #
- # ERR: ASTWorker building file {{.*}}foo.c version 0 with command
- # ERR: [{{.*}}clangd-test2]
--# ERR: clang -c -Wall -Werror {{.*}} -- {{.*}}foo.c
-+# ERR: clang -c -Wall -Werror{{.*}} -- {{.*}}foo.c
- ---
- {"jsonrpc":"2.0","id":5,"method":"shutdown"}
- ---
+-        # Delete the dylib to force make to rebuild it.
+-        remove_file(self.getBuildArtifact(FULL_DYLIB_NAME))
+-
+         # Re-build libfoo.dylib
+         self.build(
+             dictionary={

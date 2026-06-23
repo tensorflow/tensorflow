@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
-#include "xla/backends/gpu/runtime/scratch_memory_requests.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
@@ -174,10 +173,9 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
                                LocalDeviceId(executor_->device_ordinal())));
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations);
-  ScratchMemoryRequests scratch_memory_requests;
-  Thunk::PrepareParams prepare_params{
-      &collective_params,       &clique_requests, &memory_requests,
-      &scratch_memory_requests, executor_,        &allocations};
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &memory_requests, executor_,
+                                      &allocations};
 
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), allocations, stream_.get(),
