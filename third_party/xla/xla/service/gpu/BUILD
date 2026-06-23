@@ -781,8 +781,6 @@ cc_library(
         "//xla/backends/gpu/runtime:collective_params",
         "//xla/backends/gpu/runtime:command_buffer_conversion_pass",
         "//xla/backends/gpu/runtime:execution_stream_id",
-        "//xla/backends/gpu/runtime:scratch_memory",
-        "//xla/backends/gpu/runtime:scratch_memory_requests",
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/backends/gpu/runtime:thunk_buffer_debug_pass",

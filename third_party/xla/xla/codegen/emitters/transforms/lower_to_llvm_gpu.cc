@@ -61,16 +61,19 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
-
-namespace se = ::stream_executor;
 
 #define GEN_PASS_DEF_LOWERTOLLVMGPUPASS
 #include "xla/codegen/emitters/transforms/lower_to_llvm_gpu.h.inc"
 
+namespace {
+
+namespace se = ::stream_executor;
+
 class LowerToLLVMGPUPass
     : public impl::LowerToLLVMGPUPassBase<LowerToLLVMGPUPass> {
  public:
+  LowerToLLVMGPUPass() = default;
+
   explicit LowerToLLVMGPUPass(const LowerToLLVMGPUPassOptions& options)
       : LowerToLLVMGPUPassBase(options) {}
 
@@ -148,14 +151,7 @@ class LowerToLLVMGPUPass
 
 }  // namespace
 
-std::unique_ptr<::mlir::Pass> CreateLowerToLLVMGPUPass(
-    const std::string& gpu_device_info) {
-  LowerToLLVMGPUPassOptions options;
-  options.gpu_device_info_ = gpu_device_info;
-  return std::make_unique<LowerToLLVMGPUPass>(options);
-}
-
-std::unique_ptr<::mlir::Pass> CreateLowerToLLVMGPUPass(
+std::unique_ptr<::mlir::Pass> createLowerToLLVMGPUPass(
     const se::DeviceDescription& device_description) {
   return std::make_unique<LowerToLLVMGPUPass>(device_description);
 }

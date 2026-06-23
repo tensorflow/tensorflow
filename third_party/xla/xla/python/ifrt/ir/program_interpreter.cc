@@ -82,6 +82,7 @@ namespace {
 
 // Opaque handle that represents an array. Zero is reserved for null.
 using ArrayHandle = uintptr_t;
+static constexpr ArrayHandle kArrayNotUsed = 0;
 
 static MemoryKind kPinnedHostMemoryKind(xla::PinnedHostMemorySpace::kKind);
 
@@ -222,7 +223,7 @@ struct ProgramInterpreterState {
       bool is_donated = donated_input_indices.contains(idx) &&
                         !options.non_donatable_input_indices.contains(idx);
       const ArrayHandle handle = input_handles[idx];
-      if (handle != 0) {
+      if (handle != kArrayNotUsed) {
         env.AssociateArray(handle, ArrayState{
                                        /*array=*/arrays[idx],
                                        /*can_be_donated=*/is_donated,
@@ -268,7 +269,8 @@ ProgramInterpreter::BuildExecuteFn() {
 
   for (const auto [idx, arg] : llvm::enumerate(main_func.getArguments())) {
     // Add to the environment the arrays that are used.
-    const ArrayHandle handle = arg.use_empty() ? 0 : ToArrayHandle(arg);
+    const ArrayHandle handle =
+        arg.use_empty() ? kArrayNotUsed : ToArrayHandle(arg);
     state.input_handles.push_back(handle);
     if (main_func.getArgAttr(idx, kIfrtDonatedArgAttrName) != nullptr) {
       state.donated_input_indices.insert(idx);
@@ -436,7 +438,7 @@ struct CallLoadedExecutableOpState {
 
     for (int i = 0; i < output_handles.size(); ++i) {
       const ArrayHandle handle = output_handles[i];
-      if (handle != 0) {
+      if (handle != kArrayNotUsed) {
         // The output array is kept only if it used later. This can happen if an
         // executable has multiple output arrays, but only some of them are
         // used.
@@ -493,7 +495,8 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
 
   state.is_leaf_op = true;
   for (const auto output : call_loaded_op.getOutputs()) {
-    const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
+    const ArrayHandle handle =
+        output.use_empty() ? kArrayNotUsed : ToArrayHandle(output);
     state.output_handles.push_back(handle);
 
     if (state.is_leaf_op) {
@@ -600,7 +603,7 @@ struct RemapArraysOpState {
         << remap_plan.output_specs.size() << ". " << pretty_print;
     for (int i = 0; i < output_handles.size(); ++i) {
       const ArrayHandle handle = output_handles[i];
-      if (handle != 0) {
+      if (handle != kArrayNotUsed) {
         env.AssociateArray(handle, ArrayState{
                                        /*array=*/std::move(out_arrays[i]),
                                        /*can_be_donated=*/true,
@@ -674,7 +677,8 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   RETURN_IF_ERROR(state.remap_plan.Validate());
 
   for (const auto output : remap_op.getOutputs()) {
-    const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
+    const ArrayHandle handle =
+        output.use_empty() ? kArrayNotUsed : ToArrayHandle(output);
     state.output_handles.push_back(handle);
   }
 
@@ -767,7 +771,7 @@ struct BitcastArraysOpState {
         << inputs.size() << ". " << pretty_print;
     for (int i = 0; i < output_handles.size(); ++i) {
       const ArrayHandle handle = output_handles[i];
-      if (handle != 0) {
+      if (handle != kArrayNotUsed) {
         env.AssociateArray(handle, ArrayState{
                                        /*array=*/std::move(bitcast_arrays[i]),
                                        /*can_be_donated=*/true,
@@ -795,7 +799,8 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   state.bitcast_is_donated = bitcast_op.getDonated();
 
   for (const auto output : bitcast_op.getOutputs()) {
-    const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
+    const ArrayHandle handle =
+        output.use_empty() ? kArrayNotUsed : ToArrayHandle(output);
     state.output_handles.push_back(handle);
     ASSIGN_OR_RETURN(ArraySpec spec, ArraySpecFromMlirType(output.getType(),
                                                            client_, devices_));
@@ -909,7 +914,7 @@ struct CopyArraysOpState {
         << inputs.size() << ". " << pretty_print;
     for (int i = 0; i < output_handles.size(); ++i) {
       const ArrayHandle handle = output_handles[i];
-      if (handle != 0) {
+      if (handle != kArrayNotUsed) {
         env.AssociateArray(handle, ArrayState{
                                        /*array=*/std::move(copied_arrays[i]),
                                        /*can_be_donated=*/true,
@@ -949,7 +954,8 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
                        client_, devices_));
 
   for (const auto output : copy_arrays_op.getOutputs()) {
-    const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
+    const ArrayHandle handle =
+        output.use_empty() ? kArrayNotUsed : ToArrayHandle(output);
     state.output_handles.push_back(handle);
   }
 
