@@ -14,23 +14,24 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tensorflow_graph_matching/resolve_svdf.h"
 
-#include <ctype.h>
-#include <stddef.h>
-
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/toco/tensorflow_graph_matching/cluster.h"
 #include "tensorflow/lite/toco/tensorflow_graph_matching/cluster_utils.h"
 #include "tensorflow/lite/toco/toco_port.h"
@@ -52,25 +53,33 @@ void FilterPartitionedConstNodes(
     const std::vector<const NodeDef*>& cluster_nodes,
     std::vector<const NodeDef*>* const_node_parts) {
   for (const NodeDef* node : cluster_nodes) {
-    std::string node_name_to_upper = node->name();
-    absl::c_transform(node_name_to_upper, node_name_to_upper.begin(),
-                      ::toupper);
+    std::string node_name_to_upper = absl::AsciiStrToUpper(node->name());
     if (StrContains(node->name(), const_pattern) && node->op() == "Const") {
       if (StrContains(node_name_to_upper, "/PART_")) {
         const_node_parts->push_back(node);
       } else if (StrContains(node->name(), "AXIS") &&
                  StrContains(node->name(), "CONCAT")) {
-        // For now only supporting Concatenate on Axix 0
+        // For now only supporting Concatenate on Axis 0
         const auto& value_attr = node->attr().at("value");
         const tensorflow::TensorProto& tensor = value_attr.tensor();
-        ABSL_CHECK_EQ(tensor.int_val(0), 0);
+        int32_t axis_value = 0;
+        if (tensor.int_val_size() > 0) {
+          axis_value = tensor.int_val(0);
+        } else {
+          ABSL_CHECK_EQ(tensor.tensor_content().size(), sizeof(int32_t));
+          port::CopyToBuffer(tensor.tensor_content(),
+                             reinterpret_cast<char*>(&axis_value));
+        }
+        ABSL_CHECK_EQ(axis_value, 0);
       }
     }
   }
   std::sort(const_node_parts->begin(), const_node_parts->end(),
             [](const NodeDef* a, const NodeDef* b) {
-              return (a->name().compare(b->name()) < 0 &&
-                      (a->name().size() < b->name().size()));
+              if (a->name().size() != b->name().size()) {
+                return a->name().size() < b->name().size();
+              }
+              return a->name() < b->name();
             });
 }
 
@@ -80,11 +89,11 @@ void FilterPartitionedConstNodes(
 
 int SvdfCluster::InferFilterRank() {
   for (const NodeDef* node : nodes_) {
-    if (StrContains(node->name(), "Reshape/shape")) {
+    if (StrContains(node->name(), "Reshape/shape") && node->op() == "Const") {
       const auto& value_attr = node->attr().at("value");
       const tensorflow::TensorProto& tensor = value_attr.tensor();
       std::vector<int32> shape_values(
-          tensor.tensor_content().size() / sizeof(int), 0);
+          tensor.tensor_content().size() / sizeof(int32_t), 0);
       port::CopyToBuffer(tensor.tensor_content(),
                          reinterpret_cast<char*>(shape_values.data()));
       ABSL_CHECK_EQ(shape_values.size(), 3);
@@ -113,7 +122,7 @@ void SvdfCluster::CreateNodes() {
   ABSL_CHECK(new_nodes_.size() == 3 || new_nodes_.size() == 2);
   std::string* weights_feature_input = svdf_node->add_input();
   std::string* weights_time_input = svdf_node->add_input();
-  std::string* bias_input;
+  std::string* bias_input = nullptr;
   if (new_nodes_.size() == 3) {
     bias_input = svdf_node->add_input();
   }
@@ -160,14 +169,14 @@ void SvdfCluster::CreateConstNode(const std::string& const_pattern) {
 
   // Merge them if necessary.
   auto merged_node = std::make_unique<NodeDef>();
-  MaybeMergeConstNodes(const_node_parts, transpose_tensor_value, merged_node);
+  MaybeMergeConstNodes(const_node_parts, transpose_tensor_value,
+                       merged_node.get());
   new_nodes_.push_back(std::move(merged_node));
 }
 
 void SvdfCluster::MaybeMergeConstNodes(
     const std::vector<const NodeDef*>& const_node_parts,
-    bool transpose_tensor_value,
-    const std::unique_ptr<tensorflow::NodeDef>& merged_node) {
+    bool transpose_tensor_value, tensorflow::NodeDef* merged_node) {
   merged_node->set_name(const_node_parts[0]->name());
   merged_node->set_op("Const");
   merged_node->set_device(const_node_parts[0]->device());
@@ -181,36 +190,41 @@ void SvdfCluster::MaybeMergeConstNodes(
   // * Float content values
 
   // Inferring shape and dimension
-  int dim0_size = 0;
-  int dim1_size = 1;
+  int64_t dim0_size = 0;
+  int64_t dim1_size = 1;
   tensorflow::TensorProto* allocated_tensor =
       (*merged_node->mutable_attr())["value"].mutable_tensor();
   tensorflow::TensorShapeProto* allocated_tensor_shape =
       allocated_tensor->mutable_tensor_shape();
   auto tensor_shape_dim0 = allocated_tensor_shape->add_dim();
-  int allocated_content_flat_size = 0;
+  size_t allocated_content_flat_size = 0;
   for (size_t i = 0; i < const_node_parts.size(); i++) {
     const auto& value_attr = const_node_parts[i]->attr().at("value");
     const tensorflow::TensorProto& tensor = value_attr.tensor();
     if (i == 0) {
       allocated_tensor->set_dtype(tensor.dtype());
+      ABSL_CHECK(allocated_tensor->dtype() == tensorflow::DT_FLOAT ||
+                 allocated_tensor->dtype() == tensorflow::DT_INVALID);
     } else {
       ABSL_CHECK_EQ(allocated_tensor->dtype(), tensor.dtype());
     }
     allocated_content_flat_size += tensor.tensor_content().size();
     ABSL_CHECK(tensor.has_tensor_shape());
-    const tensorflow::TensorShapeProto shape = tensor.tensor_shape();
+    const tensorflow::TensorShapeProto& shape = tensor.tensor_shape();
     dim0_size += shape.dim(0).size();
+    if (i == 0) {
+      allocated_tensor_shape->set_unknown_rank(shape.unknown_rank());
+    } else {
+      ABSL_CHECK_EQ(allocated_tensor_shape->unknown_rank(),
+                    shape.unknown_rank());
+    }
     for (int d = 1; d < shape.dim_size(); d++) {
       if (i == 0) {
         allocated_tensor_shape->add_dim()->set_size(shape.dim(d).size());
-        allocated_tensor_shape->set_unknown_rank(shape.unknown_rank());
         dim1_size *= shape.dim(d).size();
       } else {
         ABSL_CHECK_EQ(shape.dim(d).size(),
                       allocated_tensor_shape->dim(d).size());
-        ABSL_CHECK_EQ(allocated_tensor_shape->unknown_rank(),
-                      shape.unknown_rank());
       }
     }
   }
@@ -231,7 +245,7 @@ void SvdfCluster::MaybeMergeConstNodes(
   // Transpose the tensor if needed.
   if (transpose_tensor_value) {
     // We use dimension 0 to show the row size for the tensor.
-    // We use multiplication of the rest of dimension size to for the col size
+    // We use multiplication of the rest of dimension size for the col size
     // of the tensor.
     std::unique_ptr<float[]> transposed_tensor(
         new float[dim0_size * dim1_size]);
@@ -242,16 +256,16 @@ void SvdfCluster::MaybeMergeConstNodes(
     allocated_tensor_shape->add_dim()->set_size(dim0_size);
 
     // Set the tensor attributes.
-    allocated_tensor->set_tensor_content(
-        std::string(reinterpret_cast<const char*>(transposed_tensor.get()),
-                    allocated_content_flat_size));
+    allocated_tensor->set_tensor_content(absl::string_view(
+        reinterpret_cast<const char*>(transposed_tensor.get()),
+        allocated_content_flat_size));
   } else {
     tensor_shape_dim0->set_size(dim0_size);
 
     // Set the tensor attributes.
-    allocated_tensor->set_tensor_content(
-        std::string(reinterpret_cast<const char*>(allocated_content.get()),
-                    allocated_content_flat_size));
+    allocated_tensor->set_tensor_content(absl::string_view(
+        reinterpret_cast<const char*>(allocated_content.get()),
+        allocated_content_flat_size));
   }
 }
 
@@ -259,18 +273,18 @@ void SvdfCluster::MaybeMergeConstNodes(
 
 std::unique_ptr<Cluster> SvdfClusterFactory::CreateCluster(
     const NodeDef& node, const GraphDef& graph_def) const {
-  std::vector<std::string> node_patterns = {"SVDF_weights_feature",
-                                            "SVDF_weights_time", "SVDF_bias"};
+  static const auto* node_patterns = new std::vector<std::string>{
+      "SVDF_weights_feature", "SVDF_weights_time", "SVDF_bias"};
 
-  std::string node_name_to_upper = node.name();
-  absl::c_transform(node_name_to_upper, node_name_to_upper.begin(), ::toupper);
+  std::string node_name_to_upper = absl::AsciiStrToUpper(node.name());
   std::unique_ptr<SvdfCluster> cluster = nullptr;
   if (StrContains(node_name_to_upper, "SVDF")) {
-    size_t weights_pos = node.name().find(node_patterns[0]);
+    size_t weights_pos = node.name().find((*node_patterns)[0]);
     if (weights_pos != std::string::npos) {
       // Assuming the node name has a pattern like:
       // "SOMESTRING1/CELLNAME/SEARCH_PATTERN/SOMESTRING2", we use
       // CELLNAME as the cluster name.
+      ABSL_CHECK_GE(weights_pos, 2);
       size_t cell_pos = node.name().rfind('/', weights_pos - 2) + 1;
       std::string cell_name =
           node.name().substr(cell_pos, weights_pos - cell_pos - 1);
@@ -278,9 +292,10 @@ std::unique_ptr<Cluster> SvdfClusterFactory::CreateCluster(
       cluster->SetName(cell_name);
       cluster->SetDevice(node.device());
       cluster->SetGraphDefInfo(&graph_def);
-      ABSL_CHECK(cluster->FindClusterInputsAndOutputs());
+      bool found = cluster->FindClusterInputsAndOutputs();
+      ABSL_CHECK(found);
 
-      for (const std::string& const_pattern : node_patterns) {
+      for (const std::string& const_pattern : *node_patterns) {
         cluster->AddConstNodePattern(const_pattern);
       }
     }
