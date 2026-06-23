@@ -109,8 +109,4 @@ class TritonXLAUnswitchLoopsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateTritonXLAUnswitchLoopsPass() {
-  return std::make_unique<TritonXLAUnswitchLoopsPass>();
-}
-
 }  // namespace mlir::triton::xla

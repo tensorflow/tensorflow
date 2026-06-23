@@ -100,15 +100,23 @@ absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
         b, rhs_scale, b.getDenseI64ArrayAttr(permutation));
   }
 
-  // When operand type is subbyte size then it is packed along minor dim and for
-  // RHS minor dim is not K.
-  const auto& lhs_shaped_type =
-      mlir::dyn_cast<ShapedType>(operands.lhs.getType());
-  const bool rhs_k_pack = lhs_shaped_type.getElementType() !=
-                          mlir::Float4E2M1FNType::get(b.getContext());
+  int64_t lhs_rank = mlir::cast<ShapedType>(operands.lhs.getType()).getRank();
+  int64_t lhs_contracting_dim =
+      operands.dot_dimension_numbers.getLhsContractingDimensions()[0];
+  const bool lhs_k_pack =
+      (lhs_dot_elem_type != mlir::Float4E2M1FNType::get(b.getContext())) ||
+      (lhs_contracting_dim == lhs_rank - 1);
+
+  int64_t rhs_rank = mlir::cast<ShapedType>(operands.rhs.getType()).getRank();
+  int64_t rhs_contracting_dim =
+      operands.dot_dimension_numbers.getRhsContractingDimensions()[0];
+  const bool rhs_k_pack =
+      (rhs_dot_elem_type != mlir::Float4E2M1FNType::get(b.getContext())) ||
+      (rhs_contracting_dim == rhs_rank - 1);
+
   auto dot_scaled_op = xtile::DotScaledOp::create(
       b, operands.accumulator.getType(), operands.lhs, operands.rhs, lhs_scale,
-      rhs_scale, /*fastMath=*/true, /*lhs_k_pack=*/true, rhs_k_pack,
+      rhs_scale, /*fastMath=*/true, lhs_k_pack, rhs_k_pack,
       operands.dot_dimension_numbers);
 
   auto add_result =

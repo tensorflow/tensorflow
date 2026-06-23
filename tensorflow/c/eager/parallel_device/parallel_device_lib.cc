@@ -115,7 +115,7 @@ class DeviceThread {
                     std::vector<TFE_TensorHandle*> inputs,
                     const TFE_OpAttrs* attributes, int expected_max_outputs,
                     CancellationManager& cancellation_manager,
-                    std::optional<int64_t> step_id = absl::nullopt);
+                    std::optional<int64_t> step_id = std::nullopt);
   // Block until the previous `StartExecute` operation has executed. Forwards
   // the status from `TFE_Execute` and returns outputs if the status is OK.
   std::vector<TensorHandlePtr> Join(TF_Status* status);
@@ -156,7 +156,7 @@ class DeviceThread {
   TFE_Context* context_ TF_GUARDED_BY(execution_mutex_);
   const char* operation_name_ TF_GUARDED_BY(execution_mutex_);
   std::optional<int64_t> step_id_ TF_GUARDED_BY(execution_mutex_) =
-      absl::nullopt;
+      std::nullopt;
   std::vector<TFE_TensorHandle*> op_inputs_ TF_GUARDED_BY(execution_mutex_);
   const TFE_OpAttrs* attributes_ TF_GUARDED_BY(execution_mutex_);
   int expected_max_outputs_ TF_GUARDED_BY(execution_mutex_);
@@ -587,7 +587,7 @@ std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
 }
 
 absl::Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (!shape_.has_value()) {
     TF_Status status;
     PartialTensorShape combined_shape;

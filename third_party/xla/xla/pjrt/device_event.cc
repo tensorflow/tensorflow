@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/pjrt/device_event.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <optional>
 
@@ -286,6 +287,103 @@ void PjRtDeviceEventPromiseRef::SetError(absl::Status s) const {
 
 void PjRtDeviceEventPromiseRef::SetReady() const {
   promise_->vtable->set_ready(promise_);
+}
+
+static void DestroyDeviceEventVectorData(PJRT_DeviceEvent* data) {
+  delete[] data;
+}
+
+PjRtDeviceEventRefVector::~PjRtDeviceEventRefVector() { Clear(); }
+
+PjRtDeviceEventRefVector::PjRtDeviceEventRefVector(
+    const PjRtDeviceEventRefVector& other) {
+  reserve(other.size());
+  for (size_t i = 0; i < other.size(); ++i) {
+    push_back(other[i].CopyRef());
+  }
+}
+
+PjRtDeviceEventRefVector::PjRtDeviceEventRefVector(
+    PjRtDeviceEventRefVector&& other) noexcept
+    : vector_(other.vector_) {
+  other.vector_ = {nullptr, 0, 0, nullptr};
+}
+
+PjRtDeviceEventRefVector& PjRtDeviceEventRefVector::operator=(
+    const PjRtDeviceEventRefVector& other) {
+  if (this != &other) {
+    Clear();
+    reserve(other.size());
+    for (size_t i = 0; i < other.size(); ++i) {
+      push_back(other[i].CopyRef());
+    }
+  }
+  return *this;
+}
+
+PjRtDeviceEventRefVector& PjRtDeviceEventRefVector::operator=(
+    PjRtDeviceEventRefVector&& other) noexcept {
+  if (this != &other) {
+    Clear();
+    vector_ = other.vector_;
+    other.vector_ = {nullptr, 0, 0, nullptr};
+  }
+  return *this;
+}
+
+PjRtDeviceEventRefVector::PjRtDeviceEventRefVector(
+    std::initializer_list<PjRtDeviceEventRef> init) {
+  reserve(init.size());
+  for (const auto& ref : init) {
+    push_back(ref.ptr().CopyRef());
+  }
+}
+
+void PjRtDeviceEventRefVector::push_back(const PjRtDeviceEventRef& value) {
+  reserve(vector_.size + 1);
+  vector_.data[vector_.size] = value.ptr().CopyRef().release().ToC();
+  ++vector_.size;
+}
+
+void PjRtDeviceEventRefVector::push_back(PjRtDeviceEventRef&& value) {
+  reserve(vector_.size + 1);
+  vector_.data[vector_.size] = std::move(value).release().ToC();
+  ++vector_.size;
+}
+
+void PjRtDeviceEventRefVector::reserve(size_t new_cap) {
+  if (new_cap <= vector_.capacity) {
+    return;
+  }
+  new_cap = std::max(new_cap, vector_.capacity == 0 ? 4 : vector_.capacity * 2);
+  auto* new_data = new PJRT_DeviceEvent[new_cap];
+  for (size_t i = 0; i < vector_.size; ++i) {
+    new_data[i] = vector_.data[i];
+  }
+  if (vector_.destroy != nullptr) {
+    vector_.destroy(vector_.data);
+  }
+  vector_.data = new_data;
+  vector_.capacity = new_cap;
+  vector_.destroy = DestroyDeviceEventVectorData;
+}
+
+void PjRtDeviceEventRefVector::Clear() {
+  for (size_t i = 0; i < vector_.size; ++i) {
+    PjRtDeviceEventPtr(vector_.data[i]).DecRef();
+  }
+  if (vector_.destroy != nullptr) {
+    vector_.destroy(vector_.data);
+  }
+  vector_ = {nullptr, 0, 0, nullptr};
+}
+
+PjRtDeviceEventRefVector PjRtDeviceEventRefVector::MoveFromC(
+    PJRT_DeviceEventVector* data) {
+  PjRtDeviceEventRefVector v;
+  v.vector_ = *data;
+  *data = {nullptr, 0, 0, nullptr};
+  return v;
 }
 
 }  // namespace xla

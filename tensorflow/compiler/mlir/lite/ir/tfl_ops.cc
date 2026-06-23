@@ -5251,7 +5251,7 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
       const char* raw_input = blob->getData().data();
       if (raw_input != nullptr) {
         static absl::Mutex compute_permutation_mutex(absl::kConstInit);
-        absl::MutexLock lock(&compute_permutation_mutex);
+        absl::MutexLock lock(compute_permutation_mutex);
         // Compute the result and write to `raw_output`.
         ComputePermutation(perms, output_shape, raw_input, element_byte_size,
                            /*current_axis=*/0, raw_output, current_input_index,
@@ -5403,7 +5403,7 @@ void IfOp::getSuccessorRegions(RegionBranchPoint point,
                                SmallVectorImpl<RegionSuccessor>& regions) {
   // The `then` and the `else` region branch back to the parent operation.
   if (!point.isParent()) {
-    regions.push_back(RegionSuccessor::parent());
+    regions.push_back(RegionSuccessor(getOperation()));
     return;
   }
 
@@ -5439,7 +5439,7 @@ void IfOp::getEntrySuccessorRegions(ArrayRef<Attribute> operands,
 }
 
 mlir::ValueRange IfOp::getSuccessorInputs(RegionSuccessor successor) {
-  return successor.isParent() ? getOperation()->getResults() : ValueRange();
+  return successor.isOperation() ? getOperation()->getResults() : ValueRange();
 }
 
 //===----------------------------------------------------------------------===//

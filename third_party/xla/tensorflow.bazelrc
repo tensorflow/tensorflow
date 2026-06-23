@@ -110,7 +110,6 @@ common --define=grpc_no_ares=true
 # TODO: Remove the following two lines once TF doesn't depend on Bazel wrapping
 # all library archives in -whole_archive -no_whole_archive.
 common --noincompatible_remove_legacy_whole_archive
-common --features=-force_no_whole_archive
 
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 common --enable_platform_specific_config
@@ -294,8 +293,8 @@ common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 common:rocm_ci_hermetic --dynamic_mode=off
 common:rocm_ci_hermetic --config=rocm_clang_hermetic
-common:rocm_ci_hermetic --config="gfx908,gfx90a"
-common:rocm_ci_hermetic --repo_env="ROCM_DISTRO_VERSION=rocm_7.12.0_gfx90X"
+common:rocm_ci_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a"
+common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.12.0_gfx90a"
 common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 # This config option is used for SYCL as GPU backend.
@@ -310,9 +309,11 @@ common:sycl --repo_env=SYCL_BUILD_HERMETIC=0
 # Enable Clang for host and icpx for SYCL
 common:icpx_clang --repo_env TF_ICPX_CLANG=1
 common:icpx_clang --copt=-fclang-abi-compat=17
+common:icpx_clang --copt=-Wno-unknown-warning-option
 
 # Hermetic SYCL Configuration
 common:sycl_hermetic --config=sycl
+common:sycl_hermetic --config=icpx_clang
 common:sycl_hermetic --repo_env=SYCL_BUILD_HERMETIC=1
 
 # Options to disable default on features

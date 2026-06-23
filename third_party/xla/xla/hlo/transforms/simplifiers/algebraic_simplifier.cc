@@ -4190,6 +4190,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   if (dot->user_count() == 1 &&
       dot->users().front()->IsCustomCall("Sharding")) {
     const HloInstruction* user = dot->users().front();
+    if (user->has_sharding()) {
+      const HloSharding& sharding = user->sharding();
+      if (sharding.IsUnreduced() || sharding.IsUnreducedSubgroup()) {
+        return absl::OkStatus();
+      }
+    }
     if (user->has_frontend_attributes()) {
       std::optional<std::string> sharding_attr =
           user->get_frontend_attribute(HloSharding::kShardingFrontendAttrName);

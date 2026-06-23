@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
-#include "xla/backends/gpu/runtime/scratch_memory_requests.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
@@ -66,7 +67,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -543,6 +543,23 @@ TEST(AllReduceThunkTest, RecordCommandBufferCreateUpdateAsyncCollectiveKernel) {
   std::vector<CollectiveThunk::Buffer> buffers = {
       MakeNoOpBuffer(alloc_src, alloc_dst, kLength)};
 
+  static constexpr absl::string_view kDummyKernelSource = R"(
+    .version 8.7
+    .target sm_90
+    .address_size 64
+
+    .visible .entry dummy_kernel(
+    .param .u64 .ptr .align 1 input_buffer,
+    .param .u64 .ptr .align 1 output_buffer,
+    .param .u32 rank,
+    .param .u64 signal_value,
+    .param .u64 .ptr .align 1 signal_buffers,
+    .param .u64 .ptr .align 1 remote_buffers
+    ) {
+      ret;
+    }
+  )";
+
   ReplicaGroup replica_group;
   replica_group.add_replica_ids(0);
   AllReduceConfig config = MakeSumConfig();
@@ -553,10 +570,10 @@ TEST(AllReduceThunkTest, RecordCommandBufferCreateUpdateAsyncCollectiveKernel) {
   auto collective_kernel_thunk = std::make_unique<CollectiveKernelThunk>(
       Thunk::ThunkInfo(), config.config, config.reduction_kind,
       /*is_async=*/true, buffers,
-      /*is_collective_kernel_enabled=*/true);
+      /*is_collective_kernel_enabled=*/true, "dummy_kernel",
+      LaunchDimensions(1, 1));
   CollectiveKernelThunk* collective_kernel_thunk_ptr =
       collective_kernel_thunk.get();
-
   AsyncCollectiveKernelAllReduceThunk thunk(Thunk::ThunkInfo(), config, buffers,
                                             std::move(collective_kernel_thunk));
 
@@ -597,10 +614,9 @@ TEST(AllReduceThunkTest, RecordCommandBufferCreateUpdateAsyncCollectiveKernel) {
 
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations1);
-  ScratchMemoryRequests scratch_memory_requests;
-  Thunk::PrepareParams prepare_params{
-      &collective_params,       &clique_requests, &memory_requests,
-      &scratch_memory_requests, executor,         &allocations1};
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &memory_requests, executor,
+                                      &allocations1};
   ASSERT_OK(thunk.Prepare(prepare_params));
 
   Thunk::InitializeParams initialize_params;
@@ -608,6 +624,7 @@ TEST(AllReduceThunkTest, RecordCommandBufferCreateUpdateAsyncCollectiveKernel) {
   initialize_params.stream = stream.get();
   initialize_params.buffer_allocations = &allocations1;
   initialize_params.collective_params = &collective_params;
+  initialize_params.src.text = kDummyKernelSource;
   ASSERT_OK(thunk.Initialize(initialize_params));
   ASSERT_OK(stream->BlockHostUntilDone());
 

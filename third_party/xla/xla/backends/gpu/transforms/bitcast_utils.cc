@@ -308,17 +308,29 @@ absl::StatusOr<BitcastParams> CalculateBitcastOfTransposeImpl(
     auto [result_from, transpose_from] = factors[i - 1];
     auto [result_to, transpose_to] = factors[i];
 
+    // Calculate the product of the result dimensions in the group. This allows
+    // us to know whether a trivial dimension corresponds to a trivial group
+    // (group_product == 1) and should be kept to preserve rank, or whether it
+    // is getting absorbed into a larger group, so we can safely ignore it when
+    // calculating contiguity.
+    int64_t group_product = 1;
+    for (int64_t k = result_from; k < result_to; ++k) {
+      group_product *=
+          result_shape.dimensions(result_shape.layout().minor_to_major(k));
+    }
+
     llvm::SmallVector<int64_t> indices;
     indices.reserve(transpose_to - transpose_from);
     for (int64_t j = transpose_from; j < transpose_to; ++j) {
       int64_t dim_index = transpose_shape.layout().minor_to_major(j);
       int64_t index = operand_inv_layout[transpose_dims[dim_index]];
 
-      if (transpose_shape.dimensions(dim_index) == 1) {
+      if (transpose_shape.dimensions(dim_index) == 1 && group_product > 1) {
         // Size-1 dimensions do not affect the physical layout, so we can ignore
         // them for the purpose of checking contiguity. We mark them with an
-        // empty range in the operand_to_result_range map, so that they are
-        // dropped from the new bitcast/transpose shape.
+        // empty range so they are absorbed (dropped) into the collapsed group.
+        // We only do this if the group product is > 1; otherwise we must keep
+        // them to preserve the rank of the shape.
         operand_to_result_range[index] = {result_from, result_from};
         continue;
       }
@@ -330,10 +342,11 @@ absl::StatusOr<BitcastParams> CalculateBitcastOfTransposeImpl(
 
       // Check that the physical operand indices form a contiguous range.
       indices.push_back(index);
-    };
+    }
 
     if (indices.empty()) {
-      // If all dimensions are size 1, we can just drop them.
+      // This can only happen if the group was empty on the transpose side
+      // (e.g., scalar to tensor bitcast). We skip mapping for this empty group.
       continue;
     }
     if (indices.back() - indices.front() >= indices.size() ||

@@ -150,14 +150,6 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
     return *hint;
   }
 
-  // TODO tixxx: nvshmem default one-shot allreduce algo requires
-  // separate buffers for IO, remove this once nvshmem is upgraded to 3.3
-  if (user->opcode() == HloOpcode::kAllReduceStart) {
-    if (absl::StrContainsIgnoreCase(user->raw_backend_config_string(),
-                                    "nvshmem")) {
-      return {};
-    }
-  }
   if (IsDefaultInPlaceOperation(user)) {
     int64_t num_in_place_operands = user->operand_count();
     const HloScatterInstruction* scatter = DynCast<HloScatterInstruction>(user);

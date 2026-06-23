@@ -91,6 +91,11 @@ class CuptiInterface {
                                             size_t valid_buffer_size_bytes,
                                             CUpti_Activity** record) = 0;
 
+  virtual CUptiResult ActivityGetNextRecordV2(CUpti_SubscriberHandle subscriber,
+                                              uint8_t* buffer,
+                                              size_t valid_buffer_size_bytes,
+                                              CUpti_Activity** record) = 0;
+
   virtual CUptiResult ActivityGetNumDroppedRecords(CUcontext context,
                                                    uint32_t stream_id,
                                                    size_t* dropped) = 0;
@@ -133,6 +138,9 @@ class CuptiInterface {
   virtual CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) = 0;
 
   virtual CUptiResult GetTimestamp(uint64_t* timestamp) = 0;
+
+  virtual CUptiResult GetTimestampV2(CUpti_SubscriberHandle subscriber,
+                                     uint64_t* timestamp) = 0;
 
   virtual CUptiResult Finalize() = 0;
 

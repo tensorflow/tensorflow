@@ -2407,7 +2407,38 @@ TEST(ArrayImplTest, Delete) {
                                       /*byte_strides=*/std::nullopt, sharding,
                                       /*layout=*/nullptr, semantics,
                                       /*on_done_with_host_buffer=*/{}));
-  TF_EXPECT_OK(array->Delete().Await());
+  EXPECT_OK(array->Delete().Await());
+  EXPECT_TRUE(array->IsDeleted());
+}
+
+TEST(ArrayImplTest, BatchedDelete) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  std::vector<ValueRef> values;
+  for (int i = 0; i < 10; ++i) {
+    DType dtype(DType::kF32);
+    Shape shape({2, 3});
+    std::vector<float> data(6);
+    absl::c_iota(data, 0);
+    Device* device = client->addressable_devices().at(0);
+    ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+    auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        values.emplace_back(),
+        client->MakeArrayFromHostBuffer(data.data(), dtype, shape,
+                                        /*byte_strides=*/std::nullopt, sharding,
+                                        /*layout=*/nullptr, semantics,
+                                        /*on_done_with_host_buffer=*/{}));
+  }
+
+  // Delete the first value separately to test that Delete is idempotent.
+  EXPECT_OK(values.front()->Delete().Await());
+  EXPECT_OK(client->DeleteValues(absl::MakeSpan(values)).Await());
+
+  for (const auto& value : values) {
+    EXPECT_TRUE(value->IsDeleted());
+  }
 }
 
 TEST(ArrayImplTest, DeleteIsIdempotent) {

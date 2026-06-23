@@ -36,6 +36,11 @@ struct GpuAllocatorConfig {
            // uses CUDA VMM APIs to manage virtual address space separately from
            // physical memory, enabling features like memory oversubscription
            // and fine-grained memory mapping control.
+    kAddress,  // Synchronous passthrough allocator that calls the
+               // StreamExecutor Allocate/Deallocate APIs directly, with no BFC
+               // caching or growth. Unlike kPlatform, it constructs a dedicated
+               // StreamExecutorAddressAllocator at the PJRT level and does NOT
+               // share the LocalClient/Backend allocator.
   };
   Kind kind = Kind::kDefault;
 

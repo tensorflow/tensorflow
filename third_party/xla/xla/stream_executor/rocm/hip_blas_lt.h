@@ -13,11 +13,13 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_HIP_BLAS_LT_H_
 #define XLA_STREAM_EXECUTOR_ROCM_HIP_BLAS_LT_H_
 
+#include <any>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
@@ -127,7 +129,12 @@ class BlasLt : public gpu::BlasLt {
         size_t max_algorithm_count, size_t max_workspace_size) const override;
 
     absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) override {
-      algorithm_ = algorithm;
+      auto palgo = std::any_cast<hipblasLtMatmulAlgo_t>(&algorithm.opaque_algo);
+      if (palgo == nullptr) {
+        return absl::InternalError("Invalid algorithm type!");
+      }
+      algorithm_ = *palgo;
+      workspace_size_ = algorithm.workspace_size;
       return absl::OkStatus();
     }
 
@@ -140,7 +147,8 @@ class BlasLt : public gpu::BlasLt {
     MatrixLayout d_desc_;
     alignas(16) std::array<uint8_t, kMaxScaleBytes> alpha_, beta_;
     bool must_swap_operands_;
-    mutable std::optional<MatmulAlgorithm> algorithm_;  // selected algorithm
+    mutable std::optional<hipblasLtMatmulAlgo_t> algorithm_;
+    size_t workspace_size_ = 0;
   };  // class RegularMatmulPlan
 
   class GroupedMatmulPlan : public gpu::BlasLt::MatmulPlan {
@@ -160,7 +168,11 @@ class BlasLt : public gpu::BlasLt {
         size_t max_algorithm_count, size_t max_workspace_size) const override;
 
     absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) override {
-      algorithm_ = algorithm;
+      auto palgo = std::any_cast<hipblasLtMatmulAlgo_t>(&algorithm.opaque_algo);
+      if (palgo == nullptr) {
+        return absl::InternalError("Invalid algorithm type!");
+      }
+      algorithm_ = *palgo;
       algorithm_dirty_ = true;
       return absl::OkStatus();
     }
@@ -173,13 +185,45 @@ class BlasLt : public gpu::BlasLt {
     gpu::GroupedGemmConfig cfg_;
     Epilogue epilogue_ = Epilogue::kDefault;
     std::unique_ptr<hipblaslt_ext::GroupedGemm> grouped_gemm_;
-    mutable std::optional<MatmulAlgorithm> algorithm_;  // selected algorithm
+    mutable std::optional<hipblasLtMatmulAlgo_t> algorithm_;
     mutable bool algorithm_dirty_ = false;
     mutable DeviceAddressBase saved_address_workspace_{};
     // Saved default activation parameters from hipBLASLt
     int32_t activation_type_ = 0;
     int8_t bias_type_ = 0;
   };  // class GroupedMatmulPlan
+
+  // Executes complex (C64/C128) matmuls via rocBLAS (rocblas_cgemm/zgemm),
+  // since hipBLASLt has no complex GEMM kernels in current ROCm releases.
+  class RocBlasGemmPlan : public gpu::BlasLt::MatmulPlan {
+   public:
+    friend class BlasLt;
+
+    RocBlasGemmPlan(const BlasLt& blas_lt, const gpu::GemmConfig& cfg)
+        : blas_lt_(blas_lt), cfg_(cfg) {}
+
+    ~RocBlasGemmPlan() override = default;
+
+    absl::Status ExecuteOnStream(
+        Stream* stream, const gpu::BlasLt::MemoryArgs& args,
+        blas::ProfileResult* profile_result) const override;
+
+    // Advertise a single no-workspace pseudo-algorithm so the autotuner /
+    // thunk machinery proceeds unchanged (hipBLASLt heuristics are unused).
+    absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
+        size_t /*max_algorithm_count*/,
+        size_t /*max_workspace_size*/) const override {
+      return std::vector<MatmulAlgorithm>{MatmulAlgorithm{std::any{}, 0}};
+    }
+
+    absl::Status SetAlgorithm(const MatmulAlgorithm& /*algorithm*/) override {
+      return absl::OkStatus();
+    }
+
+   private:
+    const BlasLt& blas_lt_;
+    gpu::GemmConfig cfg_;
+  };  // class RocBlasGemmPlan
 
   explicit BlasLt(StreamExecutor* executor)
       : executor_(executor), handle_(nullptr, hipblasLtDestroy) {}

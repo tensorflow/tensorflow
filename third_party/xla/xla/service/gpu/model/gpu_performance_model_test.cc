@@ -54,7 +54,7 @@ using ::mlir::MLIRContext;
 
 class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
  public:
-  GpuPerformanceModelTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+  GpuPerformanceModelTest() = default;
   GpuPerformanceModel::RunTimes EstimateRunTimes(
       const HloInstruction* producer,
       std::vector<HloInstruction*> fused_consumers = {}) {
@@ -67,7 +67,6 @@ class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
                                                    fused_consumers);
   }
 
-  MLIRContext mlir_context_;
   GpuHloCostAnalysis::Options options_{.count_multiple_input_accesses = true};
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
@@ -76,8 +75,7 @@ class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
   GpuHloCostAnalysis analysis_{options_, device_info_};
   GpuPerformanceModelCache gpu_performance_model_cache_;
   GpuPerformanceModel gpu_performance_model_{
-      device_info_, fusion_analysis_cache_, gpu_performance_model_cache_,
-      &mlir_context_};
+      device_info_, fusion_analysis_cache_, gpu_performance_model_cache_};
 };
 
 TEST_F(GpuPerformanceModelTest, LargeWrite) {

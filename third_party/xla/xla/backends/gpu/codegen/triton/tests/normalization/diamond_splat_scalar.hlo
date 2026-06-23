@@ -1,5 +1,7 @@
-// RUN: hlo_to_xtileir %s | FileCheck %s
-// RUN: triton_test_correctness %s
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s --check-prefix=CHECK-OLD,CHECK
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s --check-prefix=CHECK-NEW,CHECK
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation %s
 
 max_computation {
   x = f32[] parameter(0)
@@ -17,15 +19,17 @@ fusion {
   broadcast_0 = f32[64,32,16]{2,1,0} broadcast(reduce_0), dimensions={0,1}
   ROOT _ = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
 }
-// CHECK:         #xla.indexing_map<"(pid_0) -> (pid_0 / 32), domain: pid_0 in [0, 2047]">
-// CHECK:         #xla.indexing_map<"(pid_0) -> (pid_0 mod 32), domain: pid_0 in [0, 2047]">
-// CHECK-LABEL:   xtile.entry_func @triton_fn(
-// CHECK-SAME:        %[[P0:[A-Za-z0-9_]*]]: memref<64x32x16xf32>
-// CHECK-SAME:        %[[P1:[A-Za-z0-9_]*]]: memref<f32>
-// CHECK-SAME:        %[[P2:[A-Za-z0-9_]*]]: memref<64x32x16xf32>
-// CHECK-DAG:       xtile.extract {{.*}} -> tensor<f32>
-// CHECK-DAG:       xtile.extract {{.*}} -> tensor<1x1x16xf32>
-// CHECK:           xtile.insert {{.*}} : tensor<1x1x16xf32>
+// CHECK-OLD:   #xla.indexing_map<"(pid_0) -> (pid_0 / 32), domain: pid_0 in [0, 2047]">
+// CHECK-OLD:   #xla.indexing_map<"(pid_0) -> (pid_0 mod 32), domain: pid_0 in [0, 2047]">
+// CHECK-NEW:   #xla.indexing_map<"(pid) -> (pid / 32), domain: pid in [0, 2047]">
+// CHECK-NEW:   #xla.indexing_map<"(pid) -> (pid mod 32), domain: pid in [0, 2047]">
+// CHECK-LABEL: xtile.entry_func @triton_fn(
+// CHECK-SAME:      %[[P0:[A-Za-z0-9_]*]]: memref<64x32x16xf32>
+// CHECK-SAME:      %[[P1:[A-Za-z0-9_]*]]: memref<f32>
+// CHECK-SAME:      %[[P2:[A-Za-z0-9_]*]]: memref<64x32x16xf32>
+// CHECK-DAG:   xtile.extract %[[P1]]{{.*}} -> tensor<f32>
+// CHECK-DAG:   xtile.extract %[[P0]]{{.*}} -> tensor<1x1x16xf32>
+// CHECK:       xtile.insert {{.*}} into %[[P2]]
 
 ENTRY main {
   parameter_0 = f32[64,32,16]{2,1,0} parameter(0)

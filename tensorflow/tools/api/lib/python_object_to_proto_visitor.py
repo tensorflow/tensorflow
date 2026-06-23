@@ -329,10 +329,15 @@ class PythonObjectToProtoVisitor:
     def _AddMember(member_name, member_obj, proto):
       """Add the child object to the object being constructed."""
       _, member_obj = tf_decorator.unwrap(member_obj)
-      if (_SkipMember(parent, member_name) or
-          isinstance(member_obj, deprecation.HiddenTfApiAttribute)):
+      if _SkipMember(parent, member_name) or isinstance(
+          member_obj, deprecation.HiddenTfApiAttribute
+      ):
         return
-      if member_name == '__init__' or not member_name.startswith('_'):
+      is_tuple_subclass = isinstance(parent, type) and issubclass(parent, tuple)
+      is_allowed_dunder = member_name == '__init__' or (
+          member_name == '__new__' and is_tuple_subclass
+      )
+      if is_allowed_dunder or not member_name.startswith('_'):
         if _IsApiMethod(member_obj):
           new_method = proto.member_method.add()
           new_method.name = member_name

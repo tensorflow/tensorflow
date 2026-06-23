@@ -1,1 +1,37 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py b/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py
+--- a/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py
++++ b/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py
+@@ -4,6 +4,9 @@
+ TypeSystems tied to that process.
+ """
+ 
++import os
++import time
++
+ import lldb
+ from lldbsuite.test.lldbtest import *
+ from lldbsuite.test import lldbutil
+@@ -61,6 +64,12 @@
+             }
+         )
+ 
++        # Age the library file to 10 seconds in the past so that it is rebuilt
++        # and reloaded even on filesystems with 1s resolution.
++        fpath = self.getBuildArtifact(FULL_DYLIB_NAME)
++        old_mtime = time.time() - 10
++        os.utime(fpath, (old_mtime, old_mtime))
++
+         # Build a.out
+         self.build(
+             dictionary={
+@@ -84,9 +93,6 @@
+             result_children=[ValueCheck(name="m_val", value="42")],
+         )
+ 
+-        # Delete the dylib to force make to rebuild it.
+-        remove_file(self.getBuildArtifact(FULL_DYLIB_NAME))
+-
+         # Re-build libfoo.dylib
+         self.build(
+             dictionary={

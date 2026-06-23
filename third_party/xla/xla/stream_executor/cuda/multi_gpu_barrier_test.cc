@@ -118,15 +118,17 @@ absl::StatusOr<std::vector<std::unique_ptr<MemoryAllocation>>> AllocateBuffers(
 
 absl::StatusOr<std::vector<std::unique_ptr<xla::SymmetricMemory>>>
 CreateSymmetricMemory(
-    tsl::Executor& exec, const std::vector<ncclComm_t>& comms,
+    std::shared_ptr<tsl::Executor> exec, const std::vector<ncclComm_t>& comms,
     const std::vector<std::unique_ptr<MemoryAllocation>>& buffers) {
   int64_t num_devices = comms.size();
   std::vector<tsl::Future<std::unique_ptr<xla::gpu::NcclSymmetricMemory>>>
       symmetric_memory_futures(num_devices);
   for (int i = 0; i < num_devices; ++i) {
-    symmetric_memory_futures[i] = tsl::MakeFutureOn(exec, [&, i]() {
-      return xla::gpu::NcclSymmetricMemory::Create(comms[i],
-                                                   buffers[i]->address());
+    symmetric_memory_futures[i] = tsl::MakeFutureOn(*exec, [&, exec, i]() {
+      std::shared_ptr<xla::gpu::NcclCommState> comm_state =
+          std::make_shared<xla::gpu::NcclCommState>(comms[i]);
+      return xla::gpu::NcclSymmetricMemory::Create(comm_state,
+                                                   buffers[i]->address(), exec);
     });
   }
 
@@ -245,7 +247,8 @@ TEST_F(MultiGpuBarrierTest, BarrierSynchronizationWithNccl) {
   ASSERT_EQ(result, ncclSuccess);
 
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "nccl", num_devices_);
-  tsl::Executor& exec = *pool.AsExecutor();
+  auto exec =
+      std::shared_ptr<tsl::Executor>(pool.AsExecutor(), [](tsl::Executor*) {});
 
   ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<xla::SymmetricMemory>>
                            signal_buffer_symmetric_memory,

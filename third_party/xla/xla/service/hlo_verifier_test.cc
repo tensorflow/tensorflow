@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
@@ -5543,6 +5544,30 @@ TEST_F(HloVerifierTest, RejectsGetRngSeedWithU32Shape) {
   EXPECT_THAT(
       verifier().Run(module.get()),
       StatusIs(absl::StatusCode::kInternal, HasSubstr("must return U64 type")));
+}
+
+TEST_F(HloVerifierTest, RejectsMismatchedOriginalValueTupleStructure) {
+  HloComputation::Builder builder(TestName());
+  const Shape shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {}), ShapeUtil::MakeShape(F32, {})});
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  auto module = CreateUnverifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  // Set original_value with a different shape structure.
+  const Shape different_shape = ShapeUtil::MakeShape(F32, {});
+  auto original_value = std::make_shared<OriginalValue>(different_shape);
+  param->set_original_value(original_value);
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("Mismatched tuple structure in shape and original value"));
+  EXPECT_THAT(status.message(), HasSubstr("Module: module"));
+  EXPECT_THAT(status.message(),
+              HasSubstr("Instruction: %param = (f32[], f32[]) parameter(0), "
+                        "origin={{}}"));
 }
 
 }  // namespace

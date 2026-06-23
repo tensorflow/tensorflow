@@ -374,10 +374,10 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
                        LocalDeviceState* local_device,
                        EventPool::Handle device_event, se::Stream* stream);
 
-  absl::Status AllocateAndRecordEvent(BufferSequencingEventRef event,
-                                      LocalDeviceState* local_device,
-                                      se::Stream* stream,
-                                      absl::string_view tag = "");
+  absl::Status AllocateAndRecordEvent(
+      BufferSequencingEventRef event, LocalDeviceState* local_device,
+      se::Stream* stream, absl::string_view tag = "",
+      absl::AnyInvocable<void() &&> cleanup = {});
 
   PjRtDeviceEventRef CreateErrorDeviceEvent(absl::Status error);
 
@@ -448,7 +448,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       size_t size, PjRtMemorySpace* memory_space) override;
 
   absl::Status WaitForAllocation(se::Stream* stream,
-                                 const CommonPjRtRawBuffer& raw_buffer);
+                                 const PjRtRawBufferInterface& raw_buffer);
 
   void LaunchOnDevice(PjRtDevice* device,
                       absl::AnyInvocable<void()> execute_fn) const override;
@@ -572,8 +572,8 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
   PjRtRawLoadedExecutable::RawExecuteResult Execute(
       const ExecuteOptions& options, absl::Span<const PjRtRawBufferRef> inputs,
       absl::Span<const PjRtRawBufferRef> results,
-      std::vector<PjRtDeviceEventRef> extra_deps,
-      std::vector<PjRtDeviceEventRef> control_deps, bool is_predetermined_error,
+      PjRtDeviceEventRefVector extra_deps,
+      PjRtDeviceEventRefVector control_deps, bool is_predetermined_error,
       bool fill_future) &&
       override;
 

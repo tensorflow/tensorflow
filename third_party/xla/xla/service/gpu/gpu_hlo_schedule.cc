@@ -500,7 +500,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
         auto sol = SolLatencyEstimator::Create(
             config, std::move(gpu_latency_estimator), gpu_device_info,
             ShapeSizeBytesFunction(pointer_size), module.entry_computation(),
-            mlir_context, std::move(cost_analysis));
+            std::move(cost_analysis));
         if (sol.ok()) {
           base_estimator = std::move(*sol);
           VLOG(1) << "PGLE fallback: using SolLatencyEstimator";
@@ -529,8 +529,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
     VLOG(1) << "Using analytical latency estimator";
     return std::make_unique<AnalyticalLatencyEstimator>(
         config, std::move(gpu_latency_estimator), gpu_device_info,
-        ShapeSizeBytesFunction(pointer_size), module.entry_computation(),
-        mlir_context);
+        ShapeSizeBytesFunction(pointer_size), module.entry_computation());
   }
 
   if (SolLatencyEstimator::IsSupportedForModule(module, gpu_device_info)) {
@@ -553,7 +552,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
     auto sol_latency_estimator = SolLatencyEstimator::Create(
         config, std::move(gpu_latency_estimator), gpu_device_info,
         ShapeSizeBytesFunction(pointer_size), module.entry_computation(),
-        mlir_context, std::move(cost_analysis));
+        std::move(cost_analysis));
     if (sol_latency_estimator.ok()) {
       return std::move(*sol_latency_estimator);
     }
@@ -786,8 +785,8 @@ bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint,
 }
 
 absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
-    const HloModule* module, const GpuAliasInfo* alias_info,
-    int64_t pointer_size, int64_t* peak_memory_bytes) {
+    HloModule* module, const GpuAliasInfo* alias_info, int64_t pointer_size,
+    int64_t* peak_memory_bytes) {
   BufferValue::SizeFunction size_func =
       [pointer_size](const BufferValue& buffer) -> int64_t {
     const Shape& shape = buffer.shape();

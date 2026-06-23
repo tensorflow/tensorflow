@@ -769,23 +769,4 @@ class TritonXLAExtractInsertToTritonPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass() {
-  return std::make_unique<TritonXLAExtractInsertToTritonPass>();
-}
-
-std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
-    bool allow_tma, int num_stages) {
-  return std::make_unique<TritonXLAExtractInsertToTritonPass>(
-      TritonXLAExtractInsertToTritonPassOptions{allow_tma,
-                                                /*allow_tdm=*/false,
-                                                num_stages});
-}
-
-std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
-    bool allow_tma, bool allow_tdm, int num_stages) {
-  return std::make_unique<TritonXLAExtractInsertToTritonPass>(
-      TritonXLAExtractInsertToTritonPassOptions{allow_tma, allow_tdm,
-                                                num_stages});
-}
-
 }  // namespace mlir::triton::xla

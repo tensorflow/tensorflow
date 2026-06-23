@@ -34,18 +34,21 @@ void CreateTritonXlaPipeline(
     const stream_executor::GpuComputeCapability& gpu_cc, bool rewrite_int4,
     bool allow_tma, int num_stages, bool warp_specialization_allowed,
     bool enable_pdl) {
-  pm->addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
-  pm->addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
-  pm->addPass(mlir::triton::xla::CreateTritonXLALowerBlockBarrierPass());
-  pm->addPass(mlir::triton::xla::CreateTritonXLALowerAtomicsPass());
-  pm->addPass(mlir::triton::xla::CreateTritonXLALowerGetTidPass());
-  pm->addPass(mlir::triton::xla::CreateTritonXLALowerXTilePass());
-  pm->addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass(
-      warp_specialization_allowed));
-  pm->addPass(mlir::triton::xla::CreateTritonXLAFoldReshapeAroundForLoopPass());
+  pm->addPass(mlir::triton::xla::createTritonXLASqueezeDimsPass());
+  pm->addPass(mlir::triton::xla::createTritonXLAFoldTransposePass());
+  pm->addPass(mlir::triton::xla::createTritonXLALowerBlockBarrierPass());
+  pm->addPass(mlir::triton::xla::createTritonXLALowerAtomicsPass());
+  pm->addPass(mlir::triton::xla::createTritonXLALowerGetTidPass());
+  pm->addPass(mlir::triton::xla::createTritonXLALowerXTilePass());
+  mlir::triton::xla::StableHLOLowerToTritonPassOptions stablehlo_raw_options;
+  stablehlo_raw_options.warp_specialization_allowed_ =
+      warp_specialization_allowed;
+  pm->addPass(mlir::triton::xla::createStableHLOLowerToTritonPass(
+      stablehlo_raw_options));
+  pm->addPass(mlir::triton::xla::createTritonXLAFoldReshapeAroundForLoopPass());
 
-  pm->addPass(emitters::CreateSafeIntegerArithmeticPass());
-  pm->addPass(mlir::triton::xla::CreateUnsupportedElementwiseToTritonPass());
+  pm->addPass(emitters::createSafeIntegerArithmeticPass());
+  pm->addPass(mlir::triton::xla::createUnsupportedElementwiseToTritonPass());
 
   auto* cuda_cc = gpu_cc.cuda_compute_capability();
   bool is_at_least_hopper = cuda_cc != nullptr && cuda_cc->IsAtLeastHopper();
@@ -54,31 +57,36 @@ void CreateTritonXlaPipeline(
   bool rocm_supports_tdm = rocm_cc != nullptr && rocm_cc->has_tdm_support();
 
   if (rewrite_int4) {
-    pm->addPass(mlir::triton::xla::CreateInt4ToPackedInt4RewritePass(
-        /*enable_bf16x2=*/is_at_least_hopper));
+    mlir::triton::xla::LoadInt4RewritePassOptions options;
+    options.enable_bf16x2_ = is_at_least_hopper;
+    pm->addPass(mlir::triton::xla::createLoadInt4RewritePass(options));
   }
 
   if (enable_pdl) {
     pm->addPass(CreateInsertPDLPass());
   }
-  pm->addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
-      /*allow_tma=*/allow_tma && is_at_least_hopper,
-      /*allow_tdm=*/rocm_supports_tdm, num_stages));
+  mlir::triton::xla::TritonXLAExtractInsertToTritonPassOptions
+      extract_insert_options;
+  extract_insert_options.allow_tma_ = allow_tma && is_at_least_hopper;
+  extract_insert_options.allow_tdm_ = rocm_supports_tdm;
+  extract_insert_options.num_stages_ = num_stages;
+  pm->addPass(mlir::triton::xla::createTritonXLAExtractInsertToTritonPass(
+      extract_insert_options));
   if (enable_pdl) {
-    pm->addPass(emitters::CreateLowerPdlWaitPass());
+    pm->addPass(emitters::createLowerPdlWaitPass());
   }
 
   // Lower affine expressions into arithmetic ops.
   pm->addPass(mlir::createLowerAffinePass());
 
   // Lower xla_gpu.apply_indexing into arithmetic ops.
-  pm->addPass(emitters::CreateSimplifyAffinePass());
+  pm->addPass(emitters::createSimplifyAffinePass());
   pm->addPass(CreateConvertIndexTypePass());
   pm->addPass(mlir::createCompositeFixedPointPass(
       "TritonXLAUnswitchLoopsComposite", [](mlir::OpPassManager& pm) {
         // Loop unswitcher needs loop invariant code to be outside of the loop.
         pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-        pm.addPass(mlir::triton::xla::CreateTritonXLAUnswitchLoopsPass());
+        pm.addPass(mlir::triton::xla::createTritonXLAUnswitchLoopsPass());
         pm.addPass(mlir::createCanonicalizerPass());
       }));
 }

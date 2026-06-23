@@ -649,6 +649,28 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "dot_dimension_normalizer",
+    srcs = ["dot_dimension_normalizer.cc"],
+    hdrs = ["dot_dimension_normalizer.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:shape_tracker",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:matmul_indexing_utils",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 xla_cc_test(
     name = "call_splitter_test",
     srcs = ["call_splitter_test.cc"],
@@ -672,6 +694,18 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
+    ],
+)
+
+xla_cc_test(
+    name = "dot_dimension_normalizer_test",
+    srcs = ["dot_dimension_normalizer_test.cc"],
+    deps = [
+        ":dot_dimension_normalizer",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

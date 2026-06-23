@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
@@ -260,11 +262,26 @@ absl::Status TilingSpace::AssignTileSizes(
   return absl::OkStatus();
 }
 
-std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
-                                                 mlir::MLIRContext* ctx) {
+absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
+    const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx) {
+  RegisterSymbolicExprStorage(ctx);
   auto tiling_space = std::make_unique<TilingSpace>();
   tiling_space->mlir_context_ = ctx;
   auto roots = fusion.GetRoots();
+  CHECK(!roots.empty()) << "Fusion has no roots";
+
+  // TODO: b/502910372 - Support multi-output fusions. The option name is
+  // misleading as it is not GPU specific.
+  if (roots.size() > 1 &&
+      !roots.back()
+           .instruction()
+           .GetModule()
+           ->config()
+           .debug_options()
+           .xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
+    return absl::InvalidArgumentError(
+        "TilingSpace does not support fusions with multiple roots");
+  }
 
   // First pass: Append all dimensions. This is necessary because symbols
   // are created using the total number of dimensions, which needs to be known
@@ -272,8 +289,9 @@ std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
   for (const HloInstructionAdaptor& root : roots) {
     const Shape& root_shape = root.shape();
     if (!root.shape().IsArray() && root.opcode() != HloOpcode::kReduce) {
-      LOG(FATAL) << "Unsupported root shape " << root_shape.ToString()
-                 << " for root " << root.instruction().ToString();
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported root shape ", root_shape.ToString(),
+                       " for root ", root.instruction().ToString()));
     }
     // TODO(goncharov): why do we only care about the first shape of a tuple?
     absl::Span<const int64_t> dims =
@@ -369,11 +387,28 @@ TilingSpace::GetValidTilings() {
   // all possible tilings and rely on the downstream to check the validity.
   llvm::SmallVector<int64_t, 4> input_space;
 
+  // Sequential reduce dimensions are not tiled yet. To work around the
+  // limitation of `GetFlatTilingsForInputSpace`, we set the tile size to 1 here
+  // and later replace with the actual dimension size.
   for (const auto& dim : dimensions_) {
-    input_space.push_back(dim.dimension_size);
+    if (dim.type == DimensionSemantics::kSequential &&
+        dim.hlo->opcode() == HloOpcode::kReduce) {
+      input_space.push_back(1);
+    } else {
+      input_space.push_back(dim.dimension_size);
+    }
   }
 
   ASSIGN_OR_RETURN(auto flat_tilings, GetFlatTilingsForInputSpace(input_space));
+
+  for (auto& flat_tiling : flat_tilings) {
+    for (const auto& [idx, dim] : llvm::enumerate(dimensions_)) {
+      if (dim.type == DimensionSemantics::kSequential &&
+          dim.hlo->opcode() == HloOpcode::kReduce) {
+        flat_tiling[idx] = dim.dimension_size;
+      }
+    }
+  }
 
   std::vector<llvm::SmallVector<int64_t, 4>> valid_tilings;
   valid_tilings.reserve(flat_tilings.size());

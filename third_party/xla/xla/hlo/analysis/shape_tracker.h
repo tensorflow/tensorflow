@@ -64,12 +64,26 @@ class ShapeTracker {
   ShapeTracker& operator=(const ShapeTracker&);
   ShapeTracker& operator=(ShapeTracker&&) noexcept;
 
+  // Returns true if the trackers represent the same input/output shapes
+  // (ignoring layouts) and transformations. Note that (in theory) different
+  // transformations chains can result in the same input/output elements
+  // mapping. In this case, this operator will return false.
+  bool operator==(const ShapeTracker& other) const;
+
+  // Sets the element type of input/output shapes.
+  void SetElementType(PrimitiveType element_type);
+
   // Constructs a ShapeTracker from a chain of operations from `producer` to
   // `consumer`. The tracker tracks transformations from the output of
   // `producer` to the output of `consumer`. `producer` is excluded from the
   // chain. Assumes a linear chain of shape-modifying operations between them.
   static absl::StatusOr<ShapeTracker> FromProducerConsumer(
       const HloInstruction* producer, const HloInstruction* consumer);
+
+  // Constructs a ShapeTracker representing the transformation path from one
+  // "sibling" HLO instruction to another, via their lowest common ancestor.
+  static absl::StatusOr<ShapeTracker> FromSiblings(
+      const HloInstruction* source, const HloInstruction* destination);
 
   const xla::Shape& input_shape() const { return input_shape_; }
   const xla::Shape& output_shape() const { return output_shape_; }
@@ -117,6 +131,15 @@ class ShapeTracker {
   // reshape to the returned tracker.
   absl::StatusOr<ShapeTracker> Narrow(
       absl::Span<const int64_t> dims_to_keep) const;
+
+  // Returns the set of final (output) dimensions that cover the same elements
+  // as the specified `input_dims`. Returns std::nullopt if the mapping is not
+  // possible (e.g. some output dimensions span elements both within and outside
+  // the specified input dimensions). Degenerate dimensions (size 1) are
+  // ignored in the input and skipped in the output. The returned dimensions are
+  // sorted by index.
+  std::optional<std::vector<int64_t>> MapInputDimensionsToOutputUnordered(
+      absl::Span<const int64_t> input_dims) const;
 
   // Zips multiple ShapeTrackers into a single one.
   // For example, suppose we have two trackers:
@@ -169,6 +192,11 @@ class ShapeTracker::BufferView {
   // Creates a view representing a shape, with each dimension as a separate
   // segment.
   static BufferView FromShape(const xla::Shape& shape);
+  // Creates a view representing a subset of dimensions of a shape.
+  // Assumes indices are valid and unique. The resulting view is not packed
+  // (i.e. retains the original strides and extents).
+  static BufferView FromShapeAndIndices(const xla::Shape& shape,
+                                        absl::Span<const int64_t> indices);
   // Creates a view representing a shape as a single contiguous segment.
   static BufferView FromShapeCompacted(const xla::Shape& shape);
   // Flattens a set of sub-views.
@@ -187,8 +215,16 @@ class ShapeTracker::BufferView {
   // Combines contiguous adjacent strides/extents in decreasing-stride order.
   void MergeAdjacentDimensions();
 
+  // Removes degenerate dimensions (extent == 1).
+  // If the view becomes empty but was not empty before, it keeps a single
+  // degenerate dimension (stride 1, extent 1) to represent a 1-element view.
+  void RemoveDegenerateDimensions();
+
   // Removes "gaps" between segments.
   void Pack();
+
+  // Sorts strides and corresponding extents in descending order of strides.
+  void SortByStrideDescending();
 
   // Attempts to partition the flat view into logical dimensions. Returns
   // nullopt if layout is incompatible. A single logical dimension is allowed to
@@ -214,6 +250,7 @@ class ShapeTracker::BufferView {
   bool operator==(const BufferView& other) const {
     return strides_ == other.strides_ && extents_ == other.extents_;
   }
+  bool operator!=(const BufferView& other) const { return !(*this == other); }
   absl::Span<const int64_t> strides() const { return strides_; }
   absl::Span<const int64_t> extents() const { return extents_; }
 

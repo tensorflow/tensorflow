@@ -92,8 +92,10 @@ message DebugOptions {
     CUSTOM_CALL = 7;
     CUBLASLT = 8;
     DYNAMIC_SLICE_FUSION = 9;
-    DYNAMIC_SLICE_COPY_FUSION = 10;
     CONVOLUTION = 11;
+
+    reserved "DYNAMIC_SLICE_COPY_FUSION";
+    reserved 10;
   }
 
   enum LibNvJitLinkMode {
@@ -157,6 +159,9 @@ message DebugOptions {
   // Return an error if HostOffloader would have automatically offloaded some
   // compute to the host.
   optional bool xla_disable_automatic_host_compute_offload = 408;
+  // If true, GTE (get-tuple-element) instructions will be compacted when
+  // printing HLO.
+  optional bool xla_dump_compact_gte = 495;
   // Use HloShardingV3 which is a mesh and axis based sharding representation.
   optional bool xla_enable_hlo_sharding_v3 = 452;
   // Setting xla_enable_scoped_logging_timers to false will disable some of the
@@ -180,6 +185,7 @@ message DebugOptions {
   // 2: recognize dot general against constants.
   // 3: recognize dot operations with additional multiplicative factors.
   optional int32 xla_recognize_reduction_optimization_level = 463;
+
   // go/keep-sorted end
 
   //--------------------------------------------------------------------------//
@@ -305,6 +311,11 @@ message DebugOptions {
   // operations to produce NaNs.  Ignored when xla_cpu_enable_fast_math is
   // false.
   optional bool xla_cpu_fast_math_honor_nans = 120;
+
+  // Enable flush-to-zero semantics in the CPU backend. When true, denormal
+  // floating-point values are flushed to zero. Default is true for backwards
+  // compatibility.
+  optional bool xla_cpu_ftz = 493;
 
   // When true, XLA:CPU all LLVM kernels entry points will be prefixed with the
   // module name. They will also be converted to C style names. This is required
@@ -640,12 +651,23 @@ message DebugOptions {
   // dimension.
   optional bool xla_gpu_enable_all_gather_combine_by_dim = 254;
 
+  // Enables spatial partitioning of the GPU BFC allocator so default and
+  // collective allocations share one fixed address range. Requires BFC
+  // preallocation.
+  optional bool xla_gpu_enable_allocator_spatial_partitioning = 494;
+
   optional bool xla_gpu_enable_analytical_latency_estimator = 255;
 
   // Enables NCCL Speed-of-Light (SoL) analytical cost model
   optional bool xla_gpu_enable_analytical_sol_latency_estimator = 356;
 
   optional bool xla_gpu_enable_approx_costly_collectives = 305;
+
+  // Filter for collectives to be executed in a command buffer.
+  // Only collectives specified in this filter will be executed in a command
+  // buffer. Default is ALLCOLLECTIVES.
+  repeated CollectiveOpType xla_gpu_enable_collectives_command_buffer_filter =
+      497;
 
   // Determine the types of commands that are recorded into command buffers.
   repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
@@ -665,7 +687,7 @@ message DebugOptions {
   // body's DUS covers every slot.
   optional bool xla_gpu_enable_dus_accumulator_zero_init_elimination = 490;
 
-  // Enables address computation fusion to optimize dynamic-slice and
+  // Enables dynamic slice fusion to optimize dynamic-slice and
   // dynamic-update-slice operations around library calls.
   optional bool xla_gpu_enable_dynamic_slice_fusion = 105;
 
@@ -804,7 +826,9 @@ message DebugOptions {
   optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
   // If true, all autotuning is consolidated after fusion passes.
-  optional bool xla_gpu_experimental_autotune_post_fusion = 481;
+  // Deprecated, autotune post fusion is always enabled.
+  optional bool xla_gpu_experimental_autotune_post_fusion = 481
+      [deprecated = true];
 
   // Specifies the directory to store per kernel autotuning cache.
   optional string xla_gpu_experimental_autotuner_cache_dir = 407;
@@ -884,10 +908,6 @@ message DebugOptions {
 
   // Enable NCCL symmetric buffers.
   optional bool xla_gpu_experimental_enable_nccl_symmetric_buffers = 406;
-
-  // Enable NVSHMEM. Must be set via XLA_FLAGS variable before XLA client is
-  // initialized and can't be set just through HLO Config->ExecutionOptions.
-  optional bool xla_gpu_experimental_enable_nvshmem = 388;
 
   // Enable fusion for the subchannel dequantisation sequences like
   // [x,z]param -> [x,y,z]broadcast -> [x*y,z]bitcast -> multiply -> dot.
@@ -1096,6 +1116,9 @@ message DebugOptions {
   // was run, and how long it took.
   optional bool xla_gpu_print_compilation_stats = 454;
 
+  // Extra flags to pass to the ptxas compiler, e.g. "--maxregcount=32".
+  repeated string xla_gpu_ptx_compiler_extra_flags = 491;
+
   // Paths to files with ptx code.
   repeated string xla_gpu_ptx_file = 127;
 
@@ -1178,7 +1201,7 @@ message DebugOptions {
   optional bool xla_gpu_unsupported_enable_triton_gemm = 322;
 
   // Enable experimental triton multi-output fusion.
-  // TODO(b/390559452): Remove the flag once the feature is stable.
+  // TODO: b/502910372 - Remove the flag once the feature is stable.
   optional bool xla_gpu_unsupported_enable_triton_multi_output_fusion = 382;
 
   // Internal debug/testing flag to override the number of devices in the fast
@@ -1247,6 +1270,10 @@ message DebugOptions {
   // optimized HLO for some graph, you should be able to run it again on the
   // same device with the same build of XLA.
   optional bool xla_disable_all_hlo_passes = 104;
+
+  // Run HLO passes starting from the pass with this name. All prior passes
+  // in the pipeline will be skipped. If empty, no passes are skipped.
+  optional string xla_run_hlo_passes_starting_from = 496;
 
   // Numerical optimization level for the XLA compiler backend; the specific
   // interpretation of this value is left to the backends.
@@ -1378,6 +1405,7 @@ message DebugOptions {
   optional bool xla_dump_hlo_as_proto = 113;
   optional bool xla_dump_hlo_as_dot = 114;
   optional bool xla_dump_hlo_as_url = 115;
+  optional bool xla_dump_hlo_as_riegeli = 498;
 
   // Dump HLO graphs as an HTML (DOT -> SVG inlined in HTML)
   optional bool xla_dump_hlo_as_html = 116;
@@ -1478,6 +1506,7 @@ message DebugOptions {
     DETECTION_MODE_NONE = 0;
     DETECTION_MODE_WARNING = 1;
     DETECTION_MODE_FAIL = 2;
+    DETECTION_MODE_DUMP = 3;
   }
   // Whether to enable checks for unstable reductions in computations
   // pre-optimizations.
@@ -1498,6 +1527,11 @@ message DebugOptions {
   //
   // This will log the values for all thunks affected by float checks.
   optional bool xla_gpu_log_minmax = 453;
+
+  // Whether to enable runtime instrumentation (float check, checksum, buffer
+  // saver) on all output buffers of an XLA module after all computation is
+  // finished.
+  optional bool xla_gpu_experimental_thunk_buffer_debug_module_outputs = 492;
 
   // If true, large constants will be printed out when dumping HLOs.
   optional bool xla_dump_large_constants = 290;
@@ -1585,9 +1619,9 @@ message DebugOptions {
   optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl =
       462;
 
-  // TODO: b/482045400 - Remove double-copy approach once testing is complete.
-  // If true, use Symmetric Memory mode for MultiGpuBarrierWithNcclKernel
-  optional bool xla_gpu_experimental_ragged_all_to_all_zero_copy = 480;
+  // DEPRECATED: This flag is a no-op.
+  optional bool xla_gpu_experimental_ragged_all_to_all_zero_copy = 480
+      [deprecated = true];
 
   // If true, enable experimental tiling propagation.
   optional bool xla_gpu_experimental_enable_tiling_propagation = 456;
@@ -1603,7 +1637,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 491
+  // Next id: 499
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1715,6 +1749,7 @@ message DebugOptions {
   reserved "xla_ignore_channel_id";
   reserved "xla_use_shardy";
   reserved "xla_gpu_experimental_move_gemm_conv_autotuner";
+  reserved "xla_gpu_experimental_enable_nvshmem";
 
   reserved 5, 63, 80, 93, 94, 98, 117, 130, 133, 134, 139, 141, 143, 152, 156,
       158, 160, 161, 162, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179, 180,
@@ -1722,8 +1757,8 @@ message DebugOptions {
       206, 207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 241, 242,
       243, 249, 263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298,
       299, 302, 303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 354, 355,
-      358, 361, 367, 369, 371, 385, 394, 396, 398, 402, 423, 430, 443, 446, 458,
-      464, 477;
+      358, 361, 367, 369, 371, 385, 388, 394, 396, 398, 402, 423, 430, 443, 446,
+      458, 464, 477;
 }
 
 // Contains flags which affects the GPU compilation result.
@@ -1910,7 +1945,7 @@ message ExecutionOptions {
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 43.
+// Next id: 44.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -1978,6 +2013,9 @@ message HloModuleConfigProto {
   ScheduleConfigProto schedule_config = 41;
   // Number of devices in a fast-interconnect domain.
   int64 partition_size = 42;
+  // Page size in KiB for modules that have their shared memory space split into
+  // multiple shared memory pages. Used for memory assignment and lowering.
+  int64 page_size_kib = 43;
 }
 
 message HloModuleProtoWithConfig {

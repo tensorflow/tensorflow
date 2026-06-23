@@ -950,19 +950,9 @@ std::unique_ptr<PjRtClient> PjRtClient::Create(
   return *Create(std::move(options));
 }
 
-static int NumCompilationThreads(xla::PjRtPlatformId platform_id) {
-  if (platform_id == xla::CudaId()) {
-    // Disable asynchronous compilation on GPUs since sharded autotuning may
-    // require in-order compilation.
-    return 0;
-  }
-  return 8;
-}
-
 PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
     : pjrt_client_(std::move(pjrt_client)),
-      default_compiler_(this,
-                        NumCompilationThreads(pjrt_client_->platform_id())),
+      default_compiler_(this),
       attributes_(MakeAttributeMap(pjrt_client_.get())) {}
 
 PjRtClient::~PjRtClient() {
@@ -1071,8 +1061,6 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
 
   absl::Span<xla::ifrt::Device* const> ifrt_addressable_devices =
       sharding->devices()->AddressableDeviceList()->devices();
-  auto count =
-      std::make_shared<std::atomic<int>>(ifrt_addressable_devices.size());
   if (ifrt_addressable_devices.empty()) {
     return InvalidArgument("Cannot copy array to non-addressable device: %v",
                            sharding->devices());
@@ -1088,12 +1076,12 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
   }
   std::function<void()> on_done_with_host_buffer_per_device;
   if (on_done_with_host_buffer) {
+    auto shared_on_done = std::shared_ptr<void>(
+        nullptr,
+        [on_done = std::move(on_done_with_host_buffer)](void*) { on_done(); });
     on_done_with_host_buffer_per_device =
-        [on_done_with_host_buffer = std::move(on_done_with_host_buffer),
-         count]() {
-          if (count->fetch_sub(1, std::memory_order_relaxed) == 1) {
-            on_done_with_host_buffer();
-          }
+        [shared_on_done = std::move(shared_on_done)]() mutable {
+          shared_on_done.reset();
         };
   } else {
     on_done_with_host_buffer_per_device = []() {};
@@ -1926,6 +1914,15 @@ tsl::Future<> PjRtClient::GetReadyFuture(absl::Span<const ValueRef> values) {
   futures.reserve(values.size());
   for (const auto& value : values) {
     futures.push_back(value->GetReadyFuture());
+  }
+  return JoinFutures(futures);
+}
+
+tsl::Future<> PjRtClient::DeleteValues(absl::Span<ValueRef> values) {
+  absl::InlinedVector<tsl::Future<>, 1> futures;
+  futures.reserve(values.size());
+  for (const auto& value : values) {
+    futures.push_back(value->Delete());
   }
   return JoinFutures(futures);
 }

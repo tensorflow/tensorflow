@@ -1902,15 +1902,20 @@ inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
         return -1;
       }
       if (out == nullptr) {
-        if (!stream->Skip(bytes_length)) return -1;
+        if (!stream->Skip(bytes_length)) {
+          return -1;
+        }
       } else {
+        if (static_cast<int64_t>(bytes_length) > stream->BytesUntilLimit()) {
+          return -1;
+        }
         out->resize_uninitialized(bytes_length);
         if (!stream->ReadRaw(out->data(), bytes_length)) {
           return -1;
         }
-        out++;
+        ++out;
       }
-      num_elements++;
+      ++num_elements;
     }
     stream->PopLimit(limit);
   }
@@ -2367,14 +2372,7 @@ absl::Status ParseContextDenseFeatures(
             reinterpret_cast<const uint8_t*>(feature_proto.data()),
             feature_proto.size());
         EnableAliasing(&stream);
-        int parsed = ParseFeature(dtype, &stream, &out, &out_offset);
-        if (parsed < 0) {
-          return absl::InvalidArgumentError(
-              absl::StrCat("Unable to parse context dense feature ",
-                           c.feature_name, " in example ",
-                           ExampleName(example_names, e)));
-        }
-        num_elements += parsed;
+        num_elements += ParseFeature(dtype, &stream, &out, &out_offset);
       }
       if (num_elements != data_max_elements) {
         return absl::InvalidArgumentError(
@@ -2424,14 +2422,8 @@ absl::Status ParseContextSparseFeatures(
           reinterpret_cast<const uint8_t*>(feature_proto.data()),
           feature_proto.size());
       EnableAliasing(&stream);
-      int num_added_or_err =
+      size_t num_added =
           ParseFeature(dtype, &stream, &out_values, &out_values_offset);
-      if (num_added_or_err < 0) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Unable to parse context sparse feature ", c.feature_name,
-            " in example ", ExampleName(example_names, e)));
-      }
-      size_t num_added = num_added_or_err;
       num_elements += num_added;
       max_num_cols = std::max(max_num_cols, num_added);
       for (int i = 0; i < num_added; i++) {
@@ -2500,14 +2492,8 @@ absl::Status ParseContextRaggedFeatures(
             reinterpret_cast<const uint8_t*>(feature_proto.data()),
             feature_proto.size());
         EnableAliasing(&stream);
-        int num_added_or_err =
+        size_t num_added =
             ParseFeature(dtype, &stream, &out_values, &out_values_offset);
-        if (num_added_or_err < 0) {
-          return absl::InvalidArgumentError(absl::StrCat(
-              "Unable to parse context ragged feature ", c.feature_name,
-              " in example ", ExampleName(example_names, e)));
-        }
-        size_t num_added = num_added_or_err;
         split += num_added;
       }
       if (int32_splits) {
@@ -2633,15 +2619,15 @@ absl::Status ParseSequenceDenseFeatures(
             switch (dtype) {
               case DT_STRING:
                 num_added = ParseBytesFeature(&stream, out_bytes);
-                out_bytes += num_added;
+                if (num_added >= 0) out_bytes += num_added;
                 break;
               case DT_FLOAT:
                 num_added = ParseFloatFeature(&stream, out_float);
-                out_float += num_added;
+                if (num_added >= 0) out_float += num_added;
                 break;
               case DT_INT64:
                 num_added = ParseInt64Feature(&stream, out_int64);
-                out_int64 += num_added;
+                if (num_added >= 0) out_int64 += num_added;
                 break;
               default:
                 ReportUnexpectedDataType(dtype);
@@ -2757,33 +2743,33 @@ absl::Status ParseSequenceSparseFeatures(
         }
         if (feature_length > 2) {
           auto limit = stream.PushLimit(feature_length);
-          int num_added_or_err;
+          int num_added;
           switch (dtype) {
             case DT_STRING:
-              num_added_or_err = ParseBytesFeature(&stream, out_bytes);
-              if (num_added_or_err > 0) out_bytes += num_added_or_err;
+              num_added = ParseBytesFeature(&stream, out_bytes);
+              if (num_added >= 0) out_bytes += num_added;
               break;
             case DT_FLOAT:
-              num_added_or_err = ParseFloatFeature(&stream, out_float);
-              if (num_added_or_err > 0) out_float += num_added_or_err;
+              num_added = ParseFloatFeature(&stream, out_float);
+              if (num_added >= 0) out_float += num_added;
               break;
             case DT_INT64:
-              num_added_or_err = ParseInt64Feature(&stream, out_int64);
-              if (num_added_or_err > 0) out_int64 += num_added_or_err;
+              num_added = ParseInt64Feature(&stream, out_int64);
+              if (num_added >= 0) out_int64 += num_added;
               break;
             default:
               ReportUnexpectedDataType(dtype);
-              num_added_or_err = 0;
+              num_added = 0;
           }
-          if (num_added_or_err < 0) {
-            stream.PopLimit(limit);
-            return absl::InvalidArgumentError(absl::StrCat(
-                "Unable to parse sequence sparse feature ", c.feature_name,
-                " in example ", ExampleName(example_names, e)));
+          if (num_added < 0) {
+            // This should be unreachable -- we already scanned the feature in
+            // GetSequenceFeatureLengths, and it hasn't changed since then.
+            return absl::InvalidArgumentError(
+                absl::StrCat("Error in sequence feature ", c.feature_name,
+                             " in example ", ExampleName(example_names, e)));
           }
-          size_t num_added = num_added_or_err;
           num_elements += num_added;
-          max_num_cols = std::max(max_num_cols, num_added);
+          max_num_cols = std::max(max_num_cols, static_cast<size_t>(num_added));
           for (int i = 0; i < num_added; i++) {
             if (is_batch) *out_indices++ = e;
             *out_indices++ = num_rows;
@@ -2902,16 +2888,16 @@ absl::Status ParseSequenceRaggedFeatures(
           }
           if (feature_length > 2) {
             auto limit = stream.PushLimit(feature_length);
-            int num_added_or_err =
+            int num_added =
                 ParseFeature(dtype, &stream, &out_values, &out_values_offset);
-            if (num_added_or_err < 0) {
-              stream.PopLimit(limit);
-              return absl::InvalidArgumentError(absl::StrCat(
-                  "Unable to parse sequence ragged feature ", c.feature_name,
-                  " in example ", ExampleName(example_names, e)));
+            if (num_added < 0) {
+              // This should be unreachable -- we already scanned the feature in
+              // GetSequenceFeatureLengths, and it hasn't changed since then.
+              return absl::InvalidArgumentError(
+                  absl::StrCat("Error in sequence feature ", c.feature_name,
+                               " in example ", ExampleName(example_names, e)));
             }
-            size_t num_added = num_added_or_err;
-            inner_split += num_added;
+            inner_split += static_cast<size_t>(num_added);
             stream.PopLimit(limit);
           } else if (feature_length == 2) {
             if (!SkipEmptyFeature(&stream, dtype)) {

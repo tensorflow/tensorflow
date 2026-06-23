@@ -176,6 +176,9 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
 // Returns true if the module has frontend_attributes containing mhlo.sharding.
 bool hasFrontendMhloShardings(mlir::ModuleOp module);
 
+// Returns true if the module has frontend_attributes containing xla.sdy.meshes.
+bool hasFrontendMeshes(mlir::ModuleOp module);
+
 // Check if the module has any sort of Shardy mesh:
 // - `mesh`
 // - `maximal_mesh_{X}`

@@ -110,8 +110,4 @@ class TritonXLAFoldReshapeAroundForLoopPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateTritonXLAFoldReshapeAroundForLoopPass() {
-  return std::make_unique<TritonXLAFoldReshapeAroundForLoopPass>();
-}
-
 }  // namespace mlir::triton::xla

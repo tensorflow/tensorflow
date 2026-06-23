@@ -84,6 +84,10 @@ struct SpmdPartitionerOptions {
   // Whether the entry computations' signature could change after partitioning.
   bool allow_module_signature_change = false;
 
+  // Whether the entry computations' layout signature could change after
+  // partitioning.
+  bool allow_module_layout_signature_change = false;
+
   // If true, keep and reuse the all-gather results at the cost of memory
   // pressure. If false, insert all-gather repeatedly to increase memory
   // efficiency. Then ScheduleAwareCollectiveOpsCSE can be used to remove
@@ -510,6 +514,13 @@ class PartitionedHlo {
   // Returns the sharding of the SPMD instruction.
   const HloSharding& sharding() const { return hlo_->sharding(); }
 
+  // Converts the sharding to V2 if it is a NamedSharding leaf.
+  void set_sharding_may_convert_to_v2() const {
+    if (hlo_->has_sharding() && hlo_->sharding().UseNamedShardingLeaf()) {
+      hlo_->set_sharding(HloSharding::V3ToV2Sharding(hlo_->sharding()));
+    }
+  }
+
   void set_sharding(const HloSharding& sharding) {
     hlo_->set_sharding(sharding);
   }
@@ -637,6 +648,11 @@ class PartitionedHloMX {
   PartitionedHlo scale() const { return scale_; }
 
   const HloSharding& sharding() const { return operand_.sharding(); }
+
+  void set_sharding_may_convert_to_v2() const {
+    operand_.set_sharding_may_convert_to_v2();
+    scale_.set_sharding_may_convert_to_v2();
+  }
 
   void set_sharding(const HloSharding& sharding) {
     operand_.set_sharding(sharding);

@@ -366,6 +366,7 @@ xla_cc_test(
     srcs = ["permutation_sort_expander_test.cc"],
     deps = [
         ":permutation_sort_expander",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tsl/platform:statusor",
@@ -431,6 +432,8 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_matchers",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",

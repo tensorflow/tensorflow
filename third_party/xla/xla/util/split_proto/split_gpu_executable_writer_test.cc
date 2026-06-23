@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "riegeli/base/maker.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
@@ -176,6 +177,47 @@ TEST(SplitGpuExecutableWriterTest,
       proto2, std::make_unique<riegeli::StringWriter<>>(&serialized2)));
 
   EXPECT_EQ(serialized1, serialized2);
+}
+
+TEST(SplitGpuExecutableWriterTest,
+     JsonBackendConfigDeduplicationIsDeterministic) {
+  GpuExecutableProto proto;
+  HloModuleProto* module =
+      proto.mutable_hlo_module_with_config()->mutable_hlo_module();
+
+  // Create 3 payloads, but 2 of them become identical after normalization.
+  module->add_payloads(R"json({"a": 1, "b": 2})json");  // ID 0
+  module->add_payloads(R"json({"x": 10})json");         // ID 1
+  module->add_payloads(R"json({"b": 2, "a": 1})json");  // ID 2
+
+  HloComputationProto* comp = module->add_computations();
+  comp->add_instructions()->mutable_backend_config_payload()->set_id(0);
+  comp->add_instructions()->mutable_backend_config_payload()->set_id(1);
+  comp->add_instructions()->mutable_backend_config_payload()->set_id(2);
+
+  std::string serialized;
+  ASSERT_OK(WriteSplitGpuExecutable(
+      proto, riegeli::Maker<riegeli::StringWriter>(&serialized)));
+
+  GpuExecutableProto deserializedExecutable;
+  ASSERT_OK(ReadSplitProto(riegeli::Maker<riegeli::StringReader>(serialized),
+                           deserializedExecutable));
+
+  HloModuleProto* read_module =
+      deserializedExecutable.mutable_hlo_module_with_config()
+          ->mutable_hlo_module();
+
+  // Payloads should be deduplicated (only 2 unique payloads remain).
+  EXPECT_EQ(read_module->payloads_size(), 2);
+
+  // Instruction 0 and instruction 2 should now point to the same id.
+  const HloComputationProto* read_comp = &read_module->computations(0);
+  EXPECT_EQ(read_comp->instructions(0).backend_config_payload().id(),
+            read_comp->instructions(2).backend_config_payload().id());
+
+  // Instruction 1 should point to the other ID.
+  EXPECT_NE(read_comp->instructions(0).backend_config_payload().id(),
+            read_comp->instructions(1).backend_config_payload().id());
 }
 
 }  // namespace

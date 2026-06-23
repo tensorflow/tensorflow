@@ -315,6 +315,7 @@ cc_library(
     hdrs = ["pjrt_c_api_raw_buffer_extension.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":pjrt_c_api_device_event_hdrs",
         ":pjrt_c_api_hdrs",
     ],
 )
@@ -331,7 +332,6 @@ cc_library(
         ":pjrt_c_api_status_utils",
         ":pjrt_c_api_wrapper_impl",
         "//xla/pjrt:raw_buffer",
-        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/status",
     ],
 )
@@ -347,12 +347,14 @@ cc_library(
         ":pjrt_c_api_raw_buffer_extension_hdrs",
         ":pjrt_c_api_status_utils",
         "//xla:future",
+        "//xla/pjrt:device_event",
         "//xla/pjrt:raw_buffer",
         "//xla/pjrt/c_api_client:pjrt_c_api_client",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:casts",

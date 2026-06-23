@@ -44,19 +44,23 @@ limitations under the License.
 namespace stream_executor {
 
 TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator* wrapped, Stream* stream,
-                                       size_t min_alignment)
+                                       size_t min_alignment,
+                                       tsl::AllocationEnd allocation_end)
     : DeviceAddressAllocator(CHECK_NOTNULL(stream)->parent()->GetPlatform()),
       wrapped_(wrapped),
       stream_(stream),
-      min_alignment_(min_alignment) {}
+      min_alignment_(min_alignment),
+      allocation_end_(allocation_end) {}
 
 TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator* wrapped,
                                        const Platform* platform,
-                                       size_t min_alignment)
+                                       size_t min_alignment,
+                                       tsl::AllocationEnd allocation_end)
     : DeviceAddressAllocator(platform),
       wrapped_(wrapped),
       stream_(nullptr),
-      min_alignment_(min_alignment) {}
+      min_alignment_(min_alignment),
+      allocation_end_(allocation_end) {}
 
 TfAllocatorAdapter::~TfAllocatorAdapter() {}
 
@@ -65,6 +69,7 @@ absl::StatusOr<ScopedDeviceAddress<uint8_t>> TfAllocatorAdapter::Allocate(
     int64_t memory_space) {
   tsl::AllocationAttributes attrs;
   attrs.retry_on_failure = retry_on_failure;
+  attrs.allocation_end = allocation_end_;
   void* data = nullptr;
   if (size != 0) {
     data = wrapped_->AllocateRaw(min_alignment_, size, attrs);
@@ -131,11 +136,13 @@ MultiDeviceAdapter::MultiDeviceAdapter(const Platform* platform,
     if (info.stream != nullptr) {
       per_device_allocators[device_ordinal] =
           std::make_shared<TfAllocatorAdapter>(info.allocator.get(),
-                                               info.stream, info.min_alignment);
+                                               info.stream, info.min_alignment,
+                                               info.allocation_end);
     } else {
       per_device_allocators[device_ordinal] =
           std::make_shared<TfAllocatorAdapter>(
-              info.allocator.get(), info.platform, info.min_alignment);
+              info.allocator.get(), info.platform, info.min_alignment,
+              info.allocation_end);
     }
     VLOG(3) << absl::StrFormat(
         "MultiDeviceAdapter: device_ordinal=%d memory_space=%d "

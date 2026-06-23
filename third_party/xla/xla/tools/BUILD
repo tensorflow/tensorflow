@@ -416,7 +416,9 @@ cc_library(
         "//xla/hlo/translate/stablehlo_to_hlo:translate",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:status_macros",
+        "//xla/util/split_proto:split_proto_reader",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -424,6 +426,7 @@ cc_library(
         "@com_google_protobuf//:protobuf",
         "@com_googlesource_code_re2//:re2",
         "@llvm-project//llvm:Support",
+        "@riegeli//riegeli/bytes:string_reader",
         "@tsl//tsl/platform:env",
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:logging",
@@ -438,11 +441,17 @@ xla_cc_test(
     srcs = ["hlo_module_loader_test.cc"],
     deps = [
         ":hlo_module_loader",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service:hlo_proto_util",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/lib/core:status_test_util",
+        "//xla/util/split_proto:split_hlo_writer",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
-        "@tsl//tsl/platform:test",
+        "@riegeli//riegeli/bytes:string_writer",
+        "@tsl//tsl/platform:status_matchers",
     ],
 )
 
@@ -1094,6 +1103,23 @@ cc_library(
 )
 
 cc_library(
+    name = "xla_cpu_compile_lib",
+    srcs = ["xla_cpu_compile_lib.cc"],
+    hdrs = ["xla_cpu_compile_lib.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/backends/cpu:target_machine_options",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compiled_module",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/service/cpu:cpu_compiler_pure",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "xla_compile_lib",
     srcs = ["xla_compile_lib.cc"],
     hdrs = ["xla_compile_lib.h"],
@@ -1112,6 +1138,7 @@ cc_library(
     deps = [
         ":hlo_module_loader",
         ":llvm_targets",  # fixdeps: keep
+        ":xla_cpu_compile_lib",
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:util",
@@ -1275,12 +1302,14 @@ xla_cc_test(
     tags = ["gpu"],
     deps = [
         ":xla_compile_lib",
+        "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/target_config",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:compiler",
         "//xla/service:gpu_plugin",
+        "//xla/service:hlo_module_config",
         "//xla/service:platform_util",
         "//xla/service:symbol_repository",
         "//xla/service:xla_compile_result_proto_cc_impl",

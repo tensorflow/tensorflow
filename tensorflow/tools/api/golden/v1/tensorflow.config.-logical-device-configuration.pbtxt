@@ -19,6 +19,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'memory_limit\', \'experimental_priority\', \'experimental_device_ordinal\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "count"
   }
   member_method {

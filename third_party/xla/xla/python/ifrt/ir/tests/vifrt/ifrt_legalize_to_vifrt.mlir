@@ -1,7 +1,7 @@
 // RUN: ifrt-opt %s --ifrt-legalize-to-vifrt --symbol-dce --mlir-print-op-generic -split-input-file | FileCheck %s
 // RUN: ifrt-translate --serialize --ifrt_version=current --atom_program_version=current %s | ifrt-translate --deserialize | ifrt-opt > %t.0
 // RUN: ifrt-opt %s > %t.1
-// RUN: diff %t.0 %t.1
+// RUN: cmp -s %t.0 %t.1
 
 // ============ Types and attributes ============
 

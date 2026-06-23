@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
@@ -522,7 +521,7 @@ TEST_F(AutotunerFlagsTest, DeterministicAutotuningSetsSelectFirstConfig) {
 }
 
 TEST_F(AutotunerPassTest, CublasLtSelectFirstConfig) {
-  absl::SetVLogLevel("autotuner*", 10);
+  absl::SetVLogLevel("config_assigner*", 10);
   AutotunerCache::ClearAutotuneResults();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
@@ -564,10 +563,8 @@ TEST_F(AutotunerPassTest, CublasLtSelectFirstConfig) {
           allocator_.get()));
 
   absl::ScopedMockLog log;
-  EXPECT_CALL(
-      log,
-      Log(absl::LogSeverity::kInfo, testing::_,
-          testing::HasSubstr("Skipping profiling and using the first config")))
+  EXPECT_CALL(log, Log(absl::LogSeverity::kInfo, testing::_,
+                       testing::HasSubstr("Using first compilable config")))
       .Times(testing::AtLeast(1));
 
   log.StartCapturingLogs();
@@ -586,7 +583,7 @@ TEST_F(AutotunerPassTest, CublasLtSelectFirstConfig) {
 }
 
 TEST_F(AutotunerPassTest, TritonSelectFirstConfig) {
-  absl::SetVLogLevel("autotuner*", 10);
+  absl::SetVLogLevel("config_assigner*", 10);
   const char kTritonGemmFusionHlo[] = R"hlo(
     HloModule module
 
@@ -653,10 +650,8 @@ TEST_F(AutotunerPassTest, TritonSelectFirstConfig) {
           allocator_.get()));
 
   absl::ScopedMockLog log;
-  EXPECT_CALL(
-      log,
-      Log(absl::LogSeverity::kInfo, testing::_,
-          testing::HasSubstr("Skipping profiling and using the first config")))
+  EXPECT_CALL(log, Log(absl::LogSeverity::kInfo, testing::_,
+                       testing::HasSubstr("Using first compilable config")))
       .Times(testing::AtLeast(1));
 
   log.StartCapturingLogs();
@@ -677,7 +672,7 @@ TEST_F(AutotunerPassTest, TritonSelectFirstConfig) {
 }
 
 TEST_F(AutotunerPassTest, CudnnSelectFirstConfig) {
-  absl::SetVLogLevel("autotuner*", 10);
+  absl::SetVLogLevel("config_assigner*", 10);
   const char kCudnnConvForwardHlo[] = R"hlo(
     HloModule TestModule
 
@@ -731,7 +726,7 @@ TEST_F(AutotunerPassTest, CudnnSelectFirstConfig) {
 
   absl::ScopedMockLog log;
   EXPECT_CALL(log, Log(absl::LogSeverity::kInfo, testing::_,
-                       testing::HasSubstr("Found only one supported config")))
+                       testing::HasSubstr("Using first compilable config")))
       .Times(testing::AtLeast(1));
 
   log.StartCapturingLogs();

@@ -35,18 +35,26 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_memory_reservation.h"
 #include "xla/stream_executor/cuda/cuda_raw_memory_allocation.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/device_address_vmm_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_reservation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/vmm_device_address_allocator.h"
 
 namespace stream_executor::gpu {
 
 CudaDeviceAddressVmmAllocator::CudaDeviceAddressVmmAllocator(
     const Platform* platform)
     : DeviceAddressVmmAllocator(platform) {}
+
+CudaDeviceAddressVmmAllocator::~CudaDeviceAddressVmmAllocator() {
+  absl::Status status = SynchronizeAllPendingOperations();
+  if (!status.ok()) {
+    LOG(FATAL) << "Failed to synchronize pending CUDA VMM deallocations: "
+               << status;
+  }
+}
 
 absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>>
 CudaDeviceAddressVmmAllocator::Create(const Platform* platform,

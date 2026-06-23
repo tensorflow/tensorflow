@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/map_util.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/dump.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_buffer.h"
@@ -127,7 +128,6 @@ bool IsNopInstruction(HloOpcode op, const HloInstruction& hlo) {
          (op == HloOpcode::kTuple && hlo.user_count() == 1 &&
           hlo.users().front()->opcode() == HloOpcode::kWhile);
 }
-
 }  // namespace
 
 bool MemoryPressureTracker::InstructionTransitivelyDefines(
@@ -1553,7 +1553,9 @@ class ReadySetLt {
     // the two candidates. If two preferences are the same regular LHS logic
     // will run as usual, we take advantage of this fact when initializing
     // the heuristic algorithm.
-    CMP_PROPERTY(GetPreference(), "kPreference");
+    if (an->HasPreference() && bn->HasPreference()) {
+      CMP_PROPERTY(GetPreference(), "kPreference");
+    }
 
     // Update the resource_constrained of the candidate before any
     // target specific rule is applied so rules can access the
@@ -1604,6 +1606,19 @@ class ReadySetLt {
       // early target scheduling rule.
       CMP_DIRECTIONAL(top_down_scheduling_, an->GetForceDelayAfterTarget(),
                       bn->GetForceDelayAfterTarget(), "kForceDelayAfterTarget");
+    }
+
+    if (config.enable_schedule_by_structure) {
+      if (top_down_scheduling_) {
+        CMP_EXPLICIT(!an->IsSupportedAsyncDone() && bn->IsSupportedAsyncDone(),
+                     an->IsSupportedAsyncDone() && !bn->IsSupportedAsyncDone(),
+                     "kDelayAsyncDoneOfSamePreference");
+      } else {
+        CMP_EXPLICIT(
+            !an->IsSupportedAsyncStart() && bn->IsSupportedAsyncStart(),
+            an->IsSupportedAsyncStart() && !bn->IsSupportedAsyncStart(),
+            "kDelayAsyncStartOfSamePreference");
+      }
     }
 
     // Some heuristic that try to prioritize unlocking "done" instructions
@@ -1776,6 +1791,14 @@ class ReadySetLt {
                    DefaultSchedulerCore::ScheduleCandidate& b,
                    const char** reason) const {
     bool result = AIsBetterThanB(a, b, reason);
+    if (a.node->IsSupportedAsyncStart() || a.node->IsSupportedAsyncDone() ||
+        b.node->IsSupportedAsyncStart() || b.node->IsSupportedAsyncDone() ||
+        IsCollective(&a.node->GetInstr()) ||
+        IsCollective(&b.node->GetInstr())) {
+      VLOG(1) << "Async comparison: a: " << a.node->GetInstr().name()
+              << " b: " << b.node->GetInstr().name() << " result: " << result
+              << " reason: " << *reason;
+    }
     if (result) {
       // Based on profiling, memcpy is faster than "b = a"
       static_assert(
@@ -2811,8 +2834,9 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     int64_t annotation = edge.Target().GetAnnotation();
     // We are adding the no-op instructions to a separate set so that we can
     // immediately schedule them when they are ready.
-    if (IsNopInstruction(edge.Target().GetOpcode(), edge.Target().GetInstr()) &&
-        annotation == -1) {
+    const bool is_nop =
+        IsNopInstruction(edge.Target().GetOpcode(), edge.Target().GetInstr());
+    if (is_nop && annotation == -1 && !edge.Target().HasPreference()) {
       sched_state->nop_set.push_back(&edge.Target());
       continue;
     }
@@ -2910,7 +2934,8 @@ HloScheduleGraph::HloScheduleGraph(
                       post_order_instructions->end()),
       scheduling_context_(scheduling_context) {
   HloComputation* comp = (*post_order_instructions)[0]->parent();
-  auto reachability = HloReachabilityMap::Build(comp);
+  reachability_ = HloReachabilityMap::Build(comp);
+  const HloReachabilityMap* reachability = reachability_.get();
   std::vector<const HloInstruction*> while_instrs;
   auto latency_estimator = scheduling_context->GetLatencyEstimator();
   auto async_tracker = scheduling_context->GetAsyncTracker();
@@ -3537,7 +3562,7 @@ absl::Status DefaultSchedulerCore::SchedulingStep(
                        *sched_state, /*should_skip_node=*/nullptr));
   CHECK(node != nullptr);
   ASSIGN_OR_RETURN(sched_state->current_time, ScheduleNode(node, sched_state));
-  VLOG(2) << "Scheduled: " << node->GetInstr().name();
+  VLOG(1) << "Scheduled: " << node->GetInstr().name();
   XLA_VLOG_LINES(5, node->ToString());
   return absl::OkStatus();
 }
@@ -3796,7 +3821,9 @@ DefaultSchedulerCore::ScheduleComputation(
   for (HloGraphNode* root : roots) {
     // Set ready time for the roots 0.
     root->SetReadyTime(0.0);
-    if (IsNopInstruction(root->GetInstr().opcode(), root->GetInstr())) {
+    const bool is_nop =
+        IsNopInstruction(root->GetInstr().opcode(), root->GetInstr());
+    if (is_nop && !root->HasPreference()) {
       sched_state->nop_set.push_back(root);
     } else {
       sched_state->ready_set.push_back(root);
@@ -4023,7 +4050,7 @@ LatencyHidingScheduler::LatencyHidingStatistics(
           .push_back({instr, current_time, curr_pos});
     } else if (instr_node.IsSupportedAsyncDone()) {
       const HloInstruction* start_instr = instr->operand(0);
-      // TODO(b/329731042): Handle pipelined Send/Recv in while-body, which
+      // TODO: Handle pipelined Send/Recv in while-body, which
       // is the only situation where an async done operand is not an async
       // start.
       if (scheduling_context->GetAsyncTracker()->IsSupportedAsyncStart(

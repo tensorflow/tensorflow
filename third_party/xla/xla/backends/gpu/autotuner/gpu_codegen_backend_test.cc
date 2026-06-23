@@ -36,6 +36,7 @@ TEST_F(GpuCodegenBackendTest, AdjustDebugOptionsForAutotuning) {
   debug_options.set_xla_gpu_kernel_cache_file("foo.txt");
   debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
       true);
+  debug_options.set_xla_run_hlo_passes_starting_from("dot-merger");
 
   GpuCodegenBackend::AdjustDebugOptionsForAutotuning(debug_options);
 
@@ -47,6 +48,7 @@ TEST_F(GpuCodegenBackendTest, AdjustDebugOptionsForAutotuning) {
   EXPECT_FALSE(debug_options.xla_gpu_async_dot());
   EXPECT_FALSE(debug_options.xla_embed_ir_in_executable());
   EXPECT_EQ(debug_options.xla_gpu_kernel_cache_file(), "");
+  EXPECT_EQ(debug_options.xla_run_hlo_passes_starting_from(), "");
 }
 
 }  // namespace

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -36,10 +37,10 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/tsl/lib/gtl/int_type.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -79,6 +80,17 @@ class BuildAllReduceInfoTest : public HloHardwareIndependentTestBase {
      }
     )";
     se::DeviceDescription device_info = TestGpuDeviceInfo::H100SXMDeviceInfo();
+    stream_executor::GpuTargetConfigProto target_config_proto;
+    *target_config_proto.mutable_gpu_device_info() = device_info.ToProto();
+    target_config_proto.mutable_gpu_device_info()
+        ->mutable_device_interconnect_info()
+        ->set_active_links(18);
+    target_config_proto.set_platform_name("CUDA");
+    ASSIGN_OR_RETURN(gpu::GpuTargetConfig target_config,
+                     gpu::GpuTargetConfig::FromProto(target_config_proto));
+    GpuTopology gpu_topology("platform_version", /*num_partitions=*/1,
+                             /*num_hosts_per_partition=*/1,
+                             /*num_devices_per_host=*/16, target_config);
     std::string replica_groups_str =
         replica_groups.empty()
             ? ""
@@ -98,8 +110,9 @@ class BuildAllReduceInfoTest : public HloHardwareIndependentTestBase {
         HloHardwareIndependentTestBase::FindInstruction(module.get(),
                                                         HloOpcode::kAllReduce);
     return BuildAllReduceInfo(collective_kernel_enabled.value(),
-                              multimem_enabled.value(), device_info,
-                              Cast<HloAllReduceInstruction>(hlo_instr));
+                              multimem_enabled.value(), gpu_topology,
+                              Cast<HloAllReduceInstruction>(hlo_instr),
+                              /*device_assignment=*/nullptr);
   }
 };
 

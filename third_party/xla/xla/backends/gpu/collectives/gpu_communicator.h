@@ -39,6 +39,10 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
+namespace stream_executor {
+class StreamExecutor;
+}  // namespace stream_executor
+
 namespace xla::gpu {
 
 class GpuSignalDesc : public Communicator::SignalDesc {
@@ -133,6 +137,12 @@ class GpuCommunicator : public Communicator {
   // Returns true iff communicator supports device-initiated communication.
   virtual bool SupportsDeviceComm() const { return false; }
 
+  // Returns the StreamExecutor (and thus the device) this communicator runs on,
+  // or nullptr if not backed by a StreamExecutor.
+  virtual stream_executor::StreamExecutor* stream_executor() const {
+    return nullptr;
+  }
+
   // Creates a new device communicator linked to *this GPU communicator object.
   virtual absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
   CreateDeviceComm(const GpuDeviceCommunicator::Requirements& requirements) {
@@ -225,6 +235,11 @@ class GpuCommunicator : public Communicator {
                                         const SignalDesc& signal_desc,
                                         const Executor& executor) {
     return Unimplemented("LaunchWaitSignal is not implemented");
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const GpuCommunicator& comm) {
+    absl::Format(&sink, "%s", comm.ToString());
   }
 };
 

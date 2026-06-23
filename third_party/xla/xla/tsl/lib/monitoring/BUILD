@@ -170,6 +170,7 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",

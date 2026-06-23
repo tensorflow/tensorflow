@@ -87,9 +87,9 @@ HloInstruction* GetNonBitcastRoot(const HloComputation* computation) {
   return root;
 }
 
-class TritonTest : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+class TritonTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  public:
-  TritonTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+  TritonTest() = default;
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);

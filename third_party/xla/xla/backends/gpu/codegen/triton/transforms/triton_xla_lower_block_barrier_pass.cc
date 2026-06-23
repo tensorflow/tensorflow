@@ -207,8 +207,4 @@ class TritonXLALowerBlockBarrierPass
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateTritonXLALowerBlockBarrierPass() {
-  return std::make_unique<TritonXLALowerBlockBarrierPass>();
-}
-
 }  // namespace mlir::triton::xla

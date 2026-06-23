@@ -31,37 +31,7 @@ namespace mlir::triton::xla {
 #define GEN_PASS_DECL
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
-std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
-    bool allow_tma, int num_stages);
-std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
-    bool allow_tma, bool allow_tdm, int num_stages);
-std::unique_ptr<mlir::Pass> CreateTritonXLASqueezeDimsPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLAFoldTransposePass();
-std::unique_ptr<mlir::Pass> CreateGeneralizeKernelSignaturePass();
 
-std::unique_ptr<mlir::Pass> CreateInt4ToPackedInt4RewritePass(
-    bool enable_bf16x2);
-std::unique_ptr<mlir::Pass> CreateRoundF32ToTF32ForTf32DotRewritePass();
-std::unique_ptr<mlir::Pass> CreateExtractTmaInfoPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLAUnswitchLoopsPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLALowerGetTidPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLALowerAtomicsPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLALowerBlockBarrierPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLAImplementExternElementWisePass(
-    TargetBackend target);
-std::unique_ptr<mlir::Pass> CreateTritonXLAConvertUnsupportedTypesPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLALowerRemoteAccessPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLALowerXTilePass();
-std::unique_ptr<mlir::Pass> CreateTritonXLAFoldReshapeAroundForLoopPass();
-std::unique_ptr<mlir::Pass> CreateStableHLOLowerToTritonPass(
-    bool warp_specialization_allowed);
-std::unique_ptr<mlir::Pass> CreateTensorLowerToTritonPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLAMathToLibdevicePass(
-    absl::string_view libdevice_path, absl::string_view triple);
-std::unique_ptr<mlir::Pass> CreateXTileLowerToTritonPass();
-std::unique_ptr<mlir::Pass> CreateArithFP8ConversionToTritonPass();
-std::unique_ptr<mlir::Pass> CreateUnsupportedElementwiseToTritonPass();
 
 // Returns true if the `op` contains an operation in it's regions that satisfies
 // the `fn`.

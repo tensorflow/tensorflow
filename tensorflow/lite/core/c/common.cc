@@ -20,6 +20,7 @@ limitations under the License.
 #endif  // TF_LITE_STATIC_MEMORY
 
 #include <cstring>
+#include <new>
 #include <type_traits>
 #include <utility>
 
@@ -111,6 +112,7 @@ TfLiteSparsity TfLiteSparsityClone(const TfLiteSparsity& src) {
   if (src.dim_metadata) {
     dst.dim_metadata = reinterpret_cast<TfLiteDimensionMetadata*>(
         calloc(1, sizeof(TfLiteDimensionMetadata) * src.dim_metadata_size));
+    if (src.dim_metadata_size > 0 && !dst.dim_metadata) return TfLiteSparsity();
     for (int i = 0; i < src.dim_metadata_size; ++i) {
       dst.dim_metadata[i] = src.dim_metadata[i];
       dst.dim_metadata[i].array_segments =
@@ -129,6 +131,7 @@ TfLiteSparsity* TfLiteSparsityClone(const TfLiteSparsity* const src) {
   }
   TfLiteSparsity* dst =
       reinterpret_cast<TfLiteSparsity*>(calloc(1, sizeof(TfLiteSparsity)));
+  if (!dst) return nullptr;
   *dst = TfLiteSparsityClone(*src);
   return dst;
 }
@@ -147,6 +150,7 @@ TfLiteQuantization TfLiteQuantizationClone(const TfLiteQuantization& src) {
       break;
     case kTfLiteAffineQuantization: {
       dst.params = calloc(1, sizeof(TfLiteAffineQuantization));
+      if (!dst.params) return TfLiteQuantization();
       const TfLiteAffineQuantization* const src_params =
           reinterpret_cast<TfLiteAffineQuantization*>(src.params);
       TfLiteAffineQuantization* const dst_params =
@@ -158,6 +162,7 @@ TfLiteQuantization TfLiteQuantizationClone(const TfLiteQuantization& src) {
     }
     case kTfLiteBlockwiseQuantization: {
       dst.params = calloc(1, sizeof(TfLiteBlockwiseQuantization));
+      if (!dst.params) return TfLiteQuantization();
       const TfLiteBlockwiseQuantization* const src_params =
           (TfLiteBlockwiseQuantization*)(src.params);
       TfLiteBlockwiseQuantization* const dst_params =
@@ -219,6 +224,9 @@ TfLiteFloatArray* TfLiteFloatArrayCopy(const TfLiteFloatArray* src) {
 void TfLiteFloatArrayFree(TfLiteFloatArray* a) { TfLiteVarArrayFree(a); }
 
 void TfLiteTensorDataFree(TfLiteTensor* t) {
+  if (t == nullptr) {
+    return;
+  }
   if (t->allocation_type == kTfLiteVariantObject && t->data.data) {
     delete static_cast<VariantData*>(t->data.data);
   } else if (t->allocation_type == kTfLiteDynamic ||
@@ -238,6 +246,9 @@ void TfLiteTensorDataFree(TfLiteTensor* t) {
 }
 
 void TfLiteQuantizationFree(TfLiteQuantization* quantization) {
+  if (quantization == nullptr) {
+    return;
+  }
   if (quantization->type == kTfLiteAffineQuantization) {
     TfLiteAffineQuantization* q_params =
         reinterpret_cast<TfLiteAffineQuantization*>(quantization->params);
@@ -294,6 +305,9 @@ void TfLiteSparsityFree(TfLiteSparsity* sparsity) {
 }
 
 void TfLiteTensorFree(TfLiteTensor* t) {
+  if (t == nullptr) {
+    return;
+  }
   TfLiteTensorDataFree(t);
   if (t->dims) TfLiteIntArrayFree(t->dims);
   t->dims = nullptr;
@@ -308,7 +322,7 @@ void TfLiteTensorFree(TfLiteTensor* t) {
   t->sparsity = nullptr;
 }
 
-TfLiteTensor TfLiteTensorClone(const TfLiteTensor src) {
+TfLiteTensor TfLiteTensorClone(TfLiteTensor src) {
   // We copy all of the source data first, then we clone the fields that can't
   // be shared between two tensor instances.
   TfLiteTensor dst = src;
@@ -335,16 +349,18 @@ TfLiteTensor TfLiteTensorClone(const TfLiteTensor src) {
         break;
       case kTfLiteAllocationStrategyMalloc:
         dst.data.data = malloc(src.bytes);
+        if (src.bytes > 0 && !dst.data.data) return TfLiteTensor();
         std::memcpy(dst.data.data, src.data.data, src.bytes);
         break;
       case kTfLiteAllocationStrategyNew:
         // Special case for variant objects. They are allocated using new/delete
         // but require using the `CloneTo` function.
         if (src.allocation_type == kTfLiteVariantObject) {
-          dst.data.data = reinterpret_cast<const VariantData*>(src.data.data)
-                              ->CloneTo(nullptr);
+          dst.data.data =
+              static_cast<const VariantData*>(src.data.data)->CloneTo(nullptr);
         } else {
-          dst.data.data = new char[src.bytes];
+          dst.data.data = new (std::nothrow) char[src.bytes];
+          if (src.bytes > 0 && !dst.data.data) return TfLiteTensor();
           std::memcpy(dst.data.data, src.data.data, src.bytes);
         }
         break;
@@ -394,13 +410,21 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
     }
     auto* dst_vd = static_cast<VariantData*>(dst->data.data);
     auto* src_vd = static_cast<VariantData*>(src->data.data);
+    if (!src_vd) return kTfLiteError;
 
     // `CloneTo` will handle the case when `dst_vd` is nullptr, so it is safe
     // to `CloneTo` something which was "freed". Also, returning from `CloneTo`
     // will implicitly cast to `VariantData`; don't need static cast here.
     dst->data.data = src_vd->CloneTo(dst_vd);
   } else {
-    memcpy(dst->data.raw, src->data.raw, src->bytes);
+    if (dst->allocation_type == kTfLiteVariantObject) {
+      TfLiteTensorDataFree(dst);
+      dst->allocation_type = src->allocation_type;
+    }
+    if (src->bytes > 0) {
+      if (!dst->data.raw || !src->data.raw) return kTfLiteError;
+      memcpy(dst->data.raw, src->data.raw, src->bytes);
+    }
   }
   dst->buffer_handle = src->buffer_handle;
   dst->data_is_stale = src->data_is_stale;
@@ -513,6 +537,10 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "INT2";
     case kTfLiteUInt4:
       return "UINT4";
+    case kTfLiteFloat8E4M3FN:
+      return "FLOAT8_E4M3FN";
+    case kTfLiteFloat8E5M2:
+      return "FLOAT8_E5M2";
   }
   return "Unknown type";
 }

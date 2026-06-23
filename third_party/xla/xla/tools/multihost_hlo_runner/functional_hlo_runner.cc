@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/debug_options_flags.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -1081,6 +1082,19 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
             raw_options.preserve_xla_dump_to);
   }
 
+  // Fall back to `raw_options.debug_options` if necessary.
+  if (!compile_options.executable_build_options.has_debug_options()) {
+    // Guard against `raw_options.debug_options` being uninitialized.
+    *compile_options.executable_build_options.mutable_debug_options() =
+        GetDebugOptionsFromFlags();
+    compile_options.executable_build_options.mutable_debug_options()->MergeFrom(
+        raw_options.debug_options);
+    if (!raw_options.preserve_xla_dump_to) {
+      compile_options.executable_build_options.mutable_debug_options()
+          ->clear_xla_dump_to();
+    }
+  }
+
   ExecutableBuildOptions& build_options =
       compile_options.executable_build_options;
   ReplicasAndPartitions replicas_and_partitions =
@@ -1240,7 +1254,7 @@ absl::StatusOr<HloModuleAndArguments> LoadHloModuleAndArguments(
 }
 
 absl::Status LoadAndRunAndDump(
-    PjRtClient& client, const DebugOptions& debug_options,
+    PjRtClient& client,
     const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
     const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
     const xla::FunctionalHloRunner::RunningOptions& running_options,
@@ -1254,27 +1268,27 @@ absl::Status LoadAndRunAndDump(
                                                 task_id, num_nodes, kv_store));
   ASSIGN_OR_RETURN(
       FunctionalHloRunner::PerDeviceLiteralVecType output,
-      FunctionalHloRunner::LoadAndRun(
-          client, debug_options, preproc_options, compile_options,
-          running_options, hlo_file, input_format, /*arguments=*/{}, engine));
+      FunctionalHloRunner::LoadAndRun(client, preproc_options, compile_options,
+                                      running_options, hlo_file, input_format,
+                                      /*arguments=*/{}, engine));
   return dump_output_to.empty()
              ? absl::OkStatus()
              : FunctionalHloRunner::DumpOutput(output, dump_output_to, task_id);
 }
 
 absl::Status LoadAndCompileAndDump(
-    PjRtClient& client, const DebugOptions& debug_options,
+    PjRtClient& client,
     const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
     const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
     absl::string_view hlo_file, InputFormat input_format,
     std::string dump_executable_to, int task_id, int num_nodes,
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store,
     bool use_gpu_count_workaround) {
-  ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                   FunctionalHloRunner::LoadAndCompile(
-                       client, debug_options, preproc_options,
-                       raw_compile_options, hlo_file, input_format, task_id,
-                       num_nodes, kv_store, use_gpu_count_workaround));
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      FunctionalHloRunner::LoadAndCompile(
+          client, preproc_options, raw_compile_options, hlo_file, input_format,
+          task_id, num_nodes, kv_store, use_gpu_count_workaround));
 
   if (!dump_executable_to.empty()) {
     absl::StrAppend(&dump_executable_to, ".task_", task_id);
@@ -1286,8 +1300,7 @@ absl::Status LoadAndCompileAndDump(
 }
 
 absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
-    PjRtClient& client, const DebugOptions& debug_options,
-    const PreprocessingOptions& preproc_options,
+    PjRtClient& client, const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const RunningOptions& running_options, absl::string_view hlo_file,
     InputFormat input_format, const PerDeviceLiteralVecType& arguments,
@@ -1341,14 +1354,13 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
     hlo_module = std::move(hlo_module_and_arguments.hlo_module);
   }
 
-  return CompileAndRun(client, debug_options, preproc_options, compile_options,
+  return CompileAndRun(client, preproc_options, compile_options,
                        running_options, hlo_module.get(), *final_arguments,
                        engine);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadAndCompile(
-    PjRtClient& client, const DebugOptions& debug_options,
-    const PreprocessingOptions& preproc_options,
+    PjRtClient& client, const PreprocessingOptions& preproc_options,
     const RawCompileOptions& raw_compile_options, absl::string_view hlo_file,
     InputFormat input_format, int task_id, int num_nodes,
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store,
@@ -1374,27 +1386,25 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadAndCompile(
   ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
                    LoadHloModuleAndArguments(hlo_file, input_format));
 
-  return FunctionalHloRunner::Compile(
-      client, hlo_module_and_arguments.hlo_module.get(), debug_options,
-      preproc_options, compile_options);
+  return FunctionalHloRunner::Compile(client,
+                                      hlo_module_and_arguments.hlo_module.get(),
+                                      preproc_options, compile_options);
 }
 
 absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
-    PjRtClient& client, const DebugOptions& debug_options,
-    const PreprocessingOptions& preproc_options,
+    PjRtClient& client, const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const RunningOptions& running_options, HloModule* hlo_module,
     const PerDeviceLiteralVecType& arguments, std::minstd_rand0* engine) {
-  ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                   Compile(client, hlo_module, debug_options, preproc_options,
-                           compile_options));
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      Compile(client, hlo_module, preproc_options, compile_options));
 
   return Run(client, executable.get(), arguments, running_options, engine);
 }
 
 absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
-    PjRtClient& client, const DebugOptions& debug_options,
-    const PreprocessingOptions& preproc_options,
+    PjRtClient& client, const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const RunningOptions& running_options, MaybeOwningMlirModule module,
     const PerDeviceLiteralVecType& arguments, std::minstd_rand0* engine) {
@@ -1512,9 +1522,12 @@ absl::StatusOr<std::unique_ptr<R>> ConvertAndCallCompiler(
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
     PjRtClient& client, HloModule* hlo_module,
-    const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options) {
+  TF_RET_CHECK(compile_options.executable_build_options.has_debug_options())
+      << "debug_options must be set in compile_options";
+  const DebugOptions& debug_options =
+      compile_options.executable_build_options.debug_options();
   RETURN_IF_ERROR(PrepareHloModuleForCompilation(hlo_module, debug_options,
                                                  preproc_options));
   ASSIGN_OR_RETURN(
@@ -1530,10 +1543,13 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
     PjRtClient& client, HloModule* hlo_module,
-    const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const PjRtTopologyDescription& topology) {
+  TF_RET_CHECK(compile_options.executable_build_options.has_debug_options())
+      << "debug_options must be set in compile_options";
+  const DebugOptions& debug_options =
+      compile_options.executable_build_options.debug_options();
   RETURN_IF_ERROR(PrepareHloModuleForCompilation(hlo_module, debug_options,
                                                  preproc_options));
   ASSIGN_OR_RETURN(
@@ -1626,6 +1642,40 @@ bool AbslParseFlag(absl::string_view text, ModuleOutputMode* output_mode,
 
 std::string AbslUnparseFlag(ModuleOutputMode output_mode) {
   return GetModuleOutputModeParser().Unparse(output_mode);
+}
+
+absl::StatusOr<ResolveTopologyResult> ResolveTopology(
+    std::optional<int> num_replicas, std::optional<int> num_partitions,
+    absl::string_view hlo_file, InputFormat input_format,
+    const HloModule* already_loaded_module) {
+  ResolveTopologyResult result;
+  const HloModule* module = already_loaded_module;
+  if (module == nullptr && !hlo_file.empty()) {
+    ASSIGN_OR_RETURN(result.loaded_module,
+                     LoadHloModuleAndArguments(hlo_file, input_format));
+    module = result.loaded_module->hlo_module.get();
+  }
+
+  int resolved_replicas = 1;
+  int resolved_partitions = 1;
+
+  if (num_replicas.has_value() && *num_replicas >= 0) {
+    resolved_replicas = *num_replicas;
+  } else if (module != nullptr) {
+    resolved_replicas = module->config().replica_count();
+  }
+
+  if (num_partitions.has_value() && *num_partitions >= 0) {
+    resolved_partitions = *num_partitions;
+  } else if (module != nullptr) {
+    resolved_partitions = module->config().num_partitions();
+  }
+
+  result.topology.num_replicas = resolved_replicas;
+  result.topology.num_partitions = resolved_partitions;
+  result.topology.num_nodes = resolved_replicas * resolved_partitions;
+
+  return result;
 }
 
 }  // namespace FunctionalHloRunner

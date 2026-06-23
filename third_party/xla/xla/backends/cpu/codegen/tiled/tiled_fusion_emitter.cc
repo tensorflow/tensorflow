@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -28,8 +29,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
@@ -47,8 +50,8 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
-#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/codegen/xtile/codegen/tiled_emitter_constraints.h"
@@ -76,7 +79,8 @@ namespace ge = ::xla::gpu::experimental;
 
 namespace {
 
-int64_t PerTileCacheLines(const TiledHloInstruction& inst) {
+template <typename TiledInstructionT>
+int64_t PerTileCacheLines(const TiledInstructionT& inst) {
   const Shape& shape = inst.hlo()->shape();
   if (ShapeUtil::IsEffectiveScalar(shape)) {
     return 1;
@@ -107,8 +111,9 @@ int64_t PerTileCacheLines(const TiledHloInstruction& inst) {
 // that seems to give ok results.
 // TODO(willfroom): Implement a cost model similar to
 // GpuPerformanceModelWithIndexingAnalysis.
+template <typename TiledComputationT>
 int64_t TotalCacheLineHits(
-    const TiledHloComputation& tiling,
+    const TiledComputationT& tiling,
     const absl::flat_hash_set<const HloInstruction*>& operands) {
   int64_t per_tile_cost = 0;
   for (const auto* root : tiling.roots()) {
@@ -138,7 +143,6 @@ absl::StatusOr<Tiling> GetTiling(
 
   const HloInstruction* root_hlo =
       fusion.fused_instructions_computation()->root_instruction();
-  std::vector<int64_t> filtered_tilings;
   int64_t best_cost = std::numeric_limits<int64_t>::max();
   FlatTiling best_tile_sizes;
   absl::flat_hash_set<const HloInstruction*> operands(fusion.operands().begin(),
@@ -331,28 +335,52 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
 
   std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
       HloFusionAdaptor::ForInstruction(&fusion);
-  std::unique_ptr<ge::TilingSpace> tiling_space =
-      ge::TilingSpace::Create(*fusion_adaptor, &context);
-  llvm::SmallVector<ge::TilingSpace::DimensionInfo, 4> dims =
-      tiling_space->dimensions();
+  ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,
+                   ge::TilingSpace::Create(*fusion_adaptor, &context));
+  using ValidTilings = std::vector<llvm::SmallVector<int64_t, 4>>;
+  ASSIGN_OR_RETURN(ValidTilings candidates, tiling_space->GetValidTilings());
+  absl::flat_hash_set<const HloInstruction*> operands(fusion.operands().begin(),
+                                                      fusion.operands().end());
 
-  // TODO: b/511084185 - This is a temporary "Single Tile" dummy strategy (tile
-  // size = PowerOf2Ceil(dimension size)) to verify the end-to-end MLIR pipeline
-  // plumbing first.
-  std::vector<int64_t> tile_sizes;
-  if (!dims.empty()) {
-    tile_sizes.reserve(dims.size());
+  // Find the best tiling with minimal cache line hits.
+  std::optional<ge::TiledHloComputation> best_tiling;
+  int64_t best_cost = std::numeric_limits<int64_t>::max();
+  for (const auto& tile_sizes : candidates) {
+    ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> loop_tiling_space,
+                     ge::TilingSpace::Create(*fusion_adaptor, &context));
+    if (const absl::Status status = loop_tiling_space->AssignTileSizes(
+            xla::xtile::GetPaddedTileSizes(tile_sizes));
+        !status.ok()) {
+      VLOG(2) << "Rejected tiling candidate {"
+              << absl::StrJoin(tile_sizes, ", ") << "} for fusion "
+              << fusion.name() << ": AssignTileSizes failed: " << status;
+      continue;
+    }
+
+    absl::StatusOr<ge::TiledHloComputation> tiled_computation =
+        ge::TiledHloComputation::Tile(*fusion_adaptor,
+                                      std::move(loop_tiling_space));
+    if (!tiled_computation.ok()) {
+      VLOG(2) << "Rejected tiling candidate {"
+              << absl::StrJoin(tile_sizes, ", ") << "} for fusion "
+              << fusion.name()
+              << ": Tiling failed: " << tiled_computation.status();
+      continue;
+    }
+
+    int64_t cost = TotalCacheLineHits(*tiled_computation, operands);
+    if (cost < best_cost) {
+      best_cost = cost;
+      best_tiling = std::move(*tiled_computation);
+    }
   }
 
-  for (const auto& dim : dims) {
-    int64_t tile_size =
-        dim.dimension_size == 0 ? 1 : llvm::PowerOf2Ceil(dim.dimension_size);
-    tile_sizes.push_back(tile_size);
+  if (!best_tiling.has_value()) {
+    return absl::NotFoundError(absl::StrCat(
+        "No valid tiled search candidates found for: ", fusion.name()));
   }
 
-  RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
-  return ge::TiledHloComputation::Tile(*fusion_adaptor,
-                                       std::move(tiling_space));
+  return std::move(*best_tiling);
 }
 
 absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernelImpl(

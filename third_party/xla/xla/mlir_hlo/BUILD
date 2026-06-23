@@ -968,7 +968,6 @@ cc_library(
     srcs = [
         "stablehlo_ext/transforms/chlo_preserve_high_level_ops.cpp",
         "stablehlo_ext/transforms/chlo_recompose_ops.cpp",
-        "stablehlo_ext/transforms/chlo_scan_to_reduce_window.cpp",
         "stablehlo_ext/transforms/sdy_refine_shapes.cpp",
         "stablehlo_ext/transforms/sink_constants_to_control_flow.cpp",
         "stablehlo_ext/transforms/stablehlo_add_quant_dequant_conv.cpp",
@@ -1019,6 +1018,5 @@ cc_library(
         "@stablehlo//:stablehlo_passes",
         "@stablehlo//:stablehlo_passes_optimization",
         "@stablehlo//:stablehlo_type_inference",
-        "@stablehlo//:version",
     ],
 )

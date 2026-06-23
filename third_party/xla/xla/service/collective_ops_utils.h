@@ -222,8 +222,8 @@ bool IsRaggedAllToAllOrAsyncStartRaggedAllToAll(
 bool IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(
     const HloInstruction* instruction);
 
-// Returns true if the one-shot zero-copy RaggedAllToAll feature is enabled.
-bool IsOneShotZeroCopyRaggedAllToAllEnabled(const DebugOptions& opts);
+// Returns true if the one-shot RaggedAllToAll with NCCL feature is enabled.
+bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts);
 
 // Returns the collective instruction if argument is a collective op (or a
 // collective fusion) with channel_id.

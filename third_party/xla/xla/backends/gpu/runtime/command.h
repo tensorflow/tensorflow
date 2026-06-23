@@ -161,6 +161,14 @@ class Command : public Thunk {
   // ensure that all ranks execute NCCL command update.
   virtual bool requires_initialization() const { return false; }
 
+  // Returns true if command requires a one-time fallback execution before it is
+  // recorded into a command buffer.
+  virtual bool requires_warmup() const { return false; }
+
+  // Returns true if command buffer command parameters can change even when
+  // buffer allocation base addresses are unchanged.
+  virtual bool requires_update() const { return false; }
+
   // Returns true if this command is implemented via CUDA stream activity
   // tracing (i.e. a subclass of TracedCommand).
   virtual bool IsTracedCommand() const { return false; }

@@ -170,6 +170,8 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   tsl::Future<> GetReadyFuture(
       absl::Span<const ifrt::ValueRef> values) override;
 
+  tsl::Future<> DeleteValues(absl::Span<ifrt::ValueRef> values) override;
+
   absl::StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(
       absl::Span<ifrt::ValueRef> values) override;
 

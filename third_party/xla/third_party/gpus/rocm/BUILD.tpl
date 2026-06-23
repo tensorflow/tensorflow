@@ -148,6 +148,7 @@ rocm_lib_import(
     data = glob(
         [
             "%{rocm_root}/lib/libamdhip64.so*",
+            "%{rocm_root}/lib/librocm_kpack.so*",
         ],
     ),
     interface_library = "%{rocm_root}/lib/libamdhip64.so",
@@ -195,6 +196,7 @@ cc_library(
             "%{rocm_root}/lib/libamd_comgr_loader.so*",
             "%{rocm_root}/lib/libamd_comgr.so*",
             "%{rocm_root}/lib/llvm/lib/libLLVM.so*",
+            "%{rocm_root}/lib/llvm/lib/libclang-cpp.so*",
         ],
     ),
     deps = [
@@ -221,8 +223,13 @@ rocm_lib_import(
     data = glob([
         "%{rocm_root}/lib/librocblas.so*",
     ]) + glob([
-        "%{rocm_root}/lib/rocblas/library/*" + arch + "*"
+        pattern
         for arch in rocm_gpu_architectures()
+        for pattern in [
+            "%{rocm_root}/lib/rocblas/library/*" + arch + "*",
+            "%{rocm_root}/lib/rocblas/library/" + arch + "/**/*",
+            "%{rocm_root}/.kpack/blas_lib_" + arch + ".kpack",
+        ]
     ]),
     interface_library = "%{rocm_root}/lib/librocblas.so",
     deps = [
@@ -244,7 +251,10 @@ rocm_lib_import(
 
 cc_library(
     name = "rocfft_libs",
-    data = glob(["%{rocm_root}/lib/librocfft.so*"]),
+    data = glob(["%{rocm_root}/lib/librocfft.so*"]) + glob([
+        "%{rocm_root}/.kpack/fft_lib_" + arch + ".kpack"
+        for arch in rocm_gpu_architectures()
+    ]),
     deps = [
         ":hip_runtime_libs",
         ":hiprtc_libs",
@@ -263,7 +273,10 @@ rocm_lib_import(
 
 cc_library(
     name = "rocrand_libs",
-    data = glob(["%{rocm_root}/lib/librocrand.so*"]),
+    data = glob(["%{rocm_root}/lib/librocrand.so*"]) + glob([
+        "%{rocm_root}/.kpack/rand_lib_" + arch + ".kpack"
+        for arch in rocm_gpu_architectures()
+    ]),
     deps = [
         ":hip_runtime_libs",
     ],
@@ -290,7 +303,10 @@ rocm_lib_import(
 
 rocm_lib_import(
     name = "rccl",
-    data = glob(["%{rocm_root}/lib/librccl.so*"]),
+    data = glob(["%{rocm_root}/lib/librccl.so*"]) + glob([
+        "%{rocm_root}/.kpack/rccl_lib_" + arch + ".kpack"
+        for arch in rocm_gpu_architectures()
+    ]),
     interface_library = "%{rocm_root}/lib/librccl.so",
     deps = [
         ":amdsmi_libs",
@@ -339,7 +355,10 @@ rocm_lib_import(
 
 cc_library(
     name = "rocsparse_libs",
-    data = glob(["%{rocm_root}/lib/librocsparse.so*"]),
+    data = glob(["%{rocm_root}/lib/librocsparse.so*"]) + glob([
+        "%{rocm_root}/.kpack/blas_lib_" + arch + ".kpack"
+        for arch in rocm_gpu_architectures()
+    ]),
     deps = [
         ":hip_runtime_libs",
         ":roctx_libs",
@@ -379,6 +398,9 @@ rocm_lib_import(
     data = glob([
         "%{rocm_root}/lib/librocsolver.so*",
         "%{rocm_root}/lib/host-math/lib/*.so*",
+    ]) + glob([
+        "%{rocm_root}/.kpack/blas_lib_" + arch + ".kpack"
+        for arch in rocm_gpu_architectures()
     ]),
     interface_library = "%{rocm_root}/lib/librocsolver.so",
     deps = [
@@ -415,8 +437,12 @@ rocm_lib_import(
         "%{rocm_root}/lib/libhipblaslt.so*",
         "%{rocm_root}/lib/librocroller.so*",
     ]) + glob([
-        "%{rocm_root}/lib/hipblaslt/library/*" + arch + "*"
+        pattern
         for arch in rocm_gpu_architectures()
+        for pattern in [
+            "%{rocm_root}/lib/hipblaslt/library/*" + arch + "*",
+            "%{rocm_root}/lib/hipblaslt/library/" + arch + "/**/*",
+        ]
     ]),
     interface_library = "%{rocm_root}/lib/libhipblaslt.so",
     deps = [

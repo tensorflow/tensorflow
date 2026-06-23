@@ -2028,6 +2028,11 @@ absl::StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
   } else {
     result.peak_bytes_reserved = -1;
   }
+  if (args.peak_allocated_bytes_is_set) {
+    result.peak_allocated_bytes = args.peak_allocated_bytes;
+  } else {
+    result.peak_allocated_bytes = -1;
+  }
   if (args.bytes_reservable_limit_is_set) {
     result.bytes_reservable_limit = args.bytes_reservable_limit;
   }
@@ -3036,10 +3041,10 @@ PJRT_HloOutputCallbackInfo CppHloOutputCallbackToC(
             reinterpret_cast<PjRtCApiLoadedExecutable::HloOutputCallbackState*>(
                 user_arg);
 
-        std::vector<std::shared_ptr<Literal>> accumulated_to_call;
+        std::vector<std::shared_ptr<const Literal>> accumulated_to_call;
         bool all_received = false;
         {
-          absl::MutexLock lock(&callback_state->mu);
+          absl::MutexLock lock(callback_state->mu);
           if (operand_index < 0 ||
               operand_index >= callback_state->num_operands) {
             LOG(ERROR) << "HloOutputCallback: operand_index " << operand_index
@@ -3086,7 +3091,7 @@ PJRT_HloOutputCallbackInfo CppHloOutputCallbackToC(
         if (all_received) {
           callback_state->callback(
               replica_id, partition_id,
-              absl::Span<std::shared_ptr<xla::Literal> const>(
+              absl::Span<std::shared_ptr<const xla::Literal> const>(
                   accumulated_to_call.data(), accumulated_to_call.size()));
         }
       },

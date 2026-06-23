@@ -955,10 +955,17 @@ class Subgraph {
     }
     // Map tensors identifiers before packing anything.
     if (delegate.weight_cache_provider_->IsActive()) {
+      const auto* subgraph =
+          reinterpret_cast<tflite::Subgraph*>(context->impl_);
+      auto tensor_buffer_identifiers = subgraph->GetTensorBufferIdentifiers();
+      for (const auto& [tensor_index, external_buffer_id] :
+           subgraph->GetExternalTensorBufferIdentifiers()) {
+        tensor_buffer_identifiers.insert_or_assign(tensor_index,
+                                                   external_buffer_id);
+      }
       if (!delegate.weight_cache_provider_->MapTensorIdentifiers(
               context->tensors, context->tensors_size,
-              reinterpret_cast<tflite::Subgraph*>(context->impl_)
-                  ->GetTensorBufferIdentifiers())) {
+              tensor_buffer_identifiers)) {
         return nullptr;
       }
     }

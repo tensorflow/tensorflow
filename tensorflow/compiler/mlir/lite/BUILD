@@ -2190,7 +2190,10 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/compiler/mlir/lite/core/api:error_reporter"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+        "//tensorflow/lite:util",
+    ],
 )
 
 exports_files(srcs = ["utils/control_edges.h"])

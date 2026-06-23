@@ -1022,7 +1022,7 @@ static absl::Status AbortCliquesWithIncarnations(
   // to be aborted, so that they can cancel pending collective operations.
   for (auto& [cache_key, lockable_clique] : cliques) {
     if (CliqueKeyContainsIncarnation(cache_key.second, incarnation_set)) {
-      VLOG(1) << "Canceling pending GPU clique " << cache_key.second.ToString();
+      VLOG(1) << "Canceling pending GPU clique " << cache_key.second;
       lockable_clique->Cancel();
     }
   }
@@ -1037,25 +1037,24 @@ static absl::Status AbortCliquesWithIncarnations(
     std::vector<std::unique_ptr<tsl::Thread>> threads;
     for (auto& [cache_key, lockable_clique] : cliques) {
       if (!CliqueKeyContainsIncarnation(cache_key.second, incarnation_set)) {
-        VLOG(1) << "Not aborting GPU clique " << cache_key.second.ToString()
+        VLOG(1) << "Not aborting GPU clique " << cache_key.second
                 << " because it does not include a stale incarnation";
         continue;
       }
 
       auto abort = [&result, &result_mu, key = cache_key.second,
                     lockable_clique = &lockable_clique]() {
-        VLOG(1) << "Aborting GPU clique " << key.ToString();
+        VLOG(1) << "Aborting GPU clique " << key;
         if (absl::Status s = (*lockable_clique)->Abort(); !s.ok()) {
           LOG(ERROR) << "Error aborting GPU clique " << key << ": " << s;
           absl::MutexLock lock(result_mu);
           result = std::move(s);
         } else {
-          VLOG(1) << "Aborted GPU clique " << key.ToString();
+          VLOG(1) << "Aborted GPU clique " << key;
         }
       };
 
-      VLOG(1) << "Launching thread to abort GPU clique "
-              << cache_key.second.ToString();
+      VLOG(1) << "Launching thread to abort GPU clique " << cache_key.second;
       threads.push_back(absl::WrapUnique(tsl::Env::Default()->StartThread(
           tsl::ThreadOptions(), "abort", abort)));
     }
@@ -1067,9 +1066,9 @@ static absl::Status AbortCliquesWithIncarnations(
     bool erase =
         CliqueKeyContainsIncarnation(cache_key.second, incarnation_set);
     if (erase) {
-      VLOG(1) << "Removing GPU clique " << cache_key.second.ToString();
+      VLOG(1) << "Removing GPU clique " << cache_key.second;
     } else {
-      VLOG(1) << "Not removing GPU clique " << cache_key.second.ToString()
+      VLOG(1) << "Not removing GPU clique " << cache_key.second
               << " because it does not include a stale incarnation";
     }
     return erase;

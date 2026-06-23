@@ -19,10 +19,15 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/btree_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -51,8 +56,68 @@ limitations under the License.
 namespace stream_executor::gpu {
 namespace {
 
+// ---------------------------------------------------------------------------
+// Process-level HIP stream handle cache
+//
+// hipStreamCreate on ROCm is expensive (~100 ms/stream). Instead of calling
+// hipStreamDestroy in RocmStream::~RocmStream() and hipStreamCreate in
+// RocmStream::Create(), idle handles are kept in this cache and reused.
+//
+// Cache key: (device_ordinal, creation_flags, creation_priority_int).
+// Flags and priority are queried from the live stream via hipStreamGetFlags /
+// hipStreamGetPriority before insertion, so a retrieved handle is guaranteed
+// to match the creation parameters of the new stream.
+//
+// Safety invariants:
+//   - A handle is inserted only after BlockHostUntilDone() confirms it is
+//     fully idle (hipStreamSynchronize ran in RocmStream::~RocmStream()).
+//   - hipStreamQuery is re-checked at insertion time; any stream in an error
+//     state is destroyed rather than cached.
+//   - The GPU context is activated (executor->Activate()) for all HIP calls.
+//
+// Intentional no-destructor: the singleton holds at most one vector of handles
+// per (device, flags, priority) for the process lifetime.  absl::NoDestructor
+// avoids running the destructor at program exit (which would call
+// hipStreamDestroy after the driver may already be torn down).
+//
+// Thread safety: mu guards all map accesses.
+struct HipStreamHandleCache {
+  absl::Mutex mu;
+  // Key: (device_ordinal, flags, priority_int)
+  absl::btree_map<std::tuple<int, unsigned int, int>, std::vector<hipStream_t>>
+      handles ABSL_GUARDED_BY(mu);
+};
+
+HipStreamHandleCache& GetHipStreamHandleCache() {
+  static absl::NoDestructor<HipStreamHandleCache> cache;
+  return *cache;
+}
+
 absl::StatusOr<hipStream_t> CreateStream(StreamExecutor* executor,
                                          int priority) {
+  // XLA always creates streams with hipStreamDefault. This constant is used
+  // as part of the cache key so that if the flag changes in the future the
+  // cache will not silently return a handle with the wrong synchronisation
+  // semantics.
+  constexpr unsigned int kFlags = hipStreamDefault;
+
+  // Check the cache for an idle handle with matching (device, flags, priority).
+  {
+    auto& cache = GetHipStreamHandleCache();
+    absl::MutexLock lock(&cache.mu);
+    auto key = std::make_tuple(executor->device_ordinal(), kFlags, priority);
+    auto it = cache.handles.find(key);
+    if (it != cache.handles.end() && !it->second.empty()) {
+      hipStream_t h = it->second.back();
+      it->second.pop_back();
+      VLOG(2) << "Reusing cached HIP stream " << h << " for device "
+              << executor->device_ordinal() << " flags=" << kFlags
+              << " priority=" << priority;
+      return h;
+    }
+  }
+
+  // Cold path: create a new HIP stream.
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   hipStream_t stream;
   if (priority == 0) {
@@ -211,20 +276,65 @@ void DestroyStream(StreamExecutor* executor, hipStream_t stream) {
   if (stream == nullptr) {
     return;
   }
-  hipError_t res = hipStreamQuery(stream);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "stream not idle on destroy: " << ToString(res);
+
+  // Activate the device context for all HIP calls below.
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+
+  // Verify the stream is fully idle before caching.
+  // BlockHostUntilDone() ran in ~RocmStream() before this call, so under
+  // normal conditions this query always succeeds. An error here indicates a
+  // GPU fault or driver issue; destroy the stream rather than poisoning the
+  // cache with a broken handle.
+  hipError_t query_res = hipStreamQuery(stream);
+  if (query_res != hipSuccess) {
+    LOG(WARNING) << "stream not idle on destroy: " << ToString(query_res)
+                 << " — destroying instead of caching";
+    hipError_t res = hipStreamDestroy(stream);
+    if (res != hipSuccess) {
+      LOG(ERROR) << "failed to destroy ROCM stream for device "
+                 << executor->device_ordinal() << ": " << ToString(res);
+    }
+    return;
   }
 
-  std::unique_ptr<ActivateContext> activation = executor->Activate();
-  res = hipStreamDestroy(stream);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to destroy ROCM stream for device "
-               << executor->device_ordinal() << ": " << ToString(res);
-  } else {
-    VLOG(2) << "successfully destroyed stream " << stream << " for device "
-            << executor->device_ordinal();
+  // Query the stream's creation flags and priority so they can be used as the
+  // cache key. This guarantees a retrieved handle always matches the exact
+  // (flags, priority) the new stream would have been created with — even if
+  // XLA is changed to use hipStreamNonBlocking or non-default priorities.
+  unsigned int flags = 0;
+  int stream_priority = 0;
+  hipError_t flags_res = hipStreamGetFlags(stream, &flags);
+  if (flags_res != hipSuccess) {
+    LOG(WARNING) << "hipStreamGetFlags failed: " << ToString(flags_res)
+                 << " — destroying stream " << stream << " instead of caching";
+    hipError_t destroy_res = hipStreamDestroy(stream);
+    if (destroy_res != hipSuccess) {
+      LOG(ERROR) << "failed to destroy ROCM stream for device "
+                 << executor->device_ordinal() << ": " << ToString(destroy_res);
+    }
+    return;
   }
+  hipError_t prio_res = hipStreamGetPriority(stream, &stream_priority);
+  if (prio_res != hipSuccess) {
+    LOG(WARNING) << "hipStreamGetPriority failed: " << ToString(prio_res)
+                 << " — destroying stream " << stream << " instead of caching";
+    hipError_t destroy_res = hipStreamDestroy(stream);
+    if (destroy_res != hipSuccess) {
+      LOG(ERROR) << "failed to destroy ROCM stream for device "
+                 << executor->device_ordinal() << ": " << ToString(destroy_res);
+    }
+    return;
+  }
+
+  // Insert the verified, idle handle into the cache for reuse.
+  auto& cache = GetHipStreamHandleCache();
+  absl::MutexLock lock(&cache.mu);
+  auto key =
+      std::make_tuple(executor->device_ordinal(), flags, stream_priority);
+  cache.handles[key].push_back(stream);
+  VLOG(2) << "cached HIP stream " << stream << " for device "
+          << executor->device_ordinal() << " flags=" << flags
+          << " priority=" << stream_priority;
 }
 }  // namespace
 

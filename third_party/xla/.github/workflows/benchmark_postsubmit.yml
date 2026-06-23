@@ -101,7 +101,7 @@ jobs:
           GITHUB_EVENT_PULL_REQUEST_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           GITHUB_EVENT_PULL_REQUEST_BASE_REF: ${{ github.event.pull_request.base.ref }}
       # Find the current PR number, if any, because github context doesn't have it for push events.
-      - uses: jwalton/gh-find-current-pr@f3d61b485d2801773f7a07b2aaa3306bd8f8e653 # ratchet:jwalton/gh-find-current-pr@v1.3.5
+      - uses: jwalton/gh-find-current-pr@f3d61b485d2801773f7a07b2aaa3306bd8f8e653 # v1.3.5
         id: find_pr
         with:
           # Can be "open", "closed", or "all".  Defaults to "open".
@@ -113,7 +113,7 @@ jobs:
           PR: ${{ steps.find_pr.outputs.pr }}
           STEPS_FIND_PR_OUTPUTS_PR: ${{ steps.find_pr.outputs.pr }}
       - name: Checkout OpenXLA
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
       - name: Wait For Connection
@@ -248,7 +248,7 @@ jobs:
           STEPS_FIND_PR_OUTPUTS_PR: ${{ steps.find_pr.outputs.pr }}
 
       - name: Upload XSpace artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # ratchet:actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: xspace-artifacts-${{ matrix.job_info.pool }}-${{ matrix.job_info.platform }}
           path: ${{ env.XSPACE_FILE }}

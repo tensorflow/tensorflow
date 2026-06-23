@@ -51,6 +51,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'dtype\', \'value_key\', \'partitions\', \'row_splits_dtype\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'()\', \"<dtype: \'int32\'>\", \'False\'], "
+  }
+  member_method {
     name: "count"
   }
   member_method {

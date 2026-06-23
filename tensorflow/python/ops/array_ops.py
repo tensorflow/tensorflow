@@ -1277,7 +1277,7 @@ def _cast_nested_seqs_to_dtype(dtype):
   return _maybe_cast
 
 
-_NON_AUTOPACKABLE_TYPES = set((
+_NON_AUTOPACKABLE_TYPES = frozenset((
     int,
     float,
     complex,
@@ -1309,8 +1309,8 @@ _NON_AUTOPACKABLE_TYPES = set((
     np.uint64,
     np.ulonglong,
     np.void,
+    np.ndarray,
 ))
-_NON_AUTOPACKABLE_TYPES.add(np.ndarray)
 
 
 def _should_not_autopack(v):
@@ -3461,64 +3461,6 @@ NEW_AXIS = -1
 SHRINK_AXIS = -2
 
 
-# PEP-8 naming
-# pylint: disable=invalid-name,redefined-outer-name
-def _compute_size_of_strided_dim(shrink, spec, size):
-  """Computes the size of a single strided slice dimension."""
-
-  unknown = None  # Document what None means here.
-  use_full_range = None  # Document other use of None.
-  # if this is a shrink axis (i.e. a non-range index)
-  # it either will produce an error or return 1
-  if shrink:
-    return 1
-  if size is unknown or size.value is unknown:
-    return unknown
-  size = size.value
-  stride = spec.step
-  if stride is not unknown:
-    if stride == 0:
-      return unknown
-    stride = spec.step
-    valid_range = [0, size] if stride > 0 else [-1, size - 1]
-
-    # PEP-8 naming
-    # pylint: disable=invalid-name
-    def canonical(x, c):
-      if x is use_full_range:
-        return valid_range[c] if stride > 0 else valid_range[(c + 1) & 1]
-      else:
-        x_fwd = size + x if x < 0 else x  # make negative indices positive
-        return max(valid_range[0], min(valid_range[1], x_fwd))
-
-    begin = canonical(spec.start, 0)
-    end = canonical(spec.stop, 1)
-    interval_length = end - begin
-    if interval_length == 0 or ((interval_length < 0) != (stride < 0)):
-      return 0
-    else:
-      remainder = 1 if interval_length % stride != 0 else 0
-      return interval_length // stride + remainder
-  else:
-    return unknown  # unknown because stride is unknown
-
-
-def _TileGradShape(op: ops.Operation):
-  """Shape function for the TileGrad op."""
-  multiples_shape = op.inputs[1].get_shape().with_rank(1)
-  input_shape = op.inputs[0].get_shape().with_rank(multiples_shape[0])
-  # NOTE(mrry): Represent `multiples` as a `TensorShape` because (i)
-  # it is a vector of non-negative integers, and (ii) doing so allows
-  # us to handle partially-known multiples.
-  multiples = tensor_util.constant_value_as_shape(op.inputs[1]).with_rank(
-      input_shape.ndims)
-  if multiples.ndims is None:
-    return [tensor_shape.unknown_shape()]
-  else:
-    output_dims = []
-    for dim, multiple in zip(input_shape.dims, multiples.dims):
-      output_dims.append(dim // multiple)
-    return [tensor_shape.TensorShape(output_dims)]
 
 
 @tf_export("edit_distance")
@@ -5085,80 +5027,7 @@ def _batch_gather(params, indices, batch_dims, axis=None):
     raise ValueError(f"Argument `batch_dims` = {batch_dims} must be less than "
                      f"rank(`params`) = {params.shape.ndims}")
 
-  # Handle axis by transposing the axis dimension to be the first non-batch
-  # dimension, recursively calling batch_gather with axis=0, and then
-  # transposing the result to put the pre-axis dimensions before the indices
-  # dimensions.
-  if axis is not None and axis != batch_dims:
-    # Adjust axis to be positive.
-    if not isinstance(axis, int):
-      axis = tf.where(axis < 0, axis + array_ops.rank(params), axis)
-    elif axis < 0 and params.shape.ndims is None:
-      axis = axis + array_ops.rank(params)
-    else:
-      if (axis < -params.shape.ndims) or (axis >= params.shape.ndims):
-        raise ValueError(f"Argument `axis` = {axis} out of range "
-                         f"[{-params.shape.ndims}, {params.shape.ndims})")
-      if axis < 0:
-        axis += params.shape.ndims
-      if axis < batch_dims:
-        raise ValueError(f"Argument `batch_dims` = {batch_dims} must be less "
-                         f"than or equal to argument `axis` = {axis}")
-
-    # Move params[axis] up to params[batch_dims].
-    perm = [
-        list(range(batch_dims)), [axis],
-        gen_math_ops._range(batch_dims, axis, 1),
-        gen_math_ops._range(axis + 1, rank(params), 1)
-    ]
-    params = transpose(params, concat(perm, axis=0))
-
-    result = _batch_gather(params, indices, batch_dims=batch_dims)
-
-    # Move the result dimensions corresponding to params[batch_dims:axis]
-    # to just before the dimensions corresponding to indices[batch_dims:].
-    params_start = indices_ndims + axis - batch_dims
-    perm = [
-        list(range(batch_dims)),
-        gen_math_ops._range(indices_ndims, params_start, 1),
-        list(range(batch_dims, indices_ndims)),
-        gen_math_ops._range(params_start, rank(result), 1)
-    ]
-    return transpose(result, perm=concat(perm, axis=0))
-
-  indices_shape = shape(indices)
-  params_shape = shape(params)
-  batch_indices = indices
-  indices_dtype = indices.dtype.base_dtype
-  accum_dim_value = ones((), dtype=indices_dtype)
-  # Use correct type for offset index computation
-  casted_params_shape = gen_math_ops.cast(params_shape, indices_dtype)
-  for dim in range(batch_dims, 0, -1):
-    dim_value = casted_params_shape[dim - 1]
-    accum_dim_value *= casted_params_shape[dim]
-    start = zeros((), dtype=indices_dtype)
-    step = ones((), dtype=indices_dtype)
-    dim_indices = gen_math_ops._range(start, dim_value, step)
-    dim_indices *= accum_dim_value
-    dim_shape = array_ops_stack.stack(
-        [1] * (dim - 1) + [dim_value] + [1] * (indices_ndims - dim), axis=0)
-    batch_indices += reshape(dim_indices, dim_shape)
-
-  flat_indices = reshape(batch_indices, [-1])
-  outer_shape = params_shape[batch_dims + 1:]
-  flat_inner_shape = gen_math_ops.prod(params_shape[:batch_dims + 1], [0],
-                                       False)
-
-  flat_params = reshape(params, concat([[flat_inner_shape], outer_shape],
-                                       axis=0))
-  flat_result = gather(flat_params, flat_indices)
-  result = reshape(flat_result, concat([indices_shape, outer_shape], axis=0))
-  final_shape = indices.get_shape()[:batch_dims].merge_with(
-      params.get_shape()[:batch_dims])
-  final_shape = final_shape.concatenate(indices.get_shape().dims[batch_dims:])
-  final_shape = final_shape.concatenate(params.get_shape()[batch_dims + 1:])
-  result.set_shape(final_shape)
-  return result
+  return gather(params, indices, batch_dims=batch_dims, axis=axis)
 
 
 @tf_export(v1=["gather_nd", "manip.gather_nd"])

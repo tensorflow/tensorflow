@@ -625,8 +625,9 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     const HloFusionAdaptor& fusion_adaptor,
     const BlockLevelParameters& block_level_parameters) {
   if (use_experimental_tiling_) {
-    std::unique_ptr<experimental::TilingSpace> tiling_space =
-        experimental::TilingSpace::Create(fusion_adaptor, mlir_context_);
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<experimental::TilingSpace> tiling_space,
+        experimental::TilingSpace::Create(fusion_adaptor, mlir_context_));
 
     ASSIGN_OR_RETURN(
         llvm::SmallVector<int64_t> tile_sizes,
@@ -708,8 +709,8 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
     using experimental::TiledHloComputation;
     using experimental::TilingSpace;
 
-    std::unique_ptr<TilingSpace> tiling_space =
-        TilingSpace::Create(fusion_adaptor, mlir_context_);
+    ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+                     TilingSpace::Create(fusion_adaptor, mlir_context_));
 
     ASSIGN_OR_RETURN(auto tilings, tiling_space->GetValidTilings());
     VLOG(1) << absl::StrCat(
@@ -717,8 +718,9 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
         tilings.size(), " tilings.");
 
     for (const llvm::SmallVector<int64_t, 4>& tiling : tilings) {
-      std::unique_ptr<TilingSpace> tiling_space =
-          TilingSpace::Create(fusion_adaptor, mlir_context_);
+      VLOG(2) << "Trying tiling: " << absl::StrJoin(tiling, ",");
+      ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(fusion_adaptor, mlir_context_));
 
       RETURN_IF_ERROR(tiling_space->AssignTileSizes(
           xla::xtile::GetPaddedTileSizes(tiling)));
@@ -728,14 +730,14 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
       if (!tiled_computation.ok()) {
         // TODO: b/511080616 - GetValidTilings() must return only tilings that
         // can be tiled and we should treat all errors here as a failure.
-        VLOG(1) << "Tiling failed for " << absl::StrJoin(tiling, ",")
+        VLOG(2) << "Tiling failed for " << absl::StrJoin(tiling, ",")
                 << " with error: " << tiled_computation.status().message();
         continue;
       }
       if (const Decision valid = experimental::VerifyTritonConstraints(
               *tiled_computation, *device_info_);
           !valid) {
-        VLOG(1) << "Triton constraints violated for tiling " << valid.Explain();
+        VLOG(2) << "Triton constraints violated for tiling " << valid.Explain();
         continue;
       }
 
@@ -758,6 +760,9 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
 
     if (const auto* fusion_decision =
             std::get_if<FusionDecision>(&analysis_or_error)) {
+      VLOG(2)
+          << "TryFindTopKBestTilingsForFusion SymbolicTileAnalysis rejected: "
+          << fusion_decision->Explain();
       return *fusion_decision;
     }
 

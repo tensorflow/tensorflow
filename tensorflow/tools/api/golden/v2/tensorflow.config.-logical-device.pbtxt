@@ -15,6 +15,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__new__"
+    argspec: "args=[\'_cls\', \'name\', \'device_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "count"
   }
   member_method {

@@ -176,6 +176,18 @@ void RecordTFDataServiceDataTransferProtocolError(
     const std::string& data_transfer_protocol, error::Code code,
     const std::string& error_message);
 
+// Records that a tf.data client GetElement request from `client_id` (trainer
+// ID) thread `thread_id` to `worker_address` resulted in `action`.
+void RecordTFDataClientGetElementAction(const std::string& action,
+                                        const std::string& client_id,
+                                        const std::string& worker_address,
+                                        const std::string& thread_id);
+
+// Records the time (in microseconds) an element spent waiting in a prefetch
+// buffer.
+void RecordTFDataPrefetchResidenceTime(const std::string& node_name,
+                                       int64_t duration_us);
+
 // Records tf.data service cross-trainer cache queries.
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 

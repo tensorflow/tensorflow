@@ -56,6 +56,8 @@ typedef struct SE_StreamExecutor SE_StreamExecutor;
 typedef struct SE_Stream SE_Stream;
 typedef struct SE_Event SE_Event;
 
+// An empty proto is always represented as (bytes=nullptr, size=0).
+// There is no other valid way to represent it.
 typedef struct TpuSerializedProto {
   const char* bytes;
   size_t size;

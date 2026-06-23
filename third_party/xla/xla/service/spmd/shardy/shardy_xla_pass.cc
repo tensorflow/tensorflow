@@ -371,11 +371,16 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   // 6 months compatibility window.
   // TODO (b/519501636): Remove this fallback once 6 months compatibility window
   // for ifrt has passed in Nov'2026.
-  if (xla::sdy::hasFrontendMhloShardings(mlirModule)) {
+  if (enableHloShardingV3 && (xla::sdy::hasFrontendMhloShardings(mlirModule) ||
+                              xla::sdy::hasFrontendMeshes(mlirModule))) {
+    // Fallback checks for mhlo sharding is not sufficient, we need to check for
+    // meshes as well to handle shard map cases.
     LOG(WARNING)
-        << "Module contains sdy shardings in frontend_attributes even when "
-           "HloShardingV3 is enabled. Disabling HloShardingV3 to prevent "
-           "conflicts during Shardy import.";
+        << "Module contains sdy shardings or meshes in frontend_attributes "
+           "even when HloShardingV3 is enabled. This is probably due to stale "
+           "model export, try re-exporting the model on HEAD (with "
+           "HloShardingV3 enabled). Disabling HloShardingV3 here to prevent "
+           "conflicts during Shardy import";
     hloModule->mutable_config()
         .mutable_debug_options()
         .set_xla_enable_hlo_sharding_v3(false);

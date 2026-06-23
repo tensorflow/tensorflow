@@ -27,6 +27,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'index_key\', \'value_key\', \'dtype\', \'size\', \'already_sorted\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
     name: "count"
   }
   member_method {

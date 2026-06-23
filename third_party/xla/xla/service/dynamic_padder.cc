@@ -1319,7 +1319,11 @@ absl::StatusOr<bool> RewriteDynamicSelectAndScatterSamePadding(
       dynamic_dimension_inference->ForwardDynamicSize(hlo, rewritten, {}));
   return true;
 }
-
+// Rewrites a dynamic concatenate instruction (where the concatenation dimension
+// is dynamic) into a Pad on the first operand (padding it to the static bounded
+// shape of the concat output) followed by DynamicUpdateSlice for each
+// subsequent operand, accumulating the dynamic offsets along the concatenate
+// dimension.
 absl::StatusOr<bool> RewriteDynamicConcat(
     HloInstruction* concat,
     DynamicDimensionInference* dynamic_dimension_inference) {
@@ -1335,16 +1339,36 @@ absl::StatusOr<bool> RewriteDynamicConcat(
     offsets.push_back(concat->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0))));
   }
-  HloInstruction* rewritten_concat = concat;
+  HloInstruction* rewritten_concat = nullptr;
   // Keep track of previous users before rewrite so that we can update their
   // operands later.
   auto prev_users = concat->users();
   for (int64_t i = 0; i < concat->operand_count(); ++i) {
     // Rewrite the concat by dynamic update slicing operand into the concat dim.
     HloInstruction* operand = concat->mutable_operand(i);
-    rewritten_concat =
-        concat->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-            rewritten_concat->shape(), rewritten_concat, operand, offsets));
+    if (i == 0) {
+      PaddingConfig padding_config;
+      for (int64_t d = 0; d < concat->shape().dimensions().size(); ++d) {
+        auto* dimension = padding_config.add_dimensions();
+        dimension->set_edge_padding_low(0);
+        dimension->set_interior_padding(0);
+        if (d == concat_dim) {
+          dimension->set_edge_padding_high(concat->shape().dimensions(d) -
+                                           operand->shape().dimensions(d));
+        } else {
+          dimension->set_edge_padding_high(0);
+        }
+      }
+      HloInstruction* padding_value =
+          concat->AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::Zero(concat->shape().element_type())));
+      rewritten_concat = concat->AddInstruction(HloInstruction::CreatePad(
+          concat->shape(), operand, padding_value, padding_config));
+    } else {
+      rewritten_concat =
+          concat->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+              rewritten_concat->shape(), rewritten_concat, operand, offsets));
+    }
     // Update the offset of concat dimension by adding the size of the concat
     // dimension of the operand to it.
     HloInstruction* dynamic_size =

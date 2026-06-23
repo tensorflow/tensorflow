@@ -17,12 +17,8 @@ limitations under the License.
 #define XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <string>
-#include <utility>
-#include <variant>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -33,18 +29,16 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/ir_emission_utils.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -77,8 +71,7 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
 // GroupedMatMul.
 bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr);
 
-inline constexpr int64_t WarpSize(
-    const se::DeviceDescription& gpu_device_info) {
+constexpr int64_t WarpSize(const se::DeviceDescription& gpu_device_info) {
   return gpu_device_info.threads_per_warp();
 }
 
@@ -106,11 +99,6 @@ inline constexpr absl::string_view kTritonNestedGemmFusionKind =
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 
-// Fusions that can be emitted using a dynamic memcpy. A dynamic memcpy depends
-// on some loop induction variable.
-inline constexpr absl::string_view kDynamicMemcpyFusionKind =
-    "__dynamic_memcpy";
-
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";
 
@@ -121,17 +109,6 @@ inline constexpr int64_t kNumShmemBanks = 32;
 
 // The bitwidth of a shared memory bank.
 inline constexpr int64_t kBankBitwidth = 32;
-
-// The name of the custom fusion config for dynamic slice fusion with static
-// slices, such that the offset can be computed at compile time.
-inline constexpr absl::string_view
-    kDynamicSliceFusionWithStaticAddressComputationConfigName =
-        "address_computation";
-// The name of the custom fusion config for dynamic slice fusion with dynamic
-// slices, such that the offset is computed at runtime.
-inline constexpr absl::string_view
-    kDynamicSliceFusionWithDynamicAddressComputationConfigName =
-        "dynamic_address_computation";
 
 // The name of the custom fusion config for dynamic slice fusion V2.
 inline constexpr absl::string_view kDynamicSliceFusionConfigName =
@@ -145,10 +122,6 @@ inline constexpr absl::string_view kDynamicSliceFusionConfigName =
 std::optional<std::string> GetCustomFusionConfigName(
     const HloInstruction* instr);
 
-// Returns true if the given instruction is a custom fusion for dynamic slice
-// fusion. This is determined by checking the name of custom fusion config.
-bool IsDynamicSliceFusion(const HloInstruction* instr);
-
 // Returns true if `hlo` will be implemented as a call to a TopK routine.
 bool IsCustomCallToTopK(const HloInstruction& hlo);
 
@@ -156,9 +129,6 @@ bool IsCustomCallToTopK(const HloInstruction& hlo);
 // implementation.
 bool IsCustomCallToPtxKernel(const HloInstruction& hlo);
 
-// Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
-// with nvshmem.
-bool IsMosaicWithNvshmem(const HloInstruction& hlo);
 
 // Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
 // with multimem.
@@ -312,48 +282,6 @@ void VerifyModule(const llvm::Module& module);
 // Otherwise, the return type is i64.
 llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
                                   int64_t launch_size, llvm::IRBuilderBase* b);
-
-// This class stores either a non-owning reference or owns data that represents
-// a dense array in XLA format. It is used for intermediate storage during IR
-// constant emission.
-class DenseDataIntermediate {
- public:
-  // Creates an instance of DenseDataIntermediate that owns the provided vector.
-  static DenseDataIntermediate Own(std::vector<uint8_t> owned) {
-    DenseDataIntermediate di;
-    di.data_ = std::move(owned);
-    return di;
-  }
-
-  // Creates an instance of DenseDataIntermediate that aliases the input.
-  static DenseDataIntermediate Alias(absl::Span<const uint8_t> aliased) {
-    DenseDataIntermediate di;
-    di.data_ = aliased;
-    return di;
-  }
-
-  // Returns a reference to the data this object represents.
-  absl::Span<const uint8_t> span() const {
-    return data_.index() == 0 ? absl::Span<const uint8_t>(std::get<0>(data_))
-                              : std::get<1>(data_);
-  }
-
-  // Converts `this` into its protobuf representation.
-  // Note that the protobuf message will always contain a copy of the data -
-  // also for non-owning instances of DenseDataIntermediate.
-  DenseDataIntermediateProto ToProto() const;
-
-  // Constructs a data-owning instance of DenseDataIntermediate from its
-  // protobuf representation.
-  static DenseDataIntermediate FromProto(
-      const DenseDataIntermediateProto& proto);
-
- private:
-  std::variant<std::vector<uint8_t>, absl::Span<const uint8_t>> data_;
-};
-
-absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
-    const Literal& literal);
 
 // Returns a deterministic encoded string representation of the proto message.
 absl::StatusOr<std::string> GetProtoFingerprint(

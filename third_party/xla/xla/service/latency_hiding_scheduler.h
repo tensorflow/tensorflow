@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -174,6 +175,8 @@ struct SchedulerConfig {
   bool track_sync_op_resource_usage = false;
   // If true, use top down scheduling.
   bool top_down_scheduling = false;
+  // If true, enable schedule by structure.
+  bool enable_schedule_by_structure = false;
   // If set, only log computations that match the given regular expression.
   std::string log_computation_re;
 };
@@ -783,8 +786,12 @@ class HloGraphNode {
     num_hops_to_closest_selective_resource_occupier_ =
         num_hops_to_closest_selective_resource_occupier;
   }
-  void SetPreference(double preference) { preference_ = preference; }
+  void SetPreference(double preference) {
+    preference_ = preference;
+    has_preference_ = true;
+  }
   double GetPreference() const { return preference_; }
+  bool HasPreference() const { return has_preference_; }
   const ResourcesVector& GetResources() const { return rare_->resources; }
   bool DoesOccupyAnyResource() const { return does_occupy_any_resource_; }
   bool DoesReleaseAnyResource() const { return does_release_any_resource_; }
@@ -1020,6 +1027,7 @@ class HloGraphNode {
   // Preference value used for scheduling heuristics,
   // a graph node having a higher preference value means it's scheduled
   // earlier. See ReadySetLt::operator()
+  bool has_preference_ = false;
   float preference_ = 0.0;
 
   // Other boolean fields are less performance sensitive so can be stored in
@@ -1195,6 +1203,8 @@ class HloScheduleGraph {
 
   void AnnotateGraph(const AnnotationTracker* annotation_tracker);
 
+  const HloReachabilityMap& reachability() const { return *reachability_; }
+
   // List of instructions in the original scheduled order. (Before scheduling).
   absl::Span<const HloInstruction* const> GetOriginalInstrList() const {
     return absl::MakeConstSpan(original_order_);
@@ -1271,6 +1281,7 @@ class HloScheduleGraph {
                                  const HloGraphNode* possible_predecessor);
   // Scheduling context for the graph.
   std::shared_ptr<const SchedulingContext> scheduling_context_;
+  std::unique_ptr<HloReachabilityMap> reachability_;
 };
 
 // These HloEdge routines need to be defined after HloScheduleGraph, since

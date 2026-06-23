@@ -110,6 +110,15 @@ using PerDeviceLiteralVecType = absl::btree_map<int, LiteralVec>;
 using PerDeviceShapeVecType = absl::btree_map<int, ShapeVec>;
 using PerDeviceIndexVecType = absl::btree_map<int, std::vector<int>>;
 
+struct HloModuleAndArguments {
+  std::unique_ptr<HloModule> hlo_module;
+
+  // The outer `std::vector` represents the list of shards. The inner
+  // `std::vector<Literal>` represents a list of arguments for a single shard
+  // partition.
+  std::vector<std::vector<Literal>> arguments;
+};
+
 enum class LogOutputMode { kLogOutput, kNotLogOutput };
 
 enum class HloPassesMode {
@@ -232,6 +241,10 @@ struct RawCompileOptions {
   // It can also specify the number of replicas and partitions - in
   // that case we don't have to set num_replicas and num_partitions.
   std::optional<ExecutionOptions> execution_options = std::nullopt;
+  // We can set debug options directly without the other options in
+  // ExecutionOptions. We will prefer the debug options from ExecutionOptions
+  // though, if it exists.
+  DebugOptions debug_options;
   std::optional<int> num_replicas = 1;
   std::optional<int> num_partitions = 1;
   // See the comment on xla::MultiSliceConfig.
@@ -245,6 +258,18 @@ struct RawCompileOptions {
   XlaProtoDumpMode xla_proto_dump_mode = XlaProtoDumpMode::kNotDumpAsProto;
   // A directory to dump xspace data to (GPU profiler only).
   std::string xla_gpu_dump_xspace_to = "";
+};
+
+struct TopologyConfig {
+  int num_replicas;
+  int num_partitions;
+  int num_nodes;
+};
+
+struct ResolveTopologyResult {
+  TopologyConfig topology;
+  // The loaded module and arguments, if they were loaded during resolution.
+  std::optional<HloModuleAndArguments> loaded_module;
 };
 
 // The options controlling the execution of the HLO module.
@@ -281,14 +306,6 @@ struct RunningOptions {
   }
 };
 
-struct HloModuleAndArguments {
-  std::unique_ptr<HloModule> hlo_module;
-
-  // The outer `std::vector` represents the list of shards. The inner
-  // `std::vector<Literal>` represents a list of arguments for a single shard
-  // partition.
-  std::vector<std::vector<Literal>> arguments;
-};
 
 struct ReplicasAndPartitions {
   int replicas = 1;
@@ -312,7 +329,7 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
 //
 // This is the highest level API in this file.
 absl::Status LoadAndRunAndDump(
-    PjRtClient& client, const DebugOptions& debug_options,
+    PjRtClient& client,
     const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
     const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
     const xla::FunctionalHloRunner::RunningOptions& running_options,
@@ -327,8 +344,7 @@ absl::Status LoadAndRunAndDump(
 // The hlo file might be a HLO snapshot and thus contain arguments, otherwise
 // it is run with fake arguments.
 absl::StatusOr<PerDeviceLiteralVecType> LoadAndRun(
-    PjRtClient& client, const DebugOptions& debug_options,
-    const PreprocessingOptions& preproc_options,
+    PjRtClient& client, const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const RunningOptions& running_options, absl::string_view hlo_file,
     InputFormat input_format, const PerDeviceLiteralVecType& arguments = {},
@@ -338,7 +354,7 @@ absl::StatusOr<PerDeviceLiteralVecType> LoadAndRun(
 // The compiled executable is dumped to the specified path if the path is not
 // empty.
 absl::Status LoadAndCompileAndDump(
-    PjRtClient& client, const DebugOptions& debug_options,
+    PjRtClient& client,
     const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
     const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
     absl::string_view hlo_file, InputFormat input_format,
@@ -351,8 +367,7 @@ absl::Status LoadAndCompileAndDump(
 // This function allows compiling multi-device HLOs on machines with fewer
 // devices.
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadAndCompile(
-    PjRtClient& client, const DebugOptions& debug_options,
-    const PreprocessingOptions& preproc_options,
+    PjRtClient& client, const PreprocessingOptions& preproc_options,
     const RawCompileOptions& raw_compile_options, absl::string_view hlo_file,
     InputFormat input_format, int task_id = 0, int num_nodes = 1,
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr,
@@ -362,16 +377,14 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadAndCompile(
 // device. The given arguments is a map from device ID to a list of arguments.
 // If the arguments map is empty, the HLO module is run with fake arguments.
 absl::StatusOr<PerDeviceLiteralVecType> CompileAndRun(
-    PjRtClient& client, const DebugOptions& debug_options,
-    const PreprocessingOptions& preproc_options,
+    PjRtClient& client, const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const RunningOptions& running_options, HloModule* hlo_module,
     const PerDeviceLiteralVecType& arguments = {},
     std::minstd_rand0* engine = nullptr);
 
 absl::StatusOr<PerDeviceLiteralVecType> CompileAndRun(
-    PjRtClient& client, const DebugOptions& debug_options,
-    const PreprocessingOptions& preproc_options,
+    PjRtClient& client, const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const RunningOptions& running_options, MaybeOwningMlirModule module,
     const PerDeviceLiteralVecType& arguments = {},
@@ -380,7 +393,6 @@ absl::StatusOr<PerDeviceLiteralVecType> CompileAndRun(
 // Compiles the HLO module.
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
     PjRtClient& client, HloModule* hlo_module,
-    const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options);
 
@@ -389,7 +401,6 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
 // compilation based on captured information.
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
     PjRtClient& client, HloModule* hlo_module,
-    const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const PjRtTopologyDescription& topology);
@@ -402,6 +413,18 @@ absl::StatusOr<PerDeviceLiteralVecType> Run(
 
 absl::StatusOr<HloModuleAndArguments> LoadHloModuleAndArguments(
     absl::string_view hlo_file, InputFormat input_format);
+
+// Resolves num_replicas and num_partitions by checking the provided values.
+// If they are empty (std::nullopt or negative), it tries to infer them from
+// `already_loaded_module` if provided, or by loading the module from
+// `hlo_file`.
+// If they still cannot be resolved, they default to 1.
+// `num_nodes` is calculated as `num_replicas * num_partitions`.
+absl::StatusOr<ResolveTopologyResult> ResolveTopology(
+    std::optional<int> num_replicas, std::optional<int> num_partitions,
+    absl::string_view hlo_file = "",
+    InputFormat input_format = InputFormat::kText,
+    const HloModule* already_loaded_module = nullptr);
 
 // This would ideally be private, but we need it for the implementation of
 // MultihostHloRunner.

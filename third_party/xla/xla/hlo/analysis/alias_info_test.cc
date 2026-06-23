@@ -679,40 +679,6 @@ ENTRY AllToAll {
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
-// Verifies that all-reduce-start with NVSHMEM backend expects no aliasing
-// (empty in-place pairs).
-TEST_F(GetInPlaceInputOutputPairsTest, nvshmem_ar) {
-  const char* kHlo = R"(
-HloModule test_ar
-region_add {
-  lhs = f32[] parameter(0)
-  rhs = f32[] parameter(1)
-  ROOT ret = f32[] add(lhs, rhs)
-}
-
-ENTRY test {
-  p0 = f32[10] parameter(0)
-  ar = f32[10] all-reduce-start(p0), replica_groups={},
-      to_apply=region_add,
-      backend_config={
-        "collective_backend_config":
-          {
-            "backend":"NVSHMEM"
-          }
-        }
-  ROOT ar.done = f32[10] all-reduce-done(ar)
-}
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
-  const HloInstruction* ar_start =
-      module->entry_computation()->root_instruction()->operand(0);
-
-  auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(ar_start);
-  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
-  // For nvshmem allreduce, we expect no aliasing for input and output buffers
-  // therefore empty inplace pairs.
-  EXPECT_EQ(in_place_pairs, expected_pairs);
-}
 
 // Verifies that collective-permute-start expects no aliasing (empty in-place
 // pairs).

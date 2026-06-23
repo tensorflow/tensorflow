@@ -1730,8 +1730,11 @@ PJRT_Error* PJRT_Device_DefaultMemory(PJRT_Device_DefaultMemory_Args* args) {
 }
 
 PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
+  // TODO(b/374463795): Update the field in the struct after backward
+  // compatibility window.
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "PJRT_Device_MemoryStats_Args", PJRT_Device_MemoryStats_Args_STRUCT_SIZE,
+      "PJRT_Device_MemoryStats_Args",
+      PJRT_STRUCT_SIZE(PJRT_Device_MemoryStats_Args, peak_pool_bytes_is_set),
       args->struct_size));
   PJRT_ASSIGN_OR_RETURN(tsl::AllocatorStats stats,
                         args->device->device->GetAllocatorStats());
@@ -1772,6 +1775,12 @@ PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
   args->peak_pool_bytes_is_set = stats.peak_pool_bytes.has_value();
   if (stats.peak_pool_bytes) {
     args->peak_pool_bytes = *stats.peak_pool_bytes;
+  }
+
+  if (args->struct_size >= PJRT_STRUCT_SIZE(PJRT_Device_MemoryStats_Args,
+                                            peak_allocated_bytes_is_set)) {
+    args->peak_allocated_bytes_is_set = true;
+    args->peak_allocated_bytes = stats.peak_allocated_bytes;
   }
 
   return nullptr;
@@ -2264,24 +2273,24 @@ static xla::HloOutputCallback CHloOutputCallbackToCpp(
   xla::HloOutputCallback cb;
   cb.callback_id = c_callback.callback_id;
   cb.num_operands = c_callback.num_operands;
-  cb.callback = [user_arg = c_callback.user_arg,
-                 callback = c_callback.callback](
-                    int64_t replica_id, int64_t partition_id,
-                    absl::Span<std::shared_ptr<xla::Literal> const> literals) {
-    for (int i = 0; i < literals.size(); ++i) {
-      const auto lit = literals[i];
-      if (lit != nullptr) {
-        absl::Span<const int64_t> dims = lit->shape().dimensions();
-        callback(replica_id, partition_id, lit->untyped_data(), dims.data(),
-                 dims.size(),
-                 pjrt::ConvertToPjRtBufferType(lit->shape().element_type()), i,
-                 user_arg);
-      } else {
-        callback(replica_id, partition_id, nullptr, nullptr, 0,
-                 PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID, i, user_arg);
-      }
-    }
-  };
+  cb.callback =
+      [user_arg = c_callback.user_arg, callback = c_callback.callback](
+          int64_t replica_id, int64_t partition_id,
+          absl::Span<std::shared_ptr<const xla::Literal> const> literals) {
+        for (int i = 0; i < literals.size(); ++i) {
+          const auto lit = literals[i];
+          if (lit != nullptr) {
+            absl::Span<const int64_t> dims = lit->shape().dimensions();
+            callback(replica_id, partition_id, lit->untyped_data(), dims.data(),
+                     dims.size(),
+                     pjrt::ConvertToPjRtBufferType(lit->shape().element_type()),
+                     i, user_arg);
+          } else {
+            callback(replica_id, partition_id, nullptr, nullptr, 0,
+                     PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID, i, user_arg);
+          }
+        }
+      };
   return cb;
 }
 

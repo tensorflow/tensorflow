@@ -271,6 +271,11 @@ class CompileOnlyIfRtClient final
         "GetReadyFuture not available with compile-only client."));
   }
 
+  tsl::Future<> DeleteValues(absl::Span<ifrt::ValueRef> values) override {
+    return tsl::Future<>(
+        Unimplemented("DeleteValues not available with compile-only client."));
+  }
+
   absl::StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(
       absl::Span<ifrt::ValueRef> values) override {
     return Unimplemented("MakeTuple not available with compile-only client.");
@@ -387,10 +392,7 @@ class CompileOnlyIfRtClient final
   }
 
  private:
-  xla::ifrt::PjRtCompiler default_compiler_{
-      /*client=*/nullptr,
-      /*num_threads=*/0,
-  };
+  xla::ifrt::PjRtCompiler default_compiler_{/*client=*/nullptr};
   std::shared_ptr<ifrt::PjRtTopology> topology_;
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> descriptions_;
   ifrt::AttributeMap attributes_;

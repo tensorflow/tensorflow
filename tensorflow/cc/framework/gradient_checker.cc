@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -225,6 +226,20 @@ absl::Status ComputeNumericJacobianTranspose(
   const int x_stride = JacobianStride<X_T>::value;
   const int y_stride = JacobianStride<Y_T>::value;
 
+  // Check that the output tensors have the same shape as the expected shapes.
+  auto check_shapes = [&y_shapes](const std::vector<Tensor>& y_tensors) {
+    for (int y_idx = 0; y_idx < y_shapes.size(); y_idx++) {
+      if (y_tensors[y_idx].shape().num_elements() !=
+          y_shapes[y_idx].num_elements()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Gradient for output ", y_idx, " expected shape ",
+                         y_shapes[y_idx].DebugString(), " but was ",
+                         y_tensors[y_idx].shape().DebugString()));
+      }
+    }
+    return absl::OkStatus();
+  };
+
   ClientSession session(scope);
   for (int x_idx = 0; x_idx < x_num; x_idx++) {
     auto x_data_flat = (*x_datas)[x_idx].flat<X_T>();
@@ -244,10 +259,12 @@ absl::Status ComputeNumericJacobianTranspose(
         x_data_flat(r) = v + x_delta;
         std::vector<Tensor> y_pos;
         TF_RETURN_IF_ERROR(EvaluateGraph(&session, xs, ys, x_datas, &y_pos));
+        TF_RETURN_IF_ERROR(check_shapes(y_pos));
         // Evaluate at negative delta.
         x_data_flat(r) = v - x_delta;
         std::vector<Tensor> y_neg;
         TF_RETURN_IF_ERROR(EvaluateGraph(&session, xs, ys, x_datas, &y_neg));
+        TF_RETURN_IF_ERROR(check_shapes(y_neg));
 
         for (int y_idx = 0; y_idx < y_num; y_idx++) {
           // Compute element-wise centered difference and store in each

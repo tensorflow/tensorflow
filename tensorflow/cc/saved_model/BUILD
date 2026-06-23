@@ -100,6 +100,15 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "loader_default_deps",
+    visibility = ["//visibility:private"],
+    deps = if_static([
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:direct_session",
+    ]) + if_google(if_static(["//tensorflow/core/platform/default/build_config:tensorflow_platform_specific"])),
+)
+
+cc_library(
     name = "loader",
     hdrs = ["loader.h"],
     deps = [
@@ -110,10 +119,7 @@ cc_library(
         "//tensorflow:tflite_converter": ["//tensorflow/core:direct_session"] + if_google([
             "//tensorflow/core/platform/default/build_config:tensorflow_platform_specific",
         ]),
-        "//conditions:default": if_static([
-            "//tensorflow/core:all_kernels",
-            "//tensorflow/core:direct_session",
-        ]) + if_google(if_static(["//tensorflow/core/platform/default/build_config:tensorflow_platform_specific"])),
+        "//conditions:default": [":loader_default_deps"],
     }) + if_not_mobile([
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",

@@ -131,6 +131,11 @@ void ToSortAndSlice(HloModule* module) {
 }
 
 TEST_P(TopkTest, ProducesCorrectResult) {
+  // TODO(intel-tf): Remove this check once specialization for SYCL/oneAPI
+  // backend is added.
+  if (device_description().gpu_compute_capability().IsOneAPI()) {
+    GTEST_SKIP() << "OneAPI does not support TopK custom call.";
+  }
   const auto [n_kb, k, batch_size, dtype] = GetParam();
   const size_t n = n_kb * 1024;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,

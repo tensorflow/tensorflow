@@ -4,7 +4,7 @@ package xla.gpu;
 
 import "xla/backends/gpu/runtime/thunk.proto";
 import "xla/service/cpu/executable.proto";
-import "xla/service/gpu/ir_emission_utils.proto";
+import "xla/service/gpu/dense_data_intermediate.proto";
 import "xla/service/hlo.proto";
 import "xla/shape_util.proto";
 import "xla/stream_executor/abi/executable_abi_version.proto";

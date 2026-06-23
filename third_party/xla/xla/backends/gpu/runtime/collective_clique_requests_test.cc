@@ -109,6 +109,31 @@ TEST(CollectiveCliqueRequestsTest, DeviceGroupsMismatch) {
                              testing::HasSubstr("different device groups")));
 }
 
+TEST(CollectiveCliqueRequestsTest, SingletonDeviceGroupsMismatchAllowed) {
+  GlobalDeviceId d0 = GlobalDeviceId(0);
+  GlobalDeviceId d1 = GlobalDeviceId(1);
+  GlobalDeviceId d2 = GlobalDeviceId(2);
+  GlobalDeviceId d3 = GlobalDeviceId(3);
+
+  // Singleton clique key (single device, no cross-device communication).
+  GpuCliqueKey k_singleton({d0}, /*num_local_participants=*/1);
+
+  // Same singleton key requested with different surrounding device groups, as
+  // produced by connected-component collective-permute on different
+  // instructions. This must be tolerated (regression test for the clique
+  // acquisition deadlock).
+  std::vector<std::vector<GlobalDeviceId>> dg_a = {{d0}, {d1, d2, d3}};
+  std::vector<std::vector<GlobalDeviceId>> dg_b = {{d0}, {d1}, {d2, d3}};
+
+  CollectiveCliqueRequests requests;
+  ASSERT_OK(requests.RequestClique(k_singleton, dg_a));
+  EXPECT_OK(requests.RequestClique(k_singleton, dg_b));
+
+  auto ordered_requests = requests.OrderedRequestedCliques();
+  ASSERT_EQ(ordered_requests.size(), 1);
+  EXPECT_EQ(ordered_requests[0].key, k_singleton);
+}
+
 TEST(CollectiveCliqueRequestsTest, BarrierAfterModuleExecutionRequested) {
   GlobalDeviceId d0 = GlobalDeviceId(0);
   GlobalDeviceId d1 = GlobalDeviceId(1);

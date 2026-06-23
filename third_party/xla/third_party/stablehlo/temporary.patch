@@ -14,9 +14,39 @@ diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir b/stabl
  // CHECK: %[[V8:.*]] = arith.ori %[[V7]], %[[C5]] : i32
  // CHECK: %[[V9:.*]] = arith.select %[[V5]], %[[V8]], %[[V3]] : i32
  // CHECK: %[[V10:.*]] = arith.select %[[V6]], %[[V7]], %[[V9]] : i32
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir b/stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir
+@@ -256,7 +256,7 @@
+ // CHECK-SAME:    outs(%[[FILL0]], %[[FILL1]] : tensor<2xi32>, tensor<2xi32>)
+ // CHECK-NEXT:   ^bb0(%[[IN0:.*]]: i32, %[[IN1:.*]]: i32, %[[OUT0:.*]]: i32, %[[OUT1:.*]]: i32):
+ // CHECK-NEXT:     %[[T1:.*]] = arith.cmpi sge, %[[OUT0]], %[[IN0]] : i32
+-// CHECK-NEXT:     %[[T2:.*]] = arith.select %[[T1]], %[[OUT0]], %[[IN0]] : i32
++// CHECK-NEXT:     %[[T2:.*]] = arith.maxsi %[[OUT0]], %[[IN0]] : i32
+ // CHECK-NEXT:     %[[T3:.*]] = arith.cmpi eq, %[[OUT0]], %[[IN0]] : i32
+ // CHECK-NEXT:     %[[T4:.*]] = arith.minsi %[[OUT1:.*]], %[[IN1]] : i32
+ // CHECK-NEXT:     %[[T5:.*]] = arith.select %[[T1]], %[[OUT1]], %[[IN1]] : i32
+@@ -275,7 +275,7 @@
+ // CHECK-PRIMITIVE-SAME:    dimensions = [0]
+ // CHECK-PRIMITIVE-NEXT:   (%[[IN0:.*]]: i32, %[[IN1:.*]]: i32, %[[OUT0:.*]]: i32, %[[OUT1:.*]]: i32) {
+ // CHECK-PRIMITIVE-NEXT:     %[[T1:.*]] = arith.cmpi sge, %[[OUT0]], %[[IN0]] : i32
+-// CHECK-PRIMITIVE-NEXT:     %[[T2:.*]] = arith.select %[[T1]], %[[OUT0]], %[[IN0]] : i32
++// CHECK-PRIMITIVE-NEXT:     %[[T2:.*]] = arith.maxsi %[[OUT0]], %[[IN0]] : i32
+ // CHECK-PRIMITIVE-NEXT:     %[[T3:.*]] = arith.cmpi eq, %[[OUT0]], %[[IN0]] : i32
+ // CHECK-PRIMITIVE-NEXT:     %[[T4:.*]] = arith.minsi %[[OUT1:.*]], %[[IN1]] : i32
+ // CHECK-PRIMITIVE-NEXT:     %[[T5:.*]] = arith.select %[[T1]], %[[OUT1]], %[[IN1]] : i32
 diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
 --- stablehlo/stablehlo/dialect/Base.td
 +++ stablehlo/stablehlo/dialect/Base.td
+@@ -152,7 +152,7 @@
+     AnyTypeOf<[HLO_PerAxisQuantizedSignedInt, HLO_PerAxisQuantizedUnsignedInt], "per-axis integer quantized">;
+ 
+ // Token type.
+-def HLO_Token : Type<CPred<"::llvm::isa<TokenType>($_self)">, "token">;
++def HLO_Token : Type<CPred<"::llvm::isa<::mlir::stablehlo::TokenType>($_self)">, "token">;
+ 
+ // Any integer tensor types
+ def HLO_IntTensor : RankedTensorOf<[HLO_Int]>;
 @@ -181,7 +181,7 @@
  
  def HLO_Tensor : RankedTensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
@@ -230,6 +260,21 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
  }
  
  LogicalResult AllReduceOp::inferReturnTypeComponents(
+@@ -3720,14 +3766,6 @@
+ };
+ 
+ struct DenseMapInfoNonSpatialDim {
+-  static inline NonSpatialDim getEmptyKey() {
+-    return NonSpatialDim(DenseMapInfo<int64_t>::getEmptyKey());
+-  }
+-
+-  static inline NonSpatialDim getTombstoneKey() {
+-    return NonSpatialDim(DenseMapInfo<int64_t>::getTombstoneKey());
+-  }
+-
+   static unsigned getHashValue(const NonSpatialDim& key) {
+     return DenseMapInfo<int64_t>::getHashValue(key);
+   }
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
@@ -2122,7 +2167,7 @@ diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/st
  // CHECK-LABEL:   func.func @ragged_dot_mode_3(
  // CHECK-SAME:      %[[ARG0:.*]]: tensor<2x3x5xf32>,
  // CHECK-SAME:      %[[ARG1:.*]]: tensor<2x5x7xf32>,
-@@ -5234,37 +5307,37 @@
+@@ -5234,37 +5307,30 @@
  // -----
  
  // CHECK-LABEL:   func.func @scan(
@@ -2163,38 +2208,68 @@ diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/st
 +// CHECK:           %[[CONVERT_0:.*]] = stablehlo.convert %[[GET_DIMENSION_SIZE_0]] : (tensor<i32>) -> tensor<i64>
 +// CHECK:           %[[CONSTANT_0:.*]] = stablehlo.constant dense<0> : tensor<i64>
 +// CHECK:           %[[CONSTANT_1:.*]] = stablehlo.constant dense<0> : tensor<i32>
-+// CHECK:           %[[BROADCAST_0:.*]] = stablehlo.broadcast %[[CONSTANT_1]], sizes = [2] : (tensor<i32>) -> tensor<2xi32>
-+// CHECK:           %[[WHILE_0:.*]]:3 = stablehlo.while(%[[VAL_0:.*]] = %[[CONSTANT_0]], %[[VAL_1:.*]] = %[[ARG1]], %[[VAL_2:.*]] = %[[BROADCAST_0]]) : tensor<i64>, tensor<i32>, tensor<2xi32>
++// CHECK:           %[[BROADCAST_IN_DIM_0:.*]] = stablehlo.broadcast_in_dim %[[CONSTANT_1]], dims = [] : (tensor<i32>) -> tensor<2xi32>
++// CHECK:           %[[WHILE_0:.*]]:3 = stablehlo.while(%[[VAL_0:.*]] = %[[CONSTANT_0]], %[[VAL_1:.*]] = %[[ARG1]], %[[VAL_2:.*]] = %[[BROADCAST_IN_DIM_0]]) : tensor<i64>, tensor<i32>, tensor<2xi32>
 +// CHECK:           cond {
 +// CHECK:             %[[COMPARE_0:.*]] = stablehlo.compare LT, %[[VAL_0]], %[[CONVERT_0]] : (tensor<i64>, tensor<i64>) -> tensor<i1>
 +// CHECK:             stablehlo.return %[[COMPARE_0]] : tensor<i1>
 +// CHECK:           } do {
 +// CHECK:             %[[CONSTANT_2:.*]] = stablehlo.constant dense<0> : tensor<i64>
-+// CHECK:             %[[RESHAPE_0:.*]] = stablehlo.reshape %[[VAL_0]] : (tensor<i64>) -> tensor<1xi64>
-+// CHECK:             %[[CONCATENATE_0:.*]] = stablehlo.concatenate %[[RESHAPE_0]], dim = 0 : (tensor<1xi64>) -> tensor<1xi64>
-+// CHECK:             %[[CONSTANT_3:.*]] = stablehlo.constant dense<1> : tensor<i64>
-+// CHECK:             %[[ADD_0:.*]] = stablehlo.add %[[VAL_0]], %[[CONSTANT_3]] : tensor<i64>
-+// CHECK:             %[[RESHAPE_1:.*]] = stablehlo.reshape %[[ADD_0]] : (tensor<i64>) -> tensor<1xi64>
-+// CHECK:             %[[CONCATENATE_1:.*]] = stablehlo.concatenate %[[RESHAPE_1]], dim = 0 : (tensor<1xi64>) -> tensor<1xi64>
-+// CHECK:             %[[CONSTANT_4:.*]] = stablehlo.constant dense<1> : tensor<1xi64>
-+// CHECK:             %[[REAL_DYNAMIC_SLICE_0:.*]] = stablehlo.real_dynamic_slice %[[ARG0]], %[[CONCATENATE_0]], %[[CONCATENATE_1]], %[[CONSTANT_4]] : (tensor<2xi32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<1xi32>
-+// CHECK:             %[[RESHAPE_2:.*]] = stablehlo.reshape %[[REAL_DYNAMIC_SLICE_0]] : (tensor<1xi32>) -> tensor<i32>
-+// CHECK:             %[[ADD_1:.*]] = stablehlo.add %[[RESHAPE_2]], %[[VAL_1]] : tensor<i32>
-+// CHECK:             %[[RESHAPE_3:.*]] = stablehlo.reshape %[[ADD_1]] : (tensor<i32>) -> tensor<1xi32>
-+// CHECK:             %[[CONSTANT_5:.*]] = stablehlo.constant dense<0> : tensor<i64>
-+// CHECK:             %[[DYNAMIC_UPDATE_SLICE_0:.*]] = stablehlo.dynamic_update_slice %[[VAL_2]], %[[RESHAPE_3]], %[[VAL_0]] : (tensor<2xi32>, tensor<1xi32>, tensor<i64>) -> tensor<2xi32>
-+// CHECK:             %[[CONSTANT_6:.*]] = stablehlo.constant dense<1> : tensor<i64>
-+// CHECK:             %[[ADD_2:.*]] = stablehlo.add %[[VAL_0]], %[[CONSTANT_6]] : tensor<i64>
-+// CHECK:             stablehlo.return %[[ADD_2]], %[[ADD_1]], %[[DYNAMIC_UPDATE_SLICE_0]] : tensor<i64>, tensor<i32>, tensor<2xi32>
++// CHECK:             %[[DYNAMIC_SLICE_0:.*]] = stablehlo.dynamic_slice %[[ARG0]], %[[VAL_0]], sizes = [1] : (tensor<2xi32>, tensor<i64>) -> tensor<1xi32>
++// CHECK:             %[[RESHAPE_0:.*]] = stablehlo.reshape %[[DYNAMIC_SLICE_0]] : (tensor<1xi32>) -> tensor<i32>
++// CHECK:             %[[ADD_0:.*]] = stablehlo.add %[[RESHAPE_0]], %[[VAL_1]] : tensor<i32>
++// CHECK:             %[[RESHAPE_1:.*]] = stablehlo.reshape %[[ADD_0]] : (tensor<i32>) -> tensor<1xi32>
++// CHECK:             %[[CONSTANT_3:.*]] = stablehlo.constant dense<0> : tensor<i64>
++// CHECK:             %[[DYNAMIC_UPDATE_SLICE_0:.*]] = stablehlo.dynamic_update_slice %[[VAL_2]], %[[RESHAPE_1]], %[[VAL_0]] : (tensor<2xi32>, tensor<1xi32>, tensor<i64>) -> tensor<2xi32>
++// CHECK:             %[[CONSTANT_4:.*]] = stablehlo.constant dense<1> : tensor<i64>
++// CHECK:             %[[ADD_1:.*]] = stablehlo.add %[[VAL_0]], %[[CONSTANT_4]] : tensor<i64>
++// CHECK:             stablehlo.return %[[ADD_1]], %[[ADD_0]], %[[DYNAMIC_UPDATE_SLICE_0]] : tensor<i64>, tensor<i32>, tensor<2xi32>
 +// CHECK:           }
 +// CHECK:           return %[[WHILE_0]]#2, %[[WHILE_0]]#1 : tensor<2xi32>, tensor<i32>
  // CHECK:         }
  func.func @scan(%arg0: tensor<2xi32>, %arg1: tensor<i32>) -> (tensor<2xi32>, tensor<i32>) {
    %0:2 = chlo.scan(%arg0) inits(%arg1) dimension=0 {
-@@ -5274,3 +5347,164 @@
+@@ -5274,3 +5340,201 @@
    } : (tensor<2xi32>, tensor<i32>) -> (tensor<2xi32>, tensor<i32>)
    func.return %0#0, %0#1 : tensor<2xi32>, tensor<i32>
  }
++
++// -----
++
++// CHECK-LABEL:   func.func @scan_complex(
++// CHECK-SAME:      %[[ARG0:.*]]: tensor<2xcomplex<f32>>,
++// CHECK-SAME:      %[[ARG1:.*]]: tensor<complex<f32>>) -> (tensor<2xcomplex<f32>>, tensor<complex<f32>>) {
++// CHECK:           %[[GET_DIMENSION_SIZE_0:.*]] = stablehlo.get_dimension_size %[[ARG0]], dim = 0 : (tensor<2xcomplex<f32>>) -> tensor<i32>
++// CHECK:           %[[CONVERT_0:.*]] = stablehlo.convert %[[GET_DIMENSION_SIZE_0]] : (tensor<i32>) -> tensor<i64>
++// CHECK:           %[[CONSTANT_0:.*]] = stablehlo.constant dense<0> : tensor<i64>
++// CHECK:           %[[CONSTANT_1:.*]] = stablehlo.constant dense<(0.000000e+00,0.000000e+00)> : tensor<complex<f32>>
++// CHECK:           %[[BROADCAST_IN_DIM_0:.*]] = stablehlo.broadcast_in_dim %[[CONSTANT_1]], dims = [] : (tensor<complex<f32>>) -> tensor<2xcomplex<f32>>
++// CHECK:           %[[WHILE_0:.*]]:3 = stablehlo.while(%[[VAL_0:.*]] = %[[CONSTANT_0]], %[[VAL_1:.*]] = %[[ARG1]], %[[VAL_2:.*]] = %[[BROADCAST_IN_DIM_0]]) : tensor<i64>, tensor<complex<f32>>, tensor<2xcomplex<f32>>
++// CHECK:           cond {
++// CHECK:             %[[COMPARE_0:.*]] = stablehlo.compare LT, %[[VAL_0]], %[[CONVERT_0]] : (tensor<i64>, tensor<i64>) -> tensor<i1>
++// CHECK:             stablehlo.return %[[COMPARE_0]] : tensor<i1>
++// CHECK:           } do {
++// CHECK:             %[[CONSTANT_2:.*]] = stablehlo.constant dense<0> : tensor<i64>
++// CHECK:             %[[DYNAMIC_SLICE_0:.*]] = stablehlo.dynamic_slice %[[ARG0]], %[[VAL_0]], sizes = [1] : (tensor<2xcomplex<f32>>, tensor<i64>) -> tensor<1xcomplex<f32>>
++// CHECK:             %[[RESHAPE_0:.*]] = stablehlo.reshape %[[DYNAMIC_SLICE_0]] : (tensor<1xcomplex<f32>>) -> tensor<complex<f32>>
++// CHECK:             %[[ADD_0:.*]] = stablehlo.add %[[RESHAPE_0]], %[[VAL_1]] : tensor<complex<f32>>
++// CHECK:             %[[RESHAPE_1:.*]] = stablehlo.reshape %[[ADD_0]] : (tensor<complex<f32>>) -> tensor<1xcomplex<f32>>
++// CHECK:             %[[CONSTANT_3:.*]] = stablehlo.constant dense<0> : tensor<i64>
++// CHECK:             %[[DYNAMIC_UPDATE_SLICE_0:.*]] = stablehlo.dynamic_update_slice %[[VAL_2]], %[[RESHAPE_1]], %[[VAL_0]] : (tensor<2xcomplex<f32>>, tensor<1xcomplex<f32>>, tensor<i64>) -> tensor<2xcomplex<f32>>
++// CHECK:             %[[CONSTANT_4:.*]] = stablehlo.constant dense<1> : tensor<i64>
++// CHECK:             %[[ADD_1:.*]] = stablehlo.add %[[VAL_0]], %[[CONSTANT_4]] : tensor<i64>
++// CHECK:             stablehlo.return %[[ADD_1]], %[[ADD_0]], %[[DYNAMIC_UPDATE_SLICE_0]] : tensor<i64>, tensor<complex<f32>>, tensor<2xcomplex<f32>>
++// CHECK:           }
++// CHECK:           return %[[WHILE_0]]#2, %[[WHILE_0]]#1 : tensor<2xcomplex<f32>>, tensor<complex<f32>>
++// CHECK:         }
++func.func @scan_complex(%arg0: tensor<2xcomplex<f32>>, %arg1: tensor<complex<f32>>) -> (tensor<2xcomplex<f32>>, tensor<complex<f32>>) {
++  %0:2 = chlo.scan(%arg0) inits(%arg1) dimension=0 {
++  ^bb0(%scan_arg0: tensor<complex<f32>>, %scan_arg1: tensor<complex<f32>>):
++    %1 = stablehlo.add %scan_arg0, %scan_arg1 : tensor<complex<f32>>
++    stablehlo.return %1, %1 : tensor<complex<f32>>, tensor<complex<f32>>
++  } : (tensor<2xcomplex<f32>>, tensor<complex<f32>>) -> (tensor<2xcomplex<f32>>, tensor<complex<f32>>)
++  func.return %0#0, %0#1 : tensor<2xcomplex<f32>>, tensor<complex<f32>>
++}
 +
 +// -----
 +
@@ -2451,6 +2526,92 @@ diff --ruN a/stablehlo/stablehlo/tests/interpret/chlo/mulhi.mlir b/stablehlo/sta
 +  check.expect_eq_const %result, dense<[15, 1]> : tensor<2xui64>
 +  func.return
 +}
+diff --ruN a/stablehlo/stablehlo/tests/interpret/chlo/scan.mlir b/stablehlo/stablehlo/tests/interpret/chlo/scan.mlir
+--- stablehlo/stablehlo/tests/interpret/chlo/scan.mlir
++++ stablehlo/stablehlo/tests/interpret/chlo/scan.mlir
+@@ -0,0 +1,82 @@
++// RUN: stablehlo-opt --chlo-legalize-to-stablehlo --split-input-file %s > %t.mlir
++// RUN: stablehlo-translate --interpret --split-input-file %t.mlir
++
++// Cumulative sum via chlo.scan, validated through the chlo-to-stablehlo
++// decomposition and the reference interpreter. %0#0 is the per-position
++// inclusive prefix sum; %0#1 is the final carry.
++func.func @scan_cumsum_1d() {
++  %input = stablehlo.constant dense<[1, 2, 3, 4]> : tensor<4xi32>
++  %init = stablehlo.constant dense<0> : tensor<i32>
++  %0:2 = chlo.scan(%input) inits(%init) dimension=0 {
++  ^bb0(%scan_arg0: tensor<i32>, %scan_arg1: tensor<i32>):
++    %1 = stablehlo.add %scan_arg0, %scan_arg1 : tensor<i32>
++    stablehlo.return %1, %1 : tensor<i32>, tensor<i32>
++  } : (tensor<4xi32>, tensor<i32>) -> (tensor<4xi32>, tensor<i32>)
++  check.expect_eq_const %0#0, dense<[1, 3, 6, 10]> : tensor<4xi32>
++  check.expect_eq_const %0#1, dense<10> : tensor<i32>
++  func.return
++}
++
++// -----
++
++// Cumulative sum along a non-zero scan dimension. The carry is rank-reduced
++// (the scan dimension is erased), so the init is a tensor<2xi32>.
++func.func @scan_cumsum_dim1() {
++  %input = stablehlo.constant dense<[[1, 2, 3], [4, 5, 6]]> : tensor<2x3xi32>
++  %init = stablehlo.constant dense<0> : tensor<2xi32>
++  %0:2 = chlo.scan(%input) inits(%init) dimension=1 {
++  ^bb0(%scan_arg0: tensor<2xi32>, %scan_arg1: tensor<2xi32>):
++    %1 = stablehlo.add %scan_arg0, %scan_arg1 : tensor<2xi32>
++    stablehlo.return %1, %1 : tensor<2xi32>, tensor<2xi32>
++  } : (tensor<2x3xi32>, tensor<2xi32>) -> (tensor<2x3xi32>, tensor<2xi32>)
++  check.expect_eq_const %0#0, dense<[[1, 3, 6], [4, 9, 15]]> : tensor<2x3xi32>
++  check.expect_eq_const %0#1, dense<[6, 15]> : tensor<2xi32>
++  func.return
++}
++
++// -----
++
++// Cumulative max with argmax indices: the multi-input, multi-carry pattern
++// TorchTPU's cummax/cummin lower to. An iota is fed in as a second input to
++// supply each element's position; on ties the highest index is kept.
++func.func @scan_cummax() {
++  %input = stablehlo.constant dense<[3, 1, 4, 1, 5]> : tensor<5xi32>
++  %iota = stablehlo.constant dense<[0, 1, 2, 3, 4]> : tensor<5xi32>
++  %val_init = stablehlo.constant dense<-2147483648> : tensor<i32>
++  %idx_init = stablehlo.constant dense<0> : tensor<i32>
++  %0:4 = chlo.scan(%input, %iota) inits(%val_init, %idx_init) dimension=0 {
++  ^bb0(%cur_val: tensor<i32>, %cur_idx: tensor<i32>, %run_val: tensor<i32>, %run_idx: tensor<i32>):
++    %new_val = stablehlo.maximum %run_val, %cur_val : tensor<i32>
++    %gt = stablehlo.compare GT, %run_val, %cur_val : (tensor<i32>, tensor<i32>) -> tensor<i1>
++    %eq = stablehlo.compare EQ, %run_val, %cur_val : (tensor<i32>, tensor<i32>) -> tensor<i1>
++    %max_idx = stablehlo.maximum %run_idx, %cur_idx : tensor<i32>
++    %tie_or_less = stablehlo.select %eq, %max_idx, %cur_idx : tensor<i1>, tensor<i32>
++    %new_idx = stablehlo.select %gt, %run_idx, %tie_or_less : tensor<i1>, tensor<i32>
++    stablehlo.return %new_val, %new_idx, %new_val, %new_idx
++        : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>
++  } : (tensor<5xi32>, tensor<5xi32>, tensor<i32>, tensor<i32>)
++      -> (tensor<5xi32>, tensor<5xi32>, tensor<i32>, tensor<i32>)
++  check.expect_eq_const %0#0, dense<[3, 3, 4, 4, 5]> : tensor<5xi32>
++  check.expect_eq_const %0#1, dense<[0, 0, 2, 2, 4]> : tensor<5xi32>
++  check.expect_eq_const %0#2, dense<5> : tensor<i32>
++  check.expect_eq_const %0#3, dense<4> : tensor<i32>
++  func.return
++}
++
++// -----
++
++// Reverse cumulative sum (suffix sums) via chlo.scan with is_reverse: the scan
++// runs from the end, so %0#0 is output[i] = sum(input[i:]) and %0#1 is the
++// total carry.
++func.func @scan_cumsum_reverse() {
++  %input = stablehlo.constant dense<[1, 2, 3, 4]> : tensor<4xi32>
++  %init = stablehlo.constant dense<0> : tensor<i32>
++  %0:2 = chlo.scan(%input) inits(%init) dimension=0 attributes {is_reverse = true} {
++  ^bb0(%scan_arg0: tensor<i32>, %scan_arg1: tensor<i32>):
++    %1 = stablehlo.add %scan_arg0, %scan_arg1 : tensor<i32>
++    stablehlo.return %1, %1 : tensor<i32>, tensor<i32>
++  } : (tensor<4xi32>, tensor<i32>) -> (tensor<4xi32>, tensor<i32>)
++  check.expect_eq_const %0#0, dense<[10, 9, 7, 4]> : tensor<4xi32>
++  check.expect_eq_const %0#1, dense<10> : tensor<i32>
++  func.return
++}
 diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
 --- stablehlo/stablehlo/tests/ops_chlo.mlir
 +++ stablehlo/stablehlo/tests/ops_chlo.mlir
@@ -2511,6 +2672,50 @@ diff --ruN a/stablehlo/stablehlo/tests/replica_groups_mesh_axes.mlir b/stablehlo
  
  // CHECK-LABEL: @test_replica_groups_mesh_axes
  func.func @test_replica_groups_mesh_axes(%arg0: tensor<f32>) -> tensor<f32> {
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+@@ -1469,3 +1469,40 @@
+   }
+   return %1 : tensor<i64>
+ }
++
++////////
++// XorOp
++
++// CHECK-LABEL: @xor_fold_splat_cst
++func.func @xor_fold_splat_cst() -> tensor<3x2xi32> {
++  // CHECK: stablehlo.constant dense<1> : tensor<3x2xi32>
++  // CHECK-NOT: stablehlo.xor
++  %operand_1 = stablehlo.constant dense<1> : tensor<3x2xi32>
++  %operand_2 = stablehlo.constant dense<0> : tensor<3x2xi32>
++  %result = stablehlo.xor %operand_1, %operand_2 : tensor<3x2xi32>
++  return %result : tensor<3x2xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @xor_fold_cst
++func.func @xor_fold_cst() -> tensor<3xi32> {
++  // CHECK: stablehlo.constant dense<[0, 0, 3]> : tensor<3xi32>
++  // CHECK-NOT: stablehlo.xor
++  %operand_1 = stablehlo.constant dense<[1, 2, 1]> : tensor<3xi32>
++  %operand_2 = stablehlo.constant dense<[1, 2, 2]> : tensor<3xi32>
++  %result = stablehlo.xor %operand_1, %operand_2 : tensor<3xi32>
++  return %result : tensor<3xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @xor_fold_boolean_cst
++func.func @xor_fold_boolean_cst() -> tensor<4xi1> {
++  // CHECK: stablehlo.constant dense<[true, false, true, false]> : tensor<4xi1>
++  // CHECK-NOT: stablehlo.xor
++  %operand_1 = stablehlo.constant dense<[true, true, false, false]> : tensor<4xi1>
++  %operand_2 = stablehlo.constant dense<[false, true, true, false]> : tensor<4xi1>
++  %result = stablehlo.xor %operand_1, %operand_2 : tensor<4xi1>
++  return %result : tensor<4xi1>
++}
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
@@ -2979,6 +3184,228 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
    }
  
    rewriter.replaceOpWithNewOp<mlir::stablehlo::ConcatenateOp>(
+@@ -2702,7 +2819,7 @@
+     return limitScalars;
+   }
+ 
+-  static SmallVector<Value> createInitialValues(
++  static FailureOr<SmallVector<Value>> createInitialValues(
+       ConversionPatternRewriter& rewriter, Location loc, mlir::chlo::ScanOp op,
+       ValueRange inputs, ValueRange inits) {
+     size_t numInputs = inputs.size();
+@@ -2722,20 +2839,40 @@
+     // Initialize output arrays.
+     for (size_t i = 0; i < numScanOutputs; ++i) {
+       auto resultType = cast<RankedTensorType>(op.getResult(i).getType());
+-      Value zero =
+-          ConstantOp::create(rewriter, loc,
+-                             rewriter.getZeroAttr(RankedTensorType::get(
+-                                 {}, resultType.getElementType())));
++      Type outElementType = resultType.getElementType();
++      auto scalarType = RankedTensorType::get({}, outElementType);
++      // getZeroAttr returns null for complex element types, so build the
++      // complex zero splat explicitly. Any other element type without a zero
++      // attribute is unsupported, so bail out cleanly instead of asserting.
++      TypedAttr zeroAttr = rewriter.getZeroAttr(scalarType);
++      if (!zeroAttr) {
++        auto complexType = dyn_cast<ComplexType>(outElementType);
++        if (!complexType)
++          return rewriter.notifyMatchFailure(
++              op,
++              "scan output element type has no zero value and is not a "
++              "complex type");
++        zeroAttr = DenseElementsAttr::get(
++            scalarType,
++            mlir::complex::NumberAttr::get(complexType, /*real=*/0.0,
++                                           /*imag=*/0.0)
++                .getValue());
++      }
++      Value zero = ConstantOp::create(rewriter, loc, zeroAttr);
+ 
+       if (resultType.hasStaticShape()) {
+-        initialValues.push_back(BroadcastOp::create(
+-            rewriter, loc, resultType, zero,
+-            rewriter.getDenseI64ArrayAttr(resultType.getShape())));
++        // broadcast_in_dim (not the deprecated broadcast op) so the result is
++        // interpretable and spec-compliant; zero is a scalar, so there are no
++        // broadcast dimensions.
++        initialValues.push_back(
++            BroadcastInDimOp::create(rewriter, loc, resultType, zero,
++                                     rewriter.getDenseI64ArrayAttr({})));
+       } else {
+         if (numInputs == 0) {
+           // This should be caught by verification or earlier checks, but just
+           // in case.
+-          return {};
++          return rewriter.notifyMatchFailure(
++              op, "cannot determine dynamic output shape without inputs");
+         }
+         Value refInput = inputs[i < numInputs ? i : 0];
+         Value refShape = shape::ShapeOfOp::create(rewriter, loc, refInput);
+@@ -2769,41 +2906,54 @@
+       auto inputType = cast<RankedTensorType>(input.getType());
+       int64_t rank = inputType.getRank();
+ 
+-      auto build1DTensor = [&](const SmallVector<Value>& scalars) {
+-        SmallVector<Value> parts;
+-        auto i64Ty = RankedTensorType::get({1}, rewriter.getI64Type());
+-        for (Value s : scalars) {
+-          parts.push_back(ReshapeOp::create(rewriter, loc, i64Ty, s));
+-        }
+-        return ConcatenateOp::create(rewriter, loc, parts, 0);
+-      };
+-
+-      Value zero =
+-          ConstantOp::create(rewriter, loc, rewriter.getI64IntegerAttr(0));
+-      SmallVector<Value> startScalars(rank, zero);
+-      startScalars[dim] = index;
+-
+-      Value startTensor = build1DTensor(startScalars);
+-
+-      SmallVector<Value> limitScalars =
+-          getLimitScalars(rewriter, loc, dim, index, input);
+-      Value limitTensor = build1DTensor(limitScalars);
+-
+-      SmallVector<int64_t> strides(rank, 1);
+-      Value stridesTensor = ConstantOp::create(
+-          rewriter, loc,
+-          DenseIntElementsAttr::get(
+-              RankedTensorType::get({rank}, rewriter.getI64Type()), strides));
+-
+       SmallVector<int64_t> sliceShape(inputType.getShape().begin(),
+                                       inputType.getShape().end());
+       sliceShape[dim] = 1;
+       auto sliceType =
+           RankedTensorType::get(sliceShape, inputType.getElementType());
+ 
+-      Value slice =
+-          RealDynamicSliceOp::create(rewriter, loc, sliceType, input,
+-                                     startTensor, limitTensor, stridesTensor);
++      Value slice;
++      if (inputType.hasStaticShape()) {
++        // Static shapes: dynamic_slice (size 1 at the scan dim) is simpler,
++        // spec-compliant, and interpretable, unlike real_dynamic_slice.
++        Value zero =
++            ConstantOp::create(rewriter, loc, rewriter.getI64IntegerAttr(0));
++        SmallVector<Value> startIndices(rank, zero);
++        startIndices[dim] = index;
++        slice = DynamicSliceOp::create(
++            rewriter, loc, sliceType, input, startIndices,
++            rewriter.getDenseI64ArrayAttr(sliceShape));
++      } else {
++        // Dynamic shapes: real_dynamic_slice with runtime start/limit/stride.
++        auto build1DTensor = [&](const SmallVector<Value>& scalars) {
++          SmallVector<Value> parts;
++          auto i64Ty = RankedTensorType::get({1}, rewriter.getI64Type());
++          for (Value s : scalars) {
++            parts.push_back(ReshapeOp::create(rewriter, loc, i64Ty, s));
++          }
++          return ConcatenateOp::create(rewriter, loc, parts, 0);
++        };
++
++        Value zero =
++            ConstantOp::create(rewriter, loc, rewriter.getI64IntegerAttr(0));
++        SmallVector<Value> startScalars(rank, zero);
++        startScalars[dim] = index;
++        Value startTensor = build1DTensor(startScalars);
++
++        SmallVector<Value> limitScalars =
++            getLimitScalars(rewriter, loc, dim, index, input);
++        Value limitTensor = build1DTensor(limitScalars);
++
++        SmallVector<int64_t> strides(rank, 1);
++        Value stridesTensor = ConstantOp::create(
++            rewriter, loc,
++            DenseIntElementsAttr::get(
++                RankedTensorType::get({rank}, rewriter.getI64Type()), strides));
++
++        slice =
++            RealDynamicSliceOp::create(rewriter, loc, sliceType, input,
++                                       startTensor, limitTensor, stridesTensor);
++      }
+ 
+       SmallVector<int64_t> resultShape;
+       for (int64_t d = 0; d < rank; ++d) {
+@@ -2860,7 +3010,8 @@
+   static void createBodyRegion(ConversionPatternRewriter& rewriter,
+                                Location loc, mlir::chlo::ScanOp op,
+                                WhileOp whileOp, ValueRange inputs, int64_t dim,
+-                               const SmallVector<Type>& whileTypes) {
++                               const SmallVector<Type>& whileTypes,
++                               Value scanDimSize, bool isReverse) {
+     OpBuilder::InsertionGuard guard(rewriter);
+     Block* bodyBlock = rewriter.createBlock(&whileOp.getBody());
+     for (Type t : whileTypes) bodyBlock->addArgument(t, loc);
+@@ -2868,6 +3019,18 @@
+     Value index = bodyBlock->getArgument(0);
+     size_t numCarries = op.getInits().size();
+     size_t numScanOutputs = op.getNumResults() - numCarries;
++
++    // For a reverse scan the loop counter still runs 0..N-1, but each step
++    // reads and writes position (N-1) - counter.
++    Value posIndex = index;
++    if (isReverse) {
++      Value one = ConstantOp::create(
++          rewriter, loc,
++          DenseIntElementsAttr::get(
++              RankedTensorType::get({}, rewriter.getI64Type()), {1LL}));
++      Value lastIndex = SubtractOp::create(rewriter, loc, scanDimSize, one);
++      posIndex = SubtractOp::create(rewriter, loc, lastIndex, index);
++    }
+ 
+     // Args: index (1), accs (numCarries), outputs (numScanOutputs)
+     size_t offset = 1;
+@@ -2875,9 +3038,9 @@
+     offset += numCarries;
+     auto argOutputs = bodyBlock->getArguments().slice(offset, numScanOutputs);
+ 
+-    // Slice inputs.
++    // Slice inputs (at the reverse-adjusted position).
+     SmallVector<Value> slicedInputs =
+-        sliceInputs(rewriter, loc, dim, index, inputs);
++        sliceInputs(rewriter, loc, dim, posIndex, inputs);
+ 
+     // Inline Body.
+     Block& scanBody = op.getBody().front();
+@@ -2900,9 +3063,9 @@
+     auto newOutputElements = ArrayRef(bodyResults).take_front(numScanOutputs);
+     auto newAccs = ArrayRef(bodyResults).take_back(numCarries);
+ 
+-    // Update Outputs.
+-    SmallVector<Value> updatedOutputs =
+-        updateOutputs(rewriter, loc, dim, index, argOutputs, newOutputElements);
++    // Update Outputs (at the reverse-adjusted position).
++    SmallVector<Value> updatedOutputs = updateOutputs(
++        rewriter, loc, dim, posIndex, argOutputs, newOutputElements);
+ 
+     Value oneIndex = ConstantOp::create(
+         rewriter, loc,
+@@ -2939,11 +3102,10 @@
+         *scanDimSizeOrError);
+ 
+     // 2. Initial values.
+-    auto initialValues = createInitialValues(rewriter, loc, op, inputs, inits);
+-    if (initialValues.empty() && numScanOutputs > 0) {
+-      return rewriter.notifyMatchFailure(
+-          op, "cannot determine dynamic output shape without inputs");
+-    }
++    auto initialValuesOr =
++        createInitialValues(rewriter, loc, op, inputs, inits);
++    if (failed(initialValuesOr)) return failure();
++    SmallVector<Value> initialValues = std::move(*initialValuesOr);
+ 
+     // 3. Create WhileOp.
+     SmallVector<Type> whileTypes;
+@@ -2955,7 +3117,8 @@
+     createConditionRegion(rewriter, loc, whileOp, scanDimSize, whileTypes);
+ 
+     // 5. Body Region.
+-    createBodyRegion(rewriter, loc, op, whileOp, inputs, dim, whileTypes);
++    createBodyRegion(rewriter, loc, op, whileOp, inputs, dim, whileTypes,
++                     scanDimSize, op.getIsReverse());
+ 
+     // 6. Extract Results.
+     SmallVector<Value> replacements;
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
@@ -3012,4 +3439,63 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
    patterns->add<RefineDynamicBroadcastInDimOpPattern>(context);
    patterns->add<RefineDynamicConvOpPattern>(context);
    patterns->add<RefineDynamicIotaOpPattern>(context);
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+@@ -2114,6 +2114,47 @@
+   }
+ };
+ 
++struct FoldXorOpPattern : public ShapeOpRewritePattern<XorOp> {
++  using ShapeOpRewritePattern::ShapeOpRewritePattern;
++
++  LogicalResult matchAndRewrite(XorOp op,
++                                PatternRewriter& rewriter) const override {
++    auto resultType = op.getType();
++    auto resultElementType = resultType.getElementType();
++    FailureOr<TypedAttr> result;
++
++    if (resultElementType.isInteger(/*width=*/1)) {
++      result = foldBinaryOpIntOrFloat(rewriter, op, FoldLogicalXor{});
++    } else if (resultElementType.isInteger()) {
++      result = foldBinaryOpIntOrFloat(rewriter, op, FoldBitwiseXor{});
++    } else {
++      return rewriter.notifyMatchFailure(op, "Expected integral element type.");
++    }
++
++    if (failed(result)) return failure();
++    rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op,
++                                                             result.value());
++    return success();
++  }
++
++  struct FoldLogicalXor {
++    APInt operator()(APInt lhs, APInt rhs) const {
++      return APInt(lhs.getBitWidth(), !lhs.isZero() ^ !rhs.isZero());
++    }
++    std::optional<APFloat> operator()(APFloat lhs, APFloat rhs) const {
++      return std::nullopt;
++    }
++  };
++
++  struct FoldBitwiseXor {
++    APInt operator()(APInt lhs, APInt rhs) const { return lhs ^ rhs; }
++
++    std::optional<APFloat> operator()(APFloat lhs, APFloat rhs) const {
++      return std::nullopt;
++    }
++  };
++};
++
+ struct StablehloAggressiveFolderPass
+     : public impl::StablehloAggressiveFolderPassBase<
+           StablehloAggressiveFolderPass> {
+@@ -2178,6 +2219,7 @@
+                 FoldTransposeOpPattern,               //
+                 FoldWhileOpIfDeadAndPresumedPure,     //
+                 FoldWhileOpPattern,                   //
++                FoldXorOpPattern,                     //
+                 InlineCaseOpWithConstantBranchIndex,  //
+                 LowerBoolSplatConstantsIntoReduceOpRegion>(context, options,
+                                                            benefit);
 

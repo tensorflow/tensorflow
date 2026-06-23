@@ -69,7 +69,7 @@ jobs:
           {
             pool: "linux-x86-n2-16",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
-            name: "XLA Linux x86 GPU ROCm",
+            name: "XLA Linux x86 GPU Hermetic ROCm",
             repo: "openxla/xla",
           },
           {
@@ -98,7 +98,7 @@ jobs:
           },
           {
             pool: "linux-x86-g2-16-l4-1gpu",
-            container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
+            container: "gcr.io/tensorflow-sigs/build:latest-python3.12",
             name: "JAX Linux x86 GPU L4",
             repo: "jax-ml/jax",
           },
@@ -123,13 +123,13 @@ jobs:
         shell: bash
     steps:
       - name: "Checking out openxla/xla"
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           path: "openxla/xla"
           persist-credentials: false
       - name: Checking out ${{ matrix.job_info.repo }}
         if: ${{ matrix.job_info.repo != 'openxla/xla' }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: ${{ matrix.job_info.repo }}
           path: ${{ matrix.job_info.repo }}

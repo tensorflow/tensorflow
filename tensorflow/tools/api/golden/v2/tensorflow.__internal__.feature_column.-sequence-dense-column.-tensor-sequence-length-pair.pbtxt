@@ -14,6 +14,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__new__"
+    argspec: "args=[\'_cls\', \'dense_tensor\', \'sequence_length\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "count"
   }
   member_method {

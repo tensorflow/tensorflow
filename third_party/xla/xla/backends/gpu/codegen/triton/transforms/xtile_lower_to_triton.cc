@@ -240,8 +240,4 @@ class XTileLowerToTritonPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateXTileLowerToTritonPass() {
-  return std::make_unique<XTileLowerToTritonPass>();
-}
-
 }  // namespace mlir::triton::xla

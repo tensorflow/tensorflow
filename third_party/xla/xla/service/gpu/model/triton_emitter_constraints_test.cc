@@ -57,9 +57,7 @@ using ::testing::HasSubstr;
 
 class TritonEmitterConstraintsTest : public HloHardwareIndependentTestBase {
  public:
-  TritonEmitterConstraintsTest() {
-    RegisterSymbolicExprStorage(&mlir_context_);
-  }
+  TritonEmitterConstraintsTest() = default;
   std::optional<SymbolicTileAnalysis> TryAnalyzeModule(
       HloModule* module, bool with_triton_emitter_specific_constraints = true) {
     EmitterSpecificConstraintsBuilder constraints_builder = nullptr;
@@ -82,6 +80,13 @@ class TritonEmitterConstraintsTest : public HloHardwareIndependentTestBase {
     VLOG(1) << "Cannot analyze module: "
             << std::get<FusionDecision>(analysis_or_error).Explain();
     return std::nullopt;
+  }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(false);
+    return debug_options;
   }
 
   mlir::MLIRContext mlir_context_;
@@ -330,14 +335,15 @@ ENTRY entry_computation {
 
 class VerifyTritonConstraintsTest : public HloHardwareIndependentTestBase {
  protected:
-  VerifyTritonConstraintsTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+  VerifyTritonConstraintsTest() = default;
 
   Status CheckTiling(HloModule* module, absl::Span<const int64_t> tile_sizes) {
     HloInstruction* root = module->entry_computation()->root_instruction();
     std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
         HloFusionAdaptor::ForInstruction(root);
-    std::unique_ptr<experimental::TilingSpace> tiling_space =
-        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<experimental::TilingSpace> tiling_space,
+        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
     RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
     ASSIGN_OR_RETURN(experimental::TiledHloComputation tiled_comp,
                      experimental::TiledHloComputation::Tile(
@@ -501,7 +507,9 @@ ENTRY entry_computation {
     calls=fused_computation,
     backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })hlo"));
-
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
   EXPECT_THAT(CheckTiling(module.get(), {1, 12, 12}),
               StatusIs(_, HasSubstr("neither a power of 2 nor equal")));
 }

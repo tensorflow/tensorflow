@@ -712,20 +712,6 @@ CudaExecutor::~CudaExecutor() {
   CHECK(gpu_binary_to_module_.empty()) << "CudaExecutor has loaded modules.";
 }
 
-static bool IsNvshmemEnabled() {
-  return xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem();
-}
-
-static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
-  ASSIGN_OR_RETURN(xla::Collectives * collectives,
-                   xla::CollectivesRegistry::Get("gpu", "nvshmem"));
-  auto* gpu_collectives =
-      absl::down_cast<xla::gpu::GpuCollectives*>(collectives);
-  if (gpu_collectives == nullptr) {
-    return absl::InternalError("Failed to get NVSHMEM collectives");
-  }
-  return gpu_collectives;
-}
 
 CudaExecutor::VmmMemoryHandle::~VmmMemoryHandle() { CHECK_OK(Release()); }
 
@@ -771,22 +757,6 @@ absl::StatusOr<size_t> CudaExecutor::GetVmmGranularity() const {
   return granularity;
 }
 
-static absl::StatusOr<void*> NvshmemCollectiveMemoryAllocate(
-    StreamExecutor* executor, uint64_t bytes) {
-  if (bytes == 0) {
-    return nullptr;
-  }
-  std::unique_ptr<ActivateContext> activation = executor->Activate();
-  ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectives());
-  return collectives->Allocate(bytes);
-}
-
-static absl::Status NvshmemCollectiveMemoryDeallocate(StreamExecutor* executor,
-                                                      void* location) {
-  std::unique_ptr<ActivateContext> activation = executor->Activate();
-  ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectives());
-  return collectives->Deallocate(location);
-}
 
 absl::StatusOr<std::unique_ptr<MemoryAllocator>>
 CudaExecutor::CreateMemoryAllocator(MemorySpace type) {
@@ -795,24 +765,6 @@ CudaExecutor::CreateMemoryAllocator(MemorySpace type) {
   }
 
   if (type == MemorySpace::kCollective) {
-    if (IsNvshmemEnabled()) {
-      return std::make_unique<GenericMemoryAllocator>(
-          [this](uint64_t size)
-              -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
-            ASSIGN_OR_RETURN(void* ptr,
-                             NvshmemCollectiveMemoryAllocate(this, size));
-            return std::make_unique<GenericMemoryAllocation>(
-                ptr, size, [this](void* location, uint64_t size) {
-                  auto status =
-                      NvshmemCollectiveMemoryDeallocate(this, location);
-                  if (!status.ok()) {
-                    XLA_LOG_DEVICE(ERROR, device_ordinal())
-                        << "failed to free nvshmem collective memory at "
-                        << location << ": " << status;
-                  }
-                });
-          });
-    }
     return std::make_unique<CudaDeviceAllocator>(this,
                                                  device_allocator_options_);
   }
@@ -1205,16 +1157,6 @@ DeviceAddressBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
       << " memory_space: " << memory_space;
 
   if (memory_space == static_cast<int64_t>(MemorySpace::kCollective)) {
-    if (IsNvshmemEnabled()) {
-      auto result = NvshmemCollectiveMemoryAllocate(this, size);
-      if (!result.ok()) {
-        XLA_LOG_DEVICE(ERROR, device_ordinal())
-            << "Failed to allocate nvshmem collective memory: "
-            << result.status();
-        return DeviceAddressBase();
-      }
-      return DeviceAddressBase(*result, size);
-    }
     return AllocateAndTrack(*device_allocator_, size, "collective");
   }
 
@@ -1247,12 +1189,9 @@ void CudaExecutor::Deallocate(DeviceAddressBase* mem) {
     return;
   }
 
-  // Untracked allocations are nvshmem collective memory.
-  absl::Status status = NvshmemCollectiveMemoryDeallocate(this, mem->opaque());
-  if (!status.ok()) {
-    XLA_LOG_DEVICE(ERROR, device_ordinal())
-        << "Failed to deallocate memory at " << mem->opaque() << ": " << status;
-  }
+  XLA_LOG_DEVICE(ERROR, device_ordinal())
+      << "CudaExecutor::Deallocate called on untracked memory: "
+      << mem->opaque();
 }
 
 bool CudaExecutor::SynchronizeAllActivity() {
@@ -1465,7 +1404,13 @@ absl::StatusOr<std::unique_ptr<Event>> CudaExecutor::CreateEvent() {
 
 absl::StatusOr<std::unique_ptr<Stream>> CudaExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
-  ASSIGN_OR_RETURN(auto stream, CudaStream::Create(this, priority));
+  return CreateStream(priority, CudaStreamType::kDefault);
+}
+
+absl::StatusOr<std::unique_ptr<CudaStream>> CudaExecutor::CreateStream(
+    std::optional<std::variant<StreamPriority, int>> priority,
+    CudaStreamType type) {
+  ASSIGN_OR_RETURN(auto stream, CudaStream::Create(this, priority, type));
   absl::MutexLock l(alive_gpu_streams_mu_);
   alive_gpu_streams_[stream->stream_handle()] = stream.get();
   return std::move(stream);
@@ -1622,6 +1567,8 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
         GetNumberOfActiveP2PNvlinks(*device);
     DeviceInterconnectInfo info;
     if (p2p_link_count.ok()) {
+      XLA_VLOG_DEVICE(3, device_ordinal)
+          << "p2p_link_count: " << *p2p_link_count;
       info.active_links = *p2p_link_count;
     } else {
       LOG(ERROR) << p2p_link_count;
@@ -1633,12 +1580,12 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
         info.cluster_uuid = fabric_info->cluster_uuid;
         info.clique_id = fabric_info->clique_id;
       }
-      desc.set_device_interconnect_info(info);
     } else {
       VLOG(1) << "Skipping GPU Fabric info retrieval; NVIDIA driver r545+ "
                  "is required. Current driver version: "
               << desc.kernel_mode_driver_version();
     }
+    desc.set_device_interconnect_info(info);
   }
 
   {
