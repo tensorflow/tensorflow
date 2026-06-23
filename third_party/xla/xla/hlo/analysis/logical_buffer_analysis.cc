@@ -243,8 +243,24 @@ absl::Status LogicalBufferAnalysis::HandleFusion(HloInstruction* fusion) {
   return absl::OkStatus();
 }
 
+static bool IsEmptyOutputSubshapeInAsync(const Shape& shape,
+                                         const ShapeIndex& index) {
+  if (index.empty()) {
+    return false;
+  }
+  if (index.front() != 1) {
+    return false;
+  }
+
+  CHECK(ShapeUtil::IndexIsValid(shape, index));
+
+  const Shape& subshape = ShapeUtil::GetSubshape(shape, index);
+  return subshape.IsTuple() && subshape.tuple_shapes().empty();
+}
+
 absl::Status LogicalBufferAnalysis::HandleAsyncStart(
     HloInstruction* async_start) {
+  const Shape& async_start_shape = async_start->shape();
   absl::flat_hash_set<ShapeIndex> aliased_outputs;
   for (const auto& pair : Cast<HloAsyncStartInstruction>(async_start)
                               ->output_to_operand_aliasing()) {
@@ -252,14 +268,64 @@ absl::Status LogicalBufferAnalysis::HandleAsyncStart(
   }
 
   ShapeUtil::ForEachSubshape(
-      async_start->shape(), [&](const Shape& shape, const ShapeIndex& index) {
+      async_start_shape, [&](const Shape& shape, const ShapeIndex& index) {
         bool has_implicit_alias = (index.size() >= 2 && index.front() == 0);
         bool has_explicit_alias = aliased_outputs.contains(index);
-        if (!has_implicit_alias && !has_explicit_alias) {
+        if (!has_implicit_alias &&
+            (!has_explicit_alias ||
+             IsEmptyOutputSubshapeInAsync(async_start_shape, index))) {
           NewLogicalBuffer(async_start, index);
         }
       });
   return absl::OkStatus();
+}
+
+absl::Status LogicalBufferAnalysis::HandleAsyncUpdate(
+    HloInstruction* async_update) {
+  const Shape& async_update_shape = async_update->shape();
+  const HloInstruction* prev_async_op = async_update->operand(0);
+  const Shape& prev_async_op_shape = prev_async_op->shape();
+
+  HloInstruction* async_start =
+      Cast<HloAsyncInstruction>(async_update)->async_chain_start();
+  absl::flat_hash_set<ShapeIndex> explicitly_aliased_outputs;
+  for (const auto& pair : Cast<HloAsyncStartInstruction>(async_start)
+                              ->output_to_operand_aliasing()) {
+    explicitly_aliased_outputs.insert(pair.first);
+  }
+
+  ShapeUtil::ForEachSubshape(async_update_shape, [&](const Shape& new_subshape,
+                                                     const ShapeIndex& index) {
+    // Step 1: Check if compatible/forwarded from prev_async_op
+    if (!index.empty() && ShapeUtil::IndexIsValid(prev_async_op_shape, index)) {
+      const Shape& prev_subshape =
+          ShapeUtil::GetSubshape(prev_async_op_shape, index);
+      if (ShapeUtil::Compatible(prev_subshape, new_subshape)) {
+        return;
+      }
+    }
+
+    // Step 2: Check if operand input or explicit alias
+    if (index.size() >= 2 && index.front() == 0) {
+      // Input operand
+      return;
+    }
+    bool has_explicit_alias = explicitly_aliased_outputs.contains(index);
+    if (has_explicit_alias &&
+        !IsEmptyOutputSubshapeInAsync(async_update_shape, index)) {
+      return;
+    }
+
+    // Otherwise, new output or new tuple container
+    NewLogicalBuffer(async_update, index);
+  });
+
+  return absl::OkStatus();
+}
+
+absl::Status LogicalBufferAnalysis::HandleAsyncDone(
+    HloInstruction* async_done) {
+  return DefaultAction(async_done);
 }
 
 }  // namespace xla
