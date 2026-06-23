@@ -82,6 +82,10 @@ absl::Status UnpackAot(std::unique_ptr<riegeli::Reader> reader,
                        std::unique_ptr<riegeli::Writer> writer,
                        const UnpackOptions& options);
 
+absl::Status Diff(std::unique_ptr<riegeli::Reader> reader1,
+                  std::unique_ptr<riegeli::Reader> reader2,
+                  std::unique_ptr<riegeli::Writer> writer);
+
 }  // namespace xla::split_proto_cli
 
 #endif  // XLA_TOOLS_SPLIT_PROTO_SPLIT_PROTO_CLI_LIB_H_

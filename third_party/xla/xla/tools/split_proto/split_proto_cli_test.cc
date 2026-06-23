@@ -19,7 +19,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
-#include "google/protobuf/text_format.h"
 #include "riegeli/base/maker.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
 #include "xla/util/split_proto/split_proto_reader.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla::split_proto_cli {
 namespace {
@@ -250,6 +250,61 @@ TEST(SplitProtoCliTest, PackAndUnpackAotBinaryRoundTrip) {
               Partially(EqualsProto(initial_inner_proto)));
   EXPECT_THAT(final_proto.executable_and_options().compile_options(),
               Partially(EqualsProto(initial_outer_proto.compile_options())));
+}
+
+TEST(SplitProtoCliTest, DiffEqualProtos) {
+  auto initial_proto = ParseTextProtoOrDie<ExecutableAndOptionsProto>(R"pb(
+    serialized_executable: "some_serialized_executable"
+  )pb");
+
+  std::string split_bytes1;
+  PackOptions pack_opts;
+  pack_opts.proto_type = "xla.ExecutableAndOptionsProto";
+  pack_opts.input_format = ProtoFormat::kText;
+  std::string text_input;
+  ASSERT_TRUE(google::protobuf::TextFormat::PrintToString(initial_proto, &text_input));
+  ASSERT_OK(Pack(riegeli::Maker<riegeli::StringReader>(text_input),
+                 riegeli::Maker<riegeli::StringWriter>(&split_bytes1),
+                 pack_opts));
+
+  std::string split_bytes2 = split_bytes1;
+
+  std::string diff_output;
+  ASSERT_OK(Diff(riegeli::Maker<riegeli::StringReader>(split_bytes1),
+                 riegeli::Maker<riegeli::StringReader>(split_bytes2),
+                 riegeli::Maker<riegeli::StringWriter>(&diff_output)));
+  EXPECT_TRUE(diff_output.empty());
+}
+
+TEST(SplitProtoCliTest, DiffDifferentProtos) {
+  auto proto1 = ParseTextProtoOrDie<ExecutableAndOptionsProto>(R"pb(
+    serialized_executable: "some_serialized_executable"
+  )pb");
+  auto proto2 = ParseTextProtoOrDie<ExecutableAndOptionsProto>(R"pb(
+    serialized_executable: "different_serialized_executable"
+  )pb");
+
+  std::string split_bytes1, split_bytes2;
+  PackOptions pack_opts;
+  pack_opts.proto_type = "xla.ExecutableAndOptionsProto";
+  pack_opts.input_format = ProtoFormat::kText;
+  std::string text_input1, text_input2;
+  ASSERT_TRUE(google::protobuf::TextFormat::PrintToString(proto1, &text_input1));
+  ASSERT_TRUE(google::protobuf::TextFormat::PrintToString(proto2, &text_input2));
+  ASSERT_OK(Pack(riegeli::Maker<riegeli::StringReader>(text_input1),
+                 riegeli::Maker<riegeli::StringWriter>(&split_bytes1),
+                 pack_opts));
+  ASSERT_OK(Pack(riegeli::Maker<riegeli::StringReader>(text_input2),
+                 riegeli::Maker<riegeli::StringWriter>(&split_bytes2),
+                 pack_opts));
+
+  std::string diff_output;
+  ASSERT_OK(Diff(riegeli::Maker<riegeli::StringReader>(split_bytes1),
+                 riegeli::Maker<riegeli::StringReader>(split_bytes2),
+                 riegeli::Maker<riegeli::StringWriter>(&diff_output)));
+  EXPECT_FALSE(diff_output.empty());
+  EXPECT_THAT(diff_output,
+              ::testing::HasSubstr("different_serialized_executable"));
 }
 
 }  // namespace

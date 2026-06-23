@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "third_party/nccl/nccl.h"
+#include "xla/backends/gpu/collectives/nccl_types.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/stream_executor/device_address.h"
@@ -35,7 +36,8 @@ class NcclSymmetricMemory final : public SymmetricMemory {
   ~NcclSymmetricMemory() final;
 
   static absl::StatusOr<std::unique_ptr<NcclSymmetricMemory>> Create(
-      ncclComm_t comm, stream_executor::DeviceAddressBase addr,
+      std::shared_ptr<NcclCommState> comm_state,
+      stream_executor::DeviceAddressBase addr,
       std::shared_ptr<tsl::Executor> executor);
 
   stream_executor::DeviceAddressBase addr() const final;
@@ -52,11 +54,11 @@ class NcclSymmetricMemory final : public SymmetricMemory {
   PackedKernelArg PackKernelArg() const final;
 
  private:
-  NcclSymmetricMemory(ncclComm_t comm, ncclWindow_t win,
-                      stream_executor::DeviceAddressBase addr,
+  NcclSymmetricMemory(std::shared_ptr<NcclCommState> comm_state,
+                      ncclWindow_t win, stream_executor::DeviceAddressBase addr,
                       std::shared_ptr<tsl::Executor> executor);
 
-  ncclComm_t comm_;
+  std::shared_ptr<NcclCommState> comm_state_;
   ncclWindow_t win_;
   stream_executor::DeviceAddressBase addr_;
   std::shared_ptr<tsl::Executor> executor_;

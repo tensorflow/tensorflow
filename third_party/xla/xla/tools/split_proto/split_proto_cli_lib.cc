@@ -26,8 +26,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "google/protobuf/message.h"
-#include "google/protobuf/text_format.h"
 #include "riegeli/base/maker.h"
 #include "riegeli/base/types.h"
 #include "riegeli/bytes/reader.h"
@@ -45,6 +43,7 @@ limitations under the License.
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
 #include "xla/util/split_proto/split_proto.pb.h"
 #include "xla/util/split_proto/split_proto_reader.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla::split_proto_cli {
 
@@ -264,6 +263,35 @@ absl::Status UnpackAot(std::unique_ptr<riegeli::Reader> reader,
   *wrapper.mutable_gpu_executable() = std::move(gpu_proto);
 
   RETURN_IF_ERROR(SerializeProto(wrapper, options.output_format, *writer));
+
+  if (!writer->Close()) {
+    return writer->status();
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status Diff(std::unique_ptr<riegeli::Reader> reader1,
+                  std::unique_ptr<riegeli::Reader> reader2,
+                  std::unique_ptr<riegeli::Writer> writer) {
+  xla::ExecutableAndOptionsProto original_proto;
+  RETURN_IF_ERROR(ReadSplitProto(std::move(reader1), original_proto));
+
+  xla::ExecutableAndOptionsProto modified_proto;
+  RETURN_IF_ERROR(ReadSplitProto(std::move(reader2), modified_proto));
+
+  std::string diff_string;
+  google::protobuf::util::MessageDifferencer differ;
+  differ.ReportDifferencesToString(&diff_string);
+  bool is_equal = differ.Compare(original_proto, modified_proto);
+
+  if (is_equal || diff_string.empty()) {
+    return absl::OkStatus();
+  }
+
+  if (!writer->Write(diff_string)) {
+    return writer->status();
+  }
 
   if (!writer->Close()) {
     return writer->status();

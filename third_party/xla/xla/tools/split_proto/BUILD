@@ -28,6 +28,7 @@ cc_library(
     name = "split_proto_cli_lib",
     srcs = ["split_proto_cli_lib.cc"],
     hdrs = ["split_proto_cli_lib.h"],
+    compatible_with = [],
     deps = [
         ":split_proto_cli_proto_cc",
         "//xla/pjrt/proto:compile_options_proto_cc",
@@ -43,7 +44,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_protobuf//:protobuf",
         "@riegeli//riegeli/base:initializer",
         "@riegeli//riegeli/base:types",
         "@riegeli//riegeli/bytes:reader",
@@ -53,6 +53,7 @@ cc_library(
         "@riegeli//riegeli/messages:parse_message",
         "@riegeli//riegeli/messages:serialize_message",
         "@riegeli//riegeli/records:record_reader",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -96,9 +97,9 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
-        "@com_google_protobuf//:protobuf",
         "@riegeli//riegeli/base:initializer",
         "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/bytes:string_writer",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
