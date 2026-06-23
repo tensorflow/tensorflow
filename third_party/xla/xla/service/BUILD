@@ -6781,6 +6781,46 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "call_outliner_test",
+    srcs = ["call_outliner_test.cc"],
+    deps = [
+        ":call_inliner",
+        ":call_marker",
+        ":call_outliner",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:status_macros",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "call_outliner",
+    srcs = ["call_outliner.cc"],
+    hdrs = ["call_outliner.h"],
+    deps = [
+        ":call_marker",
+        "//xla:status_macros",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 tf_proto_library(
     name = "gpu_topology_proto",
     srcs = ["gpu_topology.proto"],
