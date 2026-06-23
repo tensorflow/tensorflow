@@ -441,6 +441,23 @@ TEST_P(RemapPlanTest, InvalidShardIndex) {
       run(RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{0, 1, -1}),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                              HasSubstr("step must be positive, but is -1")));
+
+  // The `end` bound is necessary but not sufficient: a large `step` can leave
+  // the last stepped index at or beyond `num_shards` even when `end` is in
+  // range. Validate() must reject that for both `from` and `to`, so the
+  // executor never indexes an out-of-range shard.
+  EXPECT_THAT(run(RemapPlan::Interval{0, 3, 2}, RemapPlan::Interval{0, 2, 1},
+                  /*shape=*/{4, 3}, /*shard_shape=*/{2, 3}),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("interval addresses shard 2, which is out of "
+                            "range [0, 2)")));
+  EXPECT_THAT(run(RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{0, 3, 2},
+                  /*shape=*/{4, 3}, /*shard_shape=*/{2, 3}),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("interval addresses shard 2, which is out of "
+                            "range [0, 2)")));
 }
 
 TEST_P(RemapPlanTest, AlreadyUsedInputShard) {

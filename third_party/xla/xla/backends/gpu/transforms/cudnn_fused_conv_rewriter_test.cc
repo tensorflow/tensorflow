@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/convert_mover.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -73,6 +74,7 @@ namespace m = match;
 
 using ::testing::HasSubstr;
 using ::testing::Not;
+using ::testing::NotNull;
 
 static const std::initializer_list<absl::string_view> kf16f32f64{"f16", "f32",
                                                                  "f64"};
@@ -843,10 +845,11 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
   ASSERT_OK_AND_ASSIGN(
       auto optimized_module,
       GetOptimizedModule(kHloString, GetModuleConfigForTest()));
-  const std::string optimized_hlo_string = optimized_module->ToString();
-  EXPECT_THAT(optimized_hlo_string,
-              ::testing::ContainsRegex(
-                  R"(custom-call.*metadata=\{op_type="foo" op_name="bar"\})"));
+  const HloInstruction* custom_call = hlo_query::GetFirstInstructionWithOpcode(
+      *optimized_module->entry_computation(), HloOpcode::kCustomCall);
+  ASSERT_THAT(custom_call, NotNull()) << optimized_module->ToString();
+  EXPECT_EQ(custom_call->metadata().op_type(), "foo");
+  EXPECT_EQ(custom_call->metadata().op_name(), "bar");
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestPreservesFeatureGroupCount) {

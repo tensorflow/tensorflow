@@ -130,8 +130,6 @@ common --define=grpc_no_ares=true
 # TODO: Remove the following two lines once TF doesn't depend on Bazel wrapping
 # all library archives in -whole_archive -no_whole_archive.
 common --noincompatible_remove_legacy_whole_archive
-common --features=-force_no_whole_archive
-common --host_features=-force_no_whole_archive
 
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 common --enable_platform_specific_config

@@ -359,7 +359,7 @@ EXPORTS
  ?GenerateReport@CostAnalyzer@grappler@tensorflow@@QEAA?AVStatus@lts_20260107@absl@@AEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@_N1@Z
  ?GenerateReport@ModelAnalyzer@grappler@tensorflow@@QEAA?AVStatus@lts_20260107@absl@@_N0AEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@@Z
  ?GenericProtoCast@pybind11_protobuf@@YA?AVhandle@pybind11@@PEAVMessage@protobuf@google@@W4return_value_policy@3@V23@_N@Z
- ?Get@TFE_TensorHandleCache@tensorflow@@SAPEAU12@XZ
+ ?Get@TFE_TensorHandleCache@tensorflow@@SAPEAV12@XZ
  ?GetAnyDeviceDetails@DeviceFactory@tensorflow@@SA?AVStatus@lts_20260107@absl@@HPEAV?$unordered_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V12@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V12@@std@@@2@@std@@@Z
  ?GetChildren@Env@tsl@@QEAA?AVStatus@lts_20260107@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@@Z
  ?GetCompilerIr@tensorflow@@YA?AV?$StatusOr@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@lts_20260107@absl@@W4IrExportStage@1@PEAVProcessFunctionLibraryRuntime@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@2PEAVEagerContext@1@V?$Span@$$CBUArgShapeAndDType@tensorflow@@@34@V?$Span@QEBVTensorHandle@tensorflow@@@34@W4CompilerArgSource@1@@Z

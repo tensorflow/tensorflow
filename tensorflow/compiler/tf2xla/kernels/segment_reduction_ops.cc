@@ -50,6 +50,9 @@ class SegmentReduce : public XlaOpKernel {
   // A function to combine two scalars with the same index (e.g., sum).
   virtual xla::XlaOp Combine(xla::XlaOp a, xla::XlaOp b) = 0;
 
+  // Whether to pre-filter/replace NaNs in updates logic.
+  virtual bool FilterNaNs() const { return false; }
+
   void Compile(XlaOpKernelContext* ctx) override {
     // output = unsorted_segment_sum(data, indices, num_segments)
     // Compute a tensor such that:
@@ -127,6 +130,10 @@ class SegmentReduce : public XlaOpKernel {
       }
     }
 
+    if (FilterNaNs() && xla::primitive_util::IsFloatingPointType(type_)) {
+      data = xla::Select(xla::IsNan(data), InitialValue(builder), data);
+    }
+
     auto combiner = [this](xla::XlaOp a, xla::XlaOp b,
                            xla::XlaBuilder* builder) { return Combine(a, b); };
 
@@ -184,14 +191,12 @@ class SegmentMin : public SegmentReduce {
   explicit SegmentMin(OpKernelConstruction* ctx)
       : SegmentReduce(ctx, indices_are_sorted) {}
 
+  bool FilterNaNs() const override { return true; }
+
   xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
     return xla::MaxFiniteValue(builder, type_);
   };
   xla::XlaOp Combine(xla::XlaOp a, xla::XlaOp b) override {
-    if (xla::primitive_util::IsFloatingPointType(type_)) {
-      return xla::Select(xla::IsNan(a), b,
-                         xla::Select(xla::IsNan(b), a, xla::Min(a, b)));
-    }
     return xla::Min(a, b);
   };
 };
@@ -208,14 +213,12 @@ class SegmentMax : public SegmentReduce {
   explicit SegmentMax(OpKernelConstruction* ctx)
       : SegmentReduce(ctx, indices_are_sorted) {}
 
+  bool FilterNaNs() const override { return true; }
+
   xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
     return xla::MinFiniteValue(builder, type_);
   };
   xla::XlaOp Combine(xla::XlaOp a, xla::XlaOp b) override {
-    if (xla::primitive_util::IsFloatingPointType(type_)) {
-      return xla::Select(xla::IsNan(a), b,
-                         xla::Select(xla::IsNan(b), a, xla::Max(a, b)));
-    }
     return xla::Max(a, b);
   };
 };

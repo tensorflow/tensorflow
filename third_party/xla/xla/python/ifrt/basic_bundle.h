@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_BASIC_BUNDLE_H_
 #define XLA_PYTHON_IFRT_BASIC_BUNDLE_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -74,8 +75,7 @@ class BasicBundle final : public llvm::RTTIExtends<BasicBundle, Bundle> {
                                        ArrayCopySemantics semantics) final;
 
   absl::StatusOr<BundleRef> ReshardArrays(
-      absl::Span<const int> slice_sizes,
-      absl::Span<const ReshardSpec> reshard_specs,
+      absl::Span<const xla::ifrt::ArraySpec> array_specs,
       ArrayCopySemantics semantics) final;
 
   static char ID;  // NOLINT

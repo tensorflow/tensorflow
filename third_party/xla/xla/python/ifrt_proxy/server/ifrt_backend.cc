@@ -966,6 +966,14 @@ IfrtBackend::HandleMakeArraysFromHostBufferShardsRequest(
   for (const auto& spec_proto : make_arrays_request->specs()) {
     xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::Buffers buffers;
     buffers.reserve(spec_proto.host_buffers_size());
+    if (spec_proto.addressable_shard_indices_size() !=
+        spec_proto.host_buffers_size()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("MakeArraysFromHostBufferShardsSpec has ",
+                       spec_proto.addressable_shard_indices_size(),
+                       " addressable_shard_indices but ",
+                       spec_proto.host_buffers_size(), " host_buffers."));
+    }
     for (int buffer_idx = 0; buffer_idx < spec_proto.host_buffers_size();
          ++buffer_idx) {
       xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::ShardIndices

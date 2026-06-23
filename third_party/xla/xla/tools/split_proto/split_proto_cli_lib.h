@@ -67,6 +67,21 @@ absl::Status Unpack(std::unique_ptr<riegeli::Reader> reader,
                     std::unique_ptr<riegeli::Writer> writer,
                     const UnpackOptions& options);
 
+// Reads a standard serialized `DeserializedSplitExecutableAndOptions` protobuf
+// from `reader`, and writes it as a Split Proto `ExecutableAndOptionsProto` to
+// `writer`, i.e it converts it to the standard AOT binary format.
+absl::Status PackAot(std::unique_ptr<riegeli::Reader> reader,
+                     std::unique_ptr<riegeli::Writer> writer,
+                     const PackOptions& options);
+
+// Reads a split `ExecutableAndOptionsProto` from `reader` (which is the
+// standard AOT binary format), and writes a standard serialized
+// `DeserializedSplitExecutableAndOptions` protobuf to `writer` in the format
+// specified by `options.output_format`.
+absl::Status UnpackAot(std::unique_ptr<riegeli::Reader> reader,
+                       std::unique_ptr<riegeli::Writer> writer,
+                       const UnpackOptions& options);
+
 }  // namespace xla::split_proto_cli
 
 #endif  // XLA_TOOLS_SPLIT_PROTO_SPLIT_PROTO_CLI_LIB_H_

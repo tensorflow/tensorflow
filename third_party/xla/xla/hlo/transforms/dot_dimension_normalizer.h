@@ -24,15 +24,24 @@ limitations under the License.
 
 namespace xla {
 
-// Normalize dot() operations to have at most one contracting dimension.
+// Normalize dot() operations to have at most one contracting dimension, and
+// optionally at most one non-contracting dimension per operand.
 class DotDimensionNormalizer : public HloModulePass {
  public:
+  explicit DotDimensionNormalizer(
+      bool normalize_noncontracting_dimensions = false)
+      : normalize_noncontracting_dimensions_(
+            normalize_noncontracting_dimensions) {}
+
   absl::string_view name() const override { return "dot_dimension_normalizer"; }
 
  protected:
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  bool normalize_noncontracting_dimensions_;
 };
 
 }  // namespace xla

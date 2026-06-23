@@ -118,6 +118,30 @@ func.func @fold_all_test(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3x
 // -----
 
 module {
+func.func @main(%arg0: tensor<256x32x32x3xf32>) -> tensor<256x30x30x16xf32> {
+  %0 = stablehlo.constant dense<1.000000e+00> : tensor<16x3x3x3xf32>
+  %1 = stablehlo.constant dense<1.000000e+00> : tensor<16xf32>
+  %2 = func.call @fold_stablehlo_constant_test(%arg0, %0, %1) : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x30x30x16xf32>
+  func.return %2 : tensor<256x30x30x16xf32>
+}
+
+func.func @fold_stablehlo_constant_test(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>, %arg2: tensor<16xf32>) -> tensor<256x30x30x16xf32> {
+  %0 = "tfl.conv_2d"(%arg0, %arg1, %arg2) {tac.device = "GPU", tac.inference_type = "FLOAT", dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x30x30x16xf32>
+  func.return %0 : tensor<256x30x30x16xf32>
+}
+
+// ALL-LABEL:   func @fold_stablehlo_constant_test
+// ALL-SAME:        (%[[VAL_0:.*]]: tensor<256x32x32x3xf32>, %[[VAL_1:.*]]: tensor<16x3x3x3xf32>, %[[VAL_2:.*]]: tensor<16xf32>) -> tensor<256x30x30x16xf32> {
+// ALL-DAG:       %[[VAL_3:.*]] = stablehlo.constant dense<1.000000e+00> : tensor<16xf32>
+// ALL-DAG:       %[[VAL_4:.*]] = stablehlo.constant dense<1.000000e+00> : tensor<16x3x3x3xf32>
+// ALL:           %[[VAL_5:.*]] = "tfl.conv_2d"(%[[VAL_0]], %[[VAL_4]], %[[VAL_3]]) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x30x30x16xf32>
+// ALL:           return %[[VAL_5]] : tensor<256x30x30x16xf32>
+// ALL:         }
+}
+
+// -----
+
+module {
 
 func.func @main(%arg0: tensor<4x384x32xf32>) -> tensor<1x384x32xf32> {
   %0 = arith.constant dense<0> : tensor<3xi32>
@@ -135,6 +159,31 @@ func.func @simple_test(%arg0: tensor<4x384x32xf32>, %arg1: tensor<3xi32>, %arg2:
 // PARTIAL:       func @simple_test(%[[VAL_0:.*]]: tensor<4x384x32xf32>, %[[VAL_1:.*]]: tensor<3xi32>, %[[VAL_2:.*]]: tensor<3xi32>) -> tensor<1x384x32xf32> attributes {tac.interface_name = "func1"} {
 // PARTIAL:           %[[VAL_3:.*]] = arith.constant dense<[1, 384, 32]> : tensor<3xi32>
 // PARTIAL:           %[[VAL_4:.*]] = arith.constant dense<0> : tensor<3xi32>
+// PARTIAL:           %[[VAL_5:.*]] = "tfl.slice"(%[[VAL_0]], %[[VAL_4]], %[[VAL_3]]) : (tensor<4x384x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x384x32xf32>
+// PARTIAL:           return %[[VAL_5]] : tensor<1x384x32xf32>
+// PARTIAL:         }
+}
+
+// -----
+
+module {
+
+func.func @main(%arg0: tensor<4x384x32xf32>) -> tensor<1x384x32xf32> {
+  %0 = stablehlo.constant dense<0> : tensor<3xi32>
+  %1 = stablehlo.constant dense<[1, 384, 32]> : tensor<3xi32>
+  %2 = func.call @partial_stablehlo_constant_test(%arg0, %0, %1) {tac.interface_name = "func1"} : (tensor<4x384x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x384x32xf32>
+  func.return %2 : tensor<1x384x32xf32>
+}
+
+func.func @partial_stablehlo_constant_test(%arg0: tensor<4x384x32xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>) -> tensor<1x384x32xf32> attributes {tac.interface_name = "func1"} {
+  %0 = "tfl.slice"(%arg0, %arg1, %arg2) : (tensor<4x384x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x384x32xf32>
+  func.return %0 : tensor<1x384x32xf32>
+}
+
+// PARTIAL-LABEL:   func @partial_stablehlo_constant_test
+// PARTIAL-SAME:        (%[[VAL_0:.*]]: tensor<4x384x32xf32>, %[[VAL_1:.*]]: tensor<3xi32>, %[[VAL_2:.*]]: tensor<3xi32>) -> tensor<1x384x32xf32> attributes {tac.interface_name = "func1"} {
+// PARTIAL-DAG:       %[[VAL_3:.*]] = stablehlo.constant dense<[1, 384, 32]> : tensor<3xi32>
+// PARTIAL-DAG:       %[[VAL_4:.*]] = stablehlo.constant dense<0> : tensor<3xi32>
 // PARTIAL:           %[[VAL_5:.*]] = "tfl.slice"(%[[VAL_0]], %[[VAL_4]], %[[VAL_3]]) : (tensor<4x384x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x384x32xf32>
 // PARTIAL:           return %[[VAL_5]] : tensor<1x384x32xf32>
 // PARTIAL:         }

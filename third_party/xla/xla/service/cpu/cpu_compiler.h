@@ -97,8 +97,7 @@ class CpuCompiler : public LLVMCompiler {
   absl::StatusOr<std::unique_ptr<CompiledModule>> LoadAotCompilationResult(
       const std::string& serialized_aot_result) override;
 
-  absl::StatusOr<HloSchedule> CreateHloSchedule(
-      const HloModule& hlo_module) const;
+  absl::StatusOr<HloSchedule> CreateHloSchedule(HloModule& hlo_module) const;
 
   absl::StatusOr<std::unique_ptr<BufferAssignment>> CreateBufferAssignment(
       const HloModule& module) const;
