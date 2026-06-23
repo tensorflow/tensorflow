@@ -108,6 +108,12 @@ absl::Status RocmEvent::WaitForEventOnExternalStream(std::intptr_t stream) {
                            handle_);
 }
 
+absl::Status RocmEvent::Synchronize() {
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  return ToStatus(hipEventSynchronize(handle_),
+                  "could not synchronize on ROCm event");
+}
+
 absl::StatusOr<RocmEvent> RocmEvent::Create(StreamExecutor *executor,
                                             bool allow_timing) {
   ASSIGN_OR_RETURN(

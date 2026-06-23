@@ -1,9 +1,11 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/stream_executor:build_defs.bzl", "stream_executor_build_defs_bzl_deps", "stream_executor_friends", "stream_executor_internal")
+load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured", "stream_executor_build_defs_bzl_deps", "stream_executor_friends", "stream_executor_internal")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -377,6 +379,78 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+# Factory backends. Each implementation is free of platform `#if` macros; the
+# right one is selected by the top-level `device_address_vmm_allocator_factory`
+# dispatcher below (Stub / CUDA / ROCm), mirroring the //xla/pjrt:triton idiom.
+cc_library(
+    name = "device_address_vmm_allocator_factory_stub",
+    srcs = ["device_address_vmm_allocator_factory_stub.cc"],
+    tags = ["manual"],
+    deps = [
+        ":device_address_vmm_allocator",
+        ":platform",
+        ":stream",
+        ":stream_executor_h",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "device_address_vmm_allocator_factory_cuda",
+    srcs = ["device_address_vmm_allocator_factory_cuda.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "manual",
+    ],
+    deps = [
+        ":device_address_vmm_allocator",
+        ":platform",
+        ":stream",
+        ":stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_device_address_vmm_allocator",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "device_address_vmm_allocator_factory_rocm",
+    srcs = ["device_address_vmm_allocator_factory_rocm.cc"],
+    tags = [
+        "gpu",
+        "manual",
+        "rocm-only",
+    ],
+    deps = [
+        ":device_address_vmm_allocator",
+        ":platform",
+        ":stream",
+        ":stream_executor_h",
+        "//xla/stream_executor/rocm:rocm_device_address_vmm_allocator",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "device_address_vmm_allocator_factory",
+    deps = [
+        ":device_address_vmm_allocator",
+    ] + if_cuda_or_rocm_is_configured(
+        [],
+        [":device_address_vmm_allocator_factory_stub"],
+    ) + if_rocm_is_configured(
+        [":device_address_vmm_allocator_factory_rocm"],
+    ) + if_cuda_is_configured(
+        [":device_address_vmm_allocator_factory_cuda"],
+    ),
 )
 
 cc_library(

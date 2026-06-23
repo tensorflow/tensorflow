@@ -80,6 +80,7 @@ Input/Output:
 Supported Proto Types:
   - xla.gpu.GpuExecutableProto
   - xla.ExecutableAndOptionsProto
+  - xla.HloProto
 )";
 
 absl::Status RunMain(int argc, char** argv) {
@@ -99,7 +100,8 @@ absl::Status RunMain(int argc, char** argv) {
       tsl::Flag(
           "proto_type", &proto_type,
           "The fully qualified protobuf type name (required for packing, e.g. "
-          "xla.gpu.GpuExecutableProto or xla.ExecutableAndOptionsProto)."),
+          "xla.gpu.GpuExecutableProto, xla.ExecutableAndOptionsProto, or "
+          "xla.HloProto)."),
   };
 
   std::string usage = std::string(kUsageHeader);

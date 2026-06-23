@@ -39,10 +39,12 @@ limitations under the License.
 #include "riegeli/records/record_reader.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/tools/split_proto/split_proto_cli.pb.h"
 #include "xla/tsl/util/fixed_option_set_flag.h"
 #include "xla/util/split_proto/split_executable_and_options_writer.h"
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
+#include "xla/util/split_proto/split_hlo_writer.h"
 #include "xla/util/split_proto/split_proto.pb.h"
 #include "xla/util/split_proto/split_proto_reader.h"
 
@@ -124,6 +126,8 @@ absl::Status Pack(std::unique_ptr<riegeli::Reader> reader,
     message = std::make_unique<xla::gpu::GpuExecutableProto>();
   } else if (options.proto_type == "xla.ExecutableAndOptionsProto") {
     message = std::make_unique<xla::ExecutableAndOptionsProto>();
+  } else if (options.proto_type == "xla.HloProto") {
+    message = std::make_unique<xla::HloProto>();
   } else {
     return absl::InvalidArgumentError(
         absl::StrCat("Unsupported proto type: ", options.proto_type));
@@ -141,6 +145,11 @@ absl::Status Pack(std::unique_ptr<riegeli::Reader> reader,
     auto* options_proto =
         absl::down_cast<xla::ExecutableAndOptionsProto*>(message.get());
     return WriteSplitExecutableAndOptions(*options_proto, std::move(writer));
+  }
+
+  if (options.proto_type == "xla.HloProto") {
+    auto* hlo_proto = absl::down_cast<xla::HloProto*>(message.get());
+    return WriteSplitHloProto(*hlo_proto, std::move(writer));
   }
 
   return absl::InvalidArgumentError("Unreachable");
@@ -202,6 +211,8 @@ absl::Status Unpack(std::unique_ptr<riegeli::Reader> reader,
     message = std::make_unique<xla::gpu::GpuExecutableProto>();
   } else if (manifest.result_proto_type() == "xla.ExecutableAndOptionsProto") {
     message = std::make_unique<xla::ExecutableAndOptionsProto>();
+  } else if (manifest.result_proto_type() == "xla.HloProto") {
+    message = std::make_unique<xla::HloProto>();
   } else {
     return absl::InvalidArgumentError(absl::StrCat(
         "Unsupported proto type in manifest: ", manifest.result_proto_type()));

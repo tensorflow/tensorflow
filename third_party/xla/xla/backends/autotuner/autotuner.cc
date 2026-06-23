@@ -93,13 +93,17 @@ absl::StatusOr<std::vector<Autotuner::TuningResult>> Autotuner::TuneConfigs(
                                 ? thread_pool_->AsExecutor()
                                 : &tsl::InlineExecutor::Instance();
 
-  for (const EquivalentInstructions& group : instruction_groups) {
+  const int num_runners = runners_.size();
+  for (int i = 0; i < instruction_groups.size(); ++i) {
+    const EquivalentInstructions& group = instruction_groups[i];
     TF_RET_CHECK(!group.empty()) << "Instruction group cannot be empty.";
     const HloInstruction* leader = group.front();
     leaders.push_back(leader);
-    future_configs.push_back(tsl::MakeFutureOn(*executor, [this, leader]() {
-      return GetTunedConfig(leader).Await();
-    }));
+    int runner_index = i % num_runners;
+    future_configs.push_back(
+        tsl::MakeFutureOn(*executor, [this, leader, runner_index]() {
+          return GetTunedConfig(leader, runner_index).Await();
+        }));
   }
 
   // Await and verify all configuration selections.
