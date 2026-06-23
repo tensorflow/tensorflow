@@ -64,31 +64,10 @@ class CollectiveMemoryCache {
       const GpuCliqueKey& clique, stream_executor::DeviceAddressBase addr,
       tsl::TiedRef<stream_executor::gpu::MulticastMemory> multicast_memory);
 
-  // Returns the cached scratch allocation+window pair, or {nullptr, nullptr}
-  // on cache miss.
-  std::pair<std::shared_ptr<stream_executor::MemoryAllocation>,
-            std::shared_ptr<SymmetricMemory>>
-  FindScratchMemory(int64_t device_ordinal) ABSL_LOCKS_EXCLUDED(mutex_);
 
-  // Inserts or replaces a scratch entry. Returns locked shared_ptrs to the
-  // cached allocation and symmetric memory window.
-  std::pair<std::shared_ptr<stream_executor::MemoryAllocation>,
-            std::shared_ptr<SymmetricMemory>>
-  AddScratchMemory(
-      int64_t device_ordinal,
-      tsl::TiedRef<stream_executor::MemoryAllocation> memory_allocation,
-      tsl::TiedRef<SymmetricMemory> symmetric_memory)
-      ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
   using Key = std::pair<GpuCliqueKey, stream_executor::DeviceAddressBase>;
-
-  // Scratch symmetric memory is a bundle: the allocation provides the raw
-  // device memory, and the symmetric memory is the registered window over it.
-  struct ScratchEntry {
-    tsl::TiedRef<stream_executor::MemoryAllocation> allocation;
-    tsl::TiedRef<SymmetricMemory> symmetric_memory;
-  };
 
   absl::Mutex mutex_;
 
@@ -97,9 +76,6 @@ class CollectiveMemoryCache {
 
   absl::flat_hash_map<Key, tsl::TiedRef<stream_executor::gpu::MulticastMemory>>
       multicast_memories_ ABSL_GUARDED_BY(mutex_);
-
-  absl::flat_hash_map<int64_t, ScratchEntry> scratch_memories_
-      ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace xla::gpu

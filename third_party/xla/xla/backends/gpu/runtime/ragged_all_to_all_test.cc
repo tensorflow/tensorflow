@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/backends/gpu/collectives/nccl_symmetric_memory.h"
+#include "xla/backends/gpu/collectives/nccl_types.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -143,7 +144,10 @@ CreateSymmetricMemory(
       symmetric_memory_futures(num_devices);
   for (int i = 0; i < num_devices; ++i) {
     symmetric_memory_futures[i] = tsl::MakeFutureOn(*exec, [&, exec, i]() {
-      return NcclSymmetricMemory::Create(comms[i], buffers[i]->address(), exec);
+      std::shared_ptr<NcclCommState> comm_state =
+          std::make_shared<NcclCommState>(comms[i]);
+      return NcclSymmetricMemory::Create(comm_state, buffers[i]->address(),
+                                         exec);
     });
   }
 

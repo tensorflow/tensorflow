@@ -125,7 +125,9 @@ CreateSymmetricMemory(
       symmetric_memory_futures(num_devices);
   for (int i = 0; i < num_devices; ++i) {
     symmetric_memory_futures[i] = tsl::MakeFutureOn(*exec, [&, exec, i]() {
-      return xla::gpu::NcclSymmetricMemory::Create(comms[i],
+      std::shared_ptr<xla::gpu::NcclCommState> comm_state =
+          std::make_shared<xla::gpu::NcclCommState>(comms[i]);
+      return xla::gpu::NcclSymmetricMemory::Create(comm_state,
                                                    buffers[i]->address(), exec);
     });
   }
