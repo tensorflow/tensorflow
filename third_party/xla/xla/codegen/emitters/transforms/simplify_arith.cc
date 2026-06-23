@@ -38,10 +38,11 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_SIMPLIFYARITHPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 using mlir::LogicalResult;
 using mlir::OpRewritePattern;
@@ -463,14 +464,6 @@ class SimplifyArithPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateSimplifyArithPass(
-    bool fast_min_max, bool explicit_nan_propagation) {
-  SimplifyArithPassOptions options;
-  options.fast_min_max_ = fast_min_max;
-  options.explicit_nan_propagation_ = explicit_nan_propagation;
-  return std::make_unique<SimplifyArithPass>(options);
-}
 
 }  // namespace emitters
 }  // namespace xla
