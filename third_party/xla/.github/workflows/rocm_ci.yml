@@ -40,7 +40,7 @@ jobs:
     needs: rocm-config
     if: ${{ github.event_name != 'pull_request' || github.base_ref == 'main' }}
     name: JAX Linux x86 AMD Instinct GPU
-    runs-on: linux-x86-64-1gpu-amd
+    runs-on: amd-do-linux-xla-gpu-gfx950-1
     timeout-minutes: 80
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
@@ -104,7 +104,7 @@ jobs:
   xla:
     needs: rocm-config
     name: XLA Linux x86 AMD Instinct GPU
-    runs-on: linux-x86-64-1gpu-amd
+    runs-on: amd-do-linux-xla-gpu-gfx950-1
     timeout-minutes: 220
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
