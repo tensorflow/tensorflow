@@ -48,13 +48,13 @@ absl::StatusOr<CudaComputeCapability> CudaComputeCapability::FromString(
     split[1].remove_suffix(1);
   }
 
-  int major, minor;
-  if (!absl::SimpleAtoi(split[0], &major) ||
-      !absl::SimpleAtoi(split[1], &minor)) {
+  int major_version, minor_version;
+  if (!absl::SimpleAtoi(split[0], &major_version) ||
+      !absl::SimpleAtoi(split[1], &minor_version)) {
     return absl::InvalidArgumentError(
         absl::StrCat("Invalid CUDA architecture name: ", cuda_arch_name));
   }
-  return CudaComputeCapability{major, minor, feature_extension};
+  return CudaComputeCapability{major_version, minor_version, feature_extension};
 }
 
 static std::string FeatureExtensionToString(
@@ -70,7 +70,7 @@ static std::string FeatureExtensionToString(
 }
 
 std::string CudaComputeCapability::ToString() const {
-  return absl::StrCat(major, ".", minor,
+  return absl::StrCat(major_version, ".", minor_version,
                       FeatureExtensionToString(feature_extension));
 }
 
@@ -86,20 +86,20 @@ std::string CudaComputeCapability::GetPtxAsTargetName(
         return "sm";
     }
   }();
-  return absl::StrFormat("%s_%d%d%s", prefix, major, minor,
+  return absl::StrFormat("%s_%d%d%s", prefix, major_version, minor_version,
                          FeatureExtensionToString(feature_extension));
 }
 
 absl::StatusOr<CudaComputeCapability> CudaComputeCapability::FromProto(
     const CudaComputeCapabilityProto& proto) {
   CudaComputeCapability cc;
-  cc.major = proto.major();
-  cc.minor = proto.minor();
+  cc.major_version = proto.major_version();
+  cc.minor_version = proto.minor_version();
   switch (proto.feature_extension()) {
     case CudaComputeCapabilityProto::UNSPECIFIED:
       // For backward compatibility we assume sm_90a and sm_100a for Hopper and
       // Blackwell generation GPUs.
-      if (cc.major == 9 || cc.major == 10) {
+      if (cc.major_version == 9 || cc.major_version == 10) {
         cc.feature_extension = FeatureExtension::kAcceleratedFeatures;
       } else {
         cc.feature_extension = FeatureExtension::kNone;
@@ -123,8 +123,8 @@ absl::StatusOr<CudaComputeCapability> CudaComputeCapability::FromProto(
 
 CudaComputeCapabilityProto CudaComputeCapability::ToProto() const {
   CudaComputeCapabilityProto proto;
-  proto.set_major(major);
-  proto.set_minor(minor);
+  proto.set_major_version(major_version);
+  proto.set_minor_version(minor_version);
 
   switch (feature_extension) {
     case FeatureExtension::kNone:

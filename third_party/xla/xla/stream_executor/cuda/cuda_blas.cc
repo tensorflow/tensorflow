@@ -655,30 +655,31 @@ static absl::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
 
   // GPUs < sm_50 don't support cublasGemmEx.
   CudaComputeCapability cc = stream->GetCudaComputeCapability();
-  if (cc.major < 5) {
-    return absl::InternalError(absl::StrCat(
-        "sm_", cc.major, " does not support explicit gemm algorithms."));
+  if (cc.major_version < 5) {
+    return absl::InternalError(
+        absl::StrCat("sm_", cc.major_version,
+                     " does not support explicit gemm algorithms."));
   }
 
   bool algo_uses_tensor_ops = UsesTensorOps(algorithm);
   cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
   if (algo_uses_tensor_ops) {
-    if (cc.major < 7) {
+    if (cc.major_version < 7) {
       return absl::InternalError(absl::StrCat(
           "Algorithm ", algorithm,
-          " uses tensor ops, but tensor ops are not available in sm", cc.major,
-          "X devices."));
+          " uses tensor ops, but tensor ops are not available in sm",
+          cc.major_version, "X devices."));
     } else if (type_a == blas::DataType::kFloat) {
 #if CUDA_VERSION < 11000
       return absl::InternalError(
           "Algorithm ", algorithm,
           " uses tensor ops, but tensor ops are not available for fp32");
 #else
-      if (cc.major < 8) {
+      if (cc.major_version < 8) {
         return absl::InternalError(absl::StrCat(
             "Algorithm ", algorithm,
             " uses tensor ops, but tensor ops are not available in sm",
-            cc.major, "X devices for float input types."));
+            cc.major_version, "X devices for float input types."));
       }
       math_type = CUBLAS_TF32_TENSOR_OP_MATH;
 #endif
@@ -1161,7 +1162,8 @@ absl::Status CUDABlas::DoBlasGemmStridedBatched(
       CudaComputeCapability cc = stream->GetCudaComputeCapability();
       if (cc.IsAtLeast(7)) {
         cublasGemmAlgo_t algo =
-            (cc.major >= 7 ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
+            (cc.major_version >= 7 ? CUBLAS_GEMM_DFALT_TENSOR_OP
+                                   : CUBLAS_GEMM_DFALT);
         return DoBlasInternalImpl(
             AS_LAMBDA(cublasGemmStridedBatchedEx), stream,
             true /* = pointer_mode_host */, math_type,
@@ -1194,9 +1196,10 @@ absl::Status CUDABlas::DoBlasGemmStridedBatched(
 #endif
     case dnn::kHalf: {
       CudaComputeCapability cc = stream->GetCudaComputeCapability();
-      if (cc.major >= 5) {
+      if (cc.major_version >= 5) {
         cublasGemmAlgo_t algo =
-            (cc.major >= 7 ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
+            (cc.major_version >= 7 ? CUBLAS_GEMM_DFALT_TENSOR_OP
+                                   : CUBLAS_GEMM_DFALT);
         return DoBlasInternalImpl(
             AS_LAMBDA(cublasGemmStridedBatchedEx), stream,
             true /* = pointer_mode_host */, math_type,

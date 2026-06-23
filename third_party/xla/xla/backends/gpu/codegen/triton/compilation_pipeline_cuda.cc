@@ -61,7 +61,7 @@ static void MakeTTIR(mlir::OpPassManager* pm,
 static void MakeTTGIR(mlir::OpPassManager* pm,
                       const stream_executor::CudaComputeCapability& cuda_cc,
                       int num_warps, int num_ctas, int num_stages) {
-  const int cuda_cc_as_int = cuda_cc.major * 10 + cuda_cc.minor;
+  const int cuda_cc_as_int = cuda_cc.major_version * 10 + cuda_cc.minor_version;
   pm->addPass(mt::createConvertTritonToTritonGPU(
       {absl::StrFormat("cuda:%u", cuda_cc_as_int), num_warps,
        /*threads_per_warp=*/32, num_ctas}));
@@ -146,7 +146,7 @@ int GetDefaultPtxVersion(
 
 static void MakeLLIR(mlir::OpPassManager* pm,
                      const stream_executor::CudaComputeCapability& cuda_cc) {
-  const int cuda_cc_as_int = cuda_cc.major * 10 + cuda_cc.minor;
+  const int cuda_cc_as_int = cuda_cc.major_version * 10 + cuda_cc.minor_version;
   const int final_ptx_version = GetDefaultPtxVersion(cuda_cc);
 
   // We could add a flag to XLA to optionally enable the following passes:

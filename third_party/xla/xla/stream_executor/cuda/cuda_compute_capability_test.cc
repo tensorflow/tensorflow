@@ -89,15 +89,15 @@ TEST(CudaComputeCapabilityTest, ToProto) {
       CudaComputeCapability(100, 5,
                             CudaComputeCapability::FeatureExtension::kNone)
           .ToProto();
-  EXPECT_EQ(proto0.major(), 100);
-  EXPECT_EQ(proto0.minor(), 5);
+  EXPECT_EQ(proto0.major_version(), 100);
+  EXPECT_EQ(proto0.minor_version(), 5);
   EXPECT_EQ(proto0.feature_extension(), CudaComputeCapabilityProto::NONE);
   CudaComputeCapabilityProto proto1 =
       CudaComputeCapability(
           100, 5, CudaComputeCapability::FeatureExtension::kAcceleratedFeatures)
           .ToProto();
-  EXPECT_EQ(proto1.major(), 100);
-  EXPECT_EQ(proto1.minor(), 5);
+  EXPECT_EQ(proto1.major_version(), 100);
+  EXPECT_EQ(proto1.minor_version(), 5);
   EXPECT_EQ(proto1.feature_extension(),
             CudaComputeCapabilityProto::ACCELERATED_FEATURES);
   CudaComputeCapabilityProto proto2 =
@@ -105,8 +105,8 @@ TEST(CudaComputeCapabilityTest, ToProto) {
           100, 5,
           CudaComputeCapability::FeatureExtension::kFamilyCompatibleFeatures)
           .ToProto();
-  EXPECT_EQ(proto2.major(), 100);
-  EXPECT_EQ(proto2.minor(), 5);
+  EXPECT_EQ(proto2.major_version(), 100);
+  EXPECT_EQ(proto2.minor_version(), 5);
   EXPECT_EQ(proto2.feature_extension(),
             CudaComputeCapabilityProto::FAMILY_COMPATIBLE_FEATURES);
 }
@@ -117,38 +117,38 @@ TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionUnspecified) {
   // An unspecified feature extension field should be interpreted as NONE - no
   // feature extension enabled.
   CudaComputeCapabilityProto proto;
-  proto.set_major(100);
-  proto.set_minor(5);
+  proto.set_major_version(100);
+  proto.set_minor_version(5);
   TF_ASSERT_OK_AND_ASSIGN(auto cc, CudaComputeCapability::FromProto(proto));
-  EXPECT_EQ(cc.major, 100);
-  EXPECT_EQ(cc.minor, 5);
+  EXPECT_EQ(cc.major_version, 100);
+  EXPECT_EQ(cc.minor_version, 5);
   EXPECT_EQ(cc.feature_extension, FeatureExtension::kNone);
 
   // On Hopper we expect accelerated features to be the default as this is how
   // XLA treated Hopper GPUs before we could handle feature extensions
   // explicitly.
-  proto.set_major(9);
-  proto.set_minor(5);
+  proto.set_major_version(9);
+  proto.set_minor_version(5);
   TF_ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
-  EXPECT_EQ(cc.major, 9);
-  EXPECT_EQ(cc.minor, 5);
+  EXPECT_EQ(cc.major_version, 9);
+  EXPECT_EQ(cc.minor_version, 5);
   EXPECT_EQ(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
 
   // On Blackwell we expect accelerated features to be the default as this is
   // how XLA treated Blackwell GPUs before we could handle feature extensions
   // explicitly.
-  proto.set_major(10);
-  proto.set_minor(2);
+  proto.set_major_version(10);
+  proto.set_minor_version(2);
   TF_ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
-  EXPECT_EQ(cc.major, 10);
-  EXPECT_EQ(cc.minor, 2);
+  EXPECT_EQ(cc.major_version, 10);
+  EXPECT_EQ(cc.minor_version, 2);
   EXPECT_EQ(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
 
-  proto.set_major(12);
-  proto.set_minor(0);
+  proto.set_major_version(12);
+  proto.set_minor_version(0);
   TF_ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
-  EXPECT_EQ(cc.major, 12);
-  EXPECT_EQ(cc.minor, 0);
+  EXPECT_EQ(cc.major_version, 12);
+  EXPECT_EQ(cc.minor_version, 0);
   EXPECT_NE(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
 }
 
@@ -218,12 +218,12 @@ TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionSpecified) {
   using FeatureExtension = CudaComputeCapability::FeatureExtension;
 
   CudaComputeCapabilityProto proto;
-  proto.set_major(100);
-  proto.set_minor(5);
+  proto.set_major_version(100);
+  proto.set_minor_version(5);
   proto.set_feature_extension(CudaComputeCapabilityProto::ACCELERATED_FEATURES);
   TF_ASSERT_OK_AND_ASSIGN(auto cc, CudaComputeCapability::FromProto(proto));
-  EXPECT_EQ(cc.major, 100);
-  EXPECT_EQ(cc.minor, 5);
+  EXPECT_EQ(cc.major_version, 100);
+  EXPECT_EQ(cc.minor_version, 5);
   EXPECT_EQ(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
 }
 

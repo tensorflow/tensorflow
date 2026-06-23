@@ -41,11 +41,12 @@ absl::StatusOr<std::vector<uint8_t>> LinkGpuAsmUsingDriver(
 
   CUlinkState link_state;
   CUjit_option options[] = {CU_JIT_TARGET};
-  CUjit_target target = static_cast<CUjit_target>(cc.major * 10 + cc.minor);
+  CUjit_target target =
+      static_cast<CUjit_target>(cc.major_version * 10 + cc.minor_version);
 #if CUDA_VERSION >= 12000
   // Even though CUDA 11.8 has Hopper support, SM 9.0a and most Hopper features
   // (WGMMA, TMA, and more) are only supported in CUDA 12+.
-  if (cc.major == 9 && cc.minor == 0) {
+  if (cc.major_version == 9 && cc.minor_version == 0) {
     target =
         static_cast<CUjit_target>(target + CU_COMPUTE_ACCELERATED_TARGET_BASE);
   }

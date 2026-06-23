@@ -18,8 +18,8 @@ syntax = "proto3";
 package stream_executor;
 
 message CudaComputeCapabilityProto {
-  int32 major = 1;
-  int32 minor = 2;
+  int32 major_version = 1;
+  int32 minor_version = 2;
 
   enum FeatureExtension {
     // UNSPECIFIED is only needed because when this field is not set

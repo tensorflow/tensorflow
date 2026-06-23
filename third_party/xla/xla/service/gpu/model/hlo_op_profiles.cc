@@ -49,7 +49,7 @@ namespace gpu {
     const se::DeviceDescription& device_info) {
   if (auto* ptr =
           device_info.gpu_compute_capability().cuda_compute_capability()) {
-    return absl::StrCat("sm_", ptr->major, ptr->minor);
+    return absl::StrCat("sm_", ptr->major_version, ptr->minor_version);
   }
   if (auto* ptr =
           device_info.gpu_compute_capability().rocm_compute_capability()) {

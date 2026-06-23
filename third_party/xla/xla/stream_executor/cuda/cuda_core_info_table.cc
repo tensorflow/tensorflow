@@ -158,7 +158,7 @@ const std::vector<DTypeCoreInfo>* FindCoreInfoForDType(CudaComputeCapability cc,
            }}});
 
   for (const auto& config : *kTable) {
-    if (config.cc.major == cc.major) {
+    if (config.cc.major_version == cc.major_version) {
       return is_tensor ? &config.tensor_core_infos : &config.cuda_core_infos;
     }
   }
@@ -250,11 +250,12 @@ int GetFpusPerCore(CudaComputeCapability cc) {
   // Fallback to hardcoded values if not found in the table.
   // Source:
   // https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/#throughput-of-native-arithmetic-instructions
-  int n = 128;          // 5.x, 6.1, 6.2, 8.6, 9.0 -> 128.
-  if (cc.major == 3) {  // 3.x -> 192.
+  int n = 128;                  // 5.x, 6.1, 6.2, 8.6, 9.0 -> 128.
+  if (cc.major_version == 3) {  // 3.x -> 192.
     n = 192;
-  } else if ((cc.major == 6 && cc.minor == 0) || (cc.major == 7) ||
-             (cc.major == 8 && cc.minor == 0)) {
+  } else if ((cc.major_version == 6 && cc.minor_version == 0) ||
+             (cc.major_version == 7) ||
+             (cc.major_version == 8 && cc.minor_version == 0)) {
     n = 64;  // 6.0, 7.x, 8.0 -> 64.
   }
   return n;

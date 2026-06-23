@@ -329,7 +329,8 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
     if (absl::StrContains(stderr_output, "ptxas fatal   : Value '") &&
         absl::StrContains(stderr_output,
                           "is not defined for option 'gpu-name'")) {
-      LogPtxasTooOld(std::string{ptxas_path}, cc.major, cc.minor);
+      LogPtxasTooOld(std::string{ptxas_path}, cc.major_version,
+                     cc.minor_version);
       return absl::UnimplementedError(absl::StrFormat(
           "%s ptxas too old. Falling back to the driver to compile.",
           ptxas_path));

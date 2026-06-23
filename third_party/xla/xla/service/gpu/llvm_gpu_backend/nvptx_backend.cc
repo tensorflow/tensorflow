@@ -265,17 +265,22 @@ se::CudaComputeCapability ResolveSupportedComputeCapability(
     }
   }
 
-  if (target_compute_capability.major == gpu_compute_capability.major &&
-      target_compute_capability.minor == gpu_compute_capability.minor) {
+  if (target_compute_capability.major_version ==
+          gpu_compute_capability.major_version &&
+      target_compute_capability.minor_version ==
+          gpu_compute_capability.minor_version) {
     // If we support the requested compute capability, then we can also enable
     // the requested feature extension.
     target_compute_capability.feature_extension =
         compute_capability.feature_extension;
-  } else if (target_compute_capability.major >=
+  } else if (target_compute_capability.major_version >=
                  CudaComputeCapabilities::kBlackwell &&
-             target_compute_capability.major <= kSupportedVersions[0].major &&
-             target_compute_capability.major == compute_capability.major &&
-             target_compute_capability.minor <= gpu_compute_capability.minor) {
+             target_compute_capability.major_version <=
+                 kSupportedVersions[0].major_version &&
+             target_compute_capability.major_version ==
+                 compute_capability.major_version &&
+             target_compute_capability.minor_version <=
+                 gpu_compute_capability.minor_version) {
     // If we don't support the requested compute capability, but an
     // earlier one with the same major version, then we can enable
     // the forward compatible feature extension - if the particular
@@ -297,8 +302,10 @@ std::string GetSmName(se::CudaComputeCapability compute_capability) {
   // user can't do anything about this. E.g., PTX compiled for SM75 will
   // run on SM80 too.
   if (target_compute_capability != compute_capability &&
-      target_compute_capability.major != kSupportedVersions[0].major &&
-      target_compute_capability.minor != kSupportedVersions[0].minor) {
+      target_compute_capability.major_version !=
+          kSupportedVersions[0].major_version &&
+      target_compute_capability.minor_version !=
+          kSupportedVersions[0].minor_version) {
     LOG(WARNING)
         << "Unknown compute capability " << compute_capability.ToString()
         << ". Defaulting to telling LLVM that we're compiling for "

@@ -74,7 +74,8 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
   EXPECT_THAT(result->device_vendor(), "NVIDIA Corporation");
 
   EXPECT_THAT(*result->gpu_compute_capability().cuda_compute_capability(),
-              ::testing::Field("major", &CudaComputeCapability::major, Ge(1)));
+              ::testing::Field("major_version",
+                               &CudaComputeCapability::major_version, Ge(1)));
 
   DeviceInterconnectInfo info = result->device_interconnect_info();
   if (result->cuda_compute_capability().IsAtLeastHopper() &&
