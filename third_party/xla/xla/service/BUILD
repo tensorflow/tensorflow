@@ -1247,6 +1247,42 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "call_marker",
+    srcs = ["call_marker.cc"],
+    hdrs = ["call_marker.h"],
+    deps = [
+        ":call_graph",
+        ":call_inliner",
+        ":hlo_proto_cc",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "call_marker_test",
+    size = "small",
+    srcs = ["call_marker_test.cc"],
+    deps = [
+        ":call_inliner",
+        ":call_marker",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "platform_util",
     srcs = ["platform_util.cc"],
     hdrs = ["platform_util.h"],
