@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/pjrt/layout_mode.h"
 #include "xla/primitive_util.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -982,6 +983,94 @@ void MakeAsciiTitlecase(std::string* s) {
 std::string MakeAsciiTitlecase(absl::string_view s) {
   std::string result(s);
   MakeAsciiTitlecase(&result);
+  return result;
+}
+
+absl::StatusOr<std::vector<Layout>> FlattenedParameterLayouts(
+    const ComputationLayout& computation_layout) {
+  int flat_parameter_count = 0;
+  for (int i = 0; i < computation_layout.parameter_count(); ++i) {
+    RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+        computation_layout.parameter_shape(i),
+        [&computation_layout, &flat_parameter_count](
+            const Shape& subshape, const ShapeIndex&) -> absl::Status {
+          if (subshape.IsTuple()) {
+            return absl::OkStatus();
+          }
+          if (!subshape.IsArray()) {
+            ++flat_parameter_count;
+            return absl::OkStatus();
+          }
+          if (!subshape.has_layout()) {
+            return InvalidArgument(
+                "FlattenedParameterLayouts can only be called after all "
+                "parameters have layouts assigned (got: %s)",
+                computation_layout.ToString());
+          }
+          ++flat_parameter_count;
+          return absl::OkStatus();
+        }));
+  }
+  std::vector<Layout> result;
+  result.reserve(flat_parameter_count);
+  for (int i = 0; i < computation_layout.parameter_count(); ++i) {
+    ShapeUtil::ForEachSubshape(
+        computation_layout.parameter_shape(i),
+        [&result](const Shape& subshape, const ShapeIndex&) {
+          if (subshape.IsTuple()) {
+            return;
+          }
+          if (!subshape.IsArray()) {
+            result.push_back(Layout());
+            return;
+          }
+          // Skipping `subshape.has_layout()` check because we already checked
+          // that the subshape has a layout.
+          result.push_back(subshape.layout());
+        });
+  }
+  return result;
+}
+
+absl::StatusOr<std::vector<Layout>> FlattenedResultLayouts(
+    const ComputationLayout& computation_layout) {
+  int flat_result_count = 0;
+  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      computation_layout.result_shape(),
+      [&computation_layout, &flat_result_count](
+          const Shape& subshape, const ShapeIndex&) -> absl::Status {
+        if (subshape.IsTuple()) {
+          return absl::OkStatus();
+        }
+        if (!subshape.IsArray()) {
+          ++flat_result_count;
+          return absl::OkStatus();
+        }
+        if (!subshape.has_layout()) {
+          return InvalidArgument(
+              "FlattenedResultLayouts can only be called after all "
+              "outputs have layouts assigned (got: %s)",
+              computation_layout.ToString());
+        }
+        ++flat_result_count;
+        return absl::OkStatus();
+      }));
+  std::vector<Layout> result;
+  result.reserve(flat_result_count);
+  ShapeUtil::ForEachSubshape(
+      computation_layout.result_shape(),
+      [&result](const Shape& subshape, const ShapeIndex&) {
+        if (subshape.IsTuple()) {
+          return;
+        }
+        if (!subshape.IsArray()) {
+          result.push_back(Layout());
+          return;
+        }
+        // Skipping `subshape.has_layout()` check because we already checked
+        // that the subshape has a layout.
+        result.push_back(subshape.layout());
+      });
   return result;
 }
 

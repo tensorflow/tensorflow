@@ -22,10 +22,12 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
+#include "xla/backends/gpu/collectives/nccl_types.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
@@ -44,23 +46,28 @@ Future<> Execute(absl::AnyInvocable<absl::Status() &&> f,
 }
 
 NcclSymmetricMemory::NcclSymmetricMemory(
-    ncclComm_t comm, ncclWindow_t win, stream_executor::DeviceAddressBase addr,
+    std::shared_ptr<NcclCommState> comm_state, ncclWindow_t win,
+    stream_executor::DeviceAddressBase addr,
     std::shared_ptr<tsl::Executor> executor)
-    : comm_(comm), win_(win), addr_(addr), executor_(executor) {}
+    : comm_state_(comm_state), win_(win), addr_(addr), executor_(executor) {}
 
 absl::StatusOr<std::unique_ptr<NcclSymmetricMemory>>
-NcclSymmetricMemory::Create(ncclComm_t comm,
+NcclSymmetricMemory::Create(std::shared_ptr<NcclCommState> comm_state,
                             stream_executor::DeviceAddressBase addr,
                             const std::shared_ptr<tsl::Executor> executor) {
-  VLOG(3) << absl::StrFormat(
-      "Create NCCL symmetric memory on comm=%p from: ptr=%p; size=%ld", comm,
-      addr.opaque(), addr.size());
-
   ncclWindow_t win;
-  XLA_NCCL_RETURN_IF_ERROR(ncclCommWindowRegister(
-      comm, addr.opaque(), addr.size(), &win, NCCL_WIN_COLL_SYMMETRIC));
+  {
+    VLOG(3) << absl::StrFormat(
+        "Create NCCL symmetric memory on comm=%p from: ptr=%p; size=%ld",
+        comm_state->comm, addr.opaque(), addr.size());
+    absl::MutexLock lock(comm_state->mutex);
+    XLA_NCCL_RETURN_IF_ERROR(
+        ncclCommWindowRegister(comm_state->comm, addr.opaque(), addr.size(),
+                               &win, NCCL_WIN_COLL_SYMMETRIC));
+  }
 
-  return absl::WrapUnique(new NcclSymmetricMemory(comm, win, addr, executor));
+  return absl::WrapUnique(
+      new NcclSymmetricMemory(comm_state, win, addr, executor));
 }
 
 NcclSymmetricMemory::~NcclSymmetricMemory() {
@@ -70,7 +77,9 @@ NcclSymmetricMemory::~NcclSymmetricMemory() {
             VLOG(3) << absl::StrFormat(
                 "Destroy %v with addr=%p, size=%ld executor=%p", *this,
                 addr_.opaque(), addr_.size(), executor_.get());
-            XLA_NCCL_LOG_IF_ERROR(ncclCommWindowDeregister(comm_, win_));
+            absl::MutexLock lock(comm_state_->mutex);
+            XLA_NCCL_LOG_IF_ERROR(
+                ncclCommWindowDeregister(comm_state_->comm, win_));
             return absl::OkStatus();
           },
           executor_)
@@ -116,9 +125,10 @@ NcclSymmetricMemory::peer_addr(RankId peer) const {
 }
 
 std::string NcclSymmetricMemory::ToString() const {
+  absl::MutexLock lock(comm_state_->mutex);
   return absl::StrFormat(
-      "NcclSymmetricMemory(comm=%p, win=%p, ptr=%p, size=%ld)", comm_, win_,
-      addr_.opaque(), addr_.size());
+      "NcclSymmetricMemory(comm=%p, win=%p, ptr=%p, size=%ld)",
+      comm_state_->comm, win_, addr_.opaque(), addr_.size());
 }
 
 NcclSymmetricMemory::PackedKernelArg NcclSymmetricMemory::PackKernelArg()
