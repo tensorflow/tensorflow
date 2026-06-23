@@ -130,7 +130,7 @@ absl::Status GpuTracer::DoStart() {
     collector_options.num_gpus = num_gpus;
   }
 
-  uint64_t start_gputime_ns = cupti_tracer_->GetTimestampForProfilerStart();
+  uint64_t start_gputime_ns = CuptiTracer::GetTimestamp();
   uint64_t start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
                                           start_gputime_ns);

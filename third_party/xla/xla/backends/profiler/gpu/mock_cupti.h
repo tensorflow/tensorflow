@@ -48,10 +48,6 @@ class MockCupti : public xla::profiler::CuptiInterface {
               (uint8_t* buffer, size_t valid_buffer_size_bytes,
                CUpti_Activity** record),
               (override));
-  MOCK_METHOD(CUptiResult, ActivityGetNextRecordV2,
-              (CUpti_SubscriberHandle subscriber, uint8_t* buffer,
-               size_t valid_buffer_size_bytes, CUpti_Activity** record),
-              (override));
   MOCK_METHOD(CUptiResult, ActivityGetNumDroppedRecords,
               (CUcontext context, uint32_t stream_id, size_t* dropped),
               (override));
@@ -89,9 +85,6 @@ class MockCupti : public xla::profiler::CuptiInterface {
   MOCK_METHOD(CUptiResult, GetDeviceId, (CUcontext context, uint32_t* deviceId),
               (override));
   MOCK_METHOD(CUptiResult, GetTimestamp, (uint64_t* timestamp), (override));
-  MOCK_METHOD(CUptiResult, GetTimestampV2,
-              (CUpti_SubscriberHandle subscriber, uint64_t* timestamp),
-              (override));
   MOCK_METHOD(CUptiResult, Finalize, (), (override));
   MOCK_METHOD(CUptiResult, EnableCallback,
               (uint32_t enable, CUpti_SubscriberHandle subscriber,

@@ -415,7 +415,6 @@ cc_library(
             ":cupti_utils",
             "//xla/stream_executor/cuda:cuda_status",
             "//xla/tsl/platform:errors",
-            "//xla/tsl/platform:status_macros",
             "@com_google_absl//absl/base",
             "@com_google_absl//absl/base:core_headers",
             "@com_google_absl//absl/cleanup",
@@ -429,7 +428,7 @@ cc_library(
             "@local_config_cuda//cuda:cupti_headers",
             "@tsl//tsl/platform:errors",
         ],
-    ),
+    ) + ["//xla/tsl/platform:status_macros"],
 )
 
 cc_library(
@@ -724,7 +723,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cupti_headers",
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:platform_port",
         "@tsl//tsl/platform:thread_annotations",

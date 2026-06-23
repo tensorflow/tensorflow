@@ -47,11 +47,6 @@ class CuptiWrapper : public xla::profiler::CuptiInterface {
                                     size_t valid_buffer_size_bytes,
                                     CUpti_Activity** record) override;
 
-  CUptiResult ActivityGetNextRecordV2(CUpti_SubscriberHandle subscriber,
-                                      uint8_t* buffer,
-                                      size_t valid_buffer_size_bytes,
-                                      CUpti_Activity** record) override;
-
   CUptiResult ActivityGetNumDroppedRecords(CUcontext context,
                                            uint32_t stream_id,
                                            size_t* dropped) override;
@@ -91,9 +86,6 @@ class CuptiWrapper : public xla::profiler::CuptiInterface {
   CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) override;
 
   CUptiResult GetTimestamp(uint64_t* timestamp) override;
-
-  CUptiResult GetTimestampV2(CUpti_SubscriberHandle subscriber,
-                             uint64_t* timestamp) override;
 
   // cuptiFinalize is only defined in CUDA8 and above.
   // To enable it in CUDA8, the environment variable CUPTI_ENABLE_FINALIZE must
@@ -258,11 +250,6 @@ class CuptiWrapperStub : public xla::profiler::CuptiInterface {
                                     size_t valid_buffer_size_bytes,
                                     CUpti_Activity** record) override;
 
-  CUptiResult ActivityGetNextRecordV2(CUpti_SubscriberHandle subscriber,
-                                      uint8_t* buffer,
-                                      size_t valid_buffer_size_bytes,
-                                      CUpti_Activity** record) override;
-
   CUptiResult ActivityGetNumDroppedRecords(CUcontext context,
                                            uint32_t stream_id,
                                            size_t* dropped) override;
@@ -302,9 +289,6 @@ class CuptiWrapperStub : public xla::profiler::CuptiInterface {
   CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) override;
 
   CUptiResult GetTimestamp(uint64_t* timestamp) override;
-
-  CUptiResult GetTimestampV2(CUpti_SubscriberHandle subscriber,
-                             uint64_t* timestamp) override;
 
   // cuptiFinalize is only defined in CUDA8 and above.
   // To enable it in CUDA8, the environment variable CUPTI_ENABLE_FINALIZE must
