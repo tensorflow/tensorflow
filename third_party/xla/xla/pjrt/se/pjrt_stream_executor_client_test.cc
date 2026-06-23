@@ -169,10 +169,18 @@ MakeTestPjRtStreamExecutorClient(
       MakeUnboundedAsyncWorkRunner("pjrt_async_work_runner",
                                    {/*stack_size=*/512 * 1024}),
       first_executor, std::move(gpu_run_options));
-  return std::make_unique<PjRtStreamExecutorClient>(
-      std::move(platform_name), std::move(devices), process_index,
-      std::move(memory_spaces), std::move(topology), std::move(raw_client),
-      std::move(kv_store));
+  auto platform_id = tsl::Fingerprint64(platform_name);
+  auto result = std::make_unique<PjRtStreamExecutorClient>(
+      platform_id, std::move(platform_name), "<unknown>", process_index,
+      std::move(topology), std::move(raw_client), std::move(kv_store));
+  std::vector<std::unique_ptr<PjRtDevice>> devices_copy;
+  devices_copy.reserve(devices.size());
+  for (auto& device : devices) {
+    device->SetClient(result.get());
+    devices_copy.push_back(std::move(device));
+  }
+  result->AttachDevices(std::move(devices_copy), std::move(memory_spaces));
+  return result;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
