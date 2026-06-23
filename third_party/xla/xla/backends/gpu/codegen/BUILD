@@ -255,6 +255,7 @@ cc_library(
     deps = [
         ":kernel_compiler",
         "//xla:future",
+        "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
         "//xla/backends/gpu/codegen/kernels:custom_kernel",
@@ -274,10 +275,12 @@ cc_library(
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:TargetParser",
+        "@llvm-project//mlir:IR",
     ],
 )
 
