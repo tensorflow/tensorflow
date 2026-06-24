@@ -554,7 +554,14 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:protobuf",
-    ],
+    ] + select({
+        # copybara:uncomment_begin(google-only)
+        # "//xla/tsl:google": [
+        # "//xla/python/pjrt_ifrt/google:select_variant_includes",
+        # ],
+        # copybara:uncomment_end
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
