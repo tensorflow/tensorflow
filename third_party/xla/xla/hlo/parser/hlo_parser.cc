@@ -2109,6 +2109,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if (!preset_operands && !ParseOperands(&operands, builder)) {
         return nullptr;
       }
+
+      if (!shape.has_value()) {
+        TokenError(StrFormat("Async op %s must have an explicit shape.",
+                             HloOpcodeString(opcode)));
+        return nullptr;
+      }
+
       if (opcode == HloOpcode::kAsyncStart) {
         if (!shape->IsTuple() || shape->tuple_shapes().size() < 2 ||
             !shape->tuple_shapes(0).IsTuple()) {
