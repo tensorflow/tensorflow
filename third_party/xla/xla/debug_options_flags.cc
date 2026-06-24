@@ -179,6 +179,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_llvm_disable_expensive_passes(false);
   opts.set_xla_backend_optimization_level(3);
   opts.set_xla_gpu_autotune_level(4);
+  opts.set_xla_gpu_isolate_autotune_contexts(false);
   opts.set_xla_gpu_autotune_max_solutions(0);
   opts.set_xla_gpu_fusion_autotune_top_k_configs(1);
   opts.set_xla_cpu_multi_thread_eigen(true);
@@ -1915,6 +1916,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "wider type. "
       "The reassociated allreduce will be promoted to a wider-typed "
       "allreduce."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_isolate_autotune_contexts",
+      bool_setter_for(&DebugOptions::set_xla_gpu_isolate_autotune_contexts),
+      debug_options->xla_gpu_isolate_autotune_contexts(),
+      "If true, run each profile config in a separate CUDA context."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_dump_llvmir",
                 bool_setter_for(&DebugOptions::set_xla_gpu_dump_llvmir),

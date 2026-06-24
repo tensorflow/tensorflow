@@ -1634,6 +1634,10 @@ message DebugOptions {
   // MeshAxesReplicaGroupList (RGV3).
   optional bool xla_enable_rgv3_materialization = 479;
 
+  // If true, each run of a kernel at autotuning time will execute in a separate
+  // CUDA context.
+  optional bool xla_gpu_isolate_autotune_contexts = 498;
+
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 

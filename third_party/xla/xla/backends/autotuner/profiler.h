@@ -35,6 +35,8 @@ struct ProfileOptions {
   // Whether to initialize the buffers with random data or leave them
   // uninitialized.
   bool should_init_buffers = false;
+  // Whether to run each profile config in a separate CUDA context.
+  bool isolate_contexts = false;
 };
 
 struct ProfileResult {

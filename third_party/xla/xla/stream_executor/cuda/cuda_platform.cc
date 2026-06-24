@@ -118,8 +118,9 @@ CudaPlatform::DescriptionForDevice(int ordinal) const {
 
 absl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
   RETURN_IF_ERROR(PlatformInitialize());
-  return executor_cache_.GetOrCreate(
-      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
+  return executor_cache_.GetOrCreate(ordinal, [this, ordinal]() {
+    return GetUncachedExecutor(ordinal, /*use_primary_context=*/true);
+  });
 }
 
 absl::StatusOr<StreamExecutor*> CudaPlatform::FindExisting(int ordinal) {
@@ -128,8 +129,13 @@ absl::StatusOr<StreamExecutor*> CudaPlatform::FindExisting(int ordinal) {
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(int ordinal) {
+  return GetUncachedExecutor(ordinal, /*use_primary_context=*/true);
+}
+
+absl::StatusOr<std::unique_ptr<StreamExecutor>>
+CudaPlatform::GetUncachedExecutor(int ordinal, bool use_primary_context) {
   auto executor = std::make_unique<CudaExecutor>(this, ordinal);
-  RETURN_IF_ERROR(executor->Init());
+  RETURN_IF_ERROR(executor->Init(use_primary_context));
   return std::move(executor);
 }
 

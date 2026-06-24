@@ -269,6 +269,8 @@ ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
   profile_options.redzone_padding_bytes =
       debug_options.xla_gpu_redzone_padding_bytes();
   profile_options.should_init_buffers = autotune_config.check_buffers;
+  profile_options.isolate_contexts =
+      debug_options.xla_gpu_isolate_autotune_contexts();
   return profile_options;
 }
 

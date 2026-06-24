@@ -61,6 +61,8 @@ class GpuProfiler : public Profiler {
                                  float rtol) override;
 
  private:
+  friend class GpuProfiler;
+
   explicit GpuProfiler(
       se::StreamExecutor* stream_executor,
       se::DeviceAddressAllocator* allocator,
