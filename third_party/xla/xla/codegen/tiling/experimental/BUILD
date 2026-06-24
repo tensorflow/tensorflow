@@ -71,9 +71,12 @@ cc_library(
     hdrs = ["reshape_analysis.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:util",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -134,6 +137,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/tools/hlo_diff/utils:text_diff",
         "//xla/hlo/utils:hlo_traversal",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
