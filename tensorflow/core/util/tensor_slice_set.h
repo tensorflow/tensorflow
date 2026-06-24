@@ -24,9 +24,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"       // for Status
 #include "tensorflow/core/lib/core/stringpiece.h"  // for StringPiece
 #include "tensorflow/core/platform/types.h"        // for int64
