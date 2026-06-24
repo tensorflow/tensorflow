@@ -1909,6 +1909,7 @@ pytype_strict_library(
     visibility = visibility + ["//third_party/py/tensorflow_gnn:__subpackages__"],
     deps = [
         "//tensorflow/python/types:internal",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 
