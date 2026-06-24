@@ -26,7 +26,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/config_assigner.h"
+#include "xla/backends/autotuner/hlo_extractor.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -46,11 +48,15 @@ namespace gpu {
 
 class GpuCompiler;
 
-AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
-                                 bool is_deviceless = false);
+ConfigAssigner::Options GetConfigAssignerOptions(
+    const DebugOptions& debug_options, bool is_deviceless = false);
 
-ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
-                                 const AutotuneConfig& autotune_config);
+CodegenOrchestrator::Options GetCodegenOrchestratorOptions(
+    const DebugOptions& debug_options);
+
+ProfileOptions GetProfileOptions(
+    const DebugOptions& debug_options,
+    const ConfigAssigner::Options& config_assigner_options);
 
 // HloModulePass that runs the autotuner.
 class AutotunerPass : public HloModulePass {

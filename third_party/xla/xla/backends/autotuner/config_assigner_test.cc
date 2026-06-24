@@ -142,8 +142,8 @@ std::unique_ptr<BackendConfig> GetTestConfig(absl::string_view name) {
   return config;
 }
 
-AutotuneConfig GetTestAutotuneConfig() {
-  AutotuneConfig config;
+ConfigAssigner::Options GetTestConfigAssignerOptions() {
+  ConfigAssigner::Options config;
   config.check_buffers = false;
   return config;
 }
@@ -211,38 +211,17 @@ se::DeviceDescription CreateDummyDeviceDescription() {
 
 absl::StatusOr<std::unique_ptr<ConfigAssigner>> CreateConfigAssigner(
     std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
-    std::unique_ptr<Profiler> profiler, AutotuneConfig autotune_config,
+    std::unique_ptr<Profiler> profiler,
+    ConfigAssigner::Options assigner_options,
     std::unique_ptr<AutotunerCacheInterface> cache,
-    tsl::thread::ThreadPool* thread_pool = nullptr) {
-  CodegenOrchestrator::Options orchestrator_options;
-  orchestrator_options.allow_reg_spills_fn =
-      autotune_config.allow_reg_spills_fn;
-  orchestrator_options.exclude_cublas_config =
-      autotune_config.exclude_cublas_config;
-
+    tsl::thread::ThreadPool* thread_pool = nullptr,
+    CodegenOrchestrator::Options orchestrator_options = {}) {
   ASSIGN_OR_RETURN(auto orchestrator, CodegenOrchestrator::Create(
                                           std::move(codegen_backends),
                                           orchestrator_options, thread_pool));
 
   if (cache == nullptr) {
     cache = std::make_unique<NoOpAutotunerCache>();
-  }
-
-  ConfigAssigner::Options assigner_options;
-  assigner_options.use_default_config = autotune_config.use_default_config;
-  assigner_options.select_first_config = autotune_config.select_first_config;
-  assigner_options.expect_all_instructions_in_cache =
-      autotune_config.expect_all_instructions_in_cache;
-  assigner_options.dump_hlos = autotune_config.dump_hlos;
-
-  if (profiler != nullptr) {
-    assigner_options.check_buffers = autotune_config.check_buffers;
-    assigner_options.relative_tolerance = autotune_config.relative_tolerance;
-    assigner_options.crash_on_check_failure =
-        autotune_config.crash_on_check_failure;
-    assigner_options.scratch_bytes_window_size_us =
-        autotune_config.scratch_bytes_window_size_us;
-    assigner_options.dump_logs_to = autotune_config.dump_logs_to;
   }
 
   return ConfigAssigner::Create(assigner_options, std::move(cache),
@@ -286,7 +265,7 @@ SetupConfigAssignerWithExpectations(
   }
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend));
-  AutotuneConfig config = GetTestAutotuneConfig();
+  ConfigAssigner::Options config = GetTestConfigAssignerOptions();
   config.dump_hlos = dump_hlos;
   return CreateConfigAssigner(std::move(backends), std::move(profiler), config,
                               std::move(cache));
@@ -305,8 +284,8 @@ constexpr absl::string_view kHlo = R"(
 
 class ConfigAssignerTest : public HloHardwareIndependentTestBase {
  public:
-  ConfigAssignerTest() { config_ = GetTestAutotuneConfig(); }
-  AutotuneConfig config_;
+  ConfigAssignerTest() { config_ = GetTestConfigAssignerOptions(); }
+  ConfigAssigner::Options config_;
 };
 
 std::unique_ptr<Executable> RegisterSpillingExecutable(int spilled = 8) {
@@ -1128,7 +1107,8 @@ class AutotunerTestWithBackend
       public ::testing::WithParamInterface<autotuner::Backend> {};
 
 TEST_P(AutotunerTestWithBackend, ExcludeCublasConfig) {
-  config_.exclude_cublas_config = true;
+  CodegenOrchestrator::Options orchestrator_options;
+  orchestrator_options.exclude_cublas_config = true;
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
   configs.push_back(GetTestConfig("test_config_2"));
@@ -1145,7 +1125,8 @@ TEST_P(AutotunerTestWithBackend, ExcludeCublasConfig) {
   ASSERT_OK_AND_ASSIGN(
       auto config_assigner,
       CreateConfigAssigner(std::move(backends), std::move(profiler), config_,
-                           nullptr));
+                           /*cache=*/nullptr, /*thread_pool=*/nullptr,
+                           orchestrator_options));
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
@@ -1189,7 +1170,10 @@ TEST_F(ConfigAssignerTest, SelectFirstConfig) {
 }
 
 TEST_F(ConfigAssignerTest, ConfigsWithRegisterSpillingAreAllowed) {
-  config_.allow_reg_spills_fn = [](const HloInstruction&) { return true; };
+  CodegenOrchestrator::Options orchestrator_options;
+  orchestrator_options.allow_reg_spills_fn = [](const HloInstruction&) {
+    return true;
+  };
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
@@ -1218,7 +1202,8 @@ TEST_F(ConfigAssignerTest, ConfigsWithRegisterSpillingAreAllowed) {
   ASSERT_OK_AND_ASSIGN(
       auto config_assigner,
       CreateConfigAssigner(std::move(backends), std::move(profiler), config_,
-                           nullptr));
+                           /*cache=*/nullptr, /*thread_pool=*/nullptr,
+                           orchestrator_options));
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
@@ -1226,7 +1211,10 @@ TEST_F(ConfigAssignerTest, ConfigsWithRegisterSpillingAreAllowed) {
 }
 
 TEST_F(ConfigAssignerTest, ConfigsWithRegisterSpillingAreFiltered) {
-  config_.allow_reg_spills_fn = [](const HloInstruction&) { return false; };
+  CodegenOrchestrator::Options orchestrator_options;
+  orchestrator_options.allow_reg_spills_fn = [](const HloInstruction&) {
+    return false;
+  };
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
@@ -1258,7 +1246,8 @@ TEST_F(ConfigAssignerTest, ConfigsWithRegisterSpillingAreFiltered) {
   ASSERT_OK_AND_ASSIGN(
       auto config_assigner,
       CreateConfigAssigner(std::move(backends), std::move(profiler), config_,
-                           nullptr));
+                           /*cache=*/nullptr, /*thread_pool=*/nullptr,
+                           orchestrator_options));
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
@@ -1657,33 +1646,29 @@ TEST_F(ConfigAssignerTest,
   ASSERT_OK(status2);
 }
 
-TEST(AutotuneConfigTest, ToString) {
-  AutotuneConfig config;
+TEST(ConfigAssignerOptionsTest, ToString) {
+  ConfigAssigner::Options config;
   config.check_buffers = true;
   config.relative_tolerance = 1e-4;
   config.crash_on_check_failure = false;
   config.scratch_bytes_window_size_us = 10;
   config.expect_all_instructions_in_cache = false;
   config.dump_logs_to = "/tmp/log";
-  config.exclude_cublas_config = true;
   config.select_first_config = false;
   config.use_default_config = true;
   config.dump_hlos = false;
-  config.allow_reg_spills_fn = [](const HloInstruction&) { return false; };
 
   std::string expected =
       "{\n"
       "  \"check_buffers\": true,\n"
-      "  \"relative_tolerance\": 0.000100,\n"
+      "  \"relative_tolerance\": 0.0001,\n"
       "  \"crash_on_check_failure\": false,\n"
       "  \"scratch_bytes_window_size_us\": 10,\n"
       "  \"expect_all_instructions_in_cache\": false,\n"
       "  \"dump_logs_to\": \"/tmp/log\",\n"
-      "  \"exclude_cublas_config\": true,\n"
       "  \"select_first_config\": false,\n"
       "  \"use_default_config\": true,\n"
-      "  \"dump_hlos\": false,\n"
-      "  \"allow_reg_spills\": dynamic\n"
+      "  \"dump_hlos\": false\n"
       "}";
   EXPECT_EQ(config.ToString(), expected);
 }

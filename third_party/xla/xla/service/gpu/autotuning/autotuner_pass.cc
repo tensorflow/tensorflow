@@ -217,34 +217,38 @@ AutotuneDecision ShouldAutotuneInstruction(bool do_not_autotune_cublas,
 
 }  // namespace
 
-AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
-                                 bool is_deviceless) {
-  AutotuneConfig autotune_config;
-  autotune_config.check_buffers = debug_options.xla_gpu_autotune_level() >= 4;
-  autotune_config.relative_tolerance =
-      debug_options.xla_gpu_autotune_gemm_rtol();
-  autotune_config.crash_on_check_failure =
+ConfigAssigner::Options GetConfigAssignerOptions(
+    const DebugOptions& debug_options, bool is_deviceless) {
+  ConfigAssigner::Options options;
+  options.check_buffers = debug_options.xla_gpu_autotune_level() >= 4;
+  options.relative_tolerance = debug_options.xla_gpu_autotune_gemm_rtol();
+  options.crash_on_check_failure =
       debug_options.xla_gpu_crash_on_verification_failures();
-  autotune_config.dump_logs_to = debug_options.xla_gpu_dump_autotune_logs_to();
-  autotune_config.exclude_cublas_config =
-      !debug_options.xla_gpu_cublas_fallback();
-  autotune_config.select_first_config =
+  options.dump_logs_to = debug_options.xla_gpu_dump_autotune_logs_to();
+  options.select_first_config =
       debug_options.xla_gpu_deterministic_ops() ||
       debug_options.xla_gpu_exclude_nondeterministic_ops() ||
       debug_options.xla_gpu_autotune_level() == 0;
 
   if (is_deviceless) {
     // If we are running on a deviceless target, we want to use default configs.
-    autotune_config.use_default_config = true;
+    options.use_default_config = true;
   }
 
-  autotune_config.expect_all_instructions_in_cache =
+  options.expect_all_instructions_in_cache =
       debug_options.xla_gpu_require_complete_aot_autotune_results();
-  autotune_config.dump_hlos =
-      debug_options.xla_gpu_dump_autotuned_gemm_fusions() ||
-      debug_options.xla_gpu_dump_autotuned_instructions();
+  options.dump_hlos = debug_options.xla_gpu_dump_autotuned_gemm_fusions() ||
+                      debug_options.xla_gpu_dump_autotuned_instructions();
+
+  return options;
+}
+
+CodegenOrchestrator::Options GetCodegenOrchestratorOptions(
+    const DebugOptions& debug_options) {
+  CodegenOrchestrator::Options options;
+  options.exclude_cublas_config = !debug_options.xla_gpu_cublas_fallback();
   if (!debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling()) {
-    autotune_config.allow_reg_spills_fn = [](const HloInstruction& instr) {
+    options.allow_reg_spills_fn = [](const HloInstruction& instr) {
       return static_cast<bool>(AllowRegSpillsForGpuInstruction(instr));
     };
   }
@@ -255,20 +259,18 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
   // explicitly set to false.
   if (!debug_options
            .xla_gpu_filter_kernels_spilling_registers_on_autotuning()) {
-    autotune_config.allow_reg_spills_fn = [](const HloInstruction&) {
-      return false;
-    };
+    options.allow_reg_spills_fn = [](const HloInstruction&) { return false; };
   }
-
-  return autotune_config;
+  return options;
 }
 
-ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
-                                 const AutotuneConfig& autotune_config) {
+ProfileOptions GetProfileOptions(
+    const DebugOptions& debug_options,
+    const ConfigAssigner::Options& config_assigner_options) {
   ProfileOptions profile_options;
   profile_options.redzone_padding_bytes =
       debug_options.xla_gpu_redzone_padding_bytes();
-  profile_options.should_init_buffers = autotune_config.check_buffers;
+  profile_options.should_init_buffers = config_assigner_options.check_buffers;
   return profile_options;
 }
 
@@ -371,24 +373,27 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     return decision.IsAllowed();
   };
 
-  std::unique_ptr<Profiler> profiler = nullptr;
   bool is_deviceless = stream_executor == nullptr;
-  AutotuneConfig autotune_config =
-      GetAutotuneConfig(debug_options, is_deviceless);
-  VLOG(1) << "Autotune config: " << autotune_config.ToString();
+  ConfigAssigner::Options assigner_options =
+      GetConfigAssignerOptions(debug_options, is_deviceless);
+  CodegenOrchestrator::Options orchestrator_options =
+      GetCodegenOrchestratorOptions(debug_options);
 
+  std::unique_ptr<Profiler> profiler = nullptr;
   if (!is_deviceless) {
     if (stream_executor->GetPlatform()->id() ==
         stream_executor::sycl::kSyclPlatformId) {
       // TODO(intel-tf): Enable buffer checking for SYCL once
       // BufferComparatorKernel and RedzoneAllocatorKernel are registered for
       // SYCL platform.
-      autotune_config.check_buffers = false;
+      assigner_options.check_buffers = false;
     }
     profiler = GpuProfiler::Create(
-        stream_executor, GetProfileOptions(debug_options, autotune_config),
+        stream_executor, GetProfileOptions(debug_options, assigner_options),
         allocator);
   }
+
+  VLOG(1) << "ConfigAssigner options: " << assigner_options.ToString();
 
   std::string cache_dir = debug_options.xla_gpu_per_fusion_autotune_cache_dir();
   if (cache_dir.empty()) {
@@ -399,31 +404,9 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
           cache_dir, debug_options.xla_gpu_experimental_autotune_cache_mode(),
           target_config->device_description);
 
-  CodegenOrchestrator::Options orchestrator_options;
-  orchestrator_options.allow_reg_spills_fn =
-      autotune_config.allow_reg_spills_fn;
-  orchestrator_options.exclude_cublas_config =
-      autotune_config.exclude_cublas_config;
   ASSIGN_OR_RETURN(auto orchestrator,
                    CodegenOrchestrator::Create(
                        std::move(backends), orchestrator_options, thread_pool));
-
-  ConfigAssigner::Options assigner_options;
-  assigner_options.use_default_config = autotune_config.use_default_config;
-  assigner_options.select_first_config = autotune_config.select_first_config;
-  assigner_options.expect_all_instructions_in_cache =
-      autotune_config.expect_all_instructions_in_cache;
-  assigner_options.dump_hlos = autotune_config.dump_hlos;
-
-  if (profiler != nullptr) {
-    assigner_options.check_buffers = autotune_config.check_buffers;
-    assigner_options.relative_tolerance = autotune_config.relative_tolerance;
-    assigner_options.crash_on_check_failure =
-        autotune_config.crash_on_check_failure;
-    assigner_options.scratch_bytes_window_size_us =
-        autotune_config.scratch_bytes_window_size_us;
-    assigner_options.dump_logs_to = autotune_config.dump_logs_to;
-  }
 
   ASSIGN_OR_RETURN(
       auto config_assigner,

@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_CONFIG_ASSIGNER_H_
 #define XLA_BACKENDS_AUTOTUNER_CONFIG_ASSIGNER_H_
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -39,24 +38,6 @@ limitations under the License.
 
 namespace xla {
 
-// TODO(b/519057668): Inline options to each component.
-struct AutotuneConfig {
-  bool check_buffers = true;
-  float relative_tolerance = 1e-6;
-  bool crash_on_check_failure = false;
-  int scratch_bytes_window_size_us = 2;
-  bool expect_all_instructions_in_cache = false;
-  std::string dump_logs_to = "";
-  bool exclude_cublas_config = false;
-  bool select_first_config = false;
-  bool use_default_config = false;
-  bool dump_hlos = false;
-  std::function<bool(const HloInstruction&)> allow_reg_spills_fn =
-      [](const HloInstruction&) { return false; };
-
-  std::string ToString() const;
-};
-
 // ConfigAssigner is responsible for assigning a config to requested HLO
 // instructions. The configs could be cached, default, first-supported, or
 // tuned.
@@ -71,6 +52,8 @@ class ConfigAssigner {
     bool dump_hlos = false;
     std::string dump_logs_to = "";
 
+    // TODO(b/519057668): Remove below option and accept Autotuner instance in
+    // ConfigAssigner.
     // Correctness check options
     bool check_buffers = true;
     float relative_tolerance = 1e-6;
@@ -78,6 +61,8 @@ class ConfigAssigner {
 
     // Optimal config selection options
     int scratch_bytes_window_size_us = 2;
+
+    std::string ToString() const;
   };
 
   using Config = CodegenOrchestrator::Config;

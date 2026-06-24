@@ -131,7 +131,10 @@ struct AutotunerEnvironment {
 
 absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
     const DebugOptions& debug_options) {
-  xla::AutotuneConfig autotune_config = GetAutotuneConfig(debug_options);
+  ConfigAssigner::Options assigner_options =
+      GetConfigAssignerOptions(debug_options);
+  CodegenOrchestrator::Options orchestrator_options =
+      GetCodegenOrchestratorOptions(debug_options);
   ASSIGN_OR_RETURN(std::string platform_name,
                    PlatformUtil::CanonicalPlatformName("gpu"));
 
@@ -176,7 +179,7 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
         << stream_executor_0->GetDeviceDescription().name() << ", device " << i
         << " is " << stream_executor->GetDeviceDescription().name();
     auto profiler = GpuProfiler::Create(
-        stream_executor, GetProfileOptions(debug_options, autotune_config));
+        stream_executor, GetProfileOptions(debug_options, assigner_options));
     TF_RET_CHECK(profiler != nullptr)
         << "Failed to create profiler for device " << i;
 
@@ -191,26 +194,20 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
           gpu_compiler->ShapeSizeBytesFunction(), gpu_compiler,
           platform->id()));
 
-  CodegenOrchestrator::Options autotuner_orchestrator_options;
-  autotuner_orchestrator_options.allow_reg_spills_fn =
-      autotune_config.allow_reg_spills_fn;
-  autotuner_orchestrator_options.exclude_cublas_config =
-      autotune_config.exclude_cublas_config;
-
-  ASSIGN_OR_RETURN(auto autotuner_orchestrator,
-                   CodegenOrchestrator::Create(std::move(autotuner_backends),
-                                               autotuner_orchestrator_options,
-                                               thread_pool.get()));
+  ASSIGN_OR_RETURN(
+      auto autotuner_orchestrator,
+      CodegenOrchestrator::Create(std::move(autotuner_backends),
+                                  orchestrator_options, thread_pool.get()));
 
   Autotuner::Options autotuner_options;
   autotuner_options.scratch_bytes_window_size_us =
-      autotune_config.scratch_bytes_window_size_us;
+      assigner_options.scratch_bytes_window_size_us;
   autotuner_options.correctness_check_options.enable_correctness_check =
-      autotune_config.check_buffers;
+      assigner_options.check_buffers;
   autotuner_options.correctness_check_options.relative_tolerance =
-      autotune_config.relative_tolerance;
+      assigner_options.relative_tolerance;
   autotuner_options.correctness_check_options.crash_on_failure =
-      autotune_config.crash_on_check_failure;
+      assigner_options.crash_on_check_failure;
 
   ASSIGN_OR_RETURN(auto autotuner,
                    Autotuner::Create(std::move(autotuner_orchestrator),
