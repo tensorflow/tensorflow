@@ -183,8 +183,8 @@ const absl::optional<int> GraphTopologyView::GetNodeIndex(
   DCHECK(is_initialized()) << "GraphTopologyView is not initialized";
   const auto it = node_name_to_index_.find(node_name);
   DCHECK(it != node_name_to_index_.end()) << "Node doesn't exist in a graph";
-  return it == node_name_to_index_.end() ? absl::nullopt
-                                         : absl::make_optional(it->second);
+  return it == node_name_to_index_.end() ? std::nullopt
+                                         : std::make_optional(it->second);
 }
 
 const absl::optional<int> GraphTopologyView::GetNodeIndex(
