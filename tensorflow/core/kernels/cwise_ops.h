@@ -739,7 +739,9 @@ struct scalar_erfinv_op {
     constexpr T half_sqrt = T(M_SQRT1_2);
     const T tail = half * (T(1) - numext::abs(x));
     const T magnitude = -half_sqrt * numext::ndtri(tail);
-    return numext::copysign(magnitude, x);
+    // Restore the sign via odd symmetry (mirrors the packet path); avoids
+    // numext::copysign, which is absent in the pinned Eigen.
+    return x < T(0) ? -magnitude : magnitude;
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
