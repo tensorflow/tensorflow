@@ -340,7 +340,7 @@ absl::StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def) {
       return node.input(0);
     }
   }
-  return errors::NotFound(
+  return absl::NotFoundError(
       absl::Substitute("Dataset node for graph is not found:\n$0",
                        graph_def.ShortDebugString()));
 }
@@ -352,7 +352,7 @@ absl::StatusOr<NodeDef> GetDatasetNodeDef(const GraphDef& graph_def) {
       return node;
     }
   }
-  return errors::NotFound(
+  return absl::NotFoundError(
       absl::Substitute("Dataset node for graph is not found:\n$0",
                        graph_def.ShortDebugString()));
 }
