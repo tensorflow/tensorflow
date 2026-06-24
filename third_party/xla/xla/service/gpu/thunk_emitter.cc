@@ -135,6 +135,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_opt_utils.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/custom_kernel_emitter.h"
@@ -154,6 +155,7 @@ limitations under the License.
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/triton_call.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
@@ -239,8 +241,6 @@ xla::Future<std::unique_ptr<CollectiveKernelThunk>> EmitCollectiveKernelThunk(
       fused_module->entry_computation()->root_instruction());
   const bool has_rank_higher_than_1 =
       instr->shape().IsArray() && instr->shape().dimensions().size() > 1;
-  const se::DeviceDescription& device_info =
-      ir_emitter_context->gpu_device_info();
   bool is_collective_kernel_enabled =
       instr->GetModule()
           ->config()
@@ -270,8 +270,17 @@ xla::Future<std::unique_ptr<CollectiveKernelThunk>> EmitCollectiveKernelThunk(
             launch_dimensions, shmem_bytes, kMultimemDisabled,
             !cubin.empty() ? std::make_optional(cubin) : std::nullopt, use_pdl);
       };
-  ASSIGN_OR_RETURN(bool did_set_config, TrySetGpuBackendConfigForCollective(
-                                            device_info, fusion_instr));
+  const GpuTopology& gpu_topology = ir_emitter_context->gpu_topology();
+  const DeviceAssignment* device_assignment = nullptr;
+  if (ir_emitter_context->hlo_module()
+          .config()
+          .has_static_device_assignment()) {
+    device_assignment =
+        &ir_emitter_context->hlo_module().config().static_device_assignment();
+  }
+  ASSIGN_OR_RETURN(bool did_set_config,
+                   TrySetGpuBackendConfigForCollective(
+                       gpu_topology, fusion_instr, device_assignment));
   if (!did_set_config) {
     // TODO(b/522693539):
     // Because of lack of topology information in the CollectiveKernelThunk,

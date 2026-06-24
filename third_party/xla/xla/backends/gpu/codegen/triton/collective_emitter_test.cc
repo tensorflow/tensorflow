@@ -42,6 +42,8 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
+#include "xla/backends/gpu/target_config/target_config.h"
+#include "xla/backends/gpu/transforms/collectives/collective_kernel_strategy_annotator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -52,6 +54,7 @@ limitations under the License.
 #include "xla/runtime/object_pool.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -112,10 +115,23 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
   CollectiveBlockLevelConfigTest()
       : device_info_{TestGpuDeviceInfo::H100SXMDeviceInfo()} {}
 
+ protected:
+  void SetUp() override {
+    HloHardwareIndependentTestBase::SetUp();
+    ASSERT_OK_AND_ASSIGN(GpuTopology topology,
+                         GetGpuTopologyForPlatform("nvidia_h100", 1, 1, 8));
+    gpu_topology_ = std::make_unique<GpuTopology>(std::move(topology));
+  }
+
   absl::StatusOr<ModuleWithFusion> BuildModuleWithFusion(
       std::string module_str) const {
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                     ParseAndReturnVerifiedModule(module_str));
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModule> module,
+        ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2,
+                                     /*num_partitions=*/1));
+    CollectiveKernelStrategyAnnotator annotator(*gpu_topology_,
+                                                /*is_multimem_enabled=*/false);
+    RETURN_IF_ERROR(annotator.Run(module.get()).status());
     const HloInstruction* instr = hlo_query::GetFirstInstructionWithOpcode(
         *module->entry_computation(), HloOpcode::kAllReduceStart);
     std::unique_ptr<HloModule> module_with_fusion =
@@ -154,18 +170,19 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
   }
 
   const se::DeviceDescription device_info_;
+  std::unique_ptr<GpuTopology> gpu_topology_;
 };
 
 class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
  public:
   absl::StatusOr<std::unique_ptr<ModuleWithEmitter>> BuildModuleWithEmitter(
-      std::string module_str, const se::DeviceDescription& device_info) const {
+      std::string module_str, const GpuTopology& gpu_topology) const {
     ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
                      BuildModuleWithFusion(std::move(module_str)));
     ASSIGN_OR_RETURN(
         bool collective_fusion_config_set,
         TrySetGpuBackendConfigForCollective(
-            device_info_, module_with_fusion.MutableFusionInstr()));
+            gpu_topology, module_with_fusion.MutableFusionInstr()));
     if (!collective_fusion_config_set) {
       return absl::InternalError(
           "Failed to set collective fusion config. "
@@ -173,6 +190,8 @@ class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
     }
     auto result = std::make_unique<ModuleWithEmitter>(
         std::move(module_with_fusion.module));
+    const se::DeviceDescription& device_info =
+        gpu_topology.gpu_target_config().device_description;
     result->analysis =
         HloFusionAnalysis::Create(*result->FusionInstr(), device_info);
     std::unique_ptr<FusionInterface> fusion_emitter =
@@ -207,11 +226,11 @@ class CollectiveBlockLevelConfigParameterizedTest
 
 TEST_P(CollectiveBlockLevelConfigParameterizedTest, AllReduceBlockLevelConfig) {
   const auto& param = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(const auto module_with_fusion,
-                          BuildModuleWithFusion(GetModuleStr(param.shape)));
-  TF_ASSERT_OK_AND_ASSIGN(const auto block_level_config,
-                          GetCollectiveBlockLevelFusionConfig(
-                              device_info_, module_with_fusion.FusionInstr()));
+  ASSERT_OK_AND_ASSIGN(const auto module_with_fusion,
+                       BuildModuleWithFusion(GetModuleStr(param.shape)));
+  ASSERT_OK_AND_ASSIGN(const auto block_level_config,
+                       GetCollectiveBlockLevelFusionConfig(
+                           *gpu_topology_, module_with_fusion.FusionInstr()));
   EXPECT_THAT(block_level_config, Optional(EqualsProto(param.expected_proto)));
 }
 
@@ -249,21 +268,21 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 TEST_F(CollectiveEmitterTest, AllReduceBlockLevelConfigNoReplicaGroups) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const auto module_with_fusion,
       BuildModuleWithFusion(GetModuleStr(ShapeUtil::MakeShape(F32, {65536}),
                                          /* replica_groups= */ "")));
-  TF_ASSERT_OK_AND_ASSIGN(const auto block_level_config,
-                          GetCollectiveBlockLevelFusionConfig(
-                              device_info_, module_with_fusion.FusionInstr()));
+  ASSERT_OK_AND_ASSIGN(const auto block_level_config,
+                       GetCollectiveBlockLevelFusionConfig(
+                           *gpu_topology_, module_with_fusion.FusionInstr()));
   EXPECT_EQ(block_level_config, std::nullopt);
 }
 
 TEST_F(CollectiveEmitterTest, AllReduceGetCollectiveUnmanagedKernelArguments) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const auto module_with_fusion,
       BuildModuleWithFusion(GetModuleStr(ShapeUtil::MakeShape(F32, {65536}))));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const auto unmanaged_arguments,
       GetCollectiveUnmanagedKernelArguments(module_with_fusion.FusionInstr()));
   ASSERT_EQ(unmanaged_arguments.size(), 4);
@@ -279,10 +298,10 @@ TEST_F(CollectiveEmitterTest, AllReduceGetCollectiveUnmanagedKernelArguments) {
 }
 
 TEST_F(CollectiveEmitterTest, AllReduceWithTritonGetLaunchConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<ModuleWithEmitter> result_ptr,
       BuildModuleWithEmitter(GetModuleStr(ShapeUtil::MakeShape(F32, {65536})),
-                             device_info_));
+                             *gpu_topology_));
   auto& result = *result_ptr;
   const TritonFusion* triton_fusion = result.emitter.get();
   ASSERT_NE(triton_fusion, nullptr);
@@ -298,9 +317,9 @@ class CollectiveEmitterParameterizedTest
 
 TEST_P(CollectiveEmitterParameterizedTest,
        AllReduceWithTritonGenerateTritonKernelSanity) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<ModuleWithEmitter> result,
-      BuildModuleWithEmitter(GetModuleStr(GetParam()), device_info_));
+      BuildModuleWithEmitter(GetModuleStr(GetParam()), *gpu_topology_));
   const TritonFusion* triton_fusion = result->emitter.get();
   ASSERT_NE(triton_fusion, nullptr);
 
@@ -315,10 +334,10 @@ TEST_P(CollectiveEmitterParameterizedTest,
 
   ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
       []() { return CreateMlirContext(); });
-  TF_ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
-                          mlir_context_pool.GetOrCreate());
+  ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
+                       mlir_context_pool.GetOrCreate());
 
-  TF_ASSERT_OK_AND_ASSIGN(  // Check that we can generate the kernel
+  ASSERT_OK_AND_ASSIGN(  // Check that we can generate the kernel
       TritonWrapperResult triton_kernel,
       triton_fusion
           ->GenerateTritonKernelAndWrapper(
@@ -412,8 +431,8 @@ INSTANTIATE_TEST_SUITE_P(
 TEST_F(CollectiveEmitterTest, FlattenCollectiveComputation) {
   Shape shape_3d = ShapeUtil::MakeShape(F32, {2, 4, 8});
   Shape shape_1d = ShapeUtil::MakeShape(F32, {64});  // 2 * 4 * 8
-  TF_ASSERT_OK_AND_ASSIGN(ModuleWithFusion module_with_fusion,
-                          BuildModuleWithFusion(GetModuleStr(shape_3d)));
+  ASSERT_OK_AND_ASSIGN(ModuleWithFusion module_with_fusion,
+                       BuildModuleWithFusion(GetModuleStr(shape_3d)));
   HloFusionInstruction* fusion_instr = module_with_fusion.MutableFusionInstr();
   EXPECT_THAT(fusion_instr,
               AllOf(HasOpcode(HloOpcode::kFusion), HasShape(shape_3d)));

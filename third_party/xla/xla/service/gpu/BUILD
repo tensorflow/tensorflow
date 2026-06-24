@@ -568,6 +568,8 @@ cc_library(
         "//xla/service:call_graph",
         "//xla/service:collective_ops_utils",
         "//xla/service:collective_opt_utils",
+        "//xla/service:computation_placer_hdr",
+        "//xla/service:gpu_topology",
         "//xla/service:hlo_creation_utils",
         "//xla/service:hlo_proto_cc",
         "//xla/service:shaped_slice",
