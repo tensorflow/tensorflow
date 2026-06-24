@@ -644,21 +644,29 @@ Buffer<T>::~Buffer() {
 //     (coded_stream default).
 static constexpr int64_t kMaxBytesFromProtoNoData = int64_t{64} << 20;  // 64 MB
 
+// Returns false when materializing `n` elements of `element_size` bytes each
+// would be an amplification attack: the proto carries fewer than `n` typed
+// values (so the remainder is broadcast/zero-filled from a tiny input) AND the
+// resulting allocation exceeds kMaxBytesFromProtoNoData. When the proto
+// actually carries >= n values the serialized size is proportional to the
+// allocation, so it is never amplification and is always allowed. The size
+// check uses division to avoid int64 overflow on `n * element_size`.
+inline bool IsSafeProtoAllocation(int64_t in_n, int64_t n, size_t element_size) {
+  if (in_n >= n) return true;
+  return n <= kMaxBytesFromProtoNoData / static_cast<int64_t>(element_size);
+}
+
 template <typename T>
 TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
   CHECK_GT(n, 0);
   const int64_t in_n = ProtoHelper<T>::NumElements(in);
-  // MultiplyWithoutOverflow returns a negative value if n * sizeof(T) would
-  // overflow int64. An overflowing byte count is itself an extreme
-  // amplification attempt, so it is rejected together with the >64 MB case
-  // below (this also avoids signed-overflow undefined behavior).
-  const int64_t alloc_bytes =
-      MultiplyWithoutOverflow(n, static_cast<int64_t>(sizeof(T)));
-  // Block amplification: large allocation with no backing data in proto.
-  if (in_n <= 0 &&
-      (alloc_bytes < 0 || alloc_bytes > kMaxBytesFromProtoNoData)) {
+  // Block amplification: broadcasting or zero-filling a tiny proto into a huge
+  // allocation. Covers both the no-data (in_n <= 0) and the few-value
+  // broadcast (0 < in_n < n) cases, and is overflow-safe.
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(T))) {
     LOG(ERROR) << "FromProtoField rejected: proto requests " << n
-               << " elements but contains no data (amplification guard).";
+               << " elements from " << in_n << " input value(s) "
+               << "(amplification guard).";
     return nullptr;
   }
   Buffer<T>* buf = new Buffer<T>(a, n);
@@ -693,13 +701,18 @@ template <typename T>
 TensorBuffer* Int4OrInt2FromProtoField(Allocator* a, const TensorProto& in,
                                        int64_t n) {
   n = std::max<int64_t>(n, 0);
+  const int64_t in_n = in.int_val().size();
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(T))) {
+    LOG(ERROR) << "Int4OrInt2FromProtoField rejected: proto requests " << n
+               << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<T>* buf = new Buffer<T>(a, n);
   int8_t* data = buf->template base<int8_t>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = in.int_val().size();
   auto begin = in.int_val().begin();
   if (n <= in_n) {
 // swapping bits of the data pointer for big endian systems
@@ -750,13 +763,18 @@ template <>
 TensorBuffer* FromProtoField<ResourceHandle>(Allocator* a,
                                              const TensorProto& in, int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = ProtoHelper<ResourceHandle>::NumElements(in);
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(ResourceHandle))) {
+    LOG(ERROR) << "FromProtoField<ResourceHandle> rejected: proto requests "
+               << n << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<ResourceHandle>* buf = new Buffer<ResourceHandle>(a, n);
   ResourceHandle* data = buf->template base<ResourceHandle>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = ProtoHelper<ResourceHandle>::NumElements(in);
   if (in_n <= 0) {
     std::fill_n(data, n, ResourceHandle());
   } else {
@@ -787,13 +805,18 @@ template <>
 TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
                                       int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = ProtoHelper<Variant>::NumElements(in);
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(Variant))) {
+    LOG(ERROR) << "FromProtoField<Variant> rejected: proto requests "
+               << n << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<Variant>* buf = new Buffer<Variant>(a, n);
   Variant* data = buf->template base<Variant>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = ProtoHelper<Variant>::NumElements(in);
   if (in_n <= 0) {
     std::fill_n(data, n, Variant());
   } else {
@@ -827,13 +850,18 @@ template <>
 TensorBuffer* FromProtoField<Eigen::half>(Allocator* a, const TensorProto& in,
                                           int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = in.half_val().size();
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(Eigen::half))) {
+    LOG(ERROR) << "FromProtoField<Eigen::half> rejected: proto requests "
+               << n << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<Eigen::half>* buf = new Buffer<Eigen::half>(a, n);
   uint16_t* data = buf->template base<uint16_t>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = in.half_val().size();
   auto begin = in.half_val().begin();
   if (n <= in_n) {
     std::copy_n(begin, n, data);
@@ -851,13 +879,18 @@ template <>
 TensorBuffer* FromProtoField<bfloat16>(Allocator* a, const TensorProto& in,
                                        int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = in.half_val().size();
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(bfloat16))) {
+    LOG(ERROR) << "FromProtoField<bfloat16> rejected: proto requests "
+               << n << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<bfloat16>* buf = new Buffer<bfloat16>(a, n);
   uint16_t* data = buf->template base<uint16_t>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = in.half_val().size();
   auto begin = in.half_val().begin();
   if (n <= in_n) {
     std::copy_n(begin, n, data);
