@@ -236,6 +236,9 @@ struct ProgramInterpreterState {
         to_delete.push_back(arrays[idx]);
       }
     }
+
+    // Delete the arrays that are donated and not used nor returned from the
+    // program.
     if (!to_delete.empty()) {
       client->DeleteValues(absl::MakeSpan(to_delete));
     }
@@ -274,6 +277,14 @@ ProgramInterpreter::BuildExecuteFn() {
     state.input_handles.push_back(handle);
     if (main_func.getArgAttr(idx, kIfrtDonatedArgAttrName) != nullptr) {
       state.donated_input_indices.insert(idx);
+    }
+    if (handle != kArrayNotUsed) {
+      // Check that if input is not directly returned from the program.
+      // Aliasing scenarios should have a CopyArrays op with reuse semantics
+      // so that the input can be deleted while the output remains valid.
+      CHECK(llvm::none_of(arg.getUsers(), [](mlir::Operation* user) {
+        return mlir::isa<mlir::func::ReturnOp>(user);
+      }));
     }
   }
 
