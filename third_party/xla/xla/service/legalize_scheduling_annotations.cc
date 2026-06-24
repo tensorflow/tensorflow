@@ -574,6 +574,64 @@ absl::Status LegalizeSchedulingAnnotations::Verify(HloModule* module) {
   return absl::OkStatus();
 }
 
+bool FillSimpleGaps(
+    absl::flat_hash_map<
+        Annotation,
+        absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>&
+        annotation_to_instruction,
+    absl::flat_hash_map<HloInstruction*, Annotation>&
+        instruction_to_annotation) {
+  bool changed = false;
+  std::vector<HloInstruction*> newly_annotated;
+  for (const auto& [annotation, comp_inst_vector] : annotation_to_instruction) {
+    for (const auto& [comp, annotated_instructions] : comp_inst_vector) {
+      for (const auto& instr : annotated_instructions) {
+        if (instr->users().size() != 1 ||
+            instruction_to_annotation.contains(instr->users()[0]) ||
+            instr->users()[0]->operand_count() != 1) {
+          continue;
+        }
+        absl::flat_hash_set<HloInstruction*> simple_gap;
+        HloInstruction* current = instr->users()[0];
+        bool fill = false;
+        while (true) {
+          if (instruction_to_annotation.contains(current) &&
+              instruction_to_annotation.at(current).group_id ==
+                  annotation.group_id) {
+            fill = true;
+            break;
+          }
+          simple_gap.insert(current);
+          if (current->users().size() != 1) {
+            break;
+          }
+          if (current->operand_count() != 1) {
+            break;
+          }
+          current = current->users()[0];
+        }
+        if (fill) {
+          CHECK_OK(AttachAnnotation(annotation, simple_gap,
+                                    /*dry_run=*/false));
+          newly_annotated.insert(newly_annotated.end(), simple_gap.begin(),
+                                 simple_gap.end());
+          changed = true;
+        }
+      }
+    }
+  }
+  for (HloInstruction* instr : newly_annotated) {
+    absl::StatusOr<std::optional<Annotation>> annotation =
+        GetSchedulingAnnotation(instr);
+    CHECK_OK(annotation.status());
+    CHECK(annotation->has_value());
+    instruction_to_annotation[instr] = *annotation.value();
+    annotation_to_instruction[*annotation.value()][instr->parent()].push_back(
+        instr);
+  }
+  return changed;
+}
+
 void LegalizeSchedulingAnnotations::LogConfig(int64_t level) {
   VLOG(level) << "LegalizeSchedulingAnnotations running with config: ";
   VLOG(level) << "\tDEBUG: " << config_.debug_str;
@@ -682,6 +740,8 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::RunImpl(
   }
 
   changed |= RemoveTrivialGroups(annotation_to_instruction);
+  changed |=
+      FillSimpleGaps(annotation_to_instruction, instruction_to_annotation);
 
   // Either propagate the annotation to fill the gaps between instructions with
   // the same annotation ID or check (and return error) if there are gaps.

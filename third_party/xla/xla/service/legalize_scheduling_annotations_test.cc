@@ -1029,5 +1029,33 @@ ENTRY entry {
   EXPECT_TRUE(annotation);
 }
 
+TEST_F(SchedulingAnnotationPropagationTest, FillSimpleGaps) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[8]{0} parameter(0)
+  a0 = f32[16]{0} all-gather(p0), replica_groups={{0,1},{2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="1"}
+  b1 = f32[16]{0} bitcast(a0)
+  c1 = f32[16]{0} copy(b1)
+  ROOT a1 = f32[32]{0} all-gather(c1), replica_groups={{0,1},{2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="1"}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LegalizeSchedulingAnnotations::Config config;
+  config.keep_sync_annotation = [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kAllGather;
+  };
+
+  auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
+  EXPECT_IS_OK(result);
+  VLOG(1) << "module after: " << hlo_module->ToString();
+  HloInstruction* bitcast = FindInstruction(hlo_module.get(), "b1");
+  EXPECT_TRUE(GetSchedulingAnnotation(bitcast).value());
+  HloInstruction* copy = FindInstruction(hlo_module.get(), "c1");
+  EXPECT_TRUE(GetSchedulingAnnotation(copy).value());
+}
+
 }  // namespace
 }  // namespace xla
