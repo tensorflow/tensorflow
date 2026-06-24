@@ -110,7 +110,7 @@ pip_run() {
     module) "${PYTHON_BIN_PATH}" -m pip "$@" 2>&1 ;;
     pip)    pip "$@" 2>&1 ;;
     pip3)   pip3 "$@" 2>&1 ;;
-    *)      echo "pip not found" ;;
+    *)      echo "pip not found" 1>&2; return 1 ;;
   esac
 }
 
