@@ -140,35 +140,10 @@ TEST(LSHProjectionOpTest2, Sparse3DInputs) {
 }
 
 TEST(LSHProjectionOpTest2, InvalidProjectionTypeTest) {
-  tflite::Interpreter interpreter;
-  ASSERT_EQ(interpreter.AddTensors(3), kTfLiteOk);
-  interpreter.SetInputs({0, 1});
-  interpreter.SetOutputs({2});
-
-  TfLiteQuantization params;
-  params.type = kTfLiteNoQuantization;
-  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
-      0, kTfLiteFloat32, "hash", {3, 2}, params), kTfLiteOk);
-  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
-      1, kTfLiteInt32, "input", {5}, params), kTfLiteOk);
-  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
-      2, kTfLiteInt32, "output", {}, params), kTfLiteOk);
-
-  // Add LSH Projection node with invalid projection type
-  const TfLiteRegistration* reg = tflite::ops::builtin::Register_LSH_PROJECTION();
-  TfLiteLSHProjectionParams* op_params = reinterpret_cast<TfLiteLSHProjectionParams*>(
-      malloc(sizeof(TfLiteLSHProjectionParams)));
-  op_params->type = static_cast<LSHProjectionType>(99); // Invalid type
-  
-  int node_index;
-  ASSERT_EQ(interpreter.AddNodeWithParameters(
-      {0, 1}, {2},
-      nullptr, 0, op_params, reg, &node_index), kTfLiteOk);
-
-  // This should fail because type 99 is invalid!
-  ASSERT_NE(interpreter.AllocateTensors(), kTfLiteOk);
+  EXPECT_DEATH(LSHProjectionOpModel m(static_cast<LSHProjectionType>(-1),
+                                      {3, 2}, {5}, {}),
+               "Cannot allocate tensors");
 }
 
 }  // namespace
 }  // namespace tflite
-
