@@ -691,9 +691,9 @@ func.func @range_int() -> tensor<?xi32> {
 
 // CHECK-LABEL: @range_uint
 func.func @range_uint() -> tensor<?xui32> {
-  %cst = arith.constant dense<0> : tensor<ui32>
-  %cst_1 = arith.constant dense<4> : tensor<ui32>
-  %cst_2 = arith.constant dense<1> : tensor<ui32>
+  %cst = "tf.Const"() {value = dense<0> : tensor<ui32>} : () -> tensor<ui32>
+  %cst_1 = "tf.Const"() {value = dense<4> : tensor<ui32>} : () -> tensor<ui32>
+  %cst_2 = "tf.Const"() {value = dense<1> : tensor<ui32>} : () -> tensor<ui32>
 
   // CHECK: %[[CST:.*]] = "tf.Const"() <{value = dense<[0, 1, 2, 3]> : tensor<4xui32>}> : () -> tensor<?xui32>
   // CHECK: return %[[CST]]

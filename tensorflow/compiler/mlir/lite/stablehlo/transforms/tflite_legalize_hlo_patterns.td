@@ -182,17 +182,17 @@ def : Pat<(MHLO_NotOp I32Tensor:$input),
 // Unsigned: 0xFFF... has a 1 in every bit position.
 def : Pat<(MHLO_NotOp TensorOf<[UI8]>:$input),
             (TFL_BitwiseXorOp $input,
-              (Arith_ConstantOp
+              (TFL_ConstOp
                 (GetRankedScalarAttr<"u", 8, ", false", "0xFFU">)))>;
 
 def : Pat<(MHLO_NotOp TensorOf<[UI16]>:$input),
             (TFL_BitwiseXorOp $input,
-              (Arith_ConstantOp
+              (TFL_ConstOp
                 (GetRankedScalarAttr<"u", 16, ", false", "0xFFFFU">)))>;
 
 def : Pat<(MHLO_NotOp TensorOf<[UI32]>:$input),
             (TFL_BitwiseXorOp $input,
-              (Arith_ConstantOp
+              (TFL_ConstOp
                 (GetRankedScalarAttr<"u", 32, ", false", "0xFFFFFFFFUL">)))>;
 
 foreach pair = [

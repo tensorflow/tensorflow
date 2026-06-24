@@ -1,1 +1,24 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
+@@ -150,10 +150,19 @@
+     ],
+ )
+ 
++libc_test_library(
++    name = "qsort_r_test_helper",
++    hdrs = ["QsortReentrantTest.h"],
++    deps = [
++        "//libc/test/UnitTest:LibcUnitTest",
++    ],
++)
++
+ libc_test(
+     name = "qsort_r_test",
+     srcs = ["qsort_r_test.cpp"],
+     deps = [
++        ":qsort_r_test_helper",
+         "//libc:qsort_r",
+         "//libc:types_size_t",
+     ],
