@@ -53,7 +53,7 @@ def register(name):
     if not (isinstance(cls, type) and issubclass(cls, internal.TypeSpec)):
       raise TypeError("Expected `cls` to be a TypeSpec; got %r" % (cls,))
     if name in _NAME_TO_TYPE_SPEC:
-        existing_cls = _NAME_TO_TYPE_SPEC[name]
+      existing_cls = _NAME_TO_TYPE_SPEC[name]
         if existing_cls is cls:
           return cls
         elif (existing_cls.__module__ == cls.__module__ and 
@@ -66,12 +66,14 @@ def register(name):
           _NAME_TO_TYPE_SPEC[name] = cls
           return cls
         else:
-          raise ValueError("Name %s has already been registered for class %s.%s." %
-                           (name, existing_cls.__module__, existing_cls.__name__))
+          raise ValueError(
+            "Name %s has already been registered for class %s.%s." %
+            (name, existing_cls.__module__, existing_cls.__name__))
   
     if cls in _TYPE_SPEC_TO_NAME:
-      raise ValueError("Class %s.%s has already been registered with name %s." %
-                         (cls.__module__, cls.__name__, _TYPE_SPEC_TO_NAME[cls]))
+      raise ValueError(
+        "Class %s.%s has already been registered with name %s." %
+        (cls.__module__, cls.__name__, _TYPE_SPEC_TO_NAME[cls]))
 
     _TYPE_SPEC_TO_NAME[cls] = name
     _NAME_TO_TYPE_SPEC[name] = cls
