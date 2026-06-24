@@ -1293,9 +1293,7 @@ inline TensorShape MklDnnDimsToTFShape(const memory::dims& dims) {
 /// @input Tensorflow shape in memory::dims type
 /// @return memory::dims containing strides for the tensor.
 inline memory::dims CalculateTFStrides(const memory::dims& dims_tf_order) {
-  if (dims_tf_order.empty()) {
-    return memory::dims();
-  }
+  CHECK_GT(dims_tf_order.size(), 0);
   memory::dims strides(dims_tf_order.size());
   int last_dim_idx = dims_tf_order.size() - 1;
   strides[last_dim_idx] = 1;

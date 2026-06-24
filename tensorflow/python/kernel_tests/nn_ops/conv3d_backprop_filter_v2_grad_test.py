@@ -77,5 +77,29 @@ class Conv3DBackpropFilterV2GradTest(test.TestCase):
           strides=strides,
           padding=padding)
 
+  def testBadInputRank(self):
+    # Regression test for https://github.com/tensorflow/tensorflow/issues/118340
+    # Conv3DBackpropFilterV2 requires the input tensor to be rank 5; a
+    # rank-mismatched input previously hit a CHECK-failure in GetTensorDim
+    # via GetInputSizeInMklOrder.
+    strides = [1, 1, 1, 1, 1]
+    padding = "VALID"
+    tin = constant_op.constant(
+        .5053710941, shape=[2, 2, 2, 1], dtype=dtypes.float32)  # rank 4
+    filter_sizes = constant_op.constant(
+        [1, 1, 1, 1, 1], shape=[5], dtype=dtypes.int32)
+    out_backprop = constant_op.constant(
+        .5053710941, shape=[2, 2, 2, 2, 1], dtype=dtypes.float32)
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "must be 5-dimensional"):
+      self.evaluate(
+          nn_ops.conv3d_backprop_filter_v2(
+              input=tin,
+              filter_sizes=filter_sizes,
+              out_backprop=out_backprop,
+              strides=strides,
+              padding=padding))
+
 if __name__ == "__main__":
   test.main()
