@@ -2062,6 +2062,39 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     expected_result = [[1., 2.], [3.], [1., 2.], [3.]]
     self.assertAllEqual(result, expected_result)
 
+  def testTensorArrayNonScalarShapeInvariantRaisesError(self):
+    if context.executing_eagerly():
+      return
+    ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3)
+    i = constant_op.constant(0)
+
+    # Non-scalar TensorShape should raise ValueError via while_v2 path
+    with self.assertRaisesRegex(
+        ValueError,
+        "The shape invariant for a TensorArray must be a scalar shape",
+    ):
+      while_loop_v2(
+          lambda i, ta: i < 3,
+          lambda i, ta: (i + 1, ta),
+          [i, ta],
+          shape_invariants=[i.get_shape(), tensor_shape.TensorShape([3])],
+      )
+
+    # Non-scalar TensorSpec should also raise ValueError
+    with self.assertRaisesRegex(
+        ValueError,
+        "The shape invariant for a TensorArray must be a scalar shape",
+    ):
+      while_loop_v2(
+          lambda i, ta: i < 3,
+          lambda i, ta: (i + 1, ta),
+          [i, ta],
+          shape_invariants=[
+              i.get_shape(),
+              tensor_spec.TensorSpec([None, None, 32], dtypes.variant)
+          ],
+      )
+
 
 def ScalarShape():
   return ops.convert_to_tensor([], dtype=dtypes.int32)

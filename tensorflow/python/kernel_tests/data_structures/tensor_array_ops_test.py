@@ -1864,6 +1864,52 @@ class TensorArrayTest(test.TestCase):
     ):
       self.evaluate(func())
 
+  def testWhileTensorArrayShapeInvariantFailsForNonScalar(self):
+    if context.executing_eagerly():
+      return
+    ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3)
+    i = array_ops.identity(0)
+
+    # Non-scalar TensorShape invariant should raise ValueError
+    with self.assertRaisesRegex(
+        ValueError,
+        "The shape invariant for a TensorArray must be a scalar shape",
+    ):
+      while_loop.while_loop(
+          lambda i, ta: i < 3,
+          lambda i, ta: (i + 1, ta),
+          [i, ta],
+          shape_invariants=[i.get_shape(), tensor_shape.TensorShape([3])],
+      )
+
+    # Scalar TensorShape([]) should pass
+    result_i, result_ta = while_loop.while_loop(
+        lambda i, ta: i < 3,
+        lambda i, ta: (i + 1, ta.write(i, [1.0, 2.0, 3.0])),
+        [i, ta],
+        shape_invariants=[i.get_shape(), tensor_shape.TensorShape([])],
+    )
+    self.assertEqual(self.evaluate(result_i), 3)
+
+    # TensorShape(None) should pass
+    ta2 = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3)
+    result_i2, _ = while_loop.while_loop(
+        lambda i, ta: i < 3,
+        lambda i, ta: (i + 1, ta.write(i, [1.0, 2.0, 3.0])),
+        [i, ta2],
+        shape_invariants=[i.get_shape(), tensor_shape.TensorShape(None)],
+    )
+    self.assertEqual(self.evaluate(result_i2), 3)
+
+    # Omitting invariant entirely should pass
+    ta3 = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3)
+    result_i3, _ = while_loop.while_loop(
+        lambda i, ta: i < 3,
+        lambda i, ta: (i + 1, ta.write(i, [1.0, 2.0, 3.0])),
+        [i, ta3],
+    )
+    self.assertEqual(self.evaluate(result_i3), 3)
+
 
 class TensorArrayBenchmark(test.Benchmark):
 
