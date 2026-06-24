@@ -1,6 +1,7 @@
 load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
+    "xla_internal",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
@@ -426,6 +427,17 @@ cc_library(
 )
 
 cc_library(
+    name = "export_hlo",
+    hdrs = ["export_hlo.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":executable_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     # The old target name will still be used so that dependencies won't break.
     # In the future, dependencies should be cleaned up and relinked to the above
     # target if registration is not necessary.
@@ -459,7 +471,10 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-    ],
+    ] + select({
+        "//tools/cc_target_os:linux-google": xla_internal(["//xla/service/cpu/google:export_hlo"]),
+        "//conditions:default": [],
+    }),
     alwayslink = True,  # Contains compiler registration
 )
 
