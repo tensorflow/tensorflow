@@ -465,7 +465,6 @@ HloInstruction* HloAsyncStartInstruction::AddCallOperand(
   AppendOperand(new_operand);
   mutable_shape()->mutable_tuple_shapes(0)->mutable_tuple_shapes()->push_back(
       new_operand->shape());
-  UpdateChainShapes();
   return called_computation_parameter;
 }
 
