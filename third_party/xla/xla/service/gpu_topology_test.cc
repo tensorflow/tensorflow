@@ -74,7 +74,28 @@ TEST(GpuTopologyTest, FromProto) {
   EXPECT_EQ(topology->num_devices_per_host(), 3);
   EXPECT_TRUE(topology->has_gpu_target_config());
   EXPECT_TRUE(topology->host_target_machine_options().has_value());
+  // Default value for num_devices_per_process is num_devices_per_host.
+  EXPECT_EQ(topology->num_devices_per_process(), 3);
+  // But original value is not set.
+  EXPECT_EQ(topology->num_devices_per_process_opt(), std::nullopt);
   EXPECT_THAT(topology->ToProto(), EqualsProto(gpu_topology_proto));
+}
+
+TEST(GpuTopologyTest, FromProtoWithNumDevicesPerProcess) {
+  GpuTopologyProto gpu_topology_proto;
+  gpu_topology_proto.set_platform_version("some_platform_version");
+  gpu_topology_proto.set_num_partitions(1);
+  gpu_topology_proto.set_num_hosts_per_partition(2);
+  gpu_topology_proto.set_num_devices_per_host(4);
+  gpu_topology_proto.set_num_devices_per_process(2);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const GpuTopology> topology,
+                       GpuTopology::FromProto(gpu_topology_proto));
+  EXPECT_EQ(topology->platform_version(), "some_platform_version");
+  EXPECT_EQ(topology->num_partitions(), 1);
+  EXPECT_EQ(topology->num_hosts_per_partition(), 2);
+  EXPECT_EQ(topology->num_devices_per_host(), 4);
+  EXPECT_THAT(topology->ToProto(), EqualsProto(gpu_topology_proto));
+  EXPECT_EQ(topology->num_devices_per_process(), 2);
 }
 
 TEST(GpuTopologyTest, GetGpuTopologyForPlatformTeslaA100) {
