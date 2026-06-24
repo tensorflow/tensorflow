@@ -524,6 +524,19 @@ TEST_F(RaggedTensorToTensorOpTest, ShapeWrongDimensions) {
   EXPECT_EQ(absl::IsInvalidArgument(RunOpKernel()), true);
 }
 
+TEST_F(RaggedTensorToTensorOpTest, ValuesFewerThanRowPartition) {
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
+      TensorShape({4, 4}),         // shape
+      {"ROW_SPLITS"},              // row_partition_types
+      createVector<float>({1.0}),  // values
+      createScalar<float>(1.5),                 // default_value
+      {createVector<int32_t>({0, 3, 3, 7, 9})}  // row_partition_tensors
+  );
+  // Fails with an invalid argument because the row partitions indicate
+  // a size that is larger than the values tensor.
+  EXPECT_EQ(absl::IsInvalidArgument(RunOpKernel()), true);
+}
+
 class RaggedTensorToTensorOpUnknownShapeTest
     : public ::tensorflow::OpsTestBase {
  protected:
