@@ -496,10 +496,6 @@ class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
                                     quantized_input, float_to_quant);
 
     // Round the quantized input always to the positive direction.
-    auto half_val = ConstOp::create(
-        rewriter, op.getLoc(),
-        DenseElementsAttr::get(scalar_ty, ConvertToAPFloat(0.5, element_ty)));
-
     quantized_input = AddV2Op::create(rewriter, op.getLoc(), input_ty,
                                       quantized_input, half_val);
 
