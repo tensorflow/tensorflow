@@ -89,6 +89,8 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_device_address_vmm_allocator.h"
+#elif TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/rocm/rocm_device_address_vmm_allocator.h"
 #endif  // GOOGLE_CUDA
 #include "xla/pjrt/gpu/se_gpu_pjrt_client_test_helper.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
@@ -2321,12 +2323,13 @@ TEST(StreamExecutorGpuClientTest, AddressAllocatorIsSynchronousPassthrough) {
             nullptr);
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 class VmmTest : public ::testing::Test {
  protected:
   void SetUp() override {
     ::testing::Test::SetUp();
 
+#if GOOGLE_CUDA
     auto platform_or = xla::PlatformUtil::GetPlatform("CUDA");
     if (!platform_or.ok()) {
       GTEST_SKIP() << "CUDA platform not available.";
@@ -2343,6 +2346,18 @@ class VmmTest : public ::testing::Test {
     if (!dev_desc.cuda_compute_capability().IsAtLeastHopper()) {
       GTEST_SKIP() << "This test requires at least a Hopper GPU (SM 9.0).";
     }
+#elif TENSORFLOW_USE_ROCM
+    auto platform_or = xla::PlatformUtil::GetPlatform("ROCM");
+    if (!platform_or.ok()) {
+      GTEST_SKIP() << "ROCM platform not available.";
+    }
+    auto* platform = platform_or.value();
+
+    auto executor_or = platform->ExecutorForDevice(0);
+    if (!executor_or.ok()) {
+      GTEST_SKIP() << "No ROCm device available.";
+    }
+#endif
   }
 };
 
@@ -2355,9 +2370,15 @@ TEST_F(VmmTest, VmmAllocatorCanBeSet) {
 
   auto* pjrt_se_client =
       absl::down_cast<PjRtStreamExecutorClient*>(client.get());
+#if GOOGLE_CUDA
   EXPECT_NE(dynamic_cast<se::gpu::CudaDeviceAddressVmmAllocator*>(
                 pjrt_se_client->allocator()),
             nullptr);
+#elif TENSORFLOW_USE_ROCM
+  EXPECT_NE(dynamic_cast<se::gpu::RocmDeviceAddressVmmAllocator*>(
+                pjrt_se_client->allocator()),
+            nullptr);
+#endif
 }
 
 TEST_F(VmmTest, VmmAllocatorE2ETest) {
@@ -2963,7 +2984,7 @@ TEST_F(VmmTest, CommandBufferVaRemappingTwoExecutables) {
   absl::SetVLogLevel("command_buffer_thunk", old_vlog_cbt);
 }
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace
 }  // namespace xla
