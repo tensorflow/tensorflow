@@ -55,7 +55,7 @@ def register(name):
     if name in _NAME_TO_TYPE_SPEC:
       existing_cls = _NAME_TO_TYPE_SPEC[name]
       if existing_cls is cls:
-          return cls
+        return cls
       elif (existing_cls.__module__ == cls.__module__ and 
               existing_cls.__name__ == cls.__name__):
         logging.warning("Re-registering class %s.%s for name %s.",
