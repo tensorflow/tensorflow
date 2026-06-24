@@ -667,6 +667,7 @@ cc_library(
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
     ],
