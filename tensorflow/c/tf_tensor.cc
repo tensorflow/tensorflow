@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/c/tf_tensor.h"
 
+#include <cstring>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tsl/platform/ctstring_internal.h"
 
 using tensorflow::Status;
 using tensorflow::Tensor;
@@ -93,6 +96,13 @@ TF_Tensor* TF_AllocateTensor(TF_DataType dtype, const int64_t* dims,
                              int num_dims, size_t len) {
   void* data = tensorflow::allocate_tensor("TF_AllocateTensor", len,
                                            tensorflow::cpu_allocator());
+  if (dtype == TF_STRING && data != nullptr) {
+    TF_TString* strings = static_cast<TF_TString*>(data);
+    size_t num_elements = len / sizeof(TF_TString);
+    for (size_t i = 0; i < num_elements; ++i) {
+      TF_TString_Init(&strings[i]);
+    }
+  }
   TF_ManagedBuffer* buf =
       new TF_ManagedBuffer(data, len, tensorflow::deallocate_buffer,
                            tensorflow::cpu_allocator(), /*owns_memory=*/true);
