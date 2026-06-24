@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
@@ -286,9 +287,19 @@ HloAsyncInstruction::HloAsyncInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands, HloOpcode async_wrapped_opcode)
     : HloInstruction(opcode, shape) {
-  CHECK(opcode == HloOpcode::kAsyncStart || operands.size() == 1);
+  CHECK(opcode == HloOpcode::kAsyncStart || opcode == HloOpcode::kAsyncUpdate ||
+        opcode == HloOpcode::kAsyncDone);
+  // AsyncDone has only one operand.
+  CHECK(opcode != HloOpcode::kAsyncDone || operands.size() == 1);
+  CHECK(opcode == HloOpcode::kAsyncStart || !operands.empty());
+
   for (auto operand : operands) {
     AppendOperand(operand);
+  }
+
+  if (opcode == HloOpcode::kAsyncUpdate || opcode == HloOpcode::kAsyncDone) {
+    HloAsyncInstruction* prev = Cast<HloAsyncInstruction>(operands[0]);
+    prev->async_chain_next_ = this;
   }
 
   // Drop 'async' from async-{start/update/done} to get the suffix.
@@ -364,7 +375,7 @@ void HloAsyncInstruction::UpdateAsyncChain() {
     }
   };
   auto update_operand_chain = [this]() {
-    CHECK_EQ(this->operand_count(), 1);
+    CHECK_GE(this->operand_count(), 1);
     CHECK(this->operand(0)->opcode() == HloOpcode::kAsyncStart ||
           this->operand(0)->opcode() == HloOpcode::kAsyncUpdate);
     Cast<HloAsyncInstruction>(this->mutable_operand(0))->async_chain_next_ =
@@ -426,8 +437,8 @@ bool HloAsyncInstruction::IdenticalSlowPath(
 std::unique_ptr<HloInstruction> HloAsyncInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  return std::make_unique<HloAsyncInstruction>(opcode(), shape,
-                                               new_operands[0]);
+  return absl::WrapUnique(new HloAsyncInstruction(opcode(), shape, new_operands,
+                                                  async_wrapped_opcode()));
 }
 
 HloAsyncStartInstruction::HloAsyncStartInstruction(
@@ -444,8 +455,8 @@ HloAsyncStartInstruction::HloAsyncStartInstruction(
 
 HloInstruction* HloAsyncStartInstruction::AddCallOperand(
     HloInstruction* new_operand) {
-  CHECK_EQ(operand_count(),
-           async_wrapped_computation()->parameter_instructions().size());
+  CHECK_EQ(async_wrapped_computation()->parameter_instructions().size(),
+           operand_count());
   const int64_t param_no = operand_count();
   std::string param_name = StrCat("param_", param_no);
   HloInstruction* called_computation_parameter =
