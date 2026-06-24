@@ -67,10 +67,10 @@ while [ $# -gt 0 ]; do
 done
 
 # Derive the JSON path from the output path (foo.txt -> foo.json).
-JSON_FILE="${OUTPUT_FILE%.*}.json"
-if [ "$JSON_FILE" = "$OUTPUT_FILE" ]; then
-  JSON_FILE="${OUTPUT_FILE}.json"
-fi
+case "${OUTPUT_FILE##*/}" in
+  *.*) JSON_FILE="${OUTPUT_FILE%.*}.json" ;;
+  *)   JSON_FILE="${OUTPUT_FILE}.json" ;;
+esac
 
 echo "Collecting system information..."
 
