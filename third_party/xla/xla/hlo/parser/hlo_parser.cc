@@ -2129,10 +2129,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       // previous async op.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
-        if (operands.size() != 1) {
-          TokenError(
-              "AsyncUpdate and AsyncDone expect a single async op as their "
-              "operand.");
+        if (operands.empty()) {
+          TokenError("No operand found for AsyncUpdate and AsyncDone");
           return nullptr;
         }
         if (!operands[0]->IsAsynchronous()) {
@@ -2145,15 +2143,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           TokenError(
               "AsyncDone cannot be the first operand of an AsyncUpdate "
               "or AsyncDone.");
-          return nullptr;
-        }
-      }
-      // For AsyncUpdate, the operand and the result should have the same shape.
-      if (opcode == HloOpcode::kAsyncUpdate) {
-        if (operands[0]->shape() != *shape) {
-          TokenError(
-              "AsyncUpdate expects the op shape to be the same as the operand "
-              "shape.");
           return nullptr;
         }
       }
@@ -2196,6 +2185,14 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           if (!root) {
             return nullptr;
           }
+
+          if (*async_wrapped_opcode == HloOpcode::kCall) {
+            if (root->opcode() == HloOpcode::kCall && root->to_apply()) {
+              *root->mutable_shape() =
+                  root->to_apply()->root_instruction()->shape();
+            }
+          }
+
           computations_.emplace_back(async_wrapped_builder.Build(root));
           async_computation = computations_.back().get();
         } else {
@@ -2207,6 +2204,11 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                 StrFormat("Expect async wrapped opcode to be %s, but got %s",
                           HloOpcodeString(operands[0]->async_wrapped_opcode()),
                           HloOpcodeString(*async_wrapped_opcode)));
+            return nullptr;
+          }
+
+          if (opcode == HloOpcode::kAsyncUpdate && operands.size() >= 2) {
+            TokenError("Late binding is not supported for desugared async ops");
             return nullptr;
           }
         }
@@ -2261,7 +2263,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       if (opcode == HloOpcode::kAsyncUpdate) {
         return builder->AddInstruction(
-            HloInstruction::CreateAsyncUpdate(*shape, operands[0]));
+            HloInstruction::CreateAsyncUpdate(*shape, operands));
       }
       return builder->AddInstruction(
           HloInstruction::CreateAsyncDone(*shape, operands[0]));
