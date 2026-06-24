@@ -1056,7 +1056,7 @@ Literal LiteralBase::Relayout(const Shape& shape_with_layout) const {
 
 Literal LiteralBase::ToBoundedDynamic(const Shape& bounded_shape) const {
   CHECK(bounded_shape.is_dynamic());
-  Literal result(bounded_shape);
+  Literal result = LiteralBase::CreateFromShape(bounded_shape);
   ShapeUtil::ForEachSubshape(
       shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray()) {
