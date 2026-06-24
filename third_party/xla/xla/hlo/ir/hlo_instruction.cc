@@ -1777,7 +1777,7 @@ HloInstruction::CreateAllGatherStart(
     bool constrain_layout, const std::optional<int64_t>& channel_id,
     bool use_global_device_ids) {
   return std::make_unique<HloAllGatherInstruction>(
-      HloOpcode::kAllGatherStart, shape, operands, all_gather_dimension,
+      HloOpcode::kAllGather, shape, operands, all_gather_dimension,
       std::move(device_list), constrain_layout, channel_id,
       use_global_device_ids);
 }
