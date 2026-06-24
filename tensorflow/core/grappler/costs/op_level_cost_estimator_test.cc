@@ -2376,5 +2376,34 @@ TEST_F(OpLevelCostEstimatorTest, GetDeviceInfo_EmptyCpu) {
   EXPECT_GT(device_info.gb_per_sec, 0);
 }
 
+TEST_F(OpLevelCostEstimatorTest, InvalidStridesOrKernelSize) {
+  // Test with invalid strides (e.g. size 3 instead of 4).
+  // PredictCosts() should log a warning but handle it gracefully using the
+  // fallback {1, 1, 1, 1}.
+  auto op_context = DescribePoolingOp("MaxPool", {16, 19, 19, 48},
+                                      {1, 1, 1, 1}, {1, 1, 1, 1}, "NHWC",
+                                      "SAME");
+  auto* attr = op_context.op_info.mutable_attr();
+  std::vector<int> invalid_strides = {1, 1, 1};
+  SetAttrValue(invalid_strides, &(*attr)["strides"]);
+
+  auto cost = PredictCosts(op_context);
+  EXPECT_GT(cost.execution_time.count(), 0);
+  EXPECT_FALSE(cost.inaccurate);
+
+  // Test with invalid ksize (e.g. size 3 instead of 4).
+  // PredictCosts() should log a warning but handle it gracefully using the
+  // fallback {1, 1, 1, 1}.
+  auto op_context_invalid_ksize = DescribePoolingOp(
+      "MaxPool", {16, 19, 19, 48}, {1, 1, 1, 1}, {1, 1, 1, 1}, "NHWC", "SAME");
+  auto* attr_invalid_ksize = op_context_invalid_ksize.op_info.mutable_attr();
+  std::vector<int> invalid_ksize = {1, 1, 1};
+  SetAttrValue(invalid_ksize, &(*attr_invalid_ksize)["ksize"]);
+
+  auto cost_invalid_ksize = PredictCosts(op_context_invalid_ksize);
+  EXPECT_GT(cost_invalid_ksize.execution_time.count(), 0);
+  EXPECT_FALSE(cost_invalid_ksize.inaccurate);
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow
