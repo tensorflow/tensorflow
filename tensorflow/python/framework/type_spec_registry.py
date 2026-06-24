@@ -54,19 +54,19 @@ def register(name):
       raise TypeError("Expected `cls` to be a TypeSpec; got %r" % (cls,))
     if name in _NAME_TO_TYPE_SPEC:
       existing_cls = _NAME_TO_TYPE_SPEC[name]
-        if existing_cls is cls:
+      if existing_cls is cls:
           return cls
-        elif (existing_cls.__module__ == cls.__module__ and 
+      elif (existing_cls.__module__ == cls.__module__ and 
               existing_cls.__name__ == cls.__name__):
-          logging.warning("Re-registering class %s.%s for name %s.",
+        logging.warning("Re-registering class %s.%s for name %s.",
                           cls.__module__, cls.__name__, name)
           # Clear out old mappings in reverse lookup
-          _TYPE_SPEC_TO_NAME.pop(existing_cls, None)
-          _TYPE_SPEC_TO_NAME[cls] = name
-          _NAME_TO_TYPE_SPEC[name] = cls
-          return cls
-        else:
-          raise ValueError(
+        _TYPE_SPEC_TO_NAME.pop(existing_cls, None)
+        _TYPE_SPEC_TO_NAME[cls] = name
+        _NAME_TO_TYPE_SPEC[name] = cls
+        return cls
+      else:
+        raise ValueError(
             "Name %s has already been registered for class %s.%s." %
             (name, existing_cls.__module__, existing_cls.__name__))
   
