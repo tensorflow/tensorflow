@@ -521,6 +521,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         buffer_size_->value = auto_tuner_->buffer_limit();
       }
       buffer_.pop_front();
+
+      metrics::RecordTFDataPrefetchDequeue(dataset()->node_name());
+      metrics::RecordTFDataPrefetchBufferSize(dataset()->node_name(),
+                                              buffer_.size());
       *end_of_sequence = false;
 
       // Wake the prefetch thread, in case it has been waiting for space
@@ -608,6 +612,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           RecordBufferEnqueue(ctx.get(), buffer_element.value);
           buffer_element.created_us = EnvTime::NowMicros();
           buffer_.push_back(std::move(buffer_element));
+
+          metrics::RecordTFDataPrefetchEnqueue(dataset()->node_name());
+          metrics::RecordTFDataPrefetchBufferSize(dataset()->node_name(),
+                                                  buffer_.size());
+
           cond_var_->notify_all();
         }
         ++num_produced;
