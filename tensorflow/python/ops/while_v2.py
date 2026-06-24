@@ -33,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -73,7 +74,6 @@ def while_loop(cond,
   len_orig_loop_vars = len(orig_loop_vars)
 
   if shape_invariants is not None:
-    from tensorflow.python.framework import type_spec
 
     def _check_ta_invariant(var, shape):
       if isinstance(var, tensor_array_ops.TensorArray):

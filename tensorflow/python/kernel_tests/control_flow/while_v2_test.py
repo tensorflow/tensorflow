@@ -2074,8 +2074,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         "The shape invariant for a TensorArray must be a scalar shape",
     ):
       while_loop_v2(
-          lambda i, ta: i < 3,
-          lambda i, ta: (i + 1, ta),
+          lambda j, ta_j: j < 3,
+          lambda j, ta_j: (j + 1, ta_j),
           [i, ta],
           shape_invariants=[i.get_shape(), tensor_shape.TensorShape([3])],
       )
@@ -2086,8 +2086,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         "The shape invariant for a TensorArray must be a scalar shape",
     ):
       while_loop_v2(
-          lambda i, ta: i < 3,
-          lambda i, ta: (i + 1, ta),
+          lambda j, ta_j: j < 3,
+          lambda j, ta_j: (j + 1, ta_j),
           [i, ta],
           shape_invariants=[
               i.get_shape(),

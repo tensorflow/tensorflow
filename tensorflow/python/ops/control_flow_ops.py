@@ -380,13 +380,15 @@ def _shape_invariant_to_type_spec(var, shape=None):
     if not shape.is_compatible_with(var):
       raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
     if isinstance(var, tensor_array_ops.TensorArray):
-      if isinstance(shape, type_spec.TensorSpec) and shape.shape.ndims is not None and shape.shape.ndims > 0:
+      if (isinstance(shape, type_spec.TensorSpec) and
+          shape.shape.ndims is not None and shape.shape.ndims > 0):
         raise ValueError(
             "The shape invariant for a TensorArray must be a scalar shape "
             "(e.g., tf.TensorShape([]) or tf.TensorShape(None)), or omitted "
             "entirely. Received TensorSpec with shape: {}. "
-            "TensorArray shape invariants apply to its underlying flow variable "
-            "(a scalar variant tensor), not to its stacked output shape.".format(shape.shape)
+            "TensorArray shape invariants apply to its underlying flow "
+            "variable (a scalar variant tensor), not to its stacked "
+            "output shape.".format(shape.shape)
         )
     return shape
   elif not isinstance(shape, tensor_shape.TensorShape):
@@ -399,8 +401,9 @@ def _shape_invariant_to_type_spec(var, shape=None):
         "The shape invariant for a TensorArray must be a scalar shape "
         "(e.g., tf.TensorShape([]) or tf.TensorShape(None)), or omitted "
         "entirely. Received: {}. "
-        "TensorArray shape invariants apply to its underlying flow variable "
-        "(a scalar variant tensor), not to its stacked output shape.".format(shape)
+        "TensorArray shape invariants apply to its underlying flow "
+        "variable (a scalar variant tensor), not to its stacked "
+        "output shape.".format(shape)
     )
 
   if isinstance(var, tensor_lib.Tensor):
