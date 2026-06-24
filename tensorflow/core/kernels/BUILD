@@ -1364,6 +1364,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -3748,7 +3752,10 @@ cc_library(
 tf_kernel_library(
     name = "betainc_op",
     prefix = "betainc_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -4272,6 +4279,8 @@ tf_kernel_library(
         "//tensorflow/core/util/proto:proto_utils",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
