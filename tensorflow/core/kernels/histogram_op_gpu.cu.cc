@@ -47,9 +47,10 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
     pinned_allocator.set_gpu_compatible(true);
 
     Tensor levels_tensor;
-    TF_RETURN_IF_ERROR(context->allocate_temp(
-        DataTypeToEnum<T>::value, TensorShape({nbins + 1}), &levels_tensor,
-        pinned_allocator));
+    TF_RETURN_IF_ERROR(
+        context->allocate_temp(DataTypeToEnum<T>::value,
+                               TensorShape({static_cast<int64_t>(nbins) + 1}),
+                               &levels_tensor, pinned_allocator));
     auto levels = levels_tensor.flat<T>();
 
     // Avoid overflow in step computation.

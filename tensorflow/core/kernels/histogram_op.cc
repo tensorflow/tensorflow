@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/histogram_op.h"
 
 #include <cmath>
+#include <limits>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -137,6 +138,9 @@ class HistogramFixedWidthOp : public OpKernel {
         ctx, nbins > 0,
         absl::InvalidArgumentError(absl::StrCat(
             "nbins should be a positive number, but got '", nbins, "'")));
+    OP_REQUIRES(ctx, nbins < std::numeric_limits<int32_t>::max(),
+                absl::InvalidArgumentError(
+                    "nbins + 1 must not exceed the maximum value of int32_t"));
 
     Tensor* out_tensor;
     OP_REQUIRES_OK(ctx,
