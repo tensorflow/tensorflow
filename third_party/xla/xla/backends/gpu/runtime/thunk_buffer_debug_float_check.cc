@@ -123,14 +123,8 @@ size_t CalculateTempBufferSize(const Thunk& thunk) {
   return TempBufferSizeFromMaxBufferSize(max_buffer_size_bytes);
 }
 
-// TODO(b/485867926): This implementation is O(N) where N is the number of
-// instructions in the module. Since WrapWithSyncDumpThunk (which calls this)
-// is invoked for every thunk in the sequence during RunFloatCheckPassInternal,
-// the overall instrumentation becomes O(N^2).
-// For large modules, this can significantly slow down
-// compilation/initialization. Consider building an
-// absl::flat_hash_map<absl::string_view, const HloInstruction*> once in
-// RunFloatCheckPassInternal and passing it down.
+// Finds an HLO instruction by its name. This is an O(N) search and should only
+// be used in cold paths (e.g. anomaly reporting).
 const HloInstruction* FindHloInstructionWithId(const HloModule* hlo_module,
                                                absl::string_view name) {
   if (hlo_module == nullptr) return nullptr;
@@ -400,7 +394,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithSyncDumpThunk(
     std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
     BufferAllocation::Slice log_slice, const HloModule* absl_nonnull hlo_module,
     const BufferAssignment* absl_nonnull buffer_assignment,
-    ThunkPassBufferAllocator& allocator) {
+    ThunkPassBufferAllocator& allocator,
+    const absl::flat_hash_map<absl::string_view, const HloInstruction*>&
+        hlo_instruction_map) {
   if (thunk->buffer_uses().empty()) {
     VLOG(3) << "Skipping sync dump wrapping for thunk "
             << thunk->thunk_info().thunk_id << ": no buffers used";
@@ -418,8 +414,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithSyncDumpThunk(
 
   std::string profile_annotation = thunk->thunk_info().profile_annotation;
 
-  const HloInstruction* instr =
-      FindHloInstructionWithId(hlo_module, profile_annotation);
+  const HloInstruction* instr = nullptr;
+  if (auto it = hlo_instruction_map.find(profile_annotation);
+      it != hlo_instruction_map.end()) {
+    instr = it->second;
+  }
   if (instr == nullptr) {
     LOG(WARNING) << "Skipping sync dump wrapping for thunk "
                  << thunk->thunk_info().thunk_id
@@ -846,13 +845,22 @@ absl::Status RunFloatCheckPassInternal(
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
 
   if (dump_mode) {
+    absl::flat_hash_map<absl::string_view, const HloInstruction*>
+        hlo_instruction_map;
+    for (const HloComputation* computation : hlo_module->computations()) {
+      for (const HloInstruction* instruction : computation->instructions()) {
+        hlo_instruction_map[instruction->name()] = instruction;
+      }
+    }
+
     auto transform_callback = [&](std::unique_ptr<Thunk> thunk)
         -> absl::StatusOr<std::unique_ptr<Thunk>> {
       if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
         return thunk;
       }
       return WrapWithSyncDumpThunk(std::move(thunk), metadata_store, log_slice,
-                                   hlo_module, buffer_assignment, allocator);
+                                   hlo_module, buffer_assignment, allocator,
+                                   hlo_instruction_map);
     };
     RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
 
