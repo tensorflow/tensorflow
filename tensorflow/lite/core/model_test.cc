@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/version.h"
 
 // Comparison for TfLiteRegistration. Since TfLiteRegistration is a C object,
 // we must declare this in global namespace, so argument-dependent operator
