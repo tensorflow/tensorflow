@@ -14,6 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/fixed_length_record_dataset_op.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -21,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tf_data_file_logger_options.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"

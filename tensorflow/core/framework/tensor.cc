@@ -136,6 +136,10 @@ class BufferBase : public TensorBuffer {
     return alloc_->GetMemoryType();
   }
 
+  bool AllocatesOpaqueHandle() const override {
+    return alloc_->AllocatesOpaqueHandle();
+  }
+
  protected:
   void RecordDeallocation() {
     LogMemory::RecordTensorDeallocation(alloc_->AllocationId(data()),
@@ -1104,6 +1108,9 @@ class SubBuffer : public TensorBuffer {
   }
   void FillAllocationDescription(AllocationDescription* proto) const override {
     root_->FillAllocationDescription(proto);
+  }
+  bool AllocatesOpaqueHandle() const override {
+    return root_->AllocatesOpaqueHandle();
   }
 
  private:

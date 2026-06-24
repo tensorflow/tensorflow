@@ -270,6 +270,10 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:utils",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -985,6 +989,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/data:dataset_utils",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -1155,6 +1160,8 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:global_shuffle_utils",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -1432,6 +1439,9 @@ tf_kernel_library(
         "//tensorflow/core/data:global_shuffle_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:split_utils",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@tsl//tsl/platform:mutex",
         "@tsl//tsl/platform:thread_annotations",
@@ -1586,6 +1596,7 @@ cc_library(
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/framework:dataset_options_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

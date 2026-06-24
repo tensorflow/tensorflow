@@ -66,6 +66,8 @@ llvm::hash_code GetMergeKey(CopyArraysOp op) {
   // TODO(icgog): A CopyArrays with device memory kind will not be merged with a
   // CopyArrays with default/no memory kind because we don't have device info to
   // canonicalize the memory kind. Fix this limitation.
+  // TODO(icgog): Do not include devices in the key after `CopyArrays` supports
+  // MPMD.
   llvm::hash_code hash = llvm::hash_value("CopyArraysOp");
   // CopyArrayOps do not support inputs with different src devices nor outputs
   // with different dst devices. Thus, it is safe to only include the first

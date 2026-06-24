@@ -34,7 +34,7 @@ cc_library(
         "ifrt_compile_atom_program_pass.cc",
         "ifrt_dump_atom_programs_pass.cc",
         "ifrt_duplicated_callee_elimination_pass.cc",
-        "ifrt_insert_copy_arrays_reuse_pass.cc",
+        "ifrt_insert_copy_arrays_for_returned_many_times_pass.cc",
         "ifrt_legalize_to_vifrt_pass.cc",
         "ifrt_lower_atom_program_metadata_to_xla_pass.cc",
         "ifrt_lower_mpmd_reshard_to_call_pass.cc",

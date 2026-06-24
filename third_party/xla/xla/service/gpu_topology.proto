@@ -35,4 +35,11 @@ message GpuTopologyProto {
   xla.cpu.TargetMachineOptionsProto host_target_machine_options = 9;
 
   reserved 7;  // Was: core_count_per_chip
+
+  // The number of devices per process.
+  // It can happen that the number of devices per process is smaller than the
+  // number of devices per host. For example, when a host contains multiple
+  // processes.
+  // If not set, it defaults to num_devices_per_host.
+  optional int32 num_devices_per_process = 10;
 }

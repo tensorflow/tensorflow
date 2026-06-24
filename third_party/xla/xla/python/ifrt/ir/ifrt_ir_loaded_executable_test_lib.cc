@@ -263,6 +263,77 @@ module {
       result.outputs[0], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[1], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
+  // Check that deleting the input does not delete the outputs.
+  ASSERT_OK(input->Delete().Await());
+  ASSERT_TRUE(input->IsDeleted());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[1], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, DonatedInputsAreDeleted) {
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [1]>
+module {
+  func.func @main(
+      %arg0: !array0 {ifrt.donated},
+      %arg1: !array1 {ifrt.donated},
+      %arg2: !array0 {ifrt.donated})
+      -> (!array0, !array1) attributes {ifrt.function} {
+    return %arg0, %arg1 : !array0, !array1
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  Shape shape({2});
+  DType dtype(DType::kS32);
+  // Create the donated arrays on different devices to ensure donation is
+  // handled correctly when the input arrays are on different devices.
+  ASSERT_OK_AND_ASSIGN(DeviceListRef first_device,
+                       client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef second_device,
+                       client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input0,
+                       CreateArray({data0.data()}, shape,
+                                   /*shard_shape=*/shape, dtype, first_device));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input1, CreateArray({data1.data()}, shape,
+                                                    /*shard_shape=*/shape,
+                                                    dtype, second_device));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input2,
+                       CreateArray({data0.data()}, shape,
+                                   /*shard_shape=*/shape, dtype, first_device));
+  std::vector<ArrayRef> inputs = {input0, input1, input2};
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(inputs),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
+
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_TRUE(input0->IsDeleted());
+  ASSERT_TRUE(input1->IsDeleted());
+  ASSERT_TRUE(input2->IsDeleted());
+  // Check that the outputs are not deleted.
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype,
+      /*expected_per_shard_shape=*/shape, {{0, 1}}, first_device));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[1], dtype,
+      /*expected_per_shard_shape=*/shape, {{2, 3}}, second_device));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, CopyArrays) {

@@ -2818,7 +2818,8 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
         TypedArrayAttrBase<
             MHLO_OutputOperandAlias,
             "Aliasing attribute for outputs and operands of CustomCall">,
-        "{}">:$output_operand_aliases
+        "{}">:$output_operand_aliases,
+    OptionalAttr<MHLO_ArrayOfTilingAttr>:$result_tilings
   );
   let results = (outs Variadic<MHLO_CustomCallValue>);
   let hasCustomHLOConverter = 1;
@@ -2835,7 +2836,8 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
       "::mlir::mhlo::CustomCallApiVersionAttr":$api_version,
       "::mlir::ArrayAttr":$called_computations,
       "::mlir::ArrayAttr":$operand_layouts,
-      "::mlir::ArrayAttr":$result_layouts)>];
+      "::mlir::ArrayAttr":$result_layouts,
+      "::mlir::ArrayAttr":$result_tilings)>];
 
   let assemblyFormat = [{
     custom<CustomCallTarget>($call_target_name) `(` $inputs `)`

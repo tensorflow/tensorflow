@@ -252,11 +252,9 @@ class HloAliasible {
 };
 
 class HloAsyncInstruction : public HloInstruction {
- public:
-  // Constructs async-{update,done}.
-  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
-                      HloInstruction* operand);
+  friend class HloInstruction;
 
+ public:
   HloComputation* async_wrapped_computation() const;
   HloInstruction* async_wrapped_instruction() const;
   HloOpcode async_wrapped_opcode() const;
@@ -306,6 +304,10 @@ class HloAsyncInstruction : public HloInstruction {
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
                       absl::Span<HloInstruction* const> operands,
                       HloOpcode async_wrapped_opcode);
+
+  // Constructs async-{update,done}.
+  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
+                      HloInstruction* operand);
 
  private:
   // async-{update,done} inherit all their attributes from async-start,

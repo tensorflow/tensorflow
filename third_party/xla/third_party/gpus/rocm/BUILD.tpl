@@ -443,7 +443,12 @@ rocm_lib_import(
             "%{rocm_root}/lib/hipblaslt/library/*" + arch + "*",
             "%{rocm_root}/lib/hipblaslt/library/" + arch + "/**/*",
         ]
-    ]),
+    ]) + glob(
+        ["%{rocm_root}/lib/hipblaslt/library/*"],
+        exclude = [
+            "%{rocm_root}/lib/hipblaslt/library/*gfx*",
+        ],
+    ),
     interface_library = "%{rocm_root}/lib/libhipblaslt.so",
     deps = [
         ":hip_runtime_libs",
