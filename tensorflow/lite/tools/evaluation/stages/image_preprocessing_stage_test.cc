@@ -298,6 +298,51 @@ TEST(ImagePreprocessingStage, TestImagePreprocessingSubtractMean) {
   EXPECT_THAT(metrics, HasValidLatencyMetrics());
 }
 
+TEST(ImagePreprocessingStage, TestCropTargetLargerThanImage) {
+  std::string image_path(kTestImage);
+
+  ImagePreprocessingConfigBuilder builder(
+      std::string(kImagePreprocessingStageName), kTfLiteFloat32);
+  // A crop target larger than the image would produce negative start offsets
+  // and read out of bounds. It must be rejected at run time.
+  builder.AddCroppingStep(/*width=*/100000U, /*height=*/100000U);
+  builder.AddNormalizationStep(127.5, 1.0 / 127.5);
+  ImagePreprocessingStage stage(builder.build());
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
+  stage.SetImagePath(&image_path);
+  EXPECT_EQ(stage.Run(), kTfLiteError);
+}
+
+TEST(ImagePreprocessingStage, TestPaddingTargetSmallerThanImage) {
+  std::string image_path(kTestImage);
+
+  ImagePreprocessingConfigBuilder builder(
+      std::string(kImagePreprocessingStageName), kTfLiteFloat32);
+  // A padding target smaller than the image would produce negative padding
+  // counts and write out of bounds. It must be rejected at run time.
+  builder.AddPaddingStep(/*width=*/1, /*height=*/1, 0);
+  builder.AddNormalizationStep(127.5, 1.0 / 127.5);
+  ImagePreprocessingStage stage(builder.build());
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
+  stage.SetImagePath(&image_path);
+  EXPECT_EQ(stage.Run(), kTfLiteError);
+}
+
+TEST(ImagePreprocessingStage, TestPaddingTargetTooLarge) {
+  std::string image_path(kTestImage);
+
+  ImagePreprocessingConfigBuilder builder(
+      std::string(kImagePreprocessingStageName), kTfLiteFloat32);
+  // A padding target large enough to overflow the output buffer size
+  // computation must be rejected at run time.
+  builder.AddPaddingStep(/*width=*/100000, /*height=*/100000, 0);
+  builder.AddNormalizationStep(127.5, 1.0 / 127.5);
+  ImagePreprocessingStage stage(builder.build());
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
+  stage.SetImagePath(&image_path);
+  EXPECT_EQ(stage.Run(), kTfLiteError);
+}
+
 TEST(ImagePreprocessingStage, TestInvalidRawImageSize) {
   std::string image_path = testing::TempDir() + "/invalid.rgb8";
   std::ofstream stream(image_path, std::ios::out | std::ios::binary);

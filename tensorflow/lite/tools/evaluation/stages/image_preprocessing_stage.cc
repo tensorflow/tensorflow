@@ -21,6 +21,7 @@ limitations under the License.
 #include <fstream>
 #include <ios>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -136,7 +137,8 @@ inline TfLiteStatus LoadImageJpeg(absl::string_view filename,
 }
 
 // Central-cropping.
-inline void Crop(ImageData* image_data, const CroppingParams& crop_params) {
+inline TfLiteStatus Crop(ImageData* image_data,
+                         const CroppingParams& crop_params) {
   int crop_height = 0;
   int crop_width = 0;
   int input_width = image_data->width;
@@ -154,6 +156,15 @@ inline void Crop(ImageData* image_data, const CroppingParams& crop_params) {
     crop_height = std::min(crop_height, crop_width);
     crop_width = crop_height;
   }
+  // The crop region must fit within the image. A larger crop than the image
+  // (possible with target_size, since the image dimensions come from the
+  // decoded input) would make the start offsets negative and cause
+  // GetData to read out of bounds.
+  if (crop_width <= 0 || crop_height <= 0 || crop_width > input_width ||
+      crop_height > input_height) {
+    ABSL_LOG(ERROR) << "Cropping size is invalid or larger than the image size";
+    return kTfLiteError;
+  }
   int start_w = static_cast<int>(round((input_width - crop_width) / 2.0));
   int start_h = static_cast<int>(round((input_height - crop_height) / 2.0));
   std::vector<float> cropped_image;
@@ -168,12 +179,13 @@ inline void Crop(ImageData* image_data, const CroppingParams& crop_params) {
   image_data->height = crop_height;
   image_data->width = crop_width;
   image_data->data = std::move(cropped_image);
+  return kTfLiteOk;
 }
 
 // Performs billinear interpolation for 3-channel RGB image.
 // See: https://en.wikipedia.org/wiki/Bilinear_interpolation
-inline void ResizeBilinear(ImageData* image_data,
-                           const ResizingParams& params) {
+inline TfLiteStatus ResizeBilinear(ImageData* image_data,
+                                   const ResizingParams& params) {
   tflite::ResizeBilinearParams resize_params;
   resize_params.align_corners = false;
   // TODO(b/143292772): Set this to true for more accurate behavior?
@@ -204,6 +216,15 @@ inline void ResizeBilinear(ImageData* image_data,
   std::vector<int32_t> output_size_data = {output_height, output_width};
   tflite::RuntimeShape output_shape(
       {1, output_height, output_width, kNumChannels});
+  // Guards against integer overflow when computing the output buffer size for
+  // a very large target_size.
+  if (output_width <= 0 || output_height <= 0 ||
+      output_height > std::numeric_limits<int>::max() / output_width ||
+      output_width * output_height >
+          std::numeric_limits<int>::max() / kNumChannels) {
+    ABSL_LOG(ERROR) << "Resizing output size is invalid or too large";
+    return kTfLiteError;
+  }
   int output_size = output_width * output_height * kNumChannels;
   std::vector<float> output_data(output_size, 0);
   tflite::reference_ops::ResizeBilinear(
@@ -212,12 +233,21 @@ inline void ResizeBilinear(ImageData* image_data,
   image_data->height = output_height;
   image_data->width = output_width;
   image_data->data = std::move(output_data);
+  return kTfLiteOk;
 }
 
 // Pads the image to a pre-defined size.
-inline void Pad(ImageData* image_data, const PaddingParams& params) {
+inline TfLiteStatus Pad(ImageData* image_data, const PaddingParams& params) {
   int output_width = params.target_size().width();
   int output_height = params.target_size().height();
+  // The padded output must be at least as large as the image. A smaller
+  // target than the image would make the padding counts negative and cause
+  // the pad kernel to read/write out of bounds.
+  if (output_width < static_cast<int>(image_data->width) ||
+      output_height < static_cast<int>(image_data->height)) {
+    ABSL_LOG(ERROR) << "Padding size is smaller than the image size";
+    return kTfLiteError;
+  }
   int pad_value = params.padding_value();
   tflite::PadParams pad_params{};
   pad_params.left_padding_count = 4;
@@ -235,6 +265,16 @@ inline void Pad(ImageData* image_data, const PaddingParams& params) {
                                     kNumChannels});
   tflite::RuntimeShape output_shape(
       {1, output_height, output_width, kNumChannels});
+  // Guards against integer overflow when computing the output buffer size for
+  // a very large target_size. The explicit > 0 checks keep the divisions safe
+  // and self-contained, matching ResizeBilinear.
+  if (output_width <= 0 || output_height <= 0 ||
+      output_height > std::numeric_limits<int>::max() / output_width ||
+      output_width * output_height >
+          std::numeric_limits<int>::max() / kNumChannels) {
+    ABSL_LOG(ERROR) << "Padding output size is invalid or too large";
+    return kTfLiteError;
+  }
   int output_size = output_width * output_height * kNumChannels;
   std::vector<float> output_data(output_size, 0);
   tflite::reference_ops::Pad(pad_params, input_shape, image_data->data.data(),
@@ -242,6 +282,7 @@ inline void Pad(ImageData* image_data, const PaddingParams& params) {
   image_data->height = output_height;
   image_data->width = output_width;
   image_data->data = std::move(output_data);
+  return kTfLiteOk;
 }
 
 // Normalizes the image data to a specific range with mean and scale.
@@ -367,19 +408,20 @@ TfLiteStatus ImagePreprocessingStage::Run() {
         LOG(WARNING) << "Image cropping will not be performed on raw images";
         continue;
       }
-      Crop(&image_data, param.cropping_params());
+      TF_LITE_ENSURE_STATUS(Crop(&image_data, param.cropping_params()));
     } else if (param.has_resizing_params()) {
       if (is_raw_image) {
         LOG(WARNING) << "Image resizing will not be performed on raw images";
         continue;
       }
-      ResizeBilinear(&image_data, param.resizing_params());
+      TF_LITE_ENSURE_STATUS(
+          ResizeBilinear(&image_data, param.resizing_params()));
     } else if (param.has_padding_params()) {
       if (is_raw_image) {
         LOG(WARNING) << "Image padding will not be performed on raw images";
         continue;
       }
-      Pad(&image_data, param.padding_params());
+      TF_LITE_ENSURE_STATUS(Pad(&image_data, param.padding_params()));
     } else if (param.has_normalization_params()) {
       TF_LITE_ENSURE_STATUS(
           Normalize(&image_data, param.normalization_params()));
