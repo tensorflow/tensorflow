@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
