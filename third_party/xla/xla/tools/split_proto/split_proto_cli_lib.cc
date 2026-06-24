@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/message.h"
+#include "google/protobuf/message_lite.h"
 #include "google/protobuf/text_format.h"
 #include "riegeli/base/maker.h"
 #include "riegeli/base/types.h"
@@ -137,13 +138,13 @@ absl::Status Pack(std::unique_ptr<riegeli::Reader> reader,
 
   if (options.proto_type == "xla.gpu.GpuExecutableProto") {
     auto* gpu_proto =
-        absl::down_cast<xla::gpu::GpuExecutableProto*>(message.get());
+        google::protobuf::DownCastMessage<xla::gpu::GpuExecutableProto>(message.get());
     return WriteSplitGpuExecutable(std::move(*gpu_proto), std::move(writer));
   }
 
   if (options.proto_type == "xla.ExecutableAndOptionsProto") {
     auto* options_proto =
-        absl::down_cast<xla::ExecutableAndOptionsProto*>(message.get());
+        google::protobuf::DownCastMessage<xla::ExecutableAndOptionsProto>(message.get());
     return WriteSplitExecutableAndOptions(*options_proto, std::move(writer));
   }
 

@@ -46,6 +46,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
+        "@com_google_protobuf//:protobuf_lite",
         "@riegeli//riegeli/base:initializer",
         "@riegeli//riegeli/base:types",
         "@riegeli//riegeli/bytes:reader",
