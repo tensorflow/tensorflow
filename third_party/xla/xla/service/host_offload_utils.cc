@@ -86,7 +86,8 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
     }
   }
   for (HloInstruction* user : instruction->users()) {
-    if (user->opcode() == HloOpcode::kTuple) {
+    if (user->opcode() == HloOpcode::kTuple ||
+        (user->opcode() == HloOpcode::kSort && user->shape().IsTuple())) {
       auto operand_indices = user->OperandIndices(instruction);
       for (const auto i : operand_indices) {
         auto tmp_shape_index = instruction_and_shape_index.shape_index;
@@ -188,7 +189,9 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
     auto tmp_shape_index = instruction_and_shape_index.shape_index;
     tmp_shape_index.push_front(index);
     result.push_back({instruction->mutable_operand(0), tmp_shape_index});
-  } else if (instruction->opcode() == HloOpcode::kTuple) {
+  } else if (instruction->opcode() == HloOpcode::kTuple ||
+             (instruction->opcode() == HloOpcode::kSort &&
+              instruction->shape().IsTuple())) {
     CHECK(!instruction_and_shape_index.shape_index.empty())
         << "Did not store an index before encountering a tuple.";
     auto tmp_shape_index = instruction_and_shape_index.shape_index;

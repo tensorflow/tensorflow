@@ -39,7 +39,9 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 
 namespace xla::gpu {
@@ -77,8 +79,7 @@ HloFusionInstruction* CreateCollectiveFusionInstruction(
   // Propagate metadata.
   fusion_instr->set_metadata(instr->metadata());
   fusion_instr->set_frontend_attributes(fused_root->frontend_attributes());
-  fusion_instr->set_raw_backend_config_string(
-      instr->raw_backend_config_string());
+  fusion_instr->CopyBackendConfigFrom(instr);
   return Cast<HloFusionInstruction>(fusion_instr);
 }
 
@@ -120,14 +121,72 @@ bool ShouldFlatten(const HloInstruction* instr) {
              se::gpu::AllReduceStrategy::kTwoShot;
 }
 
+// Normalizes legacy all-reduce-start/done into modern generic async boundaries.
+// Normally this does not exist but it can be created by explicitly calling
+// psum_start/end in jax.
+absl::StatusOr<HloInstruction*> NormalizeAsyncCandidate(
+    HloAllReduceInstruction* start_instr) {
+  HloComputation* computation = start_instr->parent();
+
+  HloInstruction* done_instr = nullptr;
+  for (HloInstruction* user : start_instr->users()) {
+    if (user->opcode() == HloOpcode::kAllReduceDone) {
+      done_instr = user;
+      break;
+    }
+  }
+  TF_RET_CHECK(done_instr != nullptr)
+      << "Missing all-reduce-done for " << start_instr->ToString();
+
+  // Create a temporary synchronous instruction for working with create async.
+  HloInstruction* sync_ar =
+      computation->AddInstruction(HloInstruction::CreateAllReduce(
+          done_instr->shape(), start_instr->operands(), start_instr->to_apply(),
+          start_instr->device_list(), start_instr->constrain_layout(),
+          start_instr->channel_id(), start_instr->use_global_device_ids()));
+  sync_ar->CopyBackendConfigFrom(start_instr);
+  sync_ar->set_metadata(start_instr->metadata());
+  sync_ar->set_frontend_attributes(start_instr->frontend_attributes());
+  ABSL_ASSIGN_OR_RETURN(
+      HloInstruction * new_done,
+      computation->CreateAsyncInstructions(sync_ar, /*context_shapes=*/{},
+                                           HloInstruction::kMainExecutionThread,
+                                           /*replace=*/false));
+
+  HloInstruction* new_start = new_done->mutable_operand(0);
+
+  // new_start has a tuple.
+  ABSL_RETURN_IF_ERROR(start_instr->ReplaceAllUsesWithDifferentShape(new_start));
+  ABSL_RETURN_IF_ERROR(done_instr->ReplaceAllUsesWith(new_done));
+  ABSL_RETURN_IF_ERROR(start_instr->CopyAllControlDepsTo(new_start, new_start));
+  ABSL_RETURN_IF_ERROR(done_instr->CopyAllControlDepsTo(new_done, new_done));
+  new_start->set_frontend_attributes(start_instr->frontend_attributes());
+  new_done->set_frontend_attributes(start_instr->frontend_attributes());
+  // Clean up.
+  ABSL_RETURN_IF_ERROR(start_instr->DropAllControlDeps());
+  ABSL_RETURN_IF_ERROR(done_instr->DropAllControlDeps());
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(done_instr));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(start_instr));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(sync_ar));
+
+  return new_start->called_computations().front()->root_instruction();
+}
+
 absl::Status FuseCandidate(HloInstruction* candidate,
                            const GpuTopology& gpu_topology,
                            const DeviceAssignment* device_assignment) {
+  if (candidate->opcode() == HloOpcode::kAllReduceStart) {
+    ABSL_ASSIGN_OR_RETURN(candidate, NormalizeAsyncCandidate(
+                                    Cast<HloAllReduceInstruction>(candidate)));
+  }
   const bool should_flatten = ShouldFlatten(candidate);
   HloComputation* computation = candidate->parent();
   HloFusionInstruction* fusion_instr = CreateCollectiveFusionInstruction(
       computation, candidate, HloInstruction::FusionKind::kCustom);
   ABSL_RETURN_IF_ERROR(candidate->ReplaceAllUsesWith(fusion_instr));
+  if (computation->root_instruction() == candidate) {
+    computation->set_root_instruction(fusion_instr);
+  }
   ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(candidate));
   if (should_flatten) {
     ABSL_RETURN_IF_ERROR(FlattenCollectiveFusion(fusion_instr));
