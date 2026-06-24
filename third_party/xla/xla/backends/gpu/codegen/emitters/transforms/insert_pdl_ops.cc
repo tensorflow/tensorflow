@@ -38,10 +38,11 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
 
 #define GEN_PASS_DEF_INSERTPDLPASS
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 class InsertPDLPass : public impl::InsertPDLPassBase<InsertPDLPass> {
  public:
@@ -66,10 +67,5 @@ class InsertPDLPass : public impl::InsertPDLPassBase<InsertPDLPass> {
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateInsertPDLPass() {
-  return std::make_unique<InsertPDLPass>();
-}
-
 }  // namespace gpu
 }  // namespace xla

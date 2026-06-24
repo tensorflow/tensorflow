@@ -38,6 +38,10 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+#define GEN_PASS_DEF_CONVERTINDEXTYPEPASS
+#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+
 namespace {
 
 using mlir::ImplicitLocOpBuilder;
@@ -50,9 +54,6 @@ using mlir::PatternRewriter;
 using mlir::Type;
 
 namespace arith = mlir::arith;
-
-#define GEN_PASS_DEF_CONVERTINDEXTYPEPASS
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
 
 // Rewrites a binary elementwise op on 'index' types to a binary elementwise
 // op on integers with the specified bit width.
@@ -128,10 +129,5 @@ struct ConvertIndexTypePass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateConvertIndexTypePass() {
-  return std::make_unique<ConvertIndexTypePass>();
-}
-
 }  // namespace gpu
 }  // namespace xla
