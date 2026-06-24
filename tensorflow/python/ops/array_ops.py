@@ -1277,7 +1277,7 @@ def _cast_nested_seqs_to_dtype(dtype):
   return _maybe_cast
 
 
-_NON_AUTOPACKABLE_TYPES = set((
+_NON_AUTOPACKABLE_TYPES = frozenset((
     int,
     float,
     complex,
@@ -1309,8 +1309,8 @@ _NON_AUTOPACKABLE_TYPES = set((
     np.uint64,
     np.ulonglong,
     np.void,
+    np.ndarray,
 ))
-_NON_AUTOPACKABLE_TYPES.add(np.ndarray)
 
 
 def _should_not_autopack(v):

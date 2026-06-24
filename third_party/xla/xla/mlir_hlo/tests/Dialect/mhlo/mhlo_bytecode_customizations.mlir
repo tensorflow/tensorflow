@@ -1,6 +1,8 @@
 // RUN: mlir-hlo-opt %s | mlir-hlo-opt
-// RUN: diff <(mlir-hlo-opt %s) <(mlir-hlo-opt -emit-bytecode %s | mlir-hlo-opt)
-// RUN: (! mlir-hlo-opt -debug %s) || mlir-hlo-opt -emit-bytecode -debug-only=mhlo-bytecode %s 2>&1 | (! grep 'Not Implemented')
+// RUN: mlir-hlo-opt %s > %t.diff_a
+// RUN: mlir-hlo-opt -emit-bytecode %s | mlir-hlo-opt > %t.diff_b
+// RUN: cmp -s %t.diff_a %t.diff_b
+// RUN: not mlir-hlo-opt -debug %s || mlir-hlo-opt -emit-bytecode -debug-only=mhlo-bytecode %s 2>&1 | not grep 'Not Implemented'
 
 // Test all attributes and types in MHLO
 // Use round trip testing to validate both serialization and deserialization

@@ -1,4 +1,4 @@
-// RUN: litert-opt %s -canonicalize | FILECHECK_OPTS="" FileCheck %s
+// RUN: litert-opt %s -canonicalize | env FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: @elementwise_unary_ops
 func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {

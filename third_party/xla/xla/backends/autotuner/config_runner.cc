@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/autotuner/tuner.h"
+#include "xla/backends/autotuner/config_runner.h"
 
 #include <algorithm>
 #include <memory>
@@ -45,20 +45,22 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<std::unique_ptr<Tuner>> Tuner::Create(
+absl::StatusOr<std::unique_ptr<ConfigRunner>> ConfigRunner::Create(
     std::unique_ptr<Profiler> profiler,
-    Tuner::CorrectnessCheckOptions options) {
+    ConfigRunner::CorrectnessCheckOptions options) {
   if (profiler == nullptr) {
     return absl::InvalidArgumentError(
-        "Tuner initialization failed. Profiler is null.");
+        "ConfigRunner initialization failed. Profiler is null.");
   }
-  return absl::WrapUnique(new Tuner(std::move(profiler), std::move(options)));
+  return absl::WrapUnique(
+      new ConfigRunner(std::move(profiler), std::move(options)));
 }
 
-absl::StatusOr<std::vector<Tuner::ConfigProfile>> Tuner::ProfileAll(
-    std::vector<Tuner::ExecutableCandidate> candidates,
+absl::StatusOr<std::vector<ConfigRunner::ConfigProfile>>
+ConfigRunner::ProfileAll(
+    std::vector<ConfigRunner::ExecutableCandidate> candidates,
     const HloInstruction* instr) {
-  std::vector<Tuner::ConfigProfile> config_results(candidates.size());
+  std::vector<ConfigRunner::ConfigProfile> config_results(candidates.size());
 
   absl::MutexLock lock(profiler_m_);
 
@@ -66,9 +68,10 @@ absl::StatusOr<std::vector<Tuner::ConfigProfile>> Tuner::ProfileAll(
       std::unique_ptr<InputBuffers> input_buffers,
       profiler_->CreateInputBuffers(candidates[0].executable.get(), instr));
 
-  const auto is_trusted = [](const Tuner::ExecutableCandidate& candidate) {
-    return !candidate.config.codegen_backend->CanProduceWrongResults();
-  };
+  const auto is_trusted =
+      [](const ConfigRunner::ExecutableCandidate& candidate) {
+        return !candidate.config.codegen_backend->CanProduceWrongResults();
+      };
 
   std::vector<OutputCluster> clusters;
   std::vector<int> profile_order(candidates.size());
@@ -116,8 +119,8 @@ absl::StatusOr<std::vector<Tuner::ConfigProfile>> Tuner::ProfileAll(
   return config_results;
 }
 
-Tuner::ConfigProfile Tuner::ProfileCandidate(
-    Tuner::ExecutableCandidate candidate, InputBuffers& input_buffers,
+ConfigRunner::ConfigProfile ConfigRunner::ProfileCandidate(
+    ConfigRunner::ExecutableCandidate candidate, InputBuffers& input_buffers,
     std::vector<OutputCluster>& clusters, bool is_trusted_config,
     bool allow_new_cluster) {
   absl::StatusOr<ProfileResult> profile_result =
@@ -160,10 +163,10 @@ Tuner::ConfigProfile Tuner::ProfileCandidate(
                        /*cluster_index=*/assigned_cluster};
 }
 
-int Tuner::AssignToOutputCluster(std::vector<OutputCluster>& clusters,
-                                 ScopedShapedBuffer& output,
-                                 bool is_trusted_config,
-                                 bool allow_new_cluster) {
+int ConfigRunner::AssignToOutputCluster(std::vector<OutputCluster>& clusters,
+                                        ScopedShapedBuffer& output,
+                                        bool is_trusted_config,
+                                        bool allow_new_cluster) {
   for (int c = 0; c < clusters.size(); ++c) {
     if (profiler_
             ->CheckOutputBuffer(output, clusters[c].representative,
@@ -182,7 +185,7 @@ int Tuner::AssignToOutputCluster(std::vector<OutputCluster>& clusters,
   return clusters.size() - 1;  // Return the index of the new cluster.
 }
 
-void Tuner::DemoteNonWinningClusterConfigs(
+void ConfigRunner::DemoteNonWinningClusterConfigs(
     std::vector<ConfigProfile>& results,
     const std::vector<OutputCluster>& clusters) {
   if (clusters.empty()) {
@@ -219,7 +222,7 @@ void Tuner::DemoteNonWinningClusterConfigs(
   }
 }
 
-std::string Tuner::Failure::ToString() const {
+std::string ConfigRunner::Failure::ToString() const {
   absl::string_view kind_str;
   switch (kind) {
     case FailureKind::kCompilationFailed:
@@ -238,7 +241,7 @@ std::string Tuner::Failure::ToString() const {
   return absl::StrFormat("%s: %s", kind_str, message);
 }
 
-std::string Tuner::ConfigProfile::ToString(bool verbose) const {
+std::string ConfigRunner::ConfigProfile::ToString(bool verbose) const {
   std::string config_str =
       absl::StrFormat("%s : %s", config.codegen_backend->name(),
                       verbose ? config.backend_config->ShortDebugString() : "");
@@ -249,7 +252,7 @@ std::string Tuner::ConfigProfile::ToString(bool verbose) const {
                          absl::FormatDuration(duration), scratch_bytes);
 }
 
-AutotuneResult::FailureResult Tuner::Failure::ToProto() const {
+AutotuneResult::FailureResult ConfigRunner::Failure::ToProto() const {
   AutotuneResult::FailureResult failure_proto;
   switch (kind) {
     case FailureKind::kCompilationFailed:
@@ -269,7 +272,7 @@ AutotuneResult::FailureResult Tuner::Failure::ToProto() const {
   return failure_proto;
 }
 
-AutotuneResult Tuner::ConfigProfile::ToProto() const {
+AutotuneResult ConfigRunner::ConfigProfile::ToProto() const {
   AutotuneResult result;
   if (config.backend_config->has_gemm()) {
     *result.mutable_gemm() = config.backend_config->gemm();

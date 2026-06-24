@@ -785,8 +785,8 @@ bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint,
 }
 
 absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
-    const HloModule* module, const GpuAliasInfo* alias_info,
-    int64_t pointer_size, int64_t* peak_memory_bytes) {
+    HloModule* module, const GpuAliasInfo* alias_info, int64_t pointer_size,
+    int64_t* peak_memory_bytes) {
   BufferValue::SizeFunction size_func =
       [pointer_size](const BufferValue& buffer) -> int64_t {
     const Shape& shape = buffer.shape();

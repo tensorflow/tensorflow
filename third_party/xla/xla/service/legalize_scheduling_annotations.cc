@@ -23,13 +23,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -152,6 +156,7 @@ bool IsSupportedAsyncOp(HloInstruction* instr, bool supports_async_start,
   }
   if (check_sync_versions) {
     if (HloPredicateIsOp<HloOpcode::kAllGather, HloOpcode::kAllReduce,
+                         HloOpcode::kReduceScatter, HloOpcode::kRaggedAllToAll,
                          HloOpcode::kCollectivePermute, HloOpcode::kSendDone,
                          HloOpcode::kSend, HloOpcode::kRecvDone,
                          HloOpcode::kRecv>(instr)) {
@@ -466,9 +471,11 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
   }
 
   bool changed = false;
-  for (const auto& [group_id, annotated_instructions] :
+  for (const auto& [group_id, comp_annotated_instructions] :
        group_id_to_instruction) {
-    for (const auto& [comp, annotated_instructions] : annotated_instructions) {
+    std::vector<HloInstruction*> instructions_across_comps;
+    for (const auto& [comp, annotated_instructions] :
+         comp_annotated_instructions) {
       if (annotated_instructions.size() == 1 &&
           !config_.keep_trivial_sync_annotation(annotated_instructions[0])) {
         // Remove annotations from synchronous operations (control flow, TC
@@ -478,10 +485,25 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
                 << " from instruction: " << annotated_instructions[0]->name()
                 << " in computation: " << comp->name();
         changed |= RemoveSchedulingAnnotation(annotated_instructions[0]);
-      } else {
-        VLOG(3) << "Retaining nontrivial group: " << group_id;
+        continue;
       }
+      instructions_across_comps.insert(instructions_across_comps.end(),
+                                       annotated_instructions.begin(),
+                                       annotated_instructions.end());
     }
+    // Remove the groups without any async operations across all computations.
+    if (absl::c_none_of(instructions_across_comps, [](HloInstruction* instr) {
+          return IsSupportedAsyncOp(instr, /*supports_async_start=*/true,
+                                    /*check_sync_versions=*/true);
+        })) {
+      for (HloInstruction* instr : instructions_across_comps) {
+        VLOG(1) << "Removing group id: " << group_id
+                << " from instruction: " << instr->name();
+        changed |= RemoveSchedulingAnnotation(instr);
+      }
+      continue;
+    }
+    VLOG(3) << "Retaining nontrivial group: " << group_id;
   }
 
   return changed;

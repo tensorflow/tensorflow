@@ -58,9 +58,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -146,10 +144,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -161,16 +159,16 @@ module {
   std::vector<int> data1 = {2, 3};
   Shape shard_shape({1, 2});
   DType dtype(DType::kS32);
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
-                                  shard_shape, dtype, devices));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
 
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                               ExecuteOptionsWithFillStatus(),
-                                               /*devices=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
@@ -196,10 +194,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -211,15 +209,15 @@ module {
   std::vector<int> data_shard1 = {2, 3};
   DType dtype(DType::kS32);
   Shape shard_shape({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data_shard0.data(), data_shard1.data()},
-                                  Shape({2, 2}), shard_shape, dtype, devices));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data_shard0.data(), data_shard1.data()},
+                                   Shape({2, 2}), shard_shape, dtype, devices));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_exec->Execute(absl::MakeSpan(&input, 1),
                            ExecuteOptionsWithFillStatus(), devices));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
@@ -235,10 +233,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -250,16 +248,16 @@ module {
   std::vector<int> data1 = {2, 3};
   Shape shard_shape({1, 2});
   DType dtype(DType::kS32);
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
-                                  shard_shape, dtype, devices));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
 
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                               ExecuteOptionsWithFillStatus(),
-                                               /*devices=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
@@ -278,10 +276,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -292,21 +290,21 @@ module {
   std::vector<int> data = {1, 2};
   DType dtype(DType::kS32);
   Shape shape({2});
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
-                          client_->MakeDeviceList({devices->devices()[0]}));
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data.data()}, shape, /*shard_shape=*/shape,
-                                  dtype, std::move(device_list0)));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                       client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data.data()}, shape, /*shard_shape=*/shape,
+                                   dtype, std::move(device_list0)));
 
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                               ExecuteOptionsWithFillStatus(),
-                                               /*devices=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
-                          client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                       client_->MakeDeviceList({devices->devices()[1]}));
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shape, {{1, 2}}, std::move(device_list1)));
 }
@@ -328,10 +326,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -342,23 +340,23 @@ module {
   std::vector<int> data = {0, 1, 2, 3};
   DType dtype(DType::kS32);
   Shape shape({2, 2});
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
-                          client_->MakeDeviceList({devices->devices()[0]}));
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data.data()}, shape, /*shard_shape=*/shape,
-                                  dtype, std::move(device_list0)));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                       client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data.data()}, shape, /*shard_shape=*/shape,
+                                   dtype, std::move(device_list0)));
 
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                               ExecuteOptionsWithFillStatus(),
-                                               /*devices=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, Shape({1, 2}), {{0, 1}, {2, 3}}, devices));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
-                          client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                       client_->MakeDeviceList({devices->devices()[1]}));
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[1], dtype,
                                                   shape, {{0, 1, 2, 3}},
                                                   std::move(device_list1)));
@@ -380,10 +378,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -391,12 +389,12 @@ module {
               std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
           .Await());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_exec->Execute(/*args=*/{}, ExecuteOptionsWithFillStatus(),
                            /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(
       AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
@@ -420,10 +418,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -434,16 +432,16 @@ module {
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
   Shape shard_shape({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
-                                  shard_shape, DType(DType::kS32), devices));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, DType(DType::kS32), devices));
 
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                               ExecuteOptionsWithFillStatus(),
-                                               /*devices=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 0);
 }
 
@@ -466,10 +464,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -481,15 +479,15 @@ module {
   std::vector<int> data1 = {2, 3};
   DType dtype(DType::kS32);
   Shape shard_shape({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
-                                  shard_shape, dtype, devices));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
 
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                               ExecuteOptionsWithFillStatus(),
-                                               /*devices=*/std::nullopt));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
@@ -521,10 +519,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -536,27 +534,23 @@ module {
   std::vector<int> data1 = {2, 3};
   DType dtype(DType::kS32);
   Shape shard_shape({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
-                                  shard_shape, dtype, devices));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
 
   ExecuteOptions options;
   options.fill_status = true;
   options.non_donatable_input_indices.insert(0);
-  TF_ASSERT_OK_AND_ASSIGN(
-      LoadedExecutable::ExecuteResult result,
-      loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
-                           /*devices=*/std::nullopt));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
+                                            /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
-  // Not using `CopyToHostBuffer` because some implementations don't support it.
   ASSERT_FALSE(input->IsDeleted());
-  EXPECT_THAT(input->DisassembleIntoSingleDeviceArrays(
-                  ArrayCopySemantics::kAlwaysCopy,
-                  SingleDeviceShardSemantics::kAddressableShards),
-              IsOk());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(input, dtype, shard_shape,
+                                                  {{0, 1}, {2, 3}}, devices));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, CopyArraysOpDonationOverride) {
@@ -566,15 +560,15 @@ TEST_F(IfrtIrLoadedExecutableTest, CopyArraysOpDonationOverride) {
 module {
   func.func @main(%arg0: !array {ifrt.donated}) -> !array
       attributes {ifrt.function} {
-    %0, %ctrl_0 = ifrt.CopyArrays(%arg0) : (!array) -> !array
+    %0, %ctrl_0 = ifrt.CopyArrays(%arg0) {donated=true} : (!array) -> !array
     return %0 : !array
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -586,27 +580,23 @@ module {
   std::vector<int> data1 = {2, 3};
   DType dtype(DType::kS32);
   Shape shard_shape({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
-                                  shard_shape, dtype, devices));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
 
   ExecuteOptions options;
   options.fill_status = true;
   options.non_donatable_input_indices.insert(0);
-  TF_ASSERT_OK_AND_ASSIGN(
-      LoadedExecutable::ExecuteResult result,
-      loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
-                           /*devices=*/std::nullopt));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
+                                            /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
-  // Not using `CopyToHostBuffer` because some implementations don't support it.
   ASSERT_FALSE(input->IsDeleted());
-  EXPECT_THAT(input->DisassembleIntoSingleDeviceArrays(
-                  ArrayCopySemantics::kAlwaysCopy,
-                  SingleDeviceShardSemantics::kAddressableShards),
-              IsOk());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(input, dtype, shard_shape,
+                                                  {{0, 1}, {2, 3}}, devices));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, RemapArraysOpDonationOverride) {
@@ -623,15 +613,16 @@ module {
     %0, %1, %ctrl_0 = ifrt.RemapArrays(%arg0)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<0, 1, [#ifrt.mapping<[1:2:1] to [0:1:1]>]>]
+      {donated=true}
       : (!array) -> (!array0, !array1)
     return %0, %1 : !array0, !array1
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -643,34 +634,31 @@ module {
   std::vector<int> data_shard1 = {2, 3};
   DType dtype(DType::kS32);
   Shape shard_shape({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data_shard0.data(), data_shard1.data()},
-                                  Shape({2, 2}), shard_shape, dtype, devices));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data_shard0.data(), data_shard1.data()},
+                                   Shape({2, 2}), shard_shape, dtype, devices));
 
   ExecuteOptions options;
   options.fill_status = true;
   options.non_donatable_input_indices.insert(0);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_exec->Execute(absl::MakeSpan(&input, 1), options, devices));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
-                          client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                       client_->MakeDeviceList({devices->devices()[0]}));
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[0], dtype,
                                                   shard_shape, {{0, 1}},
                                                   std::move(device_list0)));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
-                          client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                       client_->MakeDeviceList({devices->devices()[1]}));
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[1], dtype,
                                                   shard_shape, {{2, 3}},
                                                   std::move(device_list1)));
-  // Not using `CopyToHostBuffer` because some implementations don't support it.
   ASSERT_FALSE(input->IsDeleted());
-  EXPECT_THAT(input->DisassembleIntoSingleDeviceArrays(
-                  ArrayCopySemantics::kAlwaysCopy,
-                  SingleDeviceShardSemantics::kAddressableShards),
-              IsOk());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(input, dtype, shard_shape,
+                                                  {{0, 1}, {2, 3}}, devices));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest,
@@ -697,10 +685,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -712,15 +700,15 @@ module {
   std::vector<int> data1 = {2, 3};
   DType dtype(DType::kS32);
   Shape shard_shape({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
-                          client_->MakeDeviceList({devices->devices()[0]}));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                       client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_OK_AND_ASSIGN(
       ArrayRef input0,
       CreateArray({data0.data()},
                   /*shape=*/shard_shape, shard_shape, dtype, device_list0));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
-                          client_->MakeDeviceList({devices->devices()[1]}));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                       client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_OK_AND_ASSIGN(
       ArrayRef input1,
       CreateArray({data1.data()},
                   /*shape=*/shard_shape, shard_shape, dtype, device_list1));
@@ -729,15 +717,17 @@ module {
   options.fill_status = true;
   options.non_donatable_input_indices.insert(1);
   std::vector<ArrayRef> inputs = {input0, input1};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_exec->Execute(absl::MakeSpan(inputs), options, devices));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
   ASSERT_TRUE(input0->IsDeleted());
   ASSERT_FALSE(input1->IsDeleted());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(input1, dtype, shard_shape,
+                                                  {{2, 3}}, device_list1));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, DonateOutputOfCall) {
@@ -760,10 +750,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -775,15 +765,15 @@ module {
   std::vector<int> data_shard1 = {2, 3};
   DType dtype(DType::kS32);
   Shape shard_shape({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data_shard0.data(), data_shard1.data()},
-                                  Shape({2, 2}), shard_shape, dtype, devices));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data_shard0.data(), data_shard1.data()},
+                                   Shape({2, 2}), shard_shape, dtype, devices));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_exec->Execute(absl::MakeSpan(&input, 1),
                            ExecuteOptionsWithFillStatus(), devices));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shard_shape, {{2, 3}, {4, 5}}, devices));
@@ -808,10 +798,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -823,30 +813,30 @@ module {
   std::vector<int> data_shard1 = {2, 3};
   DType dtype(DType::kS32);
   Shape shard_shape({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data_shard0.data(), data_shard1.data()},
-                                  Shape({2, 2}), shard_shape, dtype, devices));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data_shard0.data(), data_shard1.data()},
+                                   Shape({2, 2}), shard_shape, dtype, devices));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_exec->Execute(absl::MakeSpan(&input, 1),
                            ExecuteOptionsWithFillStatus(), devices));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
-                          client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                       client_->MakeDeviceList({devices->devices()[0]}));
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[0], dtype,
                                                   shard_shape, {{0, 1}},
                                                   std::move(device_list0)));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
-                          client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                       client_->MakeDeviceList({devices->devices()[1]}));
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[1], dtype,
                                                   shard_shape, {{2, 3}},
                                                   std::move(device_list1)));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, LoadedExecBinding) {
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   std::string mhlo_source = R"(
 module {
   func.func @main(
@@ -858,8 +848,8 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mhlo_module,
-                          LoadFromSource(mhlo_source));
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mhlo_module,
+                       LoadFromSource(mhlo_source));
   xla::CompileOptions xla_options;
   {
     auto& exec_build_options = xla_options.executable_build_options;
@@ -872,7 +862,7 @@ module {
     }
     exec_build_options.set_device_assignment(device_assignment);
   }
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef child_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(std::make_unique<HloProgram>(*mhlo_module),
@@ -892,11 +882,11 @@ module {
   ifrt.LoadedExecutable @add_one on devices [0,1] : (!array) -> !array
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
   auto options = std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices));
   options->loaded_exec_binding["add_one"] = std::move(child_exec);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(std::make_unique<IfrtIRProgram>(*mlir_module),
@@ -907,16 +897,16 @@ module {
   std::vector<int> data1 = {2, 3};
   DType dtype(DType::kS32);
   Shape shard_shape({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
-                                  shard_shape, dtype, devices));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
 
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                               ExecuteOptionsWithFillStatus(),
-                                               /*devices=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
@@ -1707,10 +1697,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef executable,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -1721,15 +1711,15 @@ module {
   std::vector<int> data0 = {1};
   std::vector<int> data1 = {2};
   DType dtype(DType::kS32);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ArrayRef input,
       CreateArray({data0.data(), data1.data()}, /*shape=*/Shape({2}),
                   /*shard_shape=*/Shape({1}), dtype, devices));
 
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          executable->Execute(absl::MakeSpan(&input, 1),
-                                              ExecuteOptionsWithFillStatus(),
-                                              /*devices=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       executable->Execute(absl::MakeSpan(&input, 1),
+                                           ExecuteOptionsWithFillStatus(),
+                                           /*devices=*/std::nullopt));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -1751,10 +1741,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef executable,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -1765,15 +1755,15 @@ module {
   std::vector<int> data0 = {1};
   std::vector<int> data1 = {2};
   DType dtype(DType::kS32);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ArrayRef input,
       CreateArray({data0.data(), data1.data()}, /*shape=*/Shape({1, 2}),
                   /*shard_shape=*/Shape({1, 1}), dtype, devices));
 
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          executable->Execute(absl::MakeSpan(&input, 1),
-                                              ExecuteOptionsWithFillStatus(),
-                                              /*devices=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       executable->Execute(absl::MakeSpan(&input, 1),
+                                           ExecuteOptionsWithFillStatus(),
+                                           /*devices=*/std::nullopt));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -1802,10 +1792,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef executable,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -1818,16 +1808,16 @@ module {
   Shape in_shape({1, 2});
   Shape out_shape({2});
 
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
-                          client_->MakeDeviceList({devices->devices()[0]}));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                       client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_OK_AND_ASSIGN(
       ArrayRef input0,
       CreateArray({data.data()}, /*shape=*/in_shape,
                   /*shard_shape=*/in_shape, dtype, device_list0));
 
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
-                          client_->MakeDeviceList({devices->devices()[1]}));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                       client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_OK_AND_ASSIGN(
       ArrayRef input1,
       CreateArray({data.data()}, /*shape=*/in_shape,
                   /*shard_shape=*/in_shape, dtype, device_list1));
@@ -1837,17 +1827,21 @@ module {
   options.non_donatable_input_indices.insert(0);
   options.non_donatable_input_indices.insert(1);
   std::vector<ArrayRef> inputs = {input0, input1};
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          executable->Execute(absl::MakeSpan(inputs), options,
-                                              /*devices=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       executable->Execute(absl::MakeSpan(inputs), options,
+                                           /*devices=*/std::nullopt));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, out_shape, {{1, 2}}, device_list0));
   ASSERT_FALSE(input0->IsDeleted());
+  ASSERT_NO_FATAL_FAILURE(
+      AssertPerShardData<int>(input0, dtype, in_shape, {{1, 2}}, device_list0));
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[1], dtype, out_shape, {{1, 2}}, device_list1));
   ASSERT_FALSE(input1->IsDeleted());
+  ASSERT_NO_FATAL_FAILURE(
+      AssertPerShardData<int>(input1, dtype, in_shape, {{1, 2}}, device_list1));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, BitcastArraysCanBeUsedByCallOp) {
@@ -1873,10 +1867,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef executable,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -1888,16 +1882,16 @@ module {
   std::vector<int> data1 = {2, 3};
   Shape shard_shape({1, 2});
   DType dtype(DType::kS32);
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
-                                  shard_shape, dtype, devices));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
 
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          executable->Execute(absl::MakeSpan(&input, 1),
-                                              ExecuteOptionsWithFillStatus(),
-                                              /*devices=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       executable->Execute(absl::MakeSpan(&input, 1),
+                                           ExecuteOptionsWithFillStatus(),
+                                           /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
@@ -2012,10 +2006,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -2027,18 +2021,17 @@ module {
   std::vector<int> data1 = {2, 3};
   DType dtype(DType::kS32);
   Shape shard_shape({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ArrayRef input,
       CreateArray({data0.data(), data1.data()}, Shape({2, 2}), shard_shape,
                   dtype, devices, MemoryKind("pinned_host")));
   ExecuteOptions options;
   options.fill_status = true;
   options.non_donatable_input_indices.insert(0);
-  TF_ASSERT_OK_AND_ASSIGN(
-      LoadedExecutable::ExecuteResult result,
-      loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
-                           /*devices=*/std::nullopt));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
+                                            /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
 
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -2455,10 +2448,10 @@ module {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                          LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
@@ -2470,16 +2463,16 @@ module {
   std::vector<int> data1 = {2, 3};
   Shape shard_shape({1, 2});
   DType dtype(DType::kS32);
-  TF_ASSERT_OK_AND_ASSIGN(
-      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
-                                  shard_shape, dtype, devices));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
 
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                               ExecuteOptionsWithFillStatus(),
-                                               /*devices=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shard_shape, {{2, 3}, {4, 5}}, devices));

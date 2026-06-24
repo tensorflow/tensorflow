@@ -1300,8 +1300,9 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
   if (hlo.opcode() == HloOpcode::kGetTupleElement) {
     return PropagateTileToInputForGetTupleElementOp(hlo, output_tile);
   }
-  return absl::InvalidArgumentError(absl::StrCat(
-      "Output to input tile propagation not implemented for ", hlo.opcode()));
+  return absl::InvalidArgumentError(
+      absl::StrCat("Output to input tile propagation not implemented for ",
+                   HloOpcodeString(hlo.opcode())));
 }
 
 absl::StatusOr<Tiles> PropagateTileToOutput(const TilingSpace& tiling_space,

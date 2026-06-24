@@ -561,8 +561,4 @@ class TritonXLASqueezeDimsPass
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateTritonXLASqueezeDimsPass() {
-  return std::make_unique<TritonXLASqueezeDimsPass>();
-}
-
 }  // namespace mlir::triton::xla

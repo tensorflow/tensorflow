@@ -2378,7 +2378,7 @@ CpuCompiler::LoadAotCompilationResult(
 }
 
 absl::StatusOr<HloSchedule> CpuCompiler::CreateHloSchedule(
-    const HloModule& hlo_module) const {
+    HloModule& hlo_module) const {
   AliasInfo alias_info;
   auto scheduler =
       hlo_module.config().debug_options().xla_cpu_scheduler_type() ==

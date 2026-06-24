@@ -81,12 +81,17 @@ class PushBackSemantic {
 template <class Semantic>
 TfLiteStatus Prepare(TfLiteContext* ctx, TfLiteNode* node) {
   const auto semantic = Semantic(ctx, node);
+  TF_LITE_ENSURE(ctx, NumInputs(node) >= semantic.kItemInputIdx + 1);
 
   const TfLiteTensor* list_input;
   TF_LITE_ENSURE_OK(ctx, GetInputSafe(ctx, node, kListInputIdx, &list_input));
   TF_LITE_ENSURE_TYPES_EQ(ctx, list_input->type, kTfLiteVariant);
 
   TF_LITE_ENSURE_OK(ctx, semantic.CheckIndexInput());
+
+  const TfLiteTensor* item_input;
+  TF_LITE_ENSURE_OK(
+      ctx, GetInputSafe(ctx, node, semantic.kItemInputIdx, &item_input));
 
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(ctx, GetOutputSafe(ctx, node, kListOutputIdx, &output));
@@ -103,6 +108,7 @@ TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
   const TfLiteTensor* list_input;
   TF_LITE_ENSURE_OK(ctx, GetInputSafe(ctx, node, kListInputIdx, &list_input));
   TF_LITE_ENSURE_EQ(ctx, list_input->allocation_type, kTfLiteVariantObject);
+  TF_LITE_ENSURE(ctx, list_input->data.data != nullptr);
 
   TensorArray* input_arr = static_cast<TensorArray*>(
       static_cast<VariantData*>(list_input->data.data));
@@ -123,6 +129,8 @@ TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
       input_arr->CloneTo(static_cast<VariantData*>(output->data.data)));
   output->data.data = static_cast<VariantData*>(output_arr);
 
+  IntArrayUniquePtr item_dims = BuildTfLiteArray(*item_input->dims);
+  TF_LITE_ENSURE(ctx, item_dims != nullptr);
   // TODO(b/288302706) Skip copy when tensor is used only once.
   TensorUniquePtr item_copy;
   if (item_input->type == kTfLiteVariant) {
@@ -132,8 +140,8 @@ TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
     item_copy->bytes = item_input->bytes;
     item_copy->allocation_type = kTfLiteVariantObject;
   } else {
-    item_copy = BuildTfLiteTensor(
-        item_input->type, BuildTfLiteArray(*item_input->dims), kTfLiteDynamic);
+    item_copy = BuildTfLiteTensor(item_input->type, std::move(item_dims),
+                                  kTfLiteDynamic);
     TF_LITE_ENSURE(ctx, item_copy != nullptr);
     if (item_copy->bytes > 0) {
       TF_LITE_ENSURE(ctx, item_copy->data.data != nullptr);
@@ -142,7 +150,7 @@ TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(ctx, TfLiteTensorCopy(item_input, item_copy.get()));
 
   if (index >= output_arr->NumElements()) {
-    output_arr->Resize(index + 1);
+    TF_LITE_ENSURE(ctx, output_arr->Resize(index + 1));
   }
   TF_LITE_ENSURE(ctx, output_arr->Set(index, std::move(item_copy)));
   return kTfLiteOk;

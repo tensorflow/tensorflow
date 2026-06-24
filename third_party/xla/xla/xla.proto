@@ -1405,6 +1405,7 @@ message DebugOptions {
   optional bool xla_dump_hlo_as_proto = 113;
   optional bool xla_dump_hlo_as_dot = 114;
   optional bool xla_dump_hlo_as_url = 115;
+  optional bool xla_dump_hlo_as_riegeli = 498;
 
   // Dump HLO graphs as an HTML (DOT -> SVG inlined in HTML)
   optional bool xla_dump_hlo_as_html = 116;
@@ -1505,6 +1506,7 @@ message DebugOptions {
     DETECTION_MODE_NONE = 0;
     DETECTION_MODE_WARNING = 1;
     DETECTION_MODE_FAIL = 2;
+    DETECTION_MODE_DUMP = 3;
   }
   // Whether to enable checks for unstable reductions in computations
   // pre-optimizations.
@@ -1635,7 +1637,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 498
+  // Next id: 499
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

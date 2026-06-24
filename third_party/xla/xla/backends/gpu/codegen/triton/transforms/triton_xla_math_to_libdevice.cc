@@ -287,13 +287,4 @@ class TritonXLAMathToLibdevicePass
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateTritonXLAMathToLibdevicePass(
-    absl::string_view libdevice_path, absl::string_view triple) {
-  TritonXLAMathToLibdevicePassOptions options;
-  options.libdevice_path_ = libdevice_path;
-  options.triple_string_ = triple;
-
-  return std::make_unique<TritonXLAMathToLibdevicePass>(options);
-}
-
 }  // namespace mlir::triton::xla

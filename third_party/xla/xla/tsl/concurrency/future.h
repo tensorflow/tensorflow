@@ -83,11 +83,15 @@ struct IsFuture<Future<T>> : std::true_type {};
 
 // Returns a `Future` that will be successful if all `futures` complete
 // successfully, or return a first encountered error.
+//
+// If any of the futures is invalid, the returned future will be invalid.
 Future<> JoinFutures(absl::Span<const Future<>> futures);
 
 // Returns a `Future` that will be successful if all `futures` complete
 // successfully, or return a first encountered error. Copies values from
 // completed futures into the result vector.
+//
+// If any of the futures is invalid, the returned future will be invalid.
 template <typename T, std::enable_if_t<!std::is_void_v<T>>* = nullptr>
 Future<std::vector<T>> JoinFutures(absl::Span<const Future<T>> futures);
 
@@ -96,6 +100,8 @@ Future<std::vector<T>> JoinFutures(absl::Span<const Future<T>> futures);
 // completed futures into the result vector and leaves `futures` in move-from
 // state (for copyable `T` it still incurs a copy overhead, see `OnReady`
 // documentation for details).
+//
+// If any of the futures is invalid, the returned future will be invalid.
 template <typename T, std::enable_if_t<!std::is_void_v<T>>* = nullptr>
 Future<std::vector<T>> JoinFutures(absl::Span<Future<T>> futures);
 
@@ -124,6 +130,8 @@ Future<std::vector<T>> JoinFutures(absl::Span<Future<T>> futures);
 // If custom result type for `JoinFutures` is not defined (is void by default),
 // then the result type will be inferred as `std::tuple`. Otherwise the result
 // value of type `R` will be constructed from expanded tuple values.
+//
+// If any of the futures is invalid, the returned future will be invalid.
 template <typename R = void, typename... Futures,
           std::enable_if_t<std::conjunction_v<
               internal::IsFuture<std::decay_t<Futures>>...>>* = nullptr>
@@ -1581,6 +1589,9 @@ Future<std::vector<T>> JoinFutures(absl::Span<const Future<T>> futures) {
                                                           std::move(promise));
 
   for (size_t index = 0; index < futures.size(); ++index) {
+    if (!futures[index].IsValid()) [[unlikely]] {
+      return {};
+    }
     futures[index].OnReady([index, join](absl::StatusOr<T> value) {
       join->OnReady(index, std::move(value));
     });
@@ -1602,6 +1613,9 @@ Future<std::vector<T>> JoinFutures(absl::Span<Future<T>> futures) {
                                                           std::move(promise));
 
   for (size_t index = 0; index < futures.size(); ++index) {
+    if (!futures[index].IsValid()) [[unlikely]] {
+      return {};
+    }
     std::move(futures[index]).OnReady([index, join](absl::StatusOr<T> value) {
       join->OnReady(index, std::move(value));
     });
@@ -1728,6 +1742,10 @@ auto JoinFutures(Futures&&... futures) {
     auto [promise, future] = MakePromise<PromiseResult>();
     auto join = std::make_shared<internal::JoinStatic<PromiseResult, State>>(
         sizeof...(futures), std::move(promise));
+
+    if (((!futures.IsValid()) || ...)) [[unlikely]] {
+      return tsl::Future<PromiseResult>();
+    }
 
     using Is = std::make_index_sequence<sizeof...(Futures)>;
     join->OnReady(std::move(join), Is{}, std::forward<Futures>(futures)...);

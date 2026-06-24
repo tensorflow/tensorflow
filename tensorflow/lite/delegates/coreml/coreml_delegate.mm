@@ -290,7 +290,7 @@ TfLiteDelegate* CreateCoreMlDelegate(const TfLiteCoreMlDelegateOptions* options)
 namespace {
 
 bool IsNeuralEngineAvailable() {
-  if (@available(iOS 17.0, macOS 14.0, *)) {
+  if (@available(iOS 17.0, macOS 14.0, watchOS 10.0, tvOS 17.0, *)) {
     // This is a safe way to check if Neural Engine is available.
     NSArray<id<MLComputeDeviceProtocol>>* devices = MLAllComputeDevices();
     Class cls = [MLNeuralEngineComputeDevice class];

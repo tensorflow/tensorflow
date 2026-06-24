@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/gpu/dense_data_intermediate.pb.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/tools/split_proto/split_proto_cli.pb.h"
 #include "xla/tools/split_proto/split_proto_cli_lib.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
@@ -79,6 +80,52 @@ TEST(SplitProtoCliTest, PackAndUnpackGpuExecutableProtoRoundTrip) {
   // 3. Verify
   gpu::GpuExecutableProto final_proto =
       ParseTextProtoOrDie<gpu::GpuExecutableProto>(text_output);
+  EXPECT_THAT(final_proto, Partially(EqualsProto(initial_proto)));
+}
+
+TEST(SplitProtoCliTest, PackAndUnpackHloProtoRoundTrip) {
+  auto initial_proto = ParseTextProtoOrDie<HloProto>(R"pb(
+    hlo_module {
+      name: "some_module"
+      entry_computation_name: "entry"
+      computations {
+        name: "entry"
+        instructions {
+          name: "parameter.0"
+          opcode: "parameter"
+          shape {
+            element_type: F32
+            dimensions: [ 2, 3 ]
+          }
+        }
+      }
+    }
+  )pb");
+
+  std::string text_input;
+  ASSERT_TRUE(google::protobuf::TextFormat::PrintToString(initial_proto, &text_input));
+
+  // 1. Pack text input to split proto
+  std::string split_bytes;
+  PackOptions pack_opts;
+  pack_opts.proto_type = "xla.HloProto";
+  pack_opts.input_format = ProtoFormat::kText;
+
+  ASSERT_OK(Pack(riegeli::Maker<riegeli::StringReader>(text_input),
+                 riegeli::Maker<riegeli::StringWriter>(&split_bytes),
+                 pack_opts));
+
+  // 2. Unpack split proto to text output
+  std::string text_output;
+  UnpackOptions unpack_opts;
+  unpack_opts.output_format = ProtoFormat::kText;
+
+  ASSERT_OK(Unpack(riegeli::Maker<riegeli::StringReader>(split_bytes),
+                   riegeli::Maker<riegeli::StringWriter>(&text_output),
+                   unpack_opts));
+
+  // 3. Verify
+  HloProto final_proto = ParseTextProtoOrDie<HloProto>(text_output);
   EXPECT_THAT(final_proto, Partially(EqualsProto(initial_proto)));
 }
 

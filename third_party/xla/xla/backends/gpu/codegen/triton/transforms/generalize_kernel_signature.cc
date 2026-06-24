@@ -102,10 +102,12 @@ void StripParameterAddressSpaces(RewriterBase& rewriter,
   rewriter.eraseOp(func);
   rewriter.mergeBlocks(entry->getNextNode(), entry, converted_args);
 }
+}  // namespace
 
 #define GEN_PASS_DEF_GENERALIZEKERNELSIGNATUREPASS
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
+namespace {
 // Rewrite signatures of kernel functions to use generic data pointers and
 // cast them to global ones within the kernel.
 struct GeneralizeKernelSignaturePass
@@ -124,9 +126,5 @@ struct GeneralizeKernelSignaturePass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateGeneralizeKernelSignaturePass() {
-  return std::make_unique<GeneralizeKernelSignaturePass>();
-}
 
 }  // namespace mlir::triton::xla

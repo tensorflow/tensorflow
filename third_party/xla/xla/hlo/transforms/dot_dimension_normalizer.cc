@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/transforms/dot_dimension_normalizer.h"
 
+#include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -38,8 +40,21 @@ namespace xla {
 
 namespace {
 
-absl::StatusOr<HloInstruction*> NormalizeOperand(DotOperandDims* dims,
-                                                 HloInstruction* operand) {
+absl::Status NormalizeCategory(DotOperandDims* dims, ShapeTracker* tracker,
+                               DotOperandDims::Category category) {
+  std::optional<std::vector<int64_t>> permutation =
+      dims->PermuteToConsecutive(category);
+  if (permutation.has_value()) {
+    RETURN_IF_ERROR(tracker->AppendTranspose(*permutation));
+  }
+  RETURN_IF_ERROR(dims->CollapseCategory(category, false));
+  RETURN_IF_ERROR(tracker->AppendReshape(dims->shape().dimensions()));
+  return absl::OkStatus();
+}
+
+absl::StatusOr<HloInstruction*> NormalizeOperand(
+    DotOperandDims* dims, HloInstruction* operand,
+    bool normalize_noncontracting) {
   // Walk up the chain of shape transformations (transpose, reshape, bitcast).
   HloInstruction* current = operand;
   std::vector<HloInstruction*> chain;
@@ -57,32 +72,51 @@ absl::StatusOr<HloInstruction*> NormalizeOperand(DotOperandDims* dims,
     RETURN_IF_ERROR(tracker.AppendInstruction(*it));
   }
 
-  // Normalize.
-  auto permutation = dims->PermuteToConsecutive(DotOperandDims::kContracting);
-  if (permutation.has_value()) {
-    RETURN_IF_ERROR(tracker.AppendTranspose(*permutation));
-  }
+  // Normalize contracting dimensions.
+  RETURN_IF_ERROR(
+      NormalizeCategory(dims, &tracker, DotOperandDims::kContracting));
 
-  RETURN_IF_ERROR(dims->CollapseCategory(DotOperandDims::kContracting, false));
-  RETURN_IF_ERROR(tracker.AppendReshape(dims->shape().dimensions()));
+  // Normalize non-contracting dimensions if requested.
+  if (normalize_noncontracting &&
+      dims->Rank(DotOperandDims::kNonContracting) > 1) {
+    RETURN_IF_ERROR(
+        NormalizeCategory(dims, &tracker, DotOperandDims::kNonContracting));
+  }
 
   return tracker.ToInstructionChain(head);
 }
 
 class NormalizerVisitor : public DfsHloRewriteVisitor {
  public:
+  explicit NormalizerVisitor(bool normalize_noncontracting_dimensions)
+      : normalize_noncontracting_dimensions_(
+            normalize_noncontracting_dimensions) {}
+
   absl::Status HandleDot(HloInstruction* dot) override {
-    const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
-    if (dnums.lhs_contracting_dimensions_size() <= 1) {
+    ASSIGN_OR_RETURN(DotOperandDims lhs_dims,
+                     DotOperandDims::FromDotOperand(dot, 0));
+    ASSIGN_OR_RETURN(DotOperandDims rhs_dims,
+                     DotOperandDims::FromDotOperand(dot, 1));
+
+    bool contracting_normalization_needed =
+        lhs_dims.Rank(DotOperandDims::kContracting) > 1;
+
+    bool non_contracting_normalization_needed =
+        normalize_noncontracting_dimensions_ &&
+        (lhs_dims.Rank(DotOperandDims::kNonContracting) > 1 ||
+         rhs_dims.Rank(DotOperandDims::kNonContracting) > 1);
+
+    if (!contracting_normalization_needed &&
+        !non_contracting_normalization_needed) {
       return absl::OkStatus();
     }
 
-    ASSIGN_OR_RETURN(auto lhs_dims, DotOperandDims::FromDotOperand(dot, 0));
-    ASSIGN_OR_RETURN(auto rhs_dims, DotOperandDims::FromDotOperand(dot, 1));
     ASSIGN_OR_RETURN(HloInstruction * normalized_lhs,
-                     NormalizeOperand(&lhs_dims, dot->mutable_operand(0)));
+                     NormalizeOperand(&lhs_dims, dot->mutable_operand(0),
+                                      normalize_noncontracting_dimensions_));
     ASSIGN_OR_RETURN(HloInstruction * normalized_rhs,
-                     NormalizeOperand(&rhs_dims, dot->mutable_operand(1)));
+                     NormalizeOperand(&rhs_dims, dot->mutable_operand(1),
+                                      normalize_noncontracting_dimensions_));
     ASSIGN_OR_RETURN(
         DotDimensionNumbers new_dnums,
         DotOperandDims::CreateDotDimensionNumbers(lhs_dims, rhs_dims));
@@ -93,9 +127,21 @@ class NormalizerVisitor : public DfsHloRewriteVisitor {
         HloInstruction::CreateDot(new_dot_shape, normalized_lhs, normalized_rhs,
                                   new_dnums, dot->precision_config()),
         &dot->metadata());
+
+    if (new_dot->shape() != dot->shape()) {
+      HloInstruction* reshape = dot->parent()->AddInstruction(
+          HloInstruction::CreateReshape(dot->shape(), new_dot),
+          &dot->metadata());
+      dot->SetupDerivedInstruction(new_dot);
+      dot->SetupDerivedInstruction(reshape);
+      return ReplaceInstruction(dot, reshape);
+    }
     dot->SetupDerivedInstruction(new_dot);
     return ReplaceInstruction(dot, new_dot);
   }
+
+ private:
+  bool normalize_noncontracting_dimensions_;
 };
 
 }  // namespace
@@ -103,7 +149,8 @@ class NormalizerVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> DotDimensionNormalizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  return NormalizerVisitor().RunOnModule(module, execution_threads);
+  return NormalizerVisitor(normalize_noncontracting_dimensions_)
+      .RunOnModule(module, execution_threads);
 }
 
 }  // namespace xla
