@@ -781,7 +781,9 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     type_spec_registry.register("tf.RedefineSpec")(RedefineSpecReloaded)
   
     # Confirm it re-registered successfully
-    self.assertEqual(type_spec_registry.lookup("tf.RedefineSpec"), RedefineSpecReloaded)
+    self.assertEqual(
+      type_spec_registry.lookup("tf.RedefineSpec"), RedefineSpecReloaded
+    )
     
   def testRegistryNameErrors(self):
     for bad_name in ["foo", "", "hello world"]:
