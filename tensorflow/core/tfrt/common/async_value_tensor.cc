@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
@@ -34,12 +33,8 @@ constexpr uintptr_t kTag = 0x1ULL;
 
 /*static*/ AsyncValueTensor* AsyncValueTensor::FromTensor(
     const Tensor* tensor) {
-  if (tensor == nullptr) return nullptr;
-  const TensorBuffer* buf = DMAHelper::buffer(tensor);
-  if (buf == nullptr || !buf->AllocatesOpaqueHandle()) {
-    return nullptr;
-  }
-  AsyncValueTensor* av_tensor = FromOpaquePointer(buf->data());
+  AsyncValueTensor* av_tensor =
+      FromOpaquePointer(const_cast<char*>(tensor->tensor_data().data()));
   return av_tensor;
 }
 
