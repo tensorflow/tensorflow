@@ -2836,6 +2836,14 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   RecordGpuCompilerStacktrace();
 
+  const DebugOptions& debug_opts = module->config().debug_options();
+  XLA_SCOPED_LOGGING_TIMER_IF(
+      absl::StrCat("GpuCompiler::RunBackend for ", module->name()),
+      debug_opts.xla_enable_scoped_logging_timers());
+  std::string slow_compilation_msg =
+      absl::StrCat("Compiling module ", module->name(), " for GPU");
+  auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
+
   BinaryMap dnn_compiled_graphs;
   if (stream_exec) {
     se::dnn::DnnSupport* dnn_support = stream_exec->AsDnn();
@@ -2844,7 +2852,6 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                                            &dnn_compiled_graphs));
   }
 
-  const DebugOptions& debug_opts = module->config().debug_options();
   ASSIGN_OR_RETURN(GpuTopology gpu_topology,
                    InferGpuTopology(module->config(), stream_exec, options,
                                     debug_opts, platform_id_));
@@ -2855,13 +2862,6 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
         gpu_topology.gpu_target_config().ToProto(), &textproto);
     DumpToFileInDirOrStdout(*module, "", "gpu_target_config.pbtxt", textproto);
   }
-
-  XLA_SCOPED_LOGGING_TIMER_IF(
-      absl::StrCat("GpuCompiler::RunBackend for ", module->name()),
-      debug_opts.xla_enable_scoped_logging_timers());
-  std::string slow_compilation_msg =
-      absl::StrCat("Compiling module ", module->name(), " for GPU");
-  auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
 
   llvm::LLVMContext llvm_context;
   const se::DeviceDescription& gpu_device_info =
