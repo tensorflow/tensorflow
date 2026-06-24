@@ -15,11 +15,19 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_LIB_PROFILER_INTERFACE_H_
 #define TENSORFLOW_TSL_PROFILER_LIB_PROFILER_INTERFACE_H_
 
+#include <any>
+#include <cstddef>
+
 #include "xla/tsl/platform/status.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
 namespace profiler {
+
+struct ConsumeResult {
+  std::any data;
+  size_t estimated_size_bytes = 0;
+};
 
 // Interface for tensorflow profiler plugins.
 //
