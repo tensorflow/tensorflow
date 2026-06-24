@@ -16,6 +16,13 @@
 
 set -u  # Check for undefined variables
 
+# Track temporary files so they are removed on exit, including on interrupt.
+LOADED_LIBS_FILE=""
+cleanup() {
+  [ -n "${LOADED_LIBS_FILE:-}" ] && rm -f "$LOADED_LIBS_FILE"
+}
+trap cleanup EXIT INT TERM
+
 die() {
   # Print a message and exit with code 1.
   #
@@ -74,7 +81,7 @@ esac
 
 echo "Collecting system information..."
 
-PYTHON_BIN_PATH="$(which python || which python3 || die "Cannot find Python binary")"
+PYTHON_BIN_PATH="$(command -v python || command -v python3 || die "Cannot find Python binary")"
 
 # ----------------------------------------------------------------------------
 # Helpers
@@ -140,6 +147,9 @@ print_header () {
 echo > "$OUTPUT_FILE"
 
 {
+  # ==========================================================================
+  # Section 1: host, Python, and OS environment
+  # ==========================================================================
   print_header "report metadata"
   echo "tf_env_collect.sh report"
   echo "generated: $(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date)"
@@ -196,7 +206,7 @@ EOF
   fi
 
   print_header 'c++ compiler'
-  if which c++ >/dev/null 2>&1; then
+  if have_cmd c++; then
     c++ --version 2>&1
   else
     echo "Not found"
@@ -216,6 +226,9 @@ else:
     print("Not running inside a virtual environment.")
 EOF
 
+  # ==========================================================================
+  # Section 2: TensorFlow installation and runtime
+  # ==========================================================================
   print_header 'tensorflow package conflicts'
   # Multiple TensorFlow distributions in the same environment frequently cause
   # confusing import errors; surface them so triage can spot the conflict.
@@ -277,22 +290,27 @@ EOF
     else
       echo "libcudnn not found"
     fi
+    # Removed eagerly here; the EXIT trap also cleans up if we exit early.
     rm -f "$LOADED_LIBS_FILE"
+    LOADED_LIBS_FILE=""
   fi
 
+  # ==========================================================================
+  # Section 3: accelerators and build / hermetic configuration
+  # ==========================================================================
   print_header env
 
   # Note: the usage of "set -u" above would cause these to error if the
   #   basic form [[ -z $LD_LIBRARY_PATH ]] was used.
-  if [ -z ${LD_LIBRARY_PATH+x} ]; then
-    echo "LD_LIBRARY_PATH is unset";
+  if [ -z "${LD_LIBRARY_PATH+x}" ]; then
+    echo "LD_LIBRARY_PATH is unset"
   else
-    echo LD_LIBRARY_PATH ${LD_LIBRARY_PATH} ;
+    echo "LD_LIBRARY_PATH ${LD_LIBRARY_PATH}"
   fi
-  if [ -z ${DYLD_LIBRARY_PATH+x} ]; then
-    echo "DYLD_LIBRARY_PATH is unset";
+  if [ -z "${DYLD_LIBRARY_PATH+x}" ]; then
+    echo "DYLD_LIBRARY_PATH is unset"
   else
-    echo DYLD_LIBRARY_PATH ${DYLD_LIBRARY_PATH} ;
+    echo "DYLD_LIBRARY_PATH ${DYLD_LIBRARY_PATH}"
   fi
 
   print_header 'build / hermetic accelerator config'
