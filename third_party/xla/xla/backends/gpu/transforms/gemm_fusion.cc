@@ -1085,7 +1085,8 @@ absl::StatusOr<bool> FusionSearchSpace::SinkBitcast(HloInstruction* instr) {
 }
 
 // Checks if the fusion can be tiled by SymbolicTileAnalysis.
-bool CanTile(mlir::MLIRContext& mlir_context, const HloFusionAdaptor& fusion) {
+FusionDecision CanTile(mlir::MLIRContext& mlir_context,
+                       const HloFusionAdaptor& fusion) {
   if (fusion.GetRoots()[0]
           .instruction()
           .GetModule()
@@ -1095,37 +1096,39 @@ bool CanTile(mlir::MLIRContext& mlir_context, const HloFusionAdaptor& fusion) {
     namespace ge = ::xla::gpu::experimental;
     auto ts = ge::TilingSpace::Create(fusion, &mlir_context);
     if (!ts.ok()) {
-      VLOG(1) << "Failed to create tiling space: " << ts.status().message();
-      return false;
+      return FusionDecision::Forbid(absl::StrCat(
+          "Failed to create tiling space: ", ts.status().message()));
     }
-    auto tiled_computation_or =
+    auto tiled_computation =
         ge::TiledHloComputation::Tile(fusion, std::move(ts.value()));
-    if (!tiled_computation_or.ok()) {
-      VLOG(1) << "Fusion is not tileable with experimental tiling: "
-              << tiled_computation_or.status().message();
-      return false;
+    if (!tiled_computation.ok()) {
+      return FusionDecision::Forbid(
+          absl::StrCat("Fusion is not tileable with experimental tiling: ",
+                       tiled_computation.status().message()));
     }
-    return true;
+    return FusionDecision::Allow();
   }
-  auto tile_or_error =
+  auto fusion_analysis =
       SymbolicTileAnalysis::AnalyzeFusion(fusion, &mlir_context);
-  if (std::holds_alternative<FusionDecision>(tile_or_error)) {
-    VLOG(3) << "Cannot tile: "
-            << std::get<FusionDecision>(tile_or_error).Explain();
-    return false;
+  if (std::holds_alternative<FusionDecision>(fusion_analysis)) {
+    return std::get<FusionDecision>(fusion_analysis);
   }
-  return true;
+  return FusionDecision::Allow();
 }
 
 // Returns true if fusing `producer` into `consumer` is possible and supported.
-bool CanFuse(mlir::MLIRContext& mlir_context, HloInstruction* producer,
-             HloInstruction* consumer) {
+FusionDecision CanFuse(mlir::MLIRContext& mlir_context,
+                       HloInstruction* producer, HloInstruction* consumer) {
   // If the candidate is not a user of the fusion, we have already fused the
   // instruction.
-  return consumer->IsUserOf(producer) &&
-         // Parameter means we have reached the end of the search space.
-         producer->opcode() != HloOpcode::kParameter &&
-         CanTile(mlir_context,
+  if (!consumer->IsUserOf(producer)) {
+    return FusionDecision::Forbid("Consumer is not a user of producer.");
+  }
+  // Parameter means we have reached the end of the search space.
+  if (HloPredicateIsOp<HloOpcode::kParameter>(producer)) {
+    return FusionDecision::Forbid("Cannot fuse parameter.");
+  }
+  return CanTile(mlir_context,
                  *HloFusionAdaptor::ForProducerConsumer(producer, consumer));
 }
 
@@ -1143,8 +1146,9 @@ void FuseOperandsBFS(mlir::MLIRContext& mlir_context,
     HloInstruction* candidate = queue.front();
     queue.pop();
 
-    if (!CanFuse(mlir_context, candidate, fusion)) {
-      VLOG(5) << "Cannot fuse operand: " << candidate->ToString();
+    if (FusionDecision decision = CanFuse(mlir_context, candidate, fusion);
+        !decision.IsAllowed()) {
+      VLOG(5) << "Cannot fuse operand: " << decision.Explain();
       continue;
     }
     VLOG(5) << "Fusing operand: " << candidate->ToString();
@@ -1238,8 +1242,9 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
     // Search space was created so that the result only ever has a single user.
     CHECK_EQ(fusion->users().size(), 1);
     auto user = fusion->users()[0];
-    if (!CanFuse(mlir_context, fusion, user)) {
-      VLOG(5) << "Cannot fuse user: " << user->ToString();
+    if (FusionDecision decision = CanFuse(mlir_context, fusion, user);
+        !decision.IsAllowed()) {
+      VLOG(5) << "Cannot fuse user: " << decision.Explain();
       break;
     }
     VLOG(5) << "Fusing user into epilogue: " << user->ToString();
