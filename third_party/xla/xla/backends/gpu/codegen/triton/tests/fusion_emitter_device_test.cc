@@ -2640,6 +2640,24 @@ ENTRY e {
       std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(TritonEmitterTest, LoopTransposeFusionSpmdGenerated) {
+  const std::string kHloText = R"(
+HloModule loop_transpose_fusion_module
+
+fused_computation {
+  param_0.1 = f32[160,4,128]{2,0,1} parameter(0)
+  bitcast.3.1 = f32[4,160,128]{2,1,0} bitcast(param_0.1)
+  ROOT transpose.1.1 = f32[160,4,128]{2,1,0} transpose(bitcast.3.1), dimensions={1,0,2}, frontend_attributes={is_spmd_generated="true"}
+}
+
+ENTRY entry_computation {
+  param_0.2 = f32[160,4,128]{2,0,1} parameter(0)
+  ROOT fusion = f32[160,4,128]{2,1,0} fusion(param_0.2), kind=kLoop, calls=fused_computation, frontend_attributes={is_spmd_generated="true"}
+})";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
