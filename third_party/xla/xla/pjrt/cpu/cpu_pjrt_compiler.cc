@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"

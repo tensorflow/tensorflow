@@ -345,6 +345,7 @@ cc_library(
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/pjrt/proto:topology_description_proto_cc",
         "//xla/stream_executor/platform:initialize",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
