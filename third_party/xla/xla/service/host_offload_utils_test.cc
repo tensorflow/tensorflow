@@ -433,6 +433,59 @@ ENTRY main {
   EXPECT_EQ(got, expected);
 }
 
+TEST_F(HostOffloadUtilsTest, SortTupleSuccessorsAndPredecessorsTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    compare {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      p2 = f32[] parameter(2)
+      p3 = f32[] parameter(3)
+      ROOT cmp = pred[] compare(p0, p1), direction=LT
+    }
+    ENTRY main {
+      main_p0 = f32[10] parameter(0)
+      main_p1 = f32[10] parameter(1)
+      sort = (f32[10], f32[10]) sort(main_p0, main_p1), dimensions={0}, to_apply=compare
+      gte0 = f32[10] get-tuple-element(sort), index=0
+      ROOT gte1 = f32[10] get-tuple-element(sort), index=1
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* main_p0 = FindInstruction(module.get(), "main_p0");
+  ASSERT_NE(main_p0, nullptr);
+  HloInstruction* main_p1 = FindInstruction(module.get(), "main_p1");
+  ASSERT_NE(main_p1, nullptr);
+  HloInstruction* sort = FindInstruction(module.get(), "sort");
+  ASSERT_NE(sort, nullptr);
+  HloInstruction* gte0 = FindInstruction(module.get(), "gte0");
+  ASSERT_NE(gte0, nullptr);
+  HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
+  ASSERT_NE(gte1, nullptr);
+
+  // Successor of main_p0 (operand 0 of sort) is sort with shape_index {0}.
+  ASSERT_OK_AND_ASSIGN(std::vector<InstructionAndShapeIndex> succ_p0,
+                       GetSuccessors(InstructionAndShapeIndex(main_p0, {})));
+  std::vector<InstructionAndShapeIndex> expected_succ_p0 = {
+      InstructionAndShapeIndex(sort, {0})};
+  EXPECT_EQ(succ_p0, expected_succ_p0);
+
+  // Successor of {sort, {0}} is gte0 with shape_index {}, not gte1.
+  ASSERT_OK_AND_ASSIGN(std::vector<InstructionAndShapeIndex> succ_sort0,
+                       GetSuccessors(InstructionAndShapeIndex(sort, {0})));
+  std::vector<InstructionAndShapeIndex> expected_succ_sort0 = {
+      InstructionAndShapeIndex(gte0, {})};
+  EXPECT_EQ(succ_sort0, expected_succ_sort0);
+
+  // Predecessor of {sort, {1}} is main_p1 with shape_index {}.
+  std::vector<InstructionAndShapeIndex> pred_sort1 =
+      GetPredecessors(InstructionAndShapeIndex(sort, {1}));
+  std::vector<InstructionAndShapeIndex> expected_pred_sort1 = {
+      InstructionAndShapeIndex(main_p1, {})};
+  EXPECT_EQ(pred_sort1, expected_pred_sort1);
+}
+
 }  // namespace
 }  // namespace host_offload_utils
 }  // namespace xla
