@@ -304,9 +304,9 @@ EOF
              CUDA_HOME CUDA_PATH CUDA_TOOLKIT_PATH \
              ROCM_PATH HIP_PATH \
              XLA_FLAGS TF_XLA_FLAGS TPU_NAME; do
-    eval "marker=\${$var+set}"
+    eval "marker=\${$var+set} val=\"\$$var\""
     if [ "${marker:-}" = "set" ]; then
-      eval "echo \"$var=\$$var\""
+      echo "$var=$val"
     else
       echo "$var is unset"
     fi
