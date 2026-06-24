@@ -85,7 +85,16 @@ FindAndWrapOffloadedComputations(
   // only materialize it on TC. This simplifies the dependency chain.
   for (HloInstruction* instr : computation.instructions()) {
     if (instr->IsConstant() && should_offload(instr)) {
-      RETURN_IF_ERROR(clear_backend_config_device_type(instr));
+      bool used_on_tc = false;
+      for (const HloInstruction* user : instr->users()) {
+        if (!should_offload(user)) {
+          used_on_tc = true;
+          break;
+        }
+      }
+      if (used_on_tc) {
+        RETURN_IF_ERROR(clear_backend_config_device_type(instr));
+      }
     }
   }
 

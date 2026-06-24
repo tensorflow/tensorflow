@@ -259,7 +259,8 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
       schedule.sequence(entry_computation);
   ASSIGN_OR_RETURN(
       std::unique_ptr<HloLiveRange> hlo_live_range,
-      HloLiveRange::Run(schedule, alias_analysis, entry_computation));
+      HloLiveRange::Run(schedule, alias_analysis, entry_computation,
+                        /*module_scoped_analysis=*/true));
   RETURN_IF_ERROR(heap.RunComputation(*entry_computation, instruction_sequence,
                                       alias_analysis, alias_info,
                                       hlo_live_range.get()));
