@@ -69,8 +69,8 @@ def register(name):
           raise ValueError("Name %s has already been registered for class %s.%s." %
                            (name, existing_cls.__module__, existing_cls.__name__))
   
-      if cls in _TYPE_SPEC_TO_NAME:
-        raise ValueError("Class %s.%s has already been registered with name %s." %
+    if cls in _TYPE_SPEC_TO_NAME:
+      raise ValueError("Class %s.%s has already been registered with name %s." %
                          (cls.__module__, cls.__name__, _TYPE_SPEC_TO_NAME[cls]))
 
     _TYPE_SPEC_TO_NAME[cls] = name
