@@ -379,6 +379,18 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
    );
  
    let results = (outs Variadic<HLO_CustomCallValue>);
+diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/dialect/Version.cpp
+--- stablehlo/stablehlo/dialect/Version.cpp
++++ stablehlo/stablehlo/dialect/Version.cpp
+@@ -85,7 +85,7 @@
+     case CompatibilityRequirement::WEEK_4:
+       return Version(1, 15, 0);  // WEEK_4 ANCHOR: DO NOT MODIFY
+     case CompatibilityRequirement::WEEK_12:
+-      return Version(1, 13, 7);  // WEEK_12 ANCHOR: DO NOT MODIFY
++      return Version(1, 14, 0);  // WEEK_12 ANCHOR: DO NOT MODIFY
+     case CompatibilityRequirement::MAX:
+       return Version::getMinimumVersion();
+   }
 diff --ruN a/stablehlo/stablehlo/dialect/Version.h b/stablehlo/stablehlo/dialect/Version.h
 --- stablehlo/stablehlo/dialect/Version.h
 +++ stablehlo/stablehlo/dialect/Version.h
