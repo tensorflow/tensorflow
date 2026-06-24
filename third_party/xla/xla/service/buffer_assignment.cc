@@ -169,8 +169,23 @@ std::optional<bool> ComparePosition(
     return post_order_position->at(value1->instruction()) <
            post_order_position->at(value2->instruction());
   };
-  const HloValue* a_min = *absl::c_min_element(a->values(), compare);
-  const HloValue* b_min = *absl::c_min_element(b->values(), compare);
+  std::vector<const HloValue*> a_values;
+  for (const HloValue* v : a->values()) {
+    if (post_order_position->contains(v->instruction())) {
+      a_values.push_back(v);
+    }
+  }
+  std::vector<const HloValue*> b_values;
+  for (const HloValue* v : b->values()) {
+    if (post_order_position->contains(v->instruction())) {
+      b_values.push_back(v);
+    }
+  }
+  if (a_values.empty() || b_values.empty()) {
+    return std::nullopt;
+  }
+  const HloValue* a_min = *absl::c_min_element(a_values, compare);
+  const HloValue* b_min = *absl::c_min_element(b_values, compare);
   int a_position = post_order_position->at(a_min->instruction());
   int b_position = post_order_position->at(b_min->instruction());
   if (a_position != b_position) {
@@ -1911,27 +1926,27 @@ bool BufferAssigner::DelayTemporaryBufferAssignment(
   bool all_computations_have_sequential_order = true;
   for (const HloValue* hlo_value : hlo_buffer->values()) {
     HloComputation* computation = hlo_value->instruction()->parent();
+    if (buffers_to_assign_sequentially != nullptr &&
+        !buffers_to_assign_sequentially->contains(computation)) {
+      continue;
+    }
     const bool has_sequential_order =
         assignment->hlo_ordering().SequentialOrder(*computation) != nullptr;
     all_computations_have_sequential_order &= has_sequential_order;
   }
 
   if (all_computations_have_sequential_order) {
+    bool delayed = false;
     for (const HloValue* hlo_value : hlo_buffer->values()) {
       HloComputation* computation = hlo_value->instruction()->parent();
-      // There is a sequential instruction ordering, so we delay assignment
-      // of temp buffers until after the loop. We do this right before we
-      // decide to create a new allocation, to ensure we've exhausted all
-      // the buffer re-use cases above.
-      //
-      // Entry parameters and thread local buffers were already handled
-      // earlier in this loop iteration.  See
-      // BufferAllocation::IsPreallocatedTempBuffer for the definition of
-      // temp buffers.
-      (*buffers_to_assign_sequentially)[computation].insert(hlo_value);
-      VLOG(3) << "Delaying assignment of temp buffer: " << *hlo_value;
+      if (buffers_to_assign_sequentially != nullptr &&
+          buffers_to_assign_sequentially->contains(computation)) {
+        (*buffers_to_assign_sequentially)[computation].insert(hlo_value);
+        VLOG(3) << "Delaying assignment of temp buffer: " << *hlo_value;
+        delayed = true;
+      }
     }
-    return true;
+    return delayed;
   }
   return false;
 }
@@ -2023,8 +2038,11 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
       continue;
     }
     TF_RET_CHECK(!buffer.values().empty());
-    const HloComputation* comp = buffer.values()[0]->instruction()->parent();
-    if (computations_set.contains(comp)) {
+    bool contains_target_computation =
+        absl::c_any_of(buffer.values(), [&](const HloValue* value) {
+          return computations_set.contains(value->instruction()->parent());
+        });
+    if (contains_target_computation) {
       sorted_buffers.push_back(&buffer);
     }
   }
@@ -2962,9 +2980,10 @@ BufferAssigner::CreateAssignment(
     }
   }
 
-  ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
-                   HloLiveRange::Run(schedule, *alias_analysis,
-                                     module->entry_computation(), true));
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<HloLiveRange> hlo_live_range,
+      HloLiveRange::Run(schedule, *alias_analysis, module->entry_computation(),
+                        true, opts_.execution_threads));
 
   VLOG(1) << "Assigning buffers to module " << module->name();
   XLA_VLOG_LINES(3, module->ToString());
@@ -2990,6 +3009,21 @@ BufferAssigner::CreateAssignment(
   std::vector<const HloComputation*> global_computations;
   RETURN_IF_ERROR(GatherComputationsByAllocationType(
       module, &thread_local_computations, &global_computations));
+
+  if (!opts_.execution_threads.empty()) {
+    auto filter_by_thread =
+        [&](std::vector<const HloComputation*>* computations) {
+          computations->erase(
+              std::remove_if(computations->begin(), computations->end(),
+                             [&](const HloComputation* computation) {
+                               return !opts_.execution_threads.contains(
+                                   computation->execution_thread());
+                             }),
+              computations->end());
+        };
+    filter_by_thread(&thread_local_computations);
+    filter_by_thread(&global_computations);
+  }
 
   // First assign buffers for global computations. Temporary buffers for
   // sequential computations are collected in
