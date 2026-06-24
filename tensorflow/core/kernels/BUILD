@@ -1606,9 +1606,10 @@ tf_kernel_library(
     prefix = "ragged_fill_empty_rows_op",
     deps = [
         "fill_empty_rows_functor",
+        ":gpu_prim_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-    ] + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
+    ] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
     ]) + if_cuda([
         "//tensorflow/core/util:cuda_solvers",
@@ -8198,6 +8199,24 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "strided_slice_op_define_grad",
+    srcs = ["strided_slice_op_define_grad.cc"],
+    deps = [":strided_slice_op"],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "tile_functor_sycl",
+    srcs = ["tile_functor_sycl.cc"],
+    deps = [
+        ":loose_headers",
+        ":ops_util",
+        "//tensorflow/core/framework:tensor",
+    ],
+    alwayslink = True,
+)
+
 # Deleted deps
 # [
 
@@ -8424,5 +8443,17 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "eigen_cuboid_convolutions_test",
+    srcs = ["eigen_cuboid_convolutions_test.cc"],
+    deps = [
+        ":eigen_helpers_no_mkl",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test_benchmark",
+        "@com_google_absl//absl/strings",
     ],
 )
