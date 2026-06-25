@@ -1,3 +1,22 @@
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir b/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+@@ -815,7 +815,6 @@
+ // -----
+ 
+ func.func @pad_interior(%arg0: tensor<12x4xui32>, %arg1: tensor<ui32>) -> tensor<29x15xui32> {
+-  %0 = arith.constant dense<0> : tensor<ui32>
+   %1 = "stablehlo.pad"(%arg0, %arg1) {
+     edge_padding_high = array<i64: 2, 3>,
+     edge_padding_low = array<i64: 4, 5>,
+@@ -836,7 +835,6 @@
+ // -----
+ 
+ func.func @pad_interior_negative(%arg0: tensor<12x4xui32>, %arg1: tensor<ui32>) -> tensor<25x9xui32> {
+-  %0 = arith.constant dense<0> : tensor<ui32>
+   %1 = "stablehlo.pad"(%arg0, %arg1) {
+     edge_padding_high = array<i64: -2, 3>,
+     edge_padding_low = array<i64: 4, -1>,
 diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir b/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
 --- stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
 +++ stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
@@ -2958,6 +2977,18 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/
  }
  
  // -----
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
+@@ -183,7 +183,7 @@
+   %cst_3 = arith.constant dense<[1, 2, 3, 4]> : tensor<4xi32>
+   %cst_4 = arith.constant dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>
+   %cst_5 = arith.constant dense<[[3, 2], [1, 4]]> : tensor<2x2xi32>
+-  %cst_6 = arith.constant dense<[[1, 2], [4, 8]]> : tensor<2x2xui32>
++  %cst_6 = stablehlo.constant dense<[[1, 2], [4, 8]]> : tensor<2x2xui32>
+   %cst_18 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf4E2M1FN>
+   %cst_19 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf6E2M3FN>
+   %cst_20 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf6E3M2FN>
 diff --ruN a/stablehlo/stablehlo/tests/replica_groups_mesh_axes.mlir b/stablehlo/stablehlo/tests/replica_groups_mesh_axes.mlir
 --- stablehlo/stablehlo/tests/replica_groups_mesh_axes.mlir
 +++ stablehlo/stablehlo/tests/replica_groups_mesh_axes.mlir
@@ -3013,6 +3044,19 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.ml
 +  %result = stablehlo.xor %operand_1, %operand_2 : tensor<4xi1>
 +  return %result : tensor<4xi1>
 +}
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
+@@ -20,7 +20,8 @@
+   // CHECK: %[[CST:.*]] = arith.constant dense<[0, 1, -1]> : tensor<3xi8>
+   // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %[[CST]] : tensor<3xi8>
+   // CHECK: return %[[ADD]] : tensor<3xi8>
+-  %cst = arith.constant dense<[0, 1, 255]> : tensor<3xui8>
++  %cst_signless = arith.constant dense<[0, 1, 255]> : tensor<3xi8>
++  %cst = builtin.unrealized_conversion_cast %cst_signless : tensor<3xi8> to tensor<3xui8>
+   %0 = stablehlo.add %arg0, %cst : tensor<3xui8>
+   return %0 : tensor<3xui8>
+ }
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
