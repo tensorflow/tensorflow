@@ -91,4 +91,26 @@ message CompilationLogEntry {
   string hlo_module_name = 8;
   // Metadata tags for identifying/filtering jobs
   repeated TagMetric tag = 9;
+  // Build information about the compiler binary.
+  CompilerBuildInfo compiler_build_info = 10;
+}
+
+// Build information about the compiler binary.
+message CompilerBuildInfo {
+  // Changelist number of the compiler binary.
+  int64 compiler_changelist = 1;
+  // Build label of the compiler binary.
+  string compiler_build_label = 2;
+  // Baseline changelist of the branch used to build the compiler, or the same
+  // as compiler_changelist if not built from a branch.
+  int64 baseline_changelist = 3;
+
+  // Status of the build workspace at compile time.
+  enum ClientStatus {
+    CLIENT_STATUS_UNKNOWN = 0;
+    CLIENT_STATUS_MINT = 1;
+    CLIENT_STATUS_MODIFIED = 2;
+  }
+  // Whether the build client was mint (unmodified) or modified.
+  ClientStatus client_status = 4;
 }
