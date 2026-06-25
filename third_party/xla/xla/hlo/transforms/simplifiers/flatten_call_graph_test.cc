@@ -116,40 +116,44 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
   //    c
   //
   // Calls are made via kCall, kWhile, and kMap instructions.
-  auto module = CreateNewVerifiedModule();
-  HloComputation* cond_computation =
-      module->AddEmbeddedComputation(MakeConditionComputation());
-  HloComputation* c_computation =
-      module->AddEmbeddedComputation(MakeScalarComputation());
-  HloComputation* b_computation = module->AddEmbeddedComputation(
-      MakeMappingComputation(c_computation, /*callsites=*/1));
+  absl::string_view hlo_string = R"hlo(
+HloModule ComplexGraph, entry_computation_layout={(f32[])->f32[]}
 
-  HloComputation* a_computation;
-  {
-    HloComputation::Builder builder(TestName() + ".a");
-    HloInstruction* param0 = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, kScalarShape, "param0"));
-    HloInstruction* call = builder.AddInstruction(
-        HloInstruction::CreateCall(kScalarShape, {param0}, c_computation));
-    builder.AddInstruction(HloInstruction::CreateWhile(
-        kScalarShape, cond_computation, b_computation, call));
-    a_computation = module->AddEmbeddedComputation(builder.Build());
-  }
+%ComplexGraph.ScalarComputation (param0.1: f32[]) -> f32[] {
+  %param0.1 = f32[] parameter(0)
+  ROOT %negate = f32[] negate(%param0.1)
+}
 
-  HloComputation* entry_computation;
-  {
-    HloComputation::Builder builder(TestName() + ".entry");
-    HloInstruction* param0 = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, kScalarShape, "param0"));
-    builder.AddInstruction(HloInstruction::CreateWhile(
-        kScalarShape, cond_computation, a_computation, param0));
-    entry_computation = module->AddEntryComputation(builder.Build());
-  }
+%ComplexGraph.MappingComputation (param0.2: f32[]) -> f32[] {
+  %param0.2 = f32[] parameter(0)
+  ROOT %map = f32[] map(%param0.2), dimensions={}, to_apply=%ComplexGraph.ScalarComputation
+}
 
+%ComplexGraph.ConditionComputation (param0: f32[]) -> pred[] {
+  %param0 = f32[] parameter(0)
+  %constant = f32[] constant(0)
+  ROOT %compare = pred[] compare(%param0, %constant), direction=GT
+}
+
+%ComplexGraph.a (param0.3: f32[]) -> f32[] {
+  %param0.3 = f32[] parameter(0)
+  %call = f32[] call(%param0.3), to_apply=%ComplexGraph.ScalarComputation
+  ROOT %while = f32[] while(%call), condition=%ComplexGraph.ConditionComputation, body=%ComplexGraph.MappingComputation
+}
+
+ENTRY %ComplexGraph.entry (param0.4: f32[]) -> f32[] {
+  %param0.4 = f32[] parameter(0)
+  ROOT %while.1 = f32[] while(%param0.4), condition=%ComplexGraph.ConditionComputation, body=%ComplexGraph.a
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   {
     TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
     EXPECT_TRUE(result);
     std::unique_ptr<CallGraph> flat_call_graph = CallGraph::Build(module.get());
+    HloComputation* c_computation =
+        module->GetComputationWithName("ComplexGraph.ScalarComputation");
     const CallGraphNode& c_node = flat_call_graph->GetNode(c_computation);
     EXPECT_EQ(1, c_node.caller_callsites().size());
   }
@@ -157,44 +161,32 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
 
 // Test corner case of a computation used as a body and a loop condition.
 TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
-  auto module = CreateNewVerifiedModule();
-  HloComputation* cond_computation;
-  {
-    HloComputation::Builder builder(TestName() + ".cond");
-    HloInstruction* param0 =
-        builder.AddInstruction(HloInstruction::CreateParameter(
-            0, ShapeUtil::MakeShape(PRED, {}), "param0"));
-    HloInstruction* false_constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-    builder.AddInstruction(HloInstruction::CreateCompare(
-        ShapeUtil::MakeShape(PRED, {}), param0, false_constant,
-        ComparisonDirection::kEq));
-    cond_computation = module->AddEmbeddedComputation(builder.Build());
-  }
+  absl::string_view hlo_string = R"hlo(
+HloModule SharedWhileConditionAndBody, entry_computation_layout={()->pred[]}
 
-  HloComputation* entry_computation;
-  HloInstruction* while_op;
-  {
-    HloComputation::Builder builder(TestName() + ".entry");
-    HloInstruction* false_constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-    while_op = builder.AddInstruction(HloInstruction::CreateWhile(
-        ShapeUtil::MakeShape(PRED, {}), cond_computation, cond_computation,
-        false_constant));
-    entry_computation = module->AddEntryComputation(builder.Build());
-  }
+%SharedWhileConditionAndBody.cond (param0: pred[]) -> pred[] {
+  %param0 = pred[] parameter(0)
+  %constant = pred[] constant(false)
+  ROOT %compare = pred[] compare(%param0, %constant), direction=EQ
+}
 
-  {
-    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
-    const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
-    EXPECT_EQ(2, cond_node.caller_callsites().size());
-  }
+ENTRY %SharedWhileConditionAndBody.entry () -> pred[] {
+  %constant.1 = pred[] constant(false)
+  ROOT %while = pred[] while(%constant.1), condition=%SharedWhileConditionAndBody.cond, body=%SharedWhileConditionAndBody.cond
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   {
     TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
     EXPECT_TRUE(result);
+    HloInstruction* while_op =
+        module->entry_computation()->GetInstructionWithName("while");
     EXPECT_NE(while_op->while_body(), while_op->while_condition());
     std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+    HloComputation* cond_computation =
+        module->GetComputationWithName("SharedWhileConditionAndBody.cond");
     const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
     EXPECT_EQ(0, cond_node.caller_callsites().size());
   }
@@ -211,56 +203,75 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
 //     C
 //
 TEST_F(FlattenCallGraphTest, FlattenCalls) {
-  auto module = CreateNewVerifiedModule();
-  HloComputation* c_computation =
-      module->AddEmbeddedComputation(MakeScalarComputation());
+  absl::string_view hlo_string = R"hlo(
+HloModule FlattenCalls, entry_computation_layout={(f32[])->f32[]}
 
-  HloComputation* b_computation = module->AddEmbeddedComputation(
-      MakeCallingComputation(c_computation, /*callsites=*/2, ".B"));
+%FlattenCalls.ScalarComputation (param0: f32[]) -> f32[] {
+  %param0 = f32[] parameter(0)
+  ROOT %negate = f32[] negate(%param0)
+}
 
-  module->AddEntryComputation(
-      MakeCallingComputation(b_computation, /*callsites=*/2, ".Entry"));
+%FlattenCalls.B (param0.1: f32[]) -> f32[] {
+  %param0.1 = f32[] parameter(0)
+  %call = f32[] call(%param0.1), to_apply=%FlattenCalls.ScalarComputation
+  ROOT %call.1 = f32[] call(%call), to_apply=%FlattenCalls.ScalarComputation
+}
+
+ENTRY %FlattenCalls.Entry (param0.2: f32[]) -> f32[] {
+  %param0.2 = f32[] parameter(0)
+  %call.2 = f32[] call(%param0.2), to_apply=%FlattenCalls.B
+  ROOT %call.3 = f32[] call(%call.2), to_apply=%FlattenCalls.B
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
   EXPECT_TRUE(result);
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   EXPECT_EQ(7, module->computation_count());
 
+  HloComputation* c_computation =
+      module->GetComputationWithName("FlattenCalls.ScalarComputation");
   const CallGraphNode& c_node = call_graph->GetNode(c_computation);
   EXPECT_EQ(1, c_node.caller_callsites().size());
 
+  HloComputation* b_computation =
+      module->GetComputationWithName("FlattenCalls.B");
   const CallGraphNode& b_node = call_graph->GetNode(b_computation);
   EXPECT_EQ(1, b_node.caller_callsites().size());
 }
 
 TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
-  auto module = CreateNewVerifiedModule();
-  HloComputation* sub_computation =
-      module->AddEmbeddedComputation(MakeScalarComputation());
+  absl::string_view hlo_string = R"hlo(
+HloModule FlattenCallsInConditional, entry_computation_layout={()->f32[]}
 
-  // Create entry computation, which is a conditional that has the same
-  // computation in the true and false branch.
-  HloComputation::Builder builder(TestName());
-  auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(56.0f)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(12.0f)));
-  auto cond = builder.AddInstruction(HloInstruction::CreateConditional(
-      kScalarShape, pred, constant1, sub_computation, constant2,
-      sub_computation));
-  module->AddEntryComputation(builder.Build());
-  EXPECT_EQ(2, module->computation_count());
+%FlattenCallsInConditional.ScalarComputation (param0: f32[]) -> f32[] {
+  %param0 = f32[] parameter(0)
+  ROOT %negate = f32[] negate(%param0)
+}
 
+ENTRY %FlattenCallsInConditional () -> f32[] {
+  %constant = pred[] constant(true)
+  %constant.1 = f32[] constant(56)
+  %constant.2 = f32[] constant(12)
+  ROOT %conditional = f32[] conditional(%constant, %constant.1, %constant.2), true_computation=%FlattenCallsInConditional.ScalarComputation, false_computation=%FlattenCallsInConditional.ScalarComputation
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
   EXPECT_TRUE(result);
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   // The true and false computations must now be different.
   EXPECT_EQ(4, module->computation_count());
+  HloInstruction* cond =
+      module->entry_computation()->GetInstructionWithName("conditional");
   EXPECT_NE(cond->branch_computation(0), cond->branch_computation(1));
 
   //  The original computation is no longer used.
+  HloComputation* sub_computation = module->GetComputationWithName(
+      "FlattenCallsInConditional.ScalarComputation");
   const CallGraphNode& sub_node = call_graph->GetNode(sub_computation);
   EXPECT_EQ(0, sub_node.caller_callsites().size());
 }
