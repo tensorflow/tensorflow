@@ -387,6 +387,7 @@ TilingSpace::GetValidTilings() {
   // all possible tilings and rely on the downstream to check the validity.
   llvm::SmallVector<int64_t, 4> input_space;
 
+  // TODO(b/500622139): Enable reduction dimension tiling.
   // Sequential reduce dimensions are not tiled yet. To work around the
   // limitation of `GetFlatTilingsForInputSpace`, we set the tile size to 1 here
   // and later replace with the actual dimension size.
