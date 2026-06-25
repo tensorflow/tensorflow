@@ -6765,5 +6765,159 @@ ENTRY main {
   EXPECT_THAT(status.message(), HasSubstr("Unknown opcode: recv-update"));
 }
 
+TEST_F(HloParserTest, DeeplyNestedOperandsExceedsRecursionLimit) {
+  constexpr int kTestRecursionDepth = 10;
+  std::string deeply_nested = "f32[] ";
+
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested += "add(f32[] constant(0), f32[] ";
+  }
+  deeply_nested += "constant(0)";
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested += ")";
+  }
+  HloParserOptions options;
+  options.set_max_recursion_depth(kTestRecursionDepth);
+  auto result =
+      ParseAndReturnUnverifiedModule(deeply_nested, HloModuleConfig(), options);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "maximum recursion depth exceeded");
+}
+
+TEST_F(HloParserTest, DeeplyNestedShapesExceedsRecursionLimit) {
+  constexpr int kTestRecursionDepth = 10;
+  std::string deeply_nested = "";
+
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested += "(";
+  }
+  deeply_nested += "f32[]";
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested += ")";
+  }
+
+  // Create a minimal HLO string using this shape.
+  // ENTRY entry (p0: (((...f32[]...)))) -> (((...f32[]...))) { ... }
+  std::string hlo_string =
+      "HloModule test\nENTRY entry (p0: " + deeply_nested + ") -> " +
+      deeply_nested + " {\n  ROOT %p0 = " + deeply_nested + " parameter(0)\n}";
+
+  HloParserOptions options;
+  options.set_max_recursion_depth(kTestRecursionDepth);
+  auto result =
+      ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig(), options);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "maximum recursion depth exceeded");
+}
+
+TEST_F(HloParserTest, DeeplyNestedTupleLiteralsExceedsRecursionLimit) {
+  constexpr int kTestRecursionDepth = 10;
+  std::string deeply_nested_shape = "";
+  std::string deeply_nested_literal = "";
+
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested_shape += "(";
+    deeply_nested_literal += "(";
+  }
+  deeply_nested_shape += "f32[]";
+  deeply_nested_literal += "0";
+
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested_shape += ")";
+    deeply_nested_literal += ")";
+  }
+
+  std::string hlo_string = "HloModule test\nENTRY entry () -> " +
+                           deeply_nested_shape +
+                           " {\n  ROOT %c = " + deeply_nested_shape +
+                           " constant(" + deeply_nested_literal + ")\n}";
+
+  HloParserOptions options;
+  options.set_max_recursion_depth(kTestRecursionDepth);
+  auto result =
+      ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig(), options);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "maximum recursion depth exceeded");
+}
+
+TEST_F(HloParserTest, DeeplyNestedUntypedTupleLiteralExceedsRecursionLimit) {
+  constexpr int kTestRecursionDepth = 10;
+  std::string deeply_nested_literal = "";
+
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested_literal += "(";
+  }
+  deeply_nested_literal += "s32[] 0";
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested_literal += ")";
+  }
+
+  std::string hlo_string =
+      "HloModule test\nENTRY entry {\n"
+      "  %constant = f32[1]{0} constant({0})\n"
+      "  ROOT %custom-call = f32[1]{0} custom-call(f32[1]{0} %constant), "
+      "custom_call_target=\"foo\", literal=" +
+      deeply_nested_literal + "\n}";
+
+  HloParserOptions options;
+  options.set_max_recursion_depth(kTestRecursionDepth);
+  auto result =
+      ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig(), options);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "maximum recursion depth exceeded");
+}
+
+TEST_F(HloParserTest, DeeplyNestedInlineComputationsExceedsRecursionLimit) {
+  constexpr int kTestRecursionDepth = 10;
+  std::string deeply_nested = "";
+
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested += "p" + std::to_string(i) + " = f32[] parameter(0)\n";
+    deeply_nested += "ROOT r" + std::to_string(i) + " = f32[] call(p" +
+                     std::to_string(i) + "), to_apply={\n";
+  }
+
+  deeply_nested += "p_inner = f32[] parameter(0)\n";
+  deeply_nested += "ROOT r_inner = f32[] negate(p_inner)\n";
+
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested += "}\n";
+  }
+
+  std::string hlo_string =
+      "HloModule test\nENTRY entry {\n" + deeply_nested + "}";
+
+  HloParserOptions options;
+  options.set_max_recursion_depth(kTestRecursionDepth);
+  auto result =
+      ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig(), options);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "maximum recursion depth exceeded");
+}
+
+// Regression test for OSS-Fuzz stack overflow finding #390461336.
+// Generate deeply nested valid HLO that triggers ParseOperands recursion.
+TEST_F(HloParserTest, DISABLED_DeeplyNestedOperandsDoesNotStackOverflow) {
+  constexpr int kDepth = 9000;
+  std::string deeply_nested = "f32[] ";
+  for (int i = 0; i < kDepth; ++i) {
+    deeply_nested += "add(f32[] ";
+  }
+  deeply_nested += "constant(0)";
+  for (int i = 0; i < kDepth; ++i) {
+    deeply_nested += ", f32[] constant(0))";
+  }
+  auto result = ParseAndReturnUnverifiedModule(deeply_nested);
+  // The key assertion: parsing fails gracefully instead of crashing.
+  EXPECT_FALSE(result.ok());
+  ExpectHasSubstr(result.status().message(),
+                  "maximum recursion depth exceeded");
+}
+
 }  // namespace
 }  // namespace xla
