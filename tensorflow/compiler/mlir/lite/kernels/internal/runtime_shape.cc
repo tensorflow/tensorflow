@@ -82,12 +82,11 @@ void RuntimeShape::ReplaceWith(int dimensions_count, const int32_t* dims_data) {
 }
 
 int RuntimeShape::FlatSize() const {
-  int buffer_size = 1;
-  const int* dims_data = reinterpret_cast<const int*>(DimsData());
-  for (int i = 0; i < size_; i++) {
-    buffer_size *= dims_data[i];
-  }
-  return buffer_size;
+  size_t flat_size;
+  TFLITE_CHECK(CheckedFlatSize(flat_size));
+  TFLITE_CHECK_LE(flat_size,
+                  static_cast<size_t>(std::numeric_limits<int>::max()));
+  return static_cast<int>(flat_size);
 }
 
 bool RuntimeShape::CheckedNumElementsInRange(int start, int end,

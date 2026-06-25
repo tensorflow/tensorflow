@@ -375,6 +375,21 @@ TEST(RuntimeShapeTest, TestCheckedFlatSizeSkipDimRejectsOverflow) {
   EXPECT_FALSE(shape.CheckedFlatSizeSkipDim(/*skip_dim=*/0, flat_size));
 }
 
+TEST(RuntimeShapeTest, TestFlatSizeAbortsOnOverflow) {
+#if GTEST_HAS_DEATH_TEST
+  const RuntimeShape shape({std::numeric_limits<int32_t>::max(),
+                            std::numeric_limits<int32_t>::max()});
+  EXPECT_DEATH(shape.FlatSize(), "");
+#endif
+}
+
+TEST(RuntimeShapeTest, TestFlatSizeAbortsOnNegativeDim) {
+#if GTEST_HAS_DEATH_TEST
+  const RuntimeShape shape({2, -3, 4});
+  EXPECT_DEATH(shape.FlatSize(), "");
+#endif
+}
+
 #ifndef NDEBUG
 TEST(RuntimeShapeTest, NegativeDimensionsCountInConstructor) {
   EXPECT_DEATH(RuntimeShape shape(-1), "");
