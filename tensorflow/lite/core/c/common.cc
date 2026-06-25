@@ -20,6 +20,7 @@ limitations under the License.
 #endif  // TF_LITE_STATIC_MEMORY
 
 #include <cstring>
+#include <limits>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -460,15 +461,23 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
 
 TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
                                          bool preserve_data) {
+  if (tensor == nullptr) {
+    return kTfLiteError;
+  }
   if (tensor->allocation_type != kTfLiteDynamic &&
       tensor->allocation_type != kTfLitePersistentRo) {
     return kTfLiteOk;
+  }
+  // Guard against integer overflow: num_bytes + XNN_EXTRA_BYTES must not wrap.
+  constexpr size_t kXnnExtraBytes = 16;
+  if (num_bytes > std::numeric_limits<size_t>::max() - kXnnExtraBytes) {
+    return kTfLiteError;
   }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   tflite::PauseHeapMonitoring(/*pause=*/true);
 #endif
   // This buffer may be consumed by XNNPack.
-  size_t alloc_bytes = num_bytes + /*XNN_EXTRA_BYTES=*/16;
+  size_t alloc_bytes = num_bytes + kXnnExtraBytes;
   // TODO(b/145340303): Tensor data should be aligned.
   if (!tensor->data.data) {
     tensor->data.data = (char*)malloc(alloc_bytes);
