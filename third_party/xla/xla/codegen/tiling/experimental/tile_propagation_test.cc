@@ -408,7 +408,24 @@ INSTANTIATE_TEST_SUITE_P(
          /*input_tile_offsets=*/{},
          /*output_shape=*/{12},
          /*expected_output=*/""},
-
+        {"CollapseShapeTrivialTiledDim",
+         /*input_shape=*/{1, 4},
+         /*input_tile_sizes=*/{2, 2},
+         /*input_tile_strides=*/{1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{4},
+         /*expected_output=*/R"(
+         0) (tid_0, tid_1) ->
+          offsets [tid_1 * 2] sizes [2] strides [1] upper bounds [4] )"},
+        {"CollapseShapeWithTrivialTiledDimInGroup",
+         /*input_shape=*/{2, 1, 2},
+         /*input_tile_sizes=*/{2, 2, 2},
+         /*input_tile_strides=*/{1, 2, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{4},
+         /*expected_output=*/R"(
+         0) (tid_0, tid_1, tid_2) -> offsets [0] sizes [4] strides [1] upper bounds [4]
+        )"},
         // =====================================================================
         // ExpandShapeContiguous
         // =====================================================================

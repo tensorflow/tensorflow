@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -52,6 +54,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/codegen/tiling/experimental/reshape_analysis.h"
 #include "xla/codegen/tiling/experimental/scheduling.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
@@ -682,6 +685,33 @@ absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
           .getResult());
 }
 
+absl::StatusOr<TensorValue> EmitTiledReshapeExpand(
+    mlir::ImplicitLocOpBuilder& b, const Shape& output_shape,
+    llvm::ArrayRef<int64_t> output_tile_sizes, TensorValue input) {
+  // Trivial dimensions in output might be tiled with tile size > 1 and
+  // simple reshape op will fail as tile size of input and output are
+  // different. For example:
+  // f32[1,4] a = reshape(f32[4] b)
+  // where a has tile sizes [2,4]. Simple reshape will fail as we go from from 4
+  // to 8 elements in a tile.
+  // We decompose reshape to a reshape and expand ([4] -> [4] -> [1,4] in the
+  // example) and create reshape + broadcast.
+  llvm::SmallVector<int64_t> dim_positions =
+      ge::PositionsOfNonTrivialDims(output_shape.dimensions());
+  SmallVector<int64_t> reshape_tile_sizes;
+  for (int64_t dim : dim_positions) {
+    reshape_tile_sizes.push_back(output_tile_sizes[dim]);
+  }
+  ASSIGN_OR_RETURN(TensorValue re,
+                   EmitTiledReshape(b, reshape_tile_sizes, input));
+  // TODO: goncharov - don't emit reshape if it is not needed.
+  if (reshape_tile_sizes.size() == output_tile_sizes.size()) {
+    return re;
+  }
+  // Instead of expand we create broadcast as some tile sizes might be > 1.
+  return xtile::BroadcastInDims(b, re, output_tile_sizes, dim_positions);
+}
+
 absl::StatusOr<TensorValue> EmitBitcast(
     EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_bitcast,
     TensorValue input) {
@@ -727,7 +757,14 @@ absl::StatusOr<TensorValue> EmitBitcast(
   // Bitcast is reshape.
   if (ShapeUtil::ReshapeIsBitcast(input_shape, output_shape,
                                   /*ignore_element_type=*/true)) {
-    return EmitTiledReshape(b, output_tile_sizes, input);
+    VLOG(1) << "EmitBitcast: bitcast is a reshape";
+    VLOG(1) << "EmitBitcast: input_shape: " << input_shape.ToString();
+    VLOG(1) << "EmitBitcast: output_shape: " << output_shape.ToString();
+    VLOG(1) << "EmitBitcast: operand_tile_sizes: "
+            << absl::StrJoin(operand_tile_sizes, ",");
+    VLOG(1) << "EmitBitcast: output_tile_sizes: "
+            << absl::StrJoin(output_tile_sizes, ",");
+    return EmitTiledReshapeExpand(b, output_shape, output_tile_sizes, input);
   }
 
   // Bitcast is decomposable to a transpose+reshape+transpose.
@@ -766,8 +803,10 @@ absl::StatusOr<TensorValue> EmitBitcast(
   if (ShapeUtil::Equal(trt->transpose1_shape, trt->reshape_shape)) {
     normalized_reshape = normalized_input;
   } else {
-    ASSIGN_OR_RETURN(normalized_reshape,
-                     EmitTiledReshape(b, reshape_tile_sizes, normalized_input));
+    ASSIGN_OR_RETURN(
+        normalized_reshape,
+        EmitTiledReshapeExpand(b, trt->reshape_shape, reshape_tile_sizes,
+                               normalized_input));
   }
 
   // The final transpose simply uses the tile sizes computed for the original
@@ -1107,9 +1146,14 @@ absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
   for (const auto& tiled_hlo : region) {
     const HloInstruction* hlo = tiled_hlo->hlo();
     VLOG(8) << "Emitting " << hlo->ToString(HloPrintOptions::ShortParsable());
-    ASSIGN_OR_RETURN(TensorValue result,
-                     EmitTiledHloInstruction(emitter_ctx, *tiled_hlo));
-    TF_RET_CHECK(emitter_ctx.MapTiledHloToTensorValue(tiled_hlo.get(), result))
+    absl::StatusOr<TensorValue> result =
+        EmitTiledHloInstruction(emitter_ctx, *tiled_hlo);
+    if (!result.ok()) {
+      VLOG(1) << absl::StrCat(
+          "Failed to emit tiled HLO: ", tiled_hlo->ToString(),
+          " error: ", result.status());
+    }
+    TF_RET_CHECK(emitter_ctx.MapTiledHloToTensorValue(tiled_hlo.get(), *result))
         << hlo->ToString();
   }
   std::vector<TensorValue> results;
