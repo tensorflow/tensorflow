@@ -478,17 +478,15 @@ class BinaryOpsTest(xla_test.XLATestCase):
                             dtype=np.int64))
 
   def testMaximumMinimumPropagateNan(self):
-    if np.float32 not in self.float_types:
-      return
-    dtype = np.float32
-    values = np.array([[np.nan, 1.0], [5.0, np.nan]], dtype=dtype)
-    finite = np.array([2.0, 3.0], dtype=dtype)
-    maximum_expected = np.array([[np.nan, 3.0], [5.0, np.nan]], dtype=dtype)
-    minimum_expected = np.array([[np.nan, 1.0], [2.0, np.nan]], dtype=dtype)
-    self._testBinary(math_ops.maximum, values, finite, expected=maximum_expected)
-    self._testBinary(math_ops.maximum, finite, values, expected=maximum_expected)
-    self._testBinary(math_ops.minimum, values, finite, expected=minimum_expected)
-    self._testBinary(math_ops.minimum, finite, values, expected=minimum_expected)
+    for dtype in self.float_types:
+      values = np.array([[np.nan, 1.0], [5.0, np.nan]], dtype=dtype)
+      finite = np.array([2.0, 3.0], dtype=dtype)
+      maximum_expected = np.array([[np.nan, 3.0], [5.0, np.nan]], dtype=dtype)
+      minimum_expected = np.array([[np.nan, 1.0], [2.0, np.nan]], dtype=dtype)
+      self._testBinary(math_ops.maximum, values, finite, expected=maximum_expected)
+      self._testBinary(math_ops.maximum, finite, values, expected=maximum_expected)
+      self._testBinary(math_ops.minimum, values, finite, expected=minimum_expected)
+      self._testBinary(math_ops.minimum, finite, values, expected=minimum_expected)
 
   def testNextAfter(self):
     for dtype in self.numeric_types:

@@ -146,21 +146,22 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                           self.REAL_DATA, index_dtype)
 
   def testReduceMinMaxPropagateNan(self, index_dtype):
-    test_input = np.array([[np.nan, 4.0], [2.0, 3.0]], dtype=np.float32)
-    with self.session() as sess:
-      with self.test_scope():
-        a = array_ops.placeholder(np.float32)
-        index = array_ops.placeholder(index_dtype)
-        min_out = math_ops.reduce_min(a, index)
-        max_out = math_ops.reduce_max(a, index)
+    for dtype in self.float_types:
+      test_input = np.array([[np.nan, 4.0], [2.0, 3.0]], dtype=dtype)
+      with self.session() as sess:
+        with self.test_scope():
+          a = array_ops.placeholder(dtypes.as_dtype(dtype))
+          index = array_ops.placeholder(index_dtype)
+          min_out = math_ops.reduce_min(a, index)
+          max_out = math_ops.reduce_max(a, index)
 
-      min_result, max_result = sess.run(
-          [min_out, max_out], {a: test_input, index: [0]})
+        min_result, max_result = sess.run(
+            [min_out, max_out], {a: test_input, index: [0]})
 
-      self.assertTrue(np.isnan(min_result[0]))
-      self.assertEqual(min_result[1], 3.0)
-      self.assertTrue(np.isnan(max_result[0]))
-      self.assertEqual(max_result[1], 4.0)
+        self.assertTrue(np.isnan(min_result[0]))
+        self.assertAllClose(min_result[1], 3.0)
+        self.assertTrue(np.isnan(max_result[0]))
+        self.assertAllClose(max_result[1], 4.0)
 
   def testReduceMeanF32(self, index_dtype):
     # TODO(phawkins): mean on XLA currently returns 0 instead of NaN when
