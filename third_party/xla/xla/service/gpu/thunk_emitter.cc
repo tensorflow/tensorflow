@@ -1329,7 +1329,7 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
               local_module.getModuleUnlocked()));
 
           return kernel_compiler
-              ->CompileToPtx(LlvmKernelSource{std::move(local_module)})
+              ->CompileToTargetBinary(LlvmKernelSource{std::move(local_module)})
               .Map([use_pdl = result.use_pdl, shmem_bytes = result.shmem_bytes,
                     launch_dimensions = std::move(launch_dimensions),
                     tma_metadata = result.tma_metadata,

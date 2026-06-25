@@ -267,7 +267,8 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
 
   ASSIGN_OR_RETURN(
       results.constants_binary,
-      compiler->CompileToPtx(thunk_emitter.ConsumeConstantsModule()).Await());
+      compiler->CompileToTargetBinary(thunk_emitter.ConsumeConstantsModule())
+          .Await());
   ASSIGN_OR_RETURN(results.executable,
                    std::move(future_sequential_thunk).Await());
 

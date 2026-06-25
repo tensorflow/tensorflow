@@ -393,7 +393,7 @@ AsyncThunkSequence MlirKernelFusion::Emit(
                                        ir_emitter_context.gpu_device_info());
 
               return ir_emitter_context.kernel_compiler()
-                  ->CompileToPtx(std::move(kernel_def).TakeSource())
+                  ->CompileToTargetBinary(std::move(kernel_def).TakeSource())
                   .Map([kernel_name = std::move(kernel_name),
                         launch_dims = std::move(launch_dims),
                         use_pdl](const std::vector<uint8_t>& cubin) {

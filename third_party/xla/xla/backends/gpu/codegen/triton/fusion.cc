@@ -236,7 +236,7 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
               local_module.getModuleUnlocked()));
 
           return kernel_compiler
-              ->CompileToPtx(LlvmKernelSource{std::move(local_module)})
+              ->CompileToTargetBinary(LlvmKernelSource{std::move(local_module)})
               .Map([kernel_name = sanitized_kernel_name,
                     launch_dims = std::move(launch_dimensions),
                     tma_metadata = triton_wrapper_result.tma_metadata,
