@@ -1,3 +1,4 @@
+# Harmless comment to trigger format check
 # Description:
 # C API for TensorFlow, for use by client language bindings.
 
@@ -536,6 +537,10 @@ cc_library(
         ":tf_status_helper",
         ":tf_tensor_internal",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@eigen_archive//:eigen3",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
