@@ -696,6 +696,40 @@ class CumprodGradTest(test.TestCase):
         self._cumprod_grad(
             [1.5, 0.0, 2.0, 3.0], exclusive=True, reverse=True))
 
+  def testCumprodGradientZeroPlacementByMode(self):
+    cases = [
+        ("exclusive_beginning", [0.0, 2.0, 3.0], [3.0, 0.0, 0.0],
+         True, False),
+        ("exclusive_middle", [2.0, 0.0, 3.0], [1.0, 2.0, 0.0],
+         True, False),
+        ("exclusive_end", [2.0, 3.0, 0.0], [4.0, 2.0, 0.0],
+         True, False),
+        ("exclusive_multiple", [2.0, 0.0, 3.0, 0.0],
+         [1.0, 8.0, 0.0, 0.0], True, False),
+        ("reverse_beginning", [0.0, 2.0, 3.0], [6.0, 3.0, 3.0],
+         False, True),
+        ("reverse_middle", [2.0, 0.0, 3.0], [0.0, 9.0, 1.0],
+         False, True),
+        ("reverse_end", [2.0, 3.0, 0.0], [0.0, 0.0, 10.0],
+         False, True),
+        ("reverse_multiple", [2.0, 0.0, 3.0, 0.0],
+         [0.0, 0.0, 0.0, 4.0], False, True),
+        ("exclusive_reverse_beginning", [0.0, 2.0, 3.0],
+         [0.0, 3.0, 3.0], True, True),
+        ("exclusive_reverse_middle", [2.0, 0.0, 3.0],
+         [0.0, 3.0, 1.0], True, True),
+        ("exclusive_reverse_end", [2.0, 3.0, 0.0],
+         [0.0, 0.0, 4.0], True, True),
+        ("exclusive_reverse_multiple", [2.0, 0.0, 3.0, 0.0],
+         [0.0, 0.0, 0.0, 4.0], True, True),
+    ]
+    for name, values, expected, exclusive, reverse in cases:
+      with self.subTest(name=name):
+        self.assertAllClose(
+            expected,
+            self._cumprod_grad(
+                values, exclusive=exclusive, reverse=reverse))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class PowGradTest(test.TestCase):
