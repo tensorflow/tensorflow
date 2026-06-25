@@ -106,8 +106,11 @@ class ThunkEmitter {
 
   AsyncThunkSequence EmitCollectiveGroupStartThunk(const HloInstruction* instr);
 
+  // Async start is either an AsyncStart instruction or a
+  // CollectivePermuteStart.
   absl::StatusOr<ThunkSequence> EmitCollectivePermute(
-      const HloCollectivePermuteInstruction* instr);
+      const HloCollectivePermuteInstruction* instr,
+      const HloInstruction* absl_nonnull async_start);
 
   template <typename CollectiveThunkType, typename HloInstType>
   AsyncThunkSequence EmitCollectiveThunk(

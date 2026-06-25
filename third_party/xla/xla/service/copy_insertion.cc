@@ -1245,6 +1245,11 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
     if (ShapeUtil::GetSubshape(instruction->shape(), index).IsBuffer()) {
       return;
     }
+    // Copies for async computations are determined by the async start/done
+    // instructions.
+    if (instruction->parent()->IsAsyncComputation()) {
+      return;
+    }
     VLOG(2) << "Adding index to copy: " << instruction->ToString() << "@"
             << index.ToString();
     auto it = instructions_to_copy.find(instruction);

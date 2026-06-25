@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
@@ -1033,26 +1034,17 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
   // Please keep the cases in alphabetical order.
   switch (hlo->opcode()) {
-    case HloOpcode::kAllGather:
-    case HloOpcode::kAllGatherStart:
-    case HloOpcode::kAllGatherDone: {
-      // AllGatherStart and AllGatherDone are no-ops.
-      // Tile extraction handles the data movement.
+    case HloOpcode::kAllGather: {
+      // AllGather is a no-op. Tile extraction handles the data movement.
       return emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(0));
     }
-    case (HloOpcode::kAllReduceStart): {
+    case HloOpcode::kAllReduce: {
       const HloComputation* computation =
           fusion.fused_instructions_computation();
       const HloInstruction* root_instruction = computation->root_instruction();
-      if (root_instruction->opcode() == HloOpcode::kAllReduceDone) {
-        root_instruction = root_instruction->operand(0);
-      }
       return EmitAllReduce(emitter_ctx,
                            xla::Cast<HloAllReduceInstruction>(root_instruction),
                            tiled_hlo, operands);
-    }
-    case (HloOpcode::kAllReduceDone): {
-      return emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(0));
     }
     case HloOpcode::kBitcast: {
       return EmitBitcast(emitter_ctx, tiled_hlo,

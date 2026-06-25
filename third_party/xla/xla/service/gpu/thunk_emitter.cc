@@ -222,6 +222,37 @@ static constexpr bool kRequiresCollectiveKernelThunk =
                             std::unique_ptr<CollectiveKernelThunk>,
                             /*p2p_memcpy_enabled=*/bool>;
 
+Shape GetOutputShape(const HloInstruction* async_start,
+                     const HloInstruction* inst, Thunk::Kind kind) {
+  // Order of evaluation:
+  // 1. AsyncStart <- instr points to the collective directly so shape() works.
+  // 2. AllGather <- tuple output (context, output)
+  // 3. AllReduce <- single output
+  if (async_start->opcode() == HloOpcode::kAsyncStart) {
+    return inst->shape();
+  }
+  if (kind == Thunk::Kind::kAllGather) {
+    return inst->shape().tuple_shapes(1);
+  }
+  return inst->shape();
+}
+
+ShapeIndex GetDstShapeIndex(const HloInstruction* async_start,
+                            const HloInstruction* inst, int64_t operand_index,
+                            Thunk::Kind kind) {
+  Shape output_shape = GetOutputShape(async_start, inst, kind);
+  bool is_multi_output = output_shape.IsTuple();
+  if (async_start->opcode() == HloOpcode::kAsyncStart) {
+    return is_multi_output ? ShapeIndex({1, operand_index}) : ShapeIndex({1});
+  }
+  if (kind == Thunk::Kind::kAllGather) {
+    return is_multi_output ? ShapeIndex({1, operand_index}) : ShapeIndex({1});
+  }
+  return is_multi_output ? ShapeIndex({operand_index}) : ShapeIndex({});
+}
+
+}  // namespace
+
 // The signature of this function would change to absl::Status once we lift the
 // CollectiveKernelThunk out as a top level thunk. It would then become a member
 // function of ThunkEmitter.
@@ -345,8 +376,6 @@ absl::StatusOr<std::string> CanonicalGemmHlo(
   return instr->ToString(HloPrintOptions::Fingerprint()) +
          BackendConfigWrapper(gpu_config).GetRawString();
 }
-
-}  // namespace
 
 ThunkEmitter::ThunkEmitter(
     IrEmitterContext* absl_nonnull ir_emitter_context,
@@ -1830,12 +1859,20 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngSeedThunk(
       result_slice));
 }
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
-    const HloCollectivePermuteInstruction* instr) {
+    const HloCollectivePermuteInstruction* instr,
+    const HloInstruction* absl_nonnull async_start) {
+  TF_RET_CHECK(async_start != nullptr);
   // First output is aliased.
-  TF_RET_CHECK(
-      instr->shape().IsTuple() && instr->shape().tuple_shapes().size() == 2 &&
-      Shape::Equal().IgnoreMemorySpaceInLayout()(
-          instr->shape().tuple_shapes(0), instr->shape().tuple_shapes(1)));
+  if (async_start->opcode() == HloOpcode::kCollectivePermuteStart) {
+    TF_RET_CHECK(async_start->shape().IsTuple() &&
+                 async_start->shape().tuple_shapes().size() == 2 &&
+                 Shape::Equal().IgnoreMemorySpaceInLayout()(
+                     async_start->shape().tuple_shapes(0),
+                     async_start->shape().tuple_shapes(1)));
+  } else {
+    TF_RET_CHECK(async_start->shape().IsTuple() &&
+                 async_start->shape().tuple_shapes().size() == 2);
+  }
 
   const auto& hlo_config = ir_emitter_context_->hlo_module().config();
   const int64_t replica_count = hlo_config.replica_count();
@@ -1846,14 +1883,18 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
   ThunkSequence thunks;
   for (int oprd_idx = 0; oprd_idx < operands.size(); ++oprd_idx) {
     const auto operand = operands.at(oprd_idx);
-    const ShapeIndex nested_shape_idx = {1, oprd_idx}, normal_shape_idx = {1};
-    const Shape operand_shape = operand->shape();
-    const Shape result_shape = instr->shape().tuple_shapes(1);
-    ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
-                     GetAllocationSliceForHlo(instr, result_shape.IsTuple()
-                                                         ? nested_shape_idx
-                                                         : normal_shape_idx));
 
+    const ShapeIndex nested_shape_idx = ShapeIndex({1, oprd_idx});
+    const ShapeIndex normal_shape_idx = ShapeIndex({1});
+
+    const Shape operand_shape = operand->shape();
+    const Shape result_shape = async_start->shape().tuple_shapes(1);
+
+    ASSIGN_OR_RETURN(
+        BufferAllocation::Slice result_slice,
+        GetAllocationSliceForHlo(async_start, result_shape.IsTuple()
+                                                  ? nested_shape_idx
+                                                  : normal_shape_idx));
     const int64_t src_memory_space = operand_shape.layout().memory_space();
     Shape result_buffer_shape = (result_shape.IsTuple())
                                     ? result_shape.tuple_shapes(oprd_idx)
@@ -1870,7 +1911,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
       // thunk.
       thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(
-              instr, ir_emitter_context_->GetNextThunkId()),
+              async_start, ir_emitter_context_->GetNextThunkId()),
           /*source_buffer=*/ShapedSlice{source_slice, operand_shape},
           /*destination_buffer=*/
           ShapedSlice{result_slice, result_buffer_shape},
@@ -1889,7 +1930,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
                                             partition_count)) {
     thunks.push_back(std::make_unique<CollectivePermuteThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(
-            instr, ir_emitter_context_->GetNextThunkId()),
+            async_start, ir_emitter_context_->GetNextThunkId()),
         instr, replica_count, partition_count, buffers,
         ir_emitter_context_->debug_options().xla_gpu_collective_permute_mode(),
         ir_emitter_context_->debug_options()
@@ -1901,10 +1942,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
   // may be in-flight on different streams. Emitting them synchronously would be
   // unsafe as they could share communicators across streams. Force async
   // emission in that case.
-  if (IsGPUSyncCollective(*instr) &&
+  if (IsGPUSyncCollective(*async_start) &&
       ir_emitter_context_->debug_options()
               .xla_gpu_experimental_parallel_collective_overlap_limit() <= 1) {
-    hlo_async_executions_.try_emplace(instr, nullptr);
+    hlo_async_executions_.try_emplace(async_start, nullptr);
     return thunks;
   }
 
@@ -1912,18 +1953,18 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
   const ExecutionStreamAssignment& stream_assignment =
       ir_emitter_context_->execution_stream_assignment();
   ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id,
-                   stream_assignment.GetExecutionStreamId(instr));
+                   stream_assignment.GetExecutionStreamId(async_start));
 
   auto start_thunk = std::make_unique<AsyncStartThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
-          instr, ir_emitter_context_->GetNextThunkId()),
+          async_start, ir_emitter_context_->GetNextThunkId()),
       execution_stream_id, std::move(thunks));
 
-  auto [it, inserted] =
-      hlo_async_executions_.emplace(instr, start_thunk->async_execution());
+  auto [it, inserted] = hlo_async_executions_.emplace(
+      async_start, start_thunk->async_execution());
   if (!inserted) {
     return Internal("Async execution already exists for instruction %s",
-                    instr->ToString());
+                    async_start->ToString());
   }
 
   return GetThunkSequence(std::move(start_thunk));
@@ -1971,8 +2012,8 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
     // where outputs can be a tuple itself (if operation has
     // multiple operands).
     for (int64_t i = 0; i < operand_count; i++) {
-      ShapeIndex idx = operand_count > 1 ? ShapeIndex({1, i}) : ShapeIndex({1});
-      RETURN_IF_ERROR(add_buffer(inst->operand(i), inst, idx));
+      ShapeIndex idx = GetDstShapeIndex(async_start, inst, i, kind);
+      RETURN_IF_ERROR(add_buffer(inst->operand(i), async_start, idx));
     }
   } else if (kind == Thunk::Kind::kRaggedAllToAll) {
     // RaggedAllToAll operation has 6 operands: input, output,
@@ -1981,7 +2022,8 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
     // operands are not aliased.
     RETURN_IF_ERROR(
         add_buffer(inst->operand(0), inst->operand(0), ShapeIndex({})));
-    RETURN_IF_ERROR(add_buffer(inst->operand(1), inst, ShapeIndex({})));
+    RETURN_IF_ERROR(add_buffer(inst->operand(1), async_start,
+                               GetDstShapeIndex(async_start, inst, 0, kind)));
 
     for (int64_t i = 2; i < operand_count; i++) {
       RETURN_IF_ERROR(
@@ -1990,10 +2032,8 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
   } else {
     // For other operations simply zip operands with results.
     for (int64_t i = 0; i < operand_count; i++) {
-      ShapeIndex idx =
-          inst->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({});
-
-      RETURN_IF_ERROR(add_buffer(inst->operand(i), inst, idx));
+      ShapeIndex idx = GetDstShapeIndex(async_start, inst, i, kind);
+      RETURN_IF_ERROR(add_buffer(inst->operand(i), async_start, idx));
     }
   }
 
@@ -2573,18 +2613,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncDone(
   const HloInstruction* wrapped = instr->async_wrapped_instruction();
   ThunkSequence thunks;
   switch (wrapped->opcode()) {
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllGather:
     case HloOpcode::kReduceScatter:
-      return EmitCollectiveAsyncDone(instr);
     case HloOpcode::kAllToAll:
-      return EmitCollectiveAsyncDone(instr);
     case HloOpcode::kRaggedAllToAll:
-      return EmitCollectiveAsyncDone(instr);
     case HloOpcode::kCollectiveBroadcast:
-      return EmitCollectiveAsyncDone(instr);
     case HloOpcode::kCollectivePermute:
-      return EmitCollectiveAsyncDone(instr);
     case HloOpcode::kRecv:
-      return EmitCollectiveAsyncDone(instr);
     case HloOpcode::kSend:
       return EmitCollectiveAsyncDone(instr);
     case HloOpcode::kFusion:
@@ -2628,6 +2664,20 @@ AsyncThunkSequence ThunkEmitter::EmitAsyncStart(const HloInstruction* instr) {
   }
   const HloInstruction* wrapped = instr->async_wrapped_instruction();
   switch (wrapped->opcode()) {
+    case HloOpcode::kAllReduce: {
+      auto* all_reduce = Cast<HloAllReduceInstruction>(wrapped);
+      return EmitCollectiveThunk<AllReduceThunk, HloAllReduceInstruction>(
+          Thunk::kAllReduce, instr, all_reduce, std::nullopt);
+    }
+    case HloOpcode::kAllGather: {
+      auto* all_gather = Cast<HloAllGatherInstruction>(wrapped);
+      return EmitCollectiveThunk<AllGatherThunk, HloAllGatherInstruction>(
+          Thunk::kAllGather, instr, all_gather, std::nullopt);
+    }
+    case HloOpcode::kCollectivePermute: {
+      auto* collective_permute = Cast<HloCollectivePermuteInstruction>(wrapped);
+      return EmitCollectivePermute(collective_permute, instr);
+    }
     case HloOpcode::kReduceScatter: {
       auto* reduce_scatter = Cast<HloReduceScatterInstruction>(wrapped);
       return EmitCollectiveThunk<ReduceScatterThunk,
@@ -2852,7 +2902,11 @@ AsyncThunkSequence ThunkEmitter::EmitHloInstruction(const HloInstruction* hlo,
     case HloOpcode::kCollectivePermuteDone:
       return EmitCollectiveAsyncDone(hlo);
     case HloOpcode::kCollectivePermuteStart:
-      return EmitCollectivePermute(Cast<HloCollectivePermuteInstruction>(hlo));
+      // In the legacy scenario of using a collective permute start instead of
+      // wrapping it in async-start the start instruction is also the collective
+      // instruction.
+      return EmitCollectivePermute(Cast<HloCollectivePermuteInstruction>(hlo),
+                                   hlo);
     case HloOpcode::kConditional:
       return EmitConditional(hlo);
     case HloOpcode::kConstant:

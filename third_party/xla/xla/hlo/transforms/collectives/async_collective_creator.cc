@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -37,10 +39,9 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -137,6 +138,28 @@ absl::StatusOr<ReplacedAsync> CreateAsyncStartDone(
   FrontendAttributes fas = instruction->frontend_attributes();
   start->set_frontend_attributes(fas);
   done->set_frontend_attributes(fas);
+  // Set aliasing for in-place collectives so that input buffers can be reused
+  // for the outputs. Note that all-reduce is implicitly in-place.
+  if (instruction->opcode() == HloOpcode::kAllReduce ||
+      (instruction->opcode() == HloOpcode::kCollectivePermute &&
+       Cast<HloCollectivePermuteInstruction>(instruction)->inplace())) {
+    std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasing;
+    aliasing.reserve(instruction->shape().IsTuple()
+                         ? instruction->shape().tuple_shapes().size()
+                         : 1);
+    if (instruction->shape().IsTuple()) {
+      for (int i = 0; i < instruction->shape().tuple_shapes().size(); ++i) {
+        aliasing.push_back({{1, i}, {i, {}}});
+      }
+    } else {
+      // Collective permute has two operands, the second of which is the input
+      // buffer that can be reused for the output.
+      int64_t operand_idx =
+          (instruction->opcode() == HloOpcode::kCollectivePermute) ? 1 : 0;
+      aliasing.push_back({{1}, {operand_idx, {}}});
+    }
+    start->set_output_to_operand_aliasing(std::move(aliasing));
+  }
   return ReplacedAsync{start, done};
 }
 
@@ -230,46 +253,52 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
   const bool should_update_schedule =
       module->has_schedule() &&
       module->schedule().is_computation_scheduled(computation);
-  for (HloInstruction* instruction : supported_collectives) {
-    absl::StatusOr<ReplacedAsync> async_pair;
+  // Returns pair of start/done instructions if the instruction is
+  // converted to a legacy async collective. Otherwise, returns nullopt.
+  const auto handle_legacy_async_conversion = [&](HloInstruction* instruction)
+      -> absl::StatusOr<std::optional<ReplacedAsync>> {
+    if (config_.use_generic_async_start_done) {
+      return std::nullopt;
+    }
     switch (instruction->opcode()) {
       case HloOpcode::kAllReduce:
-        async_pair = CreateAsyncAllReduce(instruction);
-        break;
+        return CreateAsyncAllReduce(instruction);
       case HloOpcode::kAllGather:
-        async_pair = CreateAsyncAllGather(instruction);
-        break;
+        return CreateAsyncAllGather(instruction);
       case HloOpcode::kCollectivePermute:
-        async_pair = CreateAsyncCollectivePermute(
+        return CreateAsyncCollectivePermute(
             instruction, config_.get_context_shapes(instruction));
-        break;
-      case HloOpcode::kCollectiveBroadcast:
-      case HloOpcode::kAllToAll:
-      case HloOpcode::kReduceScatter:
-      case HloOpcode::kRaggedAllToAll:
-        async_pair = CreateAsyncStartDone(
-            instruction, config_.get_context_shapes(instruction));
-        break;
       default:
-        return Internal("Unexpected opcode %s",
-                        HloOpcodeString(instruction->opcode()));
+        return std::nullopt;
     }
-    RETURN_IF_ERROR(async_pair.status());
-    async_pair->start->set_metadata(instruction->metadata());
-    async_pair->start->CopyBackendConfigFrom(instruction);
-    async_pair->done->set_metadata(instruction->metadata());
-    async_pair->done->CopyBackendConfigFrom(instruction);
+  };
+  for (HloInstruction* instruction : supported_collectives) {
+    ASSIGN_OR_RETURN(auto maybe_async_pair,
+                     handle_legacy_async_conversion(instruction));
+    ReplacedAsync async_pair;
+    if (maybe_async_pair.has_value()) {
+      async_pair = *maybe_async_pair;
+    } else {
+      ASSIGN_OR_RETURN(
+          async_pair,
+          CreateAsyncStartDone(instruction,
+                               config_.get_context_shapes(instruction)));
+    }
+    async_pair.start->set_metadata(instruction->metadata());
+    async_pair.start->CopyBackendConfigFrom(instruction);
+    async_pair.done->set_metadata(instruction->metadata());
+    async_pair.done->CopyBackendConfigFrom(instruction);
     if (should_update_schedule) {
-      replaced_pairs[instruction] = *async_pair;
+      replaced_pairs[instruction] = async_pair;
     }
 
     // Update control dependencies if present.
     RETURN_IF_ERROR(
-        instruction->CopyAllControlDepsTo(async_pair->start, async_pair->done));
+        instruction->CopyAllControlDepsTo(async_pair.start, async_pair.done));
     RETURN_IF_ERROR(instruction->DropAllControlDeps());
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        computation->ReplaceInstruction(instruction, async_pair->done),
+        computation->ReplaceInstruction(instruction, async_pair.done),
         "replacing ", instruction->ToShortString());
     changed = true;
   }
@@ -283,6 +312,13 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
       if (it != replaced_pairs.end()) {
         new_sequence.push_back(it->second.start);
         new_sequence.push_back(it->second.done);
+        // Update the schedule for async computations.
+        if (it->second.start->opcode() == HloOpcode::kAsyncStart) {
+          HloComputation* async_comp =
+              it->second.start->async_wrapped_computation();
+          module->schedule().set_sequence(
+              async_comp, async_comp->MakeInstructionPostOrder());
+        }
         continue;
       }
       new_sequence.push_back(instr);

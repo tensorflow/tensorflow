@@ -1003,7 +1003,7 @@ GetCollectiveBlockLevelFusionConfig(const GpuTopology& gpu_topology,
                                     const DeviceAssignment* device_assignment) {
   const HloInstruction* root = fusion_instr->fused_expression_root();
   switch (root->opcode()) {
-    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduce:
       return GetBlockLevelFusionConfigForAllReduce(
           gpu_topology, Cast<HloAllReduceInstruction>(root), device_assignment);
     default:
@@ -1039,7 +1039,7 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
   const HloComputation* computation = fusion->fused_instructions_computation();
   const HloInstruction* root = computation->root_instruction();
   switch (root->opcode()) {
-    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduce:
       return GetAllReduceUnmanagedKernelArguments(
           computation, Cast<HloAllReduceInstruction>(root));
     default:
