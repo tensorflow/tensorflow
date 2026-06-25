@@ -647,12 +647,10 @@ inline TfLiteStatus GatherNdString(const RuntimeShape& params_shape,
 #endif
 
 template <typename IndicesT, typename UpdatesT>
-inline TfLiteStatus ScatterNd(const RuntimeShape& indices_shape,
-                              const IndicesT* indices_data,
-                              const RuntimeShape& updates_shape,
-                              const UpdatesT* updates_data,
-                              const RuntimeShape& output_shape,
-                              UpdatesT* output_data) {
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW inline TfLiteStatus ScatterNd(
+    const RuntimeShape& indices_shape, const IndicesT* indices_data,
+    const RuntimeShape& updates_shape, const UpdatesT* updates_data,
+    const RuntimeShape& output_shape, UpdatesT* output_data) {
   ruy::profiler::ScopeLabel label("ScatterNd");
 
   int64_t n_slices = 1;

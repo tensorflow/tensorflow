@@ -19,6 +19,7 @@ namespace tflite {
 
 // Single-rounding MultiplyByQuantizedMultiplier
 #if TFLITE_SINGLE_ROUNDING
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW
 int32_t MultiplyByQuantizedMultiplier(int32_t x, int32_t quantized_multiplier,
                                       int shift) {
   TFLITE_DCHECK(quantized_multiplier >= 0);
@@ -34,6 +35,7 @@ int32_t MultiplyByQuantizedMultiplier(int32_t x, int32_t quantized_multiplier,
   return static_cast<int32_t>(result);
 }
 
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW
 int32_t MultiplyByQuantizedMultiplier(int64_t x, int32_t quantized_multiplier,
                                       int shift) {
   // Inputs:
@@ -64,6 +66,7 @@ int32_t MultiplyByQuantizedMultiplier(int64_t x, int32_t quantized_multiplier,
 }
 // Double-rounding MultiplyByQuantizedMultiplier
 #else
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW
 int32_t MultiplyByQuantizedMultiplier(int32_t x, int32_t quantized_multiplier,
                                       int shift) {
   using gemmlowp::RoundingDivideByPOT;
@@ -75,6 +78,7 @@ int32_t MultiplyByQuantizedMultiplier(int32_t x, int32_t quantized_multiplier,
                              right_shift);
 }
 
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW
 int32_t MultiplyByQuantizedMultiplier(int64_t x, int32_t quantized_multiplier,
                                       int shift) {
   // Inputs:

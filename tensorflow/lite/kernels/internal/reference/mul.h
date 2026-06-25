@@ -49,10 +49,10 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
 }
 
 template <typename T>
-inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const T* input1_data,
-                const RuntimeShape& input2_shape, const T* input2_data,
-                const RuntimeShape& output_shape, T* output_data) {
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW inline void Mul(
+    const ArithmeticParams& params, const RuntimeShape& input1_shape,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
   T output_activation_min;
   T output_activation_max;
   GetActivationParams(params, &output_activation_min, &output_activation_max);
@@ -131,10 +131,11 @@ BroadcastMul6DSlow(const ArithmeticParams& params,
   T output_activation_min;
   T output_activation_max;
   GetActivationParams(params, &output_activation_min, &output_activation_max);
-  auto op = [output_activation_min, output_activation_max](T a, T b) {
-    return ActivationFunctionWithMinMax<T>(a * b, output_activation_min,
-                                           output_activation_max);
-  };
+  auto op = [output_activation_min, output_activation_max](T a, T b)
+                TFLITE_NO_SANITIZE_INTEGER_OVERFLOW {
+                  return ActivationFunctionWithMinMax<T>(
+                      a * b, output_activation_min, output_activation_max);
+                };
   BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
                           unextended_input2_shape, input2_data,
                           unextended_output_shape, output_data, op);
@@ -147,7 +148,8 @@ inline void BroadcastMul6DSlow(const ArithmeticParams& params,
                                const std::complex<float>* input2_data,
                                const RuntimeShape& unextended_output_shape,
                                std::complex<float>* output_data) {
-  auto op = [](std::complex<float> a, std::complex<float> b) { return a * b; };
+  auto op = [](std::complex<float> a, std::complex<float> b)
+                TFLITE_NO_SANITIZE_INTEGER_OVERFLOW { return a * b; };
   BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
                           unextended_input2_shape, input2_data,
                           unextended_output_shape, output_data, op);

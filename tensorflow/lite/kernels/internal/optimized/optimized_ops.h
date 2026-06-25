@@ -1950,6 +1950,7 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
   }
 }
 
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW
 inline void MulElementwise(int32_t n, const ArithmeticParams& params,
                            const int32_t* __restrict lhs,
                            const int32_t* __restrict rhs,
@@ -4956,6 +4957,7 @@ void TransposeIm2col(const ConvParams& params, uint8_t zero_byte,
 // filter_width, in_depth).  Implementation by Yangqing Jia (jiayq).
 // Copied from //tensorflow/core/kernels/conv_grad_input_ops.cc
 template <typename T>
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW
 void Col2im(const T* col_data, const int depth, const int height,
             const int width, const int filter_h, const int filter_w,
             const int pad_t, const int pad_l, const int pad_b, const int pad_r,
@@ -4990,6 +4992,7 @@ void Col2im(const T* col_data, const int depth, const int height,
 
 // TODO(b/188008864) Optimize this function by combining outer loops.
 template <typename T>
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW
 void BiasAdd(T* im_data, const T* bias_data, const int batch_size,
              const int height, const int width, const int depth) {
   if (bias_data) {
