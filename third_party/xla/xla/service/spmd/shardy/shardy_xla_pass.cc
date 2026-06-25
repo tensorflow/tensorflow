@@ -67,7 +67,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -432,29 +431,23 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   return diagnosticHandler.consumeStatus(pm.run(mlirModule));
 }
 
-absl::StatusOr<bool> eraseInlineableAttrForShardyManualComputations(
-    HloModule* module) {
+bool eraseInlineableAttrForShardyManualComputations(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kCall &&
+          instruction->frontend_attributes().map().contains(
+              kXlaInlineableAttr) &&
           absl::StrContains(instruction->to_apply()->name(),
                             sdy::kManualComputationFuncName.str())) {
-        auto it =
-            instruction->frontend_attributes().map().find(kXlaInlineableAttr);
-        if (it != instruction->frontend_attributes().map().end()) {
-          absl::string_view value = it->second;
-          TF_RET_CHECK(value == "false" || value == "xla_late")
-              << "Unexpected inlineable attribute value: " << value;
-          instruction->erase_frontend_attribute(kXlaInlineableAttr);
-          // TODO(b/436603025). CallInliner do not inline the Shardy related
-          // manual computations based on the callee name. We have to rename the
-          // callee to a name such that it can be inlined. If we can remove the
-          // special handling in CallInliner, we can remove this renaming.
-          module->SetAndUniquifyComputationName(instruction->to_apply(),
-                                                "inlineable_callee");
-          changed = true;
-        }
+        instruction->erase_frontend_attribute(kXlaInlineableAttr);
+        // TODO(b/436603025). CallInliner do not inline the Shardy related
+        // manual computations based on the callee name. We have to rename the
+        // callee to a name such that it can be inlined. If we can remove the
+        // special handling in CallInliner, we can remove this renaming.
+        module->SetAndUniquifyComputationName(instruction->to_apply(),
+                                              "inlineable_callee");
+        changed = true;
       }
     }
   }
@@ -473,8 +466,7 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
   // If propagation is enabled, we don't need to erase the inlineable attribute
   // for manual computations, since StablehloExportPipeline can handle it.
   if (!runSdyShardingPropagation) {
-    ASSIGN_OR_RETURN(bool changed,
-                     eraseInlineableAttrForShardyManualComputations(hloModule));
+    bool changed = eraseInlineableAttrForShardyManualComputations(hloModule);
     if (!useTupleArgs) {
       // Nothing more to do.
       return changed;

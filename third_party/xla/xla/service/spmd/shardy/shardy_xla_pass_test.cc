@@ -1242,7 +1242,7 @@ TEST_F(ShardyXLATest, PreserveOriginalValueRecoveryTable) {
                             expected));
 }
 
-TEST_F(ShardyXLATest, ManualComputationInlineableFalseErasedAndRenamed) {
+TEST_F(ShardyXLATest, UpdateInlineableAttr) {
   const char* const hloString = R"(
     HloModule module
 
@@ -1253,29 +1253,6 @@ TEST_F(ShardyXLATest, ManualComputationInlineableFalseErasedAndRenamed) {
 
     ENTRY entry {
       ROOT call.2 = () call(), to_apply=xla.sdy.manual_computation_body, frontend_attributes={inlineable="false"}
-    })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get(), /*stablehloImport=*/false,
-            /*runSdyShardingPropagation=*/false);
-
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kCall);
-  EXPECT_FALSE(root->has_frontend_attributes());
-  EXPECT_EQ(root->to_apply()->name(), "inlineable_callee");
-}
-
-TEST_F(ShardyXLATest, ManualComputationInlineableXlaLateErasedAndRenamed) {
-  const char* const hloString = R"(
-    HloModule module
-
-    xla.sdy.manual_computation_body {
-      constant.0 = f32[1] constant({0})
-      ROOT tuple.1 = () tuple()
-    }
-
-    ENTRY entry {
-      ROOT call.2 = () call(), to_apply=xla.sdy.manual_computation_body, frontend_attributes={inlineable="xla_late"}
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));

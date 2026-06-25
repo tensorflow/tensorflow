@@ -239,23 +239,17 @@ bool InlineComposites(
              instruction->frontend_attributes().map().at("composite.name"));
 }
 
-}  // namespace
-
 // Introduces a specific attribute so that the frontend has the direct
 // control over inlining specific calls.
-CallInliner::FrontendInlinePolicy CallInliner::GetFrontendInlinePolicy(
-    const HloInstruction* instruction) {
+bool FrontendAttributesAllowInlining(const HloInstruction* instruction) {
   auto it = instruction->frontend_attributes().map().find("inlineable");
   if (it != instruction->frontend_attributes().map().end()) {
-    if (it->second == "false" || it->second == "xla_late") {
-      return FrontendInlinePolicy::kXlaLate;
-    }
-    if (it->second == "true" || it->second == "xla_early") {
-      return FrontendInlinePolicy::kXlaEarly;
-    }
+    return it->second == "true";
   }
-  return FrontendInlinePolicy::kAuto;
+  return true;
 }
+
+}  // namespace
 
 /* static */ absl::StatusOr<CallInliner::InlinedInstructionMap>
 CallInliner::Inline(HloInstruction* call, bool propagate_metadata) {
@@ -347,8 +341,7 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   }
 
   if (policy != InlineOverridePolicy::kAllowIgnoreFrontendAttributes) {
-    if (GetFrontendInlinePolicy(instruction) ==
-        FrontendInlinePolicy::kXlaLate) {
+    if (!FrontendAttributesAllowInlining(instruction)) {
       return false;
     }
   }
@@ -371,10 +364,6 @@ bool CallInliner::ShouldInline(const CallGraph& call_graph,
 
   if (!InlineInstructionAllowed(instruction, policy)) {
     return false;
-  }
-
-  if (GetFrontendInlinePolicy(instruction) == FrontendInlinePolicy::kXlaEarly) {
-    return true;
   }
 
   // If we're only inlining calls with a single call site, check that.
@@ -490,8 +479,7 @@ bool IsInlineableComputation(HloComputation* computation) {
     bool prerequisite = instruction->opcode() == HloOpcode::kCall &&
                         !instruction->has_backend_config() &&
                         !instruction->parent()->IsAsyncComputation();
-    if (!prerequisite || CallInliner::GetFrontendInlinePolicy(instruction) ==
-                             CallInliner::FrontendInlinePolicy::kXlaLate) {
+    if (!prerequisite || (!FrontendAttributesAllowInlining(instruction))) {
       return false;
     }
     return true;
