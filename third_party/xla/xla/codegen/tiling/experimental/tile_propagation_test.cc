@@ -408,7 +408,55 @@ INSTANTIATE_TEST_SUITE_P(
          /*input_tile_offsets=*/{},
          /*output_shape=*/{12},
          /*expected_output=*/""},
-
+        {"CollapseShapeTrivialTiledDim",
+         /*input_shape=*/{1, 4},
+         /*input_tile_sizes=*/{2, 2},
+         /*input_tile_strides=*/{1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{4},
+         /*expected_output=*/R"(
+         0) (tid_0, tid_1) ->
+          offsets [tid_1 * 2] sizes [2] strides [1] upper bounds [4] )"},
+        {"CollapseShapeWithTrivialTiledDimInGroup",
+         /*input_shape=*/{2, 1, 2},
+         /*input_tile_sizes=*/{2, 2, 2},
+         /*input_tile_strides=*/{1, 2, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{4},
+         /*expected_output=*/R"(
+         0) (tid_0, tid_1, tid_2) ->
+          offsets [0] sizes [4] strides [1] upper bounds [4]
+        )"},
+        {"CollapseToSingleElement",
+         /*input_shape=*/{1, 1, 1},
+         /*input_tile_sizes=*/{1, 1, 1},
+         /*input_tile_strides=*/{1, 1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{1},
+         /*expected_output=*/R"(
+         0) (tid_0, tid_1, tid_2) ->
+          offsets [0] sizes [1] strides [1] upper bounds [1]
+        )"},
+        {"CollapseToSingleElementTiled",
+         /*input_shape=*/{1, 1, 1},
+         /*input_tile_sizes=*/{2, 1, 1},
+         /*input_tile_strides=*/{1, 1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{1},
+         /*expected_output=*/R"(
+         0) (tid_0, tid_1, tid_2) ->
+          offsets [0] sizes [1] strides [1] upper bounds [1]
+        )"},
+        {"CollapseToScalar",
+         /*input_shape=*/{1, 1, 1},
+         /*input_tile_sizes=*/{2, 2, 2},
+         /*input_tile_strides=*/{1, 1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{},
+         /*expected_output=*/R"(
+         0) (tid_0, tid_1, tid_2) ->
+          offsets [] sizes [] strides [] upper bounds []
+        )"},
         // =====================================================================
         // ExpandShapeContiguous
         // =====================================================================
@@ -484,6 +532,45 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1]
          upper bounds [1, 12]
   )"},
+        {"ExpandSingleElement",
+         /*input_shape=*/{1},
+         /*input_tile_sizes=*/{1},
+         /*input_tile_strides=*/{1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{1, 1, 1},
+         /*expected_output=*/R"(
+         0) (tid_0) ->
+          offsets [0, 0, 0]
+          sizes [1, 1, 1]
+          strides [1, 1, 1]
+          upper bounds [1, 1, 1]
+        )"},
+        {"ExpandSingleTiledElement",
+         /*input_shape=*/{1},
+         /*input_tile_sizes=*/{1},
+         /*input_tile_strides=*/{1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{1, 1, 1},
+         /*expected_output=*/R"(
+         0) (tid_0) ->
+          offsets [0, 0, 0]
+          sizes [1, 1, 1]
+          strides [1, 1, 1]
+          upper bounds [1, 1, 1]
+        )"},
+        {"ExpandScalar",
+         /*input_shape=*/{},
+         /*input_tile_sizes=*/{},
+         /*input_tile_strides=*/{},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{1, 1, 1},
+         /*expected_output=*/R"(
+         0) () ->
+          offsets [0, 0, 0]
+          sizes [1, 1, 1]
+          strides [1, 1, 1]
+          upper bounds [1, 1, 1]
+        )"},
 
         // =====================================================================
         // ExpandShapeNonContiguous

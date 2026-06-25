@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -52,6 +53,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/codegen/tiling/experimental/reshape_analysis.h"
 #include "xla/codegen/tiling/experimental/scheduling.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
@@ -682,6 +684,31 @@ absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
           .getResult());
 }
 
+// Trivial dimensions in output might be tiled with tile size > 1 and a
+// simple reshape op will fail as tile size of input and output are
+// different. For example:
+// f32[1,8] result = reshape(f32[2,4] operand)
+// where `result` has tile sizes [2,8]. Simple reshape will fail as we go from
+// 8 to 16 elements in a tile.
+// But if we represent this as a reshape followed by a broadcast
+//   [2,4] - reshape -> [8] - broadcast -> [1,8]
+// Broadcast handles the expansion of the tile size.
+absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
+    mlir::ImplicitLocOpBuilder& b, const Shape& output_shape,
+    llvm::ArrayRef<int64_t> output_tile_sizes, TensorValue input) {
+  SmallVector<int64_t> dim_positions =
+      ge::PositionsOfNonTrivialDims(output_shape.dimensions());
+  SmallVector<int64_t> reshape_tile_sizes;
+  reshape_tile_sizes.reserve(dim_positions.size());
+  for (int64_t dim : dim_positions) {
+    reshape_tile_sizes.push_back(output_tile_sizes[dim]);
+  }
+  ASSIGN_OR_RETURN(TensorValue re,
+                   EmitTiledReshape(b, reshape_tile_sizes, input));
+  // Instead of expand we create broadcast as some tile sizes might be > 1.
+  return xtile::BroadcastInDims(b, re, output_tile_sizes, dim_positions);
+}
+
 absl::StatusOr<TensorValue> EmitBitcast(
     EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_bitcast,
     TensorValue input) {
@@ -727,7 +754,8 @@ absl::StatusOr<TensorValue> EmitBitcast(
   // Bitcast is reshape.
   if (ShapeUtil::ReshapeIsBitcast(input_shape, output_shape,
                                   /*ignore_element_type=*/true)) {
-    return EmitTiledReshape(b, output_tile_sizes, input);
+    return EmitTiledBroadcastedReshape(b, output_shape, output_tile_sizes,
+                                       input);
   }
 
   // Bitcast is decomposable to a transpose+reshape+transpose.
@@ -766,8 +794,10 @@ absl::StatusOr<TensorValue> EmitBitcast(
   if (ShapeUtil::Equal(trt->transpose1_shape, trt->reshape_shape)) {
     normalized_reshape = normalized_input;
   } else {
-    ASSIGN_OR_RETURN(normalized_reshape,
-                     EmitTiledReshape(b, reshape_tile_sizes, normalized_input));
+    ASSIGN_OR_RETURN(
+        normalized_reshape,
+        EmitTiledBroadcastedReshape(b, trt->reshape_shape, reshape_tile_sizes,
+                                    normalized_input));
   }
 
   // The final transpose simply uses the tile sizes computed for the original

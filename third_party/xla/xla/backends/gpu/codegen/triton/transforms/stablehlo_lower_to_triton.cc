@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -144,7 +145,12 @@ class LowerBroadcastInDim
 
       auto extracted = mlir::tensor::ExtractOp::create(rewriter, op.getLoc(),
                                                        broadcast_dim_input);
-
+      if (output_shape.empty()) {
+        rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(
+            op, RankedTensorType::get({}, extracted.getType()),
+            ValueRange{extracted});
+        return mlir::success();
+      }
       rewriter.replaceOpWithNewOp<ttir::SplatOp>(op, op.getResult().getType(),
                                                  extracted);
       return mlir::success();

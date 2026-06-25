@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -139,11 +140,10 @@ Tiles PropagateTileToInputForBroadcastOp(const HloBroadcastInstruction& bcast,
   return {output_tile.CloneWithNewDims(std::move(dim_tiles))};
 }
 
-Tiles PropagateTileToOutputForBroadcastOp(const HloBroadcastInstruction& bcast,
-                                          const Tile& input_tile) {
-  absl::Span<const int64_t> bcast_dims = bcast.dimensions();
-  const Shape& output_shape = bcast.shape();
-  auto output_rank = bcast.shape().dimensions().size();
+Tile PropagateTileToOutputForBroadcastOpImpl(
+    const Shape& output_shape, absl::Span<const int64_t> bcast_dims,
+    const Tile& input_tile) {
+  int64_t output_rank = output_shape.dimensions().size();
 
   SmallVector<DimTile> dim_tiles;
   dim_tiles.reserve(output_rank);
@@ -160,7 +160,13 @@ Tiles PropagateTileToOutputForBroadcastOp(const HloBroadcastInstruction& bcast,
     dim_tiles.push_back(
         input_tile.dim_tiles()[std::distance(bcast_dims.begin(), bcast_dim)]);
   }
-  return {input_tile.CloneWithNewDims(std::move(dim_tiles))};
+  return input_tile.CloneWithNewDims(std::move(dim_tiles));
+}
+
+Tiles PropagateTileToOutputForBroadcastOp(const HloBroadcastInstruction& bcast,
+                                          const Tile& input_tile) {
+  return {PropagateTileToOutputForBroadcastOpImpl(
+      bcast.shape(), bcast.dimensions(), input_tile)};
 }
 
 absl::Status VerifyConcatenateAlignment(
@@ -1090,22 +1096,44 @@ absl::StatusOr<Tile> PropagateTileThroughReshape(const Tile& tile,
           << "  src: " << src.ToString() << "\n"
           << "  dst: " << dst.ToString() << "\n"
           << "  tile: " << tile.ToString();
-  std::vector<MinimalReshape> reshapes = GetMinimalReshapes(src, dst);
+
+  // Represent reshape as a reshape followed by rank increase:
+  // src -> reshape_shape -> dst.
+  // We use this approach in the emitter as new rank dimensions might not have a
+  // trivial tile size and thus have to be handled as a broadcast. Applying the
+  // same algorithm here for consistency.
+  llvm::SmallVector<int64_t> non_trivial_dim_positions =
+      PositionsOfNonTrivialDims(dst.dimensions());
+
+  llvm::SmallVector<int64_t> reshape_dims;
+  reshape_dims.reserve(non_trivial_dim_positions.size());
+  for (int64_t dim : non_trivial_dim_positions) {
+    reshape_dims.push_back(dst.dimensions(dim));
+  }
+  Shape reshape_shape = ShapeUtil::MakeShape(dst.element_type(), reshape_dims);
+
+  VLOG(2) << absl::StrCat(
+      "reshape: ", reshape_shape.ToString(),
+      "\nbroadcast: ", absl::StrJoin(non_trivial_dim_positions, ","));
+
+  std::vector<MinimalReshape> reshapes = GetMinimalReshapes(src, reshape_shape);
   VLOG(2) << "reshapes: " << absl::StrJoin(reshapes, ", ");
   RETURN_IF_ERROR(IsSupportedReshape(reshapes));
-
   SmallVector<DimTile> target_dim_tiles;
-  target_dim_tiles.reserve(dst.dimensions().size());
+  target_dim_tiles.reserve(reshape_dims.size());
   const TilingSpace& tiling_space = tile.tiling_space();
   mlir::MLIRContext* mlir_context = tiling_space.mlir_context();
-  for (int64_t dim_size : dst.dimensions()) {
+  for (int64_t dim_size : reshape_dims) {
     target_dim_tiles.push_back(GetFullDimTile(dim_size, mlir_context));
   }
   for (const auto& minimal_reshape : reshapes) {
     RETURN_IF_ERROR(PropagateTileThroughMinimalReshape(
-        mlir_context, minimal_reshape, src, dst, tile, target_dim_tiles));
+        mlir_context, minimal_reshape, src, reshape_shape, tile,
+        target_dim_tiles));
   }
-  return {Tile(tiling_space, std::move(target_dim_tiles))};
+  Tile reshape_tile(tiling_space, std::move(target_dim_tiles));
+  return PropagateTileToOutputForBroadcastOpImpl(dst, non_trivial_dim_positions,
+                                                 reshape_tile);
 }
 
 absl::StatusOr<Tiles> PropagateTileToInputForReshapeOp(
