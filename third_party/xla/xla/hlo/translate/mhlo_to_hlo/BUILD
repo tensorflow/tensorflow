@@ -37,7 +37,6 @@ cc_library(
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
         "//xla/stream_executor:dnn",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

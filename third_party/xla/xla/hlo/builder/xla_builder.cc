@@ -20,7 +20,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <queue>
 #include <set>
@@ -66,7 +65,6 @@ limitations under the License.
 #include "xla/sharding_op_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -175,7 +173,7 @@ XlaOp XlaBuilderFriend::BuildFusion(
         output_operand_aliasing) {
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     HloInstructionProto instr;
-    instr.set_fusion_kind(std::string(fusion_kind));
+    instr.set_fusion_kind(fusion_kind);
     if (!output_operand_aliasing.empty()) {
       for (const auto& pair : output_operand_aliasing) {
         auto aliasing = instr.add_output_operand_aliasing();
@@ -534,9 +532,8 @@ XlaOp operator>>(XlaOp x, XlaOp y) {
     }
     if (ShapeUtil::ElementIsSigned(*shape)) {
       return ShiftRightArithmetic(x, y);
-    } else {
-      return ShiftRightLogical(x, y);
     }
+    return ShiftRightLogical(x, y);
   });
 }
 
@@ -1350,9 +1347,8 @@ absl::StatusOr<XlaOp> DegenerateBroadcastWithUnbounded(
   ASSIGN_OR_RETURN(const Shape* operand_shape, builder->GetShapePtr(operand));
 
   std::vector<int64_t> broadcast_dimensions(operand_shape->dimensions().size());
-  std::iota(
-      broadcast_dimensions.begin(), broadcast_dimensions.end(),
-      output_shape.dimensions().size() - operand_shape->dimensions().size());
+  absl::c_iota(broadcast_dimensions, output_shape.dimensions().size() -
+                                         operand_shape->dimensions().size());
 
   return MhloDynamicBroadcastInDim(operand, output_dimensions,
                                    broadcast_dimensions, output_shape);
@@ -1469,9 +1465,8 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
       }
       if (type == std::nullopt) {
         return Compare(shape, updated_lhs, updated_rhs, *direction);
-      } else {
-        return Compare(shape, updated_lhs, updated_rhs, *direction, *type);
       }
+      return Compare(shape, updated_lhs, updated_rhs, *direction, *type);
     }
 
     if (direction.has_value()) {
@@ -1608,12 +1603,11 @@ XlaOp XlaBuilder::ConstantLiteral(const LiteralSlice& literal) {
             scalar_op, AddInstruction(std::move(instr), HloOpcode::kConstant));
       }
       return Broadcast(scalar_op, literal.shape().dimensions());
-    } else {
-      HloInstructionProto instr;
-      *instr.mutable_shape() = literal.shape().ToProto();
-      *instr.mutable_literal() = literal.ToProto();
-      return AddInstruction(std::move(instr), HloOpcode::kConstant);
     }
+    HloInstructionProto instr;
+    *instr.mutable_shape() = literal.shape().ToProto();
+    *instr.mutable_literal() = literal.ToProto();
+    return AddInstruction(std::move(instr), HloOpcode::kConstant);
   });
 }
 
@@ -3950,7 +3944,7 @@ XlaOp XlaBuilder::ReduceAll(XlaOp operand, XlaOp init_value,
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     std::vector<int64_t> all_dimnos(operand_shape->dimensions().size());
-    std::iota(all_dimnos.begin(), all_dimnos.end(), 0);
+    absl::c_iota(all_dimnos, 0);
     return Reduce(absl::Span<XlaOp const>({operand}),
                   absl::Span<XlaOp const>({init_value}), computation,
                   all_dimnos);
@@ -5364,7 +5358,7 @@ absl::StatusOr<XlaOp> XlaBuilder::AddInstruction(
                                    ? op_name
                                    : op_name.substr(last_slash_pos + 1);
       instr.set_name(UniquifyInstructionName(
-          xla::SanitizeOpName(std::string(name), kNameSeparator, "_")));
+          xla::SanitizeOpName(name, kNameSeparator, "_")));
     } else {
       instr.set_name(UniquifyInstructionName(instr.opcode()));
     }
@@ -6891,7 +6885,9 @@ absl::StatusOr<XlaOp> ConvertSpmdFullToShardShape(
       }
       const int64_t partitions_i =
           manual_sharding.tile_assignment_dimensions(i);
-      if (partitions_i == 1) continue;
+      if (partitions_i == 1) {
+        continue;
+      }
       const int64_t dim_size =
           CeilOfRatio(output_shape.dimensions(i), partitions_i);
       output_shape.set_dimensions(i, dim_size);

@@ -27,7 +27,6 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <random>
 #include <string>
@@ -79,9 +78,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -4362,7 +4359,7 @@ absl::Status HloEvaluator::HandleSort(const HloInstruction* sort) {
           literals_to_sort.push_back(std::move(literal_to_sort));
         }
         std::vector<int64_t> indices_to_sort(sort_dim_elements);
-        std::iota(indices_to_sort.begin(), indices_to_sort.end(), 0);
+        absl::c_iota(indices_to_sort, 0);
         RETURN_IF_ERROR(mergesort(literals_to_sort,
                                   absl::MakeSpan(indices_to_sort), nullptr,
                                   nullptr));

@@ -20,7 +20,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -63,7 +62,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -1843,7 +1841,7 @@ HloMapInstruction::HloMapInstruction(const Shape& shape,
   // TODO(b/65689298) Remove code below once Map is generalized to accept
   // arbitrary map dimensions.
   dimensions_.resize(shape.dimensions().size());
-  std::iota(dimensions_.begin(), dimensions_.end(), 0);
+  absl::c_iota(dimensions_, 0);
 }
 
 void HloMapInstruction::ToProto(HloInstructionProto* proto) const {
