@@ -218,6 +218,38 @@ Tiled HLO:
                                                      HloOpcode::kConstant})));
 }
 
+TEST_F(TileAnalysisTest, TiledReduceWithLoops) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
+    max {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT maximum = f32[] maximum(x, y)
+    }
+
+    ENTRY e {
+      p0 = f32[16,97]{1,0} parameter(0)
+      constant = f32[] constant(-inf)
+      ROOT reduce = f32[16]{0} reduce(p0, constant), dimensions={1}, to_apply=max
+    })hlo",
+                                    {8, 32}));
+
+  EXPECT_THAT(tiled_computation, MatchString(R"(
+Dimensions:
+0 type: parallel size: 16 tile size: 8 dim ID:0 hlo: %reduce = f32[16]{0} reduce(%p0, %constant), dimensions={1}, to_apply=%max
+1 type: sequential size: 97 tile size: 32 dim ID:1 hlo: %reduce = f32[16]{0} reduce(%p0, %constant), dimensions={1}, to_apply=%max
+Root tiles:
+0 root tile:  offsets [tid_0 * 8] sizes [8] strides [1] upper bounds [16]
+
+Tiled HLO:
+  constant.tile_0 = constant()  offsets [] sizes [] strides [] upper bounds []
+  reduce.tile_0 = reduce(p0.tile_0, constant.tile_0)  offsets [tid_0 * 8] sizes [8] strides [1] upper bounds [16]
+  region #0 {
+    p0.tile_0 = parameter(0)  offsets [tid_0 * 8, tid_1 * 32] sizes [8, 32] strides [1, 1] upper bounds [16, 97]
+  }
+  )"));
+}
+
 TEST_F(TileAnalysisTest, SimpleNormalizationDiamond) {
   ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
                        ParseAndTile(R"hlo(
