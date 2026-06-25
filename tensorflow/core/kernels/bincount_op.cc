@@ -408,7 +408,14 @@ class SparseBincountOp : public OpKernel {
     OP_REQUIRES_OK(ctx, sparse_utils::ValidateSparseTensor<int64_t>(
                             indices, values, dense_shape,
                             sparse_utils::IndexValidation::kUnordered));
-
+      
+// Reject rank-0 sparse tensors. When dense_shape has 0 elements,
+    // the else-branch below performs an out-of-bounds read via shape(0).
+    OP_REQUIRES(ctx, dense_shape.NumElements() > 0,
+                errors::InvalidArgument(
+                    "SparseBincount: dense_shape must have at least 1 "
+                    "element. Rank-0 SparseTensors are not supported."));
+      
     bool is_1d = dense_shape.NumElements() == 1;
 
     Tensor* out_t;
@@ -438,9 +445,9 @@ class SparseBincountOp : public OpKernel {
         const int64_t batch = indices_mat(i, 0);
         const Tidx bin = values_flat(i);
         OP_REQUIRES(
-            ctx, batch < out.dimension(0),
+            ctx, batch >= 0 && batch < out.dimension(0),
             errors::InvalidArgument("Index out of bound. `batch` (", batch,
-                                    ") must be less than the dimension size (",
+                                    ") must be in range [0, ",
                                     out.dimension(0), ")."));
         if (0 <= bin && bin < size) {
           if (binary_output_) {
