@@ -682,6 +682,36 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
               size=size,
               weights=[]))
 
+  def test_sparse_bincount_rank0_fails(self):
+    # Regression test for OOB read/write via rank-0 SparseTensor bypass.
+    # ValidateSparseTensor now rejects ndims == 0 at the root, preventing
+    # the downstream OOB read on dense_shape(0) in SparseBincountOp.
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Sparse tensor must have at least 1 dimension"):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=constant_op.constant([], shape=[1, 0], dtype=dtypes.int64),
+              values=[0],
+              dense_shape=constant_op.constant([], shape=[0], dtype=dtypes.int64),
+              size=10,
+              weights=[]))
+
+  def test_sparse_bincount_negative_batch_fails(self):
+    # Regression test for OOB write via negative batch index.
+    # SparseBincountOp now enforces batch >= 0 in addition to the existing
+    # upper-bound check.
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "is out of bounds"):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=[[-1, 0]],
+              values=[0],
+              dense_shape=[2, 5],
+              size=5,
+              weights=[]))
+
 
 class RaggedBincountOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
