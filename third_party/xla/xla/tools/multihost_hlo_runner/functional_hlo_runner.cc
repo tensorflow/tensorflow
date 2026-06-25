@@ -1023,13 +1023,10 @@ CreateArgumentsOnDevice(PjRtClient& client,
 
 // Creates an ExecutableBuildOptions using the specified ExecutionOptions.
 ExecutableBuildOptions CreateExecutableBuildOptionsFromExecutionOptions(
-    const ExecutionOptions& execution_options, bool preserve_xla_dump_to) {
+    const ExecutionOptions& execution_options) {
   ExecutableBuildOptions build_options;
   if (execution_options.has_debug_options()) {
     *build_options.mutable_debug_options() = execution_options.debug_options();
-    if (!preserve_xla_dump_to) {
-      build_options.mutable_debug_options()->set_xla_dump_to("");
-    }
   }
   if (execution_options.has_shape_with_output_layout()) {
     absl::StatusOr<Shape> shape =
@@ -1078,8 +1075,63 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
   if (raw_options.execution_options.has_value()) {
     compile_options.executable_build_options =
         CreateExecutableBuildOptionsFromExecutionOptions(
-            raw_options.execution_options.value(),
-            raw_options.preserve_xla_dump_to);
+            raw_options.execution_options.value());
+    if (compile_options.executable_build_options.has_debug_options()) {
+      // Preserve the xla_dump_to path from other sources (e.g. via
+      // RawCompileOptions.xla_dump_to or DebugOptions parsed from XLA_FLAGS).
+      // This will also reset it if xla_dump_to is not specified.
+      std::string xla_dump_to = raw_options.debug_options.xla_dump_to().empty()
+                                    ? raw_options.xla_dump_to
+                                    : raw_options.debug_options.xla_dump_to();
+      compile_options.executable_build_options.mutable_debug_options()
+          ->set_xla_dump_to(xla_dump_to);
+      // Also preserve other dump related flags.
+      if (raw_options.debug_options.has_xla_dump_hlo_as_text()) {
+        compile_options.executable_build_options.mutable_debug_options()
+            ->set_xla_dump_hlo_as_text(
+                raw_options.debug_options.xla_dump_hlo_as_text());
+      }
+      if (raw_options.debug_options.has_xla_dump_hlo_as_proto()) {
+        compile_options.executable_build_options.mutable_debug_options()
+            ->set_xla_dump_hlo_as_proto(
+                raw_options.debug_options.xla_dump_hlo_as_proto());
+      }
+      if (raw_options.debug_options.has_xla_dump_hlo_as_dot()) {
+        compile_options.executable_build_options.mutable_debug_options()
+            ->set_xla_dump_hlo_as_dot(
+                raw_options.debug_options.xla_dump_hlo_as_dot());
+      }
+      if (raw_options.debug_options.has_xla_dump_hlo_as_url()) {
+        compile_options.executable_build_options.mutable_debug_options()
+            ->set_xla_dump_hlo_as_url(
+                raw_options.debug_options.xla_dump_hlo_as_url());
+      }
+      if (raw_options.debug_options.has_xla_dump_hlo_as_riegeli()) {
+        compile_options.executable_build_options.mutable_debug_options()
+            ->set_xla_dump_hlo_as_riegeli(
+                raw_options.debug_options.xla_dump_hlo_as_riegeli());
+      }
+      if (raw_options.debug_options.has_xla_dump_hlo_as_html()) {
+        compile_options.executable_build_options.mutable_debug_options()
+            ->set_xla_dump_hlo_as_html(
+                raw_options.debug_options.xla_dump_hlo_as_html());
+      }
+      if (raw_options.debug_options.has_xla_dump_hlo_pass_re()) {
+        compile_options.executable_build_options.mutable_debug_options()
+            ->set_xla_dump_hlo_pass_re(
+                raw_options.debug_options.xla_dump_hlo_pass_re());
+      }
+      if (raw_options.debug_options.has_xla_dump_hlo_module_re()) {
+        compile_options.executable_build_options.mutable_debug_options()
+            ->set_xla_dump_hlo_module_re(
+                raw_options.debug_options.xla_dump_hlo_module_re());
+      }
+      if (raw_options.debug_options.has_xla_dump_emitter_re()) {
+        compile_options.executable_build_options.mutable_debug_options()
+            ->set_xla_dump_emitter_re(
+                raw_options.debug_options.xla_dump_emitter_re());
+      }
+    }
   }
 
   // Fall back to `raw_options.debug_options` if necessary.
@@ -1089,10 +1141,6 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
         GetDebugOptionsFromFlags();
     compile_options.executable_build_options.mutable_debug_options()->MergeFrom(
         raw_options.debug_options);
-    if (!raw_options.preserve_xla_dump_to) {
-      compile_options.executable_build_options.mutable_debug_options()
-          ->clear_xla_dump_to();
-    }
   }
 
   ExecutableBuildOptions& build_options =
