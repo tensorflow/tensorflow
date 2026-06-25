@@ -557,7 +557,7 @@ IndexingMap MlirKernelEmitter::GetDefaultThreadIdIndexingMap(
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
                                  const se::DeviceDescription& device,
                                  int max_unroll_factor) {
-  pm.addNestedPass<FuncOp>(CreateLowerXlaSharedPass());
+  pm.addNestedPass<FuncOp>(createLowerXlaSharedPass());
   emitters::LowerXlaToScfPassOptions lower_xla_to_scf_options;
   lower_xla_to_scf_options.warp_size = device.threads_per_warp();
   pm.addNestedPass<FuncOp>(
@@ -568,7 +568,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   }));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<FuncOp>(CreatePeelLoopsPass());
+  pm.addNestedPass<FuncOp>(createPeelLoopsPass());
   pm.addNestedPass<FuncOp>(emitters::createLowerXlaLoopsToScfPass());
   pm.addPass(mlir::stablehlo::createStablehloConvertToSignlessPass());
   pm.addPass(emitters::createPropagateSliceIndicesPass());
@@ -582,7 +582,9 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   // instructions over ifs.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addNestedPass<FuncOp>(emitters::createVectorizeLoadsAndStoresPass(device));
-  pm.addNestedPass<FuncOp>(CreateOptimizeLoopsPass(max_unroll_factor));
+  OptimizeLoopsPassOptions optimize_loops_options;
+  optimize_loops_options.max_unroll_factor_ = max_unroll_factor;
+  pm.addNestedPass<FuncOp>(createOptimizeLoopsPass(optimize_loops_options));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 }
@@ -612,7 +614,7 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addNestedPass<FuncOp>(
       emitters::createSimplifyArithPass(simplify_arith_options));
   pm.addPass(emitters::createSimplifyAffinePass());
-  pm.addPass(CreateConvertIndexTypePass());
+  pm.addPass(createConvertIndexTypePass());
   // simplify-affine lowers most affine.apply ops, but if it can't prove a
   // division or modulo is unsigned, affine.apply ops will remain.
   pm.addPass(mlir::createLowerAffinePass());
@@ -626,15 +628,18 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
     se::SemanticVersion ptx_version =
         nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
             device.runtime_version());
-    pm.addPass(CreateConvertFloatNvidiaPass(cc->major, cc->minor,
-                                            ptx_version.major_version(),
-                                            ptx_version.minor_version()));
+    ConvertFloatNvidiaPassOptions nv_options;
+    nv_options.compute_capability_major_ = cc->major;
+    nv_options.compute_capability_minor_ = cc->minor;
+    nv_options.ptx_version_major_ = ptx_version.major_version();
+    nv_options.ptx_version_minor_ = ptx_version.minor_version();
+    pm.addPass(createConvertFloatNvidiaPass(nv_options));
   } else if (auto* cc =
                  device.gpu_compute_capability().rocm_compute_capability()) {
     if (cc->has_fp8_support()) {
       pm.addPass(CreateConvertFloatAMDPass(*cc));
     }
-    pm.addPass(CreateRecoverExp2Pass());
+    pm.addPass(createRecoverExp2Pass());
   }
 
   pm.addPass(emitters::createExpandFloatOpsPass());
@@ -642,7 +647,7 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createSCFToControlFlowPass());
 
   if (device.gpu_compute_capability().rocm_compute_capability()) {
-    pm.addPass(CreatePromoteShuffleToDPPPass());
+    pm.addPass(createPromoteShuffleToDPPPass());
   }
 
   pm.addPass(emitters::createLowerToLLVMGPUPass(device));
@@ -670,7 +675,7 @@ absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
   emitters::RegisterOptimizationPasses(pm);
   AddLoopTransformationPasses(pm, device, unroll_factor);
   if (EnablePDL(hlo_module, device)) {
-    pm.addPass(CreateInsertPDLPass());
+    pm.addPass(createInsertPDLPass());
   }
   AddLoweringPasses(pm, device);
 
