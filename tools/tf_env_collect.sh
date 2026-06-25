@@ -437,6 +437,22 @@ def tf_info():
     return info
 
 
+def redact(obj):
+    """Recursively redact string values containing "google" (case-insensitive).
+
+    Mirrors the `grep -v -i google` filter applied to the text report so the
+    JSON summary cannot leak internal hostnames, depot paths, or build
+    configurations when users upload diagnostic logs.
+    """
+    if isinstance(obj, str):
+        return "[redacted]" if "google" in obj.lower() else obj
+    if isinstance(obj, dict):
+        return {k: redact(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [redact(v) for v in obj]
+    return obj
+
+
 in_venv = hasattr(sys, "real_prefix") or (
     hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
 )
@@ -479,6 +495,9 @@ report = {
         k: os.environ[k] for k in relevant_env_keys if k in os.environ
     },
 }
+
+# Apply the same `google` redaction the text report relies on before writing.
+report = redact(report)
 
 out_path = os.environ["TFENV_JSON_FILE"]
 with open(out_path, "w") as f:
