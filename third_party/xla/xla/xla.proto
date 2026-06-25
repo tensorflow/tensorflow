@@ -451,11 +451,27 @@ message DebugOptions {
     reserved 2;
   }
 
+  // Filter which allows enabling NCCL symmetric buffers for a subset of
+  // collectives based on their type and size.
+  message CollectiveFilter {
+    CollectiveOpType collective = 1;
+    // If set, only collectives with size <= max_size_bytes will be enabled.
+    optional int64 max_size_bytes = 2;
+    // If set, only collectives with this operand type will be enabled.
+    optional PrimitiveType op_type = 3;
+  }
+
   optional DevicelessCubMode xla_gpu_deviceless_cub_mode = 483;
 
   // Limits the thunk buffer debug instrumentation to specific thunks.
   optional ThunkBufferDebugFilter
       xla_gpu_experimental_thunk_buffer_debug_filter = 424;
+
+  // Enable NCCL symmetric buffers for specific collectives and sizes.
+  // Example:
+  // --xla_enable_nccl_symmetric_buffers_for_collectives=allreduce:1024:0,alltoall:1024,allgather
+  repeated CollectiveFilter xla_enable_nccl_symmetric_buffers_for_collectives =
+      503;
 
   // List of autotuner backends to enable. If empty, all backends are enabled.
   // Backends not relevant to the platform will be ignored, e.g. cuDNN on AMD.
@@ -1637,7 +1653,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 499
+  // Next id: 504
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

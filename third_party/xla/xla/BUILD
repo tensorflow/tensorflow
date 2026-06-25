@@ -1285,6 +1285,7 @@ cc_library(
     deps =
         [
             ":parse_flags_from_env",
+            ":xla_data_proto_cc",
             ":xla_proto_cc",
             "//xla/backends/autotuner:backends_proto_cc",
             "//xla/service:collective_utils",
@@ -1317,6 +1318,7 @@ xla_cc_test(
     deps = [
         ":debug_options_flags",
         ":parse_flags_from_env",
+        ":xla_data_proto_cc",
         ":xla_proto_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test_main",

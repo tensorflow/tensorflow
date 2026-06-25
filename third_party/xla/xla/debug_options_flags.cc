@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/debug_options_flags.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"  // NOLINT
 
 namespace xla {
@@ -705,6 +707,76 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
   auto setter_for_xla_gpu_llvm_ir_file =
       [debug_options](const std::string& value) {
         debug_options->add_xla_gpu_llvm_ir_file(value);
+        return true;
+      };
+
+  // Custom "sub-parser" lambda for
+  // xla_enable_nccl_symmetric_buffers_for_collectives.
+  auto setter_for_xla_enable_nccl_symmetric_buffers_for_collectives =
+      [debug_options](std::string comma_separated_values) {
+        for (const absl::string_view& token :
+             absl::StrSplit(comma_separated_values, ',')) {
+          if (token.empty()) {
+            continue;
+          }
+
+          absl::string_view remaining = token;
+          std::vector<absl::string_view> parts = absl::StrSplit(remaining, ':');
+          if (parts.empty()) {
+            continue;
+          }
+
+          std::string op_name = absl::AsciiStrToUpper(parts[0]);
+          op_name.erase(std::remove(op_name.begin(), op_name.end(), '-'),
+                        op_name.end());
+          op_name.erase(std::remove(op_name.begin(), op_name.end(), '_'),
+                        op_name.end());
+          if (op_name == "ALL") {
+            op_name = "ALLCOLLECTIVES";
+          }
+
+          DebugOptions::CollectiveOpType op_type;
+          if (!DebugOptions::CollectiveOpType_Parse(op_name, &op_type)) {
+            LOG(ERROR) << "Invalid collective op name: " << parts[0];
+            return false;
+          }
+
+          auto* filter =
+              debug_options
+                  ->add_xla_enable_nccl_symmetric_buffers_for_collectives();
+          filter->set_collective(op_type);
+
+          // If max_size_bytes is specified, only collectives with size <=
+          // max_size_bytes will be enabled.
+          if (parts.size() > 1) {
+            int64_t max_size;
+            if (absl::SimpleAtoi(parts[1], &max_size)) {
+              filter->set_max_size_bytes(max_size);
+            } else {
+              LOG(QFATAL) << "Invalid max_size_bytes: " << parts[1];
+              return false;
+            }
+          }
+
+          // If op_type is specified, only collectives with this operand type
+          // will be enabled.
+          if (parts.size() > 2) {
+            PrimitiveType primitive_type;
+            std::string type_str = absl::AsciiStrToUpper(parts[2]);
+            if (!PrimitiveType_Parse(type_str, &primitive_type)) {
+              // Try parsing as integer for backward compatibility.
+              int type_val;
+              if (absl::SimpleAtoi(parts[2], &type_val) &&
+                  PrimitiveType_IsValid(type_val)) {
+                primitive_type = static_cast<PrimitiveType>(type_val);
+              } else {
+                LOG(QFATAL) << "Invalid op_type (PrimitiveType): " << parts[2];
+                return false;
+              }
+            }
+            filter->set_op_type(primitive_type);
+          }
+        }
         return true;
       };
 
@@ -2070,6 +2142,26 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_experimental_enable_nccl_symmetric_buffers),
       debug_options->xla_gpu_experimental_enable_nccl_symmetric_buffers(),
       "Enables NCCL symmetric buffer registration."));
+  flag_list->push_back(tsl::Flag(
+      "xla_enable_nccl_symmetric_buffers_for_collectives",
+      setter_for_xla_enable_nccl_symmetric_buffers_for_collectives,
+      absl::StrJoin(
+          debug_options->xla_enable_nccl_symmetric_buffers_for_collectives(),
+          ",",
+          [](std::string* out, const DebugOptions::CollectiveFilter& filter) {
+            absl::StrAppend(
+                out, DebugOptions::CollectiveOpType_Name(filter.collective()));
+            if (filter.has_max_size_bytes()) {
+              absl::StrAppend(out, ":", filter.max_size_bytes());
+            }
+            if (filter.has_op_type()) {
+              absl::StrAppend(out, ":", PrimitiveType_Name(filter.op_type()));
+            }
+          }),
+      "Enables NCCL symmetric buffer registration for specific collectives and "
+      "sizes. "
+      "Format: op:size:op_type or op. E.g. "
+      "AllReduce:1024:F32,AllGather:2048,ReduceScatter,all."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_aot_compiled_thunks",
       bool_setter_for(
