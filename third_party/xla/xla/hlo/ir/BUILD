@@ -101,7 +101,6 @@ cc_library(
         "//xla/service:mapped_ptr_container_sorter",
         "//xla/service:metrics_proto_cc",
         "//xla/service:name_uniquer",
-        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/gtl:iterator_range",
         "//xla/tsl/lib/gtl:map_util",
         "//xla/tsl/platform:env",

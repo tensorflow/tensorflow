@@ -271,8 +271,8 @@ ShapeTracker::BufferView ShapeTracker::BufferView::FromShape(
     view.extents_.push_back(shape.dimensions(i));
     stride *= shape.dimensions(i);
   }
-  std::reverse(view.strides_.begin(), view.strides_.end());
-  std::reverse(view.extents_.begin(), view.extents_.end());
+  absl::c_reverse(view.strides_);
+  absl::c_reverse(view.extents_);
   if (view.strides_.empty()) {
     view.strides_.push_back(1);
     view.extents_.push_back(1);
@@ -929,7 +929,7 @@ std::vector<ShapeTracker::Step> ShapeTracker::OptimizeSteps(
                                      input_shape.dimensions().end());
 
   std::vector<int64_t> mapping(current_shape.size());
-  std::iota(mapping.begin(), mapping.end(), 0);
+  absl::c_iota(mapping, 0);
 
   // If the final step is a reshape, skip it for two reasons:
   // - Unlike other steps, it may contain degenerate dimensions which

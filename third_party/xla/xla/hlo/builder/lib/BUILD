@@ -584,12 +584,15 @@ cc_library(
     name = "quantize",
     hdrs = ["quantize.h"],
     deps = [
-        ":constants",
+        "//xla:shape_util",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:bfloat16",
     ],
 )
