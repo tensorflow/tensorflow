@@ -691,9 +691,11 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
         "Sparse tensor must have at least 1 dimension"):
       self.evaluate(
           gen_math_ops.sparse_bincount(
-              indices=constant_op.constant([], shape=[1, 0], dtype=dtypes.int64),
+              indices=constant_op.constant(
+                  [], shape=[1, 0], dtype=dtypes.int64),
               values=[0],
-              dense_shape=constant_op.constant([], shape=[0], dtype=dtypes.int64),
+              dense_shape=constant_op.constant(
+                  [], shape=[0], dtype=dtypes.int64),
               size=10,
               weights=[]))
 
