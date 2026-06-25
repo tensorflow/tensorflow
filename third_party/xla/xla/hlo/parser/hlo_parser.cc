@@ -2129,11 +2129,22 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       // previous async op.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
-        if (operands.size() != 1 || !operands[0]->IsAsynchronous() ||
-            operands[0]->opcode() == HloOpcode::kAsyncDone) {
+        if (operands.size() != 1) {
           TokenError(
               "AsyncUpdate and AsyncDone expect a single async op as their "
               "operand.");
+          return nullptr;
+        }
+        if (!operands[0]->IsAsynchronous()) {
+          TokenError(
+              "AsyncUpdate and AsyncDone expect an asynchronous "
+              "operation as their first operand.");
+          return nullptr;
+        }
+        if (operands[0]->opcode() == HloOpcode::kAsyncDone) {
+          TokenError(
+              "AsyncDone cannot be the first operand of an AsyncUpdate "
+              "or AsyncDone.");
           return nullptr;
         }
       }

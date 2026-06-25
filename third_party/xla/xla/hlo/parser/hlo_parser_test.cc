@@ -5991,8 +5991,9 @@ ENTRY AsyncStartAndAsyncDone {
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
       absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
-                             HasSubstr("AsyncUpdate and AsyncDone expect a "
-                                       "single async op as their operand.")));
+                             HasSubstr("AsyncUpdate and AsyncDone expect an "
+                                       "asynchronous operation as their first "
+                                       "operand.")));
 }
 
 TEST_F(HloParserTest, AsyncUpdateAndAsyncDoneNoAsyncStart) {
@@ -6010,8 +6011,9 @@ ENTRY AsyncStartAndAsyncDone {
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
       absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
-                             HasSubstr("AsyncUpdate and AsyncDone expect a "
-                                       "single async op as their operand.")));
+                             HasSubstr("AsyncUpdate and AsyncDone expect an "
+                                       "asynchronous operation as their first "
+                                       "operand.")));
 }
 
 TEST_F(HloParserTest, AsyncUpdateWithSyntaxSugarWrongOp) {
