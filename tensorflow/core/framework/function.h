@@ -423,6 +423,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
       const OpRegistryInterface* default_registry,
       const FunctionDefLibrary& lib_def = {},
       const FunctionDefLibraryStackTraces& library_traces = {});
+  FunctionLibraryDefinition(
+      const OpRegistryInterface* default_registry, FunctionDefLibrary&& lib_def,
+      const FunctionDefLibraryStackTraces& library_traces = {});
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
                             const GraphDef& graph_def);
   ~FunctionLibraryDefinition() override;
@@ -656,6 +659,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
  private:
   void Initialize(const FunctionDefLibrary& library,
+                  const FunctionDefLibraryStackTraces& library_traces);
+  void Initialize(FunctionDefLibrary&& library,
                   const FunctionDefLibraryStackTraces& library_traces);
 
   core::RefCountPtr<FunctionRecord> FindHelper(const std::string& func) const
