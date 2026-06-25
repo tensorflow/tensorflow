@@ -3884,7 +3884,11 @@ tf_kernel_library(
         "scan_ops_gpu_half.cu.cc",
         "scan_ops_gpu_int.cu.cc",
     ],
-    deps = MATH_DEPS + [":gpu_prim_hdrs"],
+    deps = MATH_DEPS + [
+        ":gpu_prim_hdrs",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -5168,6 +5172,8 @@ tf_kernel_library(
     prefix = "sendrecv_ops",
     deps = REQUIRED_DEPS + [
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -5222,7 +5228,10 @@ SPARSE_DEPS = [
 tf_kernel_library(
     name = "sparse_add_grad_op",
     prefix = "sparse_add_grad_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -6192,6 +6201,7 @@ tf_kernel_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
