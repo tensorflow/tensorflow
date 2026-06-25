@@ -2349,7 +2349,9 @@ static absl::StatusOr<Shape> GetOutputShapeHelper(
   for (int i = 0; i < element_types.size(); ++i) {
     ASSIGN_OR_RETURN(xla::Shape shape, ShapeUtil::MakeValidatedShape(
                                            element_types[i], dimensions[i]));
-    *shape.mutable_layout() = layouts[i]->xla_layout();
+    if (shape.IsArray()) {
+      *shape.mutable_layout() = layouts[i]->xla_layout();
+    }
     shapes.push_back(std::move(shape));
   }
   if (shapes.size() == 1) {
@@ -3734,7 +3736,9 @@ absl::StatusOr<Shape> PjRtCApiBuffer::logical_on_device_shape() {
     return dims.status();
   }
   Shape result(element_type(), *dims, is_dynamic_dimension());
-  *result.mutable_layout() = layout()->xla_layout();
+  if (result.IsArray()) {
+    *result.mutable_layout() = layout()->xla_layout();
+  }
   return result;
 }
 
