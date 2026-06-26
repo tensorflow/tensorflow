@@ -871,9 +871,13 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
           "Only PjRtCompatibleArray is supported, but argument %d is %s", i,
           args[i] ? args[i]->DebugString() : "null");
     }
+    if (pjrt_array->pjrt_buffers().size() != num_computations) {
+      return InvalidArgument(
+          "Argument %d has %d buffers, but executable expects %d computations",
+          i, static_cast<int>(pjrt_array->pjrt_buffers().size()),
+          num_computations);
+    }
     int j = 0;
-    // TODO(hyeontaek): Check pjrt_array->pjrt_buffers().size() ==
-    // num_computations
     for (const auto& pjrt_buffer : pjrt_array->pjrt_buffers()) {
       argument_handles[j].push_back(pjrt_buffer.get());
       ++j;
