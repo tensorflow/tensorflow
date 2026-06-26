@@ -633,7 +633,8 @@ std::vector<std::string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
     const std::string& device_name, std::string* host_device_name) {
   DeviceNameUtils::ParsedName device;
   if (!DeviceNameUtils::ParseFullName(device_name, &device)) {
-    return errors::Internal("Could not parse device name ", device_name);
+    return absl::InternalError(
+        absl::StrCat("Could not parse device name ", device_name));
   }
   device.type = "CPU";
   device.has_type = true;
