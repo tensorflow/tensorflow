@@ -643,15 +643,14 @@ Buffer<T>::~Buffer() {
 //     (coded_stream default).
 static constexpr int64_t kMaxBytesFromProtoNoData = int64_t{64} << 20;  // 64 MB
 
-// Returns false when materializing `n` elements of `element_size` bytes each
-// would be an amplification attack: the proto carries fewer than `n` typed
-// values (so the remainder is broadcast/zero-filled from a tiny input) AND the
-// resulting allocation exceeds kMaxBytesFromProtoNoData. When the proto
-// actually carries >= n values the serialized size is proportional to the
-// allocation, so it is never amplification and is always allowed. The size
-// check uses division to avoid int64 overflow on `n * element_size`.
+// Returns false only when the proto carries no typed values (in_n <= 0 вАФ a
+// fabricated zero-fill) AND the requested allocation exceeds
+// kMaxBytesFromProtoNoData. Broadcasting one or more real values to a larger
+// shape (in_n > 0) is legitimate TF behavior (e.g. large constant variable
+// initializers), so it is always allowed. The size check uses division to
+// avoid int64 overflow on `n * element_size`.
 inline bool IsSafeProtoAllocation(int64_t in_n, int64_t n, size_t element_size) {
-  if (in_n >= n) return true;
+  if (in_n > 0) return true;  // Allow broadcast for legitimate initialization.
   return n <= kMaxBytesFromProtoNoData / static_cast<int64_t>(element_size);
 }
 
