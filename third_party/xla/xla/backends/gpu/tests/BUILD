@@ -740,6 +740,7 @@ lit_test_suite_for_gpus(
             "calling_convention.hlo",
             "dot_bf16.hlo",
             "kernel_reuse.hlo",
+            "memory_bandwidth_fusion.hlo",
             "offload_scan_output.hlo",
             "pad_to_static.hlo",
             "reduce_fold_zero_add.hlo",
@@ -790,7 +791,15 @@ lit_test_suite_for_gpus(
             "vectorization.hlo",
             "pdl.hlo",
         ],
+        "mi350": [
+            "dot_bf16.hlo",
+            "single_instruction.hlo",
+            "vectorization.hlo",
+            "pdl.hlo",
+        ],
         "gfx1250": [
+            # TODO: re-enable once gfx1250 memory_bandwidth is finalized.
+            "memory_bandwidth_fusion.hlo",
             "single_instruction.hlo",
             "vectorization.hlo",
             "pdl.hlo",
@@ -803,6 +812,7 @@ lit_test_suite_for_gpus(
         "gfx1250",
         "h100_sxm",
         "mi200",
+        "mi350",
         "p100",
         "v100",
     ],

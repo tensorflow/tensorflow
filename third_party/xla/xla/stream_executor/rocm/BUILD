@@ -128,6 +128,7 @@ cc_library(
         ":rocm_context",
         ":rocm_event",
         ":rocm_kernel",
+        ":rocm_memory_bandwidth",
         ":rocm_pcie_bandwidth",
         ":rocm_platform_id",
         ":rocm_status",
@@ -383,6 +384,19 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rocm_smi",
+    ],
+)
+
+cc_library(
+    name = "rocm_memory_bandwidth",
+    srcs = ["rocm_memory_bandwidth.cc"],
+    hdrs = ["rocm_memory_bandwidth.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":rocm_compute_capability",
     ],
 )
 

@@ -1575,5 +1575,81 @@ CHECK: ROOT %{{.*}} = (s8[2,256,512]{2,1,0}, bf16[2,256,4]{2,1,0}) tuple(%[[QUAN
                             /*after_pass_checks=*/nullptr, &config);
 }
 
+// Verifies that device memory bandwidth drives PriorityFusion's reduce-into-
+// consumers decision (the ROCm gfx950 case behind rocm_memory_bandwidth.cc).
+// A reduce feeds two elementwise consumers. Duplicating the reduce into a
+// consumer re-reads the large input from HBM, so whether it pays off depends on
+// bandwidth:
+//   - low (legacy formula) bandwidth  -> re-read too costly, reduce stays a
+//     standalone fusion, consumers unfused -> 1 fusion.
+//   - high (corrected) bandwidth      -> re-read cheap, reduce duplicated into
+//     both consumers -> 2 fusions.
+// Counted right after PriorityFusion; for the full-compiler behavior (a later
+// pass merges the two back into one) see memory_bandwidth_fusion.hlo.
+class PriorityFusionRocmMemoryBandwidthTest
+    : public HloHardwareIndependentTestBase {
+ public:
+  PriorityFusionRocmMemoryBandwidthTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
+
+  int RunAndCountFusions(absl::string_view hlo, int64_t memory_bandwidth) {
+    se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI350DeviceInfo();
+    device_info.set_memory_bandwidth(memory_bandwidth);
+
+    GpuHloCostAnalysis::Options options;
+    options.count_multiple_input_accesses = true;
+    PriorityFusion priority_fusion(/*thread_pool=*/nullptr, device_info,
+                                   &alias_info_, options, &mlir_context_);
+
+    auto module = ParseAndReturnVerifiedModule(hlo).value();
+    EXPECT_THAT(priority_fusion.Run(module.get()),
+                absl_testing::IsOkAndHolds(true));
+    EXPECT_THAT(module->RemoveUnusedComputations(), absl_testing::IsOk());
+
+    int fusion_count = 0;
+    for (auto computation : module->computations()) {
+      if (computation->FusionInstruction() != nullptr) {
+        ++fusion_count;
+      }
+    }
+    return fusion_count;
+  }
+
+  mlir::MLIRContext mlir_context_;
+  AliasInfo alias_info_;
+};
+
+TEST_F(PriorityFusionRocmMemoryBandwidthTest, MemoryBandwidthTipsReduceFusion) {
+  absl::string_view kHlo = R"(
+    HloModule rf_8_256_1152
+
+    add {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT r = f32[] add(a, b)
+    }
+
+    ENTRY main {
+      p = f32[8,256,1152]{2,1,0} parameter(0)
+      w1 = f32[256,1152]{1,0} parameter(1)
+      w2 = f32[256,1152]{1,0} parameter(2)
+      z = f32[] constant(0)
+      red = f32[256,1152]{1,0} reduce(p, z), dimensions={0}, to_apply=add
+      c1 = f32[256,1152]{1,0} add(red, w1)
+      c2 = f32[256,1152]{1,0} subtract(red, w2)
+      ROOT out = (f32[256,1152]{1,0}, f32[256,1152]{1,0}) tuple(c1, c2)
+    })";
+
+  // gfx950 legacy formula bandwidth: 2 * (8192/8) * 1.9e9 = 3.8912 TB/s.
+  constexpr int64_t kFormulaBandwidth = 3'891'200'000'000;
+  // gfx950 corrected per-gfx bandwidth (rocm_memory_bandwidth.cc).
+  constexpr int64_t kFixedBandwidth = 6'810'000'000'000;
+
+  // The bandwidth value changes the PriorityFusion decision for this HLO.
+  EXPECT_EQ(RunAndCountFusions(kHlo, kFormulaBandwidth), 1);
+  EXPECT_EQ(RunAndCountFusions(kHlo, kFixedBandwidth), 2);
+}
+
 }  // namespace gpu
 }  // namespace xla
