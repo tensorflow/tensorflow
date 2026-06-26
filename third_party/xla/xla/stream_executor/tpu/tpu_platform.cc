@@ -165,8 +165,7 @@ bool RegisterTpuPlatform() {
   // Silently bail if the underlying TPU C API isn't initialized. This is useful
   // for code that unconditionally calls RegisterTpuPlatform() but doesn't link
   // in the underlying TPU library when not running on TPU.
-  if (!stream_executor::tpu::IsStreamExecutorEnabled(
-          stream_executor::tpu::ExecutorApiFn())) {
+  if (!stream_executor::tpu::IsStreamExecutorEnabled()) {
     return true;
   }
   static bool tpu_platform_registered = false;

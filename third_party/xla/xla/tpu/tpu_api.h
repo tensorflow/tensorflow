@@ -16,19 +16,42 @@ limitations under the License.
 #ifndef XLA_TPU_TPU_API_H_
 #define XLA_TPU_TPU_API_H_
 
+#include "absl/base/call_once.h"
+#include "absl/status/status.h"
 #include "xla/tpu/libtftpu.h"
-#include "xla/tpu/tpu_executor_api.h"
 #include "xla/tpu/tpu_ops_c_api.h"
 #include "xla/tpu/tpu_profiler_c_api.h"
 
 namespace stream_executor {
 namespace tpu {
 
-TfTpu_BaseFn* InitializeApiFn();
+// Exposing raw once-flags inside public headers is generally a design smell.
+// However, because some initialization logic is defined within inlineable
+// implementation header fragments (.inc files) that are included across
+// multiple Translation Units (TUs), they must sync on the exact same
+// synchronization state physically.
+// Exposing getters returning pointers to static internal flags is used here
+// instead of template-based callbacks (like absl::AnyInvocable) because it
+// is ABI-stable across shared library boundaries (like dynamic loader builds)
+// and avoids linker/mangling mismatches.
+absl::once_flag* GetTpuExecutorInitOnceFlag();
+absl::once_flag* GetTpuProfilerInitOnceFlag();
+absl::once_flag* GetTpuOpsStructFnsOnceFlag();
+absl::once_flag* GetTpuBaseApiInitOnceFlag();
+
+absl::Status& GetTpuOpsStructFnsInitStatus();
+absl::Status& GetTpuBaseApiInitStatus();
+absl::Status& GetTpuExecutorInitStatus();
+absl::Status& GetTpuProfilerInitStatus();
+
+const TfTpu_BaseFn* BaseApiFn();
+void SetBaseApiFn(const TfTpu_BaseFn* fn);
 
 const TfTpu_OpsApiFn* OpsApiFn();
+void SetOpsApiFn(const TfTpu_OpsApiFn* fn);
 
 const TfTpu_ProfilerApiFn* ProfilerApiFn();
+void SetProfilerApiFn(const TfTpu_ProfilerApiFn* fn);
 
 }  // namespace tpu
 }  // namespace stream_executor
