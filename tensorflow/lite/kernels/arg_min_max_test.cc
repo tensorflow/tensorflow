@@ -407,5 +407,44 @@ TEST_P(ArgMinMaxOpTest, ArgMinNaNLastAxis) {
   ValidateOutput(model, {1});
 }
 
+// Reference (non-last-axis) path: inner_size > 1 exercises the scalar
+// GetCompareFunction/reference ArgMinMax rather than the vectorized last-axis
+// specialization. Shape {1, 1, 3, 2} reduced over axis 2 leaves inner_size 2.
+TEST_P(ArgMinMaxOpTest, ArgMaxNaNReference) {
+  ArgMaxOpModel model({1, 1, 3, 2}, TensorType_FLOAT32, 2, AxisType(),
+                      ConstantAxis(), OutputType());
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  model.PopulateTensor<float>(model.input(), {nan, nan, 7.0f, 8.0f, nan, nan});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  ValidateOutput(model, {1, 1});
+}
+
+TEST_P(ArgMinMaxOpTest, ArgMinNaNReference) {
+  ArgMinOpModel model({1, 1, 3, 2}, TensorType_FLOAT32, 2, AxisType(),
+                      ConstantAxis(), OutputType());
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  model.PopulateTensor<float>(model.input(), {nan, nan, 7.0f, 8.0f, nan, nan});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  ValidateOutput(model, {1, 1});
+}
+
+TEST_P(ArgMinMaxOpTest, ArgMaxAllNaNReference) {
+  ArgMaxOpModel model({1, 1, 3, 2}, TensorType_FLOAT32, 2, AxisType(),
+                      ConstantAxis(), OutputType());
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  model.PopulateTensor<float>(model.input(), {nan, nan, nan, nan, nan, nan});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  ValidateOutput(model, {0, 0});
+}
+
+TEST_P(ArgMinMaxOpTest, ArgMinAllNaNReference) {
+  ArgMinOpModel model({1, 1, 3, 2}, TensorType_FLOAT32, 2, AxisType(),
+                      ConstantAxis(), OutputType());
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  model.PopulateTensor<float>(model.input(), {nan, nan, nan, nan, nan, nan});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  ValidateOutput(model, {0, 0});
+}
+
 }  // namespace
 }  // namespace tflite
