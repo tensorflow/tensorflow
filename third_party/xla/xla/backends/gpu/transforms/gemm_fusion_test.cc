@@ -974,7 +974,7 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Transpose(), m::Parameter(), m::Parameter())));
 }
 
-TEST_P(GemmFusionTest, DoNotFuseTooManyParameters) {
+TEST_P(GemmFusionTestVersioned, DoNotFuseTooManyParameters) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 ENTRY e {

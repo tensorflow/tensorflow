@@ -1141,11 +1141,19 @@ void FuseOperandsBFS(mlir::MLIRContext& mlir_context,
   for (HloInstruction* operand : candidates) {
     queue.push(operand);
   }
-  while (!queue.empty() &&
-         fusion->operand_count() <
-             TritonFusionAnalysis::kMaxParameterPerDotOperand * 2) {
+
+  while (!queue.empty()) {
     HloInstruction* candidate = queue.front();
     queue.pop();
+
+    int parameter_count =
+        fusion->operand_count() + NumAddedParameters(*candidate);
+    if (parameter_count >
+        TritonFusionAnalysis::kMaxParameterPerDotOperand * 2) {
+      VLOG(5) << "Not fusing operand: " << candidate->ToString()
+              << " due to too many parameters.";
+      continue;
+    }
 
     if (FusionDecision decision = CanFuse(mlir_context, candidate, fusion);
         !decision.IsAllowed()) {
