@@ -544,6 +544,9 @@ class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
          absl::StrCat(max_unique_ids_per_partition)});
 
     sc_frontend_attributes.mutable_map()->insert(
+        {"_xla_table_name", table_name_});
+
+    sc_frontend_attributes.mutable_map()->insert(
         {"_xla_max_valency", absl::StrCat(max_valency_)});
 
     if (quantization_config_low_.has_value()) {
@@ -737,6 +740,9 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
     custom_call_frontend_attributes.mutable_map()->insert(
         {"_xla_max_unique_ids_per_partition",
          absl::StrCat(max_unique_ids_per_partition)});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_table_name", table_name_});
 
     builder->SetFrontendAttributes(custom_call_frontend_attributes);
 
@@ -954,6 +960,9 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
     custom_call_frontend_attributes.mutable_map()->insert(
         {"_xla_max_unique_ids_per_partition",
          absl::StrCat(max_unique_ids_per_partition)});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_table_name", table_name_});
 
     builder->SetFrontendAttributes(custom_call_frontend_attributes);
 
@@ -1279,6 +1288,9 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
     custom_call_frontend_attributes.mutable_map()->insert(
         {"_xla_max_unique_ids_per_partition",
          absl::StrCat(max_unique_ids_per_partition)});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_table_name", table_name_});
 
     builder->SetFrontendAttributes(custom_call_frontend_attributes);
 
