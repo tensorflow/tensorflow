@@ -154,6 +154,31 @@ class CuDnnFusionFileCheckTest : public CuDnnFusionTest {
   std::string output_directory_;
 };
 
+TEST_F(CuDnnFusionFileCheckTest, ClampGraphConvertedCorrectly) {
+  EXPECT_TRUE(*RunCuDnnFileCheck(R"(
+fd0 {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  d = f32[64,64] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p_min = f32[] constant(0.0)
+  p_max = f32[] constant(1.0)
+  b_min = f32[64,64] broadcast(p_min), dimensions={}
+  b_max = f32[64,64] broadcast(p_max), dimensions={}
+  ROOT c = f32[64,64] clamp(b_min, d, b_max)
+}
+
+ENTRY e {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  ROOT c0 = f32[64,64] fusion(p0, p1), kind=kCustom, calls=fd0,
+    backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
+})",
+                                 R"(
+CHECK: "mode": "MIN"
+CHECK: "mode": "MAX"
+)"));
+}
+
 TEST_F(CuDnnFusionFileCheckTest, F32DotGraphIsConvertedCorrectly) {
   EXPECT_TRUE(*RunCuDnnFileCheck(R"(
 fd0 {
@@ -197,6 +222,30 @@ CHECK:   "name": "d",
 CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
 CHECK:   "uid": 3,
 CHECK:   "uid_assigned": true
+)"));
+}
+
+TEST_F(CuDnnFusionFileCheckTest,
+       ScalarConstantBroadcastGraphConvertedCorrectly) {
+  EXPECT_TRUE(*RunCuDnnFileCheck(R"(
+fd0 {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  d = f32[64,64] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c0 = f32[] constant(2.5)
+  b0 = f32[64,64] broadcast(c0), dimensions={}
+  ROOT add = f32[64,64] add(d, b0)
+}
+
+ENTRY e {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  ROOT a0 = f32[64,64] fusion(p0, p1), kind=kCustom, calls=fd0,
+    backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
+})",
+                                 R"(
+CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*1[[:space:]]*}}],
+CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*1[[:space:]]*}}],
 )"));
 }
 
