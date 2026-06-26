@@ -23,6 +23,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/backends/cpu/target_machine_options.h"
+#include "xla/service/cpu/executable.pb.h"
+#include "xla/service/gpu_topology.pb.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.pb.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla {
