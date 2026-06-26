@@ -1811,6 +1811,10 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
                            !old_instruction->metadata().op_name().empty();
   if (overwrite_op_name) {
     new_instruction->set_metadata(old_instruction->metadata());
+  } else if (!new_instruction->metadata().has_metadata_payload() &&
+             old_instruction->metadata().has_metadata_payload()) {
+    *new_instruction->mutable_metadata().mutable_metadata_payload() =
+        old_instruction->metadata().metadata_payload();
   }
   if (preserve_frontend_attributes &&
       new_instruction->frontend_attributes().map().empty()) {
