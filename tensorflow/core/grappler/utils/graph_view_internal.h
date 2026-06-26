@@ -666,7 +666,7 @@ inline void Reset(NodeViewDiff<GraphViewT>* diff) {
   std::map<int, SafeTensorId>().swap(diff->regular_inputs_to_update);
   std::vector<bool>().swap(diff->regular_inputs_to_remove);
   diff->num_regular_inputs_to_remove = 0;
-  absl::flat_hash_set<string>().swap(diff->controlling_inputs_to_add);
+  absl::flat_hash_set<std::string>().swap(diff->controlling_inputs_to_add);
   std::set<int>().swap(diff->controlling_inputs_to_remove);
   absl::flat_hash_map<string, AttrValue>().swap(diff->attrs_to_add);
   absl::flat_hash_set<string>().swap(diff->attrs_to_remove);
