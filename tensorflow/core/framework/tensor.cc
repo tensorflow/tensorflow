@@ -643,7 +643,7 @@ Buffer<T>::~Buffer() {
 //     (coded_stream default).
 static constexpr int64_t kMaxBytesFromProtoNoData = int64_t{64} << 20;  // 64 MB
 
-// Returns false only when the proto carries no typed values (in_n <= 0 вАФ a
+// Returns false only when the proto carries no typed values (in_n <= 0, a
 // fabricated zero-fill) AND the requested allocation exceeds
 // kMaxBytesFromProtoNoData. Broadcasting one or more real values to a larger
 // shape (in_n > 0) is legitimate TF behavior (e.g. large constant variable
