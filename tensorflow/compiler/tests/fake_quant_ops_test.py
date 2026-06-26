@@ -36,6 +36,15 @@ class FakeQuantWithMinMaxArgsTest(xla_test.XLATestCase):
   def testOp_with8BitsScalingAndNudgingBetween(self):
     self._TestOp(-0.1, 127.4, 8, False, 0.0, 127.5, 0.5)
 
+  def testOp_with8BitsRoundingHalfWayZeroPoint(self):
+    # zero_point_from_min lands at exactly 0.5 (half-integer boundary).
+    # Scale = (509.0 - (-1.0)) / (255 - 0) = 510.0 / 255.0 = 2.0
+    # zero_point_from_min = 0 - (-1.0) / 2.0 = 0.5
+    # Under round-half-away-from-zero: nudged_zero_point = 1.0
+    # nudged_min = (0 - 1.0) * 2.0 = -2.0
+    # nudged_max = (255 - 1.0) * 2.0 = 508.0
+    self._TestOp(-1.0, 509.0, 8, False, -2.0, 508.0, 2.0)
+
   # 8 bits, narrow range.
   def testOp_with8BitsNarrowRangeNoScalingNoNudging(self):
     self._TestOp(0.0, 254.0, 8, True, 0.0, 254.0, 1.0)
