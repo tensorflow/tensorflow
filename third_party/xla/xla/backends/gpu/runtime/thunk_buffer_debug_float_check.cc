@@ -159,8 +159,8 @@ absl::Status BackupBuffers(
     const BufferAllocation::Slice& slice = inout_buffers[i];
     std::vector<uint8_t>& storage = (*backup_data)[slice];
     storage.resize(any_buf.size_bytes());
-    se::DeviceMemoryBase active_ptr(const_cast<void*>(any_buf.untyped_data()),
-                                    any_buf.size_bytes());
+    stream_executor::DeviceAddressBase active_ptr(
+        const_cast<void*>(any_buf.untyped_data()), any_buf.size_bytes());
     // TODO(b/485867926): Investigate backing up the buffers in device memory
     // for efficiency.
     RETURN_IF_ERROR(
@@ -227,7 +227,7 @@ absl::Status DumpHloSnapshot(
               std::memcpy(literal.untyped_data(index), it->second.data(),
                           any_buf.size_bytes());
             } else {
-              se::DeviceMemoryBase active_ptr(
+              stream_executor::DeviceAddressBase active_ptr(
                   const_cast<void*>(any_buf.untyped_data()),
                   any_buf.size_bytes());
               RETURN_IF_ERROR(stream->Memcpy(literal.untyped_data(index),
