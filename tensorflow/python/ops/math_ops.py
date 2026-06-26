@@ -807,18 +807,29 @@ def sign(x, name=None):
   """
   x = ops.convert_to_tensor(x)
   if x.dtype.is_complex:
-    # Use float64 for magnitude computation to avoid underflow for small complex64 values.
-    # |z| = sqrt(re² + im²) computed as float32 underflows for |z| < ~1.08e-19 (near sqrt(float32_min)),
-    # causing sign(0) instead of sign(x/|x|).
-    # Use float64 for intermediate magnitude regardless of input dtype.
-    return gen_math_ops.div_no_nan(
-        x,
-        cast(
-            gen_math_ops.complex_abs(
-                x,
-                Tout=dtypes.float64),  # Always use float64 to avoid underflow for small inputs
-            dtype=x.dtype),
-        name=name)
+    # Promote to complex128 for the entire computation to avoid underflow for
+    # small complex64 values. Two distinct underflow hazards must be addressed:
+    #   (1) |z| = sqrt(re^2 + im^2) computed via complex_abs on complex64
+    #       underflows to 0 for |z| < ~1.08e-19 (sqrt(float32_min)). The
+    #       ComplexAbs C++ kernel also rejects mismatched input/output
+    #       precision (e.g. complex64 -> float64), so we cannot simply ask
+    #       the kernel for a float64 magnitude while feeding it complex64.
+    #   (2) The vectorized complex division (div_no_nan) involves an
+    #       intermediate conjugate product that still underflows on FTZ
+    #       systems when the divisor's magnitude is below the input dtype's
+    #       smallest normal value, even when the divisor is computed in
+    #       float64.
+    # Casting the input itself to complex128 lifts both computations above
+    # the underflow threshold (~1e-154), and the kernel signatures match
+    # cleanly. The final result is cast back to the original dtype.
+    compute_dtype = dtypes.complex128
+    x_compute = cast(x, compute_dtype) if x.dtype != compute_dtype else x
+    return cast(
+        gen_math_ops.div_no_nan(
+            x_compute,
+            gen_math_ops.complex_abs(x_compute, Tout=dtypes.float64),
+            name=name),
+        dtype=x.dtype)
   return gen_math_ops.sign(x, name=name)
 
 
