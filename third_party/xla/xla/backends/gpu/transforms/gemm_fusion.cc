@@ -743,7 +743,8 @@ class FusionSearchSpace {
                     const se::GpuComputeCapability& gpu_version)
       : original_dot_(dot) {
     module_ = std::make_unique<HloModule>(
-        absl::StrCat(dot->name(), "_fusion_search_space"), HloModuleConfig());
+        absl::StrCat(dot->name(), "_fusion_search_space"),
+        dot->GetModule()->config());
     HloComputation::Builder builder(absl::StrCat(dot->name(), "_computation"));
     // Find the highest suitable user of the dot to be the root of the
     // fusion.

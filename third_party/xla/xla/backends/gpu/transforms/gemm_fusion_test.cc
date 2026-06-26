@@ -336,32 +336,35 @@ ENTRY e {
 }
 
 TEST_P(GemmFusionTestV2, UnhoistedBitcastIsNotFusedAtEdge) {
-  // The bitcast cannot be hoisted above the pad, but it and the pad are
-  // included in the search space. When it cannot tile the pad and cuts off the
-  // fusion between the bitcast & the pad, we need to make sure the bitcast
-  // is on the outside of the fusion to give the best tiling options.
+  // The bitcast/reshape cannot be hoisted above the concat, but all are
+  // included in the search space. When it cannot tile the reshape, the fusion
+  // cuts off between the bitcast & the reshape. We need to make sure the
+  // bitcast is on the outside of the fusion to give the best tiling options.
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY e {
-  p0 = f32[127] parameter(0)
-  zero = f32[] constant(0)
-  p = f32[128] pad(p0, zero), padding=0_1
-  bi = f32[16,8] bitcast(p)
+  p0 = f32[2,8,8] parameter(0)
+  p2 = f32[2,8,8] parameter(2)
+  c = f32[4,8,8] concatenate(p0, p2), dimensions={0}
+  r1 = f32[2,16,8] reshape(c)
+  bi = f32[32,8] bitcast(r1)
   p1 = s8[8,7] parameter(1)
   c1 = f32[8,7] convert(p1)
-  ROOT d = f32[16,7] dot(bi, c1),
+  ROOT d = f32[32,7] dot(bi, c1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  // Confirm the bitcast is on the outside of the fusion.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Fusion(m::Bitcast(m::Pad()), m::Parameter())));
+              GmockMatch(m::Fusion(m::Bitcast(m::Reshape(m::Concatenate())),
+                                   m::Parameter())));
 }
 
 TEST_P(GemmFusionTestV2, UnsunkBitcastIsNotFusedAtRoot) {
-  // The bitcast cannot be sunk below the pad, but it and the pad are
-  // included in the search space. When it cannot tile the pad and cuts off the
-  // fusion between the bitcast & the pad, we need to make sure the bitcast
+  // The bitcast/reshape cannot be sunk below the concat, but all are included
+  // in the search space. When it cannot tile the reshape, and cuts off the
+  // fusion between the bitcast & the reshape. We need to make sure the bitcast
   // is on the outside of the fusion to give the best tiling options.
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -372,19 +375,22 @@ ENTRY e {
   c1 = f32[8,7] convert(p1)
   d = f32[16,7] dot(p0, c1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  b1 = f32[112] bitcast(d)
-  zero = f32[] constant(0)
-  ROOT p2 = f32[128] pad(b1, zero), padding=0_16
+  b1 = f32[2,8,7] bitcast(d)
+  p2 = f32[4,4,7] parameter(2)
+  r1 = f32[4,4,7] reshape(b1)
+  ROOT c = f32[8,4,7] concatenate(r1, p2), dimensions={0}
 })"));
   ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  // Confirm the bitcast is on the outside of the fusion.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Pad(m::Bitcast(m::Fusion()), m::Constant())));
+              GmockMatch(m::Concatenate(m::Reshape(m::Bitcast(m::Fusion())),
+                                        m::Parameter())));
 }
 
 TEST_P(GemmFusionTestV2, PartiallySunkBitcastIsNotFusedAtRoot) {
-  // The bitcast cannot be sunk below the pad, but it and the pad are
-  // included in the search space. When it cannot tile the pad and cuts off the
-  // fusion between the bitcast & the pad, we need to make sure the bitcast
+  // The bitcast/reshape cannot be sunk below the concat, but all are included
+  // in the search space. When it cannot tile the reshape, the fusion cuts off
+  // between the bitcast & the reshape. We need to make sure the bitcast
   // is on the outside of the fusion to give the best tiling options.
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -395,14 +401,17 @@ ENTRY e {
   c1 = f32[8,7] convert(p1)
   d = f32[16,7] dot(p0, c1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  b1 = f32[112] bitcast(d)
-  n1 = f32[112] negate(b1)
-  zero = f32[] constant(0)
-  ROOT p2 = f32[128] pad(n1, zero), padding=0_16
+  b1 = f32[2,8,7] bitcast(d)
+  n1 = f32[2,8,7] negate(b1)
+  p2 = f32[4,4,7] parameter(2)
+  r1 = f32[4,4,7] reshape(n1)
+  ROOT c = f32[8,4,7] concatenate(r1, p2), dimensions={0}
 })"));
   ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  // Confirm the bitcast is on the outside of the fusion.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Pad(m::Bitcast(m::Fusion()), m::Constant())));
+              GmockMatch(m::Concatenate(m::Reshape(m::Bitcast(m::Fusion())),
+                                        m::Parameter())));
 }
 
 TEST_P(GemmFusionTestV2, BitcastOperandOfUserOfDotIsHoisted) {
@@ -1455,6 +1464,12 @@ ENTRY e {
 TEST_P(GemmFusionTestVersioned, NarrowingConversionIsAlwaysBetterToFuse) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
+sum {
+  x = f16[] parameter(0)
+  y = f16[] parameter(1)
+  ROOT add = f16[] add(x, y)
+}
+
 ENTRY e {
   p0 = s8[512,512] parameter(0)
   c0 = f16[512,512] convert(p0)
@@ -1462,21 +1477,23 @@ ENTRY e {
   dot0 = f16[512,500] dot(c0, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
   zero = f16[] constant(0)
-  pad1 = f16[512,512] pad(dot0, zero), padding=0_0x0_12
+  red = f16[512] reduce(dot0, zero), dimensions={1}, to_apply=sum
+  bcast = f16[512,512] broadcast(red), dimensions={0}
   n = f16[512,512] negate(c0)
-  ROOT a = f16[512,512] add(pad1, n)
+  ROOT a = f16[512,512] add(bcast, n)
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
                              se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
-  // Check that even when a convert is used twice and cannot be fully fused,
-  // we still duplicate & fuse.
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch((m::Add(
-          m::Pad(m::Fusion(m::Parameter(), m::Parameter()), m::Constant()),
-          m::Negate()))));
+  // Check that even when a narrowing convert is used twice and both instances
+  // cannot be fused, we still fuse even though it means duplicating the
+  // convert.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(m::Broadcast(m::Reduce(
+                                    m::Fusion(m::Parameter(), m::Parameter()),
+                                    m::Constant())),
+                                m::Negate())));
 }
 
 TEST_P(GemmFusionTestVersioned, NestedSlicingIsAnalyzedCorrectly) {
