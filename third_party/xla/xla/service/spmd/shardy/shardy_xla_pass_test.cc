@@ -161,6 +161,7 @@ TEST_F(ShardyXLATest, SdyReduceScatterManualComputationExport) {
 
   EXPECT_NE(call, nullptr);
   EXPECT_TRUE(call->operand(0)->IsCustomCall("SPMDFullToShardShape"));
+  EXPECT_EQ(call->sharding().ToString(), "{manual}");
 }
 
 }  // namespace
@@ -1263,32 +1264,6 @@ TEST_F(ShardyXLATest, UpdateInlineableAttr) {
   EXPECT_EQ(root->opcode(), HloOpcode::kCall);
   EXPECT_FALSE(root->has_frontend_attributes());
   EXPECT_EQ(root->to_apply()->name(), "inlineable_callee");
-}
-
-TEST_F(ShardyXLATest, ManualComputationCallOpWithToken) {
-  const char* const hloString = R"(
-    HloModule main, entry_computation_layout={(token[])->token[]}, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["x"=2]>}}
-
-    %xla.sdy.manual_computation_body.4 (Arg_0.3: token[]) -> token[] {
-      ROOT %Arg_0.3 = token[] parameter(0)
-    }
-
-    ENTRY %main.7 (Arg_0.1: token[]) -> token[] {
-      %Arg_0.1 = token[] parameter(0)
-      %custom-call.2 = token[] custom-call(%Arg_0.1), custom_call_target="xla.sdy.GlobalToLocalShape", custom_call_has_side_effect=true, frontend_attributes={xla.sdy.in_shardings="#sdy.sharding_per_value<[<@mesh, []>]>",xla.sdy.manual_axes="#sdy<manual_axes{\"x\"}>"}
-      %call.5 = token[] call(%custom-call.2), to_apply=%xla.sdy.manual_computation_body.4, frontend_attributes={inlineable="false"}
-      ROOT %custom-call.6 = token[] custom-call(%call.5), custom_call_target="xla.sdy.LocalToGlobalShape", custom_call_has_side_effect=true, frontend_attributes={xla.sdy.manual_axes="#sdy<manual_axes{\"x\"}>",xla.sdy.out_shardings="#sdy.sharding_per_value<[<@mesh, []>]>"}
-    })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hloString));
-  runShardyWithSdyImport(module.get());
-  HloInstruction* callInst =
-      FindInstruction(module.get(), xla::HloOpcode::kCall);
-  EXPECT_TRUE(callInst);
-  // StableHLO->HLO conversion used to discard the sharding attribute, due to
-  // MLIR TypeConversion on CallOps not preserving them. This test ensures that
-  // the sharding attribute is preserved.
-  EXPECT_EQ(callInst->sharding().ToString(), "{manual}");
 }
 
 // This test is to ensure that the stack frame index is fully copied.
