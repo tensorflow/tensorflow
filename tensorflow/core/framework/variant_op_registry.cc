@@ -25,6 +25,21 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
+namespace {
+static thread_local int g_variant_decode_depth = 0;
+
+// Aligns with the protobuf default recursion limit (100) and XLA's
+// kMaxShapeDepth (100). Legitimate DT_VARIANT nesting rarely exceeds
+// 5–10 levels, so 100 provides generous headroom while capping stack
+// consumption well below platform limits.
+static constexpr int kMaxVariantDecodeDepth = 100;
+
+struct VariantDecodeDepthGuard {
+  explicit VariantDecodeDepthGuard(int* depth) : depth_(depth) { ++(*depth_); }
+  ~VariantDecodeDepthGuard() { --(*depth_); }
+  int* depth_;
+};
+}  // namespace
 
 const char* VariantUnaryOpToString(VariantUnaryOp op) {
   switch (op) {
@@ -83,6 +98,15 @@ void UnaryVariantOpRegistry::RegisterDecodeFn(
 
 bool DecodeUnaryVariant(Variant* variant) {
   CHECK_NOTNULL(variant);
+
+  VariantDecodeDepthGuard guard(&g_variant_decode_depth);
+  if (g_variant_decode_depth >= kMaxVariantDecodeDepth) {
+    LOG(ERROR) << "DecodeUnaryVariant: Maximum recursion depth ("
+               << kMaxVariantDecodeDepth
+               << ") exceeded for type: " << variant->TypeName();
+    return false;
+  }
+
   if (variant->TypeName().empty()) {
     VariantTensorDataProto* t = variant->get<VariantTensorDataProto>();
     if (t == nullptr || !t->metadata().empty() || !t->tensors().empty()) {
@@ -94,6 +118,7 @@ bool DecodeUnaryVariant(Variant* variant) {
       return true;
     }
   }
+
   UnaryVariantOpRegistry::VariantDecodeFn* decode_fn =
       UnaryVariantOpRegistry::Global()->GetDecodeFn(variant->TypeName());
   if (decode_fn == nullptr) {
@@ -101,6 +126,7 @@ bool DecodeUnaryVariant(Variant* variant) {
   }
   const std::string type_name = variant->TypeName();
   bool decoded = (*decode_fn)(variant);
+
   if (!decoded) return false;
   if (variant->TypeName() != type_name) {
     LOG(ERROR) << "DecodeUnaryVariant: Variant type_name before decoding was: "
