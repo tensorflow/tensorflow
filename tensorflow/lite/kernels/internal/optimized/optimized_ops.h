@@ -1829,20 +1829,32 @@ inline typename std::enable_if<is_int32_or_int64<T>::value, void>::type Add(
   auto input1_map = MapAsVector(input1_data, input1_shape);
   auto input2_map = MapAsVector(input2_data, input2_shape);
   auto output_map = MapAsVector(output_data, output_shape);
+  // The element-wise sum is performed in the unsigned domain so that any
+  // overflow wraps in a well-defined manner instead of triggering
+  // signed-integer-overflow UB inside Eigen's expression evaluators. The
+  // wrapped result is bit-identical to the previous two's-complement behavior
+  // and is then clamped back in the signed domain by the activation min/max.
+  using UnsignedT = typename std::make_unsigned<T>::type;
   if (input1_shape == input2_shape) {
-    output_map.array() = (input1_map.array() + input2_map.array())
+    output_map.array() = (input1_map.array().template cast<UnsignedT>() +
+                          input2_map.array().template cast<UnsignedT>())
+                             .template cast<T>()
                              .cwiseMax(activation_min)
                              .cwiseMin(activation_max);
   } else if (input2_shape.FlatSize() == 1) {
-    auto scalar = input2_data[0];
-    output_map.array() = (input1_map.array() + scalar)
-                             .cwiseMax(activation_min)
-                             .cwiseMin(activation_max);
+    UnsignedT scalar = static_cast<UnsignedT>(input2_data[0]);
+    output_map.array() =
+        (input1_map.array().template cast<UnsignedT>() + scalar)
+            .template cast<T>()
+            .cwiseMax(activation_min)
+            .cwiseMin(activation_max);
   } else if (input1_shape.FlatSize() == 1) {
-    auto scalar = input1_data[0];
-    output_map.array() = (scalar + input2_map.array())
-                             .cwiseMax(activation_min)
-                             .cwiseMin(activation_max);
+    UnsignedT scalar = static_cast<UnsignedT>(input1_data[0]);
+    output_map.array() =
+        (scalar + input2_map.array().template cast<UnsignedT>())
+            .template cast<T>()
+            .cwiseMax(activation_min)
+            .cwiseMin(activation_max);
   } else {
     reference_ops::BroadcastAdd6DSlow<T>(params, input1_shape, input1_data,
                                          input2_shape, input2_data,
