@@ -36,7 +36,7 @@ information, see: pypi.org/project/tf-nightly-gpu
 if ("bdist_wheel" in sys.argv
     or "install" in sys.argv
     or "bdist_egg" in sys.argv):
-  raise RuntimeError(TF_REMOVAL_WARNING)
+  sys.exit(TF_REMOVAL_WARNING)
 
 if __name__ == "__main__":
   setuptools.setup()
