@@ -138,12 +138,15 @@ absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
   std::vector<DtypeAndShape> dtypes_and_shapes;
   dtypes_and_shapes.reserve(inputs.size());
 
+  const bool has_static_shapes = !static_shapes_map.empty();
   int variable_arg_index = 0;
   for (int i = 0; i < inputs.size(); i++) {
     std::optional<tensorflow::TensorShape> static_shape;
-    auto it = static_shapes_map.find(i);
-    if (it != static_shapes_map.end()) {
-      static_shape = it->second;
+    if (has_static_shapes) {
+      auto it = static_shapes_map.find(i);
+      if (it != static_shapes_map.end()) {
+        static_shape = it->second;
+      }
     }
     if (variable_arg_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_arg_index]) {
@@ -153,7 +156,6 @@ absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
                               inputs[i].scalar<tsl::tstring>()()));
       dtype_and_shape.static_shape = std::move(static_shape);
       dtypes_and_shapes.push_back(std::move(dtype_and_shape));
-
       variable_arg_index++;
     } else {
       dtypes_and_shapes.push_back(
@@ -1060,8 +1062,11 @@ IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
     }
   }
 
-  TF_ASSIGN_OR_RETURN(StaticShapeMap static_shapes_map,
-                      GetStaticShapesFromInputs(inputs, static_shape_arg_map_));
+  StaticShapeMap static_shapes_map;
+  if (!static_shape_arg_map_.empty()) {
+    TF_ASSIGN_OR_RETURN(static_shapes_map, GetStaticShapesFromInputs(
+                                               inputs, static_shape_arg_map_));
+  }
   TF_ASSIGN_OR_RETURN(
       std::vector<DtypeAndShape> dtypes_and_shapes,
       BuildDtypeAndShape(inputs, variable_arg_indices, static_shapes_map,
@@ -1070,7 +1075,8 @@ IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
   // `device_reservation` should be alive before the end of the execution.
   tsl::DeviceReservation device_reservation(kNoCoreSelectedIndex, nullptr);
   xla::ifrt::DeviceListRef device_list;
-  if (UsePortableExecution()) {
+  bool use_portable_execution = UsePortableExecution();
+  if (use_portable_execution) {
     device_reservation =
         ifrt_serving_core_selector_->ReserveDevice(program_id_);
     TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
@@ -1108,7 +1114,6 @@ IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
       std::unique_ptr<H2DTransferExecutor> user_inputs_h2d_transfer_executor,
       h2d_transfer_executor_factory_->CreateH2DTransferExecutor(*ifrt_client_));
 
-  const bool use_portable_execution = UsePortableExecution();
   const std::vector<IfrtLoadedVariableRegistry::LoadedVariable>*
       variable_arrays = nullptr;
   if (use_portable_execution) {
