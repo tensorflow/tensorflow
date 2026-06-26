@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler_variant.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla_data.pb.h"
@@ -277,14 +278,18 @@ TEST(PjRtCompilerTest, CompilerFactoryRegistered) {
   };
   PjRtResetPlatformNameTopology topology;
   CompileOptions options;
-  options.compiler_variant = variant;
   XlaComputation computation;
 
   // Factory should not be called yet.
   EXPECT_FALSE(*factory_called);
 
+  RegisterCompilerVariantToStringFunc(
+      [](CompilerVariant v) { return std::string("factory_variant"); });
+
   // PjRtCompile should trigger the factory via GetOrCreateCompiler.
   auto res = PjRtCompile(options, computation, topology);
+
+  RegisterCompilerVariantToStringFunc(nullptr);
 
   EXPECT_TRUE(*factory_called);
   // PjRtDeserializeCompiler::Compile returns Unimplemented("test compiler!").
