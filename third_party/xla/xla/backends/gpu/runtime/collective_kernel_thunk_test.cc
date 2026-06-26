@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
@@ -75,6 +76,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 using ::absl_testing::StatusIs;
+using ::testing::ElementsAre;
 
 static constexpr absl::string_view kProfileName = "test_kernel_profiler";
 static constexpr absl::string_view kKernelName = "six_argument_kernel";
@@ -402,15 +404,15 @@ TEST_P(CollectiveKernelThunkParameterizedTest, ExecutesPtxKernel) {
       /*is_multimem_enabled=*/false, /*use_ptx=*/GetParam());
 
   se::StreamExecutor* executor0 = GetGpuExecutor(0);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       se::DeviceAddressBase result_buffer,
       RunCollectiveKernelThunk(metadata, executor0, input_data));
 
   std::vector<uint64_t> output_data(kNumElements);
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor0->CreateStream());
-  TF_ASSERT_OK(stream->Memcpy(output_data.data(), result_buffer,
-                              metadata.input_data_size_bytes));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor0->CreateStream());
+  ASSERT_OK(stream->Memcpy(output_data.data(), result_buffer,
+                           metadata.input_data_size_bytes));
+  ASSERT_OK(stream->BlockHostUntilDone());
   for (auto i = 0; i < kNumElements; ++i) {
     ASSERT_EQ(expected_output_data[i], output_data[i])
         << "comparison failed at i = " << i;
@@ -430,7 +432,7 @@ TEST(CollectiveKernelThunkTest, MultimemSetupTest) {
   CollectiveKernelThunkMetadata metadata = CreateCollectiveKernelThunk(
       /*num_devices=*/kDevicesCount, /*num_elements=*/kNumElements,
       /*is_multimem_enabled=*/true, /*use_ptx=*/true);
-  TF_ASSERT_OK(RunCollectiveKernelThunkOnDevices(metadata));
+  ASSERT_OK(RunCollectiveKernelThunkOnDevices(metadata));
 }
 
 TEST(CollectiveKernelThunkTest, MultiprocessTest) {
@@ -442,6 +444,20 @@ TEST(CollectiveKernelThunkTest, MultiprocessTest) {
   EXPECT_THAT(RunCollectiveKernelThunkOnDevices(metadata,
                                                 /*emulate_multiprocess=*/true),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(CollectiveKernelThunkTest, BufferUses) {
+  CollectiveKernelThunkMetadata metadata = CreateCollectiveKernelThunk(
+      /*num_devices=*/2, /*num_elements=*/kNumElements,
+      /*is_multimem_enabled=*/false, /*use_ptx=*/true);
+
+  EXPECT_THAT(
+      metadata.thunk->buffer_uses(),
+      ElementsAre(
+          BufferUse::Read(metadata.buffers[0].source_buffer.slice,
+                          metadata.buffers[0].source_buffer.shape),
+          BufferUse::Write(metadata.buffers[0].destination_buffer.slice,
+                           metadata.buffers[0].destination_buffer.shape)));
 }
 
 }  // namespace
