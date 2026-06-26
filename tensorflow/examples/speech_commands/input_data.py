@@ -294,7 +294,7 @@ class AudioProcessor(object):
       raise FileNotFoundError('No .wavs found at ' + search_path)
     for index, wanted_word in enumerate(wanted_words):
       if wanted_word not in all_words:
-        raise FileNotFoundError('Expected to find ' + wanted_word +
+        raise ValueError('Expected to find ' + wanted_word +
                          ' in labels but only found ' +
                          ', '.join(all_words.keys()))
     # We need an arbitrary file to load as the input for the silence samples.
