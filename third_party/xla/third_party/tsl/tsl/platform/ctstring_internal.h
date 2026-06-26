@@ -258,9 +258,6 @@ static inline char *TF_TString_ResizeUninitialized(TF_TString *str,
     str->u.smll.str[new_size] = '\0';
 
     if (curr_type != TF_TSTR_SMALL && copy_size) {
-      if (copy_size > TF_TString_SmallCapacity) {
-        copy_size = TF_TString_SmallCapacity;
-      }
       memcpy(str->u.smll.str, curr_ptr, copy_size);
     }
 
@@ -414,6 +411,8 @@ static inline void TF_TString_AppendN(TF_TString *dst, const char *src,
   if (!src_size) return;
 
   size_t dst_size = TF_TString_GetSize(dst);
+
+  if (src_size > SIZE_MAX - dst_size) return;
 
   // For append use cases, we want to ensure amortized growth.
   TF_TString_ReserveAmortized(dst, dst_size + src_size);
