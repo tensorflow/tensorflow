@@ -334,11 +334,29 @@ CodegenDecision CanTritonHandleReduce(
         "Unsupported reduction computation by Triton.");
   }
 
-  if (reduce.dimensions().size() == 1 && reduce.operand_count() == 2) {
-    return CodegenDecision::Allow();
+  bool tiling_propagation_enabled =
+      reduce.GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_tiling_propagation();
+
+  if (reduce.operand_count() != 2) {
+    return CodegenDecision::Forbid(
+        "Reduction is not a reduction of a single operand.");
   }
-  return CodegenDecision::Forbid(
-      "Reduction is not a row-reduction of a single operand.");
+
+  if (reduce.dimensions().empty()) {
+    return CodegenDecision::Forbid(
+        "Reduction must have at least one dimension.");
+  }
+
+  if (reduce.dimensions().size() > 1 && !tiling_propagation_enabled) {
+    return CodegenDecision::Forbid(
+        "Multi-dimension reductions are only supported when experimental "
+        "tiling propagation is enabled.");
+  }
+
+  return CodegenDecision::Allow();
 }
 
 CodegenDecision IsTritonSupportedAllReduce(

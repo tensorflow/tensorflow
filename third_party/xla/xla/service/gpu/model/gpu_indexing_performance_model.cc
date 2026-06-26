@@ -173,6 +173,13 @@ int64_t GetNumBlocksForRegion(const TiledHloInstructionType* tiled_hlo,
         num_blocks_cur_region *
         hlo->operand(region_id)->shape().dimensions(concat_dim) /
         hlo->shape().dimensions(concat_dim);
+  } else if (HloPredicateIsOp<HloOpcode::kReduce>(hlo) &&
+             !tiled_hlo->operands().empty()) {
+    for (int64_t dim : hlo->dimensions()) {
+      num_blocks_cur_region *=
+          CeilOfRatio(hlo->operand(0)->shape().dimensions(dim),
+                      tiled_hlo->operand(0)->tile_sizes()[dim]);
+    }
   }
   return num_blocks_cur_region;
 }
@@ -332,13 +339,57 @@ int64_t GetShapeSizeRecursive(
   return total_size;
 }
 
+// Calculates the total FLOPs for a tiled reduction instruction.
+//
+// The operations per output element are calculated based on the padded
+// tile size (which the hardware actually reduces), handling both tiled
+// loop reductions and untiled reductions.
+template <typename TiledHloInstructionType>
+int64_t GetReduceFlops(
+    const TiledHloInstructionType* tiled_hlo, int64_t num_blocks_cur_hlo,
+    absl::FunctionRef<int64_t(const HloInstruction*)> flops_per_element_fn) {
+  const HloInstruction* hlo = tiled_hlo->hlo();
+  int64_t flops_per_reduce_computation = 0;
+  for (const HloInstruction* reducer_instr :
+       hlo->called_computations()[0]->instructions()) {
+    flops_per_reduce_computation += flops_per_element_fn(reducer_instr);
+  }
+
+  int64_t parallel_tile_size = GetPaddedTileSize(tiled_hlo->tile_sizes());
+
+  int64_t total_loop_iterations = 1;
+  int64_t accumulated_tile_elements = 1;
+
+  for (int64_t reduce_dim : hlo->dimensions()) {
+    int64_t reduce_dim_size = hlo->operand(0)->shape().dimensions(reduce_dim);
+    int64_t reduce_tile_size = tiled_hlo->operand(0)->tile_sizes()[reduce_dim];
+
+    accumulated_tile_elements *= reduce_tile_size;
+    if (reduce_tile_size < reduce_dim_size) {
+      total_loop_iterations *= CeilOfRatio(reduce_dim_size, reduce_tile_size);
+    }
+  }
+
+  int64_t ops_per_output_element = 0;
+  if (total_loop_iterations > 1) {
+    ops_per_output_element = total_loop_iterations * accumulated_tile_elements +
+                             accumulated_tile_elements - 1;
+  } else {
+    ops_per_output_element = accumulated_tile_elements - 1;
+  }
+
+  return flops_per_reduce_computation * ops_per_output_element *
+         num_blocks_cur_hlo * parallel_tile_size;
+}
+
 template <typename TiledHloComputationType>
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
     const HloFusionAdaptor& fusion_adaptor,
     const TiledHloComputationType& tiled_hlo_computation, int64_t num_warps,
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size,
-    absl::FunctionRef<int64_t(const HloInstruction*)> flops_per_element_fn) {
+    absl::FunctionRef<int64_t(const HloInstruction*)> flops_per_element_fn,
+    bool use_experimental_tiling) {
   absl::flat_hash_map<const HloInstruction*, OperandReadInfo> n_bytes_total_map;
 
   // Compute time for dot flops is counted separately.
@@ -394,6 +445,12 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
               dot_flops += flops_per_element_fn(hlo) * num_elements;
               return;
             }
+          }
+
+          if (use_experimental_tiling && hlo->opcode() == HloOpcode::kReduce) {
+            flops += GetReduceFlops(tiled_hlo, num_blocks_cur_hlo,
+                                    flops_per_element_fn);
+            return;
           }
 
           // Tiles inside the computation contribute to the total FLOPs count.
@@ -515,13 +572,15 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EstimateTiledRunTimeDataImpl(
     const TiledHloComputationType& tiled_hlo_computation,
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size,
-    absl::FunctionRef<int64_t(const HloInstruction*)> flops_per_element_fn) {
+    absl::FunctionRef<int64_t(const HloInstruction*)> flops_per_element_fn,
+    bool use_experimental_tiling) {
   int64_t num_warps = EstimateNumWarpsImpl(tiled_hlo_computation);
 
-  ASSIGN_OR_RETURN(EstimateRunTimeData estimate_run_time_data,
-                   EstimateRunTimeForTiledHloComputationImpl(
-                       fusion_adaptor, tiled_hlo_computation, num_warps,
-                       device_info, shape_size, flops_per_element_fn));
+  ASSIGN_OR_RETURN(
+      EstimateRunTimeData estimate_run_time_data,
+      EstimateRunTimeForTiledHloComputationImpl(
+          fusion_adaptor, tiled_hlo_computation, num_warps, device_info,
+          shape_size, flops_per_element_fn, use_experimental_tiling));
 
   // Skip tilings with infinite runtime (e.g., due to register spilling).
   if (estimate_run_time_data.exec_time == absl::InfiniteDuration()) {
@@ -617,7 +676,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
   return EstimateRunTimeForTiledHloComputationImpl(
       fusion_adaptor, tiled_hlo_computation, num_warps, *device_info_,
       shape_size_,
-      [this](const HloInstruction* hlo) { return FlopsPerElement(hlo); });
+      [this](const HloInstruction* hlo) { return FlopsPerElement(hlo); },
+      use_experimental_tiling_);
 }
 
 absl::StatusOr<EstimateRunTimeData>
@@ -643,7 +703,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     return EstimateRunTimeForTiledHloComputationImpl(
         fusion_adaptor, tiled_hlo_computation, block_level_parameters.num_warps,
         *device_info_, shape_size_,
-        [&](const HloInstruction* hlo) { return FlopsPerElement(hlo); });
+        [&](const HloInstruction* hlo) { return FlopsPerElement(hlo); },
+        use_experimental_tiling_);
   }
 
   SymbolicTileAnalysisOrError analysis_or_error =
@@ -667,7 +728,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
   return EstimateRunTimeForTiledHloComputationImpl(
       fusion_adaptor, tiled_hlo_computation, block_level_parameters.num_warps,
       *device_info_, shape_size_,
-      [&](const HloInstruction* hlo) { return FlopsPerElement(hlo); });
+      [&](const HloInstruction* hlo) { return FlopsPerElement(hlo); },
+      use_experimental_tiling_);
 }
 
 absl::StatusOr<EstimateRunTimeData>
@@ -741,12 +803,14 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
         continue;
       }
 
-      ASSIGN_OR_RETURN(std::optional<TiledRunTimeData> tiled_run_time_data,
-                       EstimateTiledRunTimeDataImpl(
-                           fusion_adaptor, *tiled_computation, *device_info_,
-                           shape_size_, [this](const HloInstruction* hlo) {
-                             return FlopsPerElement(hlo);
-                           }));
+      ASSIGN_OR_RETURN(
+          std::optional<TiledRunTimeData> tiled_run_time_data,
+          EstimateTiledRunTimeDataImpl(
+              fusion_adaptor, *tiled_computation, *device_info_, shape_size_,
+              [this](const HloInstruction* hlo) {
+                return FlopsPerElement(hlo);
+              },
+              use_experimental_tiling_));
 
       if (tiled_run_time_data.has_value()) {
         candidates.push_back(*tiled_run_time_data);
@@ -791,13 +855,14 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
         return maybe_tiled_hlo_computation.status();
       }
 
-      ASSIGN_OR_RETURN(
-          std::optional<TiledRunTimeData> tiled_run_time_data,
-          EstimateTiledRunTimeDataImpl(
-              fusion_adaptor, *maybe_tiled_hlo_computation, *device_info_,
-              shape_size_, [this](const HloInstruction* hlo) {
-                return FlopsPerElement(hlo);
-              }));
+      ASSIGN_OR_RETURN(std::optional<TiledRunTimeData> tiled_run_time_data,
+                       EstimateTiledRunTimeDataImpl(
+                           fusion_adaptor, *maybe_tiled_hlo_computation,
+                           *device_info_, shape_size_,
+                           [this](const HloInstruction* hlo) {
+                             return FlopsPerElement(hlo);
+                           },
+                           use_experimental_tiling_));
 
       if (tiled_run_time_data.has_value()) {
         candidates.push_back(*tiled_run_time_data);

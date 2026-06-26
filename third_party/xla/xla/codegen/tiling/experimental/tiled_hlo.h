@@ -230,9 +230,8 @@ class TiledHloComputation {
 
   // Constructs a tiled HLO region starting from a single root instruction.
   //
-  // This serves as the entry point for region reconstruction, wrapping the
-  // recursive `CreateFlatRegion` traversal. It initializes the traversal
-  // with the given `tiled_root`.
+  // This serves as the entry point for region reconstruction. It initializes
+  // the traversal with the given `tiled_root`.
   static absl::StatusOr<TiledHloRegion> CreateHloRegion(
       std::unique_ptr<TiledHloInstruction> tiled_root,
       const HloFusionAdaptor& fusion, TilingSpace& tiling_space,

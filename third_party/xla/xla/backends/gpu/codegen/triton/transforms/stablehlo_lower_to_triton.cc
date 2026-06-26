@@ -181,75 +181,114 @@ class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
   using OpRewritePattern::OpRewritePattern;
 
  private:
+  Type RemoveDimension(Type type, int32_t axis) const {
+    auto ranked_type = cast<RankedTensorType>(type);
+    auto shape = ranked_type.getShape();
+    SmallVector<int64_t> new_shape;
+    new_shape.reserve(shape.size() - 1);
+    for (int i = 0; i < shape.size(); ++i) {
+      if (i != axis) {
+        new_shape.push_back(shape[i]);
+      }
+    }
+    return RankedTensorType::get(new_shape, ranked_type.getElementType());
+  }
+
   mlir::LogicalResult matchAndRewrite(
       stablehlo::ReduceOp op, mlir::PatternRewriter& rewriter) const override {
     if (mlir::failed(VerifyOpIsCompatibleWithTritonReduce(op, rewriter))) {
       return mlir::failure();
     }
 
-    int32_t axis = op.getDimensions()[0];
+    auto dimensions = op.getDimensions();
+
+    SmallVector<int64_t> sorted_dims(dimensions.begin(), dimensions.end());
+    std::sort(sorted_dims.begin(), sorted_dims.end(), std::greater<int64_t>());
+
+    SmallVector<Value> current_vals(op.getInputs().begin(),
+                                    op.getInputs().end());
 
     // In case shlo returns a 0 rank tensor triton needs to return a scalar as
     // triton doesn't support 0 rank tensors.
-    SmallVector<Type> adjusted_result_types;
-    adjusted_result_types.reserve(op.getNumResults());
+    // We only apply this to the VERY LAST reduction in the chain.
+    SmallVector<Type> final_result_types;
+    final_result_types.reserve(op.getNumResults());
     for (auto result : op.getResults()) {
       auto shaped_type = cast<mlir::ShapedType>(result.getType());
       if (shaped_type.getRank() == 0) {
-        adjusted_result_types.push_back(shaped_type.getElementType());
+        final_result_types.push_back(shaped_type.getElementType());
       } else {
-        adjusted_result_types.push_back(shaped_type);
+        final_result_types.push_back(shaped_type);
       }
     }
 
-    auto triton_reduce_op = ttir::ReduceOp::create(
-        rewriter, op.getLoc(), adjusted_result_types, op.getInputs(), axis);
-    Region& triton_reduce_region = triton_reduce_op.getCombineOp();
+    ttir::ReduceOp triton_reduce_op;
 
-    mlir::Block& old_block = op.getBody().front();
-    llvm::SmallVector<Type> arg_types;
-    llvm::SmallVector<mlir::Location> arg_locs;
-    for (auto old_arg_type : old_block.getArgumentTypes()) {
-      arg_types.push_back(
-          llvm::cast<ShapedType>(old_arg_type).getElementType());
-      arg_locs.push_back(op.getLoc());
+    for (auto [k, axis] : llvm::enumerate(sorted_dims)) {
+      bool is_last = (k == sorted_dims.size() - 1);
+      SmallVector<Type> step_result_types;
+      if (is_last) {
+        step_result_types = final_result_types;
+      } else {
+        step_result_types.reserve(current_vals.size());
+        for (auto val : current_vals) {
+          step_result_types.push_back(RemoveDimension(val.getType(), axis));
+        }
+      }
+
+      triton_reduce_op = ttir::ReduceOp::create(
+          rewriter, op.getLoc(), step_result_types, current_vals, axis);
+      Region& triton_reduce_region = triton_reduce_op.getCombineOp();
+
+      mlir::Block& old_block = op.getBody().front();
+      llvm::SmallVector<Type> arg_types;
+      llvm::SmallVector<mlir::Location> arg_locs;
+      for (auto old_arg_type : old_block.getArgumentTypes()) {
+        arg_types.push_back(
+            llvm::cast<ShapedType>(old_arg_type).getElementType());
+        arg_locs.push_back(op.getLoc());
+      }
+      rewriter.createBlock(&triton_reduce_region, triton_reduce_region.begin(),
+                           arg_types, arg_locs);
+
+      mlir::IRMapping mapping;
+      Block& triton_reduce_region_block = triton_reduce_region.front();
+      {
+        mlir::PatternRewriter::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPointToStart(&triton_reduce_region_block);
+        for (auto [old_arg, new_arg] :
+             llvm::zip(old_block.getArguments(),
+                       triton_reduce_region_block.getArguments())) {
+          auto to_tensor_op = mlir::tensor::FromElementsOp::create(
+              rewriter, op.getLoc(), old_arg.getType(), new_arg);
+          mapping.map(old_arg, to_tensor_op);
+        }
+
+        for (mlir::Operation& body_op : old_block.without_terminator()) {
+          rewriter.clone(body_op, mapping);
+        }
+
+        SmallVector<Value> return_operands;
+        for (Value operand : old_block.getTerminator()->getOperands()) {
+          return_operands.push_back(mlir::tensor::ExtractOp::create(
+              rewriter, op->getLoc(), mapping.lookupOrDefault(operand)));
+        }
+        ttir::ReduceReturnOp::create(rewriter, op.getLoc(), return_operands);
+      }
+
+      current_vals.assign(triton_reduce_op.getResults().begin(),
+                          triton_reduce_op.getResults().end());
+      rewriter.setInsertionPointAfter(triton_reduce_op);
     }
-    rewriter.createBlock(&triton_reduce_region, triton_reduce_region.begin(),
-                         arg_types, arg_locs);
 
-    mlir::IRMapping mapping;
-    Block& triton_reduce_region_block = triton_reduce_region.front();
-    rewriter.setInsertionPointToStart(&triton_reduce_region_block);
-    for (auto [old_arg, new_arg] :
-         llvm::zip(old_block.getArguments(),
-                   triton_reduce_region_block.getArguments())) {
-      auto to_tensor_op = mlir::tensor::FromElementsOp::create(
-          rewriter, op.getLoc(), old_arg.getType(), new_arg);
-      mapping.map(old_arg, to_tensor_op);
-    }
-
-    for (mlir::Operation& op : old_block.without_terminator()) {
-      rewriter.clone(op, mapping);
-    }
-
-    SmallVector<Value> return_operands;
-    for (Value operand : old_block.getTerminator()->getOperands()) {
-      return_operands.push_back(mlir::tensor::ExtractOp::create(
-          rewriter, op->getLoc(), mapping.lookupOrDefault(operand)));
-    }
-    ttir::ReduceReturnOp::create(rewriter, op.getLoc(), return_operands);
-
-    // Replace usages of the original op results. If the original result was a
-    // 0-rank tensor, we need to wrap the scalar result of tt.reduce in a
-    // tensor.to_tensor op.
-    rewriter.setInsertionPointAfter(triton_reduce_op);
     llvm::SmallVector<Value> new_results;
-    for (const auto& triton_result : triton_reduce_op.getResults()) {
+    for (const auto& [i, triton_result] :
+         llvm::enumerate(triton_reduce_op.getResults())) {
       if (mlir::isa<mlir::ShapedType>(triton_result.getType())) {
         new_results.push_back(triton_result);
       } else {
         new_results.push_back(mlir::tensor::FromElementsOp::create(
-            rewriter, op.getLoc(), op.getType(0), triton_result));
+            rewriter, op.getLoc(), op.getType(i), triton_result));
       }
     }
 
@@ -265,11 +304,10 @@ class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
   // the result is a zero rank tensor.
   mlir::LogicalResult VerifyOpIsCompatibleWithTritonReduce(
       stablehlo::ReduceOp op, mlir::PatternRewriter& rewriter) const {
-    // Check that the reduction is along a single dimension.
     auto dimensions = op.getDimensions();
-    if (dimensions.size() != 1) {
+    if (dimensions.empty()) {
       absl::string_view error_text =
-          "tt.reduce only supports single dimension reductions.";
+          "Reduction must have at least one dimension.";
       // Report this as a hard error to abort the compilation.
       op.emitError(error_text);
       return rewriter.notifyMatchFailure(op->getLoc(), error_text);

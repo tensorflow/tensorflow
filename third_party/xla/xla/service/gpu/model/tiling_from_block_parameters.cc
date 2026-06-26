@@ -131,13 +131,15 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
       case DimensionSemantics::kSequential: {
         if (dim.hlo->has_backend_config()) {
           ASSIGN_OR_RETURN(Tile config, dim.hlo->backend_config<Tile>());
-          if (config.sizes_size() != 1) {
+          int64_t output_rank = dim.hlo->shape().dimensions().size();
+          int64_t reduction_idx = dim.dim_position - output_rank;
+          if (reduction_idx < 0 || reduction_idx >= config.sizes_size()) {
             return Internal(
-                "Only single-reduction operations are supported "
-                "dimension. Got %d tile sizes in backend config.",
-                config.sizes_size());
+                "Sequential dimension index %d is out of bounds for backend "
+                "config sizes of size %d.",
+                reduction_idx, config.sizes_size());
           }
-          tile_sizes.push_back(config.sizes(0));
+          tile_sizes.push_back(config.sizes(reduction_idx));
         } else {
           VLOG(1) << "No backend_config set for HLO instruction of dimension "
                   << dim.ToString() << ". Using dimension size as tile size.";
