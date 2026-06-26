@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/tpu_global_init.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,36 +23,22 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/cc/framework/scope.h"
-#include "tensorflow/cc/ops/tpu_configuration_ops.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/common_runtime/graph_runner.h"
-#include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/common_runtime/session_factory.h"
-#include "tensorflow/core/framework/device.h"
-#include "tensorflow/core/framework/device_factory.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
-#include "tensorflow/core/public/session.h"
-#include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_configuration_rewrite_pass.h"
-#include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_helpers.h"
-#include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/tfrt/common/pjrt_client_factory_registry.h"
+#include "tensorflow/core/tfrt/common/pjrt_util.h"
+#include "tensorflow/core/tpu/tpu_init_mode.h"
 
 namespace tensorflow {
 
@@ -63,143 +50,87 @@ static tpu::TopologyProto* global_tpu_topology
 
 constexpr char kTaskSpec[] = "/job:localhost/replica:0/task:0";
 
-absl::Status CreateDeviceMgr(Env* env, std::unique_ptr<DeviceMgr>* device_mgr) {
-  SessionOptions session_options;
-  session_options.env = env;
-  std::vector<std::unique_ptr<Device>> devices;
-  DeviceFactory* device_factory = DeviceFactory::GetFactory(DEVICE_TPU_SYSTEM);
-  if (device_factory == nullptr) {
-    return absl::InternalError("Unable to initialize DeviceFactory.");
-  }
-  TF_RETURN_IF_ERROR(
-      device_factory->CreateDevices(session_options, kTaskSpec, &devices));
-  *device_mgr = std::make_unique<DynamicDeviceMgr>(std::move(devices));
-  return absl::OkStatus();
-}
-
-void DeviceSetFromDeviceMgr(const DeviceMgr& device_mgr,
-                            DeviceSet* device_set) {
-  int devices_added = 0;
-  for (auto d : device_mgr.ListDevices()) {
-    device_set->AddDevice(d);
-    if (devices_added == 0) {
-      device_set->set_client_device(d);
-    }
-    ++devices_added;
-  }
-}
-
-std::string GetTPUSystemDevice(absl::string_view job_name) {
-  if (job_name.empty()) {
-    return DeviceNameUtils::LocalName(DEVICE_TPU_SYSTEM, 0);
-  } else {
-    return absl::StrCat("/job:", job_name, "/device:TPU_SYSTEM:0");
-  }
-}
-
-absl::Status ConstructDistributedInitializationGraph(
-    absl::string_view job_name, const DeviceSet& device_set,
-    Graph* graph_to_run) {
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  GraphOptimizationPassOptions options;
-  options.graph = &graph;
-  options.device_set = &device_set;
-  {
-    Scope scope = Scope::NewRootScope();
-    auto init_op = ops::ConfigureDistributedTPU(
-        scope.WithOpName("InitializeTPUSystemGlobally")
-            .WithDevice(GetTPUSystemDevice(job_name)),
-        ops::ConfigureDistributedTPU::IsGlobalInit(true));
-    TF_RETURN_IF_ERROR(scope.ToGraph(options.graph->get()));
-  }
-  DistributedTPUConfigurationRewritePass rewriter;
-  TF_RETURN_IF_ERROR(rewriter.Run(options));
-
-  // Graph doesn't update the node-def's after adding edges, which causes
-  // node-def validation to fail in the executor. So we explicitly do a
-  // round-trip through GraphDef, so that node-defs are updated.
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph({}, graph->ToGraphDefDebug(), graph_to_run));
-
-  return absl::OkStatus();
-}
-
-absl::Status InitializeFromSession(absl::string_view session_target,
-                                   const Graph* graph_to_run,
-                                   std::vector<Tensor>* outputs) {
-  tensorflow::SessionOptions s_opts;
-  s_opts.target = std::string(session_target);
-
-  std::unique_ptr<tensorflow::Session> sess(tensorflow::NewSession(s_opts));
-
-  GraphDef g_def;
-  graph_to_run->ToGraphDef(&g_def);
-
-  TF_RETURN_IF_ERROR(sess->Create(g_def));
-  TF_RETURN_IF_ERROR(
-      sess->Run({}, {"InitializeTPUSystemGlobally:0"}, {}, outputs));
-
-  return absl::OkStatus();
-}
-
 }  // namespace
 
-absl::Status InitializeTPUSystemGlobally(absl::string_view job_name,
-                                         absl::string_view session_target,
-                                         const DeviceSet& device_set, Env* env,
-                                         tpu::TopologyProto* tpu_topology) {
-  VLOG(1) << "InitializeTpuSystemGlobally";
+absl::Status BuildTopologyProto(xla::PjRtClient* client,
+                                tpu::TopologyProto* topology) {
+  int max_x = -1, max_y = -1, max_z = -1;
+  int max_core = -1;
+  absl::flat_hash_set<int> task_indices;
 
-  absl::MutexLock lock(global_init_tpu_mutex);
-  if (global_tpu_topology != nullptr) {
-    *tpu_topology = *global_tpu_topology;
-    return absl::OkStatus();
+  for (xla::PjRtDevice* device : client->devices()) {
+    auto coords_it = device->description().Attributes().find("coords");
+    auto core_it = device->description().Attributes().find("core_on_chip");
+    if (coords_it == device->description().Attributes().end() ||
+        core_it == device->description().Attributes().end()) {
+      return absl::InternalError(
+          "TPU device missing coords or core_on_chip attributes");
+    }
+    const auto& coords = std::get<std::vector<int64_t>>(coords_it->second);
+    int64_t core = std::get<int64_t>(core_it->second);
+
+    max_x = std::max(max_x, static_cast<int>(coords[0]));
+    max_y = std::max(max_y, static_cast<int>(coords[1]));
+    max_z = std::max(max_z, static_cast<int>(coords[2]));
+    max_core = std::max(max_core, static_cast<int>(core));
+
+    task_indices.insert(device->process_index());
   }
 
-  std::unique_ptr<Graph> graph_to_run(new Graph(OpRegistry::Global()));
-
-  DeviceNameUtils::ParsedName system_spec;
-  Device* tpu_system_device;
-
-  std::string task_spec =
-      job_name.empty() ? kTaskSpec
-                       : absl::StrCat("/job:", job_name, "/replica:0/task:0");
-  // Placed here, much before usage, to get a sane error if TPU_SYSTEM_DEVICE
-  // hasn't been linked in. Otherwise we may get a cryptic error down the line.
-  TF_RETURN_IF_ERROR(DistributedTPURewriteHelpers::GetSystemDevice(
-      task_spec, device_set, &system_spec, &tpu_system_device));
-
-  TF_RETURN_IF_ERROR(ConstructDistributedInitializationGraph(
-      job_name, device_set, graph_to_run.get()));
-
-  std::vector<Tensor> outputs;
-  // Being a bit conservative here to run non-distributed initialization with
-  // graph runner.
-  // TODO(hthu): Re-evaluate the choice of using session for running the
-  // initialization graph given that we need to a session in distributed
-  // initialization anyway.
-  if (session_target.empty()) {
-    GraphRunner graph_runner(tpu_system_device);
-    TF_RETURN_IF_ERROR(graph_runner.Run(graph_to_run.get(), nullptr, {},
-                                        {"InitializeTPUSystemGlobally:0"},
-                                        &outputs));
-  } else {
-    TF_RETURN_IF_ERROR(
-        InitializeFromSession(session_target, graph_to_run.get(), &outputs));
+  if (max_x == -1) {
+    return absl::InternalError("No TPU devices found to build topology");
   }
 
-  if (outputs.empty()) {
-    return absl::InternalError("No output from running TPU initialization.");
+  int num_tasks = task_indices.size();
+  topology->set_num_tasks(num_tasks);
+
+  topology->add_mesh_shape(max_x + 1);
+  topology->add_mesh_shape(max_y + 1);
+  topology->add_mesh_shape(max_z + 1);
+  topology->add_mesh_shape(max_core + 1);
+
+  std::vector<int> sorted_tasks(task_indices.begin(), task_indices.end());
+  std::sort(sorted_tasks.begin(), sorted_tasks.end());
+
+  absl::flat_hash_map<int, std::vector<xla::PjRtDevice*>> task_to_devices;
+  for (xla::PjRtDevice* device : client->devices()) {
+    task_to_devices[device->process_index()].push_back(device);
   }
 
-  global_tpu_topology = new tpu::TopologyProto();
-  if (!global_tpu_topology->ParseFromString(outputs[0].scalar<tstring>()())) {
-    return absl::InternalError(
-        "Unable to parse output from running TPU initialization as "
-        "TopologyProto proto.");
+  for (auto& [task, devices] : task_to_devices) {
+    std::sort(devices.begin(), devices.end(),
+              [](const xla::PjRtDevice* a, const xla::PjRtDevice* b) {
+                return a->global_device_id() < b->global_device_id();
+              });
   }
 
-  *tpu_topology = *global_tpu_topology;
+  int num_tpu_devices_per_task = 0;
+  if (!sorted_tasks.empty()) {
+    num_tpu_devices_per_task = task_to_devices[sorted_tasks[0]].size();
+  }
+  topology->set_num_tpu_devices_per_task(num_tpu_devices_per_task);
+
+  for (int task_id : sorted_tasks) {
+    const auto& devices = task_to_devices[task_id];
+    if (devices.size() != num_tpu_devices_per_task) {
+      return absl::InternalError(
+          "Asymmetric TPU topology (different number of devices per task)");
+    }
+    for (const xla::PjRtDevice* device : devices) {
+      const auto& coords = std::get<std::vector<int64_t>>(
+          device->description().Attributes().at("coords"));
+      int64_t core = std::get<int64_t>(
+          device->description().Attributes().at("core_on_chip"));
+      topology->add_device_coordinates(coords[0]);
+      topology->add_device_coordinates(coords[1]);
+      topology->add_device_coordinates(coords[2]);
+      topology->add_device_coordinates(core);
+    }
+  }
+
+  topology->mutable_tpu_hardware_feature()->set_embedding_feature(
+      tpu::TPUHardwareFeature::V2);
+
   return absl::OkStatus();
 }
 
@@ -211,14 +142,40 @@ absl::Status InitializeTPUSystemGlobally(absl::string_view job_name,
 // on the API, so we went with the current approach.
 absl::Status InitializeTPUSystemGlobally(Env* env,
                                          tpu::TopologyProto* tpu_topology) {
-  std::unique_ptr<DeviceMgr> device_mgr;
-  TF_RETURN_IF_ERROR(CreateDeviceMgr(env, &device_mgr));
-  DeviceSet device_set;
-  DeviceSetFromDeviceMgr(*device_mgr, &device_set);
+  absl::MutexLock lock(global_init_tpu_mutex);
+  if (global_tpu_topology != nullptr) {
+    *tpu_topology = *global_tpu_topology;
+    return absl::OkStatus();
+  }
 
-  return InitializeTPUSystemGlobally(/*job_name=*/absl::string_view(),
-                                     /*session_target=*/absl::string_view(),
-                                     device_set, env, tpu_topology);
+  auto obtained_pjrt_client = GetPjRtClient(DeviceType(DEVICE_TPU));
+  if (!obtained_pjrt_client.ok() &&
+      obtained_pjrt_client.status().code() == absl::StatusCode::kNotFound) {
+    VLOG(1) << "PJRT client not found for TPU, creating it...";
+    xla::PjrtClientFactoryOptions options;
+    auto created_client_or =
+        xla::PjrtClientFactoryRegistry::Get().GetPjrtClient(
+            DeviceType(DEVICE_TPU), options);
+    if (!created_client_or.ok()) {
+      return absl::InternalError(
+          absl::StrCat("Failed to create PJRT client for TPU: ",
+                       created_client_or.status().message()));
+    }
+    VLOG(1) << "PJRT client created successfully for TPU.";
+    TF_RETURN_IF_ERROR(SetPjRtClientInTFGlobalResourceManager(
+        DeviceType(DEVICE_TPU), std::move(*created_client_or)));
+    obtained_pjrt_client = GetPjRtClient(DeviceType(DEVICE_TPU));
+  }
+  TF_RETURN_IF_ERROR(obtained_pjrt_client.status());
+
+  LOG(INFO) << "Using PJRT for global TPU initialization";
+  TF_RETURN_IF_ERROR(SetTPUInitMode(TPUInitMode::kGlobal));
+
+  global_tpu_topology = new tpu::TopologyProto();
+  TF_RETURN_IF_ERROR(
+      BuildTopologyProto(*obtained_pjrt_client, global_tpu_topology));
+  *tpu_topology = *global_tpu_topology;
+  return absl::OkStatus();
 }
 
 absl::Status InitializeTPUSystemGlobally() {
