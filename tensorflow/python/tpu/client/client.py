@@ -430,7 +430,7 @@ class Client:
               'https://cloud.google.com/tpu/docs/release-notes for '
               'the latest official version.'.format(version))
         else:
-          raise RuntimeError('Failed to configure worker {}'.format(ip_address))
+          raise RuntimeError('Failed to configure worker {}'.format(ip_address)) from e
 
     workers = self.network_endpoints()
 
