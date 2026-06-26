@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/tsl/platform/statusor.h"
 

@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/backends/gpu/libraries/cub/cub_scratch_size_deviceless_lookup.h"
 #include "xla/backends/gpu/libraries/cub/cub_sort_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"

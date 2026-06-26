@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/backends/gpu/profiler/kernel_name_tracer_factory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"

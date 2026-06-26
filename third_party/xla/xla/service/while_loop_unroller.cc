@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"

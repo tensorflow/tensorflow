@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "riegeli/bytes/writer.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/dump.h"

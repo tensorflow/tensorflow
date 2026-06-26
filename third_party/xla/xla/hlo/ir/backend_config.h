@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "google/protobuf/message.h"
 #include "tsl/platform/human_readable_json.h"
 #include "tsl/platform/protobuf.h"

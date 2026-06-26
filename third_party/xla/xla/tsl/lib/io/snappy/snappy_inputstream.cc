@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/tsl/lib/io/inputstream_interface.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/snappy.h"

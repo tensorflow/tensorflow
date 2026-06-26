@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.pb.h"

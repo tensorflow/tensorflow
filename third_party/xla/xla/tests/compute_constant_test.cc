@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/client/client.h"
 #include "xla/client/client_library.h"
 #include "xla/hlo/builder/xla_builder.h"

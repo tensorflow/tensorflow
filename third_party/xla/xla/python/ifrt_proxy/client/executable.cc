@@ -41,7 +41,7 @@ limitations under the License.
 #if defined(PLATFORM_GOOGLE)
 #include "third_party/gloop/strings/cord_bytestream.h"
 #endif
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"

@@ -31,7 +31,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "grpc/grpc.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"

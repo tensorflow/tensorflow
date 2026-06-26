@@ -39,7 +39,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "google/protobuf/message.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"

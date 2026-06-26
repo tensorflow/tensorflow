@@ -39,7 +39,7 @@ limitations under the License.
 #include "absl/types/source_location.h"
 #endif  // PLATFORM_GOOGLE
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"

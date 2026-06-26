@@ -27,7 +27,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"

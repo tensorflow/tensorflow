@@ -98,7 +98,7 @@ limitations under the License.
 #include "third_party/cudnn_frontend/include/cudnn_frontend_PointWiseDesc.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_Tensor.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_VariantPack.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 // clang-format on
 
 #ifdef __clang__

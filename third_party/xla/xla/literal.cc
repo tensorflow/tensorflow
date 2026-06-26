@@ -42,7 +42,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "hwy//highway.h"
 #include "xla/index_util.h"
 #include "xla/layout.h"

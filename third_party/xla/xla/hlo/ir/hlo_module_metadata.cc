@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/metrics.pb.h"
 #include "xla/tsl/platform/env.h"

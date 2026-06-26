@@ -16,7 +16,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/stream_executor/cuda/delay_kernel.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/typed_kernel_factory.h"

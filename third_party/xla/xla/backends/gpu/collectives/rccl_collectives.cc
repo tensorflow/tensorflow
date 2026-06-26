@@ -39,7 +39,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "rocm/include/rccl/rccl.h"
 #include "rocm/rocm_config.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"

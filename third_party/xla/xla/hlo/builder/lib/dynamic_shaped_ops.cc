@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/value_inference.h"
 #include "xla/hlo/builder/xla_builder.h"

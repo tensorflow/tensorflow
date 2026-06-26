@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"

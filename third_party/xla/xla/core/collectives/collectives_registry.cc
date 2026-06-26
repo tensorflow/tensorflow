@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/service/platform_util.h"
 #include "xla/tsl/platform/statusor.h"

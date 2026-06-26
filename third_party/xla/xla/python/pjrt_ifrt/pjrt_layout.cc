@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_layout.h"

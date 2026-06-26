@@ -24,7 +24,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/grpcpp.h"
 #include "xla/pjrt/distributed/util.h"

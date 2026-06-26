@@ -69,7 +69,7 @@ limitations under the License.
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 
 namespace xla {

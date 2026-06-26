@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/IR/DataLayout.h"
 #include "xla/literal.h"
 #include "xla/service/compiler.h"

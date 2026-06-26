@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda_bf16.h"
 #include "raft/core/device_mdspan.hpp"
 #include "raft/core/mdspan_types.hpp"

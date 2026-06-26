@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"

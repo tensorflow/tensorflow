@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
 #include "grpcpp/grpcpp.h"  // IWYU pragma: keep

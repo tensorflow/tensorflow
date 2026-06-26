@@ -34,7 +34,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/backends/cpu/ffi.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/executable_run_options.h"

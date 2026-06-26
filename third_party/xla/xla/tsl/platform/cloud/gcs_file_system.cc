@@ -73,7 +73,7 @@ limitations under the License.
 #ifdef _WIN32
 #include <io.h>  // for _mktemp
 #endif
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "json/json.h"
 #include "xla/tsl/platform/cloud/curl_http_request.h"
 #include "xla/tsl/platform/cloud/file_block_cache.h"

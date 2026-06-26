@@ -25,7 +25,7 @@ limitations under the License.
 #include "cub/device/device_scan.cuh"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_bf16.h"  // IWYU pragma: keep
 #include "third_party/gpus/cuda/include/cuda_fp16.h"  // IWYU pragma: keep

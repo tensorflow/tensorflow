@@ -39,7 +39,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "json/json.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"

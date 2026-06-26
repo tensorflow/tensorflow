@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/literal.h"
 #include "xla/service/compiler.h"
 #include "xla/service/maybe_owning_device_address.h"

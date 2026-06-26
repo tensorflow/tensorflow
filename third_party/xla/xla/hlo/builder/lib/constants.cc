@@ -18,7 +18,7 @@ limitations under the License.
 #include <limits>
 
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"

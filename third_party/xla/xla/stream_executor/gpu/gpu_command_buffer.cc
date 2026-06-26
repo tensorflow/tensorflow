@@ -33,7 +33,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/dump.h"
 #include "xla/stream_executor/bit_pattern.h"

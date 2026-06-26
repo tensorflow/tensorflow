@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/layout.h"
 #include "xla/printer.h"
 #include "xla/shape.h"

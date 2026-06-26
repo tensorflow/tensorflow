@@ -139,7 +139,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 
 namespace xla {
 

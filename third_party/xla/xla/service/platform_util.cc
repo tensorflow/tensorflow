@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/compiler.h"
 #include "xla/status_macros.h"

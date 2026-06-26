@@ -18,7 +18,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep

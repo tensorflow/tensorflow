@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
 

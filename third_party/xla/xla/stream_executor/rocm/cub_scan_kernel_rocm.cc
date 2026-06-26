@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/ffi.h"

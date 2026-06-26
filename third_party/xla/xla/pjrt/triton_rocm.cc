@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"

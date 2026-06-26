@@ -84,7 +84,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/MD5.h"
 #include "xla/tsl/platform/env.h"

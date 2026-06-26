@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/rng_bit_generator_expander.h"
 
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/hlo/builder/lib/prng.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"

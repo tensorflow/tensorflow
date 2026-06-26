@@ -34,7 +34,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_pmsampling.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_profiler_target.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_target.h"

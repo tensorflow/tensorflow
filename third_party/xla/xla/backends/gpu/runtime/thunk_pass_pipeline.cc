@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/device_description.h"

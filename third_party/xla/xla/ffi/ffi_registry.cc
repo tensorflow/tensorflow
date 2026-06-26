@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/invoke.h"
 #include "xla/service/platform_util.h"

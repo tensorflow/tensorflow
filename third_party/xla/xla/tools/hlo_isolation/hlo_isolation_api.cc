@@ -47,7 +47,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "re2/re2.h"
 #include "xla/comparison_util.h"

@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 
 #include "absl/log/log.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #define _USE_MATH_DEFINES
 
 #include <complex>

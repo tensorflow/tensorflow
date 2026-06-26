@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "google/protobuf/arena.h"
 #include "riegeli/bytes/string_writer.h"
 #include "xla/debug_options_flags.h"

@@ -36,7 +36,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/hlo_reachability.h"

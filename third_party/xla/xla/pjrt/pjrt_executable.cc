@@ -34,7 +34,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "google/protobuf/descriptor.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"

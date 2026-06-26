@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/log/log.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"

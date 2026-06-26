@@ -41,7 +41,7 @@ limitations under the License.
 #include "gloo/transport/device.h"
 #include "gloo/transport/unbound_buffer.h"
 #include "gloo/types.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/future.h"

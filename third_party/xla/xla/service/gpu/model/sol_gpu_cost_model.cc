@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/collective_utils.h"

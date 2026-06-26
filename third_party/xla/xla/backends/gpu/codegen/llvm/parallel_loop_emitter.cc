@@ -34,7 +34,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Value.h"
 #include "xla/service/gpu/target_util.h"

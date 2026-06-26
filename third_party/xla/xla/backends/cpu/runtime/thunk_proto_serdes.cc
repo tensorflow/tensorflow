@@ -35,7 +35,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/backends/cpu/runtime/call_thunk.h"
 #include "xla/backends/cpu/runtime/conditional_thunk.h"
 #include "xla/backends/cpu/runtime/infeed_thunk.h"

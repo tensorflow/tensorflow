@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/client/local_client.h"
 #include "xla/layout.h"
 #include "xla/pjrt/compiled_memory_stats.h"

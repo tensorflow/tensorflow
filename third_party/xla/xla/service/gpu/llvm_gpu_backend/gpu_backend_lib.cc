@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/ADT/Any.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Analysis/CGSCCPassManager.h"

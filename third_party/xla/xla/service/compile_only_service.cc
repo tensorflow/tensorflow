@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"

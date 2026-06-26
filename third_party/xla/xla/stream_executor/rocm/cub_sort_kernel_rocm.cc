@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "rocm/include/hip/hip_bfloat16.h"
 #include "rocm/include/hip/hip_fp16.h"
 #include "rocm/include/hip/hip_runtime.h"

@@ -33,7 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "google/protobuf/message_lite.h"
 #include "riegeli/bytes/cord_writer.h"

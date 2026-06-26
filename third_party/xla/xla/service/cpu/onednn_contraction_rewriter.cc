@@ -22,7 +22,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 
 #define EIGEN_USE_THREADS
 

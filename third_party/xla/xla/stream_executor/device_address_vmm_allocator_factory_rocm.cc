@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/stream_executor/device_address_vmm_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_device_address_vmm_allocator.h"

@@ -37,7 +37,7 @@
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "google/protobuf/repeated_field.h"
 #include "xla/pjrt/pjrt_layout.h"

@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/comparison_util.h"

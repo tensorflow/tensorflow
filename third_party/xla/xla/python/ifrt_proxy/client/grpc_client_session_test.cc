@@ -37,7 +37,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "grpc/support/time.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/create_channel.h"

@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "grpcpp/create_channel.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_channel_common.h"
 #include "xla/tsl/lib/gtl/map_util.h"

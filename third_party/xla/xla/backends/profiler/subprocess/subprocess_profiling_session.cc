@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/support/status.h"
 #include "xla/backends/profiler/subprocess/subprocess_registry.h"

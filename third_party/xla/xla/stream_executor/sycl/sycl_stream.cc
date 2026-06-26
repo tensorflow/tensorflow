@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/sycl/sycl_stream.h"
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace stream_executor::sycl {

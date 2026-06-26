@@ -36,7 +36,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/bit_cast.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/fp_util.h"

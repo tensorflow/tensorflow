@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/convert_operand_folder.h"
 
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"

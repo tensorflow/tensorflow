@@ -36,7 +36,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/future.h"
 #include "xla/layout.h"

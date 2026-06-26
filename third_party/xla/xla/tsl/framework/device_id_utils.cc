@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/framework/device_id_manager.h"
 #include "xla/tsl/framework/device_type.h"

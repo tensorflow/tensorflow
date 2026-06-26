@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/client/local_client.h"
 #include "xla/service/compile_only_service.h"

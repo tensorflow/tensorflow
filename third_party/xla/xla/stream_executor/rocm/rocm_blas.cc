@@ -35,7 +35,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "Eigen/Core"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "rocm/include/hip/amd_detail/hip_fp16_gcc.h"
 #include "rocm/include/hipblas/hipblas.h"
 #include "rocm/rocm_config.h"

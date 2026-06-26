@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/stream_executor/blas.pb.h"
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_address.h"
