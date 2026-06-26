@@ -355,7 +355,6 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:status",
         "@xla//xla/tsl/platform:status_matchers",
@@ -372,7 +371,6 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:snapshot_utils",
@@ -529,7 +527,6 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:path",
         "@xla//xla/tsl/lib/monitoring:cell_reader",
         "@xla//xla/tsl/platform:env",

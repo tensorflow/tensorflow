@@ -126,7 +126,6 @@ distribute_py_strict_test(
         "//tensorflow/python/ops:embedding_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:tf_logging",
@@ -288,7 +287,8 @@ tf_py_strict_test(
     deps = [
         ":cluster_coordinator",
         ":utils",
-        "//tensorflow/core:protos_all_py",
+        # buildcleaner: keep
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",

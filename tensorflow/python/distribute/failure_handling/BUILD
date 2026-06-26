@@ -1,4 +1,5 @@
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_strict_library", "tf_py_strict_test")
 
 package(
@@ -150,4 +151,10 @@ tf_custom_op_py_strict_library(
         "//tensorflow/core/distributed_runtime/preemption:gen_check_preemption_op",
         "//tensorflow/python/framework:for_generated_wrappers",
     ],
+)
+
+pytype_strict_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    deps = [":failure_handling_lib"],
 )

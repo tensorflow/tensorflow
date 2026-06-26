@@ -22,7 +22,7 @@ distribute_py_strict_test(
         "nomultivm",  # multi_worker_test_base incompatible with multivm base
     ],
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:parameter_server_strategy_v2",
@@ -32,7 +32,6 @@ distribute_py_strict_test(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/framework:errors",
         "//tensorflow/python/ops:lookup_ops",
         "@absl_py//absl/testing:parameterized",
     ],

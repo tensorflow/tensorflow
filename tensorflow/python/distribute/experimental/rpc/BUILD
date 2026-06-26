@@ -55,7 +55,6 @@ tf_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:data_flow_ops",
         "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:nest",

@@ -72,7 +72,6 @@ py_library(
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python/training:server_lib",
-        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -105,6 +104,7 @@ py_library(
         ":base_cluster_resolver_py",
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:tf_export",
+        "//third_party/py/kubernetes",
     ],
 )
 
