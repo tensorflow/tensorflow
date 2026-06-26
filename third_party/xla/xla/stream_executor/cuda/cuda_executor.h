@@ -126,6 +126,9 @@ class CudaExecutor : public GpuExecutor {
       const override {
     return CudaExecutor::CreateDeviceDescription(device_ordinal());
   }
+
+  absl::StatusOr<std::string> GetInterconnectStatus() const override;
+
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
 

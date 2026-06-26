@@ -22,15 +22,16 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
 #include "xla/backends/gpu/collectives/nccl_types.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/stream_executor.h"
 
 // Include NCCL after XLA headers.
 #include "third_party/nccl/nccl.h"
@@ -39,11 +40,33 @@ limitations under the License.
 
 namespace xla::gpu {
 
+namespace {
+
 Future<> Execute(absl::AnyInvocable<absl::Status() &&> f,
                  std::shared_ptr<tsl::Executor> executor) {
   return executor ? MakeFutureOn<void>(*executor, std::move(f))
                   : Future<>(std::move(f)());
 }
+
+void LogInterconnectStatus(stream_executor::StreamExecutor* stream_executor) {
+  if (stream_executor == nullptr) {
+    LOG(ERROR) << "Interconnect Status: Unknown (StreamExecutor not available)";
+    return;
+  }
+
+  std::string interconnect_status = "Unknown (Failed to get status)";
+  absl::StatusOr<std::string> interconnect_status_or =
+      stream_executor->GetInterconnectStatus();
+  if (!interconnect_status_or.ok()) {
+    LOG(ERROR) << "Failed to get interconnect status: "
+               << interconnect_status_or.status();
+    return;
+  }
+
+  LOG(ERROR) << "Interconnect Status: " << *interconnect_status_or;
+}
+
+}  // namespace
 
 NcclSymmetricMemory::NcclSymmetricMemory(
     std::shared_ptr<NcclCommState> comm_state, ncclWindow_t win,
@@ -54,16 +77,23 @@ NcclSymmetricMemory::NcclSymmetricMemory(
 absl::StatusOr<std::unique_ptr<NcclSymmetricMemory>>
 NcclSymmetricMemory::Create(std::shared_ptr<NcclCommState> comm_state,
                             stream_executor::DeviceAddressBase addr,
-                            const std::shared_ptr<tsl::Executor> executor) {
+                            const std::shared_ptr<tsl::Executor> executor,
+                            stream_executor::StreamExecutor* stream_executor) {
   ncclWindow_t win;
+  ncclResult_t nccl_status;
   {
     VLOG(3) << absl::StrFormat(
         "Create NCCL symmetric memory on comm=%p from: ptr=%p; size=%ld",
         comm_state->comm, addr.opaque(), addr.size());
     absl::MutexLock lock(comm_state->mutex);
-    XLA_NCCL_RETURN_IF_ERROR(
+    nccl_status =
         ncclCommWindowRegister(comm_state->comm, addr.opaque(), addr.size(),
-                               &win, NCCL_WIN_COLL_SYMMETRIC));
+                               &win, NCCL_WIN_COLL_SYMMETRIC);
+  }
+
+  if (nccl_status != ncclSuccess) {
+    LogInterconnectStatus(stream_executor);
+    return XLA_NCCL_STATUS(nccl_status);
   }
 
   return absl::WrapUnique(

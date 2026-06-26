@@ -268,6 +268,11 @@ class StreamExecutor {
   virtual absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription() const = 0;
 
+  // Returns the interconnect status of the device.
+  virtual absl::StatusOr<std::string> GetInterconnectStatus() const {
+    return absl::UnimplementedError("Not implemented");
+  }
+
   // Return the platform dependent stream priority value for the given priority.
   virtual int GetGpuStreamPriority(StreamPriority priority) { return 0; }
 
