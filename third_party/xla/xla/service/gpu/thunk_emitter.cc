@@ -951,7 +951,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCuDnnThunk(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
       kernel_arguments.GetArgumentShapedSlices(),
-      kernel_arguments.GetArgumentOutputFlags(), dropout_seed));
+      kernel_arguments.GetArgumentOutputFlags(),
+      /*should_memzero=*/IsCustomCallTofMHA(*instr), dropout_seed));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPtxCustomCall(
