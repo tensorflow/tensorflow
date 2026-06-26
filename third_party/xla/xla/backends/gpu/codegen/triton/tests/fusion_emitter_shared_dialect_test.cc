@@ -420,14 +420,14 @@ TEST_P(XTileDialectTestParameterized,
         ROOT %apply_op = f32[] add(%x, %y)
       }
 
-      %wrapped_all-reduce {
+      %wrapped_all-reduce-start {
         %param = f32[65536]{0} parameter(0)
-        ROOT %all-reduce = f32[65536]{0} all-reduce(%param), replica_groups={{0,1}}, to_apply=%apply_op
+        ROOT %all-reduce-start = f32[65536]{0} all-reduce-start(%param), replica_groups={{0,1}}, to_apply=%apply_op
       }
 
       ENTRY %entry {
         %param = f32[65536]{0} parameter(0)
-        ROOT %fusion = f32[65536]{0} fusion(%param), kind=kLoop, calls=%wrapped_all-reduce, backend_config={"fusion_backend_config":{"kind":"__triton_collective","block_level_fusion_config":{"num_warps":"16","output_tiles":[{"sizes":["4096"]}],"num_ctas":1,"num_stages":1,"is_tma_allowed":false,"is_warp_specialization_allowed":false}}}
+        ROOT %fusion = f32[65536]{0} fusion(%param), kind=kLoop, calls=%wrapped_all-reduce-start, backend_config={"fusion_backend_config":{"kind":"__triton_collective","block_level_fusion_config":{"num_warps":"16","output_tiles":[{"sizes":["4096"]}],"num_ctas":1,"num_stages":1,"is_tma_allowed":false,"is_warp_specialization_allowed":false}}}
       }
     )";
 
@@ -440,7 +440,7 @@ TEST_P(XTileDialectTestParameterized,
   block_level_parameters.output_tile_sizes = {{4096}};
 
   EXPECT_OK(CreateXTileIrAndFileCheck(
-      *hlo_module->GetComputationWithName("wrapped_all-reduce"),
+      *hlo_module->GetComputationWithName("wrapped_all-reduce-start"),
       block_level_parameters,
       R"(
 CHECK: stablehlo.all_reduce
