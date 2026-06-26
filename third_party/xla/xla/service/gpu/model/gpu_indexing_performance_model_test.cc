@@ -910,6 +910,49 @@ ENTRY main {
   EXPECT_EQ(num_warps, 4);
 }
 
+TEST_P(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_ReduceWithTiledLoop) {
+  if (!use_experimental_tiling()) {
+    GTEST_SKIP() << "Only supported with experimental tiling propagation.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+reduce_fusion {
+  p = f32[8, 16] parameter(0)
+  c = f32[] constant(0)
+  ROOT reduce = f32[8] reduce(p, c), dimensions={1}, to_apply=add, backend_config={sizes:[4]}
+}
+
+ENTRY main {
+  p = f32[8, 16] parameter(0)
+  ROOT fusion = f32[8] fusion(p), kind=kCustom, calls=reduce_fusion
+})"));
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  auto result = indexing_cost_model_.EstimateRunTimeForTiledFusion(
+      *fusion_adaptor, BlockLevelParameters{/*output_tile_sizes=*/{{4}},
+                                            /*num_warps=*/1});
+
+  ASSERT_OK(result.status());
+  // Combiner: add (3 flop)
+  // Output tile: 4. Root blocks: 2.
+  // Reduction dim: 16, tiled by 4 -> 4 iterations.
+  // Loop = 2 blocks * 4 iterations * (4 parallel * 4 sequential) = 128 adds.
+  // Last reduction = 2 blocks * 4 parallel * (4 sequential - 1) = 24 adds.
+  // Total FLOPs = 3 flops/op * (128 + 24) = 456 flops
+  EXPECT_EQ(result->flops, 456);
+}
+
 class FlopsPerElementTest : public GpuIndexingPerformanceModelTest {
  public:
   void CompareFlopsModels(absl::string_view hlo_module_string) {
