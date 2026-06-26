@@ -4687,13 +4687,13 @@ func.func @broadcast_to_i32_with_dynamic_shape_and_output(%arg0: tensor<3xi32>, 
 
 // CHECK-LABEL: @broadcast_to_ui32_with_dynamic_output
 func.func @broadcast_to_ui32_with_dynamic_output(%arg0: tensor<1xi32>) -> tensor<?xui32> {
-  %cst = arith.constant dense<0> : tensor<1xui32>
+  %cst = "tfl.pseudo_const"() {value = dense<0> : tensor<1xui32>} : () -> tensor<1xui32>
   %0 = "tfl.broadcast_to"(%cst, %arg0) : (tensor<1xui32>, tensor<1xi32>) -> tensor<?xui32>
   return %0 : tensor<?xui32>
 
-  // CHECK:  %cst = arith.constant dense<0> : tensor<1xui32>
-  // CHECK:  %0 = "tfl.broadcast_to"(%cst, %arg0) : (tensor<1xui32>, tensor<1xi32>) -> tensor<?xui32>
-  // CHECK:  return %0 : tensor<?xui32>
+  // CHECK:  %[[CST:.*]] = "tfl.pseudo_const"(){{.*}}dense<0> : tensor<1xui32>
+  // CHECK:  %[[VAL:.*]] = "tfl.broadcast_to"(%[[CST]], %arg0) : (tensor<1xui32>, tensor<1xi32>) -> tensor<?xui32>
+  // CHECK:  return %[[VAL]] : tensor<?xui32>
 }
 
 
