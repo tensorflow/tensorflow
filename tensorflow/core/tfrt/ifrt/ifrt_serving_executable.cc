@@ -1127,6 +1127,17 @@ IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
         executable_bundle->variable_arrays);
   }
 
+  xla::ifrt::ShardingRef portable_sharding;
+  if (use_portable_execution) {
+    auto it = executable_bundle->portable_single_device_shardings.find(
+        device_list->devices().front()->Id());
+    if (it == executable_bundle->portable_single_device_shardings.end()) {
+      return absl::InternalError(absl::StrCat(
+          "Portable single device sharding not found for device id: ",
+          device_list->devices().front()->Id()));
+    }
+    portable_sharding = it->second;
+  }
   for (int i = 0; i < inputs.size(); i++) {
     if (variable_arg_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_arg_index]) {
@@ -1150,21 +1161,11 @@ IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
         }
       }
       xla::ifrt::LayoutRef layout_ref = executable_bundle->xla_input_layouts[i];
+
       xla::ifrt::ShardingRef ifrt_sharding =
-          executable_bundle->arg_ifrt_shardings[i];
-      if (UsePortableExecution()) {
-        // Portable execution is only supported for single-device programs.
-        auto sharding_it =
-            executable_bundle->portable_single_device_shardings.find(
-                device_list->devices().front()->Id());
-        if (sharding_it ==
-            executable_bundle->portable_single_device_shardings.end()) {
-          return absl::InternalError(absl::StrCat(
-              "Portable single device sharding not found for device id: ",
-              device_list->devices().front()->Id()));
-        }
-        ifrt_sharding = sharding_it->second;
-      }
+          use_portable_execution ? portable_sharding
+                                 : executable_bundle->arg_ifrt_shardings[i];
+
       input_handles.push_back(
           {.tensor = reshaped,
            .ifrt_dtype = executable_bundle->ifrt_input_dtypes[i],
