@@ -16,8 +16,6 @@
 
 import numpy as np
 
-
-
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python import layout as layout_lib
@@ -140,7 +138,6 @@ class NumpyUtilTest(test_util.DTensorBaseTest):
     ):
       numpy_util.unpack(value, layout)
 
-    
 
 if __name__ == '__main__':
   tf_test.main()
