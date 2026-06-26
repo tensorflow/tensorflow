@@ -203,7 +203,7 @@ static std::optional<se::GpuTargetConfigProto> GetTargetConfigForDevices(
   }
   for (const PjRtDevice* device : devices) {
     LocalDeviceState* local_device_state =
-        tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
+        absl::down_cast<const PjRtStreamExecutorDevice*>(device)
             ->local_device_state();
     if (local_device_state != nullptr) {
       return xla::gpu::GpuTargetConfig(local_device_state->executor())
@@ -273,12 +273,12 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     const int id = device->id();
     auto memory_space =
         std::make_unique<StreamExecutorGpuHbmMemorySpace>(id, device);
-    tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
+    absl::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
         memory_space.get(), /*is_default=*/true);
     owned_memory_spaces_.push_back(std::move(memory_space));
     auto pinned =
         std::make_unique<PinnedHostMemorySpace>(basePinnedId + id, device);
-    tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
+    absl::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
         pinned.get());
     owned_memory_spaces_.push_back(std::move(pinned));
   }
@@ -407,7 +407,7 @@ namespace {
 // Get the local device state for a given PjRtDevice.
 absl::StatusOr<LocalDeviceState*> GetLocalDeviceState(PjRtDevice* device) {
   PjRtStreamExecutorDevice* pjrt_se_device =
-      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device);
+      absl::down_cast<PjRtStreamExecutorDevice*>(device);
   return pjrt_se_device->GetLocalDeviceState();
 }
 
@@ -729,7 +729,7 @@ StreamExecutorGpuClient::CrossHostTransferBuffers(
     // Get the local_device_state and use it to schedule transfers. Fail
     // transfers early if we cannot get the local_device_state.
     absl::StatusOr<LocalDeviceState*> local_device_state =
-        tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+        absl::down_cast<PjRtStreamExecutorDevice*>(device)
             ->GetLocalDeviceState();
     if (!local_device_state.ok()) {
       SetEventAsError(transfer_event, local_device_state.status());
@@ -933,7 +933,7 @@ StreamExecutorGpuClient::PrepareReceiveBuffer(PjRtDevice* device, Shape shape) {
                                      /*retry_on_oom=*/true,
                                      /*allocate_after=*/{}));
   ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                   absl::down_cast<PjRtStreamExecutorDevice*>(device)
                        ->GetLocalDeviceState());
 
   se::Stream* stream = local_device->GetDeviceToDeviceStream();
@@ -1169,7 +1169,7 @@ StreamExecutorGpuClient::CompileAndLoad(MaybeOwningMlirModule module,
     defined(TENSORFLOW_USE_SYCL)
   for (const PjRtDevice* device : addressable_devices()) {
     LocalDeviceState* local_device_state =
-        tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
+        absl::down_cast<const PjRtStreamExecutorDevice*>(device)
             ->local_device_state();
     int64_t free_memory, total_memory;
     if (local_device_state != nullptr) {
@@ -1197,7 +1197,7 @@ StreamExecutorGpuClient::CompileAndLoad(const XlaComputation& computation,
     defined(TENSORFLOW_USE_SYCL)
   for (const PjRtDevice* device : addressable_devices()) {
     LocalDeviceState* local_device_state =
-        tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
+        absl::down_cast<const PjRtStreamExecutorDevice*>(device)
             ->local_device_state();
     int64_t free_memory, total_memory;
     if (local_device_state != nullptr) {
@@ -1811,7 +1811,7 @@ absl::StatusOr<tsl::AllocatorStats> StreamExecutorGpuDevice::GetAllocatorStats()
   }
 
   auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(client())->allocator());
+      absl::down_cast<PjRtStreamExecutorClient*>(client())->allocator());
   if (!allocator_adapter) {
     return Unimplemented(
         "GetAllocatorStats() is only implemented with MultiDeviceAdapter "
@@ -1833,7 +1833,7 @@ absl::Status StreamExecutorGpuDevice::ClearMemoryStats() {
   }
 
   auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(client())->allocator());
+      absl::down_cast<PjRtStreamExecutorClient*>(client())->allocator());
   if (!allocator_adapter) {
     return absl::UnimplementedError(
         "ClearMemoryStats() is only implemented with MultiDeviceAdapter "
@@ -2025,8 +2025,7 @@ StreamExecutorGpuClient::RunAsync(
 
   ASSIGN_OR_RETURN(auto options_and_stream,
                    exec.RunHelper(argument_shapes, run_options_inp));
-  auto* gpu_exec =
-      tensorflow::down_cast<xla::gpu::GpuExecutable*>(exec.executable());
+  auto* gpu_exec = absl::down_cast<gpu::GpuExecutable*>(exec.executable());
   const ServiceExecutableRunOptions* run_options = &options_and_stream.first;
   se::DeviceAddressAllocator* const memory_allocator = run_options->allocator();
 
@@ -2173,7 +2172,7 @@ StreamExecutorGpuClient::RunAsync(
 
     RawSEDeviceMemory::ConstructDelayed(
         buf, result_buffer,
-        tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+        absl::down_cast<PjRtStreamExecutorDevice*>(device)
             ->local_device_state(),
         memory_allocator);
     return absl::OkStatus();
