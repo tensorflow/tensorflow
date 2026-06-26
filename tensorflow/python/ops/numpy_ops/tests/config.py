@@ -53,8 +53,6 @@ class Config(object):
       setattr(self.absl_flags.FLAGS, name, val)
     else:
       self.check_exists(name)
-      if name not in self.values:
-        raise KeyError("Unrecognized config option: {}".format(name))
       self.values[name] = val
 
   def read(self, name):
