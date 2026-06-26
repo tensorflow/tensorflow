@@ -1161,6 +1161,14 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                                      builder_));
         attributes.push_back(
             builder_->getNamedAttr("operand_layouts", operand_layouts));
+        // The operand_layouts index tensors cannot encode memory spaces, so
+        // preserve any non-default memory space (e.g. VMEM) separately.
+        if (std::optional<mlir::DenseI64ArrayAttr> operand_memory_spaces =
+                ExtractMemorySpacesFromShapes(
+                    custom_call->operand_shapes_with_layout(), builder_)) {
+          attributes.push_back(builder_->getNamedAttr(
+              xla::kMhloOperandMemorySpaces, *operand_memory_spaces));
+        }
         mlir::ArrayAttr result_layouts;
         mlir::ArrayAttr result_tilings;
         if (custom_call->shape().IsTuple()) {
@@ -1180,6 +1188,11 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             builder_->getNamedAttr("result_layouts", result_layouts));
         attributes.push_back(
             builder_->getNamedAttr("result_tilings", result_tilings));
+        if (std::optional<mlir::DenseI64ArrayAttr> result_memory_spaces =
+                ExtractMemorySpacesFromTuple(custom_call->shape(), builder_)) {
+          attributes.push_back(builder_->getNamedAttr(
+              xla::kMhloResultMemorySpaces, *result_memory_spaces));
+        }
       }
 
       attributes.push_back(builder_->getNamedAttr(

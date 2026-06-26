@@ -42,6 +42,7 @@ lit_test_suite(
             "layouts_and_names.mlir",
             "location_to_op_metadata.mlir",
             "location_to_stacktrace.mlir",
+            "memory_space.mlir",
             "missing_main.mlir",
             "module_config.mlir",
             "module_attributes.mlir",
@@ -64,6 +65,7 @@ lit_test_suite(
     cfg = "//xla:lit.cfg.py",
     data = [":test_utilities"],
     tools = [
+        "//xla/hlo/tools:hlo-translate",
         "//xla/hlo/translate:xla-translate",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",

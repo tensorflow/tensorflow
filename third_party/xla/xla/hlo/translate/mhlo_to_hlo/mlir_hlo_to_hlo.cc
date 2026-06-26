@@ -372,10 +372,40 @@ static void SetLayout(xla::Shape& shape, mlir::ArrayAttr layouts,
   }
 }
 
+// Sets the memory space of a single array shape's layout. No-op for non-array
+// shapes (e.g. tokens).
+static void SetMemorySpace(xla::Shape& shape, int64_t memory_space) {
+  if (shape.IsArray()) {
+    shape.mutable_layout()->set_memory_space(memory_space);
+  }
+}
+
+// Applies a flat list of memory spaces (one per leaf) to a possibly-tuple
+// shape, mirroring how SetLayout(ArrayAttr) distributes layouts. The
+// memory_spaces attribute complements the custom-call operand/result layouts,
+// which cannot encode memory spaces. A null attribute leaves the default
+// (HBM) memory space untouched.
+static void SetMemorySpaces(xla::Shape& shape,
+                            mlir::DenseI64ArrayAttr memory_spaces) {
+  if (!memory_spaces) return;
+  if (shape.IsTuple()) {
+    for (int i = 0; i < shape.tuple_shapes().size() && i < memory_spaces.size();
+         ++i) {
+      SetMemorySpace(*shape.mutable_tuple_shapes(i), memory_spaces[i]);
+    }
+  } else if (memory_spaces.size() >= 1) {
+    SetMemorySpace(shape, memory_spaces[0]);
+  }
+}
+
 // Converts types and corresponding layouts into xla shapes with layouts.
+// When memory_spaces is non-null, it carries one memory space per type and is
+// applied to the corresponding shape's layout (the layouts index tensors
+// cannot encode memory spaces themselves).
 static std::vector<xla::Shape> ConvertTypesToShapesWithLayout(
     mlir::TypeRange value_types, mlir::ArrayAttr layouts,
-    std::optional<mlir::ArrayAttr> tilings = std::nullopt) {
+    std::optional<mlir::ArrayAttr> tilings = std::nullopt,
+    mlir::DenseI64ArrayAttr memory_spaces = nullptr) {
   std::vector<xla::Shape> shapes_with_layout;
   CHECK_EQ(value_types.size(), layouts.size());
   if (tilings) {
@@ -389,6 +419,9 @@ static std::vector<xla::Shape> ConvertTypesToShapesWithLayout(
     }
     SetLayout(shape, mlir::cast<mlir::DenseIntElementsAttr>(layouts[i]),
               tiling);
+    if (memory_spaces && i < memory_spaces.size()) {
+      SetMemorySpace(shape, memory_spaces[i]);
+    }
     shapes_with_layout.push_back(std::move(shape));
   }
   return shapes_with_layout;
@@ -2739,8 +2772,13 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     xla::XlaComputationId computation =
         ctx.converter->GetLoweredComputation(callee);
     auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
-        op.getOperandTypes(), op.getOperandLayouts().value());
+        op.getOperandTypes(), op.getOperandLayouts().value(),
+        /*tilings=*/std::nullopt,
+        op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+            xla::kMhloOperandMemorySpaces));
     SetLayout(result_shape, op.getResultLayouts().value());
+    SetMemorySpaces(result_shape, op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+                                      xla::kMhloResultMemorySpaces));
 
     custom_call = xla::CustomCallWithComputationAndLayouts(
         ctx.builder, call_target_name, args, computation, result_shape,
@@ -2759,9 +2797,14 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
         literal_ptr, custom_call_schedule, *xla_api_version);
   } else if (op.getOperandLayouts() && op.getResultLayouts()) {
     auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
-        op.getOperandTypes(), op.getOperandLayouts().value());
+        op.getOperandTypes(), op.getOperandLayouts().value(),
+        /*tilings=*/std::nullopt,
+        op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+            xla::kMhloOperandMemorySpaces));
     SetLayout(result_shape, op.getResultLayouts().value(),
               op.getResultTilings());
+    SetMemorySpaces(result_shape, op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+                                      xla::kMhloResultMemorySpaces));
 
     custom_call = xla::CustomCallWithLayout(
         ctx.builder, call_target_name, args, result_shape,
@@ -4179,8 +4222,13 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     xla::XlaComputationId computation =
         ctx.converter->GetLoweredComputation(callee);
     auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
-        op.getOperandTypes(), op.getOperandLayouts().value());
+        op.getOperandTypes(), op.getOperandLayouts().value(),
+        /*tilings=*/std::nullopt,
+        op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+            xla::kMhloOperandMemorySpaces));
     SetLayout(result_shape, op.getResultLayouts().value());
+    SetMemorySpaces(result_shape, op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+                                      xla::kMhloResultMemorySpaces));
 
     custom_call = xla::CustomCallWithComputationAndLayouts(
         ctx.builder, call_target_name, args, computation, result_shape,
@@ -4199,8 +4247,13 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
         literal_ptr, *custom_call_schedule, *xla_api_version);
   } else if (op.getOperandLayouts() && op.getResultLayouts()) {
     auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
-        op.getOperandTypes(), op.getOperandLayouts().value());
+        op.getOperandTypes(), op.getOperandLayouts().value(),
+        /*tilings=*/std::nullopt,
+        op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+            xla::kMhloOperandMemorySpaces));
     SetLayout(result_shape, op.getResultLayouts().value());
+    SetMemorySpaces(result_shape, op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+                                      xla::kMhloResultMemorySpaces));
 
     custom_call = xla::CustomCallWithLayout(
         ctx.builder, call_target_name, args, result_shape,
