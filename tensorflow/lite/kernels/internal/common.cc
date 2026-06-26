@@ -17,6 +17,15 @@ limitations under the License.
 
 namespace tflite {
 
+// Note on TFLITE_NO_SANITIZE_INTEGER_OVERFLOW below:
+//
+// These MultiplyByQuantizedMultiplier overloads do not intentionally wrap, so
+// they deliberately do NOT use WrappingMul/WrappingAdd. Under their documented
+// input contract (asserted below) the arithmetic does not overflow; the
+// attribute only silences UBSan reports at the contract's boundaries. Using
+// wrapping here would be wrong -- it would mask a contract violation (a real
+// bug) instead of letting it surface.
+
 // Single-rounding MultiplyByQuantizedMultiplier
 #if TFLITE_SINGLE_ROUNDING
 TFLITE_NO_SANITIZE_INTEGER_OVERFLOW

@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
-#include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops_utils.h"
 #include "tensorflow/lite/kernels/internal/optimized/reduce_utils.h"
@@ -263,17 +262,17 @@ inline void Mean(const tflite::MeanParams& op_params,
 template <typename T>
 struct SumOp {
   inline T operator()(const T& a) const { return a; }
-  TFLITE_NO_SANITIZE_INTEGER_OVERFLOW
-  inline T operator()(const T& a, const T& b) const { return a + b; }
+  inline T operator()(const T& a, const T& b) const {
+    return WrappingAdd<T>(a, b);
+  }
   static constexpr T kNeutralElement = T(0);
 };
 
 template <typename T, typename U>
 struct CastSumOp {
   inline U operator()(const T& a) const { return static_cast<U>(a); }
-  TFLITE_NO_SANITIZE_INTEGER_OVERFLOW
   inline U operator()(const U& a, const T& b) const {
-    return a + static_cast<U>(b);
+    return WrappingAdd<U>(a, static_cast<U>(b));
   }
   static constexpr U kNeutralElement = U(0);
 };
@@ -281,8 +280,9 @@ struct CastSumOp {
 template <typename T>
 struct ProdOp {
   inline T operator()(const T& a) const { return a; }
-  TFLITE_NO_SANITIZE_INTEGER_OVERFLOW
-  inline T operator()(const T& a, const T& b) const { return a * b; }
+  inline T operator()(const T& a, const T& b) const {
+    return WrappingMul<T>(a, b);
+  }
   static constexpr T kNeutralElement = T(1);
 };
 

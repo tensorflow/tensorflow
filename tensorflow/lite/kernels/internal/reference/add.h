@@ -199,20 +199,22 @@ inline void Add(const ArithmeticParams& params,
 }
 
 template <typename T>
-TFLITE_NO_SANITIZE_INTEGER_OVERFLOW inline void AddBroadcast(
-    const T* input_data, const T* broadcast_data, T* output_data, size_t size,
-    T activation_min, T activation_max) {
+inline void AddBroadcast(const T* input_data, const T* broadcast_data,
+                         T* output_data, size_t size, T activation_min,
+                         T activation_max) {
   for (size_t c = 0; c < size; ++c) {
     output_data[c] = ActivationFunctionWithMinMax<T>(
-        input_data[c] + broadcast_data[0], activation_min, activation_max);
+        WrappingAdd<T>(input_data[c], broadcast_data[0]), activation_min,
+        activation_max);
   }
 }
 
 template <>
-TFLITE_NO_SANITIZE_INTEGER_OVERFLOW inline void AddBroadcast<int32_t>(
-    const int32_t* input_data, const int32_t* broadcast_data,
-    int32_t* output_data, size_t size, int32_t activation_min,
-    int32_t activation_max) {
+inline void AddBroadcast<int32_t>(const int32_t* input_data,
+                                  const int32_t* broadcast_data,
+                                  int32_t* output_data, size_t size,
+                                  int32_t activation_min,
+                                  int32_t activation_max) {
   size_t c = 0;
 #ifdef USE_NEON
   const int32x4_t vmax = vdupq_n_s32(activation_max);
@@ -228,7 +230,8 @@ TFLITE_NO_SANITIZE_INTEGER_OVERFLOW inline void AddBroadcast<int32_t>(
 #endif
   for (; c < size; ++c) {
     output_data[c] = ActivationFunctionWithMinMax<int32_t>(
-        input_data[c] + broadcast_data[0], activation_min, activation_max);
+        WrappingAdd<int32_t>(input_data[c], broadcast_data[0]), activation_min,
+        activation_max);
   }
 }
 

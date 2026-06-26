@@ -40,6 +40,38 @@ namespace tflite {
 
 constexpr int kReverseShift = -1;
 
+// Well-defined wrapping integer arithmetic helpers.
+//
+// Several elementwise/reduction kernels intentionally allow their value
+// arithmetic to wrap around for narrow integer types (the result is later
+// clamped, or wrapping is the documented behavior). Performing that wrap
+// directly on signed types is Undefined Behavior in C++, which the optimizer is
+// free to miscompile. These helpers instead perform the arithmetic in the
+// corresponding unsigned type -- where wrapping is fully defined -- and convert
+// the result back, so there is no UB even in optimized release builds.
+//
+// For floating-point T these are plain a+b / a*b (no overflow concern); the
+// unsigned path is only taken for integral types.
+template <typename T>
+inline T WrappingAdd(T a, T b) {
+  if constexpr (std::is_integral<T>::value && !std::is_same<T, bool>::value) {
+    using U = typename std::make_unsigned<T>::type;
+    return static_cast<T>(static_cast<U>(a) + static_cast<U>(b));
+  } else {
+    return a + b;
+  }
+}
+
+template <typename T>
+inline T WrappingMul(T a, T b) {
+  if constexpr (std::is_integral<T>::value && !std::is_same<T, bool>::value) {
+    using U = typename std::make_unsigned<T>::type;
+    return static_cast<T>(static_cast<U>(a) * static_cast<U>(b));
+  } else {
+    return a * b;
+  }
+}
+
 // Reduces and compresses dimensions so that broadcast handling becomes more
 // efficient. Returns true if the output shape is broadcastable; it doesn't
 // contain any degenerate dimension, i.e. shape dimension = 0. False otherwise.

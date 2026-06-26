@@ -49,10 +49,10 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
 }
 
 template <typename T>
-TFLITE_NO_SANITIZE_INTEGER_OVERFLOW inline void Mul(
-    const ArithmeticParams& params, const RuntimeShape& input1_shape,
-    const T* input1_data, const RuntimeShape& input2_shape,
-    const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
+inline void Mul(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape, const T* input1_data,
+                const RuntimeShape& input2_shape, const T* input2_data,
+                const RuntimeShape& output_shape, T* output_data) {
   T output_activation_min;
   T output_activation_max;
   GetActivationParams(params, &output_activation_min, &output_activation_max);
@@ -61,7 +61,7 @@ TFLITE_NO_SANITIZE_INTEGER_OVERFLOW inline void Mul(
       MatchingExtendedShapeFlatSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax<T>(
-        input1_data[i] * input2_data[i], output_activation_min,
+        WrappingMul<T>(input1_data[i], input2_data[i]), output_activation_min,
         output_activation_max);
   }
 }
@@ -131,11 +131,10 @@ BroadcastMul6DSlow(const ArithmeticParams& params,
   T output_activation_min;
   T output_activation_max;
   GetActivationParams(params, &output_activation_min, &output_activation_max);
-  auto op = [output_activation_min, output_activation_max](T a, T b)
-                TFLITE_NO_SANITIZE_INTEGER_OVERFLOW {
-                  return ActivationFunctionWithMinMax<T>(
-                      a * b, output_activation_min, output_activation_max);
-                };
+  auto op = [output_activation_min, output_activation_max](T a, T b) {
+    return ActivationFunctionWithMinMax<T>(
+        WrappingMul<T>(a, b), output_activation_min, output_activation_max);
+  };
   BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
                           unextended_input2_shape, input2_data,
                           unextended_output_shape, output_data, op);
@@ -148,8 +147,7 @@ inline void BroadcastMul6DSlow(const ArithmeticParams& params,
                                const std::complex<float>* input2_data,
                                const RuntimeShape& unextended_output_shape,
                                std::complex<float>* output_data) {
-  auto op = [](std::complex<float> a, std::complex<float> b)
-                TFLITE_NO_SANITIZE_INTEGER_OVERFLOW { return a * b; };
+  auto op = [](std::complex<float> a, std::complex<float> b) { return a * b; };
   BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
                           unextended_input2_shape, input2_data,
                           unextended_output_shape, output_data, op);
