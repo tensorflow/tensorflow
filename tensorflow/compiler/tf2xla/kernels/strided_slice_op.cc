@@ -194,10 +194,6 @@ class StridedSliceOp : public XlaOpKernel {
           begin_index = xla::Select(index_negative, wrapped_index, begin_index);
         }
       }
-      if (result_dims_are_dynamic[i]) {
-        begin_index = xla::Max(xla::Min(begin_index, dim_size), zero);
-      }
-      start_indices.push_back(begin_index);
       if (end_mask) {
         end_index = dim_size;
       } else {
@@ -211,9 +207,19 @@ class StridedSliceOp : public XlaOpKernel {
           end_index = xla::Select(index_negative, wrapped_index, end_index);
         }
       }
+      bool size_is_dynamic = true;
       if (result_dims_are_dynamic[i]) {
+        auto dynamism_status_or = ctx->value_inference().AnalyzeIsDynamic(
+            xla::Max(xla::Sub(end_index, begin_index), zero));
+        if (dynamism_status_or.ok()) {
+          size_is_dynamic = dynamism_status_or.value().Get<bool>({});
+        }
+      }
+      if (result_dims_are_dynamic[i] && size_is_dynamic) {
+        begin_index = xla::Max(xla::Min(begin_index, dim_size), zero);
         end_index = xla::Max(xla::Min(end_index, dim_size), zero);
       }
+      start_indices.push_back(begin_index);
       // This is safe to downcast as set dimension size  makes sure that the dim
       // in the input doesn't exceed INT32 max.
       xla::XlaOp size = xla::Max(xla::Sub(end_index, begin_index), zero);
