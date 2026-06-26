@@ -72,6 +72,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/ifrt/checkpoint_loader.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_restore_context.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
@@ -1266,13 +1267,21 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   mlir::DialectRegistry registry;
   RegisterMlirDialect(
       registry, graph_executor_->options().compile_options.backend_compiler);
-  mlir::MLIRContext context(registry);
+  auto context = std::make_shared<mlir::MLIRContext>(registry);
 
-  ASSIGN_OR_RETURN_IN_IMPORT(auto module,
-                             ImportSubgraph(&context, joined_signature.name,
-                                            joined_signature.input_nodes,
-                                            joined_signature.output_nodes,
-                                            joined_signature.target_nodes));
+  ASSIGN_OR_RETURN_IN_IMPORT(
+      auto module, ImportSubgraph(context.get(), joined_signature.name,
+                                  joined_signature.input_nodes,
+                                  joined_signature.output_nodes,
+                                  joined_signature.target_nodes));
+
+  auto ifrt_model_context =
+      graph_executor_->resource_context()
+          .GetResource<tensorflow::ifrt_serving::IfrtModelContext>(
+              tensorflow::ifrt_serving::kIfrtModelContextName);
+  if (ifrt_model_context.has_value()) {
+    (*ifrt_model_context)->KeepAlive(context);
+  }
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
   symbol_uids.tf_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
