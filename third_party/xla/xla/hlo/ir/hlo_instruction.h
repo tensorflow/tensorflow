@@ -37,7 +37,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
-#include "absl/base/macros.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -72,7 +71,6 @@ limitations under the License.
 #include "xla/shape_pool.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -355,9 +353,12 @@ class HloInstruction {
   //
   // - `k` indicates how many elements to return in the last dimension.
   // - `largest` indicates whether to return the largest or smallest elements.
+  // - `is_stable` if is true, the top-k is stable: if two elements are equal,
+  //   the lower-index element appears first.
   static std::unique_ptr<HloInstruction> CreateTopK(const Shape& shape,
                                                     HloInstruction* input,
-                                                    int64_t k, bool largest);
+                                                    int64_t k, bool largest,
+                                                    bool is_stable = true);
 
   // Creates a get tuple element instruction.
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(

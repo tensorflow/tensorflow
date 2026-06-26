@@ -1917,7 +1917,18 @@ R"(HloModule topk, entry_computation_layout={(f32[10,10]{0,1})->(f32[10,2]{0,1},
 
 ENTRY TopK {
   x = f32[10,10]{0,1} parameter(0)
-  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, largest=true
+  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, largest=true, is_stable=true
+}
+
+)"
+},
+{
+"TopKUnstable",
+R"(HloModule topk, entry_computation_layout={(f32[8,1024]{0,1})->(f32[8,24]{0,1}, s32[8,24]{0,1})}
+
+ENTRY TopK {
+  x = f32[8,1024]{0,1} parameter(0)
+  ROOT topk = (f32[8,24]{0,1}, s32[8,24]{0,1}) topk(x), k=24, largest=true, is_stable=false
 }
 
 )"

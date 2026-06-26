@@ -6855,6 +6855,13 @@ func.func @top_k_nd(%arg0 : tensor<16x16xf32>) {
 
 // -----
 
+func.func @top_k_nd_unstable(%arg0 : tensor<16x16xf32>) {
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true, is_stable = false) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  return
+}
+
+// -----
+
 func.func @top_k_unbounded(%arg0 : tensor<?x16x?xf32>) {
   %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<?x16x?xf32> -> (tensor<?x16x8xf32>, tensor<?x16x8xi32>)
   return

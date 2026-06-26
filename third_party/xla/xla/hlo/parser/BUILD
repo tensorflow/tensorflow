@@ -48,7 +48,6 @@ cc_library(
         "//xla/service:name_uniquer",
         "//xla/service:shape_inference",
         "//xla/tsl/lib/gtl:map_util",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",

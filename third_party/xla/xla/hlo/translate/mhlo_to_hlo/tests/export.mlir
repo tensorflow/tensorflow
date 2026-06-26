@@ -2919,6 +2919,16 @@ func.func @main(%arg0: tensor<4x4xf32>) -> (tensor<4x2xf32>, tensor<4x2xi32>) {
 // -----
 
 // CHECK: HloModule
+func.func @main(%arg0: tensor<4x4xf32>) -> (tensor<4x2xf32>, tensor<4x2xi32>) {
+  // CHECK: %[[ARG0:.*]] = f32[4,4] parameter(0)
+  %0:2 = "mhlo.topk"(%arg0) {k = 2, largest = true, is_stable = false} : (tensor<4x4xf32>) -> (tensor<4x2xf32>, tensor<4x2xi32>)
+  // CHECK: (f32[4,2], s32[4,2]) topk(%[[ARG0]]), k=2, largest=true, is_stable=false
+  func.return %0#0, %0#1 : tensor<4x2xf32>, tensor<4x2xi32>
+}
+
+// -----
+
+// CHECK: HloModule
 // CHECK{LITERAL}: output_to_operand_aliasing={{0}: (0, {1})}
 func.func @main(%arg0: tuple<tensor<1x1xf32>, tensor<2x3xf32>>, %arg1: tensor<5x5xf32>) {
   %0 = "mhlo.custom_call"(%arg0, %arg1) {
@@ -3259,6 +3269,19 @@ func.func @main(%arg0: tensor<192xf32>) -> tensor<1x17x17x192xf32> {
 // CHECK-LITERAL:  %[[GTE1:.*]] = s32[8] get-tuple-element(%[[TOPK]]), index=1, origin={{"t" {1}}}
 func.func @main(%arg0: tensor<10xf32>) -> tensor<8xf32> {
   %0:2 = mhlo.topk(%arg0, k=8, largest=true) {mhlo.original_value = #mhlo.original_value<false, [<[0], <"t", [0]>>, <[1], <"t", [1]>>]>} : tensor<10xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  return %0#0 : tensor<8xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+// CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
+// CHECK-LITERAL:  %[[TOPK:.*]] = (f32[8], s32[8]) topk(%[[ARG0]]), k=8, largest=true, is_stable = false, origin={({"t" {0}}, {"t" {1}})}
+// CHECK-LITERAL:  ROOT %[[GTE0:.*]] = f32[8] get-tuple-element(%[[TOPK]]), index=0, origin={{"t" {0}}}
+// CHECK-LITERAL:  %[[GTE1:.*]] = s32[8] get-tuple-element(%[[TOPK]]), index=1, origin={{"t" {1}}}
+func.func @main(%arg0: tensor<10xf32>) -> tensor<8xf32> {
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true, is_stable = false) {mhlo.original_value = #mhlo.original_value<false, [<[0], <"t", [0]>>, <[1], <"t", [1]>>]>} : tensor<10xf32> -> (tensor<8xf32>, tensor<8xi32>)
   return %0#0 : tensor<8xf32>
 }
 

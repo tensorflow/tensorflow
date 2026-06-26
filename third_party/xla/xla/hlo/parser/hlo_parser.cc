@@ -85,7 +85,6 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/map_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tuple_tree.h"
 #include "xla/types.h"
@@ -1760,6 +1759,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       attrs["k"] = {/*required=*/true, AttrTy::kInt64, &k};
       optional<bool> largest;
       attrs["largest"] = {/*required=*/false, AttrTy::kBool, &largest};
+      optional<bool> is_stable;
+      attrs["is_stable"] = {/*required=*/false, AttrTy::kBool, &is_stable};
       if ((!preset_operands && !ParseOperands(&operands, builder,
                                               /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
@@ -1771,7 +1772,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateTopK(
-          *shape, operands[0], *k, (largest.has_value() ? *largest : true)));
+          *shape, operands[0], *k, (largest.has_value() ? *largest : true),
+          (is_stable.has_value() ? *is_stable : true)));
     }
     // Unary ops with result accuracy.
     case HloOpcode::kAcos:
