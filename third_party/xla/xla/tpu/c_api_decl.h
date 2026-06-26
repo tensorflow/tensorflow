@@ -67,6 +67,7 @@ typedef struct SE_PlatformId {
   void* id;  // aka stream_executor::Platform::Id
 } SE_PlatformId;
 typedef TF_Status* (*SE_StatusCallback)(void*);
+typedef void (*SE_DequeueOutfeedCallback)(TF_Status*, void*);
 
 typedef struct SE_DeviceAddressBase {
   void* opaque;

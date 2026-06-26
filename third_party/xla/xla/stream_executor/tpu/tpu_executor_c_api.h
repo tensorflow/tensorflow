@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TPU_TPU_EXECUTOR_C_API_H_
-#define XLA_TPU_TPU_EXECUTOR_C_API_H_
+#ifndef XLA_STREAM_EXECUTOR_TPU_TPU_EXECUTOR_C_API_H_
+#define XLA_STREAM_EXECUTOR_TPU_TPU_EXECUTOR_C_API_H_
 
 #include <stddef.h>
 #include <stdint.h>
 
-#include "xla/tpu/c_api_decl.h"
-#include "xla/tpu/libtftpu.h"
+#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/stream_executor/tpu/libtftpu.h"
 
 extern "C" {
 
@@ -508,4 +508,4 @@ struct TfTpu_ExecutorApiFn {
 
 // extern "C"
 
-#endif  // XLA_TPU_TPU_EXECUTOR_C_API_H_
+#endif  // XLA_STREAM_EXECUTOR_TPU_TPU_EXECUTOR_C_API_H_

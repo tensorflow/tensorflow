@@ -149,6 +149,8 @@ absl::Status DoSetExecutorStructFn(  // NOLINT(google-readability-function-size)
     TFTPU_SET_FN(&executor_fn, TpuAsyncCollectiveOffloadHelper_Init);
     TFTPU_SET_FN(&executor_fn, TpuAsyncCollectiveOffloadHelper_Shutdown);
 
+    TFTPU_SET_FN(&executor_fn, TpuExecutor_DequeueOutfeedV2);
+
     ::stream_executor::tpu::SetExecutorApiFn(&executor_fn);
     return absl::OkStatus();
   };
