@@ -34,7 +34,7 @@ std::string GetWriteVersion(const SavedModel& saved_model) {
 }
 
 std::set<std::string> GetMapKeys(
-    const ::google::protobuf::Map<std::string, ::tensorflow::TensorProto>& map) {
+    const ::proto2::Map<std::string, ::tensorflow::TensorProto>& map) {
   std::set<std::string> keys;
   for (const auto& it : map) {
     keys.insert(it.first);
@@ -44,7 +44,7 @@ std::set<std::string> GetMapKeys(
 
 absl::Status GetInputValues(
     const SignatureDef& signature,
-    const ::google::protobuf::Map<std::string, ::tensorflow::TensorProto>& request_inputs,
+    const ::proto2::Map<std::string, ::tensorflow::TensorProto>& request_inputs,
     std::vector<std::pair<string, Tensor>>& inputs) {
   const TensorProto* tensor_proto;
   std::set<std::string> seen_request_inputs;

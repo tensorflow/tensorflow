@@ -144,7 +144,7 @@ absl::Status DeserializeAoTMlirModule(
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
 
 CallableOptions CombineSignatureDefs(
-    const google::protobuf::Map<std::string, SignatureDef>& signature_defs);
+    const proto2::Map<std::string, SignatureDef>& signature_defs);
 
 void RegisterTfrtDialectsForAot(mlir::DialectRegistry& registry);
 

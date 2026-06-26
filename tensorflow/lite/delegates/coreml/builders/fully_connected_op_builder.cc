@@ -60,7 +60,7 @@ void FullyConnectedOpBuilder::FillCoreMLWeights() {
   if (weights_->type == kTfLiteFloat32) {
     const float* weights_data = GetTensorData<float>(weights_);
     std::copy(weights_data, weights_data + NumElements(weights_),
-              google::protobuf::RepeatedFieldBackInserter(layer_->mutable_innerproduct()
+              proto2::RepeatedFieldBackInserter(layer_->mutable_innerproduct()
                                                     ->mutable_weights()
                                                     ->mutable_floatvalue()));
   } else if (weights_->type == kTfLiteFloat16) {
@@ -78,7 +78,7 @@ void FullyConnectedOpBuilder::FillCoreMLBias() {
     if (bias_->type == kTfLiteFloat32) {
       const float* bias_data = GetTensorData<float>(bias_);
       std::copy(bias_data, bias_data + NumElements(bias_),
-                google::protobuf::RepeatedFieldBackInserter(layer_->mutable_innerproduct()
+                proto2::RepeatedFieldBackInserter(layer_->mutable_innerproduct()
                                                       ->mutable_bias()
                                                       ->mutable_floatvalue()));
     } else if (bias_->type == kTfLiteFloat16) {

@@ -155,7 +155,7 @@ std::string FormatNodeDefForError(const NodeDef& node_def) {
 }
 
 const AttrValue* AttrSlice::Find(absl::string_view attr_name) const {
-  // Currently, the collection used for NodeDef::attr() (google::protobuf::Map)
+  // Currently, the collection used for NodeDef::attr() (proto2::Map)
   // requires that the keys used for lookups have type 'const string&'. Because
   // this method takes a StringPiece, it is necessary to allocate a temporary
   // string, copy attr_name to it, and then use that temporary string for the
@@ -163,7 +163,7 @@ const AttrValue* AttrSlice::Find(absl::string_view attr_name) const {
   // large graphs, this can be a significant cost.
   //
   // Because most nodes have a small number of attributes, a simple linear scan
-  // is generally more efficient than a hashed lookup.  If google::protobuf::Map
+  // is generally more efficient than a hashed lookup.  If proto2::Map
   // changes so that it supports efficient lookups using StringPiece instead of
   // const string&, then this code could be changed to use attrs()->find()
   // again.

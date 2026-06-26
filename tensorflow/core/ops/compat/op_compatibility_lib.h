@@ -57,7 +57,7 @@ class OpCompatibilityLib {
   // ValidateCompatible().
   std::string OpsString() const {
     std::string result;
-    google::protobuf::TextFormat::PrintToString(op_list_, &result);
+    proto2::TextFormat::PrintToString(op_list_, &result);
     return result;
   }
 

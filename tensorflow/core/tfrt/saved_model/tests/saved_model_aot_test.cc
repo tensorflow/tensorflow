@@ -112,7 +112,7 @@ TEST(SavedModelAotTest, AotCompileTfFunctionToExecutable) {
   XlaCompiler::CompilationResult compilation_result;
   XlaCompiler::CompilationResult* compilation_result_ptr = &compilation_result;
   stream_executor::GpuTargetConfigProto gpu_target_config_proto;
-  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(kGpuTargetConfig,
+  ASSERT_TRUE(proto2::TextFormat::ParseFromString(kGpuTargetConfig,
                                                   &gpu_target_config_proto));
   TF_ASSERT_OK_AND_ASSIGN(
       auto pjrt_executable,

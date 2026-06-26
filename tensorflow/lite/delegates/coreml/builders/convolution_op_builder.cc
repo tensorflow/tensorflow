@@ -204,7 +204,7 @@ void ConvolutionOpBuilder::FillCoreMLBias() {
     layer_->mutable_convolution()->set_hasbias(true);
     if (bias_->type == kTfLiteFloat32) {
       std::copy(bias_->data.f, bias_->data.f + NumElements(bias_->dims),
-                google::protobuf::RepeatedFieldBackInserter(layer_->mutable_convolution()
+                proto2::RepeatedFieldBackInserter(layer_->mutable_convolution()
                                                       ->mutable_bias()
                                                       ->mutable_floatvalue()));
     } else if (bias_->type == kTfLiteFloat16) {

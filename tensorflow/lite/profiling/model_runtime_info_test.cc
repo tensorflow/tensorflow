@@ -106,8 +106,8 @@ class PadAndConv2DModel : public MultiOpModel {
   int output_;
 };
 
-bool AreRepeatedIntFieldsEqual(const google::protobuf::RepeatedField<int32_t>& field_1,
-                               const google::protobuf::RepeatedField<int32_t>& field_2) {
+bool AreRepeatedIntFieldsEqual(const proto2::RepeatedField<int32_t>& field_1,
+                               const proto2::RepeatedField<int32_t>& field_2) {
   return std::equal(field_1.begin(), field_1.end(), field_2.begin(),
                     field_2.end());
 }

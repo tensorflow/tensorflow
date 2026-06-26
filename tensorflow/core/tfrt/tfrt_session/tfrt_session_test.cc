@@ -145,7 +145,7 @@ TEST_F(TfrtSessionTest, RunOptions) {
   ASSERT_TRUE(session != nullptr);
 
   tensorflow::GraphDef graph_def;
-  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
+  ASSERT_TRUE(proto2::TextFormat::ParseFromString(
       R"pb(
         node: {
           name: "input"

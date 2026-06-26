@@ -444,7 +444,7 @@ CollectXlaMetadata(const Graph& graph,
       node_to_metadata;
 
   auto process_node = [&](const std::string& node_name,
-                          const ::google::protobuf::Map<std::string, AttrValue>& attrs,
+                          const ::proto2::Map<std::string, AttrValue>& attrs,
                           const std::string& func_name = "") {
     for (const auto& attr : attrs) {
       absl::string_view attr_name(attr.first);
