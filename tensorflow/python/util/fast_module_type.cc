@@ -74,7 +74,7 @@ static int FastModule_traverse(PyObject *self, visitproc visit, void *arg) {
   }
   FastModuleObject* fast_module = FastModuleObject::UncheckedCast(self);
   {
-    absl::MutexLock lock(&fast_module->mutex);
+    absl::MutexLock lock(fast_module->mutex);
     for (auto& it : fast_module->attr_map) {
       Py_VISIT(it.first);
       Py_VISIT(it.second);
@@ -105,7 +105,7 @@ static PyObject *SetGetattributeCallback(PyObject *self, PyObject *args) {
   FastModuleObject* fast_module = FastModuleObject::UncheckedCast(self);
   PyObject* old_func = nullptr;
   {
-    absl::MutexLock lock(&fast_module->mutex);
+    absl::MutexLock lock(fast_module->mutex);
     old_func = fast_module->cb_getattribute;
     fast_module->cb_getattribute = func;
   }
@@ -120,7 +120,7 @@ static PyObject *SetGetattrCallback(PyObject *self, PyObject *args) {
   FastModuleObject* fast_module = FastModuleObject::UncheckedCast(self);
   PyObject* old_func = nullptr;
   {
-    absl::MutexLock lock(&fast_module->mutex);
+    absl::MutexLock lock(fast_module->mutex);
     old_func = fast_module->cb_getattr;
     fast_module->cb_getattr = func;
   }
@@ -139,7 +139,7 @@ static PyObject *FastDictInsert(FastModuleObject *self, PyObject *args) {
   Py_INCREF(value);
   PyObject* to_decref = nullptr;
   {
-    absl::MutexLock lock(&self->mutex);
+    absl::MutexLock lock(self->mutex);
     auto& attr_map = self->attr_map;
     if (auto [it, inserted] = attr_map.emplace(name, value); inserted) {
       Py_INCREF(name);
@@ -163,7 +163,7 @@ static PyObject *FastDictGet(FastModuleObject *self, PyObject *args) {
     return nullptr;
   }
   {
-    absl::MutexLock lock(&self->mutex);
+    absl::MutexLock lock(self->mutex);
     auto& attr_map = self->attr_map;
     if (auto it = attr_map.find(name); it != attr_map.end()) {
       Py_INCREF(it->second);
@@ -186,7 +186,7 @@ static PyObject *FastDictPop(FastModuleObject *self, PyObject *args) {
   PyObject* key_to_decref = nullptr;
   PyObject* value = nullptr;
   {
-    absl::MutexLock lock(&self->mutex);
+    absl::MutexLock lock(self->mutex);
     auto& attr_map = self->attr_map;
     if (auto it = attr_map.find(name); it != attr_map.end()) {
       key_to_decref = it->first;
@@ -214,7 +214,7 @@ static PyObject *FastDictContains(FastModuleObject *self, PyObject *args) {
   }
   bool result;
   {
-    absl::MutexLock lock(&self->mutex);
+    absl::MutexLock lock(self->mutex);
     const auto& attr_map = self->attr_map;
     result = attr_map.contains(name);
   }
@@ -269,7 +269,7 @@ static PyMethodDef FastModule_methods[] = {
 static PyObject *FastTpGetattro(PyObject *module, PyObject *name) {
   FastModuleObject *fast_module = FastModuleObject::UncheckedCast(module);
   {
-    absl::MutexLock lock(&fast_module->mutex);
+    absl::MutexLock lock(fast_module->mutex);
     auto& attr_map = fast_module->attr_map;
     // If the attribute lookup is successful in the cache, directly return it.
     if (auto it = attr_map.find(name); it != attr_map.end()) {
@@ -282,7 +282,7 @@ static PyObject *FastTpGetattro(PyObject *module, PyObject *name) {
   PyObject *result;
   PyObject* cb_getattribute = nullptr;
   {
-    absl::MutexLock lock(&fast_module->mutex);
+    absl::MutexLock lock(fast_module->mutex);
     cb_getattribute = fast_module->cb_getattribute;
     Py_XINCREF(cb_getattribute);
   }
@@ -303,7 +303,7 @@ static PyObject *FastTpGetattro(PyObject *module, PyObject *name) {
   auto is_error = PyErr_Occurred();
   PyObject* cb_getattr = nullptr;
   if (is_error && PyErr_ExceptionMatches(PyExc_AttributeError)) {
-    absl::MutexLock lock(&fast_module->mutex);
+    absl::MutexLock lock(fast_module->mutex);
     cb_getattr = fast_module->cb_getattr;
     Py_XINCREF(cb_getattr);
   }
@@ -323,7 +323,7 @@ static void FastModuleObjectDealloc(PyObject *module) {
   FastModuleObject *fast_module = FastModuleObject::UncheckedCast(module);
   std::vector<std::pair<PyObject*, PyObject*>> items;
   {
-    absl::MutexLock lock(&fast_module->mutex);
+    absl::MutexLock lock(fast_module->mutex);
     items.reserve(fast_module->attr_map.size());
     for (auto [key, value] : fast_module->attr_map) {
       items.push_back({key, value});
@@ -383,7 +383,7 @@ PYBIND11_MODULE(fast_module_type, m) {
     PyObject* to_decref = nullptr;
     Py_INCREF(value);
     {
-      absl::MutexLock lock(&fast_module->mutex);
+      absl::MutexLock lock(fast_module->mutex);
       auto& attr_map = fast_module->attr_map;
       if (auto [it, inserted] = attr_map.emplace(name, value); inserted) {
         Py_INCREF(name);
