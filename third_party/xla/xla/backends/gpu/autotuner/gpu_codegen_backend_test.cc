@@ -29,7 +29,6 @@ TEST_F(GpuCodegenBackendTest, AdjustDebugOptionsForAutotuning) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_enable_dumping(true);
   debug_options.set_xla_gpu_force_compilation_parallelism(4);
-  debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(true);
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
   debug_options.set_xla_gpu_async_dot(true);
   debug_options.set_xla_embed_ir_in_executable(true);
@@ -42,8 +41,6 @@ TEST_F(GpuCodegenBackendTest, AdjustDebugOptionsForAutotuning) {
 
   EXPECT_FALSE(debug_options.xla_enable_dumping());
   EXPECT_EQ(debug_options.xla_gpu_force_compilation_parallelism(), 1);
-  EXPECT_FALSE(
-      debug_options.xla_gpu_enable_llvm_module_compilation_parallelism());
   EXPECT_TRUE(debug_options.xla_gpu_enable_command_buffer().empty());
   EXPECT_FALSE(debug_options.xla_gpu_async_dot());
   EXPECT_FALSE(debug_options.xla_embed_ir_in_executable());
