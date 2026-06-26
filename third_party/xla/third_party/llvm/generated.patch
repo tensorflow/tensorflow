@@ -1,1 +1,281 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Target/TargetLoweringObjectFile.h b/llvm/include/llvm/Target/TargetLoweringObjectFile.h
+--- a/llvm/include/llvm/Target/TargetLoweringObjectFile.h
++++ b/llvm/include/llvm/Target/TargetLoweringObjectFile.h
+@@ -132,11 +132,6 @@
+   static SectionKind getKindForGlobal(const GlobalObject *GO,
+                                       const TargetMachine &TM);
+ 
+-  /// Return the section name specified by '#pragma clang section' or the
+-  /// section attribute.
+-  static StringRef getCustomSectionName(const GlobalObject *GO,
+-                                        SectionKind Kind);
+-
+   /// This method computes the appropriate section to emit the specified global
+   /// variable or function definition. This should not be passed external (or
+   /// available externally) globals.
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp b/llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
+--- a/llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
++++ b/llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
+@@ -816,14 +816,34 @@
+   return {Group, IsComdat, Flags, Type, EntrySize};
+ }
+ 
++static StringRef handlePragmaClangSection(const GlobalObject *GO,
++                                          SectionKind Kind) {
++  // Check if '#pragma clang section' name is applicable.
++  // Note that pragma directive overrides -ffunction-section, -fdata-section
++  // and so section name is exactly as user specified and not uniqued.
++  const GlobalVariable *GV = dyn_cast<GlobalVariable>(GO);
++  if (GV && GV->hasImplicitSection()) {
++    auto Attrs = GV->getAttributes();
++    if (Attrs.hasAttribute("bss-section") && Kind.isBSS())
++      return Attrs.getAttribute("bss-section").getValueAsString();
++    else if (Attrs.hasAttribute("rodata-section") && Kind.isReadOnly())
++      return Attrs.getAttribute("rodata-section").getValueAsString();
++    else if (Attrs.hasAttribute("relro-section") && Kind.isReadOnlyWithRel())
++      return Attrs.getAttribute("relro-section").getValueAsString();
++    else if (Attrs.hasAttribute("data-section") && Kind.isData())
++      return Attrs.getAttribute("data-section").getValueAsString();
++  }
++
++  return GO->getSection();
++}
++
+ static MCSection *selectExplicitSectionGlobal(const GlobalObject *GO,
+                                               SectionKind Kind,
+                                               const TargetMachine &TM,
+                                               MCContext &Ctx, Mangler &Mang,
+                                               unsigned &NextUniqueID,
+                                               bool Retain, bool ForceUnique) {
+-  StringRef SectionName =
+-      TargetLoweringObjectFile::getCustomSectionName(GO, Kind);
++  StringRef SectionName = handlePragmaClangSection(GO, Kind);
+ 
+   // Infer section flags from the section name if we can.
+   Kind = getELFKindForNamedSection(SectionName, Kind);
+@@ -1364,8 +1384,7 @@
+ MCSection *TargetLoweringObjectFileMachO::getExplicitSectionGlobal(
+     const GlobalObject *GO, SectionKind Kind, const TargetMachine &TM) const {
+ 
+-  StringRef SectionName =
+-      TargetLoweringObjectFile::getCustomSectionName(GO, Kind);
++  StringRef SectionName = handlePragmaClangSection(GO, Kind);
+ 
+   // Parse the section specifier and create it if valid.
+   StringRef Segment, Section;
+@@ -1731,7 +1750,7 @@
+ 
+ MCSection *TargetLoweringObjectFileCOFF::getExplicitSectionGlobal(
+     const GlobalObject *GO, SectionKind Kind, const TargetMachine &TM) const {
+-  StringRef Name = TargetLoweringObjectFile::getCustomSectionName(GO, Kind);
++  StringRef Name = handlePragmaClangSection(GO, Kind);
+   if (Name == getInstrProfSectionName(IPSK_covmap, Triple::COFF,
+                                       /*AddSegmentInfo=*/false) ||
+       Name == getInstrProfSectionName(IPSK_covfun, Triple::COFF,
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/TargetLoweringObjectFile.cpp b/llvm/lib/Target/TargetLoweringObjectFile.cpp
+--- a/llvm/lib/Target/TargetLoweringObjectFile.cpp
++++ b/llvm/lib/Target/TargetLoweringObjectFile.cpp
+@@ -13,7 +13,6 @@
+ 
+ #include "llvm/Target/TargetLoweringObjectFile.h"
+ #include "llvm/BinaryFormat/Dwarf.h"
+-#include "llvm/IR/Attributes.h"
+ #include "llvm/IR/Constants.h"
+ #include "llvm/IR/DataLayout.h"
+ #include "llvm/IR/DerivedTypes.h"
+@@ -369,24 +368,6 @@
+   return SectionKind::getData();
+ }
+ 
+-StringRef TargetLoweringObjectFile::getCustomSectionName(const GlobalObject *GO,
+-                                                         SectionKind Kind) {
+-  const GlobalVariable *GV = dyn_cast<GlobalVariable>(GO);
+-  if (GV && GV->hasImplicitSection()) {
+-    auto Attrs = GV->getAttributes();
+-    if (Attrs.hasAttribute("bss-section") && Kind.isBSS())
+-      return Attrs.getAttribute("bss-section").getValueAsString();
+-    else if (Attrs.hasAttribute("rodata-section") && Kind.isReadOnly())
+-      return Attrs.getAttribute("rodata-section").getValueAsString();
+-    else if (Attrs.hasAttribute("relro-section") && Kind.isReadOnlyWithRel())
+-      return Attrs.getAttribute("relro-section").getValueAsString();
+-    else if (Attrs.hasAttribute("data-section") && Kind.isData())
+-      return Attrs.getAttribute("data-section").getValueAsString();
+-  }
+-
+-  return GO->getSection();
+-}
+-
+ /// This method computes the appropriate section to emit the specified global
+ /// variable or function definition.  This should not be passed external (or
+ /// available externally) globals.
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/TargetMachine.cpp b/llvm/lib/Target/TargetMachine.cpp
+--- a/llvm/lib/Target/TargetMachine.cpp
++++ b/llvm/lib/Target/TargetMachine.cpp
+@@ -98,20 +98,14 @@
+       return true;
+   }
+ 
+-  // Treat all globals in user-defined sections as small, except for the
+-  // standard large sections of .lbss, .ldata, .lrodata. This reduces the risk
+-  // of linking together small and large sections, resulting in small
+-  // references to large data sections. The code model attribute overrides this
+-  // above.
+-  if (GV->hasSection() || GV->hasImplicitSection()) {
+-    SectionKind Kind = TargetLoweringObjectFile::getKindForGlobal(GV, *this);
+-    StringRef SectionName =
+-        TargetLoweringObjectFile::getCustomSectionName(GV, Kind);
+-    if (!SectionName.empty()) {
+-      return IsPrefix(SectionName, ".lbss") ||
+-             IsPrefix(SectionName, ".ldata") ||
+-             IsPrefix(SectionName, ".lrodata");
+-    }
++  // Treat all globals in explicit sections as small, except for the standard
++  // large sections of .lbss, .ldata, .lrodata. This reduces the risk of linking
++  // together small and large sections, resulting in small references to large
++  // data sections. The code model attribute overrides this above.
++  if (GV->hasSection()) {
++    StringRef Name = GV->getSection();
++    return IsPrefix(Name, ".lbss") || IsPrefix(Name, ".ldata") ||
++           IsPrefix(Name, ".lrodata");
+   }
+ 
+   // Respect large data threshold for medium and large code models.
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/large-implicit-section.ll b/llvm/test/CodeGen/X86/large-implicit-section.ll
+--- a/llvm/test/CodeGen/X86/large-implicit-section.ll
++++ b/llvm/test/CodeGen/X86/large-implicit-section.ll
+@@ -1,134 +0,0 @@
+-; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 6
+-; RUN: llc -mtriple=x86_64-linux-gnu -code-model=medium -relocation-model=static -large-data-threshold=16 < %s | FileCheck %s --check-prefix=STATIC
+-; RUN: llc -mtriple=x86_64-linux-gnu -code-model=medium -relocation-model=pic -large-data-threshold=16 < %s | FileCheck %s --check-prefix=PIC
+-
+-@small_in_large_bss = dso_local global i32 0 "bss-section"=".lbss.my_bss"
+-@small_in_large_data = dso_local global i32 1 "data-section"=".ldata.my_data"
+-@small_in_large_rodata = dso_local constant i32 2 "rodata-section"=".lrodata.my_rodata"
+-
+-@ptr = dso_local global i32 0
+-@small_in_large_relro = dso_local constant ptr @ptr "relro-section"=".ldata.rel.ro.my_relro"
+-
+-@large_in_small_implicit_bss = dso_local global [4 x i64] zeroinitializer "bss-section"="my_bss"
+-@large_in_small_implicit_data = dso_local global [4 x i64] [i64 1, i64 0, i64 0, i64 0] "data-section"="my_data"
+-@large_in_small_implicit_rodata = dso_local constant [4 x i64] zeroinitializer "rodata-section"="my_rodata"
+-@large_in_small_implicit_relro = dso_local constant [4 x ptr] [ptr @ptr, ptr null, ptr null, ptr null] "relro-section"="my_relro"
+-
+-define i32 @load_bss() {
+-; STATIC-LABEL: load_bss:
+-; STATIC:       # %bb.0:
+-; STATIC-NEXT:    movabsq $small_in_large_bss, %rax
+-; STATIC-NEXT:    movl (%rax), %eax
+-; STATIC-NEXT:    retq
+-;
+-; PIC-LABEL: load_bss:
+-; PIC:       # %bb.0:
+-; PIC-NEXT:    leaq _GLOBAL_OFFSET_TABLE_(%rip), %rax
+-; PIC-NEXT:    movabsq $.Lsmall_in_large_bss$local@GOTOFF, %rcx
+-; PIC-NEXT:    movl (%rax,%rcx), %eax
+-; PIC-NEXT:    retq
+-  %v = load i32, ptr @small_in_large_bss
+-  ret i32 %v
+-}
+-
+-define i32 @load_data() {
+-; STATIC-LABEL: load_data:
+-; STATIC:       # %bb.0:
+-; STATIC-NEXT:    movabsq $small_in_large_data, %rax
+-; STATIC-NEXT:    movl (%rax), %eax
+-; STATIC-NEXT:    retq
+-;
+-; PIC-LABEL: load_data:
+-; PIC:       # %bb.0:
+-; PIC-NEXT:    leaq _GLOBAL_OFFSET_TABLE_(%rip), %rax
+-; PIC-NEXT:    movabsq $.Lsmall_in_large_data$local@GOTOFF, %rcx
+-; PIC-NEXT:    movl (%rax,%rcx), %eax
+-; PIC-NEXT:    retq
+-  %v = load i32, ptr @small_in_large_data
+-  ret i32 %v
+-}
+-
+-define i32 @load_rodata() {
+-; STATIC-LABEL: load_rodata:
+-; STATIC:       # %bb.0:
+-; STATIC-NEXT:    movabsq $small_in_large_rodata, %rax
+-; STATIC-NEXT:    movl (%rax), %eax
+-; STATIC-NEXT:    retq
+-;
+-; PIC-LABEL: load_rodata:
+-; PIC:       # %bb.0:
+-; PIC-NEXT:    leaq _GLOBAL_OFFSET_TABLE_(%rip), %rax
+-; PIC-NEXT:    movabsq $.Lsmall_in_large_rodata$local@GOTOFF, %rcx
+-; PIC-NEXT:    movl (%rax,%rcx), %eax
+-; PIC-NEXT:    retq
+-  %v = load i32, ptr @small_in_large_rodata
+-  ret i32 %v
+-}
+-
+-define ptr @load_relro() {
+-; STATIC-LABEL: load_relro:
+-; STATIC:       # %bb.0:
+-; STATIC-NEXT:    movq small_in_large_relro(%rip), %rax
+-; STATIC-NEXT:    retq
+-;
+-; PIC-LABEL: load_relro:
+-; PIC:       # %bb.0:
+-; PIC-NEXT:    leaq _GLOBAL_OFFSET_TABLE_(%rip), %rax
+-; PIC-NEXT:    movabsq $.Lsmall_in_large_relro$local@GOTOFF, %rcx
+-; PIC-NEXT:    movq (%rax,%rcx), %rax
+-; PIC-NEXT:    retq
+-  %v = load ptr, ptr @small_in_large_relro
+-  ret ptr %v
+-}
+-
+-define ptr @lea_large_in_small_implicit_bss() {
+-; STATIC-LABEL: lea_large_in_small_implicit_bss:
+-; STATIC:       # %bb.0:
+-; STATIC-NEXT:    movl $large_in_small_implicit_bss, %eax
+-; STATIC-NEXT:    retq
+-;
+-; PIC-LABEL: lea_large_in_small_implicit_bss:
+-; PIC:       # %bb.0:
+-; PIC-NEXT:    leaq .Llarge_in_small_implicit_bss$local(%rip), %rax
+-; PIC-NEXT:    retq
+-  ret ptr @large_in_small_implicit_bss
+-}
+-
+-define ptr @lea_large_in_small_implicit_data() {
+-; STATIC-LABEL: lea_large_in_small_implicit_data:
+-; STATIC:       # %bb.0:
+-; STATIC-NEXT:    movl $large_in_small_implicit_data, %eax
+-; STATIC-NEXT:    retq
+-;
+-; PIC-LABEL: lea_large_in_small_implicit_data:
+-; PIC:       # %bb.0:
+-; PIC-NEXT:    leaq .Llarge_in_small_implicit_data$local(%rip), %rax
+-; PIC-NEXT:    retq
+-  ret ptr @large_in_small_implicit_data
+-}
+-
+-define ptr @lea_large_in_small_implicit_rodata() {
+-; STATIC-LABEL: lea_large_in_small_implicit_rodata:
+-; STATIC:       # %bb.0:
+-; STATIC-NEXT:    movl $large_in_small_implicit_rodata, %eax
+-; STATIC-NEXT:    retq
+-;
+-; PIC-LABEL: lea_large_in_small_implicit_rodata:
+-; PIC:       # %bb.0:
+-; PIC-NEXT:    leaq .Llarge_in_small_implicit_rodata$local(%rip), %rax
+-; PIC-NEXT:    retq
+-  ret ptr @large_in_small_implicit_rodata
+-}
+-
+-define ptr @lea_large_in_small_implicit_relro() {
+-; STATIC-LABEL: lea_large_in_small_implicit_relro:
+-; STATIC:       # %bb.0:
+-; STATIC-NEXT:    movabsq $large_in_small_implicit_relro, %rax
+-; STATIC-NEXT:    retq
+-;
+-; PIC-LABEL: lea_large_in_small_implicit_relro:
+-; PIC:       # %bb.0:
+-; PIC-NEXT:    leaq .Llarge_in_small_implicit_relro$local(%rip), %rax
+-; PIC-NEXT:    retq
+-  ret ptr @large_in_small_implicit_relro
+-}

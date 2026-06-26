@@ -613,7 +613,7 @@ func.func @main() {
   %cst_5 = arith.constant dense<[[3, 2], [1, 4]]> : tensor<2x2xi32>
 
   // CHECK:  u32[2,2] constant({ { 1, 2 }, { 4, 8 } })
-  %cst_6 = arith.constant dense<[[1, 2], [4, 8]]> : tensor<2x2xui32>
+  %cst_6 = mhlo.constant dense<[[1, 2], [4, 8]]> : tensor<2x2xui32>
 
   // CHECK: bf16[4] constant({1, 2, 3, 4})
   %cst_7 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
