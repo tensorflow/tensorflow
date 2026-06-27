@@ -23,9 +23,6 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        # Core TensorFlow deps
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:tf_export",
         # HuggingFace — declared as optional; the module does lazy imports
         # so TF itself stays importable even without these packages.
         # "@pypi//transformers",  # uncomment to make hard dependency
