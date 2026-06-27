@@ -286,7 +286,7 @@ class GraphOperation : public TracingOperation {
       b[i] = values[i];
     }
     op_->node_builder.Attr(attr_name,
-                           ArraySlice<const bool>(b.get(), num_values));
+                           absl::Span<const const bool>(b.get(), num_values));
 
     return absl::OkStatus();
   }
