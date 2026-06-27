@@ -352,6 +352,8 @@ class TFLLMModel:
             padding=True,
             truncation=True,
         )
+        device = getattr(self._hf_model, "device", "cpu")
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         input_ids = inputs.pop("input_ids")
         output_ids = self._hf_model.generate(
             input_ids=input_ids,
