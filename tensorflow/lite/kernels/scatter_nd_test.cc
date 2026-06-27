@@ -390,5 +390,14 @@ TEST(ScatterNdOpTest, OOBWrites) {
   ASSERT_EQ(m.Invoke(), kTfLiteError);
 }
 
+TEST(ScatterNdOpTest, NegativeShape) {
+  ScatterNdOpModel m({TensorType_INT32, {1, 1}}, {TensorType_INT32, {1}},
+                     {TensorType_INT32, {1}});
+  m.SetIndices<int32_t>({0});
+  m.SetUpdates<int32_t>({1});
+  m.SetShape<int32_t>({-1});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite

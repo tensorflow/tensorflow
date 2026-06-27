@@ -241,5 +241,55 @@ INSTANTIATE_TEST_SUITE_P(SparseToDenseOpModelTest, SparseToDenseOpModelTest,
                          ::testing::Values(TestType::kPersistentRo,
                                            TestType::kConstant,
                                            TestType::kDynamic));
+
+TEST(SparseToDenseOpModelNonParameterizedTest, NegativeOutputShapeTest) {
+  SparseToDenseOpModel<float> m({3, 3}, {3}, {3}, 0, TensorType_INT32,
+                                TensorType_FLOAT32, {3, 3, 3},
+                                TestType::kDynamic);
+  m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
+  m.PopulateTensor<int32_t>(m.output_shape(), {3, -3, 3});
+  m.PopulateTensor<float>(m.values(), {2, 4, 6});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
+// The shared SparseToDenseOpModel hard-codes an INT32 output_shape input, so a
+// dedicated model is needed to feed an INT64 dimension above the INT32 range.
+class SparseToDenseOpModelInt64Shape : public SingleOpModel {
+ public:
+  SparseToDenseOpModelInt64Shape(std::initializer_list<int> indices_shape,
+                                 std::initializer_list<int> output_shape_shape,
+                                 std::initializer_list<int> values_shape,
+                                 float default_value) {
+    indices_ = AddInput(TensorType_INT32);
+    output_shape_ = AddInput(TensorType_INT64);
+    values_ = AddInput(TensorType_FLOAT32);
+    default_value_ = AddInput(TensorType_FLOAT32);
+    AddOutput(TensorType_FLOAT32);
+
+    SetBuiltinOp(BuiltinOperator_SPARSE_TO_DENSE,
+                 BuiltinOptions_SparseToDenseOptions,
+                 CreateSparseToDenseOptions(builder_, false).Union());
+    BuildInterpreter({indices_shape, output_shape_shape, values_shape, {1}});
+    PopulateTensor<float>(default_value_, {default_value});
+  }
+
+  int indices() { return indices_; }
+  int output_shape() { return output_shape_; }
+  int values() { return values_; }
+
+ private:
+  int indices_;
+  int output_shape_;
+  int values_;
+  int default_value_;
+};
+
+TEST(SparseToDenseOpModelNonParameterizedTest, OverflowOutputShapeTest) {
+  SparseToDenseOpModelInt64Shape m({3, 3}, {3}, {3}, 0);
+  m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
+  m.PopulateTensor<int64_t>(m.output_shape(), {3, 2147483648LL, 3});
+  m.PopulateTensor<float>(m.values(), {2, 4, 6});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
 }  // namespace
 }  // namespace tflite
