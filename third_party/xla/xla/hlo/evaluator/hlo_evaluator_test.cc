@@ -20,7 +20,6 @@ limitations under the License.
 #include <initializer_list>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -49,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/simplifiers/hlo_element_type_converter.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -2994,14 +2994,14 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGroupedConvolution) {
   *window.add_dimensions() = dim;
 
   std::vector<float> input_elems(ShapeUtil::ElementsIn(input_shape));
-  std::iota(input_elems.begin(), input_elems.end(), -7);
+  absl::c_iota(input_elems, -7);
   auto input_r1 = LiteralUtil::CreateR1<float>(input_elems);
   auto input_r4 = input_r1.Reshape(input_dims).value();
   HloInstruction* lhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(input_r4)));
 
   std::vector<float> filter_elems(ShapeUtil::ElementsIn(filter_shape));
-  std::iota(filter_elems.begin(), filter_elems.end(), -31);
+  absl::c_iota(filter_elems, -31);
   auto filter_r1 = LiteralUtil::CreateR1<float>(filter_elems);
   auto filter_r4 = filter_r1.Reshape(filter_dims).value();
   HloInstruction* rhs_instruction =

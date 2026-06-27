@@ -1,6 +1,6 @@
 --- a/python/test/conftest.py
 +++ b/python/test/conftest.py
-@@ -3,6 +3,18 @@
+@@ -3,6 +3,18 @@ import tempfile
  
  
  def pytest_configure(config):
@@ -22,24 +22,23 @@
 
 --- a/python/test/unit/language/test_core.py
 +++ b/python/test/unit/language/test_core.py
-@@ -1760,10 +1760,12 @@
+@@ -1756,10 +1756,12 @@ def test_atomic_cas(sem, num_ctas, dtype_str, device):
      if not is_cuda():
          return
      assert f"atom.global.{sem_str}" in h.asm["ptx"]
--
--
--@pytest.mark.skipif(not is_cuda() or torch.cuda.get_device_capability()[0] < 9,
--                    reason="num_ctas > 1 requires NVIDIA SM90+ (Hopper)")
 +# According to MIG specification, cluster multi-CTA is not supported internally on H100/B200 MIG slices.
 +# https://docs.cloud.google.com/kubernetes-engine/docs/how-to/gpus-multi 
 +# because the operations for inter- CTA synchronization are not supported on MIG.
-+
+ 
+-
+-@pytest.mark.skipif(not is_cuda() or torch.cuda.get_device_capability()[0] < 9,
+-                    reason="num_ctas > 1 requires NVIDIA SM90+ (Hopper)")
 +@pytest.mark.skipif(True,
 +                    reason="num_ctas > 1 (Cluster Multi-CTA) is not supported internally on H100/B200 MIG slices")
  def test_scalar_atomic_cas_multicta_result(device):
  
      @triton.jit
-@@ -1779,8 +1781,8 @@
+@@ -1775,8 +1777,8 @@ def test_scalar_atomic_cas_multicta_result(device):
      torch.testing.assert_close(output, torch.full_like(output, 7))
  
  
@@ -50,7 +49,7 @@
  @pytest.mark.parametrize("size", [1, 4, 16, 128, 512])
  def test_tensor_atomic_cas_multicta_result(size, device):
  
-@@ -1831,8 +1833,8 @@
+@@ -1827,8 +1829,8 @@ def test_tensor_atomic_cas(sem, size, dtype_str, num_ctas, device):
  
  
  @pytest.mark.interpreter
@@ -64,7 +63,7 @@
 
 --- a/python/test/unit/runtime/test_cache_determinism.py
 +++ b/python/test/unit/runtime/test_cache_determinism.py
-@@ -75,8 +75,20 @@
+@@ -75,8 +75,20 @@ def _subprocess_key(mode, seed, order="forward"):
      env["TRITON_CACHE_KEY_TEST_ORDER"] = order
      env["TRITON_CACHE_KEY_TEST_SEED"] = str(seed)
      env["TRITON_CACHE_KEY_TEST_MODE"] = mode

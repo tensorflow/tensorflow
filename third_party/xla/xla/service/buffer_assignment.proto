@@ -138,6 +138,10 @@ message AssignmentAlgorithmForComputationsWithoutOrderingProto {
     // If DEFAULT, performs a linear scan over tracked allocations to reuse the
     // smallest fitting buffer.
     DEFAULT = 0;
+    // Uses a sweep-line algorithm with a balanced tree pool to find the
+    // smallest fitting reusable allocation in O(log M) time (where M is the
+    // number of free allocations in the pool), avoiding linear scans.
+    FAST_MERGE = 1;
   }
 }
 

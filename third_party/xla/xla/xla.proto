@@ -722,12 +722,6 @@ message DebugOptions {
   // If enabled, uses the libnvptxcompiler library to compile PTX to cuBIN.
   optional bool xla_gpu_enable_libnvptxcompiler = 269;
 
-  // Indicates whether to do LLVM module compilation in a parallelised way. When
-  // set, the number of threads depends on
-  // `xla_gpu_force_compilation_parallelism`.
-  optional bool xla_gpu_enable_llvm_module_compilation_parallelism = 268
-      [deprecated = true];
-
   // DEPRECATED: This flag is a no-op.
   optional bool xla_gpu_enable_nccl_clique_optimization = 244
       [deprecated = true];
@@ -1676,6 +1670,7 @@ message DebugOptions {
   reserved "xla_gpu_asm_extra_flags";
   reserved "xla_gpu_bef_executable";
   reserved "xla_gpu_bef_thunk";
+  reserved "xla_gpu_enable_llvm_module_compilation_parallelism";
   reserved "xla_gpu_collectives_use_persistent_cliques";
   reserved "xla_gpu_deterministic_reductions";
   reserved "xla_gpu_disable_multi_streaming";

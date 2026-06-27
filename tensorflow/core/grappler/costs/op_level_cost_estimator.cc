@@ -189,9 +189,11 @@ bool IsTraining(const OpInfo& op_info) {
 std::vector<int64_t> GetStrides(const OpInfo& op_info) {
   if (op_info.attr().find("strides") != op_info.attr().end()) {
     const auto strides = op_info.attr().at("strides").list().i();
-    DCHECK(strides.size() == 4)
-        << "Attr strides is not a length-4 vector: " << op_info.DebugString();
-    if (strides.size() != 4) return {1, 1, 1, 1};
+    if (strides.size() != 4) {
+      LOG(WARNING) << "Attr strides is not a length-4 vector (size="
+                   << strides.size() << "): " << op_info.DebugString();
+      return {1, 1, 1, 1};
+    }
     return {strides[0], strides[1], strides[2], strides[3]};
   }
   return {1, 1, 1, 1};
@@ -200,9 +202,11 @@ std::vector<int64_t> GetStrides(const OpInfo& op_info) {
 std::vector<int64_t> GetKernelSize(const OpInfo& op_info) {
   if (op_info.attr().find("ksize") != op_info.attr().end()) {
     const auto ksize = op_info.attr().at("ksize").list().i();
-    DCHECK(ksize.size() == 4)
-        << "Attr ksize is not a length-4 vector: " << op_info.DebugString();
-    if (ksize.size() != 4) return {1, 1, 1, 1};
+    if (ksize.size() != 4) {
+      LOG(WARNING) << "Attr ksize is not a length-4 vector (size="
+                   << ksize.size() << "): " << op_info.DebugString();
+      return {1, 1, 1, 1};
+    }
     return {ksize[0], ksize[1], ksize[2], ksize[3]};
   }
   // Note that FusedBatchNorm doesn't have ksize attr, but GetKernelSize returns

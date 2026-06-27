@@ -29,11 +29,7 @@ namespace tensorflow {
 namespace tpu {
 namespace {
 
-#if defined(LIBTPU_ON_GCE)
 using ResponseType = GetTpuProgramResponseExternal;
-#else
-using ResponseType = GetTpuProgramResponse;
-#endif
 
 static constexpr absl::Duration kProtoTimeout = absl::Minutes(15);
 static gpr_timespec TimeToGprTimespec(absl::Time time) {

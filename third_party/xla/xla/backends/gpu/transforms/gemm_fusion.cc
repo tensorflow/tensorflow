@@ -743,7 +743,8 @@ class FusionSearchSpace {
                     const se::GpuComputeCapability& gpu_version)
       : original_dot_(dot) {
     module_ = std::make_unique<HloModule>(
-        absl::StrCat(dot->name(), "_fusion_search_space"), HloModuleConfig());
+        absl::StrCat(dot->name(), "_fusion_search_space"),
+        dot->GetModule()->config());
     HloComputation::Builder builder(absl::StrCat(dot->name(), "_computation"));
     // Find the highest suitable user of the dot to be the root of the
     // fusion.
@@ -1140,11 +1141,19 @@ void FuseOperandsBFS(mlir::MLIRContext& mlir_context,
   for (HloInstruction* operand : candidates) {
     queue.push(operand);
   }
-  while (!queue.empty() &&
-         fusion->operand_count() <
-             TritonFusionAnalysis::kMaxParameterPerDotOperand * 2) {
+
+  while (!queue.empty()) {
     HloInstruction* candidate = queue.front();
     queue.pop();
+
+    int parameter_count =
+        fusion->operand_count() + NumAddedParameters(*candidate);
+    if (parameter_count >
+        TritonFusionAnalysis::kMaxParameterPerDotOperand * 2) {
+      VLOG(5) << "Not fusing operand: " << candidate->ToString()
+              << " due to too many parameters.";
+      continue;
+    }
 
     if (FusionDecision decision = CanFuse(mlir_context, candidate, fusion);
         !decision.IsAllowed()) {

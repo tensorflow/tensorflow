@@ -1,6 +1,6 @@
 --- a/python/src/gluon_ir.cc
 +++ b/python/src/gluon_ir.cc
-@@ -1165,7 +1165,8 @@
+@@ -1175,7 +1175,8 @@ void init_gluon_ir(py::module &&m) {
             })
        .def("create_warp_pipeline_border",
             [](GluonOpBuilder &self, const std::string &marker, int priority) {
@@ -13,7 +13,7 @@
 
 --- a/test/Conversion/amd/buffer_atomic_cas.mlir
 +++ b/test/Conversion/amd/buffer_atomic_cas.mlir
-@@ -27,8 +27,8 @@
+@@ -27,8 +27,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
      // CHECK: %[[cas_cmp_insert2:.*]] = llvm.insertelement %[[cas_cmp_extract]], %{{.*}} : vector<1xi64>
      // CHECK: %[[cas_val_cast2:.*]] = llvm.bitcast %[[cas_val_insert2]] : vector<1xi64> to i64
      // CHECK: %[[cas_cmp_cast2:.*]] = llvm.bitcast %[[cas_cmp_insert2]] : vector<1xi64> to i64
@@ -27,7 +27,7 @@
 
 --- a/test/Conversion/amd/buffer_load_store.mlir
 +++ b/test/Conversion/amd/buffer_load_store.mlir
-@@ -7,8 +7,7 @@
+@@ -7,8 +7,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
      tt.func @buffer_load(%arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %offset : tensor<128xi32, #blocked0>{tt.divisibility=16:i32}) {
          // CHECK: %[[c_mask:.*]] = llvm.mlir.constant(true) : i1
          // CHECK: %[[offset:.*]] = llvm.select %[[c_mask]]
@@ -37,7 +37,7 @@
          %ret = amdg.buffer_load %arg0[%offset] cacheModifier = cs : tensor<128xf32, #blocked0>
          tt.return
    }
-@@ -111,8 +110,7 @@
+@@ -111,8 +110,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
      tt.func @buffer_store(%value : tensor<128xf32, #blocked0>, %arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %offset : tensor<128xi32, #blocked0>{tt.divisibility=16:i32}) {
          // CHECK: %[[mask:.*]] = llvm.mlir.constant(true) : i1
          // CHECK: %[[offset:.*]] = llvm.select %[[mask]]
@@ -50,7 +50,7 @@
 
 --- a/test/Conversion/amd/buffer_load_to_local_to_llvm.mlir
 +++ b/test/Conversion/amd/buffer_load_to_local_to_llvm.mlir
-@@ -191,17 +191,13 @@
+@@ -191,17 +191,13 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, "ttg.thr
      // and then the aux/imm constants (in source order: aux first, then imm)
      // right before the rocdl op.
      // COMMON: %[[VOFFSET:.*]] = llvm.select {{.*}} : i1, i32
@@ -74,7 +74,7 @@
 
 --- a/test/Conversion/amd/buffer_ops_gfx1250.mlir
 +++ b/test/Conversion/amd/buffer_ops_gfx1250.mlir
-@@ -47,7 +47,7 @@
+@@ -47,7 +47,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.thr
      // CHECK: rocdl.make.buffer.rsrc
      // CHECK: llvm.fence syncscope("agent") release
      // Cache policy = 17 (SC0 | SCOPE_DEV) because CAS return value is used
@@ -86,7 +86,7 @@
 
 --- a/test/Conversion/amd/tritongpu_tdm_to_llvm.mlir
 +++ b/test/Conversion/amd/tritongpu_tdm_to_llvm.mlir
-@@ -168,10 +168,10 @@
+@@ -169,10 +169,10 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.thr
      %c_pred = arith.constant true
      %0 = tt.make_tensor_descriptor %arg0, [%c_shape, %c_shape], [%c_stride0, %c_stride1] : <f16>, <64x64xf16, #shared>
  
@@ -102,7 +102,7 @@
 
 --- a/test/LLVMIR/convert-to-llvmir-with-dbg-info.mlir
 +++ b/test/LLVMIR/convert-to-llvmir-with-dbg-info.mlir
-@@ -38,13 +38,13 @@
+@@ -38,13 +38,13 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
      // CHECK: !DILocalVariable(name: "x", scope:
      %x_ptr = llvm.getelementptr %arg0[%block_start] : (!llvm.ptr<1>, i32) -> !llvm.ptr<1>, f32
      %x_buffer_ptr = rocdl.make.buffer.rsrc %x_ptr, %constant_i16, %constant_i64, %constant_i32 : <1> to <8> loc(#loc18)
@@ -130,7 +130,7 @@
      %1 = proton_gpu.read_counter : i32
      llvm.return %1 : i32
    }
-@@ -19,33 +19,33 @@
+@@ -19,33 +19,33 @@ module attributes {"ttg.num-warps" = 8 : i32, ttg.profile_scratch_memory_alignme
    // CHECK-LABEL: nested_record
    llvm.func @nested_record(%arg: !llvm.ptr<1>) attributes {noinline = false, nvvm.kernel = 1 : ui1} {
    // CHECK: proton_gpu.initialize
@@ -178,7 +178,7 @@
 
 --- a/test/TritonGPU/amd/amd-block-pingpong-chained-dots.mlir
 +++ b/test/TritonGPU/amd/amd-block-pingpong-chained-dots.mlir
-@@ -12,34 +12,34 @@
+@@ -12,34 +12,34 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
  
    // CHECK: scf.for
    // CHECK-NEXT: rocdl.s.barrier
@@ -221,7 +221,7 @@
    // CHECK-NEXT: rocdl.s.setprio 0
    // CHECK-NEXT: llvm.fence syncscope("workgroup") release {llvm.mmra = [[$MMRA_TAG]]}
    // CHECK-NEXT: scf.yield
-@@ -86,32 +86,32 @@
+@@ -86,32 +86,32 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
    // CHECK-NOT: rocdl.s
    // CHECK: scf.for
    // CHECK: rocdl.s.barrier
@@ -263,7 +263,7 @@
 
 --- a/test/TritonGPU/amd/amd-block-pingpong.mlir
 +++ b/test/TritonGPU/amd/amd-block-pingpong.mlir
-@@ -90,42 +90,42 @@
+@@ -90,42 +90,42 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
  // CHECK: %[[SLICEA0:.+]] = ttg.local_load
  // CHECK: %[[SLICEB0:.+]] = ttg.local_load
  // CHECK: ttg.barrier local
@@ -314,7 +314,7 @@
  // CHECK: scf.yield
  // CHECK: amdg.cond_barrier %[[WARPLOW]]
  
-@@ -202,29 +202,29 @@
+@@ -202,29 +202,29 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
  
  // CHECK: %[[SLICEA0:.+]] = ttg.local_load
  // CHECK: %[[SLICEB0:.+]] = ttg.local_load
@@ -351,7 +351,7 @@
  // CHECK: scf.yield
  // CHECK: amdg.cond_barrier %[[WARPLOW]]
  
-@@ -525,29 +525,29 @@
+@@ -600,29 +600,29 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
  
  // CHECK: %[[SLICEA0:.+]] = ttg.local_load
  // CHECK: %[[SLICEB0:.+]] = ttg.local_load
@@ -388,7 +388,7 @@
  // CHECK: scf.yield
  // CHECK: amdg.cond_barrier %[[WARPLOW]]
  
-@@ -628,42 +628,42 @@
+@@ -703,42 +703,42 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
  // CHECK: %[[SLICEA0:.+]] = ttg.local_load
  // CHECK: %[[SLICEB0:.+]] = ttg.local_load
  // CHECK: ttg.barrier local
@@ -439,7 +439,7 @@
  // CHECK: scf.yield
  // CHECK: amdg.cond_barrier %[[WARPLOW]]
  
-@@ -1003,30 +1003,30 @@
+@@ -1078,30 +1078,30 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
  
  // CHECK: %[[SLICEA0:.+]] = ttg.local_load
  // CHECK: %[[SLICEB0:.+]] = ttg.local_load
@@ -477,7 +477,7 @@
  // CHECK: scf.yield
  // CHECK: amdg.cond_barrier %[[WARPLOW]]
  
-@@ -1113,43 +1113,43 @@
+@@ -1188,43 +1188,43 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
  // CHECK: %[[SLICEA0:.+]] = ttg.local_load
  // CHECK: %[[SLICEB0:.+]] = ttg.local_load
  // CHECK: ttg.barrier local
@@ -529,7 +529,7 @@
  // CHECK: scf.yield
  // CHECK: amdg.cond_barrier %[[WARPLOW]]
  
-@@ -1409,29 +1409,29 @@
+@@ -1484,29 +1484,29 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
  
  // CHECK: %[[SLICEA0:.+]] = ttg.local_load
  // CHECK: %[[SLICEB0:.+]] = ttg.local_load
@@ -566,7 +566,7 @@
  // CHECK: scf.yield
  // CHECK: amdg.cond_barrier %[[WARPLOW]]
  
-@@ -1532,42 +1532,42 @@
+@@ -1607,42 +1607,42 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
  // CHECK: %[[SLICEA0:.+]] = ttg.local_load
  // CHECK: %[[SLICEB0:.+]] = ttg.local_load
  // CHECK: ttg.barrier local
@@ -617,7 +617,7 @@
  // CHECK: scf.yield
  // CHECK: amdg.cond_barrier %[[WARPLOW]]
  
-@@ -1898,9 +1898,9 @@
+@@ -1973,9 +1973,9 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
  // CHECK: ttg.async_copy_global_to_local
  // CHECK: ttg.async_copy_global_to_local
  // CHECK: ttg.async_copy_global_to_local
@@ -642,7 +642,7 @@
      %ret = amdg.buffer_load %arg0[%offset] cacheModifier = cg : tensor<128xf32, #blocked>
      tt.return
    }
-@@ -32,8 +31,7 @@
+@@ -32,8 +31,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, "ttg.thr
  module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, "ttg.threads-per-warp" = 32 : i32} {
    tt.func @buffer_load_cs(%arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %offset: tensor<128xi32, #blocked> {tt.divisibility = 16 : i32}) {
      // .cs load on RDNA3.5: aux = 7 (GLC|SLC|DLC)
@@ -652,7 +652,7 @@
      %ret = amdg.buffer_load %arg0[%offset] cacheModifier = cs : tensor<128xf32, #blocked>
      tt.return
    }
-@@ -47,8 +45,7 @@
+@@ -47,8 +45,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, "ttg.thr
  module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, "ttg.threads-per-warp" = 32 : i32} {
    tt.func @buffer_load_cv(%arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %offset: tensor<128xi32, #blocked> {tt.divisibility = 16 : i32}) {
      // .cv load on RDNA3.5: aux = 7 (GLC|SLC|DLC)
@@ -662,7 +662,7 @@
      %ret = amdg.buffer_load %arg0[%offset] cacheModifier = cv : tensor<128xf32, #blocked>
      tt.return
    }
-@@ -63,8 +60,7 @@
+@@ -63,8 +60,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, "ttg.thr
    tt.func @buffer_store_cs(%value: tensor<128xf32, #blocked>, %arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %offset: tensor<128xi32, #blocked> {tt.divisibility = 16 : i32}) {
      %c256_i32 = arith.constant 256 : i32
      // .cs store on RDNA3.5: aux = 7 (GLC|SLC|DLC)
@@ -672,7 +672,7 @@
      amdg.buffer_store %value, %arg0[%offset] cacheModifier = cs stride = %c256_i32 : tensor<128xf32, #blocked>
      tt.return
    }
-@@ -79,8 +75,7 @@
+@@ -79,8 +75,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, "ttg.thr
    tt.func @buffer_store_wt(%value: tensor<128xf32, #blocked>, %arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %offset: tensor<128xi32, #blocked> {tt.divisibility = 16 : i32}) {
      %c256_i32 = arith.constant 256 : i32
      // .wt store on RDNA3.5: aux = 7 (GLC|SLC|DLC)
@@ -730,7 +730,7 @@ new file mode 100644
 
 --- a/test/TritonGPU/amd/amd-warp-pipeline-invalid.mlir
 +++ b/test/TritonGPU/amd/amd-warp-pipeline-invalid.mlir
-@@ -14,14 +14,14 @@
+@@ -14,14 +14,14 @@ tt.func @loop_form_for_in_cluster(%n: index) {
  
    scf.for %i = %c0 to %n step %c1 {
      %a = arith.addi %i, %c1 : index
@@ -747,7 +747,7 @@ new file mode 100644
      %b = arith.addi %a, %i : index
  
      scf.yield
-@@ -40,7 +40,7 @@
+@@ -40,7 +40,7 @@ tt.func @loop_form_while_in_cluster(%n: index) {
  
    scf.for %i = %c0 to %n step %c1 {
      %a = arith.addi %i, %c1 : index
@@ -756,7 +756,7 @@ new file mode 100644
  
      // expected-error @+1 {{loop op cannot appear inside a warp_pipeline_stage region}}
      scf.while (%w = %c0) : (index) -> index {
-@@ -52,7 +52,7 @@
+@@ -52,7 +52,7 @@ tt.func @loop_form_while_in_cluster(%n: index) {
        scf.yield %wn : index
      }
  
@@ -765,7 +765,7 @@ new file mode 100644
      %b = arith.addi %a, %i : index
  
      scf.yield
-@@ -74,7 +74,7 @@
+@@ -74,7 +74,7 @@ tt.func @loop_form_nested_pipelined_for(%n: index) {
  
    scf.for %i = %c0 to %n step %c1 {
      %a = arith.addi %i, %c1 : index
@@ -774,7 +774,7 @@ new file mode 100644
  
      // expected-error @+1 {{loop op cannot appear inside a warp_pipeline_stage region}}
      scf.for %j = %c0 to %n step %c1 {
-@@ -84,7 +84,7 @@
+@@ -84,7 +84,7 @@ tt.func @loop_form_nested_pipelined_for(%n: index) {
        scf.yield
      } {triton.warp_pipeline.pipelined_for}
  
@@ -783,7 +783,7 @@ new file mode 100644
      %b = arith.addi %a, %i : index
  
      scf.yield
-@@ -103,14 +103,14 @@
+@@ -103,14 +103,14 @@ tt.func @flat_form_for_in_cluster(%n: index, %ptr: !tt.ptr<f32>) {
    %v0 = arith.constant 0.0 : f32
  
    tt.store %ptr, %v0 : !tt.ptr<f32>
@@ -803,7 +803,7 @@ new file mode 100644
 
 --- a/test/TritonGPU/amd/amd-warp-pipeline.mlir
 +++ b/test/TritonGPU/amd/amd-warp-pipeline.mlir
-@@ -19,13 +19,13 @@
+@@ -19,13 +19,13 @@ tt.func @three_stage_example(%n: index) {
      %a2 = arith.muli %a, %c1 : index
  
      // explicit split point
@@ -819,7 +819,7 @@ new file mode 100644
  
      // Stage 2
      %c  = arith.addi %b, %a : index
-@@ -70,7 +70,7 @@
+@@ -70,7 +70,7 @@ tt.func @two_stage_example(%n: index) {
      %x = arith.addi %i, %c1 : index
  
      // split to Stage 1
@@ -828,7 +828,7 @@ new file mode 100644
  
      // Stage 1
      %y = arith.muli %x, %c1 : index
-@@ -130,12 +130,12 @@
+@@ -130,12 +130,12 @@ tt.func public @triple_buf_two_stages(%arg0: i32, %arg1: i32, %arg2: i32, %arg3:
      %40 = ttg.local_load %arg30 token %arg29 : !ttg.memdesc<32x256xbf16, #shared1, #smem, mutable> -> tensor<32x256xbf16, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 8}>>
      %41 = ttg.async_copy_global_to_local %32, %37 : tensor<256x32x!tt.ptr<bf16>, #linear> -> <256x32xbf16, #shared, #smem, mutable>
      %42 = ttg.async_commit_group tokens %41
@@ -843,7 +843,7 @@ new file mode 100644
      scf.yield %46, %36, %arg28, %37, %43, %arg31, %38, %42, %45, %32, %33 : tensor<256x256xf32, #mma>, i32, !ttg.memdesc<256x32xbf16, #shared, #smem, mutable>, !ttg.memdesc<256x32xbf16, #shared, #smem, mutable>, !ttg.async.token, !ttg.memdesc<32x256xbf16, #shared1, #smem, mutable>, !ttg.memdesc<32x256xbf16, #shared1, #smem, mutable>, !ttg.async.token, !ttg.async.token, tensor<256x32x!tt.ptr<bf16>, #linear>, tensor<32x256x!tt.ptr<bf16>, #linear1>
    }
    ttg.local_dealloc %1 : !ttg.memdesc<3x32x256xbf16, #shared1, #smem, mutable>
-@@ -158,7 +158,7 @@
+@@ -158,7 +158,7 @@ tt.func @flat_pipeline_example(%n: index) {
    // hard boundary for the flat epilogue's backward walk.
    scf.for %i = %c0 to %n step %c1 {
      %x = arith.addi %i, %c1 : index
@@ -852,7 +852,7 @@ new file mode 100644
      %y = arith.muli %x, %c1 : index
      scf.yield
    }
-@@ -167,13 +167,13 @@
+@@ -167,13 +167,13 @@ tt.func @flat_pipeline_example(%n: index) {
    %a  = arith.addi %c0, %c1 : index
    %a2 = arith.muli %a, %c1 : index
  
@@ -868,28 +868,26 @@ new file mode 100644
  
    tt.return
  }
-@@ -219,9 +219,9 @@
+@@ -219,9 +219,9 @@ tt.func @unroll_iv_remap_sunk_past_async_wait(%n: index, %ptr: !tt.ptr<f32>) {
      // iter 0: async_wait FIRST, then stage1 / stage2 bodies.
      ttg.async_wait {num = 0 : i32}
      tt.store %ptr, %v0 : !tt.ptr<f32>
 -    rocdl.sched.barrier 0 {triton.warp_pipeline.border = "stage1"}
--    tt.store %ptr, %v0 : !tt.ptr<f32>
--    rocdl.sched.barrier 0 {triton.warp_pipeline.border = "stage2"}
 +    rocdl.sched.barrier none {triton.warp_pipeline.border = "stage1"}
-+    tt.store %ptr, %v0 : !tt.ptr<f32>
+     tt.store %ptr, %v0 : !tt.ptr<f32>
+-    rocdl.sched.barrier 0 {triton.warp_pipeline.border = "stage2"}
 +    rocdl.sched.barrier none {triton.warp_pipeline.border = "stage2"}
  
      // IV remap injected by unroller; sits between iter-0 last border and
      // iter-1 async_wait -- the poisonous spot.
-@@ -231,9 +231,9 @@
+@@ -231,9 +231,9 @@ tt.func @unroll_iv_remap_sunk_past_async_wait(%n: index, %ptr: !tt.ptr<f32>) {
      ttg.async_wait {num = 0 : i32}
      %off = arith.muli %i_1, %c1 : index
      tt.store %ptr, %v0 : !tt.ptr<f32>
 -    rocdl.sched.barrier 0 {triton.warp_pipeline.border = "stage1"}
--    tt.store %ptr, %v0 : !tt.ptr<f32>
--    rocdl.sched.barrier 0 {triton.warp_pipeline.border = "stage2"}
 +    rocdl.sched.barrier none {triton.warp_pipeline.border = "stage1"}
-+    tt.store %ptr, %v0 : !tt.ptr<f32>
+     tt.store %ptr, %v0 : !tt.ptr<f32>
+-    rocdl.sched.barrier 0 {triton.warp_pipeline.border = "stage2"}
 +    rocdl.sched.barrier none {triton.warp_pipeline.border = "stage2"}
  
      scf.yield
@@ -897,7 +895,7 @@ new file mode 100644
 
 --- a/test/TritonGPU/amd/mfma-double-rate.mlir
 +++ b/test/TritonGPU/amd/mfma-double-rate.mlir
-@@ -142,9 +142,9 @@
+@@ -142,9 +142,9 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.thr
  module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, "ttg.threads-per-warp" = 64 : i32} {
    tt.func public @mxfp4_2step(%arg0: tensor<256x128xi8, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 16}>>, %arg1: tensor<256x8xi8, #linear>, %arg2: tensor<128x256xi8, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 16}>>, %arg3: tensor<256x8xi8, #linear1>) {
      // CHECK-COUNT-32: rocdl.mfma.scale.f32.16x16x128.f8f6f4
@@ -912,7 +910,7 @@ new file mode 100644
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.cpp
-@@ -125,11 +125,14 @@
+@@ -125,11 +125,14 @@ Value BufferEmitter::emitLoad(Type type, Value rsrcDesc, Value offset,
                                triton::CacheModifier cm, bool splitSoffsetSafe) {
    auto b = TritonLLVMOpBuilder(loc, rewriter);
    SmallVector<Value, 6> args;
@@ -930,7 +928,7 @@ new file mode 100644
    data = b.bitcast(data, type);
    if (!isZero(falseVal))
      data = b.select(pred, data, falseVal);
-@@ -144,13 +147,16 @@
+@@ -144,13 +147,16 @@ BufferEmitter::emitLoadToLds(Type type, Value byteWidth, Value rsrcDesc,
    SmallVector<Value, 6> commonArgs;
    // soffset (ArgIndex 4) accepts a runtime SGPR, same as regular buffer
    // loads. The uniformity split applies here too.
@@ -949,7 +947,7 @@ new file mode 100644
    return ROCDL::RawPtrBufferLoadAsyncLdsOp::create(
        rewriter, loc, TypeRange{},
        ValueRange{
-@@ -158,10 +164,10 @@
+@@ -158,10 +164,10 @@ BufferEmitter::emitLoadToLds(Type type, Value byteWidth, Value rsrcDesc,
            dst,           // ArgIndex 1: LDS base ptr
            byteWidth,     // ArgIndex 2: data byte size (immarg)
            commonArgs[1], // ArgIndex 3: voffset (per-lane VGPR)
@@ -964,15 +962,14 @@ new file mode 100644
  }
  
  Value BufferEmitter::emitAtomicCAS(Type type, Value rsrcDesc, Value offset,
-@@ -180,10 +186,14 @@
+@@ -180,10 +186,14 @@ Value BufferEmitter::emitAtomicCAS(Type type, Value rsrcDesc, Value offset,
    // the opposite of the order in tl.atomic_cmpxchg
    // and amdg.buffer_atomic_cas
    SmallVector<Value, 6> args{casStoreVal, casCmpVal};
 -  fillCommonArgsAtomics(type, rsrcDesc, offset, pred, hasUsers, args);
--
 +  int32_t aux =
 +      fillCommonArgsAtomics(type, rsrcDesc, offset, pred, hasUsers, args);
-+
+ 
 +  SmallVector<NamedAttribute> attrs;
 +  attrs.push_back(
 +      rewriter.getNamedAttr("aux", rewriter.getI32IntegerAttr(aux)));
@@ -982,7 +979,7 @@ new file mode 100644
    data = b.bitcast(data, type);
    return data;
  }
-@@ -198,7 +208,10 @@
+@@ -198,7 +208,10 @@ Value BufferEmitter::emitAtomicRMW(RMWOp rmwType, Type type, Value rsrcDesc,
      data = b.bitcast(data, bufferType);
  
    SmallVector<Value, 6> args{data};
@@ -994,7 +991,7 @@ new file mode 100644
  
    // TODO:
    //   The ops in ROCDL (e.g., RawPtrBufferAtomicFaddOp) have no return value,
-@@ -230,10 +243,12 @@
+@@ -230,10 +243,12 @@ void BufferEmitter::emitStore(Value rsrcDesc, Value offset, Value data,
    if (vecTy != bufferType)
      data = b.bitcast(data, bufferType);
    SmallVector<Value, 6> args{data};
@@ -1011,7 +1008,7 @@ new file mode 100644
  }
  
  Type BufferEmitter::getBufferOpType(Type type, bool atomicsOp) {
-@@ -282,11 +297,11 @@
+@@ -282,11 +297,11 @@ Type BufferEmitter::getBufferOpType(Type type, bool atomicsOp) {
    return bufferType;
  }
  
@@ -1028,7 +1025,7 @@ new file mode 100644
    auto b = TritonLLVMOpBuilder(loc, rewriter);
    Type elementType = getElementTypeOrSelf(type);
    const int valueElemNBits = std::max(8u, elementType.getIntOrFloatBitWidth());
-@@ -319,18 +334,17 @@
+@@ -319,18 +334,17 @@ void BufferEmitter::fillCommonArgs(Type type, Value rsrcDesc,
  
    int32_t aux =
        getCtrlBitsForCacheModifierOnTarget(cm, isBufferLoad, targetInfo);
@@ -1038,15 +1035,13 @@ new file mode 100644
    args.push_back(maskedOffsetBytes);
    args.push_back(sgprOffsetBytes);
 -  args.push_back(cacheModifiers);
--}
--
++  return aux;
+ }
+ 
 -void BufferEmitter::fillCommonArgsAtomics(Type type, Value rsrcDesc,
 -                                          Value vOffsetElems, Value pred,
 -                                          bool hasUsers,
 -                                          SmallVector<Value> &args) {
-+  return aux;
-+}
-+
 +int32_t BufferEmitter::fillCommonArgsAtomics(Type type, Value rsrcDesc,
 +                                             Value vOffsetElems, Value pred,
 +                                             bool hasUsers,
@@ -1054,7 +1049,7 @@ new file mode 100644
    auto b = TritonLLVMOpBuilder(loc, rewriter);
    Type elementType = getElementTypeOrSelf(type);
    const int valueElemNBits = std::max(8u, elementType.getIntOrFloatBitWidth());
-@@ -344,12 +358,11 @@
+@@ -344,12 +358,11 @@ void BufferEmitter::fillCommonArgsAtomics(Type type, Value rsrcDesc,
    Value sgprOffset = b.int_val(32, 0);
  
    int32_t aux = targetInfo.getBufferAtomicCachePolicy(hasUsers);
@@ -1071,7 +1066,7 @@ new file mode 100644
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.h
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.h
-@@ -100,14 +100,14 @@
+@@ -100,14 +100,14 @@ struct BufferEmitter {
  
  private:
    // Fill common buffer operation arguments.
@@ -1095,7 +1090,7 @@ new file mode 100644
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/ConvertWarpPipeline.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/ConvertWarpPipeline.cpp
-@@ -239,12 +239,12 @@
+@@ -239,12 +239,12 @@ static void analyzePipelineDependencies(ArrayRef<BlockInfo> clusterInfo,
  }
  
  static void emitClusterBarrier(OpBuilder &r, Location loc, bool needLocal) {
@@ -1110,7 +1105,7 @@ new file mode 100644
  }
  
  static void emitClusterPriority(OpBuilder &r, Location loc,
-@@ -268,9 +268,9 @@
+@@ -268,9 +268,9 @@ static void wrapExistingBarrier(OpBuilder &b, Location loc,
                                  bool anyHasPriority) {
    b.setInsertionPoint(existingBarrier);
    emitClusterPriority(b, loc, clusterOp, anyHasPriority);
@@ -1125,7 +1120,7 @@ new file mode 100644
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/DotOpToLLVM/MFMA.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/DotOpToLLVM/MFMA.cpp
-@@ -89,7 +89,15 @@
+@@ -89,7 +89,15 @@ struct DotOpMFMAConversionHelper {
      loweredOp.addOperands({valA, valB, valC});
      loweredOp.addAttribute("cbsz", rewriter.getI32IntegerAttr(cbsz));
      loweredOp.addAttribute("abid", rewriter.getI32IntegerAttr(abid));
@@ -1142,7 +1137,7 @@ new file mode 100644
      return rewriter.create(loweredOp)->getResult(0);
    }
  
-@@ -546,8 +554,12 @@
+@@ -546,8 +554,12 @@ struct ScaledDotOpMFMAConversionHelper : DotOpMFMAConversionHelper {
      // instructions instead of V_MFMA_SCALE_*_F8F6F4 to reduce memory access.
      Value zeroScale = b.i32_val(0);
      loweredOp.addOperands({valA, valB, valC, zeroScale, zeroScale});
@@ -1157,7 +1152,7 @@ new file mode 100644
      loweredOp.addAttribute("opselA", rewriter.getI32IntegerAttr(0));
      loweredOp.addAttribute("opselB", rewriter.getI32IntegerAttr(0));
      return rewriter.create(loweredOp)->getResult(0);
-@@ -565,8 +577,12 @@
+@@ -565,8 +577,12 @@ struct ScaledDotOpMFMAConversionHelper : DotOpMFMAConversionHelper {
      assert((cbsz != -1) && (blgp != -1));
      loweredOp.addTypes(resType);
      loweredOp.addOperands({valA, valB, valC, valScaleA, valScaleB});
@@ -1172,7 +1167,7 @@ new file mode 100644
      loweredOp.addAttribute("opselA", rewriter.getI32IntegerAttr(opSelA));
      loweredOp.addAttribute("opselB", rewriter.getI32IntegerAttr(opSelB));
      return rewriter.create(loweredOp)->getResult(0);
-@@ -750,9 +766,11 @@
+@@ -750,9 +766,11 @@ struct ScaledDotOpMFMAConversionHelper : DotOpMFMAConversionHelper {
            for (int n = 0; n < numRepN; ++n) {
              // Insert pingpong cluster barrier when needed.
              if (is2Step && currIter++ == halfPoint) {
@@ -1189,7 +1184,7 @@ new file mode 100644
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/LoadStoreOpToLLVM.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/LoadStoreOpToLLVM.cpp
-@@ -1059,7 +1059,8 @@
+@@ -1070,7 +1070,8 @@ struct AsyncCopyGlobalToLocalOpConversion
        // Use the async intrinsic so LLVM tracks these via asyncmark
        auto asyncLoadOp = ROCDL::GlobalLoadAsyncLDSOp::create(
            rewriter, loc, srcPtr, shmemAddr, vecBits / 8,
@@ -1199,7 +1194,7 @@ new file mode 100644
        if (targetInfo.requiresAliasInfoForAsyncOps())
          AMD::addAsyncCopyAliasScope(asyncLoadOp);
      } else if (targetInfo.getISAFamily() == ISAFamily::GFX1250) {
-@@ -1067,32 +1068,38 @@
+@@ -1078,32 +1079,38 @@ struct AsyncCopyGlobalToLocalOpConversion
        case 32:
          if (multicastMask)
            ROCDL::ClusterLoadAsyncToLDSB32Op::create(
@@ -1448,7 +1443,7 @@ new file mode 100644
 
 --- a/third_party/amd/lib/TritonAMDGPUTransforms/BlockPingpong.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUTransforms/BlockPingpong.cpp
-@@ -188,7 +188,8 @@
+@@ -216,7 +216,8 @@ SmallVector<Operation *> Pingponger::genClusterBarrier(OpBuilder &builder,
    //  MembarAnalysis can recognize gpu::BarrierOp and skip inserting additional
    auto barrierOp = triton::gpu::BarrierOp::create(
        builder, loc, triton::gpu::AddrSpace::Local);
@@ -1458,7 +1453,7 @@ new file mode 100644
    return {barrierOp, schedBarrierOp};
  }
  void Pingponger::appendClusterBarrier(OpBuilder &builder, Location loc) {
-@@ -399,7 +400,8 @@
+@@ -427,7 +428,8 @@ void Pingponger::transformOnePPClusters(OpBuilder &builder, Location loc) {
    auto dotLoc = dotOps[0]->getPrevNode();
    // sched barrier to prevent memory ops from cross but leave other ops to be
    // scheduled across the barrier.
@@ -1468,7 +1463,7 @@ new file mode 100644
    updateOpInsertion(dotLoc);
    appendOp(preDotBar);
  
-@@ -407,7 +409,8 @@
+@@ -435,7 +437,8 @@ void Pingponger::transformOnePPClusters(OpBuilder &builder, Location loc) {
    updateOpInsertion(lLoadOps[0]);
    appendOp(ROCDL::SetPrioOp::create(builder, loc, highPriority));
    moveOpAndPredecessorsUpSameBlock(gLoadOps[0]);
@@ -1478,7 +1473,7 @@ new file mode 100644
    moveOpAndPredecessorsUpSameBlock(lLoadOps[1]);
    appendOp(ROCDL::SetPrioOp::create(builder, loc, lowPriority));
    moveOpAndPredecessorsUpSameBlock(gLoadOps[1]);
-@@ -610,18 +613,22 @@
+@@ -638,18 +641,22 @@ LogicalResult Pingponger::transformTwoPPClusters(OpBuilder &builder,
    // cycles, sched.barrier prevents backend from canceling the interleaved order
    updateOpInsertion(gLoadOps[1]);
    appendSlicedLoadAB(/*slice=*/0);
@@ -1505,7 +1500,7 @@ new file mode 100644
  
    // dot0 (1/2)
    appendOpWithPrio(builder, dotSliceOps[0], loc);
-@@ -668,9 +675,11 @@
+@@ -696,9 +703,11 @@ LogicalResult Pingponger::transformTwoClusterWithAsyncAndAll(OpBuilder &builder,
    for (auto glop : gLoadOps)
      moveOpAndPredecessorsUpSameBlock(glop);
  
@@ -1519,7 +1514,7 @@ new file mode 100644
  
    // all other ops are placed in the second cluster
    // set unit attr, so it can trigger the second step in the ttg to llvm
-@@ -782,14 +791,19 @@
+@@ -810,14 +819,19 @@ LogicalResult Pingponger::transformChainedDotSchedule(OpBuilder &builder,
    // ComputeCluster 1
    updateOpInsertion(dotOps[0]);
    prependOp(ROCDL::SBarrierOp::create(builder, loc), false);
@@ -1542,7 +1537,7 @@ new file mode 100644
    } else {
      prependOp(triton::gpu::BarrierOp::create(builder, loc,
                                               triton::gpu::AddrSpace::Local),
-@@ -814,21 +828,28 @@
+@@ -842,21 +856,28 @@ LogicalResult Pingponger::transformChainedDotSchedule(OpBuilder &builder,
    //
    // Check note 2 and 3 for details.
    updateOpInsertion(dotOps[1]);
@@ -1575,7 +1570,7 @@ new file mode 100644
    } else {
      prependOp(triton::gpu::BarrierOp::create(builder, loc,
                                               triton::gpu::AddrSpace::Local),
-@@ -850,7 +871,9 @@
+@@ -878,7 +899,9 @@ LogicalResult Pingponger::transformChainedDotSchedule(OpBuilder &builder,
    // them into the compute cluster. Instead, we insert s_barrier
    // at the beginning of the loop.
    updateOpInsertion(lastInsertedOp->getBlock()->getTerminator());
@@ -1586,7 +1581,7 @@ new file mode 100644
    prependOp(ROCDL::SetPrioOp::create(builder, loc, lowPriority), false);
    prependOp(createLocalMMRAFence(builder, loc, LLVM::AtomicOrdering::release),
              false);
-@@ -894,7 +917,8 @@
+@@ -922,7 +945,8 @@ Pingponger::transformTwoClusterWithLocalLoadAndAll(OpBuilder &builder,
  
    moveOpAndPredecessorsUpSameBlock(lLoadOps[0]);
    moveOpAndPredecessorsUpSameBlock(lLoadOps[1]);
@@ -1596,7 +1591,7 @@ new file mode 100644
  
    appendOp(asyncCopyOps[0]);
    appendOp(asyncCommitOps[0]);
-@@ -902,25 +926,34 @@
+@@ -930,25 +954,34 @@ Pingponger::transformTwoClusterWithLocalLoadAndAll(OpBuilder &builder,
    // The last point we need to guarantee async_copy has been completed.
    // w0 : local_load 0 - Dot 0                 - local_load 1
    // w1 :              - local_load 0 (*wait 1)- Dot 0
@@ -1643,7 +1638,7 @@ new file mode 100644
 
 --- a/third_party/amd/lib/TritonAMDGPUTransforms/WarpPipeliner.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUTransforms/WarpPipeliner.cpp
-@@ -75,7 +75,8 @@
+@@ -75,7 +75,8 @@ static void addDummyOpIfEmptyCluster(OpBuilder &b, Location loc,
    if (!cluster.empty())
      return;
    b.setInsertionPoint(insertBefore);
@@ -1656,7 +1651,7 @@ new file mode 100644
 
 --- a/third_party/proton/Dialect/lib/ProtonGPUToLLVM/ProtonAMDGPUToLLVM/AddSchedBarriers.cpp
 +++ b/third_party/proton/Dialect/lib/ProtonGPUToLLVM/ProtonAMDGPUToLLVM/AddSchedBarriers.cpp
-@@ -32,8 +32,8 @@
+@@ -32,8 +32,8 @@ struct AddSchedBarriers
      auto funcOps = triton::proton::gpu::getTritonFunctions(mod);
      assert(funcOps.size() == 1 && "Expected exactly one funcOp");
  

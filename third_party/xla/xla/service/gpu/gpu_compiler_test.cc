@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
@@ -1781,6 +1782,7 @@ TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
               absl_testing::IsOkAndHolds(true));
 }
 
+
 TEST_F(GpuCompilerTest, MosaicCollectiveMetadataRequiresSymmetricMemoryCopies) {
   if (device_description().gpu_compute_capability().IsRocm()) {
     GTEST_SKIP() << "Mosaic GPU is not supported on ROCm.";
@@ -2025,19 +2027,19 @@ ENTRY test_computation {
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
   constexpr absl::string_view kS0NoCopy = R"(
-    // CHECK:  %collective-permute-start = ((u32[2]{0}), u32[2]{0}) collective-permute-start(%p)
+    // CHECK:  %collective-permute-start = (u32[2]{0}, u32[2]{0}) collective-permute-start(%p)
     // CHECK:  ROOT %collective-permute-done = u32[2]{0} collective-permute-done(%collective-permute-start)
   )";
 
   constexpr absl::string_view kS0OneResultCopy = R"(
-    // CHECK:  %collective-permute-start = ((u32[2]{0}), u32[2]{0}) collective-permute-start(%p)
+    // CHECK:  %collective-permute-start = (u32[2]{0}, u32[2]{0}) collective-permute-start(%p)
     // CHECK:  %collective-permute-done = u32[2]{0} collective-permute-done(%collective-permute-start)
     // CHECK:  ROOT %copy{{.*}} = u32[2]{0} copy(%collective-permute-done)
   )";
 
   constexpr absl::string_view kS1TwoCopies = R"(
     // CHECK:  [[COPY0:%copy[0-9.]*]] = u32[2]{0:S(1)} copy(%p)
-    // CHECK:  %collective-permute-start = ((u32[2]{0:S(1)}), u32[2]{0:S(1)}) collective-permute-start([[COPY0]])
+    // CHECK:  %collective-permute-start = (u32[2]{0:S(1)}, u32[2]{0:S(1)}) collective-permute-start([[COPY0]])
     // CHECK:  %collective-permute-done = u32[2]{0:S(1)} collective-permute-done(%collective-permute-start)
     // CHECK:  ROOT %copy{{.*}} = u32[2]{0} copy(%collective-permute-done)
   )";
@@ -2243,22 +2245,20 @@ TEST_P(GpuCompilerParametersCopyCollectiveMemoryTest, DirectUsage) {
       GetParam().xla_gpu_enable_nccl_buffers ||
       GetParam().xla_gpu_experimental_enable_nccl_symmetric_buffers;
 
-  // NB: Its always async-start/async-done, for the all-reduce but syntactic
-  // sugar in the HLO printer makes it all-reduce-start/all-reduce-done.
   constexpr absl::string_view kS0NoCopy = R"(
-    // CHECK:  %all-reduce-start = ((s32[1]{0}), s32[1]{0}) all-reduce-start(%parameter_used_by_collective)
+    // CHECK:  %all-reduce-start = s32[1]{0} all-reduce-start(%parameter_used_by_collective)
     // CHECK:  ROOT %all-reduce-done = s32[1]{0} all-reduce-done(%all-reduce-start)
   )";
 
   constexpr absl::string_view kS0OneCopy = R"(
     // CHECK:  %copy.{{[0-9]+}} = s32[1]{0} copy(%parameter_used_by_collective)
-    // CHECK:  %all-reduce-start = ((s32[1]{0}), s32[1]{0}) all-reduce-start(%copy.{{[0-9]+}})
+    // CHECK:  %all-reduce-start = s32[1]{0} all-reduce-start(%copy.{{[0-9]+}})
     // CHECK:  ROOT %all-reduce-done = s32[1]{0} all-reduce-done(%all-reduce-start)
   )";
 
   constexpr absl::string_view kS1TwoCopies = R"(
     // CHECK:  %copy.{{[0-9]+}} = s32[1]{0:S(1)} copy(%parameter_used_by_collective)
-    // CHECK:  %all-reduce-start = ((s32[1]{0:S(1)}), s32[1]{0:S(1)}) all-reduce-start(%copy.{{[0-9]+}})
+    // CHECK:  %all-reduce-start = s32[1]{0:S(1)} all-reduce-start(%copy.{{[0-9]+}})
     // CHECK:  %all-reduce-done = s32[1]{0:S(1)} all-reduce-done(%all-reduce-start)
     // CHECK:  ROOT %copy.{{[0-9]+}} = s32[1]{0} copy(%all-reduce-done)
   )";

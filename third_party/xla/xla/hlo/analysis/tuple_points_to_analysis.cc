@@ -241,19 +241,20 @@ absl::Status TuplePointsToAnalysis::HandleGetTupleElement(
   const PointsToSet& operand_points_to_set =
       *PerInst(get_tuple_element->operand(0))->points_to_set;
 
-  // Copy the points-to set (and tuple sources) at index {element_index} of the
-  // operand to the points-to set for this GetTupleElement instruction.
+  // Forward the points-to set (and tuple sources) at index {element_index}
+  // of the operand to the points-to set for this GetTupleElement instruction.
   points_to_set.ForEachMutableElement(
       [&](const ShapeIndex& target_index, PointsToSet::BufferList* points_to) {
         // Construct an index into the operand by prepending element_index to
         // the index for the GetTupleElement instruction's points-to set.
-        ShapeIndex src_index;
-        src_index.push_back(element_index);
-        for (auto element : target_index) {
-          src_index.push_back(element);
-        }
+        ShapeIndex src_index({element_index});
+        src_index.insert(src_index.end(), target_index.begin(),
+                         target_index.end());
 
+        // Forward the pointed-to buffers.
         *points_to = operand_points_to_set.element(src_index);
+
+        // Forward the tuple sources.
         for (HloInstruction* tuple :
              operand_points_to_set.tuple_sources(src_index)) {
           points_to_set.add_tuple_source(target_index, tuple);
@@ -397,7 +398,7 @@ absl::Status TuplePointsToAnalysis::HandleAsyncUpdate(
 
 absl::Status TuplePointsToAnalysis::HandleAsyncDone(
     HloInstruction* async_done) {
-  // AsyncDone forwards its aliased operand.
+  // AsyncDone forwards its (only) the sub-tuple at index {1} to its output.
   PointsToSet& points_to_set = CreateEmptyPointsToSet(async_done);
   const PointsToSet& operand_points_to_set =
       GetPointsToSet(async_done->operand(0));
@@ -519,20 +520,20 @@ absl::Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
     const PointsToSet& operand_points_to_set =
         *PerInst(operands[i])->points_to_set;
 
-    // Copy the points-to set (and tuple sources) of the operand into the
+    // Forward the points-to set and tuple sources of the operand into the
     // respective subtree of the tuple instructions points-to set.
     operand_points_to_set.ForEachElement(
         [&points_to_set, &operand_points_to_set, i](
             const ShapeIndex& src_index,
             const PointsToSet::BufferList& points_to) {
-          ShapeIndex target_index;
-          target_index.push_back(i);
-          for (auto element : src_index) {
-            target_index.push_back(element);
-          }
+          ShapeIndex target_index({i});
+          target_index.insert(target_index.end(), src_index.begin(),
+                              src_index.end());
 
+          // Forward the points-to set
           *points_to_set.mutable_element(target_index) = points_to;
 
+          // Forward the tuple sources.
           for (HloInstruction* tuple :
                operand_points_to_set.tuple_sources(src_index)) {
             points_to_set.add_tuple_source(target_index, tuple);
@@ -540,6 +541,7 @@ absl::Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
         });
   }
 
+  // Add the tuple instruction as a tuple source for the top-level tuple.
   points_to_set.add_tuple_source({}, tuple);
 
   return absl::OkStatus();

@@ -1,0 +1,407 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/hlo/analysis/logical_buffer_analysis.h"
+
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/service/logical_buffer.h"
+#include "xla/shape_util.h"
+
+namespace xla {
+namespace {
+
+using ::testing::UnorderedElementsAre;
+
+class LogicalBufferAnalysisTest : public HloHardwareIndependentTestBase {
+ protected:
+  std::unique_ptr<LogicalBufferAnalysis> analysis_;
+
+  // Verifies that a buffer is defined by `instruction` at `index` and matches.
+  void VerifyBufferDefinedAt(HloInstruction* instruction,
+                             const ShapeIndex& index) {
+    const LogicalBuffer& buffer = analysis_->GetBuffer(instruction, index);
+    EXPECT_EQ(buffer.instruction(), instruction);
+    EXPECT_EQ(buffer.index(), index);
+    const LogicalBuffer& buffer_by_id = analysis_->GetBuffer(buffer.id());
+    EXPECT_EQ(&buffer_by_id, &buffer);
+  }
+
+  // Verifies that no buffer is defined by `instruction` at `index`.
+  void VerifyNoBufferDefinedAt(const HloInstruction* instruction,
+                               const ShapeIndex& index) {
+    for (const auto& buf : analysis_->logical_buffers()) {
+      if (buf->instruction() == instruction && buf->index() == index) {
+        ADD_FAILURE() << "Instruction " << instruction->name() << " at index "
+                      << index.ToString()
+                      << " should not define a logical buffer.";
+      }
+    }
+  }
+
+  // Returns all defining locations present in the analysis.
+  std::vector<std::pair<const HloInstruction*, ShapeIndex>> GetDefiningSites() {
+    std::vector<std::pair<const HloInstruction*, ShapeIndex>> defining_sites;
+    for (const auto& buf : analysis_->logical_buffers()) {
+      defining_sites.push_back({buf->instruction(), buf->index()});
+    }
+    return defining_sites;
+  }
+};
+
+TEST_F(LogicalBufferAnalysisTest, BasicAndAccessors) {
+  const absl::string_view hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    ROOT const = f32[] constant(1.0)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(module.get()));
+
+  HloInstruction* const_inst = FindInstruction(module.get(), "const");
+  HloInstruction* param = FindInstruction(module.get(), "p0");
+
+  EXPECT_EQ(analysis_->num_logical_buffers(), 2);
+  EXPECT_FALSE(analysis_->logical_buffers().empty());
+
+  VerifyBufferDefinedAt(const_inst, {});
+  VerifyBufferDefinedAt(param, {});
+
+  EXPECT_THAT(GetDefiningSites(),
+              UnorderedElementsAre(std::make_pair(const_inst, ShapeIndex({})),
+                                   std::make_pair(param, ShapeIndex({}))));
+}
+
+TEST_F(LogicalBufferAnalysisTest, DataflowOps) {
+  absl::string_view hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    p1 = f32[2,3] parameter(1)
+    tok = token[] after-all()
+    tuple = (f32[2,3], f32[2,3]) tuple(p0, p1)
+    gte = f32[2,3] get-tuple-element(tuple), index=0
+    bitcast = f32[2,3] bitcast(gte)
+    domain_inst = f32[2,3] domain(bitcast), domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+    copy = f32[2,3] copy(domain_inst)
+    ROOT dep = f32[2,3] add-dependency(copy, tok)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(module.get()));
+
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloInstruction* p1 = FindInstruction(module.get(), "p1");
+  HloInstruction* tok = FindInstruction(module.get(), "tok");
+  HloInstruction* tuple = FindInstruction(module.get(), "tuple");
+  HloInstruction* gte = FindInstruction(module.get(), "gte");
+  HloInstruction* bitcast = FindInstruction(module.get(), "bitcast");
+  HloInstruction* domain_inst = FindInstruction(module.get(), "domain_inst");
+  HloInstruction* copy = FindInstruction(module.get(), "copy");
+  HloInstruction* dep = FindInstruction(module.get(), "dep");
+
+  EXPECT_EQ(analysis_->num_logical_buffers(), 5);
+
+  VerifyBufferDefinedAt(p0, {});
+  VerifyBufferDefinedAt(p1, {});
+  VerifyBufferDefinedAt(tok, {});
+  VerifyBufferDefinedAt(tuple, {});
+  VerifyBufferDefinedAt(copy, {});
+
+  VerifyNoBufferDefinedAt(tuple, {0});
+  VerifyNoBufferDefinedAt(tuple, {1});
+  VerifyNoBufferDefinedAt(gte, {});
+  VerifyNoBufferDefinedAt(bitcast, {});
+  VerifyNoBufferDefinedAt(domain_inst, {});
+  VerifyNoBufferDefinedAt(dep, {});
+
+  EXPECT_THAT(GetDefiningSites(),
+              UnorderedElementsAre(std::make_pair(p0, ShapeIndex({})),
+                                   std::make_pair(p1, ShapeIndex({})),
+                                   std::make_pair(tok, ShapeIndex({})),
+                                   std::make_pair(tuple, ShapeIndex({})),
+                                   std::make_pair(copy, ShapeIndex({}))));
+}
+
+TEST_F(LogicalBufferAnalysisTest, CopyStartDone) {
+  absl::string_view hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    copy-start = (f32[2,3], f32[2,3], u32[]) copy-start(p0)
+    ROOT copy-done = f32[2,3] copy-done(copy-start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(module.get()));
+
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloInstruction* copy_start = FindInstruction(module.get(), "copy-start");
+  HloInstruction* copy_done = FindInstruction(module.get(), "copy-done");
+
+  EXPECT_EQ(analysis_->num_logical_buffers(), 4);
+
+  VerifyBufferDefinedAt(p0, {});
+  VerifyBufferDefinedAt(copy_start, {});
+  VerifyBufferDefinedAt(copy_start, {0});
+  VerifyBufferDefinedAt(copy_start, {2});
+
+  VerifyNoBufferDefinedAt(copy_start, {1});
+  VerifyNoBufferDefinedAt(copy_done, {});
+
+  EXPECT_THAT(
+      GetDefiningSites(),
+      UnorderedElementsAre(std::make_pair(p0, ShapeIndex({})),
+                           std::make_pair(copy_start, ShapeIndex({})),
+                           std::make_pair(copy_start, ShapeIndex({0})),
+                           std::make_pair(copy_start, ShapeIndex({2}))));
+}
+
+TEST_F(LogicalBufferAnalysisTest, SendRecvDone) {
+  absl::string_view hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    tok = token[] after-all()
+    send = (f32[2,3], u32[], token[]) send(p0, tok), channel_id=1
+    send-done = token[] send-done(send), channel_id=1
+    recv = (f32[2,3], u32[], token[]) recv(tok), channel_id=2
+    ROOT recv-done = (f32[2,3], token[]) recv-done(recv), channel_id=2
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(module.get()));
+
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloInstruction* tok = FindInstruction(module.get(), "tok");
+  HloInstruction* send = FindInstruction(module.get(), "send");
+  HloInstruction* send_done = FindInstruction(module.get(), "send-done");
+  HloInstruction* recv = FindInstruction(module.get(), "recv");
+  HloInstruction* recv_done = FindInstruction(module.get(), "recv-done");
+
+  EXPECT_EQ(analysis_->num_logical_buffers(), 12);
+
+  VerifyBufferDefinedAt(p0, {});
+  VerifyBufferDefinedAt(tok, {});
+  VerifyBufferDefinedAt(send, {});
+  VerifyBufferDefinedAt(send, {1});
+  VerifyBufferDefinedAt(send, {2});
+  VerifyBufferDefinedAt(send_done, {});
+
+  VerifyBufferDefinedAt(recv, {});
+  VerifyBufferDefinedAt(recv, {0});
+  VerifyBufferDefinedAt(recv, {1});
+  VerifyBufferDefinedAt(recv, {2});
+
+  VerifyBufferDefinedAt(recv_done, {});
+  VerifyBufferDefinedAt(recv_done, {1});
+
+  VerifyNoBufferDefinedAt(send, {0});
+  VerifyNoBufferDefinedAt(recv_done, {0});
+
+  EXPECT_THAT(GetDefiningSites(),
+              UnorderedElementsAre(std::make_pair(p0, ShapeIndex({})),
+                                   std::make_pair(tok, ShapeIndex({})),
+                                   std::make_pair(send, ShapeIndex({})),
+                                   std::make_pair(send, ShapeIndex({1})),
+                                   std::make_pair(send, ShapeIndex({2})),
+                                   std::make_pair(send_done, ShapeIndex({})),
+                                   std::make_pair(recv, ShapeIndex({})),
+                                   std::make_pair(recv, ShapeIndex({0})),
+                                   std::make_pair(recv, ShapeIndex({1})),
+                                   std::make_pair(recv, ShapeIndex({2})),
+                                   std::make_pair(recv_done, ShapeIndex({})),
+                                   std::make_pair(recv_done, ShapeIndex({1}))));
+}
+
+TEST_F(LogicalBufferAnalysisTest, CustomCallFusionAsync) {
+  absl::string_view hlo_str = R"(
+  HloModule module
+
+  fused_computation {
+    p0.fused = f32[2,3] parameter(0)
+    ROOT copy.fused = f32[2,3] copy(p0.fused)
+  }
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    ccall = f32[2,3] custom-call(p0), custom_call_target="cc_target",
+            output_to_operand_aliasing={ {}: (0, {}) }
+    fusion = f32[2,3] fusion(p0), kind=kLoop, calls=fused_computation
+    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0),
+                                                custom_call_target="bar"
+    ROOT async-done = f32[2,3] custom-call-done(async-start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(module.get()));
+
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloInstruction* ccall = FindInstruction(module.get(), "ccall");
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+
+  HloInstruction* p0_fused =
+      fusion->fused_instructions_computation()->parameter_instruction(0);
+  HloInstruction* copy_fused = fusion->fused_expression_root();
+
+  EXPECT_EQ(analysis_->num_logical_buffers(), 12);
+
+  VerifyBufferDefinedAt(p0, {});
+  VerifyBufferDefinedAt(ccall, {});
+  VerifyBufferDefinedAt(fusion, {});
+  VerifyBufferDefinedAt(p0_fused, {});
+  VerifyBufferDefinedAt(copy_fused, {});
+
+  VerifyBufferDefinedAt(async_start, {});
+  VerifyBufferDefinedAt(async_start, {0});
+  VerifyBufferDefinedAt(async_start, {1});
+  VerifyBufferDefinedAt(async_start, {2});
+  VerifyNoBufferDefinedAt(async_start, {0, 0});
+  VerifyBufferDefinedAt(async_done, {});
+}
+
+TEST_F(LogicalBufferAnalysisTest, NestedAndAliasedFusion) {
+  absl::string_view hlo_str = R"(
+  HloModule module
+
+  fused_computation_inner {
+    p0.inner = f32[2,3] parameter(0)
+    ROOT copy.inner = f32[2,3] copy(p0.inner)
+  }
+
+  fused_computation_outer {
+    p0.outer = f32[2,3] parameter(0)
+    ROOT fusion.inner = f32[2,3] fusion(p0.outer), kind=kLoop,
+                                 calls=fused_computation_inner
+  }
+
+  fused_computation_alias {
+    p0.alias = f32[2,3] parameter(0)
+    ROOT copy.alias = f32[2,3] copy(p0.alias)
+  }
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    fusion.outer = f32[2,3] fusion(p0), kind=kLoop, calls=fused_computation_outer
+    ROOT fusion.alias = f32[2,3] fusion(p0), kind=kLoop,
+                                 calls=fused_computation_alias,
+                                 output_to_operand_aliasing={ {}: (0, {}) }
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(module.get()));
+
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloInstruction* fusion_outer = FindInstruction(module.get(), "fusion.outer");
+
+  HloInstruction* fusion_alias = FindInstruction(module.get(), "fusion.alias");
+
+  VerifyBufferDefinedAt(p0, {});
+  VerifyBufferDefinedAt(fusion_outer, {});
+  // No buffer is defined at the output of fusion.alias because it is explicitly
+  // aliased to the input.
+  VerifyNoBufferDefinedAt(fusion_alias, {});
+}
+
+TEST_F(LogicalBufferAnalysisTest, AsyncStartWithOutputToOperandAliasing) {
+  absl::string_view hlo_str = R"(
+  HloModule module
+
+  fused_computation_async {
+    p0.async = f32[2,3] parameter(0)
+    ROOT copy.async = f32[2,3] copy(p0.async)
+  }
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    async-start = ((f32[2,3]), f32[2,3], u32[]) async-start(p0),
+                  calls=fused_computation_async,
+                  output_to_operand_aliasing={ {1}: (0, {}) }
+    ROOT async-done = f32[2,3] async-done(async-start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(module.get()));
+
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+
+  VerifyBufferDefinedAt(p0, {});
+
+  // async-start defines output except implicitly/explicitly aliased:
+  // - {} (top-level tuple) -> defined (not aliased)
+  // - {0} (sub-tuple) -> defined
+  // - {0, 0} -> implicitly aliased
+  // - {1} -> explicitly aliased (to p0)
+  // - {2} (state) -> defined
+  VerifyBufferDefinedAt(async_start, {});
+  VerifyBufferDefinedAt(async_start, {0});
+  VerifyBufferDefinedAt(async_start, {2});
+
+  VerifyNoBufferDefinedAt(async_start, {0, 0});
+  VerifyNoBufferDefinedAt(async_start, {1});
+}
+
+TEST_F(LogicalBufferAnalysisTest, CustomCallAliasingWithDataflowFlag) {
+  absl::string_view hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    ROOT ccall = f32[2,3] custom-call(p0), custom_call_target="cc_target",
+                 output_to_operand_aliasing={ {}: (0, {}) }
+  }
+  )";
+
+  // Case 1: alias_buffer_across_dataflow = false (default)
+  {
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+    ASSERT_OK_AND_ASSIGN(
+        analysis_,
+        LogicalBufferAnalysis::Run(module.get(),
+                                   /*alias_buffer_across_dataflow=*/false));
+    HloInstruction* ccall = FindInstruction(module.get(), "ccall");
+    VerifyBufferDefinedAt(ccall, {});
+  }
+
+  // Case 2: alias_buffer_across_dataflow = true
+  {
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+    ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(
+                                        module.get(),
+                                        /*alias_buffer_across_dataflow=*/true));
+    HloInstruction* ccall = FindInstruction(module.get(), "ccall");
+    VerifyNoBufferDefinedAt(ccall, {});
+  }
+}
+
+}  // namespace
+}  // namespace xla

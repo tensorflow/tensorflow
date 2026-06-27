@@ -1,5 +1,7 @@
 # Description:
 #   SipHash and HighwayHash: cryptographically-strong pseudorandom functions
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(
     default_visibility = ["//visibility:public"],
     features = ["header_modules"],

@@ -76,8 +76,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -596,9 +594,8 @@ bool AlgebraicSimplifierVisitor::SameShape(const Shape& lhs,
                                            const Shape& rhs) const {
   if (options_.is_layout_sensitive()) {
     return ShapeUtil::Equal(lhs, rhs);
-  } else {
-    return ShapeUtil::Compatible(lhs, rhs);
   }
+  return ShapeUtil::Compatible(lhs, rhs);
 }
 
 namespace {
@@ -781,12 +778,12 @@ absl::Status AlgebraicSimplifierVisitor::ScalarMultiplyReduction(
   // Update the dependency with the rest of the instructions.
   if (target == lhs) {
     return dot->ReplaceOperandWith(0, new_multiply);
-  } else if (target == rhs) {
-    return dot->ReplaceOperandWith(1, new_multiply);
-  } else {
-    CHECK_EQ(target, dot);
-    return dot->ReplaceAllUsesWith(new_multiply);
   }
+  if (target == rhs) {
+    return dot->ReplaceOperandWith(1, new_multiply);
+  }
+  CHECK_EQ(target, dot);
+  return dot->ReplaceAllUsesWith(new_multiply);
 }
 
 void AlgebraicSimplifierVisitor::ReplaceWithBitcast(HloInstruction* instruction,
@@ -2234,10 +2231,9 @@ static HloInstruction* BuildTupleConstant(HloComputation* computation,
           computation, LiteralSlice(literal, {i}), simplifier));
     }
     return computation->AddInstruction(HloInstruction::CreateTuple(elems));
-  } else {
-    return computation->AddInstruction(
-        simplifier->CreateConstantWithLayoutUpdated(literal.Clone()));
   }
+  return computation->AddInstruction(
+      simplifier->CreateConstantWithLayoutUpdated(literal.Clone()));
 }
 
 absl::Status AlgebraicSimplifierVisitor::HandleConstant(
@@ -6490,7 +6486,7 @@ AlgebraicSimplifierVisitor::TryRemovingBitcastOrReshapeTransposeChain(
     int64_t effective_size = ShapeUtil::TrueNumDimensions(instruction->shape());
     std::vector<int64_t> permutation(effective_size);
     // Init with identity permutation.
-    std::iota(permutation.begin(), permutation.end(), 0);
+    absl::c_iota(permutation, 0);
 
     if (instruction->opcode() == HloOpcode::kTranspose) {
       auto effective_perm = get_effective_permutation(
@@ -10163,7 +10159,9 @@ AlgebraicSimplifierVisitor::PromoteConvolutionToF32IfNotOnednnCompatible(
   }
 
   auto dims = (*convolution)->window().dimensions().size();
-  if (dims >= 4 || dims <= 0) can_rewrite = false;
+  if (dims >= 4 || dims <= 0) {
+    can_rewrite = false;
+  }
 
   if (inp_shape.dimensions().size() != ker_shape.dimensions().size() ||
       inp_shape.dimensions().size() != out_shape.dimensions().size()) {
@@ -10290,7 +10288,7 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
   }
   auto add_bitcast = [&](Shape shape, HloInstruction* operand) {
     std::vector<int64_t> dims(operand->shape().dimensions().size());
-    std::iota(dims.begin(), dims.end(), 0);
+    absl::c_iota(dims, 0);
     return operand->AddInstruction(
         HloInstruction::CreateBitcast(shape, operand));
   };

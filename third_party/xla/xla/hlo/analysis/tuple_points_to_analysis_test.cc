@@ -24,22 +24,14 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/testlib/test_helpers.h"
-#include "xla/literal_util.h"
 #include "xla/service/logical_buffer.h"
-#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -128,15 +120,23 @@ class TuplePointsToAnalysisTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(TuplePointsToAnalysisTest, SimpleTuple) {
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant1, constant2}));
+  std::string hlo_str = R"(
+HloModule SimpleTuple
 
-  BuildModuleAndRunAnalysis(builder.Build());
+ENTRY main {
+  constant1 = f32[] constant(1)
+  constant2 = f32[] constant(2)
+  ROOT tuple = (f32[], f32[]) tuple(constant1, constant2)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* constant1 = FindInstruction(module_.get(), "constant1");
+  auto* constant2 = FindInstruction(module_.get(), "constant2");
+  auto* tuple = FindInstruction(module_.get(), "tuple");
+
   EXPECT_EQ(1, points_to_analysis_->GetPointsToSet(constant1).size());
   ExpectHasTopLevelBuffers(
       points_to_analysis_->GetPointsToSet(constant1).element({}), {constant1});
@@ -181,20 +181,27 @@ TEST_F(TuplePointsToAnalysisTest, NestedTuple) {
   // Create a (nested) tuple containing an inner tuple. The points-to set of the
   // outer tuple should contain all elements of the points-to set of the inner
   // tuple.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto inner_tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant1, constant2}));
+  std::string hlo_str = R"(
+HloModule NestedTuple
 
-  auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
-  auto tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({inner_tuple, constant3}));
+ENTRY main {
+  constant1 = f32[] constant(1)
+  constant2 = f32[] constant(2)
+  inner_tuple = (f32[], f32[]) tuple(constant1, constant2)
+  constant3 = f32[] constant(3)
+  ROOT tuple = ((f32[], f32[]), f32[]) tuple(inner_tuple, constant3)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
 
-  BuildModuleAndRunAnalysis(builder.Build());
+  auto* constant1 = FindInstruction(module_.get(), "constant1");
+  auto* constant2 = FindInstruction(module_.get(), "constant2");
+  auto* constant3 = FindInstruction(module_.get(), "constant3");
+  auto* inner_tuple = FindInstruction(module_.get(), "inner_tuple");
+  auto* tuple = FindInstruction(module_.get(), "tuple");
+
   ExpectHasTopLevelBuffers(
       points_to_analysis_->GetPointsToSet(constant1).element({}), {constant1});
   ExpectHasTopLevelBuffers(
@@ -242,23 +249,26 @@ TEST_F(TuplePointsToAnalysisTest, GetTupleElement) {
   // Create a nested tuple, then extract the inner tuple with GetTupleElement.
   // The points-to set of the GetTupleElement should be the same as the inner
   // tuple.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto inner_tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant1, constant2}));
+  std::string hlo_str = R"(
+HloModule GetTupleElement
 
-  auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
-  auto tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({inner_tuple, constant3}));
+ENTRY main {
+  constant1 = f32[] constant(1)
+  constant2 = f32[] constant(2)
+  inner_tuple = (f32[], f32[]) tuple(constant1, constant2)
+  constant3 = f32[] constant(3)
+  tuple = ((f32[], f32[]), f32[]) tuple(inner_tuple, constant3)
+  ROOT get_tuple_element = (f32[], f32[]) get-tuple-element(tuple), index=0
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
 
-  auto get_tuple_element = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(inner_tuple->shape(), tuple, 0));
-
-  BuildModuleAndRunAnalysis(builder.Build());
+  auto* constant1 = FindInstruction(module_.get(), "constant1");
+  auto* constant2 = FindInstruction(module_.get(), "constant2");
+  auto* inner_tuple = FindInstruction(module_.get(), "inner_tuple");
+  auto* get_tuple_element = FindInstruction(module_.get(), "get_tuple_element");
 
   auto& points_to_set = points_to_analysis_->GetPointsToSet(get_tuple_element);
   EXPECT_EQ(3, points_to_set.size());
@@ -273,13 +283,21 @@ TEST_F(TuplePointsToAnalysisTest, GetTupleElement) {
 }
 
 TEST_F(TuplePointsToAnalysisTest, AddDependency) {
-  auto builder = HloComputation::Builder(TestName());
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto add_dependency = builder.AddInstruction(
-      HloInstruction::CreateAddDependency(constant, token));
-  BuildModuleAndRunAnalysis(builder.Build());
+  std::string hlo_str = R"(
+HloModule AddDependency
+
+ENTRY main {
+  constant = f32[] constant(1)
+  token0 = token[] after-all()
+  ROOT add_dependency = f32[] add-dependency(constant, token0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* constant = FindInstruction(module_.get(), "constant");
+  auto* add_dependency = FindInstruction(module_.get(), "add_dependency");
 
   auto& points_to_set = points_to_analysis_->GetPointsToSet(add_dependency);
   EXPECT_EQ(1, points_to_set.size());
@@ -290,13 +308,20 @@ TEST_F(TuplePointsToAnalysisTest, AddDependency) {
 
 TEST_F(TuplePointsToAnalysisTest, DuplicatedElement) {
   // Create a tuple which contains duplicate elements.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant, constant, constant}));
+  std::string hlo_str = R"(
+HloModule DuplicatedElement
 
-  BuildModuleAndRunAnalysis(builder.Build());
+ENTRY main {
+  constant = f32[] constant(1)
+  ROOT tuple = (f32[], f32[], f32[]) tuple(constant, constant, constant)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* constant = FindInstruction(module_.get(), "constant");
+  auto* tuple = FindInstruction(module_.get(), "tuple");
 
   EXPECT_EQ(2, points_to_analysis_->GetPointsToSet(tuple).size());
   EXPECT_FALSE(points_to_analysis_->GetPointsToSet(tuple).IsAmbiguous());
@@ -311,17 +336,24 @@ TEST_F(TuplePointsToAnalysisTest, DuplicatedElement) {
 TEST_F(TuplePointsToAnalysisTest, TupleCopy) {
   // Create a copy (HloOpcode::kCopy) of a tuple. The points to sets should be
   // the same.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant1, constant2}));
-  auto copy = builder.AddInstruction(
-      HloInstruction::CreateUnary(tuple->shape(), HloOpcode::kCopy, tuple));
+  std::string hlo_str = R"(
+HloModule TupleCopy
 
-  BuildModuleAndRunAnalysis(builder.Build());
+ENTRY main {
+  constant1 = f32[] constant(1)
+  constant2 = f32[] constant(2)
+  tuple = (f32[], f32[]) tuple(constant1, constant2)
+  ROOT copy = (f32[], f32[]) copy(tuple)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* constant1 = FindInstruction(module_.get(), "constant1");
+  auto* constant2 = FindInstruction(module_.get(), "constant2");
+  auto* tuple = FindInstruction(module_.get(), "tuple");
+  auto* copy = FindInstruction(module_.get(), "copy");
 
   EXPECT_FALSE(points_to_analysis_->GetPointsToSet(copy).IsAmbiguous());
   EXPECT_TRUE(points_to_analysis_->GetPointsToSet(copy).IsDistinct());
@@ -337,17 +369,22 @@ TEST_F(TuplePointsToAnalysisTest, TupleCopy) {
 
 TEST_F(TuplePointsToAnalysisTest, CopyStartAndCopyDone) {
   // CopyDone forwards its operand to the output tuple at {0}.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto copy_start = builder.AddInstruction(HloInstruction::CreateCopyStart(
-      ShapeUtil::MakeTupleShape({constant->shape(), constant->shape(),
-                                 ShapeUtil::MakeShape(U32, {})}),
-      constant));
-  auto copy_done = builder.AddInstruction(HloInstruction::CreateUnary(
-      constant->shape(), HloOpcode::kCopyDone, copy_start));
+  std::string hlo_str = R"(
+HloModule CopyStartAndCopyDone
 
-  BuildModuleAndRunAnalysis(builder.Build());
+ENTRY main {
+  constant = f32[] constant(1)
+  copy_start = (f32[], f32[], u32[]) copy-start(constant)
+  ROOT copy_done = f32[] copy-done(copy_start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* constant = FindInstruction(module_.get(), "constant");
+  auto* copy_start = FindInstruction(module_.get(), "copy_start");
+  auto* copy_done = FindInstruction(module_.get(), "copy_done");
 
   EXPECT_FALSE(points_to_analysis_->GetPointsToSet(copy_start).IsAmbiguous());
   EXPECT_TRUE(points_to_analysis_->GetPointsToSet(copy_start).IsDistinct());
@@ -372,7 +409,7 @@ TEST_F(TuplePointsToAnalysisTest, AsyncOps) {
     ROOT async-done = f32[2,3] custom-call-done(async-update)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
 
   HloInstruction* param =
@@ -403,16 +440,23 @@ TEST_F(TuplePointsToAnalysisTest, AsyncOps) {
 
 TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
   // Send forwards its operand to the output tuple at {0}.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send = builder.AddInstruction(HloInstruction::CreateSend(
-      constant, token, /*channel_id=*/0, /*is_host_transfer=*/false));
-  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(
-      send, send->channel_id(), /*is_host_transfer=*/false));
+  std::string hlo_str = R"(
+HloModule SendAndSendDone
 
-  BuildModuleAndRunAnalysis(builder.Build());
+ENTRY main {
+  constant = f32[] constant(1)
+  token0 = token[] after-all()
+  send = (f32[], u32[], token[]) send(constant, token0), channel_id=0
+  ROOT send_done = token[] send-done(send), channel_id=0
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* constant = FindInstruction(module_.get(), "constant");
+  auto* send = FindInstruction(module_.get(), "send");
+  auto* send_done = FindInstruction(module_.get(), "send_done");
 
   EXPECT_FALSE(points_to_analysis_->GetPointsToSet(send).IsAmbiguous());
   EXPECT_TRUE(points_to_analysis_->GetPointsToSet(send).IsDistinct());
@@ -431,15 +475,21 @@ TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
 
 TEST_F(TuplePointsToAnalysisTest, RecvAndRecvDone) {
   // RecvDone forwards its operand tuple element at {0} to the output.
-  auto builder = HloComputation::Builder(TestName());
-  auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto recv = builder.AddInstruction(
-      HloInstruction::CreateRecv(ShapeUtil::MakeShape(F32, {1, 2, 3}), token,
-                                 /*channel_id=*/0, /*is_host_transfer=*/false));
-  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(
-      recv, recv->channel_id(), /*is_host_transfer=*/false));
+  std::string hlo_str = R"(
+HloModule RecvAndRecvDone
 
-  BuildModuleAndRunAnalysis(builder.Build());
+ENTRY main {
+  token0 = token[] after-all()
+  recv = (f32[1,2,3], u32[], token[]) recv(token0), channel_id=0
+  ROOT recv_done = (f32[1,2,3], token[]) recv-done(recv), channel_id=0
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* recv = FindInstruction(module_.get(), "recv");
+  auto* recv_done = FindInstruction(module_.get(), "recv_done");
 
   EXPECT_FALSE(points_to_analysis_->GetPointsToSet(recv).IsAmbiguous());
   EXPECT_TRUE(points_to_analysis_->GetPointsToSet(recv).IsDistinct());
@@ -454,17 +504,24 @@ TEST_F(TuplePointsToAnalysisTest, RecvAndRecvDone) {
 TEST_F(TuplePointsToAnalysisTest, TupleWithBitcast) {
   // Bitcast is an alias of its operand. A tuple with a bitcast element should
   // have the operand of the bitcast in its points-to set.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto bitcast = builder.AddInstruction(
-      HloInstruction::CreateBitcast(constant2->shape(), constant2));
-  auto tuple =
-      builder.AddInstruction(HloInstruction::CreateTuple({constant1, bitcast}));
+  std::string hlo_str = R"(
+HloModule TupleWithBitcast
 
-  BuildModuleAndRunAnalysis(builder.Build());
+ENTRY main {
+  constant1 = f32[] constant(1)
+  constant2 = f32[] constant(2)
+  bitcast = f32[] bitcast(constant2)
+  ROOT tuple = (f32[], f32[]) tuple(constant1, bitcast)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* constant1 = FindInstruction(module_.get(), "constant1");
+  auto* constant2 = FindInstruction(module_.get(), "constant2");
+  auto* bitcast = FindInstruction(module_.get(), "bitcast");
+  auto* tuple = FindInstruction(module_.get(), "tuple");
 
   EXPECT_EQ(1, points_to_analysis_->GetPointsToSet(bitcast).size());
   ExpectHasTopLevelBuffers(
@@ -491,15 +548,20 @@ TEST_F(TuplePointsToAnalysisTest, TupleWithBitcast) {
 TEST_F(TuplePointsToAnalysisTest, PointsToTupleConstantElements) {
   // Construct a tuple constant and kCopy it. Verify the points-to set of the
   // copy correctly points into the nested elements of the constant.
-  auto builder = HloComputation::Builder(TestName());
-  Literal elements[] = {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}),
-                        LiteralUtil::CreateR1<float>({2.0, 42})};
-  auto tuple_constant = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::MakeTuple({&elements[0], &elements[1]})));
-  auto copy = builder.AddInstruction(HloInstruction::CreateUnary(
-      tuple_constant->shape(), HloOpcode::kCopy, tuple_constant));
+  std::string hlo_str = R"(
+HloModule PointsToTupleConstantElements
 
-  BuildModuleAndRunAnalysis(builder.Build());
+ENTRY %PointsToTupleConstantElements () -> (f32[2,1], f32[2]) {
+  %constant = (f32[2,1], f32[2]) constant( ({ {1.0}, {2.0} }, {2.0, 42.0}) )
+  ROOT %copy = (f32[2,1], f32[2]) copy(%constant)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* tuple_constant = FindInstruction(module_.get(), "constant");
+  auto* copy = FindInstruction(module_.get(), "copy");
 
   auto& points_to_set = points_to_analysis_->GetPointsToSet(copy);
 
@@ -513,17 +575,24 @@ TEST_F(TuplePointsToAnalysisTest, PointsToTupleConstantElements) {
 TEST_F(TuplePointsToAnalysisTest, BufferAliases) {
   // Create a nested tuple in which individual elements appear multiple
   // times. Verify buffer alias sets.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto inner_tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant1, constant2}));
-  auto tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({inner_tuple, constant2}));
+  std::string hlo_str = R"(
+HloModule BufferAliases
 
-  BuildModuleAndRunAnalysis(builder.Build());
+ENTRY main {
+  constant1 = f32[] constant(1)
+  constant2 = f32[] constant(2)
+  inner_tuple = (f32[], f32[]) tuple(constant1, constant2)
+  ROOT tuple = ((f32[], f32[]), f32[]) tuple(inner_tuple, constant2)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* constant1 = FindInstruction(module_.get(), "constant1");
+  auto* constant2 = FindInstruction(module_.get(), "constant2");
+  auto* inner_tuple = FindInstruction(module_.get(), "inner_tuple");
+  auto* tuple = FindInstruction(module_.get(), "tuple");
 
   ExpectHasBufferAliases(
       constant1, /*index=*/{},
@@ -538,22 +607,24 @@ TEST_F(TuplePointsToAnalysisTest, BufferAliases) {
 
 // TODO(b/277597692): The fix for this bug causes this test to fail.
 TEST_F(TuplePointsToAnalysisTest, DISABLED_CustomCall) {
-  auto builder = HloComputation::Builder(TestName());
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  Shape data_shape = ShapeUtil::MakeShape(F32, {});
-  auto ccall = builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeTupleShape({data_shape, data_shape}), {constant},
-      "TestOp"));
-  Cast<HloCustomCallInstruction>(ccall)->set_output_to_operand_aliasing(
-      {std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>{
-          ShapeIndex{1}, std::pair<int64_t, ShapeIndex>(0, {})}});
-  auto gte0 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(data_shape, ccall, 0));
-  auto gte1 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(data_shape, ccall, 1));
+  std::string hlo_str = R"(
+HloModule DISABLED_CustomCall
 
-  BuildModuleAndRunAnalysis(builder.Build());
+ENTRY main {
+  constant = f32[] constant(1)
+  ccall = (f32[], f32[]) custom-call(f32[] constant), custom_call_target="TestOp", output_to_operand_aliasing={{1}: (0, {})}
+  gte0 = f32[] get-tuple-element(ccall), index=0
+  ROOT gte1 = f32[] get-tuple-element(ccall), index=1
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* constant = FindInstruction(module_.get(), "constant");
+  auto* ccall = FindInstruction(module_.get(), "ccall");
+  auto* gte0 = FindInstruction(module_.get(), "gte0");
+  auto* gte1 = FindInstruction(module_.get(), "gte1");
 
   ExpectHasBufferAliases(ccall, /*index=*/{0}, {{gte0, {}}, {ccall, {0}}});
   ExpectHasBufferAliases(constant, /*index=*/{},
@@ -565,7 +636,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
   // Takes a HLO string, parses it, runs points-to analysis, then checks for
   // expected results (see unit test cases for example computation graphs).
   void Run(const std::string& hlo_str, int64_t expected_num_users) {
-    TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_str));
+    ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_str));
     // Get computation root instruction (should be a kFusion).
     auto* fusion = module_->entry_computation()->root_instruction();
     auto* tuple_param0 = fusion->operand(0);
@@ -799,19 +870,23 @@ class PointsToAnalysisTestBase : public HloHardwareIndependentTestBase {
 class DoesNotUseOperandBufferTest : public PointsToAnalysisTestBase {};
 
 TEST_F(DoesNotUseOperandBufferTest, GetTupleElement) {
-  auto builder = HloComputation::Builder(TestName());
+  std::string hlo_str = R"(
+HloModule GetTupleElement
 
-  Shape elem_shape = ShapeUtil::MakeShape(F32, {8});
-  auto tuple = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape({elem_shape, elem_shape}), "tuple"));
-  auto gte0 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(elem_shape, tuple, 0));
-  auto gte1 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(elem_shape, tuple, 1));
-  builder.AddInstruction(
-      HloInstruction::CreateBinary(elem_shape, HloOpcode::kAdd, gte0, gte1));
+ENTRY main {
+  tuple = (f32[8], f32[8]) parameter(0)
+  gte0 = f32[8] get-tuple-element(tuple), index=0
+  gte1 = f32[8] get-tuple-element(tuple), index=1
+  ROOT add = f32[8] add(gte0, gte1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
 
-  BuildModuleAndRunAnalysis(builder.Build());
+  auto* tuple = FindInstruction(module_.get(), "tuple");
+  auto* gte0 = FindInstruction(module_.get(), "gte0");
+  auto* gte1 = FindInstruction(module_.get(), "gte1");
 
   // GetTupleElement instructions only access the top-level buffer of their
   // operand.
@@ -822,32 +897,30 @@ TEST_F(DoesNotUseOperandBufferTest, GetTupleElement) {
 }
 
 TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
-  auto builder = HloComputation::Builder(TestName());
+  std::string hlo_str = R"(
+HloModule FusedDynamicUpdateSlice, entry_computation_layout={((f32[8]{0}, f32[8]{0}))->(f32[8]{0}, f32[8]{0})}
 
-  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
-  auto tuple = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape({data_shape, data_shape}), "tuple"));
-  auto gte0 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(data_shape, tuple, 0));
-  auto gte1 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(data_shape, tuple, 1));
+%fused_computation (param_0.1: (f32[8], f32[8])) -> f32[8] {
+  %param_0.1 = (f32[8]{0}, f32[8]{0}) parameter(0)
+  %get-tuple-element.2 = f32[8]{0} get-tuple-element(%param_0.1), index=1
+  %constant.3 = f32[3]{0} constant({2, 2, 2})
+  %constant.2 = s32[] constant(2)
+  ROOT %dynamic-update-slice.1 = f32[8]{0} dynamic-update-slice(%get-tuple-element.2, %constant.3, %constant.2)
+}
 
-  // Create a DynamicUpdateSlice instruction of tuple element 1.
-  auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(2)));
-  auto update = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
-  auto dynamic_update_slice =
-      builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-          data_shape, gte1, update, {starts}));
-  builder.AddInstruction(
-      HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
-
-  BuildModule(builder.Build());
-  auto fusion = computation_->CreateFusionInstruction(
-      {dynamic_update_slice, starts, update, gte1},
-      HloInstruction::FusionKind::kLoop);
+ENTRY %FusedDynamicUpdateSlice (tuple: (f32[8], f32[8])) -> (f32[8], f32[8]) {
+  %tuple = (f32[8]{0}, f32[8]{0}) parameter(0)
+  %get-tuple-element = f32[8]{0} get-tuple-element(%tuple), index=0
+  %fusion = f32[8]{0} fusion(%tuple), kind=kLoop, calls=%fused_computation
+  ROOT %tuple.1 = (f32[8]{0}, f32[8]{0}) tuple(%get-tuple-element, %fusion)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
   RunAnalysis();
+
+  auto* tuple = FindInstruction(module_.get(), "tuple");
+  auto* fusion = FindInstruction(module_.get(), "fusion");
 
   // The fusion instruction never uses tuple element 0, but does use element 1.
   EXPECT_TRUE(points_to_analysis_->DoesNotUseOperandBuffer(tuple, {0}, fusion));

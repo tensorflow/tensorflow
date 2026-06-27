@@ -72,8 +72,6 @@ xla_cc_binary(
     srcs = ["xla_translate_opt_main.cc"],
     deps = [
         ":register",
-        "//xla/mlir/framework/ir:xla_framework",
-        "//xla/mlir/framework/transforms:passes",
         "//xla/service:cpu_plugin",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",

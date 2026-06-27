@@ -21,18 +21,23 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
 #include <ostream>
+#include <queue>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
@@ -76,6 +81,32 @@ limitations under the License.
 #include "tsl/platform/numbers.h"
 
 namespace xla {
+
+namespace {
+
+constexpr int64_t kUninitializedStartTime = -1;
+
+struct BufferLiveRange {
+  int64_t min_start = std::numeric_limits<int64_t>::max();
+  int64_t max_end = -1;
+};
+
+BufferLiveRange GetHloBufferLiveRange(
+    const HloBuffer* hlo_buffer,
+    const absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>&
+        value_live_ranges) {
+  BufferLiveRange result;
+  for (const HloValue* value : hlo_buffer->values()) {
+    auto it = value_live_ranges.find(value);
+    if (it != value_live_ranges.end()) {
+      result.min_start = std::min(result.min_start, it->second.start);
+      result.max_end = std::max(result.max_end, it->second.end);
+    }
+  }
+  return result;
+}
+
+}  // namespace
 
 class DefaultBufferAllocationsManagerForComputationsWithoutOrdering
     : public BufferAllocationsManagerForComputationsWithoutOrdering {
@@ -131,6 +162,142 @@ class DefaultBufferAllocationsManagerForComputationsWithoutOrdering
   std::vector<BufferAllocation::Index> allocation_indices_;
 };
 
+// An efficient buffer allocation manager for computations without ordering
+// (used when FAST_MERGE is enabled).
+//
+// Efficiency:
+// Instead of the default O(N * M) naive allocation scan (where N is the number
+// of buffers and M is the number of allocations, leading to O(N^2) worst-case),
+// this algorithm achieves O(N log M) time complexity for allocation reuse.
+//
+// Key features:
+// 1. For each `HloBuffer`, we merge the live ranges of its constituent
+//    colocated `HloValue`s (hence the name "FastMerge") to get a unified
+//    `min_start` and `max_end` (via `GetHloBufferLiveRange`). Incoming buffers
+//    are processed in increasing order of their merged live range start times
+//    (BufferOrder::kLiveRangeStart). It tracks active allocations in a min-heap
+//    (`active_allocations_`) ordered by their maximum live range end time.
+// 2. Before assigning a new buffer, it advances the sweep-line
+//    (`UpdateLiveness`), moving any active allocations that have fully expired
+//    (max_end_time <= new_buffer.min_start) into a free pool. By this,
+//    allocations in the free pool are guaranteed to have no live range
+//    conflicts with the incoming buffer.
+// 3. The free pool (`free_pool_`) indexes available allocations by color and
+//    size using balanced trees (absl::btree_set of std::pair). Finding the
+//    smallest fitting reusable allocation takes O(log M) time via
+//    `lower_bound`, avoiding linear scans over all existing allocations.
+class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering
+    : public BufferAllocationsManagerForComputationsWithoutOrdering {
+ public:
+  FastMergeBufferAllocationsManagerForComputationsWithoutOrdering(
+      BufferAssignment* assignment, BufferAssigner* assigner)
+      : assignment_(assignment), assigner_(assigner) {}
+
+  void RegisterAliasedEntryParameterAllocation(
+      BufferAllocation::Index index) override {
+    allocation_indices_.push_back(index);
+  }
+
+  // Attempts to assign the given buffer to an existing active allocation.
+  absl::StatusOr<bool> TryAssignToExistingAllocation(
+      const HloBuffer* hlo_buffer, int64_t required_size) override {
+    BufferLiveRange live_range = GetBufferLiveRange(hlo_buffer);
+    UpdateLiveness(live_range.min_start);
+
+    ASSIGN_OR_RETURN(auto buffer_color, hlo_buffer->color());
+    auto& pool = free_pool_[buffer_color];
+    // Finds the smallest buffer in the free pool that is at least
+    // `required_size`.
+    auto it = pool.lower_bound(
+        {required_size, std::numeric_limits<BufferAllocation::Index>::min()});
+    while (it != pool.end()) {
+      BufferAllocation::Index index = it->second;
+      BufferAllocation* allocation = assignment_->GetMutableAllocation(index);
+      // MaybeAssignBuffer can return false for a buffer in free_pool_ due to:
+      // 1. Live range boundary collision (end == start) between unrelated
+      //    instructions.
+      // 2. Size mismatch for live-out buffers (which require an exact match).
+      // 3. Must-not-live-out restrictions.
+      //
+      // If a collision occurs, we move to the next best-fit allocation.
+      ASSIGN_OR_RETURN(bool success, assigner_->MaybeAssignBuffer(
+                                         allocation, *hlo_buffer, assignment_));
+      if (success) {
+        active_allocations_.emplace(
+            ActiveAllocation({live_range.max_end, index}));
+        VLOG(3) << "Reusing allocation #" << allocation->index()
+                << " via "
+                   "FastMergeBufferAllocationsManagerForComputationsWithout"
+                   "Ordering "
+                   "for: "
+                << *hlo_buffer;
+        pool.erase(it);
+        return true;
+      }
+      ++it;
+    }
+    return false;
+  }
+
+  // Registers a new standalone allocation to be tracked.
+  void RegisterNewAllocation(const HloBuffer* hlo_buffer,
+                             BufferAllocation::Index index) override {
+    BufferLiveRange live_range = GetBufferLiveRange(hlo_buffer);
+    active_allocations_.emplace(ActiveAllocation({live_range.max_end, index}));
+  }
+
+ private:
+  BufferLiveRange GetBufferLiveRange(const HloBuffer* hlo_buffer) const {
+    return GetHloBufferLiveRange(
+        hlo_buffer, assignment_->hlo_live_range().buffer_live_ranges());
+  }
+
+  // Advances the sweep-line state to the current start time, moving expired
+  // active allocations to the free lookup pool.
+  void UpdateLiveness(int64_t current_start_time) {
+    CHECK_GE(current_start_time, prev_start_time_);
+    prev_start_time_ = current_start_time;
+    while (!active_allocations_.empty() &&
+           active_allocations_.top().max_end_time <= current_start_time) {
+      auto top = active_allocations_.top();
+      active_allocations_.pop();
+      BufferAllocation* alloc = assignment_->GetMutableAllocation(top.index);
+      free_pool_[alloc->color()].emplace(alloc->size(), top.index);
+    }
+  }
+
+  // Represents a currently in-use buffer allocation and its expiration time
+  // (maximum live range end time), used to order the sweep-line min-heap.
+  struct ActiveAllocation {
+    int64_t max_end_time;
+    BufferAllocation::Index index;
+    bool operator>(const ActiveAllocation& other) const {
+      return std::forward_as_tuple(max_end_time, index) >
+             std::forward_as_tuple(other.max_end_time, other.index);
+    }
+  };
+
+  BufferAssignment* const assignment_;
+  BufferAssigner* const assigner_;
+  int64_t prev_start_time_ = 0;
+  std::priority_queue<ActiveAllocation, std::vector<ActiveAllocation>,
+                      std::greater<ActiveAllocation>>
+      active_allocations_;
+  absl::flat_hash_map<
+      LogicalBuffer::Color,
+      absl::btree_set<std::pair<int64_t, BufferAllocation::Index>>>
+      free_pool_;
+  std::vector<BufferAllocation::Index> allocation_indices_;
+};
+
+std::unique_ptr<BufferAllocationsManagerForComputationsWithoutOrdering>
+BufferAssigner::CreateFastMergeManagerForTest(BufferAssignment* assignment,
+                                              BufferAssigner* assigner) {
+  return std::make_unique<
+      FastMergeBufferAllocationsManagerForComputationsWithoutOrdering>(
+      assignment, assigner);
+}
+
 namespace {
 
 using absl::flat_hash_map;
@@ -175,6 +342,29 @@ std::optional<bool> ComparePosition(
   int b_position = post_order_position->at(b_min->instruction());
   if (a_position != b_position) {
     return a_position < b_position;
+  }
+  return std::nullopt;
+}
+
+// Compares two buffers by their earliest live range start time.
+std::optional<bool> CompareLiveRangeStart(
+    const absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>*
+        buffer_live_ranges,
+    absl::flat_hash_map<const HloBuffer*, int64_t>* min_start_cache,
+    const HloBuffer* a, const HloBuffer* b) {
+  auto get_min_start = [buffer_live_ranges,
+                        min_start_cache](const HloBuffer* buffer) {
+    auto [it, inserted] =
+        min_start_cache->try_emplace(buffer, kUninitializedStartTime);
+    if (inserted) {
+      it->second = GetHloBufferLiveRange(buffer, *buffer_live_ranges).min_start;
+    }
+    return it->second;
+  };
+  int64_t a_start = get_min_start(a);
+  int64_t b_start = get_min_start(b);
+  if (a_start != b_start) {
+    return a_start < b_start;
   }
   return std::nullopt;
 }
@@ -1593,6 +1783,15 @@ void BufferAssignment::Finalize() {
   }
 }
 
+BufferAssigner::BufferAssigner(const AliasInfo* alias_info, Options opts)
+    : alias_info_(alias_info), opts_(std::move(opts)) {
+  if (opts_.assignment_algorithm_for_computations_without_ordering ==
+      buffer_assignment::
+          AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE) {
+    opts_.buffer_order = BufferOrder::kLiveRangeStart;
+  }
+}
+
 /* static */
 absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
@@ -2072,6 +2271,10 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
       absl::bind_front(CompareLiveOut, &alias_analysis);
   Comparator compare_position =
       absl::bind_front(ComparePosition, &post_order_position);
+  absl::flat_hash_map<const HloBuffer*, int64_t> min_start_cache;
+  Comparator compare_live_range_start = absl::bind_front(
+      CompareLiveRangeStart, &assignment->hlo_live_range().buffer_live_ranges(),
+      &min_start_cache);
   std::vector<Comparator> comparators;
   switch (opts_.buffer_order) {
     case BufferOrder::kBiggestFirst:
@@ -2081,6 +2284,11 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
       break;
     case BufferOrder::kTopological:
       comparators.push_back(std::move(compare_position));
+      comparators.push_back(std::move(compare_size));
+      comparators.push_back(std::move(compare_live_out));
+      break;
+    case BufferOrder::kLiveRangeStart:
+      comparators.push_back(std::move(compare_live_range_start));
       comparators.push_back(std::move(compare_size));
       comparators.push_back(std::move(compare_live_out));
       break;
@@ -2099,6 +2307,12 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
   std::unique_ptr<BufferAllocationsManagerForComputationsWithoutOrdering>
       allocation_manager;
   switch (algorithm) {
+    case buffer_assignment::
+        AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE:
+      allocation_manager = std::make_unique<
+          FastMergeBufferAllocationsManagerForComputationsWithoutOrdering>(
+          assignment, this);
+      break;
     case buffer_assignment::
         AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT:
     default:

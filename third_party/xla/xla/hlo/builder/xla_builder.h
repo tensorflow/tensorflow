@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/bitmap.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/stacktrace.h"
 
 namespace xla {
@@ -1096,9 +1095,10 @@ class XlaBuilder {
                                              XlaComputationId comparator,
                                              int64_t dimension, bool is_stable);
 
-  XlaOp TopK(XlaOp operand, int64_t k, bool largest);
+  XlaOp TopK(XlaOp operand, int64_t k, bool largest, bool is_stable = true);
   virtual absl::StatusOr<XlaOp> TopKInternal(const Shape& shape, XlaOp operand,
-                                             int64_t k, bool largest);
+                                             int64_t k, bool largest,
+                                             bool is_stable);
 
   XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
 
@@ -1958,7 +1958,7 @@ class XlaBuilder {
   friend XlaOp Sort(absl::Span<const XlaOp> operands,
                     XlaComputationId comparator, int64_t dimension,
                     bool is_stable);
-  friend XlaOp TopK(XlaOp operand, int64_t k, bool largest);
+  friend XlaOp TopK(XlaOp operand, int64_t k, bool largest, bool is_stable);
   friend XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
   friend XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                    XlaComputationId computation,
@@ -3382,7 +3382,10 @@ XlaOp Sort(absl::Span<const XlaOp> operands, XlaComputationId comparator,
 
 // Enqueues a topk instruction onto the computation. TopK returns the largest
 // 'k' values and their indices along the last dimension of the 'operand' if
-// `lagest=true` or the smallest `k` values if `largest=false`.
+// `largest=true` or the smallest `k` values if `largest=false`.
+// If `is_stable=true`, the output indices will maintain the original relative
+// order of equal elements. If `false`, the order of equal elements is
+// undefined.
 //
 // * If the operand is a rank-1 tensor (an array), the result is a tuple that
 //   consists of:
@@ -3398,7 +3401,7 @@ XlaOp Sort(absl::Span<const XlaOp> operands, XlaComputationId comparator,
 //     dimension.
 //   For example, if the input is [0.1, 0.3, 0.2][0.5, 0.4, 0.6] and k == 1, the
 //   output tuple is ([0.3][0.6], [1][2]).
-XlaOp TopK(XlaOp operand, int64_t k, bool largest);
+XlaOp TopK(XlaOp operand, int64_t k, bool largest, bool is_stable = true);
 
 // Enqueues a clamp instruction onto the computation.
 XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);

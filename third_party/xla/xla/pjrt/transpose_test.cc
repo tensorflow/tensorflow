@@ -1173,6 +1173,85 @@ static void BM_Transpose_float(const TransposeTestCase& bm, int parallelism,
   BM_Transpose<float>(bm, parallelism, state);
 }
 
+template <int bits_per_element>
+void BM_TransposePack(const TransposeTestCase& bm, int parallelism,
+                      ::testing::benchmark::State& state) {
+  TransposePlan::Options options;
+  options.elem_size_in_bytes = 1;
+  options.dims = bm.dims;
+  options.permutation = bm.permutation;
+  options.dest_bits_per_element = bits_per_element;
+  options.num_threads = parallelism;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
+  int64_t num_elems = plan->InputNumElems();
+  std::vector<int8_t> input(num_elems);
+  absl::BitGen bitgen;
+  int max_val = (1 << bits_per_element) - 1;
+  for (int64_t i = 0; i < num_elems; ++i) {
+    input[i] = absl::Uniform<int>(bitgen, 0, max_val + 1);
+  }
+
+  int elements_per_byte = 8 / bits_per_element;
+  int64_t packed_size = CeilOfRatio<int64_t>(num_elems, elements_per_byte);
+  std::vector<char> output(packed_size);
+
+  tsl::thread::ThreadPool threadpool(tsl::Env::Default(), "Transpose",
+                                     parallelism);
+  for (auto s : state) {
+    plan->Execute(
+        reinterpret_cast<const char*>(input.data()), output.data(),
+        [&](std::function<void()> fn) { threadpool.Schedule(std::move(fn)); });
+    tsl::testing::DoNotOptimize(output);
+  }
+}
+
+template <int bits_per_element>
+void BM_TransposeUnfusedPack(const TransposeTestCase& bm, int parallelism,
+                             ::testing::benchmark::State& state) {
+  TransposePlan::Options options;
+  options.elem_size_in_bytes = 1;
+  options.dims = bm.dims;
+  options.permutation = bm.permutation;
+  options.num_threads = parallelism;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
+  int64_t num_elems = plan->InputNumElems();
+  std::vector<int8_t> input(num_elems);
+  absl::BitGen bitgen;
+  int max_val = (1 << bits_per_element) - 1;
+  for (int64_t i = 0; i < num_elems; ++i) {
+    input[i] = absl::Uniform<int>(bitgen, 0, max_val + 1);
+  }
+
+  int elements_per_byte = 8 / bits_per_element;
+  int64_t packed_size = CeilOfRatio<int64_t>(num_elems, elements_per_byte);
+  std::vector<char> output(packed_size);
+
+  tsl::thread::ThreadPool threadpool(tsl::Env::Default(), "Transpose",
+                                     parallelism);
+  for (auto s : state) {
+    auto temp_buf = std::make_unique<char[]>(num_elems);
+    plan->Execute(
+        reinterpret_cast<const char*>(input.data()), temp_buf.get(),
+        [&](std::function<void()> fn) { threadpool.Schedule(std::move(fn)); });
+    PackIntN(bits_per_element, absl::MakeConstSpan(temp_buf.get(), num_elems),
+             absl::MakeSpan(output));
+    tsl::testing::DoNotOptimize(output);
+  }
+}
+
+static void BM_Transpose_Pack4(const TransposeTestCase& bm, int parallelism,
+                               ::testing::benchmark::State& state) {
+  BM_TransposePack<4>(bm, parallelism, state);
+}
+
+static void BM_Transpose_UnfusedPack4(const TransposeTestCase& bm,
+                                      int parallelism,
+                                      ::testing::benchmark::State& state) {
+  BM_TransposeUnfusedPack<4>(bm, parallelism, state);
+}
+
 static void* benchmarks = []() {
   using BenchmarkFn =
       void (*)(const TransposeTestCase&, int, testing::benchmark::State&);
@@ -1182,6 +1261,9 @@ static void* benchmarks = []() {
           {"BM_Transpose_uint8", BM_Transpose_uint8, {1, 4, 8}},  //
           {"BM_Eigen_float", BM_Eigen_float, {1}},
           {"BM_Transpose_float", BM_Transpose_float, {1, 4, 8}},  //
+          {"BM_Transpose_Pack4", BM_Transpose_Pack4, {1, 4, 8}},
+          //          {"BM_Transpose_Pack4", BM_Transpose_UnfusedPack4, {1, 4,
+          //          8}},
       };
   auto benchmark_cases = BenchmarkCases();
   for (const auto& benchmark_case : benchmark_cases) {
@@ -1274,6 +1356,93 @@ TEST(TransposePlanCache, Basics) {
   EXPECT_TRUE(p3.get() != p1.get());
   TF_ASSERT_OK_AND_ASSIGN(auto p1b, cache.GetOrCreate(o));
   EXPECT_TRUE(p1.get() != p1b.get());
+}
+
+void TestPackIntN(int bits_per_element, absl::Span<const int64_t> dims,
+                  absl::Span<const int64_t> permutation) {
+  int elements_per_byte = 8 / bits_per_element;
+
+  int64_t num_elems = 1;
+  for (int64_t dim : dims) {
+    num_elems *= dim;
+  }
+  std::vector<int8_t> input(num_elems);
+  absl::BitGen bitgen;
+  int max_val = (1 << bits_per_element) - 1;
+  for (int64_t i = 0; i < num_elems; ++i) {
+    input[i] = absl::Uniform<int>(bitgen, 0, max_val + 1);
+  }
+
+  TransposePlan::Options options;
+  options.elem_size_in_bytes = 1;
+  options.dims = dims;
+  options.permutation = permutation;
+  options.dest_bits_per_element = bits_per_element;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
+
+  int64_t output_size_bytes =
+      CeilOfRatio<int64_t>(num_elems, elements_per_byte);
+  std::vector<char> output(output_size_bytes, -1);
+
+  plan->Execute(reinterpret_cast<const char*>(input.data()), output.data());
+
+  std::vector<int8_t> expected_unpacked_transposed(num_elems);
+  std::vector<int64_t> output_dims = Permute(dims, permutation);
+  std::vector<int64_t> input_tiling = PadTiling(dims, {});
+  std::vector<int64_t> input_strides =
+      ComputeDefaultStrides(dims, input_tiling, 1);
+  std::vector<int64_t> output_tiling = PadTiling(output_dims, {});
+  std::vector<int64_t> output_strides =
+      ComputeDefaultStrides(output_dims, output_tiling, 1);
+  ReferenceTranspose<int8_t>(dims, permutation, input_tiling, input_strides,
+                             output_tiling, output_strides, input,
+                             absl::MakeSpan(expected_unpacked_transposed), 0);
+
+  std::vector<char> expected_output(output_size_bytes);
+  PackIntN(bits_per_element,
+           absl::MakeConstSpan(reinterpret_cast<const char*>(
+                                   expected_unpacked_transposed.data()),
+                               num_elems),
+           absl::MakeSpan(expected_output));
+
+  EXPECT_EQ(output, expected_output);
+}
+
+TEST(TransposeTest, PackInt4_2D) {
+  TestPackIntN(4, {4, 4}, {1, 0});
+  TestPackIntN(4, {4, 4}, {0, 1});
+  TestPackIntN(4, {16, 32}, {1, 0});
+}
+
+TEST(TransposeTest, PackInt4_3D) {
+  TestPackIntN(4, {4, 6, 8}, {2, 0, 1});
+  TestPackIntN(4, {8, 12, 16}, {1, 2, 0});
+}
+
+TEST(TransposeTest, PackInt2_2D) {
+  TestPackIntN(2, {4, 4}, {1, 0});
+  TestPackIntN(2, {16, 32}, {1, 0});
+}
+
+TEST(TransposeTest, PackInt1_2D) {
+  TestPackIntN(1, {8, 8}, {1, 0});
+  TestPackIntN(1, {16, 32}, {1, 0});
+}
+
+TEST(TransposeTest, PackInt4_Unaligned) {
+  TestPackIntN(4, {5, 5}, {1, 0});
+  TestPackIntN(4, {15, 31}, {1, 0});
+}
+
+TEST(TransposeTest, PackInt2_Unaligned) {
+  TestPackIntN(2, {5, 5}, {1, 0});
+  TestPackIntN(2, {15, 31}, {1, 0});
+}
+
+TEST(TransposeTest, PackInt1_Unaligned) {
+  TestPackIntN(1, {5, 5}, {1, 0});
+  TestPackIntN(1, {15, 31}, {1, 0});
 }
 
 }  // namespace xla

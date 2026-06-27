@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -67,6 +68,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -2695,6 +2697,7 @@ class WhileBufferAssignmentTest : public HloHardwareIndependentTestBase {
         ScheduleModule(module, &alias_info_, ByteSizeOf).value();
     BufferAssigner::Options opts;
     opts.allocate_buffers_for_constants = true;
+    opts.buffer_order = BufferAssigner::BufferOrder::kBiggestFirst;
     return BufferAssigner::Run(
                module, std::make_unique<SequentialHloOrdering>(schedule),
                ByteSizeOf, &alias_info_,
@@ -4943,6 +4946,111 @@ TEST_F(BufferAssignmentTest, TopologicalOrder) {
   }
 }
 
+TEST_F(BufferAssignmentTest, LiveRangeStartOrder) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "param0"));
+
+  // small: f32[] (4 bytes)
+  auto small = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, param0));
+
+  // large: f32[100] (400 bytes).
+  // large depends on small, enforcing topological order: small then large.
+  auto large = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(f32vec100_, small, {}));
+
+  // Return a tuple containing both to ensure they are both live/output.
+  builder.AddInstruction(HloInstruction::CreateTuple({small, large}));
+  module->AddEntryComputation(builder.Build());
+
+  // Even though we use DependencyHloOrdering, we must set a valid schedule
+  // for the module to pass verification/setup.
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      module->entry_computation(),
+      {param0, small, large, module->entry_computation()->root_instruction()});
+  CHECK_OK(module->set_schedule(schedule));
+
+  // Run with FAST_MERGE (inherits kLiveRangeStart buffer_order)
+  {
+    BufferAssigner::Options opts;
+    opts.assignment_algorithm_for_computations_without_ordering =
+        buffer_assignment::
+            AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE;
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto assignment,
+        BufferAssigner::Run(
+            module.get(), std::make_unique<SequentialHloOrdering>(schedule),
+            &BufferSizeBytes, &alias_info_,
+            [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+
+    const BufferAllocation& alloc_small =
+        GetAssignedOutputAllocation(*assignment, small);
+    const BufferAllocation& alloc_large =
+        GetAssignedOutputAllocation(*assignment, large);
+
+    // Expect small assigned before large (lower index) because small starts
+    // its live range earlier.
+    EXPECT_LT(alloc_small.index(), alloc_large.index());
+  }
+}
+
+// Verifies that FastMergeBufferAllocationsManagerForComputationsWithoutOrdering
+// correctly tracks active allocations and prevents reuse when live ranges
+// overlap.
+TEST_F(BufferAssignmentTest, FastMergeManagerDirectTest) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "param0"));
+  auto small = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, param0));
+  auto large = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(f32vec100_, small, {}));
+  builder.AddInstruction(HloInstruction::CreateTuple({small, large}));
+  module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      module->entry_computation(),
+      {param0, small, large, module->entry_computation()->root_instruction()});
+  CHECK_OK(module->set_schedule(schedule));
+
+  BufferAssigner::Options opts;
+  opts.assignment_algorithm_for_computations_without_ordering =
+      buffer_assignment::
+          AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE;
+
+  BufferAssigner assigner(&alias_info_, std::move(opts));
+  ASSERT_OK_AND_ASSIGN(
+      auto assignment,
+      assigner.CreateAssignment(
+          module.get(), std::make_unique<SequentialHloOrdering>(schedule),
+          &BufferSizeBytes, [](LogicalBuffer::Color) { return 1; }));
+
+  auto manager = BufferAssigner::CreateFastMergeManagerForTest(assignment.get(),
+                                                               &assigner);
+
+  const HloBuffer& buffer_small =
+      assignment->alias_analysis().GetBufferContainingValue(
+          assignment->dataflow_analysis().GetUniqueValueAt(small, {}));
+  const HloBuffer& buffer_large =
+      assignment->alias_analysis().GetBufferContainingValue(
+          assignment->dataflow_analysis().GetUniqueValueAt(large, {}));
+
+  ASSERT_OK_AND_ASSIGN(auto large_color, buffer_large.color());
+  BufferAllocation* alloc_large = assignment->NewEmptyAllocation(
+      assignment->HloBufferSize(buffer_large), large_color);
+  manager->RegisterNewAllocation(&buffer_large, alloc_large->index());
+
+  ASSERT_OK_AND_ASSIGN(
+      bool reused, manager->TryAssignToExistingAllocation(
+                       &buffer_small, assignment->HloBufferSize(buffer_small)));
+  EXPECT_FALSE(reused);
+}
+
 TEST(ComputeTotalAllocationBytesTest, NonMatchingColorAllocations) {
   BufferAssignmentProto proto;
   BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
@@ -5165,6 +5273,89 @@ TEST_F(BufferAssignmentTest,
   EXPECT_TRUE(assignment->HasTopLevelAllocation(param));
   EXPECT_TRUE(assignment->HasTopLevelAllocation(add));
 }
+
+void BM_FastMergeManagerStress(::testing::benchmark::State& state) {
+  // 1. Module Setup: Generate a chain of unary HLO instructions to establish
+  // realistic live ranges.
+  const int64_t num_buffers = state.range(0);
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsFromFlags());
+  HloModule module("BM_FastMergeManagerStress", config);
+  auto builder = HloComputation::Builder("entry");
+
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p"));
+  std::vector<HloInstruction*> insts;
+  insts.reserve(num_buffers);
+  insts.push_back(param0);
+
+  for (int64_t i = 1; i < num_buffers; ++i) {
+    insts.push_back(builder.AddInstruction(HloInstruction::CreateUnary(
+        ShapeUtil::MakeShape(F32, {i}), HloOpcode::kNegate, insts.back())));
+  }
+  HloComputation* entry = module.AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(&module);
+  schedule.set_sequence(entry, insts);
+  CHECK_OK(module.set_schedule(schedule));
+
+  AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.assignment_algorithm_for_computations_without_ordering =
+      buffer_assignment::
+          AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE;
+  opts.buffer_assignment_algorithm =
+      buffer_assignment::BufferAssignmentAlgorithmProto::FAST_MERGE;
+  BufferAssigner assigner(&alias_info, std::move(opts));
+
+  // 2. Precomputation: Perform alias analysis, HloLiveRange construction, and
+  // buffer collection once outside the benchmark loop to eliminate graph setup
+  // overhead.
+  ASSERT_OK_AND_ASSIGN(
+      auto base_assignment,
+      assigner.CreateAssignment(
+          &module, std::make_unique<SequentialHloOrdering>(schedule),
+          &BufferSizeBytes, [](LogicalBuffer::Color) { return 1; }));
+
+  std::vector<const HloBuffer*> buffers;
+  buffers.reserve(num_buffers);
+  for (HloInstruction* inst : insts) {
+    buffers.push_back(
+        &base_assignment->alias_analysis().GetBufferContainingValue(
+            base_assignment->dataflow_analysis().GetUniqueValueAt(inst, {})));
+  }
+
+  std::mt19937 generator;
+  std::bernoulli_distribution reuse_dist(0.5);
+
+  for (auto s : state) {
+    // 3. Benchmark Loop: Measure the exact sweep-line pooling and reuse
+    // performance.
+    base_assignment->ResetAllocationsForTest();
+    auto manager = BufferAssigner::CreateFastMergeManagerForTest(
+        base_assignment.get(), &assigner);
+
+    for (int64_t i = 0; i < num_buffers; ++i) {
+      const HloBuffer* buffer = buffers[i];
+      ASSERT_OK_AND_ASSIGN(auto color, buffer->color());
+      if (i == 0 || !reuse_dist(generator)) {
+        BufferAllocation* alloc = base_assignment->NewEmptyAllocation(
+            base_assignment->HloBufferSize(*buffer), color);
+        manager->RegisterNewAllocation(buffer, alloc->index());
+      } else {
+        auto status_or = manager->TryAssignToExistingAllocation(
+            buffer, base_assignment->HloBufferSize(*buffer));
+        if (!status_or.ok() || !status_or.value()) {
+          BufferAllocation* alloc = base_assignment->NewEmptyAllocation(
+              base_assignment->HloBufferSize(*buffer), color);
+          manager->RegisterNewAllocation(buffer, alloc->index());
+        }
+      }
+    }
+  }
+}
+
+BENCHMARK(BM_FastMergeManagerStress)->Range(1'000, 10'000'000);
 
 }  // namespace
 }  // namespace xla

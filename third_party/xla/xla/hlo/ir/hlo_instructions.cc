@@ -20,7 +20,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -63,7 +62,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -845,8 +843,11 @@ bool HloChannelInstruction::IdenticalSlowPath(
 
 HloTopKInstruction::HloTopKInstruction(const Shape& shape,
                                        HloInstruction* input, int64_t k,
-                                       bool largest)
-    : HloInstruction(HloOpcode::kTopK, shape), k_(k), largest_(largest) {
+                                       bool largest, bool is_stable)
+    : HloInstruction(HloOpcode::kTopK, shape),
+      k_(k),
+      largest_(largest),
+      is_stable_(is_stable) {
   AppendOperand(input);
 }
 
@@ -854,6 +855,7 @@ void HloTopKInstruction::ToProto(HloInstructionProto* proto) const {
   HloInstruction::ToProto(proto);
   proto->set_k(k_);
   proto->set_largest(largest_);
+  proto->set_is_stable(is_stable_);
 }
 
 void HloTopKInstruction::PrintExtraAttributesImpl(
@@ -862,13 +864,16 @@ void HloTopKInstruction::PrintExtraAttributesImpl(
   printer.Next([this](Printer* p) {
     AppendCat(p, "largest=", (largest_ ? "true" : "false"));
   });
+  printer.Next([this](Printer* p) {
+    AppendCat(p, "is_stable=", (is_stable_ ? "true" : "false"));
+  });
 }
 
 std::unique_ptr<HloInstruction> HloTopKInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   return std::make_unique<HloTopKInstruction>(shape, new_operands[0], k(),
-                                              largest());
+                                              largest(), is_stable());
 }
 
 bool HloTopKInstruction::IdenticalSlowPath(
@@ -876,7 +881,8 @@ bool HloTopKInstruction::IdenticalSlowPath(
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloTopKInstruction&>(other);
-  return k() == casted_other.k() && largest() == casted_other.largest();
+  return k() == casted_other.k() && largest() == casted_other.largest() &&
+         is_stable() == casted_other.is_stable();
 }
 
 HloSendRecvInstruction::HloSendRecvInstruction(
@@ -1843,7 +1849,7 @@ HloMapInstruction::HloMapInstruction(const Shape& shape,
   // TODO(b/65689298) Remove code below once Map is generalized to accept
   // arbitrary map dimensions.
   dimensions_.resize(shape.dimensions().size());
-  std::iota(dimensions_.begin(), dimensions_.end(), 0);
+  absl::c_iota(dimensions_, 0);
 }
 
 void HloMapInstruction::ToProto(HloInstructionProto* proto) const {

@@ -29,23 +29,25 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/comparators.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -339,6 +341,8 @@ TopKCustomCall CreateTopKCustomCall(HloSortInstruction* sort, const int64_t k) {
                                        ShapeUtil::MakeShape(S32, {k})});
   HloInstruction* topk = sort->AddInstruction(HloInstruction::CreateCustomCall(
       topk_shape, {input}, sort->to_apply(), "TopK"));
+  topk->set_raw_backend_config_string(absl::StrFormat(
+      "{is_stable = %s}", sort->is_stable() ? "true" : "false"));
   HloInstruction* value_gte =
       sort->AddInstruction(HloInstruction::CreateGetTupleElement(
           topk->shape().tuple_shapes(0), topk, 0));
@@ -506,15 +510,19 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     Shape iota_shape = input->shape();
     iota_shape.set_element_type(S32);
     size_t sort_dimension = input->shape().dimensions().size() - 1;
+    bool is_stable = true;
+    if (auto* topk_inst = DynCast<HloTopKInstruction>(call)) {
+      is_stable = topk_inst->is_stable();
+    }
     std::vector<int64_t> zeroes(iota_shape.dimensions().size(), 0);
     std::vector<int64_t> ones(iota_shape.dimensions().size(), 1);
     CHECK_NE(variadic_comparator, nullptr);
     // If only the topk values are necessary, skip the iota.
     if (HasSingleUserReadingOnlyTheValueOutput(call) &&
         variadic_comparator->num_parameters() == 2) {
-      HloInstruction* sort = call->AddInstruction(HloInstruction::CreateSort(
-          input->shape(), sort_dimension, {input}, variadic_comparator,
-          /*is_stable=*/true));
+      HloInstruction* sort = call->AddInstruction(
+          HloInstruction::CreateSort(input->shape(), sort_dimension, {input},
+                                     variadic_comparator, is_stable));
       RETURN_IF_ERROR(ReplaceInstruction(
           call->users().front(),
           call->AddInstruction(HloInstruction::CreateSlice(
@@ -525,8 +533,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
           iota_shape, iota_shape.dimensions().size() - 1));
       HloInstruction* sort = call->AddInstruction(HloInstruction::CreateSort(
           ShapeUtil::MakeTupleShape({input->shape(), iota_shape}),
-          sort_dimension, {input, iota}, variadic_comparator,
-          /*is_stable=*/true));
+          sort_dimension, {input, iota}, variadic_comparator, is_stable));
       // Apply a slice to a tuple.
       auto slice_tuple = [&](const size_t index) {
         return call->AddInstruction(HloInstruction::CreateSlice(

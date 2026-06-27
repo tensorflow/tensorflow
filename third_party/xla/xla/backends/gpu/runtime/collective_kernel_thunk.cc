@@ -45,6 +45,7 @@ limitations under the License.*/
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
@@ -506,6 +507,18 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
       remote_buffers};
   return ExecuteKernelOnStream(*state->kernel, kernel_args, launch_dimensions_,
                                /*cluster_dim=*/std::nullopt, stream);
+}
+
+Thunk::BufferUses CollectiveKernelThunk::buffer_uses() const {
+  BufferUses uses;
+  uses.reserve(buffers_.size() * 2);
+  for (const CollectiveThunk::Buffer& buffer : buffers_) {
+    uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
+                                   buffer.source_buffer.shape));
+    uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
+                                    buffer.destination_buffer.shape));
+  }
+  return uses;
 }
 
 /* static */ absl::StatusOr<se::DeviceAddressBase>

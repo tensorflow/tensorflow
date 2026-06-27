@@ -19,7 +19,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -40,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/LLVM.h"
@@ -63,7 +63,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -272,7 +271,7 @@ MeshInfo ExtractSdyMeshInfo(mlir::sdy::MeshAttr mesh_attr) {
       total_size *= size;
     }
     info.device_ids.resize(total_size);
-    std::iota(info.device_ids.begin(), info.device_ids.end(), 0);
+    absl::c_iota(info.device_ids, 0);
   }
   return info;
 }
@@ -297,7 +296,7 @@ MeshInfo ExtractStablehloMeshInfo(
       total_size *= size;
     }
     info.device_ids.resize(total_size);
-    std::iota(info.device_ids.begin(), info.device_ids.end(), 0);
+    absl::c_iota(info.device_ids, 0);
   }
   return info;
 }
@@ -311,7 +310,7 @@ xla::Mesh BuildXlaMesh(const MeshInfo& info) {
   }
 
   std::vector<int64_t> iota_ids(info.device_ids.size());
-  std::iota(iota_ids.begin(), iota_ids.end(), 0);
+  absl::c_iota(iota_ids, 0);
   if (info.device_ids == iota_ids) {
     return xla::Mesh(info.axes_sizes, axes_names_sv);
   }

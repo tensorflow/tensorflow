@@ -161,7 +161,7 @@ absl::Status Pack(std::unique_ptr<riegeli::Reader> reader,
   }
 
   if (options.proto_type == "xla.HloProto") {
-    auto* hlo_proto = absl::down_cast<xla::HloProto*>(message.get());
+    auto* hlo_proto = google::protobuf::DownCastMessage<xla::HloProto>(message.get());
     return WriteSplitHloProto(*hlo_proto, std::move(writer));
   }
 

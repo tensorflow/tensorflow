@@ -42,6 +42,7 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -683,6 +684,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -883,6 +885,7 @@ cc_library(
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1032,6 +1035,7 @@ cc_library(
     hdrs = ["set_tpu_infeed_layout.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@xla//xla:shape_util",

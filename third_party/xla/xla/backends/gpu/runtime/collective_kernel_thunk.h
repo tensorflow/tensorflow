@@ -121,6 +121,8 @@ class CollectiveKernelThunk : public Thunk {
   // Execute the kernel on all devices.
   absl::Status ExecuteOnStream(const ExecuteParams& params) final;
 
+  BufferUses buffer_uses() const override;
+
   static absl::StatusOr<std::unique_ptr<CollectiveKernelThunk>> FromProto(
       ThunkInfo thunk_info, const CollectiveKernelThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations);

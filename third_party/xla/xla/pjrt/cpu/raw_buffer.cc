@@ -261,7 +261,6 @@ absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyFromHostBuffer(
   bool is_packed = primitive_util::IsSubByteNonPredType(type);
 
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
-  size_t dst_byte_size = byte_size;
   if (is_packed) {
     byte_size *= 8 / bit_width;
   }
@@ -280,6 +279,9 @@ absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyFromHostBuffer(
       options.elem_size_in_bytes = primitive_util::ByteWidth(type);
       options.dims = dims;
       options.permutation = permutation;
+      if (is_packed) {
+        options.dest_bits_per_element = bit_width;
+      }
       if (byte_strides) {
         options.input_striding = TransposePlan::Striding{*byte_strides};
       }
@@ -295,20 +297,7 @@ absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyFromHostBuffer(
         thread_pool->Schedule(std::move(work));
       };
     }
-    if (!is_packed) {
-      transpose->Execute(data, dst_data_ptr, schedule_work);
-    } else {
-      // First transpose the unpacked data into a new temporary buffer, then
-      // pack the data.
-      // TODO(reedwm): Fuse the transpose and packing by having TransposePlan
-      // support packing.
-      auto data_transposed = std::make_unique<char[]>(byte_size);
-      transpose->Execute(data, data_transposed.get(), schedule_work);
-      absl::Span<const char> src_data_span(data_transposed.get(), byte_size);
-      absl::Span<char> dst_data_span(static_cast<char*>(dst_data_ptr),
-                                     dst_byte_size);
-      PackIntN(bit_width, src_data_span, dst_data_span);
-    }
+    transpose->Execute(data, dst_data_ptr, schedule_work);
     if (on_done_with_host_buffer) {
       std::move(on_done_with_host_buffer)();
       on_done_with_host_buffer = nullptr;

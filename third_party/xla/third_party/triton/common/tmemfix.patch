@@ -66,7 +66,7 @@
        return castbbitwidth * ret.value();
      }
      if (auto maybeQuot = divideLeft(
-@@ -221,10 +229,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -223,10 +231,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
  
    auto nColsTile = tile.getOutDimSize(rowColDims[1]);
    auto nColsLL = ll.getInDimSize(rowColDims[1]);
@@ -78,7 +78,7 @@
    auto kReg = StringAttr::get(ctx, "register");
    auto kLane = StringAttr::get(ctx, "lane");
    auto kWarp = StringAttr::get(ctx, "warp");
-@@ -241,7 +246,9 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -243,7 +248,9 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
    // basis as that would disallow the resulting layout to be left-divisible by
    // the tile
    auto trivialBlock = LinearLayout::identity1D(1, kBlock, kBlock);
@@ -89,7 +89,7 @@
                    .compose(ll)
                    .sublayout({kReg, kLane}, to_vector(ll.getOutDimNames()));
    if (instr32Rows) {
-@@ -249,7 +256,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -251,7 +258,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
      // basis
      comp = comp.resizeInDim(kLane, comp.getInDimSize(kLane) / 2);
    }
@@ -98,7 +98,7 @@
      return std::nullopt;
  
    // Fit the warp bases either tiling on the RHS or in row=16
-@@ -304,9 +311,8 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -306,9 +313,8 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
    // Add CTAs as a trivial map
    auto nCTAs = ll.getInDimSize(kBlock);
    tile *= LinearLayout::identity1D(nCTAs, kBlock, kBlock);
@@ -110,7 +110,7 @@
    return ret;
  }
  
-@@ -338,6 +344,18 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
+@@ -340,6 +346,18 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
    }
    auto layout = getDistributedLayoutForTmemLdSt(
        memType, TMemAccessAtom::I32x32b, numWarps);
@@ -129,7 +129,7 @@
    assert(layout);
    return LinearEncodingAttr::get(ctx, std::move(*layout));
  }
-@@ -411,6 +429,10 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
+@@ -413,6 +431,10 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
  bool isDistributedLayoutTMemCompatible(Operation *op,
                                         RankedTensorType tensorType,
                                         gpu::MemDescType memType) {
@@ -290,7 +290,7 @@
 
 --- a/test/Conversion/tritongpu_to_llvm_blackwell.mlir
 +++ b/test/Conversion/tritongpu_to_llvm_blackwell.mlir
-@@ -1048,7 +1048,7 @@ module attributes {"ttg.num-warps" = 8 : i32} {
+@@ -1076,7 +1076,7 @@ module attributes {"ttg.num-warps" = 8 : i32} {
  // CHECK-LABEL: @load_store_16x32bx1_broadcast
  tt.func private @load_store_16x32bx1_broadcast(%arg0: !ttg.memdesc<16x8xi8, #tmem_scales, #ttng.tensor_memory, mutable>, %arg1: tensor<16x8xi8, #linear>) {
    %true = arith.constant true
@@ -299,7 +299,7 @@
    ttng.tmem_store %arg1, %arg0, %true : tensor<16x8xi8, #linear> -> !ttg.memdesc<16x8xi8, #tmem_scales, #ttng.tensor_memory, mutable>
    tt.return
  }
-@@ -1063,7 +1063,7 @@ module attributes {"ttg.num-warps" = 4 : i32} {
+@@ -1091,7 +1091,7 @@ module attributes {"ttg.num-warps" = 4 : i32} {
  // CHECK-LABEL: @load_store_16x2_scales_uses_zero_second_half
  tt.func private @load_store_16x2_scales_uses_zero_second_half(%arg0: !ttg.memdesc<16x2xi8, #tmem_scales, #ttng.tensor_memory, mutable>, %arg1: tensor<16x2xi8, #linear>) {
    %true = arith.constant true
@@ -367,10 +367,10 @@
          else:
              return (1, 1, 16)
  
- 
+
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp
-@@ -674,15 +674,18 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
+@@ -683,15 +683,18 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                            int k) {
      auto [numRepM, numRepN, numRepK] = desc.repShape;
      int scaleFactorColsPerSet = getScaleFactorColsPerSet(mxfpInstKind);
@@ -393,3 +393,17 @@
      int wordIdx = k / (4 / scaleFactorColsPerSet);
      Value scaleA = tb.add(
 
+diff --git a/python/test/gluon/test_fpsan.py b/python/test/gluon/test_fpsan.py
+--- a/python/test/gluon/test_fpsan.py
++++ b/python/test/gluon/test_fpsan.py
+@@ -1560,8 +1560,10 @@
+ ]
+ 
+ 
+ def _native_mma_k(type_a: str) -> int:
++    if is_cuda() and type_a == "f32":
++        return 16
+     return 256 // _float_dtype_info(type_a)[0]
+ 
+ 
+ _DOT_FMA_CASES = [

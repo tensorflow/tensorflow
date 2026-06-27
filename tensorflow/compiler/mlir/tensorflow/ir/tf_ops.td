@@ -3226,6 +3226,9 @@ def TF_XlaSparseActivationsUnstackOp : TF_Op<"XlaSparseActivationsUnstack", [Pur
   let results = (outs
     Variadic<TF_Tensor>:$unstacked_embedding_activations
   );
+
+  TF_DerivedOperandTypeAttr input_dtype = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_XlaSparseGradientsStackOp : TF_Op<"XlaSparseGradientsStack", [Pure]> {
@@ -3248,5 +3251,9 @@ def TF_XlaSparseGradientsStackOp : TF_Op<"XlaSparseGradientsStack", [Pure]> {
   let results = (outs
     TF_Tensor:$stacked_gradients
   );
+
+  TF_DerivedOperandTypeAttr input_dtype = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 #endif // TF_OPS
+

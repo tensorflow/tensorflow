@@ -704,26 +704,83 @@ absl::StatusOr<TensorValue> EmitConcatenate(
   ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
                    tiled_concatenate.tile_offsets_indexing());
 
+  SymbolicExpr offset_expr =
+      tile_offsets_indexing.GetSymbolicMap().GetResult(concatenate_dimension);
+  ::xla::RangeEvaluator range_evaluator =
+      tile_offsets_indexing.GetRangeEvaluator();
+  ::xla::Interval offset_range =
+      range_evaluator.ComputeExpressionRange(offset_expr);
+
+  // Filter out operands that are statically known not to be accessed by this
+  // tile. For example, if we are tiling a concatenate of [A, B] and this tile
+  // only accesses indices within the range of B, then A is inactive.
+  //
+  // Pruning inactive operands is necessary because inactive operands are
+  // lowered to unit tensors of shape 1x1x1x1 (tile size 0). If we were to
+  // include them in the generated scf.if, it would cause a type mismatch
+  // error in the scf.yield because their 1x1x1x1 shape would not match the
+  // active operands' correct tiled shape (e.g. 32x1x1x16).
+  struct ActiveOperand {
+    int64_t index;
+    const TiledHloInstruction* operand;
+    int64_t limit_high;
+  };
+  std::vector<ActiveOperand> active_operands;
+  int64_t current_limit = 0;
+  for (auto [i, operand] : llvm::enumerate(tiled_concatenate.operands())) {
+    int64_t next_limit =
+        current_limit +
+        operand->hlo()->shape().dimensions()[concatenate_dimension];
+    // Check if [current_limit, next_limit - 1] intersects with offset_range.
+    if (offset_range.upper >= current_limit &&
+        offset_range.lower < next_limit) {
+      active_operands.push_back({static_cast<int64_t>(i), operand, next_limit});
+    }
+    current_limit = next_limit;
+  }
+
+  if (active_operands.empty()) {
+    return absl::InternalError("Concatenate has no active operands");
+  }
+
+  // Optimization: If only a single operand is active for this tile, we can
+  // bypass the generated scf.if control flow entirely and directly return
+  // the result of emitting that single active operand.
+  if (active_operands.size() == 1) {
+    int64_t active_idx = active_operands[0].index;
+    RETURN_IF_ERROR(EmitTiledInstructionList(
+        b, fusion, tiled_concatenate.hlo_regions()[active_idx], fn, pid,
+        values));
+    const TiledHloInstruction* active_operand = active_operands[0].operand;
+    auto it = values.find(active_operand);
+    TF_RET_CHECK(it != values.end())
+        << "Concatenate operand " << active_operand->ToString()
+        << " is not found in the values map (not part of the region?)";
+    return it->second;
+  }
+
   Value concatenate_dimension_offset =
       emitters::ApplyIndexing(tile_offsets_indexing, /*dims=*/pid,
                               /*symbols=*/{}, b)[concatenate_dimension];
 
   // It would have been nice to be able to use `scf::IndexSwitchOp`, but Triton
   // does not want to deal with the `Index` type, and does not support the op.
-  // Instead, we generate a sequence of nested `scf::IfOp`s.
+  // Instead, we generate a sequence of nested `scf::IfOp`s for active operands.
   SmallVector<mlir::scf::IfOp, 4> if_ops;
-  int64_t limit = 0;
-  for (auto [i, operand] : llvm::enumerate(tiled_concatenate.operands())) {
+  for (size_t i = 0; i < active_operands.size(); ++i) {
+    const auto& active_op = active_operands[i];
+
     // Write in the else branch of the previous if op if one exists.
     if (!if_ops.empty()) {
       b.setInsertionPointToStart(if_ops.back().elseBlock());
     }
 
-    // Add an `if_op` if we have not reached the last operand. The last operand
-    // directly populates the `else` block of the previous `if_op`.
-    if (if_ops.size() < tiled_concatenate.operands().size() - 1) {
-      limit += operand->hlo()->shape().dimensions()[concatenate_dimension];
-      Value offset_limit = CreateConst(b, b.getIndexType(), limit);
+    // Add an `if_op` if we have not reached the last active operand. The last
+    // active operand directly populates the `else` block of the previous
+    // `if_op`.
+    if (if_ops.size() < active_operands.size() - 1) {
+      Value offset_limit =
+          CreateConst(b, b.getIndexType(), active_op.limit_high);
 
       auto cond =
           arith::CmpIOp::create(b, arith::CmpIPredicate::slt,
@@ -742,13 +799,16 @@ absl::StatusOr<TensorValue> EmitConcatenate(
       if_ops.push_back(if_op);
     }
     RETURN_IF_ERROR(EmitTiledInstructionList(
-        b, fusion, tiled_concatenate.hlo_regions()[i], fn, pid, values));
+        b, fusion, tiled_concatenate.hlo_regions()[active_op.index], fn, pid,
+        values));
     // We assume that operand is part of the region, thus it will be in the
     // values.
-    TF_RET_CHECK(values.contains(operand))
-        << "Concatenate operand " << operand->ToString()
+    const TiledHloInstruction* active_operand = active_op.operand;
+    auto it = values.find(active_operand);
+    TF_RET_CHECK(it != values.end())
+        << "Concatenate operand " << active_operand->ToString()
         << " is not found in the values map (not part of the region?)";
-    mlir::scf::YieldOp::create(b, values[operand]);
+    mlir::scf::YieldOp::create(b, it->second);
   }
   b.setInsertionPointAfter(if_ops.front());
   return mlir::cast<TensorValue>(if_ops.front().getResult(0));
@@ -970,7 +1030,7 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     return EmitReduce(b, tiled_hlo, values);
   }
 
-  if (hlo->opcode() == HloOpcode::kAllReduce) {
+  if (hlo->opcode() == HloOpcode::kAllReduceStart) {
     const HloComputation* computation = fusion.fused_instructions_computation();
     const HloInstruction* root_instruction = computation->root_instruction();
     if (root_instruction->opcode() == HloOpcode::kAllReduceDone) {
@@ -979,6 +1039,10 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     return EmitAllReduce(b, computation,
                          *xla::Cast<HloAllReduceInstruction>(root_instruction),
                          tiled_hlo, values);
+  }
+
+  if (hlo->opcode() == HloOpcode::kAllReduceDone) {
+    return values[tiled_hlo.operand(0)];
   }
 
   if (hlo->IsElementwise()) {

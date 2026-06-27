@@ -659,8 +659,8 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
   const std::string& kernel_name = spec.kernel_name();
 
   if (spec.has_cuda_cubin_in_memory()) {
-    const auto& cubin = spec.cuda_cubin_in_memory()->cubin_bytes;
-    const char* hsaco = reinterpret_cast<const char*>(cubin.data());
+    const char* hsaco = reinterpret_cast<const char*>(
+        spec.cuda_cubin_in_memory()->cubin_bytes.data());
     absl::MutexLock lock{in_memory_modules_mu_};
     ASSIGN_OR_RETURN(ModuleHandle module_handle, LoadModuleFromHsaco(hsaco));
     hipModule_t module = gpu_binary_to_module_.at(module_handle).first;

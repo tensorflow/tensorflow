@@ -15,11 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/set_tpu_infeed_layout.h"
 
+#if !defined(_WIN32)
+#include <sys/sysmacros.h>
+#endif
+
 #include <algorithm>
 #include <cstdint>
 #include <numeric>
 #include <vector>
 
+#undef major
+#undef minor
+
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -46,12 +54,12 @@ static FailureOr<std::vector<int64_t>> GetTPUInfeedLayoutFromAPI(
   // this can fail if we're not running on a TPU-enabled node.
   // TODO(kramm): Move this into a separate pass. See b/184944903
   xla::Shape old_shape = xla::TypeToShape(t);
-  XLA_Shape old_shape_c = {};
+  XLA_Shape old_shape_c = {};  // NOLINT
   XLA_Shape new_shape_c = {};
-  TfTpu_ExecutorApiFn* executor = stream_executor::tpu::ExecutorApiFn();
-  if (!stream_executor::tpu::IsInitialized(executor)) {
+  if (!stream_executor::tpu::IsInitialized()) {
     return failure();
   }
+  const TfTpu_ExecutorApiFn* executor = stream_executor::tpu::ExecutorApiFn();
   ApiConverter::ToC(old_shape, &old_shape_c);
   executor->TpuTransferManager_GetInfeedLayoutFn(&old_shape_c, &new_shape_c);
   xla::Shape new_shape = ApiConverter::FromC(&new_shape_c);
@@ -63,12 +71,12 @@ static FailureOr<std::vector<int64_t>> GetTPUInfeedLayoutFromAPI(
 }
 
 FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
-                                        OpBuilder &rewriter) {
+                                        OpBuilder& rewriter) {
   auto i64_type = rewriter.getIntegerType(64);
   if (types.size() > 1) {
     llvm::SmallVector<mlir::Attribute> v;
     v.reserve(types.size());
-    for (const mlir::Type &t : types) {
+    for (const mlir::Type& t : types) {
       if (mlir::isa<mhlo::TokenType>(t)) continue;
       auto layout = GetTPUInfeedLayout({t}, rewriter);
       if (failed(layout)) return failure();
@@ -78,10 +86,10 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
     return rewriter.getArrayAttr(shape);
   } else if (mlir::isa<TupleType>(types[0])) {
     auto tuple_type = mlir::dyn_cast<TupleType>(types[0]);
-    const auto &types = tuple_type.getTypes();
+    const auto& types = tuple_type.getTypes();
     llvm::SmallVector<mlir::Attribute> v;
     v.reserve(types.size());
-    for (const mlir::Type &t : types) {
+    for (const mlir::Type& t : types) {
       if (mlir::isa<mhlo::TokenType>(t)) continue;
       auto layout = GetTPUInfeedLayout({t}, rewriter);
       if (failed(layout)) return failure();
@@ -132,10 +140,11 @@ bool SetTPUInfeedLayout(mlir::ModuleOp mlir_module) {
   auto res = mlir_module->walk([&](mlir::TF::InfeedDequeueTupleOp op) {
     mlir::OpBuilder builder(op.getContext());
     std::vector<mlir::Type> result_types;
+    result_types.reserve(op.getResultTypes().size());
 
     for (mlir::Type t : op.getResultTypes()) {
-      auto ty = mlir::cast<mlir::TensorType>(t);
-      if (!ty.hasStaticShape()) return mlir::WalkResult::interrupt();
+      auto ty = mlir::cast<mlir::TensorType>(t);                       // NOLINT
+      if (!ty.hasStaticShape()) return mlir::WalkResult::interrupt();  // NOLINT
       result_types.push_back(t);
     }
 

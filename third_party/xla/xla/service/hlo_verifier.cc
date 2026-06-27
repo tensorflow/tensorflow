@@ -2673,8 +2673,8 @@ absl::Status VerifySingleOperand(
     const std::vector<HloOpcode>& expected_operands) {
   TF_RET_CHECK(instruction->operands().size() == 1)
       << "The " << instruction->opcode()
-      << " instruction requires one consumer, found "
-      << instruction->users().size();
+      << " instruction requires one operand, found "
+      << instruction->operand_count();
 
   const HloInstruction* operand = instruction->operand(0);
   TF_RET_CHECK(absl::c_find(expected_operands, operand->opcode()) !=

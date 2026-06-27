@@ -132,15 +132,8 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
     CollectiveKernelStrategyAnnotator annotator(*gpu_topology_,
                                                 /*is_multimem_enabled=*/false);
     RETURN_IF_ERROR(annotator.Run(module.get()).status());
-    const HloInstruction* instr = nullptr;
-    for (const HloComputation* comp : module->computations()) {
-      instr = hlo_query::GetFirstInstructionWithOpcode(*comp,
-                                                       HloOpcode::kAllReduce);
-      if (instr != nullptr) {
-        break;
-      }
-    }
-    TF_RET_CHECK(instr != nullptr) << "Could not find all-reduce instruction";
+    const HloInstruction* instr = hlo_query::GetFirstInstructionWithOpcode(
+        *module->entry_computation(), HloOpcode::kAllReduceStart);
     std::unique_ptr<HloModule> module_with_fusion =
         NewModuleWithFusion(instr, HloInstruction::FusionKind::kLoop);
     module_with_fusion->mutable_config()
@@ -166,15 +159,10 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
         ROOT apply_op = %3$s[] %4$s(x, y)
       }
 
-      async_computation {
-        param_0 = %1$s parameter(0)
-        ROOT all-reduce = %1$s all-reduce(param_0), to_apply=apply_op, replica_groups={%2$s}
-      }
-
       ENTRY test_computation {
         param_0 = %1$s parameter(0)
-        async-start = ((%1$s), %1$s) async-start(param_0), calls=async_computation
-        ROOT async-done = %1$s async-done(async-start)
+        all-reduce-start = %1$s all-reduce-start(param_0), to_apply=apply_op, replica_groups={%2$s}
+        ROOT all-reduce-done = %1$s all-reduce-done(all-reduce-start)
       }
     )",
                            shape.ToString(), replica_groups, type_str,
@@ -353,7 +341,7 @@ TEST_P(CollectiveEmitterParameterizedTest,
       TritonWrapperResult triton_kernel,
       triton_fusion
           ->GenerateTritonKernelAndWrapper(
-              *result->FusionInstr(), "test-all-reduce", device_info_,
+              *result->FusionInstr(), "test-all-reduce-start", device_info_,
               result->target_triple, result->data_layout,
               std::move(borrowed_context), &kernel_compiler)
           .Await());
@@ -474,7 +462,7 @@ TEST_F(CollectiveEmitterTest, FlattenCollectiveComputation) {
       fused_comp->parameter_instructions(),
       ElementsAre(AllOf(HasOpcode(HloOpcode::kParameter), HasShape(shape_1d))));
   EXPECT_THAT(fused_comp->root_instruction(),
-              AllOf(HasOpcode(HloOpcode::kAllReduce), HasShape(shape_1d)));
+              AllOf(HasOpcode(HloOpcode::kAllReduceStart), HasShape(shape_1d)));
 }
 
 }  // namespace

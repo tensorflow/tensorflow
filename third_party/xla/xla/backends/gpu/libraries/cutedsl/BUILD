@@ -1,6 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_google", "if_linux_x86_64")
+load("//xla/tsl:tsl.bzl", "if_google")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -18,16 +18,13 @@ package_group(
 cc_library(
     name = "ffi",
     srcs = [
-        "//xla/ffi/api:all_headers",
-    ] + if_linux_x86_64([
         "ffi.cc",
-    ]),
+        "//xla/ffi/api:all_headers",
+    ],
     tags = ["no_oss"],
     deps = [
         "//xla/ffi",
-    ] + if_google(if_linux_x86_64([
-        "//third_party/py/cutlass/runtime",
-    ])),
+    ] + if_google(["//third_party/py/cutlass/runtime"]),
     alwayslink = 1,
 )
 

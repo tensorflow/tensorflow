@@ -101,7 +101,6 @@ class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   absl::Status EnqueueDeferredDeallocation(PerDeviceState& state,
                                            uint64_t seqno) override;
 
- private:
   explicit CudaDeviceAddressVmmAllocator(const Platform* platform);
 };
 

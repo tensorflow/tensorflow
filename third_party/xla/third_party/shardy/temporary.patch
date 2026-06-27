@@ -1,57 +1,1252 @@
-diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index eda28950..509398da 100644
---- a/third_party/llvm/generated.patch
-+++ b/third_party/llvm/generated.patch
-@@ -1,37 +1 @@
- Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py b/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py
----- a/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py
--+++ b/lldb/test/API/functionalities/rerun_and_expr_dylib/TestRerunAndExprDylib.py
--@@ -4,6 +4,9 @@
-- TypeSystems tied to that process.
-- """
-- 
--+import os
--+import time
--+
-- import lldb
-- from lldbsuite.test.lldbtest import *
-- from lldbsuite.test import lldbutil
--@@ -61,6 +64,12 @@
--             }
--         )
-- 
--+        # Age the library file to 10 seconds in the past so that it is rebuilt
--+        # and reloaded even on filesystems with 1s resolution.
--+        fpath = self.getBuildArtifact(FULL_DYLIB_NAME)
--+        old_mtime = time.time() - 10
--+        os.utime(fpath, (old_mtime, old_mtime))
--+
--         # Build a.out
--         self.build(
--             dictionary={
--@@ -84,9 +93,6 @@
--             result_children=[ValueCheck(name="m_val", value="42")],
--         )
-- 
---        # Delete the dylib to force make to rebuild it.
---        remove_file(self.getBuildArtifact(FULL_DYLIB_NAME))
---
--         # Re-build libfoo.dylib
--         self.build(
--             dictionary={
+diff --git a/docs/sdy_export_passes.md b/docs/sdy_export_passes.md
+index e22e5522..4260fc1e 100755
+--- a/docs/sdy_export_passes.md
++++ b/docs/sdy_export_passes.md
+@@ -238,6 +238,21 @@ _Sinks all `FuncDataFlowEdgeOp` into their input._
+ Moves the sharding of each `FuncDataFlowEdgeOp` to its input and replaces
+ the op with its input.
+ 
++### `-sdy-split-resharding-dimensions`
++
++_Splits sharded dimensions of ReshardOps to prepare for reshard-to-collectives._
++
++Splits tensor dimensions (via stablehlo.reshape) to isolate sharding axes
++mapping to different target dimensions.
++
++For example, `\[{"x", "y"}, {} \] -> \[{"x"}, {"y"} \]` is split into
++`\[{"x"}, {"y"}, {} \] -> \[{"x"}, {"y"}, {} \]` (via a reshape to 3D) before resharding.
++
++This ensures each dimension maps to at most one target dimension, allowing
++`sdy-reshard-to-collectives` to lower them to optimized collectives (e.g.,
++All-to-All) without landing order conflicts. We only split when axes can
++be aligned using logical reshapes alone without transposes.
++
+ ### `-sdy-unflatten-call-graph`
+ 
+ _Unflattens the call graph._
+diff --git a/shardy/dialect/mpmd/ir/BUILD b/shardy/dialect/mpmd/ir/BUILD
+index e5648da2..db5c7661 100644
+--- a/shardy/dialect/mpmd/ir/BUILD
++++ b/shardy/dialect/mpmd/ir/BUILD
+@@ -1,8 +1,8 @@
+ # The MPMD MLIR dialect.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
+-# load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/dialect/mpmd/transforms/BUILD b/shardy/dialect/mpmd/transforms/BUILD
+index 750ca00c..2f3b4772 100644
+--- a/shardy/dialect/mpmd/transforms/BUILD
++++ b/shardy/dialect/mpmd/transforms/BUILD
+@@ -1,6 +1,6 @@
+ # The MPMD dialect passes and pipelines.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/dialect/mpmd/transforms/common/BUILD b/shardy/dialect/mpmd/transforms/common/BUILD
+index 9ed69193..17829d75 100644
+--- a/shardy/dialect/mpmd/transforms/common/BUILD
++++ b/shardy/dialect/mpmd/transforms/common/BUILD
+@@ -1,8 +1,8 @@
+ # The MPMD common library and passes.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
+-# load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/dialect/mpmd/transforms/export/BUILD b/shardy/dialect/mpmd/transforms/export/BUILD
+index d26ed8b3..639b486e 100644
+--- a/shardy/dialect/mpmd/transforms/export/BUILD
++++ b/shardy/dialect/mpmd/transforms/export/BUILD
+@@ -1,8 +1,8 @@
+ # The MPMD export passes and pipeline.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
+-# load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/dialect/mpmd/transforms/import/BUILD b/shardy/dialect/mpmd/transforms/import/BUILD
+index e0fae3da..3d4bbf9b 100644
+--- a/shardy/dialect/mpmd/transforms/import/BUILD
++++ b/shardy/dialect/mpmd/transforms/import/BUILD
+@@ -1,8 +1,8 @@
+ # The MPMD import passes and pipeline.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
+-# load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/dialect/mpmd/transforms/optimize/BUILD b/shardy/dialect/mpmd/transforms/optimize/BUILD
+index 5ec1f449..4d49a855 100644
+--- a/shardy/dialect/mpmd/transforms/optimize/BUILD
++++ b/shardy/dialect/mpmd/transforms/optimize/BUILD
+@@ -1,8 +1,8 @@
+ # The MPMD optimize passes and pipeline.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
+-# load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/dialect/mpmd/transforms/sharding_propagation/BUILD b/shardy/dialect/mpmd/transforms/sharding_propagation/BUILD
+index 0cfe2469..14e8be47 100644
+--- a/shardy/dialect/mpmd/transforms/sharding_propagation/BUILD
++++ b/shardy/dialect/mpmd/transforms/sharding_propagation/BUILD
+@@ -1,7 +1,7 @@
+ # The MPMD sharding propagation passes and pipeline.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/dialect/sdy/ir/BUILD b/shardy/dialect/sdy/ir/BUILD
+index eac4ba36..af57b956 100644
+--- a/shardy/dialect/sdy/ir/BUILD
++++ b/shardy/dialect/sdy/ir/BUILD
+@@ -1,8 +1,8 @@
+ # The SDY MLIR dialect.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
+-# load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/dialect/sdy/transforms/BUILD b/shardy/dialect/sdy/transforms/BUILD
+index 0fe29203..b624f915 100644
+--- a/shardy/dialect/sdy/transforms/BUILD
++++ b/shardy/dialect/sdy/transforms/BUILD
+@@ -1,6 +1,6 @@
+ # The SDY dialect passes and pipelines.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/dialect/sdy/transforms/common/BUILD b/shardy/dialect/sdy/transforms/common/BUILD
+index 742fb69a..847d1f9e 100644
+--- a/shardy/dialect/sdy/transforms/common/BUILD
++++ b/shardy/dialect/sdy/transforms/common/BUILD
+@@ -1,7 +1,7 @@
+ # The SDY transformations common library.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
+-# load("@rules_cc//cc:cc_test.bzl", "cc_test")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/BUILD b/shardy/dialect/sdy/transforms/export/BUILD
+index 33b694fa..b048c8e1 100644
+--- a/shardy/dialect/sdy/transforms/export/BUILD
++++ b/shardy/dialect/sdy/transforms/export/BUILD
+@@ -1,7 +1,7 @@
+ # The SDY export passes and pipeline.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+@@ -50,6 +50,7 @@ cc_library(
+         "sharding_constraint_to_reshard.cc",
+         "sink_data_flow_edges.cc",
+         "sink_func_data_flow_edges.cc",
++        "split_resharding_dimensions.cc",
+         "unflatten_call_graph.cc",
+         "update_non_divisible_input_output_shardings.cc",
+         "verify_unreduced_axes.cc",
+diff --git a/shardy/dialect/sdy/transforms/export/export_pipeline.cc b/shardy/dialect/sdy/transforms/export/export_pipeline.cc
+index 4aeba17e..cbfbebe0 100644
+--- a/shardy/dialect/sdy/transforms/export/export_pipeline.cc
++++ b/shardy/dialect/sdy/transforms/export/export_pipeline.cc
+@@ -38,15 +38,17 @@ void addCanonicalizerPass(OpPassManager& pm,
+ 
+ void runShardyPartitioner(OpPassManager& pm, int& dumpIndex,
+                           const ExportOptions& options) {
++  // Catch the cases where unreduced axes are dropped and cause inconsistencies.
++  // TODO(bixia): Re-enable this pass once the propagation bug is fixed.
++  // pm.addNestedPass<func::FuncOp>(createVerifyUnreducedAxesPass());
+   InsertExplicitReshardsPassOptions passOptions;
+   passOptions.enableFullVersion = options.enableInsertExplicitCollectives;
+   pm.addNestedPass<func::FuncOp>(createInsertExplicitReshardsPass(passOptions));
+-  // Catch the cases where unreduced axes are dropped and cause inconsistencies.
+-  pm.addNestedPass<func::FuncOp>(createVerifyUnreducedAxesPass());
+   if (options.enableInsertExplicitCollectives) {
+     pm.addPass(mlir::sdy::createSaveModuleOpPass(
+         options.dumpDirectory, "after_explicit_reshards", dumpIndex++));
+     addCanonicalizerPass(pm, kReshardLabel);
++    pm.addNestedPass<func::FuncOp>(createSplitReshardingDimensionsPass());
+     pm.addNestedPass<func::FuncOp>(createReshardToCollectivesPass());
+     // NOTE: ReshardToCollectives pass above generates all-slice collectives,
+     // which during the canonicalizer below may be converted to reduce scatters
+diff --git a/shardy/dialect/sdy/transforms/export/passes.td b/shardy/dialect/sdy/transforms/export/passes.td
+index 4a849941..6d37e408 100644
+--- a/shardy/dialect/sdy/transforms/export/passes.td
++++ b/shardy/dialect/sdy/transforms/export/passes.td
+@@ -140,6 +140,23 @@ def InsertExplicitReshardsPass : Pass<"sdy-insert-explicit-reshards", "func::Fun
+     ];
+ }
+ 
++def SplitReshardingDimensionsPass : Pass<"sdy-split-resharding-dimensions", "func::FuncOp"> {
++  let summary = "Splits sharded dimensions of ReshardOps to prepare for reshard-to-collectives.";
++  let description = [{
++    Splits tensor dimensions (via stablehlo.reshape) to isolate sharding axes
++    mapping to different target dimensions.
++
++    For example, `\[{"x", "y"}, {} \] -> \[{"x"}, {"y"} \]` is split into
++    `\[{"x"}, {"y"}, {} \] -> \[{"x"}, {"y"}, {} \]` (via a reshape to 3D) before resharding.
++
++    This ensures each dimension maps to at most one target dimension, allowing
++    `sdy-reshard-to-collectives` to lower them to optimized collectives (e.g.,
++    All-to-All) without landing order conflicts. We only split when axes can
++    be aligned using logical reshapes alone without transposes.
++  }];
++  let dependentDialects = ["mlir::sdy::SdyDialect", "mlir::stablehlo::StablehloDialect"];
++}
++
+ def VerifyUnreducedAxesPass : Pass<"sdy-verify-unreduced-axes", "func::FuncOp"> {
+   let summary = "Verifies the consistency of unreduced axis usage.";
+   let description = [{
+diff --git a/shardy/dialect/sdy/transforms/export/split_resharding_dimensions.cc b/shardy/dialect/sdy/transforms/export/split_resharding_dimensions.cc
+new file mode 100644
+index 00000000..fcb2ef83
+--- /dev/null
++++ b/shardy/dialect/sdy/transforms/export/split_resharding_dimensions.cc
+@@ -0,0 +1,467 @@
++/* Copyright 2026 The Shardy Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include <cstddef>
++#include <cstdint>
++#include <list>
++#include <optional>
++
++#include "llvm/ADT/ArrayRef.h"
++#include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/SmallVector.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/MLIRContext.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/Value.h"
++#include "mlir/Pass/Pass.h"  // IWYU pragma: keep
++#include "mlir/Support/LLVM.h"
++#include "shardy/common/logging.h"
++#include "shardy/dialect/sdy/ir/dialect.h"
++#include "shardy/dialect/sdy/ir/utils.h"
++#include "shardy/dialect/sdy/transforms/export/utils.h"
++#include "stablehlo/dialect/StablehloOps.h"
++
++namespace mlir {
++namespace sdy {
++
++#define GEN_PASS_DEF_SPLITRESHARDINGDIMENSIONSPASS
++#include "shardy/dialect/sdy/transforms/export/passes.h.inc"
++
++namespace {
++
++using AxisList = std::list<AxisRefAttr>;
++
++// Returns a copy of `sharding` with its dimension axes updated to `axesPerDim`.
++TensorShardingAttr updateSharding(TensorShardingAttr sharding,
++                                  ArrayRef<AxisList> axesPerDim,
++                                  MLIRContext* context) {
++  SmallVector<DimensionShardingAttr> dimShardings;
++  for (auto [dimSharding, axes] :
++       llvm::zip(sharding.getDimShardings(), axesPerDim)) {
++    dimShardings.push_back(DimensionShardingAttr::get(
++        context, llvm::to_vector(axes), dimSharding.getIsClosed()));
++  }
++  return TensorShardingAttr::get(context, sharding.getMeshOrRef(), dimShardings,
++                                 sharding.getReplicatedAxes(),
++                                 sharding.getUnreducedAxes());
++}
++
++// Collects the indices of split groups that are replicated (unmapped) in
++// targetSharding.
++SmallVector<int64_t> getExtraGroupIndices(
++    ArrayRef<AxisList> groups, TensorShardingAttr targetSharding) {
++  auto isAxisSharded = [&](AxisRefAttr axis) {
++    for (int64_t j = 0; j < targetSharding.getRank(); ++j) {
++      if (llvm::is_contained(targetSharding.getDimSharding(j).getAxes(),
++                             axis)) {
++        return true;
++      }
++    }
++    return false;
++  };
++
++  SmallVector<int64_t> extraGroupIndices;
++  for (size_t i = 0; i < groups.size(); ++i) {
++    if (llvm::none_of(groups[i], isAxisSharded)) {
++      extraGroupIndices.push_back(i);
++    }
++  }
++  return extraGroupIndices;
++}
++
++// Collects axes in the corresponding target dimension that are not in the
++// split groups.
++SmallVector<AxisRefAttr> getExtraTargetAxes(
++    ArrayRef<AxisList> groups, TensorShardingAttr targetSharding, int64_t dim) {
++  SmallVector<AxisRefAttr> extraTargetAxes;
++  for (AxisRefAttr axis : targetSharding.getDimSharding(dim).getAxes()) {
++    if (llvm::none_of(groups, [&](const AxisList& group) {
++          return llvm::is_contained(group, axis);
++        })) {
++      extraTargetAxes.push_back(axis);
++    }
++  }
++  return extraTargetAxes;
++}
++
++// Pairs unmapped target axes with replicated groups and checks size
++// divisibility. Returns std::nullopt if the matching is invalid.
++std::optional<SmallVector<SmallVector<AxisRefAttr>>> matchExtraAxes(
++    ArrayRef<AxisList> groups, ArrayRef<int64_t> extraGroupIndices,
++    ArrayRef<AxisRefAttr> extraTargetAxes, MeshAttr mesh) {
++  SmallVector<SmallVector<AxisRefAttr>> matchedExtraAxes(groups.size());
++  ArrayRef<AxisRefAttr> remainingTargetAxes(extraTargetAxes);
++  for (int64_t groupIdx : extraGroupIndices) {
++    int64_t groupSize = 1;
++    for (AxisRefAttr axis : groups[groupIdx]) {
++      groupSize *= axis.getSize(mesh);
++    }
++    int64_t accumulatedTargetSize = 1;
++    size_t consumedCount = 0;
++    while (accumulatedTargetSize < groupSize &&
++           consumedCount < remainingTargetAxes.size()) {
++      accumulatedTargetSize *= remainingTargetAxes[consumedCount].getSize(mesh);
++      consumedCount++;
++    }
++    if (consumedCount > 0) {
++      if (groupSize % accumulatedTargetSize != 0) {
++        return std::nullopt;
++      }
++      matchedExtraAxes[groupIdx] = llvm::to_vector(
++          remainingTargetAxes.take_front(consumedCount));
++      remainingTargetAxes = remainingTargetAxes.drop_front(consumedCount);
++    }
++  }
++  if (!remainingTargetAxes.empty()) {
++    return std::nullopt;
++  }
++  return matchedExtraAxes;
++}
++
++// A dim in sharding is splittable if its axes can be split into consecutive
++// subgroups, such that:
++//
++// 1. Each subgroup maps to a distinct target dimension in targetSharding
++//    (with consecutive replicated/unmapped axes grouped into dummy target
++//    dimensions).
++// 2. Any target dimension targetDim != dim that a subgroup maps to does not
++//    contain axes originating from other input dimensions j != dim. Such
++//    cross-dimension axes are conservatively disallowed to avoid complex
++//    multi-stage collective transitions (like dependent AllToAlls).
++// 3. Any extra output axes in the corresponding target dimension dim can be
++//    consecutively paired with replicated input groups of divisible sizes.
++//    There is no valid way to place these extra axes into the split target
++//    dimensions without dropping/losing them.
++//
++// Groups consecutive axes in `sharding.getDimSharding(dim)` that map to the
++// same dimension in `targetSharding`. Returns the groups if the dimension is
++// splittable or std::nullopt otherwise.
++std::optional<SmallVector<AxisList>> getSplittableGroups(
++    TensorShardingAttr sharding, TensorShardingAttr targetSharding,
++    int64_t dim, MeshAttr mesh) {
++  ArrayRef<AxisRefAttr> axes = sharding.getDimSharding(dim).getAxes();
++  if (axes.empty()) {
++    return std::nullopt;
++  }
++
++  SmallVector<AxisList> groups;
++  SmallVector<int64_t> targetDims;
++  int64_t nextReplicatedDim = -1;
++  std::optional<int64_t> lastDim = std::nullopt;
++
++  // Helper to find which dimension in `targetSharding` contains `axis`. It
++  // groups consecutive replicated axes together and map them to the same
++  // dummy dimension.
++  auto getTargetDim = [&](AxisRefAttr axis) -> int64_t {
++    for (int64_t j = 0; j < targetSharding.getRank(); ++j) {
++      if (llvm::is_contained(
++              targetSharding.getDimSharding(j).getAxes(), axis)) {
++        return j;
++      }
++    }
++    // If the previous axis was also replicated, map it to the same dummy
++    // dimension to keep consecutive replicated axes grouped together.
++    if (lastDim && *lastDim < 0) {
++      return *lastDim;
++    }
++    return nextReplicatedDim--;
++  };
++
++  // Group consecutive axes that map to the same target dimension.
++  for (AxisRefAttr axis : axes) {
++    int64_t nextDim = getTargetDim(axis);
++    lastDim = nextDim;
++
++    if (!targetDims.empty() && nextDim == targetDims.back()) {
++      groups.back().push_back(axis);
++    } else {
++      if (llvm::is_contained(targetDims, nextDim)) {
++        return std::nullopt;
++      }
++      groups.push_back({axis});
++      targetDims.push_back(nextDim);
++    }
++  }
++
++  if (groups.size() < 2) {
++    return std::nullopt;
++  }
++
++  // Verify that none of the target dimensions contains cross-dimension axes
++  // (axes that exist in different input dimensions j != dim). Cross-dimension
++  // axes in targetDim != dim will trigger a layout decomposition that
++  // introduces consecutive sub-axes in unsplit input dimensions, failing
++  // verification.
++  auto isFreeOfCrossDimAxes = [&](int64_t targetDim) -> bool {
++    if (targetDim < 0) return true;
++    for (AxisRefAttr outAxis :
++         targetSharding.getDimSharding(targetDim).getAxes()) {
++      for (int64_t j = 0; j < sharding.getRank(); ++j) {
++        if (j == dim) {
++          continue;
++        }
++        for (AxisRefAttr inAxis : sharding.getDimSharding(j).getAxes()) {
++          if (inAxis.getName() == outAxis.getName()) {
++            return false;
++          }
++        }
++      }
++    }
++    return true;
++  };
++
++  if (!isFreeOfCrossDimAxes(dim)) {
++    return std::nullopt;
++  }
++  for (int64_t targetDim : targetDims) {
++    if (!isFreeOfCrossDimAxes(targetDim)) {
++      return std::nullopt;
++    }
++  }
++
++  SmallVector<int64_t> extraGroupIndices =
++      getExtraGroupIndices(groups, targetSharding);
++  SmallVector<AxisRefAttr> extraTargetAxes =
++      getExtraTargetAxes(groups, targetSharding, dim);
++
++  if (!matchExtraAxes(groups, extraGroupIndices, extraTargetAxes, mesh)) {
++    return std::nullopt;
++  }
++
++  return groups;
++}
++
++// Computes the physical shape after splitting `dimIn` by the axes sizes of
++// `groupsToSplit`.
++SmallVector<int64_t> computeSplitShape(
++    ArrayRef<int64_t> shape, int64_t dimIn, ArrayRef<AxisList> groupsToSplit,
++    MeshAttr mesh) {
++  int64_t d0 = shape[dimIn];
++
++  SmallVector<int64_t> splitShape(shape.begin(), shape.begin() + dimIn);
++
++  int64_t accumSize = 1;
++  for (const AxisList& group : llvm::drop_end(groupsToSplit)) {
++    int64_t groupSize = 1;
++    for (AxisRefAttr axis : group) {
++      groupSize *= axis.getSize(mesh);
++    }
++    splitShape.push_back(groupSize);
++    accumSize *= groupSize;
++  }
++
++  SDY_CHECK(d0 % accumSize == 0);
++  splitShape.push_back(d0 / accumSize);
++  splitShape.append(shape.begin() + dimIn + 1, shape.end());
++  return splitShape;
++}
++
++// Replaces the dimension `dim` in `sharding` with new dimensions defined by
++// `newDimAxes`. The new dimensions inherit the closed/open state of `dim`.
++TensorShardingAttr expandShardingDim(
++    TensorShardingAttr sharding, int64_t dim,
++    ArrayRef<SmallVector<AxisRefAttr>> newDimAxes, MLIRContext* context) {
++  auto dimShardings = llvm::to_vector(sharding.getDimShardings());
++  bool isClosed = dimShardings[dim].getIsClosed();
++
++  SmallVector<DimensionShardingAttr> splitDims;
++  splitDims.reserve(newDimAxes.size());
++  for (const auto& axes : newDimAxes) {
++    splitDims.push_back(DimensionShardingAttr::get(context, axes, isClosed));
++  }
++
++  dimShardings.erase(dimShardings.begin() + dim);
++  dimShardings.insert(dimShardings.begin() + dim, splitDims.begin(),
++                      splitDims.end());
++
++  return TensorShardingAttr::get(context, sharding.getMeshOrRef(), dimShardings,
++                                 sharding.getReplicatedAxes(),
++                                 sharding.getUnreducedAxes());
++}
++
++struct SplitInfo {
++  int64_t dim;
++  SmallVector<AxisList> groups;
++  bool splitByInput;
++};
++
++// Handles resharding where input(output) dimensions are sharded by multiple
++// axes, and these axes map to distinct dimensions in the output(input). Returns
++// true if it splits any dimensions.
++// E.g., [{A, B}] -> [{}, {A}, {B}] or [{A}, {B}] -> [{A, B}, {}].
++bool tryReshardWithDimensionSplits(ReshardOp op, Value bypassedInput,
++                                   TensorShardingAttr inSharding,
++                                   TensorShardingAttr outSharding,
++                                   RewriterBase& rewriter) {
++  if (inSharding.getMeshName() != outSharding.getMeshName()) {
++    return false;
++  }
++
++  // Decompose sub-axes in both shardings into their smallest common
++  // components to ensure they can be compared and split consistently.
++  SmallVector<AxisList> inAxesPerDim = getAxesPerDim<AxisList>(inSharding);
++  SmallVector<AxisList> outAxesPerDim = getAxesPerDim<AxisList>(outSharding);
++  MeshAttr mesh = inSharding.getMesh(op);
++  if (!mesh) {
++    return false;
++  }
++
++  alignSubAxesByDecomposition(inAxesPerDim, outAxesPerDim, mesh);
++  inSharding = updateSharding(inSharding, inAxesPerDim, rewriter.getContext());
++  outSharding =
++      updateSharding(outSharding, outAxesPerDim, rewriter.getContext());
++
++  auto tensorType = mlir::cast<RankedTensorType>(bypassedInput.getType());
++
++  // Identify which dimensions can be split. We check both the input and
++  // output shardings because a dimension split could be triggered by either
++  // (e.g. [{A, B}] -> [{A}, {B}] splits the input, [{A}, {B}] -> [{A, B}]
++  // splits the output).
++  SmallVector<SplitInfo> splits;
++  for (int64_t i = 0; i < inSharding.getRank(); ++i) {
++    if (ShapedType::isDynamic(tensorType.getDimSize(i))) {
++      continue;
++    }
++    if (auto groups =
++            getSplittableGroups(inSharding, outSharding, i, mesh)) {
++      splits.push_back({i, *groups, true});
++    } else if (auto groups = getSplittableGroups(
++                   outSharding, inSharding, i, mesh)) {
++      splits.push_back({i, *groups, false});
++    }
++  }
++  if (splits.empty()) {
++    return false;
++  }
++  SmallVector<int64_t> splitShape(tensorType.getShape().begin(),
++                                  tensorType.getShape().end());
++  TensorShardingAttr inShardingSplit = inSharding;
++  TensorShardingAttr outShardingSplit = outSharding;
++
++  // Process splits in reverse order so that expanding a dimension doesn't
++  // shift the indices of subsequent dimensions we need to split.
++  for (const SplitInfo& split : llvm::reverse(splits)) {
++    int64_t dimIn = split.dim;
++    const SmallVector<AxisList>& groupsToSplit = split.groups;
++    // Calculate the new tensor shape after splitting this dimension.
++    splitShape = computeSplitShape(splitShape, dimIn, groupsToSplit, mesh);
++    // Separate the axes that triggered the split (withAxes) and the matching
++    // axes in the opposite sharding (withoutAxes) for each new split dimension.
++    SmallVector<SmallVector<AxisRefAttr>> withAxes(groupsToSplit.size());
++    SmallVector<SmallVector<AxisRefAttr>> withoutAxes(groupsToSplit.size());
++    for (auto [i, group] : llvm::enumerate(groupsToSplit)) {
++      withAxes[i].assign(group.begin(), group.end());
++    }
++    TensorShardingAttr shardingWithoutAxes =
++        split.splitByInput ? outShardingSplit : inShardingSplit;
++
++    SmallVector<int64_t> extraGroupIndices =
++        getExtraGroupIndices(groupsToSplit, shardingWithoutAxes);
++    SmallVector<AxisRefAttr> extraTargetAxes =
++        getExtraTargetAxes(groupsToSplit, shardingWithoutAxes, dimIn);
++
++    auto matchedExtraAxes = matchExtraAxes(
++        groupsToSplit, extraGroupIndices, extraTargetAxes, mesh);
++    SDY_CHECK(matchedExtraAxes.has_value());
++
++    for (AxisRefAttr axis :
++         shardingWithoutAxes.getDimSharding(dimIn).getAxes()) {
++      for (size_t i = 0; i < groupsToSplit.size(); ++i) {
++        if (llvm::is_contained(groupsToSplit[i], axis)) {
++          withoutAxes[i].push_back(axis);
++          break;
++        }
++      }
++    }
++
++    for (int64_t groupIdx : extraGroupIndices) {
++      if (!(*matchedExtraAxes)[groupIdx].empty()) {
++        withoutAxes[groupIdx].append((*matchedExtraAxes)[groupIdx].begin(),
++                                     (*matchedExtraAxes)[groupIdx].end());
++      }
++    }
++
++    // Expand the sharding attributes by inserting the new split dimensions.
++    MLIRContext* ctx = rewriter.getContext();
++    inShardingSplit =
++        expandShardingDim(inShardingSplit, dimIn,
++                          split.splitByInput ? withAxes : withoutAxes, ctx);
++    outShardingSplit =
++        expandShardingDim(outShardingSplit, dimIn,
++                          split.splitByInput ? withoutAxes : withAxes, ctx);
++  }
++
++  // Replace the original reshard with a reshape -> reshard -> reshape
++  // sequence. The inner reshard operates on the expanded, split dimensions.
++  auto splitTensorType =
++      RankedTensorType::get(splitShape, tensorType.getElementType());
++
++  Value splitInputVal = stablehlo::ReshapeOp::create(
++      rewriter, op->getLoc(), splitTensorType, bypassedInput);
++  setSharding(splitInputVal, inShardingSplit);
++
++  Value reshardedSplitVal = ReshardOp::create(
++      rewriter, op->getLoc(), splitTensorType, splitInputVal, outShardingSplit);
++
++  Value mergeOutputVal = stablehlo::ReshapeOp::create(
++      rewriter, op->getLoc(), tensorType, reshardedSplitVal);
++  setSharding(mergeOutputVal, op.getSharding());
++  rewriter.replaceOp(op, mergeOutputVal);
++  return true;
++}
++
++// This pass physically splits tensor dimensions (via stablehlo.reshape) to
++// separate sharding axes that map to different dimensions.
++//
++// For example, if we reshard `[{"x", "y"}, {}] -> [{"x"}, {"y"}]`, the axes
++// `x` and `y` are in the same dimension in the input but must go to different
++// dimensions in the output. This pass splits the input dimension into two
++// dimensions, allowing the subsequent collectives pass to lower them using
++// more optimized collectives, by rewriting to:
++//
++//   %split_input = stablehlo.reshape %input : tensor<16x16xf32>
++//       -> tensor<4x4x16xf32>
++//   %reshard = sdy.reshard %split_input <..., [{"x"}, {"y"}, {}]>
++//   %output = stablehlo.reshape %reshard : tensor<4x4x16xf32>
++//       -> tensor<16x16xf32>
++//
++// We only split dimensions when the split subgroups can be aligned with the
++// opposite sharding using logical reshapes alone (without transposes). This
++// includes splitting replicated/unmapped axes by mapping them to virtual
++// dimensions. We do not split if there are extra/other axes in either the
++// splitting dimension, the mapped target dimensions, or the corresponding
++// target dimension itself.
++class SplitReshardingDimensionsPass
++    : public impl::SplitReshardingDimensionsPassBase<
++          SplitReshardingDimensionsPass> {
++ protected:
++  void runOnOperation() override {
++    IRRewriter rewriter(&getContext());
++    getOperation()->walk([&](ReshardOp op) {
++      TensorShardingAttr outSharding = op.getSharding();
++      TensorShardingAttr inSharding =
++          getOrCreateSharding(op.getInput(), outSharding.getMeshName());
++
++      rewriter.setInsertionPoint(op);
++      tryReshardWithDimensionSplits(op, op.getInput(), inSharding, outSharding,
++                                    rewriter);
++    });
++  }
++};
++
++}  // namespace
++}  // namespace sdy
++}  // namespace mlir
+diff --git a/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir b/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
+index 6177fbad..58a3f2d4 100644
+--- a/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
+@@ -933,3 +933,53 @@ func.func @reshard_with_propagation_barrier(
+ 
+   return %1 : tensor<8x8x8xf32>
+ }
++
++// CHECK-LABEL: func @two_all_to_alls_different_tgt_dims_split
++func.func @two_all_to_alls_different_tgt_dims_split(%arg0 : tensor<16x8x8xf32>) -> tensor<16x8x8xf32> {
++  // CHECK-NEXT: %[[RESHAPE_0:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d_4x2x4, [{}, {"y"}, {"x"}, {}]>]>} : (tensor<16x8x8xf32>) -> tensor<16x2x4x8xf32>
++  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all [{"y"}: 1->3] %[[RESHAPE_0]] out_sharding=<@mesh3d_4x2x4, [{}, {}, {"x"}, {"y"}]> : tensor<16x2x4x8xf32>
++  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all [{"x"}: 2->0] %[[ALL_TO_ALL_0]] out_sharding=<@mesh3d_4x2x4, [{"x"}, {}, {}, {"y"}]> : tensor<16x2x4x8xf32>
++  // CHECK-NEXT: %[[RESHAPE_1:.*]] = stablehlo.reshape %[[ALL_TO_ALL_1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d_4x2x4, [{"x"}, {}, {"y"}]>]>} : (tensor<16x2x4x8xf32>) -> tensor<16x8x8xf32>
++  // CHECK-NEXT: return %[[RESHAPE_1]]
++  %0 = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d_4x2x4, [{}, {"y"}, {"x"}, {}]>]>} : (tensor<16x8x8xf32>) -> tensor<16x2x4x8xf32>
++  %1 = sdy.reshard %0 <@mesh3d_4x2x4, [{"x"}, {}, {}, {"y"}]> : tensor<16x2x4x8xf32>
++  %2 = stablehlo.reshape %1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d_4x2x4, [{"x"}, {}, {"y"}]>]>} : (tensor<16x2x4x8xf32>) -> tensor<16x8x8xf32>
++  return %2 : tensor<16x8x8xf32>
++}
++
++// CHECK-LABEL: func @reshard_one_src_dim_multiple_tgt_dims_4d_split
++func.func @reshard_one_src_dim_multiple_tgt_dims_4d_split(%arg0: tensor<32x2x2x2x2xf32>) -> tensor<32x2x2x2x2xf32> {
++  // CHECK-NEXT: %[[RESHAPE_0:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh4d, [{"x"}, {"y"}, {"z"}, {"w"}, {}, {}, {}, {}]>]>} : (tensor<32x2x2x2x2xf32>) -> tensor<2x2x2x4x2x2x2x2xf32>
++  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all [{"x"}: 0->4] %[[RESHAPE_0]] out_sharding=<@mesh4d, [{}, {"y"}, {"z"}, {"w"}, {"x"}, {}, {}, {}]> : tensor<2x2x2x4x2x2x2x2xf32>
++  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all [{"y"}: 1->5] %[[ALL_TO_ALL_0]] out_sharding=<@mesh4d, [{}, {}, {"z"}, {"w"}, {"x"}, {"y"}, {}, {}]> : tensor<2x2x2x4x2x2x2x2xf32>
++  // CHECK-NEXT: %[[ALL_TO_ALL_2:.*]] = sdy.all_to_all [{"z"}: 2->6] %[[ALL_TO_ALL_1]] out_sharding=<@mesh4d, [{}, {}, {}, {"w"}, {"x"}, {"y"}, {"z"}, {}]> : tensor<2x2x2x4x2x2x2x2xf32>
++  // CHECK-NEXT: %[[ALL_TO_ALL_3:.*]] = sdy.all_to_all [{"w"}: 3->7] %[[ALL_TO_ALL_2]] out_sharding=<@mesh4d, [{}, {}, {}, {}, {"x"}, {"y"}, {"z"}, {"w"}]> : tensor<2x2x2x4x2x2x2x2xf32>
++  // CHECK-NEXT: %[[RESHAPE_1:.*]] = stablehlo.reshape %[[ALL_TO_ALL_3]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh4d, [{}, {"x"}, {"y"}, {"z"}, {"w"}]>]>} : (tensor<2x2x2x4x2x2x2x2xf32>) -> tensor<32x2x2x2x2xf32>
++  // CHECK-NEXT: return %[[RESHAPE_1]]
++  %0 = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh4d, [{"x"}, {"y"}, {"z"}, {"w"}, {}, {}, {}, {}]>]>} : (tensor<32x2x2x2x2xf32>) -> tensor<2x2x2x4x2x2x2x2xf32>
++  %1 = sdy.reshard %0 <@mesh4d, [{}, {}, {}, {}, {"x"}, {"y"}, {"z"}, {"w"}]> : tensor<2x2x2x4x2x2x2x2xf32>
++  %2 = stablehlo.reshape %1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh4d, [{}, {"x"}, {"y"}, {"z"}, {"w"}]>]>} : (tensor<2x2x2x4x2x2x2x2xf32>) -> tensor<32x2x2x2x2xf32>
++  return %2 : tensor<32x2x2x2x2xf32>
++}
++
++// CHECK-LABEL: func @reshard_swapped_split_test
++func.func @reshard_swapped_split_test(%arg0: tensor<8x8x8xf32>) -> tensor<8x8x8xf32> {
++  // CHECK-NEXT: %[[RESHAPE_0:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh2d, [{"x"}, {"y"}, {}, {}]>]>} : (tensor<8x8x8xf32>) -> tensor<2x4x8x8xf32>
++  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all [{"x"}: 0->2] %[[RESHAPE_0]] out_sharding=<@mesh2d, [{}, {"y"}, {"x"}, {}]> : tensor<2x4x8x8xf32>
++  // CHECK-NEXT: %[[RESHAPE_1:.*]] = stablehlo.reshape %[[ALL_TO_ALL_0]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh2d, [{"y"}, {"x"}, {}]>]>} : (tensor<2x4x8x8xf32>) -> tensor<8x8x8xf32>
++  // CHECK-NEXT: return %[[RESHAPE_1]]
++  %0 = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh2d, [{"x"}, {"y"}, {}, {}]>]>} : (tensor<8x8x8xf32>) -> tensor<2x4x8x8xf32>
++  %1 = sdy.reshard %0 <@mesh2d, [{}, {"y"}, {"x"}, {}]> : tensor<2x4x8x8xf32>
++  %2 = stablehlo.reshape %1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh2d, [{"y"}, {"x"}, {}]>]>} : (tensor<2x4x8x8xf32>) -> tensor<8x8x8xf32>
++  return %2 : tensor<8x8x8xf32>
++}
++
++// CHECK-LABEL: func @landing_order_conflict_due_to_external_axes_test
++func.func @landing_order_conflict_due_to_external_axes_test(%arg0: tensor<2x4x4xf32> {sdy.sharding = #sdy.sharding<@mesh3d, [{"x"}, {"z", "y"}, {}]>}) -> tensor<2x4x4xf32> {
++  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all [{"y"}: 1->2] %arg0 out_sharding=<@mesh3d, [{"x"}, {"z"}, {"y"}]>
++  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all [{"x"}: 0->2] %[[ALL_TO_ALL_0]] out_sharding=<@mesh3d, [{}, {"z"}, {"y", "x"}]>
++  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{}, {"z"}, {}] %[[ALL_TO_ALL_1]] out_sharding=<@mesh3d, [{}, {}, {"y", "x"}]>
++  // CHECK-NEXT: return %[[ALL_GATHER]]
++  %0 = sdy.reshard %arg0 <@mesh3d, [{}, {}, {"y", "x"}]> : tensor<2x4x4xf32>
++  return %0 : tensor<2x4x4xf32>
++}
+diff --git a/shardy/dialect/sdy/transforms/export/test/split_resharding_dimensions.mlir b/shardy/dialect/sdy/transforms/export/test/split_resharding_dimensions.mlir
+new file mode 100644
+index 00000000..d0d53d8e
+--- /dev/null
++++ b/shardy/dialect/sdy/transforms/export/test/split_resharding_dimensions.mlir
+@@ -0,0 +1,182 @@
++// RUN: sdy_opt %s -sdy-split-resharding-dimensions | FileCheck %s
++
++sdy.mesh @mesh2d = <["x"=2, "y"=2]>
++sdy.mesh @mesh2d_2x8 = <["x"=2, "y"=8]>
++sdy.mesh @mesh3d = <["x"=2, "y"=2, "z"=2]>
++sdy.mesh @mesh3d_4x2x4 = <["x"=4, "y"=2, "z"=4]>
++sdy.mesh @mesh4d = <["x"=2, "y"=2, "z"=2, "w"=2]>
++sdy.mesh @mesh3d_2x2x8 = <["x"=2, "y"=2, "z"=8]>
++
++// CHECK-LABEL: func @input_dim_split_and_swapped_to_non_adjacent_dims
++func.func @input_dim_split_and_swapped_to_non_adjacent_dims(%arg0 : tensor<16x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh3d_4x2x4, [{}, {"y", "x"}, {}]>}) -> tensor<16x8x8xf32> {
++  // CHECK-NEXT: %[[RESHAPE_0:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d_4x2x4, [{}, {"y"}, {"x"}, {}]>]>} : (tensor<16x8x8xf32>) -> tensor<16x2x4x8xf32>
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[RESHAPE_0]] <@mesh3d_4x2x4, [{"x"}, {}, {}, {"y"}]> : tensor<16x2x4x8xf32>
++  // CHECK-NEXT: %[[RESHAPE_1:.*]] = stablehlo.reshape %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d_4x2x4, [{"x"}, {}, {"y"}]>]>} : (tensor<16x2x4x8xf32>) -> tensor<16x8x8xf32>
++  // CHECK-NEXT: return %[[RESHAPE_1]]
++  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"x"}, {}, {"y"}]> : tensor<16x8x8xf32>
++  return %0 : tensor<16x8x8xf32>
++}
++
++// CHECK-LABEL: func @input_dim_split_into_four_groups
++func.func @input_dim_split_into_four_groups(%arg0: tensor<32x2x2x2x2xf32> {sdy.sharding = #sdy.sharding<@mesh4d, [{"x", "y", "z", "w"}, {}, {}, {}, {}]>}) -> tensor<32x2x2x2x2xf32> {
++  // CHECK-NEXT: %[[RESHAPE_0:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh4d, [{"x"}, {"y"}, {"z"}, {"w"}, {}, {}, {}, {}]>]>} : (tensor<32x2x2x2x2xf32>) -> tensor<2x2x2x4x2x2x2x2xf32>
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[RESHAPE_0]] <@mesh4d, [{}, {}, {}, {}, {"x"}, {"y"}, {"z"}, {"w"}]> : tensor<2x2x2x4x2x2x2x2xf32>
++  // CHECK-NEXT: %[[RESHAPE_1:.*]] = stablehlo.reshape %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh4d, [{}, {"x"}, {"y"}, {"z"}, {"w"}]>]>} : (tensor<2x2x2x4x2x2x2x2xf32>) -> tensor<32x2x2x2x2xf32>
++  // CHECK-NEXT: return %[[RESHAPE_1]]
++  %0 = sdy.reshard %arg0 <@mesh4d, [{}, {"x"}, {"y"}, {"z"}, {"w"}]> : tensor<32x2x2x2x2xf32>
++  return %0 : tensor<32x2x2x2x2xf32>
++}
++
++// CHECK-LABEL: func @input_dim_split_into_three_groups
++func.func @input_dim_split_into_three_groups(%arg0: tensor<16x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh3d, [{"x", "y", "z"}, {}, {}]>}) -> tensor<16x8x8xf32> {
++  // CHECK-NEXT: %[[RESHAPE_0:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d, [{"x"}, {"y"}, {"z"}, {}, {}]>]>} : (tensor<16x8x8xf32>) -> tensor<2x2x4x8x8xf32>
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[RESHAPE_0]] <@mesh3d, [{}, {"y"}, {}, {"x"}, {"z"}]> : tensor<2x2x4x8x8xf32>
++  // CHECK-NEXT: %[[RESHAPE_1:.*]] = stablehlo.reshape %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d, [{"y"}, {"x"}, {"z"}]>]>} : (tensor<2x2x4x8x8xf32>) -> tensor<16x8x8xf32>
++  // CHECK-NEXT: return %[[RESHAPE_1]]
++  %0 = sdy.reshard %arg0 <@mesh3d, [{"y"}, {"x"}, {"z"}]> : tensor<16x8x8xf32>
++  return %0 : tensor<16x8x8xf32>
++}
++
++// CHECK-LABEL: func @input_dim_split_with_subaxes
++func.func @input_dim_split_with_subaxes(%arg0: tensor<16x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh2d_2x8, [{"y"}, {}, {}]>}) -> tensor<16x8x8xf32> {
++  // CHECK-NEXT: %[[RESHAPE_0:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh2d_2x8, [{"y":(1)2}, {"y":(2)4}, {}, {}]>]>} : (tensor<16x8x8xf32>) -> tensor<2x8x8x8xf32>
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[RESHAPE_0]] <@mesh2d_2x8, [{}, {}, {"y":(1)2}, {"y":(2)4}]> : tensor<2x8x8x8xf32>
++  // CHECK-NEXT: %[[RESHAPE_1:.*]] = stablehlo.reshape %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh2d_2x8, [{}, {"y":(1)2}, {"y":(2)4}]>]>} : (tensor<2x8x8x8xf32>) -> tensor<16x8x8xf32>
++  // CHECK-NEXT: return %[[RESHAPE_1]]
++  %0 = sdy.reshard %arg0 <@mesh2d_2x8, [{}, {"y":(1)2}, {"y":(2)4}]> : tensor<16x8x8xf32>
++  return %0 : tensor<16x8x8xf32>
++}
++
++// CHECK-LABEL: func @input_dim_split_and_swapped
++func.func @input_dim_split_and_swapped(%arg0: tensor<8x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh2d, [{"x", "y"}, {}, {}]>}) -> tensor<8x8x8xf32> {
++  // CHECK-NEXT: %[[RESHAPE_0:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh2d, [{"x"}, {"y"}, {}, {}]>]>} : (tensor<8x8x8xf32>) -> tensor<2x4x8x8xf32>
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[RESHAPE_0]] <@mesh2d, [{}, {"y"}, {"x"}, {}]> : tensor<2x4x8x8xf32>
++  // CHECK-NEXT: %[[RESHAPE_1:.*]] = stablehlo.reshape %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh2d, [{"y"}, {"x"}, {}]>]>} : (tensor<2x4x8x8xf32>) -> tensor<8x8x8xf32>
++  // CHECK-NEXT: return %[[RESHAPE_1]]
++  %0 = sdy.reshard %arg0 <@mesh2d, [{"y"}, {"x"}, {}]> : tensor<8x8x8xf32>
++  return %0 : tensor<8x8x8xf32>
++}
++
++// CHECK-LABEL: func @corresponding_dim_has_cross_dim_subaxes_not_split
++func.func @corresponding_dim_has_cross_dim_subaxes_not_split(%arg0 : tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh3d_2x2x8, [{"x", "y"}, {"z"}]>}) -> tensor<4x8xf32> {
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh3d_2x2x8, [{"z":(1)2}, {"y", "z":(2)4}]> : tensor<4x8xf32>
++  // CHECK-NEXT: return %[[RESHARD]]
++  %0 = sdy.reshard %arg0 <@mesh3d_2x2x8, [{"z":(1)2}, {"y", "z":(2)4}]> : tensor<4x8xf32>
++  return %0 : tensor<4x8xf32>
++}
++
++// CHECK-LABEL: func @equivalent_sharding_no_split
++func.func @equivalent_sharding_no_split(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh2d, [{"x", "y"}]>}) -> tensor<4xf32> {
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh2d, [{"x", "y"}]> : tensor<4xf32>
++  // CHECK-NEXT: return %[[RESHARD]]
++  %0 = sdy.reshard %arg0 <@mesh2d, [{"x", "y"}]> : tensor<4xf32>
++  return %0 : tensor<4xf32>
++}
++
++// CHECK-LABEL: func @axes_map_to_same_target_dim_no_split
++func.func @axes_map_to_same_target_dim_no_split(%arg0: tensor<4x4xf32> {sdy.sharding = #sdy.sharding<@mesh2d, [{"x", "y"}, {}]>}) -> tensor<4x4xf32> {
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh2d, [{}, {"x", "y"}]> : tensor<4x4xf32>
++  // CHECK-NEXT: return %[[RESHARD]]
++  %0 = sdy.reshard %arg0 <@mesh2d, [{}, {"x", "y"}]> : tensor<4x4xf32>
++  return %0 : tensor<4x4xf32>
++}
++
++// CHECK-LABEL: func @output_dim_split_into_two_groups_with_subaxes
++func.func @output_dim_split_into_two_groups_with_subaxes(%arg0: tensor<4x2xf32> {sdy.sharding = #sdy.sharding<@mesh3d_2x2x8, [{"z":(1)2}, {"y"}]>}) -> tensor<4x2xf32> {
++  // CHECK-NEXT: %[[RESHAPE_0:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d_2x2x8, [{"z":(1)2}, {}, {"y"}]>]>} : (tensor<4x2xf32>) -> tensor<2x2x2xf32>
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[RESHAPE_0]] <@mesh3d_2x2x8, [{"z":(1)2}, {"y"}, {}]> : tensor<2x2x2xf32>
++  // CHECK-NEXT: %[[RESHAPE_1:.*]] = stablehlo.reshape %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d_2x2x8, [{"z":(1)2, "y"}, {}]>]>} : (tensor<2x2x2xf32>) -> tensor<4x2xf32>
++  // CHECK-NEXT: return %[[RESHAPE_1]]
++  %0 = sdy.reshard %arg0 <@mesh3d_2x2x8, [{"z":(1)2, "y"}, {}]> : tensor<4x2xf32>
++  return %0 : tensor<4x2xf32>
++}
++
++// CHECK-LABEL: func @output_dim_split_into_two_groups_with_axis_merge
++func.func @output_dim_split_into_two_groups_with_axis_merge(%arg0: tensor<8x2x4xf32> {sdy.sharding = #sdy.sharding<@mesh3d_2x2x8, [{"z":(1)2}, {"y"}, {"z":(2)4}]>}) -> tensor<8x2x4xf32> {
++  // CHECK-NEXT: %[[RESHAPE_0:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d_2x2x8, [{"z":(1)2}, {}, {"y"}, {"z":(2)4}]>]>} : (tensor<8x2x4xf32>) -> tensor<2x4x2x4xf32>
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[RESHAPE_0]] <@mesh3d_2x2x8, [{"z":(1)2}, {"z":(2)4}, {"y"}, {}]> : tensor<2x4x2x4xf32>
++  // CHECK-NEXT: %[[RESHAPE_1:.*]] = stablehlo.reshape %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d_2x2x8, [{"z"}, {"y"}, {}]>]>} : (tensor<2x4x2x4xf32>) -> tensor<8x2x4xf32>
++  // CHECK-NEXT: return %[[RESHAPE_1]]
++  %0 = sdy.reshard %arg0 <@mesh3d_2x2x8, [{"z"}, {"y"}, {}]> : tensor<8x2x4xf32>
++  return %0 : tensor<8x2x4xf32>
++}
++
++// CHECK-LABEL: func @output_dim_split_into_two_groups
++func.func @output_dim_split_into_two_groups(%arg0: tensor<4x2x8xf32> {sdy.sharding = #sdy.sharding<@mesh3d, [{"y", "z"}, {"x"}, {}]>}) -> tensor<4x2x8xf32> {
++  // CHECK-NEXT: %[[RESHAPE_0:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d, [{"y", "z"}, {"x"}, {}, {}]>]>} : (tensor<4x2x8xf32>) -> tensor<4x2x2x4xf32>
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[RESHAPE_0]] <@mesh3d, [{}, {}, {"x"}, {"y", "z"}]> : tensor<4x2x2x4xf32>
++  // CHECK-NEXT: %[[RESHAPE_1:.*]] = stablehlo.reshape %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d, [{}, {}, {"x", "y", "z"}]>]>} : (tensor<4x2x2x4xf32>) -> tensor<4x2x8xf32>
++  // CHECK-NEXT: return %[[RESHAPE_1]]
++  %0 = sdy.reshard %arg0 <@mesh3d, [{}, {}, {"x", "y", "z"}]> : tensor<4x2x8xf32>
++  return %0 : tensor<4x2x8xf32>
++}
++
++// CHECK-LABEL: func @target_dim_has_extra_axes_divisible_split
++func.func @target_dim_has_extra_axes_divisible_split(%arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh3d_4x2x4, [{"x", "y"}, {}]>}) -> tensor<8x16xf32> {
++  // CHECK-NEXT: %[[RESHAPE_0:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d_4x2x4, [{"x"}, {"y"}, {}, {}]>]>} : (tensor<8x16xf32>) -> tensor<4x2x4x4xf32>
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[RESHAPE_0]] <@mesh3d_4x2x4, [{}, {}, {"x"}, {"z"}]> : tensor<4x2x4x4xf32>
++  // CHECK-NEXT: %[[RESHAPE_1:.*]] = stablehlo.reshape %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d_4x2x4, [{}, {"x", "z"}]>]>} : (tensor<4x2x4x4xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: return %[[RESHAPE_1]]
++  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{}, {"x", "z"}]> : tensor<8x16xf32>
++  return %0 : tensor<8x16xf32>
++}
++
++// CHECK-LABEL: func @target_dim_has_extra_axes_indivisible_not_split
++func.func @target_dim_has_extra_axes_indivisible_not_split(%arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh3d_4x2x4, [{"x"}, {"z"}]>}) -> tensor<4x8xf32> {
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"z"}, {"x", "y"}]> : tensor<4x8xf32>
++  // CHECK-NEXT: return %[[RESHARD]]
++  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"z"}, {"x", "y"}]> : tensor<4x8xf32>
++  return %0 : tensor<4x8xf32>
++}
++
++// CHECK-LABEL: func @target_dim_has_no_cross_dim_axes_split
++func.func @target_dim_has_no_cross_dim_axes_split(%arg0: tensor<4x4xf32> {sdy.sharding = #sdy.sharding<@mesh3d, [{"x", "y"}, {"z"}]>}) -> tensor<4x4xf32> {
++  // CHECK-NEXT: %[[RESHAPE_0:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d, [{"x", "y"}, {}, {"z"}]>]>} : (tensor<4x4xf32>) -> tensor<4x2x2xf32>
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[RESHAPE_0]] <@mesh3d, [{}, {"x"}, {"z"}]> : tensor<4x2x2xf32>
++  // CHECK-NEXT: %[[RESHAPE_1:.*]] = stablehlo.reshape %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d, [{}, {"x", "z"}]>]>} : (tensor<4x2x2xf32>) -> tensor<4x4xf32>
++  // CHECK-NEXT: return %[[RESHAPE_1]]
++  %0 = sdy.reshard %arg0 <@mesh3d, [{}, {"x", "z"}]> : tensor<4x4xf32>
++  return %0 : tensor<4x4xf32>
++}
++
++// CHECK-LABEL: func @target_dim_has_cross_dim_axes_not_split
++func.func @target_dim_has_cross_dim_axes_not_split(%arg0: tensor<4x4xf32> {sdy.sharding = #sdy.sharding<@mesh3d, [{"x", "y"}, {"z"}]>}) -> tensor<4x4xf32> {
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh3d, [{"y"}, {"x", "z"}]> : tensor<4x4xf32>
++  // CHECK-NEXT: return %[[RESHARD]]
++  %0 = sdy.reshard %arg0 <@mesh3d, [{"y"}, {"x", "z"}]> : tensor<4x4xf32>
++  return %0 : tensor<4x4xf32>
++}
++
++// CHECK-LABEL: func @corresponding_dim_has_extra_axes_divisible_split
++func.func @corresponding_dim_has_extra_axes_divisible_split(%arg0: tensor<16x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh3d_4x2x4, [{"x", "z"}, {}, {}]>}) -> tensor<16x8x8xf32> {
++  // CHECK-NEXT: %[[RESHAPE_0:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d_4x2x4, [{"x"}, {"z"}, {}, {}]>]>} : (tensor<16x8x8xf32>) -> tensor<4x4x8x8xf32>
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[RESHAPE_0]] <@mesh3d_4x2x4, [{}, {"y"}, {"x"}, {}]> : tensor<4x4x8x8xf32>
++  // CHECK-NEXT: %[[RESHAPE_1:.*]] = stablehlo.reshape %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh3d_4x2x4, [{"y"}, {"x"}, {}]>]>} : (tensor<4x4x8x8xf32>) -> tensor<16x8x8xf32>
++  // CHECK-NEXT: return %[[RESHAPE_1]]
++  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"y"}, {"x"}, {}]> : tensor<16x8x8xf32>
++  return %0 : tensor<16x8x8xf32>
++}
++
++// CHECK-LABEL: func @corresponding_dim_has_extra_axes_indivisible_not_split
++func.func @corresponding_dim_has_extra_axes_indivisible_not_split(%arg0: tensor<8x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh3d_4x2x4, [{"x", "y"}, {}, {}]>}) -> tensor<8x8x8xf32> {
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"z"}, {"x"}, {}]> : tensor<8x8x8xf32>
++  // CHECK-NEXT: return %[[RESHARD]]
++  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"z"}, {"x"}, {}]> : tensor<8x8x8xf32>
++  return %0 : tensor<8x8x8xf32>
++}
++
++// CHECK-LABEL: func @corresponding_dim_has_cross_dim_axes_not_split
++func.func @corresponding_dim_has_cross_dim_axes_not_split(%arg0: tensor<4x4xf32> {sdy.sharding = #sdy.sharding<@mesh3d, [{"x", "y"}, {"z"}]>}) -> tensor<4x4xf32> {
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh3d, [{"z"}, {"y"}]> : tensor<4x4xf32>
++  // CHECK-NEXT: return %[[RESHARD]]
++  %0 = sdy.reshard %arg0 <@mesh3d, [{"z"}, {"y"}]> : tensor<4x4xf32>
++  return %0 : tensor<4x4xf32>
++}
++
++// CHECK-LABEL: func @corresponding_dim_has_extra_axes_but_no_replicated_groups_not_split
++func.func @corresponding_dim_has_extra_axes_but_no_replicated_groups_not_split(%arg0: tensor<4x4xf32> {sdy.sharding = #sdy.sharding<@mesh4d, [{"x", "y"}, {"z"}]>}) -> tensor<4x4xf32> {
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh4d, [{"w"}, {"x", "y"}]> : tensor<4x4xf32>
++  // CHECK-NEXT: return %[[RESHARD]]
++  %0 = sdy.reshard %arg0 <@mesh4d, [{"w"}, {"x", "y"}]> : tensor<4x4xf32>
++  return %0 : tensor<4x4xf32>
++}
+diff --git a/shardy/dialect/sdy/transforms/export/test/verify_unreduced_axes.mlir b/shardy/dialect/sdy/transforms/export/test/verify_unreduced_axes.mlir
+index f0cc746f..f3a102e9 100644
+--- a/shardy/dialect/sdy/transforms/export/test/verify_unreduced_axes.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/verify_unreduced_axes.mlir
+@@ -12,6 +12,16 @@ func.func @dropped_by_add(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@
+ 
+ sdy.mesh @mesh = <["x"=2, "y"=2]>
+ 
++func.func @dropped_by_add_blessed(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}], unreduced={"y"}>}) -> tensor<8x8xf32> {
++  %0 = sdy.sharding_constraint %arg0 <@mesh, [{"x"}, {}]> : tensor<8x8xf32>
++  %1 = stablehlo.add %0, %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<8x8xf32>
++  return %1 : tensor<8x8xf32>
++}
++
++// -----
++
++sdy.mesh @mesh = <["x"=2, "y"=2]>
++
+ func.func private @callee_without_unreduced(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<8x8xf32> {
+   return %arg0 : tensor<8x8xf32>
+ }
+@@ -26,6 +36,20 @@ func.func @call_argument_drops_unreduced(%arg0: tensor<8x8xf32> {sdy.sharding =
+ 
+ sdy.mesh @mesh = <["x"=2, "y"=2]>
+ 
++func.func private @callee_without_unreduced_blessed(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<8x8xf32> {
++  return %arg0 : tensor<8x8xf32>
++}
++
++func.func @call_argument_drops_unreduced_blessed(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}], unreduced={"y"}>}) -> tensor<8x8xf32> {
++  %0 = sdy.sharding_constraint %arg0 <@mesh, [{"x"}, {}]> : tensor<8x8xf32>
++  %1 = func.call @callee_without_unreduced_blessed(%0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
++  return %1 : tensor<8x8xf32>
++}
++
++// -----
++
++sdy.mesh @mesh = <["x"=2, "y"=2]>
++
+ func.func private @callee_with_unreduced(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}], unreduced={"y"}>}) {
+   // expected-error@+1 {{'func.return' op has unreduced axes mismatch for 'y' without a blessed operation (e.g., sdy.reshard). This is an invalid transition from unreduced to reduced.}}
+   return %arg0 : tensor<8x8xf32>
+@@ -41,14 +65,13 @@ func.func @call_result_drops_unreduced(%arg0: tensor<8x8xf32> {sdy.sharding = #s
+ 
+ sdy.mesh @mesh = <["x"=2, "y"=2]>
+ 
+-func.func private @callee_expects_unreduced(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}], unreduced={"y"}>}) -> tensor<8x8xf32> {
+-  %0 = sdy.all_reduce {"y"} %arg0 out_sharding=<@mesh, [{"x"}, {}]> : tensor<8x8xf32>
+-  return %0 : tensor<8x8xf32>
++func.func private @callee_returns_reduced(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<8x8xf32> {
++  return %arg0 : tensor<8x8xf32>
+ }
+ 
+-func.func @call_operand_missing_unreduced(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<8x8xf32> {
+-  // expected-error@+1 {{'func.call' op has unreduced axes mismatch for 'y' at call argument 0.}}
+-  %0 = func.call @callee_expects_unreduced(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
++func.func @call_result_extra_unreduced(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<8x8xf32> {
++  // expected-error@+1 {{'func.call' op has unreduced axes mismatch for 'y' at call result 0.}}
++  %0 = func.call @callee_returns_reduced(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+   return %0 : tensor<8x8xf32>
+ }
+ 
+@@ -56,13 +79,14 @@ func.func @call_operand_missing_unreduced(%arg0: tensor<8x8xf32> {sdy.sharding =
+ 
+ sdy.mesh @mesh = <["x"=2, "y"=2]>
+ 
+-func.func private @callee_returns_reduced(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<8x8xf32> {
+-  return %arg0 : tensor<8x8xf32>
++func.func private @callee_expects_unreduced(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}], unreduced={"y"}>}) -> tensor<8x8xf32> {
++  %0 = sdy.reshard %arg0 <@mesh, [{"x"}, {}]> : tensor<8x8xf32>
++  return %0 : tensor<8x8xf32>
+ }
+ 
+-func.func @call_result_extra_unreduced(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<8x8xf32> {
+-  // expected-error@+1 {{'func.call' op has unreduced axes mismatch for 'y' at call result 0.}}
+-  %0 = func.call @callee_returns_reduced(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>} : (tensor<8x8xf32>) -> tensor<8x8xf32>
++func.func @call_operand_missing_unreduced(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<8x8xf32> {
++  // expected-error@+1 {{'func.call' op has unreduced axes mismatch for 'y' at call argument 0.}}
++  %0 = func.call @callee_expects_unreduced(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+   return %0 : tensor<8x8xf32>
+ }
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/verify_unreduced_axes.cc b/shardy/dialect/sdy/transforms/export/verify_unreduced_axes.cc
+index 9ec6216e..2da6f860 100644
+--- a/shardy/dialect/sdy/transforms/export/verify_unreduced_axes.cc
++++ b/shardy/dialect/sdy/transforms/export/verify_unreduced_axes.cc
+@@ -18,6 +18,7 @@ limitations under the License.
+ #include "mlir/IR/OpDefinition.h"
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/SymbolTable.h"
++#include "mlir/IR/Value.h"
+ #include "mlir/Interfaces/ControlFlowInterfaces.h"
+ #include "mlir/Pass/Pass.h"  // IWYU pragma: keep
+ #include "mlir/Support/LLVM.h"
+@@ -94,8 +95,14 @@ LogicalResult verifyCallUnreducedAxes(func::CallOp callOp) {
+ 
+   // Verify call operands against callee arguments.
+   for (int64_t i = 0; i < callOp.getNumOperands(); ++i) {
+-    TensorShardingAttr operandSharding = getSharding(callOp.getOperand(i));
+-    TensorShardingAttr argSharding = getSharding(callee.getArgument(i));
++    Value operand = callOp.getOperand(i);
++    if (operand.getDefiningOp<sdy::ReshardOp>() ||
++        operand.getDefiningOp<sdy::ShardingConstraintOp>()) {
++      continue;
++    }
++    TensorShardingAttr operandSharding = getShardingBypassingBarriers(operand);
++    TensorShardingAttr argSharding =
++        getShardingBypassingBarriers(callee.getArgument(i));
+     ArrayRef<AxisRefAttr> operandAxes = operandSharding
+                                             ? operandSharding.getUnreducedAxes()
+                                             : ArrayRef<AxisRefAttr>{};
+@@ -111,7 +118,8 @@ LogicalResult verifyCallUnreducedAxes(func::CallOp callOp) {
+   // Verify callee results against call results.
+   for (int64_t i = 0; i < callOp.getNumResults(); ++i) {
+     TensorShardingAttr funcResultSharding = getFuncResultSharding(callee, i);
+-    TensorShardingAttr resultSharding = getSharding(callOp.getResult(i));
++    TensorShardingAttr resultSharding =
++        getShardingBypassingBarriers(callOp.getResult(i));
+     ArrayRef<AxisRefAttr> funcResultAxes =
+         funcResultSharding ? funcResultSharding.getUnreducedAxes()
+                            : ArrayRef<AxisRefAttr>{};
+@@ -133,7 +141,12 @@ LogicalResult verifyCallUnreducedAxes(func::CallOp callOp) {
+ LogicalResult verifyDefaultOpUnreducedAxes(Operation* op, func::FuncOp funcOp) {
+   SmallVector<AxisRefAttr> operandUnreducedAxes;
+   for (Value operand : op->getOperands()) {
+-    appendUnreducedAxes(getSharding(operand), operandUnreducedAxes);
++    if (operand.getDefiningOp<sdy::ReshardOp>() ||
++        operand.getDefiningOp<sdy::ShardingConstraintOp>()) {
++      continue;
++    }
++    appendUnreducedAxes(getShardingBypassingBarriers(operand),
++                        operandUnreducedAxes);
+   }
+ 
+   SmallVector<AxisRefAttr> resultUnreducedAxes;
+@@ -141,14 +154,20 @@ LogicalResult verifyDefaultOpUnreducedAxes(Operation* op, func::FuncOp funcOp) {
+     Operation* parentOp = op->getParentOp();
+     if (auto parentFuncOp = dyn_cast<func::FuncOp>(parentOp)) {
+       for (int64_t i = 0; i < op->getNumOperands(); ++i) {
++        Value operand = op->getOperand(i);
++        if (operand.getDefiningOp<sdy::ReshardOp>() ||
++            operand.getDefiningOp<sdy::ShardingConstraintOp>()) {
++          continue;
++        }
+         appendUnreducedAxes(getFuncResultSharding(parentFuncOp, i),
+                             resultUnreducedAxes);
+       }
+     } else if (parentOp->getNumResults() > 0) {
+       for (int64_t i = 0; i < op->getNumOperands(); ++i) {
+         if (i < parentOp->getNumResults()) {
+-          appendUnreducedAxes(getSharding(parentOp->getResult(i)),
+-                              resultUnreducedAxes);
++          appendUnreducedAxes(
++              getShardingBypassingBarriers(parentOp->getResult(i)),
++              resultUnreducedAxes);
+         }
+       }
+     }
+@@ -163,7 +182,8 @@ LogicalResult verifyDefaultOpUnreducedAxes(Operation* op, func::FuncOp funcOp) {
+   }
+ 
+   for (Value result : op->getResults()) {
+-    appendUnreducedAxes(getSharding(result), resultUnreducedAxes);
++    appendUnreducedAxes(getShardingBypassingBarriers(result),
++                        resultUnreducedAxes);
+   }
+ 
+   if (operandUnreducedAxes.empty()) {
+@@ -189,7 +209,7 @@ struct VerifyUnreducedAxesPass
+     func::FuncOp funcOp = getOperation();
+ 
+     auto walkResult = funcOp.walk([&](Operation* op) {
+-      if (op->getDialect()->getNamespace() == "sdy") {
++      if (isa<sdy::ReshardOp, sdy::ShardingConstraintOp>(op)) {
+         return WalkResult::advance();
+       }
+ 
+diff --git a/shardy/dialect/sdy/transforms/import/BUILD b/shardy/dialect/sdy/transforms/import/BUILD
+index a1a70fc9..1997d2b5 100644
+--- a/shardy/dialect/sdy/transforms/import/BUILD
++++ b/shardy/dialect/sdy/transforms/import/BUILD
+@@ -1,7 +1,7 @@
+ # The SDY import passes and pipeline.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/dialect/sdy/transforms/propagation/BUILD b/shardy/dialect/sdy/transforms/propagation/BUILD
+index 5cc96d5e..2ec3ff1e 100644
+--- a/shardy/dialect/sdy/transforms/propagation/BUILD
++++ b/shardy/dialect/sdy/transforms/propagation/BUILD
+@@ -1,8 +1,8 @@
+ # The SDY sharding propagation system.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
+-# load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/dialect/sdy/transforms/propagation/debugging/BUILD b/shardy/dialect/sdy/transforms/propagation/debugging/BUILD
+index 1aa83444..ffdc6f38 100644
+--- a/shardy/dialect/sdy/transforms/propagation/debugging/BUILD
++++ b/shardy/dialect/sdy/transforms/propagation/debugging/BUILD
+@@ -1,6 +1,6 @@
+ # Systems to debug SDY propagation.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/integrations/c/BUILD b/shardy/integrations/c/BUILD
+index 3c2817f8..3efb5d96 100644
+--- a/shardy/integrations/c/BUILD
++++ b/shardy/integrations/c/BUILD
+@@ -1,6 +1,6 @@
+ # SDY C APIs.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/integrations/c/mpmd/BUILD b/shardy/integrations/c/mpmd/BUILD
+index a8671336..a74f5709 100644
+--- a/shardy/integrations/c/mpmd/BUILD
++++ b/shardy/integrations/c/mpmd/BUILD
+@@ -1,6 +1,6 @@
+ # MPMD C APIs.
+ 
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/integrations/python/jax/mpmd/jaxlib/BUILD b/shardy/integrations/python/jax/mpmd/jaxlib/BUILD
+index 45e9c632..ea2fb995 100644
+--- a/shardy/integrations/python/jax/mpmd/jaxlib/BUILD
++++ b/shardy/integrations/python/jax/mpmd/jaxlib/BUILD
+@@ -1,4 +1,4 @@
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/shardy/tools/BUILD b/shardy/tools/BUILD
+index 9a5de852..cb2e20ed 100644
+--- a/shardy/tools/BUILD
++++ b/shardy/tools/BUILD
+@@ -1,6 +1,6 @@
+ # Shardy tools.
+ 
+-# load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
++load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 01841ec2..c5416f12 100644
+index c5416f12..8541fc21 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "93b1f81e03ef4c717a9d222b46f78c38bcff0a3f"
--    LLVM_SHA256 = "de1e67f7290d93340a408ba5841966d129127de2104c304d7f761a4de101ece2"
-+    LLVM_COMMIT = "b713aaedb6eedd7d20f666038d945e50eafd4c27"
-+    LLVM_SHA256 = "849628d94c17e4c9a236e0135afb03141258fd32cf902d7e0a2500ba94b1bd47"
+-    LLVM_COMMIT = "b713aaedb6eedd7d20f666038d945e50eafd4c27"
+-    LLVM_SHA256 = "849628d94c17e4c9a236e0135afb03141258fd32cf902d7e0a2500ba94b1bd47"
++    LLVM_COMMIT = "030e74c2808a9af58c6b4ef461fd0c2c7039d647"
++    LLVM_SHA256 = "eddb0cf6d6ab1bebf7990fcba6683eb633fa0b05ea6ea47ca562b4b871140793"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/py/py_extension.bzl b/third_party/py/py_extension.bzl
+index 0c2c18f1..4ab5315c 100644
+--- a/third_party/py/py_extension.bzl
++++ b/third_party/py/py_extension.bzl
+@@ -13,8 +13,8 @@
+ # limitations under the License.
+ """Supports writing Python modules in C++."""
+ 
+-# load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+-# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ 
+ # buildifier: disable=unused-variable
+ def py_extension(
