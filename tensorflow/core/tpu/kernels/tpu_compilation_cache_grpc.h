@@ -35,12 +35,7 @@ limitations under the License.
 #include "grpcpp/impl/codegen/status.h"
 #include "grpcpp/impl/codegen/stub_options.h"
 #include "grpcpp/impl/codegen/sync_stream.h"
-
-#if defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
-#else
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"  // copybara"
-#endif
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 
 namespace tensorflow {
@@ -49,11 +44,7 @@ namespace grpc {
 class TpuCompilationCacheService final {
  public:
   using RequestType = ::tensorflow::tpu::GetTpuProgramRequest;
-#if defined(LIBTPU_ON_GCE)
   using ResponseType = ::tensorflow::tpu::GetTpuProgramResponseExternal;
-#else
-  using ResponseType = ::tensorflow::tpu::GetTpuProgramResponse;
-#endif
 
   // N.B. This must be synchronized with the method order in
   // tpu_compilation_cache.proto.

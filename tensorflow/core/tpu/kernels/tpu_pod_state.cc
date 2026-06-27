@@ -25,12 +25,7 @@ limitations under the License.
 #include "xla/tpu/status_helper.h"
 #include "xla/tpu/tpu_api.h"
 #include "xla/tsl/platform/errors.h"
-
-#if defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
-#else
-#include "tensorflow/core/tpu/kernels/tpu_util.h"  // copybara"
-#endif
 
 namespace tensorflow {
 const char kTpuPodStateResourceName[] = "tpu_pod_state";
@@ -62,11 +57,7 @@ absl::StatusOr<std::unique_ptr<TpuCompilationCacheService>>
 ConstructCacheService(ResourceMgr* rmgr, int serving_port,
                       tpu::TpuCompilationCacheInterface* compilation_cache) {
   absl::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> server_builder;
-#if defined(LIBTPU_ON_GCE)
   server_builder = tpu::CreateServerBuilder(serving_port);
-#else
-  server_builder = tpu::CreateServerBuilderGoogle(serving_port);
-#endif
   TF_RETURN_IF_ERROR(server_builder.status());
 
   auto cache_service = std::make_unique<TpuCompilationCacheService>(
