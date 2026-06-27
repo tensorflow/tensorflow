@@ -445,14 +445,18 @@ def kron(a, b):  # pylint: disable=missing-function-docstring
   # rank Normalization (Static vs Dynamic Routing)
   if a_rank is not None and b_rank is not None:
     # static path: XLA and Graph Compiler optimization
-    nd = max(a_rank, b_rank)
-    if a_rank < nd:
-      a = np_array_ops.reshape(a, (1,) * (nd - a_rank) + tuple(a.shape))
-    if b_rank < nd:
-      b = np_array_ops.reshape(b, (1,) * (nd - b_rank) + tuple(b.shape))
-
     a_shape = array_ops.shape(a)
     b_shape = array_ops.shape(b)
+    nd = max(a_rank, b_rank)
+    if a_rank < nd:
+      a_pad = array_ops.ones([nd - a_rank], dtype=a_shape.dtype)
+      a_shape = array_ops.concat([a_pad, a_shape], axis=0)
+      a = np_array_ops.reshape(a, a_shape)
+    if b_rank < nd:
+      b_pad = array_ops.ones([nd - b_rank], dtype=b_shape.dtype)
+      b_shape = array_ops.concat([b_pad, b_shape], axis=0)
+      b = np_array_ops.reshape(b, b_shape)
+
     max_rank = nd
   else:
     # dynamic path: Runtime evaluation for unknown ranks
