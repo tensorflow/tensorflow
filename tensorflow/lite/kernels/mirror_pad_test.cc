@@ -264,5 +264,25 @@ TEST(MirrorPadTest, Pad_1D_Symmetric_Multiple_Invoke) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({4, 5, 6, 6, 5}));
 }
 
+TEST(MirrorPadTest, PaddingSumOverflow) {
+  BaseMirrorPadOpModel<int> model(
+      {TensorType_INT32, {2, 3}}, {TensorType_INT32, {2, 2}},
+      {TensorType_INT32, {}}, tflite::MirrorPadMode_REFLECT);
+  model.PopulateTensor<int>(model.input_tensor_id(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int>(model.padding_matrix_tensor_id(),
+                            {0, 0, 0, std::numeric_limits<int32_t>::max()});
+  EXPECT_NE(model.Invoke(), kTfLiteOk);
+}
+
+TEST(MirrorPadTest, Int64PaddingSumOverflow) {
+  BaseMirrorPadOpModel<int> model(
+      {TensorType_INT32, {2, 3}}, {TensorType_INT64, {2, 2}},
+      {TensorType_INT32, {}}, tflite::MirrorPadMode_REFLECT);
+  model.PopulateTensor<int>(model.input_tensor_id(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int64_t>(model.padding_matrix_tensor_id(),
+                                {0, 0, 0, std::numeric_limits<int64_t>::max()});
+  EXPECT_NE(model.Invoke(), kTfLiteOk);
+}
+
 }  // namespace
 }  // namespace tflite

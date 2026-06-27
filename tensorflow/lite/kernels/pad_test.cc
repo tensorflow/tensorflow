@@ -1717,5 +1717,13 @@ TEST_F(QuantizedPadV2OpTest, Int8AdvancedDynamicValuedTest) {
   AdvancedDynamicValuedTest<int8_t, TensorType_INT8>();
 }
 
+TEST_F(PadOpTest, PaddingSumOverflow) {
+  PadOpDynamicModel<int32_t> m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2},
+                               {TensorType_FLOAT32});
+  m.SetInput({1.f, 2.f, 3.f, 4.f});
+  m.SetPaddings({0, 0, std::numeric_limits<int32_t>::max(), 0, 0, 0, 0, 0});
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
 }  // namespace
 }  // namespace tflite
