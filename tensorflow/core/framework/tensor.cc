@@ -635,13 +635,16 @@ Buffer<T>::~Buffer() {
 // that broadcast a single value to a large shape always have in_n >= 1, so
 // this guard does not restrict normal usage.
 //
-// 64 MB is chosen because:
-//   - It is well above typical constant-tensor sizes (most are <1 MB).
-//   - It is well below the 3.6 GB allocation achievable with 12 bytes of
-//     input (CWE-770, amplification ratio 318 000 000:1).
-//   - It is consistent with TensorFlow's existing 64 MB proto parsing limit
-//     (coded_stream default).
-static constexpr int64_t kMaxBytesFromProtoNoData = int64_t{64} << 20;  // 64 MB
+// 2 GB is chosen because:
+//   - It matches the 2 GB ceiling on a single serialized protobuf message, the
+//     natural upper bound for any tensor that could be parsed from a proto.
+//   - It still bounds amplification: a tiny no-data message triggers at most a
+//     2 GB zero-filled allocation, not the unbounded allocation possible with
+//     no guard (CWE-770).
+//   - It accommodates legitimately default-initialized large tensors, e.g. a
+//     [2,1024,1024,1024] bool variable set to False serializes with an empty
+//     value list (in_n == 0) and must still deserialize.
+static constexpr int64_t kMaxBytesFromProtoNoData = int64_t{2} << 30;  // 2 GB
 
 // Returns false only when the proto carries no typed values (in_n <= 0, a
 // fabricated zero-fill) AND the requested allocation exceeds
