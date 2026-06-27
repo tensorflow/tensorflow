@@ -15,6 +15,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <type_traits>
@@ -1579,6 +1580,45 @@ TYPED_TEST(StridedSliceOpTest, StrideOverflowAndEdgeCases) {
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
   }
+}
+
+TYPED_TEST(StridedSliceOpTest, OutputDimOverflowCheck) {
+  // Non-constant INT32_MIN stride is rejected during Invoke.
+  {
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {1}, {3},
+                                     {std::numeric_limits<int32_t>::min()}, 0,
+                                     0, 0, 0, 0,
+                                     /*constant_tensors=*/false);
+    EXPECT_NE(m.Invoke(), kTfLiteOk);
+  }
+
+#if GTEST_HAS_DEATH_TEST
+  // Constant INT32_MIN stride is rejected during Prepare.
+  EXPECT_DEATH(
+      {
+        const std::vector<TypeParam> input_data =
+            CastVector<TypeParam>({1, 2, 3, 4});
+        StridedSliceOpModel<TypeParam> m(
+            {4}, {1}, {1}, {1}, input_data, {1}, {3},
+            {std::numeric_limits<int32_t>::min()}, 0, 0, 0, 0, 0,
+            /*constant_tensors=*/true);
+      },
+      "stride value INT32_MIN is not supported");
+
+  // offset mode rejects an end value whose output dim overflows int32.
+  EXPECT_DEATH(
+      {
+        const std::vector<TypeParam> input_data =
+            CastVector<TypeParam>({1, 2, 3, 4});
+        StridedSliceOpModel<TypeParam> m(
+            {4}, {1}, {1}, {1}, input_data, {0},
+            {std::numeric_limits<int32_t>::min()}, {-1}, 0, 0, 0, 0, 0,
+            /*constant_tensors=*/false, /*offset=*/true);
+      },
+      "StridedSlice: integer overflow computing output dim at axis 0");
+#endif
 }
 
 TYPED_TEST(StridedSliceOpTest, NoopOffset) {
