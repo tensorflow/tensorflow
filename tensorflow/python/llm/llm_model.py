@@ -352,6 +352,7 @@ class TFLLMModel:
             padding=True,
             truncation=True,
         )
+        # Move inputs to the model's device (avoids CPU/GPU mismatch)
         device = getattr(self._hf_model, "device", "cpu")
         inputs = {k: v.to(device) for k, v in inputs.items()}
         input_ids = inputs.pop("input_ids")
@@ -432,12 +433,32 @@ class TFLLMModel:
         self._hf_model.train()
         history = {"loss": [], "epoch": []}
 
+        # Resolve the device the HF model lives on
+        device = getattr(
+            self._hf_model,
+            "device",
+            torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+        )
+
+        def to_torch_device(x):
+            """Convert TF / NumPy / Python tensors to PyTorch and move to device."""
+            if hasattr(x, "numpy"):          # tf.Tensor or np.ndarray
+                return torch.from_numpy(x.numpy()).to(device)
+            if isinstance(x, torch.Tensor):
+                return x.to(device)
+            if isinstance(x, dict):
+                return {k: to_torch_device(v) for k, v in x.items()}
+            if isinstance(x, (list, tuple)):
+                return type(x)(to_torch_device(v) for v in x)
+            return torch.as_tensor(x, device=device)
+
         for epoch in range(1, epochs + 1):
             total_loss = 0.0
             steps = 0
             for step, batch in enumerate(dataset):
                 if steps_per_epoch and step >= steps_per_epoch:
                     break
+                batch = to_torch_device(batch)  # TF→PyTorch + move to device
                 # Support both dict-style and tuple-style batches
                 if isinstance(batch, dict):
                     outputs = self._hf_model(**batch, labels=batch.get("input_ids"))
@@ -549,6 +570,26 @@ def from_pretrained(
             dtype="bfloat16",
         )
     """
+    # ----------------------------------------------------------------
+    # Detect if model_name is a local tf.llm save directory.
+    # save_pretrained() only saves LoRA adapter weights, not base
+    # model weights. We must read tf_llm_meta.json to find the
+    # original base model name and load base + adapter separately.
+    # ----------------------------------------------------------------
+    meta_path = os.path.join(model_name, "tf_llm_meta.json") if os.path.isdir(model_name) else None
+    is_local_tf_llm = meta_path is not None and os.path.exists(meta_path)
+
+    base_model_name = model_name
+    saved_meta = None
+    if is_local_tf_llm:
+        with open(meta_path, "r") as fh:
+            saved_meta = json.load(fh)
+        base_model_name = saved_meta.get("model_name", model_name)
+        logger.info(
+            "Detected local tf.llm directory. Base model: '%s'",
+            base_model_name,
+        )
+
     transformers = _lazy_import_transformers()
 
     # Resolve HF token from env if not passed explicitly
@@ -566,11 +607,13 @@ def from_pretrained(
     except ImportError:
         torch_dtype = None  # Will be handled downstream
 
-    _ = _resolve_model_key(model_name)  # Log warnings for unknown families
+    _ = _resolve_model_key(base_model_name)  # Log warnings for unknown families
 
-    logger.info("Loading tokenizer for '%s'…", model_name)
+    # Tokenizer: load from local dir (has vocab files) or HF Hub
+    tokenizer_source = model_name if os.path.isdir(model_name) else base_model_name
+    logger.info("Loading tokenizer for '%s'…", tokenizer_source)
     tokenizer = transformers.AutoTokenizer.from_pretrained(
-        model_name,
+        tokenizer_source,
         cache_dir=cache_dir,
         token=hf_token,
     )
@@ -579,7 +622,7 @@ def from_pretrained(
         tokenizer.pad_token = tokenizer.eos_token
 
     logger.info("Loading model weights for '%s' (dtype=%s, device_map=%s)…",
-                model_name, dtype, device_map)
+                base_model_name, dtype, device_map)
     load_kwargs = dict(
         cache_dir=cache_dir,
         device_map=device_map,
@@ -589,16 +632,29 @@ def from_pretrained(
     if torch_dtype is not None:
         load_kwargs["torch_dtype"] = torch_dtype
 
+    # Always load base model from HF Hub (local dir has adapter only)
     hf_model = transformers.AutoModelForCausalLM.from_pretrained(
-        model_name,
+        base_model_name,
         **load_kwargs,
     )
 
-    logger.info("Model '%s' loaded successfully.", model_name)
-    return TFLLMModel(
-        model_name=model_name,
+    # If this was a local tf.llm save with LoRA, reload the adapter
+    lora_enabled = False
+    active_lora_config = lora_config
+    if is_local_tf_llm and saved_meta and saved_meta.get("lora_enabled"):
+        peft = _lazy_import_peft()
+        hf_model = peft.PeftModel.from_pretrained(hf_model, model_name)
+        lora_enabled = True
+        active_lora_config = saved_meta.get("lora_config", lora_config)
+        logger.info("LoRA adapter restored from '%s'.", model_name)
+
+    logger.info("Model '%s' loaded successfully.", base_model_name)
+    model_instance = TFLLMModel(
+        model_name=base_model_name,
         hf_model=hf_model,
         tokenizer=tokenizer,
-        lora_config=lora_config,
+        lora_config=active_lora_config,
     )
-
+    model_instance.lora_enabled = lora_enabled
+    model_instance._compiled = lora_enabled
+    return model_instance
