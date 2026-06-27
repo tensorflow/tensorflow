@@ -1290,8 +1290,10 @@ class SignTest(test_util.TensorFlowTestCase):
         x = constant_op.constant(tiny + tiny * 1j, dtype=dtype)
         y = math_ops.sign(x)
         # Result should be x/|x| = (1+1j)/sqrt(2), not 0.
-        expected = np.complex(tiny, tiny) / np.abs(np.complex(tiny, tiny))
-        self.assertAllClose(y.numpy(), expected.astype(expected_dtype), atol=1e-6)
+        # Use builtin complex() instead of np.complex (deprecated in NumPy 1.20+).
+        expected = np.array(complex(tiny, tiny) / abs(complex(tiny, tiny)),
+                            dtype=expected_dtype)
+        self.assertAllClose(y.numpy(), expected, atol=1e-6)
         self.assertEqual(y.dtype.base_dtype, expected_dtype)
 
       # Also verify zero still returns zero (no division by zero crash).
