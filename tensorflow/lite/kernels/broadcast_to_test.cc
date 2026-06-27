@@ -308,5 +308,19 @@ TYPED_TEST(BroadcastToOpTest, BroadcastToEmtpyShapeTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 0, 2}));
 }
 
+TYPED_TEST(BroadcastToOpTest, Int64ShapeOverflowTest) {
+  BroadcastToOpModel<TypeParam, int64_t> m({1}, {1});
+  m.SetInput({3});
+  m.SetShape({1LL << 35});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TYPED_TEST(BroadcastToOpTest, Int64ShapeNegativeTest) {
+  BroadcastToOpModel<TypeParam, int64_t> m({1}, {1});
+  m.SetInput({3});
+  m.SetShape({-3});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite

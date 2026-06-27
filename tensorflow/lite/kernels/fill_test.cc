@@ -224,6 +224,18 @@ TEST(FillOpTest, QuantizedFillInt8) { QuantizedFill<int8_t>(3.14f); }
 
 TEST(FillOpTest, QuantizedFillInt16) { QuantizedFill<int16_t>(3.14f); }
 
+TEST(FillOpTest, FillInt32InvalidDim) {
+  FillOpModel<int32_t, int32_t> m(TensorType_INT32, {2}, {2, -3}, -11,
+                                  TestType::kDynamic);
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(FillOpTest, FillInt64OverflowDim) {
+  FillOpModel<int64_t, int64_t> m(TensorType_INT64, {2}, {2, (1LL << 35)}, 10LL,
+                                  TestType::kDynamic);
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
 INSTANTIATE_TEST_SUITE_P(FillOpTest, FillOpTest,
                          ::testing::Values(TestType::kConst,
                                            TestType::kDynamic));
