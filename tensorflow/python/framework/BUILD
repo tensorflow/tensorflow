@@ -20,6 +20,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "stripped_cc_info", "tf_py_strict_test", "tf_python_framework_friends", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap", "if_static", "tf_additional_xla_deps_py")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "cuda_py_benchmark_test",
@@ -1566,6 +1567,35 @@ cuda_py_strict_test(
         ":test_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ] + tf_additional_xla_deps_py(),
+)
+
+tpu_py_strict_test(
+    name = "config_test_tpu",
+    size = "small",
+    srcs = ["config_test.py"],
+    # copybara:uncomment_begin
+    # args = ["--tpu_use_tfrt=false"],
+    # copybara:uncomment_end
+    disable_tfrt = True,  # TODO(b/291666911): Update this test to call initialize_tpu_system
+    main = "config_test.py",
+    tags = ["no_pip"],  # test_ops are not available in pip.
+    deps = [
+        ":config",
+        ":constant_op",
+        ":dtypes",
+        ":errors",
+        ":ops",
+        ":test_lib",
+        ":test_ops",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:compat",
         "@absl_py//absl/testing:parameterized",
     ] + tf_additional_xla_deps_py(),
 )

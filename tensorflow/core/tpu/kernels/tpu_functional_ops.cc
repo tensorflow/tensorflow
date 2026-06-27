@@ -43,8 +43,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "xla/array4d.h"
+#include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "xla/tpu/c_api_decl.h"
-#include "xla/tpu/tpu_api.h"
 #include "xla/tpu/tpu_topology.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
@@ -83,8 +83,12 @@ limitations under the License.
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/public/session_options.h"
@@ -98,7 +102,7 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
-#include "tsl/profiler/lib/traceme.h"
+#include "absl/container/flat_hash_map.h"
 
 namespace tensorflow {
 namespace {
@@ -112,8 +116,8 @@ constexpr char kXLAShardingAttrAltName[] = "_XlaSharding";
 constexpr char kXLAShardingAttrAltNameV2[] = "_XlaShardingV2";
 
 tpu::TopologyProto GetTPUTopology() {
-  tpu::TpuTopologyExternal topology(
-      stream_executor::tpu::OpsApiFn()->TpuUtil_GetTopologyPtrFn());
+  const tpu::TpuTopologyExternal& topology =
+      tpu::TpuPlatformInterface::GetRegisteredPlatform()->topology();
 
   tpu::TopologyProto topology_proto;
   topology_proto.set_num_tasks(topology.HostCount());

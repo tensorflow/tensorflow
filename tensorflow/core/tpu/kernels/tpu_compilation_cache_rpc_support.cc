@@ -16,14 +16,17 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/cleanup/cleanup.h"
 #include "third_party/grpc/include/grpcpp/security/credentials.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
+
+#if defined(LIBTPU_ON_GCE)
+#include "absl/cleanup/cleanup.h"
 #include "xla/tpu/proto_helper.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
+#endif
 
 namespace tensorflow {
 namespace tpu {
@@ -31,6 +34,7 @@ std::shared_ptr<::grpc::ChannelCredentials> CreateChannelCredentials() {
   return ::grpc::InsecureChannelCredentials();
 }
 
+#if defined(LIBTPU_ON_GCE)
 template <>
 Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
     absl::string_view local_proto_key, GetTpuProgramResponseExternal* response,
@@ -138,6 +142,6 @@ absl::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
 
   return std::vector<::grpc::Slice>{::grpc::Slice(encoded_header)};
 }
-
+#endif  // LIBTPU_ON_GCE
 }  // namespace tpu
 }  // namespace tensorflow

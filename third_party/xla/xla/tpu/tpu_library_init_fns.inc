@@ -34,6 +34,46 @@ absl::Status DoSetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(&ops_api_fn, TpuEmbeddingEngineState_Free);
   TFTPU_SET_FN(&ops_api_fn, TpuEmbeddingEngineState_GetState);
 
+  TFTPU_SET_FN(&ops_api_fn, TpuCompile_CompileAndBuild);
+
+  TFTPU_SET_FN(&ops_api_fn, TpuExecutable_LoadProgramAndEnqueueToStream);
+
+  TFTPU_SET_FN(&ops_api_fn, HardwareLayout_HostShapeToDeviceShape);
+  TFTPU_SET_FN(&ops_api_fn, HardwareLayout_ShapeSize);
+  TFTPU_SET_FN(&ops_api_fn, HardwareLayout_ShapeSizeCompact);
+  TFTPU_SET_FN(&ops_api_fn, HardwareLayout_ShapeSizeCompactRaw);
+
+  TFTPU_SET_FN(&ops_api_fn, TpuExecute_RuntimeInputToPaddedData);
+
+  TFTPU_SET_FN(&ops_api_fn, TpuExecute_GetTpuEmbeddingMemoryAllocations);
+  TFTPU_SET_FN(&ops_api_fn, TpuExecute_FreeTpuEmbeddingMemoryAllocations);
+
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_New);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_Free);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_NewArray);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_FreeArray);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_UnloadAndDestroy);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_GetProgramSize);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_LogProgramMemorySummary);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_GetExecutableInfo);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_GetHostTransferInfo);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_GetHloMetadata);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_GetMayModifyVariables);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_HasSharding);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_GetTpuProgram);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_SerializeTpuExecutable);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_SerializeCompilerMetadata);
+  TFTPU_SET_FN(&ops_api_fn,
+               TpuProgram_DeserializeFromGetTpuProgramResponseProto);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_GetFingerprint);
+  TFTPU_SET_FN(&ops_api_fn, TpuProgram_DestroyFingerprint);
+
+  TFTPU_SET_FN(&ops_api_fn, TpuNodeContext_Create);
+  TFTPU_SET_FN(&ops_api_fn, TpuNodeContext_Free);
+  TFTPU_SET_FN(&ops_api_fn, TpuNodeContext_Initialize);
+  TFTPU_SET_FN(&ops_api_fn, TpuNodeContext_CloseTpuHost);
+  TFTPU_SET_FN(&ops_api_fn, TpuNodeContext_CompactionSupported);
+
   TFTPU_SET_FN(&ops_api_fn, TpuTopology_AvailableCoreCount);
   TFTPU_SET_FN(&ops_api_fn, TpuTopology_AvailableCoresPerChip);
   TFTPU_SET_FN(&ops_api_fn,
