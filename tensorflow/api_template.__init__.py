@@ -162,6 +162,16 @@ try:
 except (ImportError, AttributeError):
   pass
 
+# ---------------------------------------------------------------------------
+# tf.llm — High-level LLM loading and fine-tuning API
+# ---------------------------------------------------------------------------
+try:
+  from tensorflow.python.llm import llm_module as _llm_module  # noqa: F401
+  import tensorflow.python.llm as _llm
+  setattr(_current_module, "llm", _llm)
+except ImportError:
+  pass
+
 del importlib
 
 # Delete modules that should be hidden from dir().
