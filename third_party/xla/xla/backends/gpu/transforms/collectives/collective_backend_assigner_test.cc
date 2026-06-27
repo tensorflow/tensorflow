@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/gpu/transforms/collectives/collective_backend_assigner.h"
 
-#include <cstdint>
 #include <memory>
 
 #include <gmock/gmock.h>
