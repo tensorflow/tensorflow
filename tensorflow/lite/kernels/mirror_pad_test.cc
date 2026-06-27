@@ -264,5 +264,23 @@ TEST(MirrorPadTest, Pad_1D_Symmetric_Multiple_Invoke) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({4, 5, 6, 6, 5}));
 }
 
+TEST(MirrorPadTest, NegativePaddingReturnsError) {
+  BaseMirrorPadOpModel<int> model(
+      {TensorType_INT32, {3}}, {TensorType_INT32, {1, 2}},
+      {TensorType_INT32, {}}, tflite::MirrorPadMode_REFLECT);
+  model.PopulateTensor<int>(model.input_tensor_id(), {1, 2, 3});
+  model.PopulateTensor<int>(model.padding_matrix_tensor_id(), {-1, 2});
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
+}
+
+TEST(MirrorPadTest, OverflowPaddingReturnsError) {
+  BaseMirrorPadOpModel<int> model(
+      {TensorType_INT32, {3}}, {TensorType_INT32, {1, 2}},
+      {TensorType_INT32, {}}, tflite::MirrorPadMode_REFLECT);
+  model.PopulateTensor<int>(model.input_tensor_id(), {1, 2, 3});
+  model.PopulateTensor<int>(model.padding_matrix_tensor_id(), {2147483647, 2});
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite

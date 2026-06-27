@@ -91,12 +91,14 @@ std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> GetPaddedOutputShape(
   int64_t left_pad = 0, right_pad = 0;
   for (int i = 0; i < input_dims; ++i) {
     GetPadding(padding_matrix, i, &left_pad, &right_pad);
-    if (left_pad < 0 || right_pad < 0) {
+    if (left_pad < 0 || right_pad < 0 ||
+        left_pad > std::numeric_limits<int32_t>::max() ||
+        right_pad > std::numeric_limits<int32_t>::max()) {
       return {nullptr, TfLiteIntArrayFree};
     }
     const int64_t dim = static_cast<int64_t>(SizeOfDimension(input, i)) +
                         left_pad + right_pad;
-    if (dim < 0 || dim > std::numeric_limits<int32_t>::max()) {
+    if (dim > std::numeric_limits<int32_t>::max()) {
       return {nullptr, TfLiteIntArrayFree};
     }
     shape->data[i] = static_cast<int>(dim);
