@@ -393,7 +393,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
   def testKron(self):
     operands = [
-      # Baseline 1D and 2D checks
+      # baseline 1D and 2D checks
       ([1, 2], [3, 4]),
       ([[1.0, -2.0], [3.0, 4.0]], [[5.0, 6.0], [-7.0, 8.0]]),
 
@@ -406,17 +406,17 @@ class MathTest(test.TestCase, parameterized.TestCase):
       # complex 3D vs 2D structural padding
       ([[[0, 1], [2, 3]]], [[1, 2]]),
 
-      # Extreme rank asymmetry (1D vs 4D)
+      # extreme rank asymmetry (1D vs 4D)
       ([2, 3], [[[[1, 2]]]]),
 
-      # Dimensions containing size 1 (Broadcasting verification)
+      # dimensions containing size 1 (Broadcasting verification)
       ([[[1]]], [[1, 2], [3, 4]]),
 
-      # Scalar (Rank 0) vs N-Dimensional Array
+      # scalar (Rank 0) vs N-Dimensional Array
       (5, [[1, 2], [3, 4]]),
       ([[1, 2], [3, 4]], 3.5),
 
-      # ero-element / Empty Tensors (Size 0 handling)
+      # zero-element / Empty Tensors (Size 0 handling)
       (
           np.zeros((2, 0, 2), dtype=np.float32), 
           np.ones((1, 3), dtype=np.float32)
