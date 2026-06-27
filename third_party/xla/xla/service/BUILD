@@ -5469,6 +5469,7 @@ xla_cc_test(
     name = "while_loop_fusible_sinking_test",
     srcs = ["while_loop_fusible_sinking_test.cc"],
     deps = [
+        ":hlo_verifier",
         ":while_loop_fusible_sinking",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
