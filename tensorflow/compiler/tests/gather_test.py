@@ -150,6 +150,82 @@ class GatherTest(xla_test.XLATestCase):
       np_val = params_np[indices]
       self.assertAllEqual(np_val, gather_val)
 
+  def testOobIndicesPositive(self):
+    """Test that positive OOB indices in gather return zeros."""
+    with self.session() as session, self.test_scope():
+      data = np.array([[1, 2, 3], [4, 5, 6]])
+      for dtype in self.numeric_tf_types:
+        params_np = self._buildParams(data, dtype)
+        params = array_ops.placeholder(dtype=dtype)
+        # Index 5 is OOB for dim_size=2 along axis=0.
+        indices = constant_op.constant([0, 5], dtype=dtypes.int32)
+        gather_t = array_ops.gather(params, indices, axis=0)
+        gather_val = session.run(gather_t, feed_dict={params: params_np})
+        # Expected: row 0 = [1,2,3], row 5 (OOB) = zeros
+        expected = np.array([[1, 2, 3], [0, 0, 0]], dtype=params_np.dtype)
+        self.assertAllEqual(expected, gather_val)
+
+  def testOobIndicesNegative(self):
+    """Test that negative OOB indices in gather return zeros."""
+    with self.session() as session, self.test_scope():
+      data = np.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10],
+                       [11, 12, 13, 14, 15]])
+      for dtype in self.numeric_tf_types:
+        params_np = self._buildParams(data, dtype)
+        params = array_ops.placeholder(dtype=dtype)
+        # -100 is OOB for dim_size=3 along axis=0.
+        indices = constant_op.constant([1, -100, 2], dtype=dtypes.int32)
+        gather_t = array_ops.gather(params, indices, axis=0)
+        gather_val = session.run(gather_t, feed_dict={params: params_np})
+        # Expected: row 1 = [6,7,8,9,10], row -100 (OOB) = zeros, row 2 = [11,12,13,14,15]
+        expected = np.array([[6, 7, 8, 9, 10], [0, 0, 0, 0, 0],
+                             [11, 12, 13, 14, 15]], dtype=params_np.dtype)
+        self.assertAllEqual(expected, gather_val)
+
+  def testBatchGatherOob(self):
+    """Test that OOB indices in batch gather (batch_dims > 0) return zeros."""
+    with self.session() as session, self.test_scope():
+      # Params shape: [2, 3, 4] (batch_dim=0, axis=1)
+      data = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
+      for dtype in self.numeric_tf_types:
+        params_np = self._buildParams(data, dtype)
+        params = array_ops.placeholder(dtype=dtype)
+        # Indices shape: [2, 3] (batch_dim=0, 3 indices per batch)
+        # Batch 0: indices [2, 0, 1] (all valid, dim_size=3)
+        # Batch 1: indices [5, 1, 2] (5 is OOB for dim_size=3)
+        indices = constant_op.constant([[2, 0, 1], [5, 1, 2]],
+                                       dtype=dtypes.int32)
+        gather_t = array_ops.gather(params, indices, axis=1, batch_dims=1)
+        gather_val = session.run(gather_t, feed_dict={params: params_np})
+        expected = np.array([
+            [[8, 9, 10, 11], [0, 1, 2, 3], [4, 5, 6, 7]],     # batch 0
+            [[0, 0, 0, 0], [16, 17, 18, 19], [20, 21, 22, 23]]  # batch 1
+        ], dtype=params_np.dtype)
+        self.assertAllEqual(expected, gather_val)
+
+  def testOobIndicesMixedAxes(self):
+    """Test OOB indices along different gather axes."""
+    with self.session() as session, self.test_scope():
+      data = np.array([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]])
+      for dtype in self.numeric_tf_types:
+        for axis in [0, 1]:
+          params_np = self._buildParams(data, dtype)
+          params = array_ops.placeholder(dtype=dtype)
+          dim_size = data.shape[axis]
+          # One valid index and one OOB index.
+          indices = constant_op.constant([0, dim_size + 5], dtype=dtypes.int32)
+          gather_t = array_ops.gather(params, indices, axis=axis)
+          gather_val = session.run(gather_t, feed_dict={params: params_np})
+          if axis == 0:
+            # Valid row 0, OOB -> zeros.
+            expected = np.array(
+                [[1, 2, 3, 4], [0, 0, 0, 0]], dtype=params_np.dtype)
+          else:
+            # Valid column 0, OOB -> zeros.
+            expected = np.array(
+                [[1, 0], [5, 0], [9, 0]], dtype=params_np.dtype)
+          self.assertAllEqual(expected, gather_val)
+
 
 class GatherBenchmark(test.Benchmark):
   """Microbenchmarks for the gather op."""

@@ -244,7 +244,7 @@ absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
   const int64_t clamp_upper = gather_dim_size > 0 ? gather_dim_size - 1 : 0;
   xla::XlaOp clamped_indices = xla::Clamp(
       xla::Zero(builder, index_type), indices,
-      xla::ConstantR0<int64_t>(builder, clamp_upper));
+      XlaHelpers::IntegerLiteral(builder, index_type, clamp_upper));
 
   xla::XlaOp gather;
   if (batch_dims > 0) {
@@ -263,7 +263,7 @@ absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
   // prevents silent data corruption from OOB index reads.
   xla::XlaOp ge_zero = xla::Ge(indices, xla::Zero(builder, index_type));
   xla::XlaOp lt_limit = xla::Lt(
-      indices, xla::ConstantR0<int64_t>(builder, gather_dim_size));
+      indices, XlaHelpers::IntegerLiteral(builder, index_type, gather_dim_size));
   xla::XlaOp valid_mask = xla::And(ge_zero, lt_limit);
 
   // Broadcast the validity mask to match the gather output shape.
@@ -280,13 +280,28 @@ absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
 
   // Reshape valid_mask to have the same rank as the gather output, with
   // dimensions aligned to where the indices appear in the output.
-  std::vector<int64_t> mask_dims(output_rank, 1);
+  // When batch_dims > 0, the first batch_dims dimensions of indices occupy
+  // the first batch_dims output dimensions. The remaining non-batch indices
+  // dimensions replace the gather dimension at axis.
+  std::vector<bool> is_offset_dim(output_rank, false);
+  for (int64_t i = 0; i < input_shape.dims(); ++i) {
+    if (i < batch_dims || i == *axis) {
+      continue;
+    }
+    int64_t output_dim = i;
+    if (i > *axis) {
+      output_dim = i + indices_rank - (1 + batch_dims);
+    }
+    is_offset_dim[output_dim] = true;
+  }
 
-  // The indices dimensions start at position (axis - batch_dims) in the output.
-  // For batch_dims=0: indices occupy positions [axis, axis+indices_rank)
-  int64_t mask_start_dim = *axis;
-  for (int64_t i = 0; i < indices_rank; ++i) {
-    mask_dims[mask_start_dim + i] = indices_shape.dim_size(i);
+  std::vector<int64_t> mask_dims(output_rank, 1);
+  int64_t indices_dim_idx = 0;
+  for (int64_t d = 0; d < output_rank; ++d) {
+    if (!is_offset_dim[d]) {
+      mask_dims[d] = indices_shape.dim_size(indices_dim_idx);
+      indices_dim_idx++;
+    }
   }
 
   xla::XlaOp reshaped_mask = xla::Reshape(valid_mask, mask_dims);
