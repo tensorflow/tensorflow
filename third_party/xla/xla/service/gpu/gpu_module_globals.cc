@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/service/gpu/dense_data_intermediate.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/module_spec.h"
