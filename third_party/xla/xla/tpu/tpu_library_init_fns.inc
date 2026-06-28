@@ -1,6 +1,7 @@
 #ifndef TENSORFLOW_COMPILER_XLA_TPU_TPU_LIBRARY_INIT_FNS_INC_
 #define TENSORFLOW_COMPILER_XLA_TPU_TPU_LIBRARY_INIT_FNS_INC_
 
+#include "third_party/absl/status/status.h"
 #include "xla/tpu/tpu_api.h"
 #include "xla/tpu/tpu_executor_init_fns.inc"
 #include "xla/tpu/tpu_ops_c_api.h"
@@ -10,21 +11,10 @@ namespace {
 
 absl::Status DoSetTpuOpsStructFns(void* library_handle) {
   static TfTpu_OpsApiFn ops_api_fn;
-  TFTPU_SET_FN(&ops_api_fn, ConfigureDistributedTpuOp_DoWork);
-  TFTPU_SET_FN(&ops_api_fn, WaitForDistributedTpuOp_DoWork);
-  TFTPU_SET_FN(&ops_api_fn, InitializeHostForDistributedTpuOp_DoWork);
   TFTPU_SET_FN(&ops_api_fn, SetGlobalTPUArrayOp_DoWork);
-  TFTPU_SET_FN(&ops_api_fn, DisconnectDistributedTpuChipsOp_DoWork);
   TFTPU_SET_FN(&ops_api_fn, TpuConfigurationApi_FreeCharArray);
-  TFTPU_SET_FN(&ops_api_fn, TpuConfigurationApi_FreeInt32Array);
-  TFTPU_SET_FN(&ops_api_fn, TpuConfigurationApi_HasTPUPodState);
   TFTPU_SET_FN(&ops_api_fn, TpuConfigurationApi_TpusPerHost);
   TFTPU_SET_FN(&ops_api_fn, TpuConfigurationApi_TpuMemoryLimit);
-  TFTPU_SET_FN(&ops_api_fn,
-               TpuConfigurationApi_RemoteCompilationCacheSizeInBytes);
-  TFTPU_SET_FN(&ops_api_fn,
-               TpuConfigurationApi_CompilationCacheServerAddressFromConfig);
-  TFTPU_SET_FN(&ops_api_fn, TpuConfigurationApi_GetServerAddressAndPort);
 
   TFTPU_SET_FN(&ops_api_fn, TpuMeshState_Create);
   TFTPU_SET_FN(&ops_api_fn, TpuMeshState_Free);
@@ -38,16 +28,8 @@ absl::Status DoSetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(&ops_api_fn, TpuTopology_AvailableCoresPerChip);
   TFTPU_SET_FN(&ops_api_fn,
                TpuTopology_MaybeAvailableSparseCoresPerLogicalDevice);
-  TFTPU_SET_FN(&ops_api_fn, TpuNetUtil_RecycleUnusedPort);
-  TFTPU_SET_FN(&ops_api_fn, TpuCompile_IsTpuCompilationEnabled);
-  TFTPU_SET_FN(&ops_api_fn, TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
-  TFTPU_SET_FN(&ops_api_fn, TpuCompile_CreateCompilationCacheKey);
-  TFTPU_SET_FN(&ops_api_fn, TpuCompile_DestroyCompilationCacheKey);
-  TFTPU_SET_FN(&ops_api_fn, TpuCompile_CreateGuaranteedConstFingerprint);
   TFTPU_SET_FN(&ops_api_fn, TpuUtil_GetTopologyPtr);
   TFTPU_SET_FN(&ops_api_fn, TpuUtil_GetXlaPadSizeFromTpuTopology);
-
-  TFTPU_SET_FN(&ops_api_fn, TfTpu_InitializeTpuModelServer);
 
   TFTPU_SET_FN(&ops_api_fn, TfTpuOrdinalSelector_Create);
   TFTPU_SET_FN(&ops_api_fn, TfTpuOrdinalSelector_Destroy);
@@ -98,7 +80,8 @@ static absl::Status DoInitializeBaseApi(void* library_handle) {
   static TfTpu_BaseFn base_fn;
   TFTPU_SET_FN(&base_fn, TfTpu_Initialize);
   ::stream_executor::tpu::SetBaseApiFn(&base_fn);
-  ::stream_executor::tpu::GetTpuBaseApiInitStatus() = absl::OkStatus();  // TENSORFLOW_STATUS_OK
+  ::stream_executor::tpu::GetTpuBaseApiInitStatus() =
+      absl::OkStatus();  // TENSORFLOW_STATUS_OK
   return absl::OkStatus();
 }
 
@@ -106,8 +89,8 @@ static absl::Status DoInitializeBaseApi(void* library_handle) {
     void* library_handle) {
   absl::call_once(*::stream_executor::tpu::GetTpuBaseApiInitOnceFlag(),
                   [library_handle]() {
-    DoInitializeBaseApi(library_handle).IgnoreError();
-  });
+                    DoInitializeBaseApi(library_handle).IgnoreError();
+                  });
   TF_RETURN_IF_ERROR(::stream_executor::tpu::GetTpuBaseApiInitStatus());
 
   TF_RETURN_IF_ERROR(SetTpuOpsStructFns(library_handle));
