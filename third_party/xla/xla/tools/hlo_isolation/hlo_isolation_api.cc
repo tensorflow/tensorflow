@@ -442,7 +442,7 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
               ADD_FAILURE() << error_message;
               LOG(ERROR) << error_message;
 
-              absl::MutexLock lock(result_mutex.get());
+              absl::MutexLock lock(*result_mutex.get());
               NumericCheck* numeric_check = test_result->add_numeric_checks();
               numeric_check->set_name(absl::StrCat("FusionDebugger:", op_name));
               numeric_check->set_expected_contains_inf_or_nan(
