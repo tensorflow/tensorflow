@@ -47,9 +47,9 @@ constexpr float kNan = std::numeric_limits<float>::quiet_NaN();
 constexpr complex64 kNanC64 = complex64(kNan, kNan);
 
 using TriangularSolveTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 using TriangularSolveLeftLookingTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 Array2D<float> AValsLower() {
   return {{2, kNan, kNan, kNan},
@@ -451,7 +451,7 @@ struct TriangularSolveTestSpec {
 
 class TriangularSolveParametricTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloTestBase>>,
+          HloInterpreterReferenceMixin<HloTestBase>>,
       public ::testing::WithParamInterface<TriangularSolveTestSpec> {};
 
 TEST_P(TriangularSolveParametricTest, Random) {
