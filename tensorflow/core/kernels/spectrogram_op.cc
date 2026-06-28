@@ -42,9 +42,9 @@ class AudioSpectrogramOp : public OpKernel {
         context, input.dims() == 2,
         absl::InvalidArgumentError(absl::StrCat("input must be 2-dimensional",
                                                 input.shape().DebugString())));
-    OP_REQUIRES(context, window_size_ > 0,
+    OP_REQUIRES(context, window_size_ > 1,
                 absl::InvalidArgumentError(absl::StrCat(
-                    "window_size must be positive, got ", window_size_)));
+                    "window_size must be > 1, got ", window_size_)));
     Spectrogram spectrogram;
     OP_REQUIRES(context, spectrogram.Initialize(window_size_, stride_),
                 absl::InvalidArgumentError(absl::StrCat(
