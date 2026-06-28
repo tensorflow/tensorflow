@@ -57,6 +57,7 @@ cc_library_with_tflite(
         ":gpu_delegate_provider",
         ":hexagon_delegate_provider",
         ":nnapi_delegate_provider",
+        ":ynnpack_delegate_provider",
         "//tensorflow/lite/tools/delegates/experimental/stable_delegate:delegate_provider",
     ],
     alwayslink = 1,
@@ -182,6 +183,24 @@ cc_library_with_tflite(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/tools:tool_params",
+    ],
+    alwayslink = 1,
+)
+
+cc_library_with_tflite(
+    name = "ynnpack_delegate_provider",
+    srcs = ["ynnpack_delegate_provider.cc"],
+    copts = tflite_copts(),
+    linkstatic = True,
+    tflite_deps = [
+        ":delegate_provider_hdr",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/delegates/ynnpack:ynnpack_delegate",
+        "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:tool_params",
     ],
     alwayslink = 1,
