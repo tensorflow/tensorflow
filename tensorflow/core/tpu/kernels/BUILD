@@ -79,7 +79,6 @@ tf_kernel_library(
         ":tpu_embedding_ops",
         ":tpu_execute_op",
         ":tpu_functional_ops",
-        ":tpu_handle_to_key_op",
         ":tpu_ordinal_selector_op",
         ":tpu_reshard_variables_op",
         ":transfer_ops",
@@ -1168,19 +1167,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
         "//tensorflow/core:framework",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
-    name = "tpu_handle_to_key_op",
-    srcs = ["tpu_handle_to_key_op.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":tpu_compilation_cache_interface",
-        ":tpu_op_consts",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/tpu:tpu_configuration",
     ],
     alwayslink = True,
 )
