@@ -20,11 +20,13 @@ import shlex
 import tempfile
 
 def check_is_intel_llvm(path):
-  cmd = path + " -dM -E -x c /dev/null | grep '__INTEL_LLVM_COMPILER'"
-  check_result = subprocess.getoutput(cmd)
-  if len(check_result) > 0 and check_result.find('__INTEL_LLVM_COMPILER') > -1:
-    return True
-  return False
+  try:
+    result = subprocess.run(
+        [path, "-dM", "-E", "-x", "c", "/dev/null"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return b'__INTEL_LLVM_COMPILER' in result.stdout
+  except (OSError, subprocess.SubprocessError):
+    return False
 
 SYCL_PATH = os.path.join("%{sycl_compiler_root}", "bin/icpx")
 
@@ -48,13 +50,8 @@ else:
     raise RuntimeError("ar not found or invalid")
 
 def system(cmd):
-  """Invokes cmd with os.system()"""
-  
-  ret = os.system(cmd)
-  if os.WIFEXITED(ret):
-    return os.WEXITSTATUS(ret)
-  else:
-    return -os.WTERMSIG(ret)
+  """Invokes cmd with subprocess, avoiding shell injection."""
+  return subprocess.call(cmd)
 
 def GetHostCompilerOptions(argv):
   parser = ArgumentParser()
@@ -111,7 +108,6 @@ def call_compiler(argv, link = False, sycl_compile = True):
 
   in_files, out_files = [], []
   if sycl_compile:
-    flags = [shlex.quote(s) for s in flags]
     # device compilation
     if args.c:
       in_files.append('-c')
@@ -133,27 +129,24 @@ def call_compiler(argv, link = False, sycl_compile = True):
 
       # compile object file
       # icx -fsycl -c kernel.cpp -o kernel.compile.o
-      sycl_compile_flags = [" -c {} -o {} ".format(in_file, object_file)]
-      sycl_compile_flags += (flags + common_flags + compile_flags + sycl_device_only_flags)
-      compile_cmd = ('env ' + SYCL_PATH + ' ' + ' '.join(sycl_compile_flags))
-      exit_status = system(compile_cmd)
+      cmd = ['env', SYCL_PATH, '-c', in_file, '-o', object_file]
+      cmd += flags + common_flags + compile_flags + sycl_device_only_flags
+      exit_status = system(cmd)
       if exit_status != 0:
         return exit_status
 
       # generate device object file that can be used by host compiler
       # icx -fsycl -fPIC -fsycl-link kernel.compile.o -o kernel.dev.o
-      sycl_link_flags_dev = [" {} -o {} ".format(object_file, dev_file)]
-      sycl_link_flags_dev += (common_flags + sycl_link_flags)
-      link_cmd = ('env ' + SYCL_PATH + ' ' + ' '.join(sycl_link_flags_dev))
-      exit_status = system(link_cmd)
+      cmd = ['env', SYCL_PATH, object_file, '-o', dev_file]
+      cmd += common_flags + sycl_link_flags
+      exit_status = system(cmd)
       if exit_status != 0:
         return exit_status
 
       # archive object files
       # ar rcsD output.o kernel.compile.o kernel.dev.o
-      ar_flags = " rcsD {} {} {}".format(out_file, object_file, dev_file)
-      ar_cmd = ('env ' + AR_PATH + ar_flags)
-      return system(ar_cmd)
+      cmd = ['env', AR_PATH, 'rcsD', out_file, object_file, dev_file]
+      return system(cmd)
   elif link:
     # Expand @params file if present
     expanded_flags = []
@@ -172,7 +165,7 @@ def call_compiler(argv, link = False, sycl_compile = True):
         if s not in seen:
             seen.add(s)
             flag_type = "whole" if s.endswith((".o", ".lo")) else "regular"
-            ordered_flags.append((flag_type, shlex.quote(s)))
+            ordered_flags.append((flag_type, s))
     
     deduped_flags = []
     in_whole_archive = False
@@ -204,7 +197,7 @@ def call_compiler(argv, link = False, sycl_compile = True):
     with tempfile.NamedTemporaryFile("w", delete=False, suffix=".params") as f:
         f.write('\n'.join(deduped_flags))
         response_file = f.name
-    cmd = f'env {CPU_COMPILER} @{response_file}' # env icpx @/tmp/tmpabc123.params
+    cmd = ['env', CPU_COMPILER, f'@{response_file}']
     return system(cmd)
   else:
     # host compilation

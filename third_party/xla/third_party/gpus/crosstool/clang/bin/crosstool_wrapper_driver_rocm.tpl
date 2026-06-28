@@ -20,7 +20,6 @@ import os
 import subprocess
 import re
 import sys
-import shlex
 
 # Template values set by rocm_configure.bzl or environment
 AMDGPU_TARGETS = ('%{rocm_amdgpu_targets}')
@@ -34,6 +33,28 @@ ROCR_RUNTIME_PATH = '%{rocm_root}/lib'
 ROCR_RUNTIME_LIBRARY = '%{rocr_runtime_library}'
 TMPDIR= '%{tmpdir}'
 VERBOSE = '%{crosstool_verbose}'=='1'
+
+
+def _parse_hipcc_env(hipcc_env_str):
+  """Parse HIPCC_ENV string into a list of 'KEY=VALUE' strings for env command.
+
+  Args:
+    hipcc_env_str: Semicolon-separated env assignments like 'KEY="val"; KEY2="val2"'
+
+  Returns:
+    A list of strings like ['KEY=val', 'KEY2=val2'], suitable for ['env', ...] prefix.
+  """
+  env_list = []
+  if not hipcc_env_str or not hipcc_env_str.strip():
+    return env_list
+  for assignment in hipcc_env_str.split(';'):
+    assignment = assignment.strip()
+    if assignment and '=' in assignment:
+      key, _, value = assignment.partition('=')
+      value = value.strip().strip('"')
+      env_list.append('{0}={1}'.format(key.strip(), value))
+  return env_list
+
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
@@ -68,7 +89,7 @@ def GetHostCompilerOptions(argv):
     argv: A list of strings, possibly the argv passed to main().
 
   Returns:
-    The string that can be used as the --compiler-options to hipcc.
+    A list of compiler option strings.
   """
 
   parser = ArgumentParser()
@@ -81,20 +102,23 @@ def GetHostCompilerOptions(argv):
 
   args, _ = parser.parse_known_args(argv)
 
-  opts = ''
+  opts = []
 
   if args.isystem:
-    opts += ' -isystem ' + ' -isystem '.join(sum(args.isystem, []))
+    for p in sum(args.isystem, []):
+      opts.extend(['-isystem', p])
   if args.iquote:
-    opts += ' -iquote ' + ' -iquote '.join(sum(args.iquote, []))
+    for p in sum(args.iquote, []):
+      opts.extend(['-iquote', p])
   if args.g:
-    opts += ' -g' + ' -g'.join(sum(args.g, []))
+    for g in sum(args.g, []):
+      opts.append('-g' + g)
   if args.no_canonical_prefixes:
-    opts += ' -no-canonical-prefixes'
+    opts.append('-no-canonical-prefixes')
   if args.sysroot:
-    opts += ' --sysroot ' + args.sysroot[0]
+    opts.extend(['--sysroot', args.sysroot[0]])
   if args.genco:
-    opts += ' --genco'
+    opts.append('--genco')
 
   return opts
 
@@ -103,36 +127,34 @@ def GetHipccOptions(argv):
   Args:
     argv: A list of strings, possibly the argv passed to main().
   Returns:
-    The string that can be passed directly to hipcc.
+    A list of option strings that can be passed directly to hipcc.
   """
 
   parser = ArgumentParser()
-  # TODO find a better place for this
   parser.add_argument('-gline-tables-only', action='store_true')
 
   args, _ = parser.parse_known_args(argv)
 
-  hipcc_opts = ' -gline-tables-only ' if args.gline_tables_only else ''
+  hipcc_opts = ['-gline-tables-only'] if args.gline_tables_only else []
   for target in AMDGPU_TARGETS.split(','):
-    hipcc_opts += ' --offload-arch=' + target.strip()
+    hipcc_opts.append('--offload-arch=' + target.strip())
 
   return hipcc_opts
 
 def system(cmd):
-  """Invokes cmd with os.system().
+  """Invokes command safely using subprocess with list-based arguments.
 
   Args:
-    cmd: The command.
+    cmd: A list of strings (command and arguments).
 
   Returns:
-    The exit code if the process exited with exit() or -signal
-    if the process was terminated by a signal.
+    The exit code of the process.
   """
-  retv = os.system(cmd)
-  if os.WIFEXITED(retv):
-    return os.WEXITSTATUS(retv)
-  else:
-    return -os.WTERMSIG(retv)
+  try:
+    return subprocess.call(cmd)
+  except OSError as e:
+    Log('Error executing command: {0}'.format(e))
+    return 1
 
 
 def InvokeHipcc(argv, log=False):
@@ -143,25 +165,25 @@ def InvokeHipcc(argv, log=False):
     log: True if logging is requested.
 
   Returns:
-    The return value of calling os.system('hipcc ' + args)
+    The return value of the subprocess call.
   """
 
   host_compiler_options = GetHostCompilerOptions(argv)
   hipcc_compiler_options = GetHipccOptions(argv)
   opt_option = GetOptionValue(argv, 'O')
   m_options = GetOptionValue(argv, 'm')
-  m_options = ''.join([' -m' + m for m in m_options if m in ['32', '64']])
+  m_options = ['-m' + m for m in m_options if m in ['32', '64']]
   include_options = GetOptionValue(argv, 'I')
   out_file = GetOptionValue(argv, 'o')
   depfiles = GetOptionValue(argv, 'MF')
   defines = GetOptionValue(argv, 'D')
-  defines = ''.join([' -D' + define for define in defines])
+  defines = ['-D' + define for define in defines]
   undefines = GetOptionValue(argv, 'U')
-  undefines = ''.join([' -U' + define for define in undefines])
+  undefines = ['-U' + define for define in undefines]
   std_options = GetOptionValue(argv, 'std')
   hipcc_allowed_std_options = ["c++11", "c++14", "c++17"]
-  std_options = ''.join([' -std=' + define
-      for define in std_options if define in hipcc_allowed_std_options])
+  std_options = ['-std=' + define
+      for define in std_options if define in hipcc_allowed_std_options]
 
   # The list of source files get passed after the -c option. I don't know of
   # any other reliable way to just get the list of source files to be compiled.
@@ -172,62 +194,67 @@ def InvokeHipcc(argv, log=False):
   if len(out_file) != 1:
     return 1
 
-  opt = (' -O2' if (len(opt_option) > 0 and int(opt_option[0]) > 0)
-         else ' -g')
+  opt = ['-O2'] if (len(opt_option) > 0 and int(opt_option[0]) > 0) else ['-g']
 
-  includes = (' -I ' + ' -I '.join(include_options)
-              if len(include_options) > 0
-              else '')
+  includes = []
+  for inc in include_options:
+    includes.extend(['-I', inc])
 
   # Unfortunately, there are other options that have -c prefix too.
   # So allowing only those look like C/C++ files.
   src_files = [f for f in src_files if
                re.search(r'\.cpp$|\.cc$|\.c$|\.cxx$|\.C$', f)]
-  srcs = ' '.join(src_files)
-  out = ' -o ' + out_file[0]
 
-  hipccopts = hipcc_compiler_options + ' '
+  hipccopts = list(hipcc_compiler_options)
   # In hip-clang environment, we need to make sure that hip header is included
   # before some standard math header like <complex> is included in any source.
   # Otherwise, we get build error.
   # Also we need to retain warning about uninitialised shared variable as
   # warning only, even when -Werror option is specified.
-  hipccopts += ' --include=hip/hip_runtime.h '
-  # Force C++17 dialect (note, everything in just one string!)
-  hipccopts += ' --std=c++17 '
+  hipccopts.append('--include=hip/hip_runtime.h')
+  # Force C++17 dialect
+  hipccopts.append('--std=c++17')
   # Use -fno-gpu-rdc by default for early GPU kernel finalization
   # This flag would trigger GPU kernels be generated at compile time, instead
   # of link time. This allows the default host compiler (gcc) be used as the
   # linker for TensorFlow on ROCm platform.
-  hipccopts += ' -fno-gpu-rdc '
-  hipccopts += ' -fcuda-flush-denormals-to-zero '
-  hipccopts += undefines
-  hipccopts += defines
-  hipccopts += std_options
-  hipccopts += m_options
-  hipccopts += ' --rocm-path="%{rocm_root}" '
+  hipccopts.append('-fno-gpu-rdc')
+  hipccopts.append('-fcuda-flush-denormals-to-zero')
+  hipccopts.extend(undefines)
+  hipccopts.extend(defines)
+  hipccopts.extend(std_options)
+  hipccopts.extend(m_options)
+  hipccopts.append('--rocm-path=%{rocm_root}')
+
+  env_prefix = _parse_hipcc_env(HIPCC_ENV)
 
   if depfiles:
     # Generate the dependency file
     depfile = depfiles[0]
-    cmd = (HIPCC_PATH + ' ' + hipccopts +
-           host_compiler_options +
-           ' -I .' + includes + ' ' + srcs + ' -M -o ' + depfile)
-    cmd = HIPCC_ENV.replace(';', ' ') + ' ' + cmd
-    if log: Log(cmd)
-    if VERBOSE: print(cmd)
-    exit_status = os.system(cmd)
+    cmd = [HIPCC_PATH] + hipccopts + host_compiler_options
+    cmd.extend(['-I', '.'])
+    cmd.extend(includes)
+    cmd.extend(src_files)
+    cmd.extend(['-M', '-o', depfile])
+    if env_prefix:
+      cmd = ['env'] + env_prefix + cmd
+    if log: Log(' '.join(cmd))
+    if VERBOSE: print(' '.join(cmd))
+    exit_status = system(cmd)
     if exit_status != 0:
       return exit_status
 
-  cmd = (HIPCC_PATH + ' ' + hipccopts +
-         host_compiler_options + ' -fPIC' +
-         ' -I .' + opt + includes + ' -c ' + srcs + out)
-
-  cmd = HIPCC_ENV.replace(';', ' ') + ' '\
-        + cmd
-  if log: Log(cmd)
-  if VERBOSE: print(cmd)
+  cmd = [HIPCC_PATH] + hipccopts + host_compiler_options
+  cmd.extend(['-fPIC', '-I', '.'])
+  cmd.extend(opt)
+  cmd.extend(includes)
+  cmd.append('-c')
+  cmd.extend(src_files)
+  cmd.extend(['-o', out_file[0]])
+  if env_prefix:
+    cmd = ['env'] + env_prefix + cmd
+  if log: Log(' '.join(cmd))
+  if VERBOSE: print(' '.join(cmd))
   return system(cmd)
 
 
@@ -249,7 +276,6 @@ def main():
   if args.x and args.x[0] == 'rocm':
     # compilation for GPU objects
     if args.rocm_log: Log('-x rocm')
-    leftover = [shlex.quote(s) for s in leftover]
     if args.rocm_log: Log('using hipcc')
     return InvokeHipcc(leftover, log=args.rocm_log)
 
