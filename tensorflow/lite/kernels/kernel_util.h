@@ -381,6 +381,21 @@ TfLiteStatus CheckedShapeProductToInt(TfLiteContext* context,
                                       std::initializer_list<int> dims,
                                       const char* error_message, int& product);
 
+/**
+ * Calculates the product of the given dimensions. Returns an error if any of
+ * the dimensions is negative or if the product overflows or does not fit in an
+ * int. Unlike the overload above, this accepts a dimension array whose length
+ * is only known at runtime, e.g. `tensor->dims->data, tensor->dims->size`.
+ * @param context The context to use for error reporting.
+ * @param dims The dimensions to multiply.
+ * @param count The length of the dims array.
+ * @param error_message The error message to use if an error is encountered.
+ * @param product The output parameter to store the product.
+ */
+TfLiteStatus CheckedShapeProductToInt(TfLiteContext* context, const int* dims,
+                                      int count, const char* error_message,
+                                      int& product);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_KERNEL_UTIL_H_

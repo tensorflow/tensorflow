@@ -20,6 +20,7 @@ limitations under the License.
 #include <string.h>
 
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -894,6 +895,75 @@ TEST_F(SetTensorAllocationTypeTest,
   SetTensorToPersistentRo(tensor_.get());
   EXPECT_EQ(tensor_->data.data, nullptr);
   EXPECT_EQ(tensor_->allocation_type, kTfLitePersistentRo);
+}
+
+class CheckedShapeProductToIntTest : public TestWithTfLiteContext {};
+
+TEST_F(CheckedShapeProductToIntTest, MultipliesDimsOfRuntimeLength) {
+  const int dims[] = {2, 3, 4};
+  int product = 0;
+  EXPECT_EQ(CheckedShapeProductToInt(&context_, dims, 3, "overflowed", product),
+            kTfLiteOk);
+  EXPECT_EQ(product, 24);
+}
+
+TEST_F(CheckedShapeProductToIntTest, EmptyDimsProduceProductOfOne) {
+  int product = 0;
+  EXPECT_EQ(
+      CheckedShapeProductToInt(&context_, nullptr, 0, "overflowed", product),
+      kTfLiteOk);
+  EXPECT_EQ(product, 1);
+}
+
+TEST_F(CheckedShapeProductToIntTest, ZeroDimDoesNotReportOverflow) {
+  // The running product becomes zero, so the remaining dimensions must not be
+  // mistaken for an overflow.
+  const int dims[] = {0, 100000, 100000};
+  int product = 0;
+  EXPECT_EQ(CheckedShapeProductToInt(&context_, dims, 3, "overflowed", product),
+            kTfLiteOk);
+  EXPECT_EQ(product, 0);
+}
+
+TEST_F(CheckedShapeProductToIntTest, RejectsNegativeDim) {
+  const int dims[] = {2, -3};
+  int product = 0;
+  EXPECT_EQ(CheckedShapeProductToInt(&context_, dims, 2, "overflowed", product),
+            kTfLiteError);
+  EXPECT_TRUE(
+      absl::StrContains(context_.error, "Encountered a negative dimension."));
+}
+
+TEST_F(CheckedShapeProductToIntTest, RejectsProductThatDoesNotFitInInt) {
+  // 2 * 1,073,741,824 = 2,147,483,648, one more than INT32_MAX.
+  const int dims[] = {2, 1073741824};
+  int product = 0;
+  EXPECT_EQ(CheckedShapeProductToInt(&context_, dims, 2,
+                                     "element count overflowed", product),
+            kTfLiteError);
+  EXPECT_TRUE(absl::StrContains(context_.error, "element count overflowed"));
+}
+
+TEST_F(CheckedShapeProductToIntTest, AcceptsProductExactlyAtIntMax) {
+  const int dims[] = {std::numeric_limits<int>::max()};
+  int product = 0;
+  EXPECT_EQ(CheckedShapeProductToInt(&context_, dims, 1, "overflowed", product),
+            kTfLiteOk);
+  EXPECT_EQ(product, std::numeric_limits<int>::max());
+}
+
+TEST_F(CheckedShapeProductToIntTest, AgreesWithInitializerListOverload) {
+  const int dims[] = {6, 7};
+  int from_dims_array = 0;
+  int from_initializer_list = 0;
+  ASSERT_EQ(CheckedShapeProductToInt(&context_, dims, 2, "overflowed",
+                                     from_dims_array),
+            kTfLiteOk);
+  ASSERT_EQ(CheckedShapeProductToInt(&context_, {6, 7}, "overflowed",
+                                     from_initializer_list),
+            kTfLiteOk);
+  EXPECT_EQ(from_dims_array, 42);
+  EXPECT_EQ(from_dims_array, from_initializer_list);
 }
 
 }  // namespace

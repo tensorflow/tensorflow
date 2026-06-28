@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/variants/tensor_array.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace variants {
@@ -55,6 +58,28 @@ class ListAddNModel : public ListOpModel {
   }
 
   int GetIndOfInput(int input) { return input_inds_[input]; }
+
+  // Sets a list element that carries `item_dims` but no backing buffer. Only
+  // the dimensions of a row are read before `VariantAddN` validates the row's
+  // element count, so this makes an otherwise unrepresentable shape reachable
+  // without allocating a tensor for it.
+  void SetItemDimsWithoutBuffer(int input, int list_index,
+                                const std::vector<int>& item_dims,
+                                TfLiteType item_type) {
+    TfLiteTensor* tensor = interpreter_->tensor(GetIndOfInput(input));
+    ASSERT_EQ(tensor->type, kTfLiteVariant);
+    ASSERT_EQ(tensor->allocation_type, kTfLiteVariantObject);
+    TensorArray* arr =
+        static_cast<TensorArray*>(static_cast<VariantData*>(tensor->data.data));
+    ASSERT_NE(arr, nullptr);
+    TensorUniquePtr item = BuildTfLiteTensor();
+    ASSERT_NE(item, nullptr);
+    item->type = item_type;
+    item->dims = BuildTfLiteArray(item_dims).release();
+    ASSERT_NE(item->dims, nullptr);
+    item->allocation_type = kTfLiteDynamic;
+    ASSERT_TRUE(arr->Set(list_index, std::move(item)));
+  }
 
  private:
   std::vector<int> input_inds_;
@@ -200,6 +225,30 @@ REGISTER_TYPED_TEST_SUITE_P(ListAddNTest,
 
 using ValidTypes = ::testing::Types<int, float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(ListAddNTests, ListAddNTest, ValidTypes);
+
+TEST(ListAddNOverflowTest, RowElementCountOverflowsScratchBuffer) {
+  // Four present elements per row give
+  // thread_count == min(max(1, 4 / 2), max_num_threads) == 2, and
+  // 2 * 1,073,741,825 = 2,147,483,650 > INT32_MAX, so the scratch buffer size
+  // narrows and Eval() must reject the row instead of sizing an undersized
+  // buffer. SetNumThreads() pins max_num_threads so the result does not depend
+  // on the host's core count. The elements carry dimensions but no buffer,
+  // which the element count is validated against before anything is allocated
+  // for the row -- allocating them for real would need ~17GB.
+  constexpr int kNumInputs = 4;
+  const std::vector<int> huge_dims = {1, 1073741825};
+
+  ListAddNModel m(kNumInputs);
+  m.SetNumThreads(4);
+  for (int i = 0; i < kNumInputs; ++i) {
+    m.PopulateListTensor(m.GetIndOfInput(i), {}, /*num_elements=*/1,
+                         kTfLiteInt32);
+    ASSERT_NO_FATAL_FAILURE(m.SetItemDimsWithoutBuffer(
+        i, /*list_index=*/0, huge_dims, kTfLiteInt32));
+  }
+
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
 
 }  // namespace
 }  // namespace ops
