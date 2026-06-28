@@ -116,6 +116,16 @@ class CumulativeLogsumexpTest(test.TestCase):
 
       self.assertAllClose(result_fused, result_map)
 
+  def testPlusInfinity(self):
+    x = [np.inf, np.inf, 1.0, np.inf]
+    for dtype in self.valid_dtypes:
+      for use_gpu in (True, False):
+        with self.cached_session(use_gpu=use_gpu):
+          x_tf = ops.convert_to_tensor(x, dtype=dtype)
+          result = self.evaluate(math_ops.cumulative_logsumexp(x_tf))
+          expected = np.array([np.inf, np.inf, np.inf, np.inf], dtype=x_tf.dtype.as_numpy_dtype)
+          self.assertAllClose(result, expected)
+
 
 if __name__ == '__main__':
   test.main()
