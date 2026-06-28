@@ -24,6 +24,16 @@ index e22e5522..4260fc1e 100755
  ### `-sdy-unflatten-call-graph`
  
  _Unflattens the call graph._
+diff --git a/shardy/common/BUILD b/shardy/common/BUILD
+index 1cb01861..7ed3a20b 100644
+--- a/shardy/common/BUILD
++++ b/shardy/common/BUILD
+@@ -1,3 +1,5 @@
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++
+ package(default_visibility = ["//visibility:public"])
+ 
+ cc_library(
 diff --git a/shardy/dialect/mpmd/ir/BUILD b/shardy/dialect/mpmd/ir/BUILD
 index e5648da2..db5c7661 100644
 --- a/shardy/dialect/mpmd/ir/BUILD
@@ -1208,6 +1218,26 @@ index 45e9c632..ea2fb995 100644
  
  package(default_visibility = ["//visibility:public"])
  
+diff --git a/shardy/integrations/python/jax/mpmd/ops.py b/shardy/integrations/python/jax/mpmd/ops.py
+index 3ea90752..52f388f1 100644
+--- a/shardy/integrations/python/jax/mpmd/ops.py
++++ b/shardy/integrations/python/jax/mpmd/ops.py
+@@ -488,6 +488,7 @@ def call_mpmd_jit_lowering(
+         effects,
+         num_const_args=len(const_args),
+         in_avals=in_avals,
++        out_avals=call_jaxpr.out_avals,
+         arg_shardings=arg_shardings,
+     )
+     ctx.module_context.cached_primitive_lowerings[key] = func_declaration
+@@ -1059,6 +1060,7 @@ def fori_loop_mpmd_jit_lowering(
+       effects,
+       num_const_args=num_const_args,
+       in_avals=in_avals,
++      out_avals=call_jaxpr.out_avals,
+       arg_shardings=arg_shardings,
+   )
+ 
 diff --git a/shardy/tools/BUILD b/shardy/tools/BUILD
 index 9a5de852..cb2e20ed 100644
 --- a/shardy/tools/BUILD
@@ -1221,7 +1251,7 @@ index 9a5de852..cb2e20ed 100644
  package(default_visibility = ["//visibility:public"])
  
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index c5416f12..8541fc21 100644
+index c5416f12..65389be7 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
@@ -1230,8 +1260,8 @@ index c5416f12..8541fc21 100644
      """Imports LLVM."""
 -    LLVM_COMMIT = "b713aaedb6eedd7d20f666038d945e50eafd4c27"
 -    LLVM_SHA256 = "849628d94c17e4c9a236e0135afb03141258fd32cf902d7e0a2500ba94b1bd47"
-+    LLVM_COMMIT = "030e74c2808a9af58c6b4ef461fd0c2c7039d647"
-+    LLVM_SHA256 = "eddb0cf6d6ab1bebf7990fcba6683eb633fa0b05ea6ea47ca562b4b871140793"
++    LLVM_COMMIT = "9f423a973b69b2f90075e8694457f6eca173162b"
++    LLVM_SHA256 = "fd4beb1e02beef82eb9c6ac046df97002507130ffb8c327083c24555eda846f5"
  
      tf_http_archive(
          name = name,
