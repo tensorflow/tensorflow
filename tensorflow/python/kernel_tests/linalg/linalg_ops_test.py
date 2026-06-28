@@ -124,6 +124,35 @@ class LogdetTest(test.TestCase):
           logdet_tf = linalg.logdet(matrix)
           self.assertTrue(np.isnan(self.evaluate(logdet_tf)))
 
+  def test_works_with_complex_matrices(self):
+    """Test that logdet works on complex matrices with positive real det part."""
+    for np_dtype, atol in [(np.complex64, 0.05), (np.complex128, 1e-5)]:
+      with self.subTest(np_dtype=np_dtype, atol=atol):
+        # A complex matrix whose determinant has a positive real part.
+        matrix = np.array(
+            [[1.0 + 1.0j, 0.5 - 0.5j],
+             [-0.2 + 0.1j, 2.0 + 0.0j]], dtype=np_dtype)
+        det_val = np.linalg.det(matrix)
+        sign_np, logdet_np = np.linalg.slogdet(matrix)
+        self.assertGreater(np.real(sign_np), 0)
+        with self.session():
+          logdet_tf = linalg.logdet(matrix)
+          self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
+
+  def test_returns_nan_for_complex_negative_real_determinant(self):
+    """Test that logdet returns NaN for complex matrices with non-positive real det part."""
+    for np_dtype in [np.complex64, np.complex128]:
+      with self.subTest(np_dtype=np_dtype):
+        # A complex matrix whose determinant has a negative real part.
+        matrix = np.array(
+            [[-1.0 + 0.0j, 0.0j],
+             [0.0j, 1.0 + 0.0j]], dtype=np_dtype) # det = -1 + 0j
+        sign_np, _ = np.linalg.slogdet(matrix)
+        self.assertLessEqual(np.real(sign_np), 0)
+        with self.session():
+          logdet_tf = linalg.logdet(matrix)
+          self.assertTrue(np.isnan(self.evaluate(logdet_tf)))
+
 
 class SlogdetTest(test.TestCase):
 
