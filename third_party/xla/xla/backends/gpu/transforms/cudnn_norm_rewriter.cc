@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep

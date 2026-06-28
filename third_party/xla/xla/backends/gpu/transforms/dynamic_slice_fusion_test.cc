@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 

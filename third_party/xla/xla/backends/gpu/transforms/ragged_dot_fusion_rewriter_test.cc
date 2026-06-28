@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/ragged_dot_fusion_rewriter.h"
 
-#include <array>
 #include <initializer_list>
 #include <memory>
 #include <string>
@@ -24,7 +23,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
@@ -48,6 +46,8 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
