@@ -820,15 +820,17 @@ def sign(x, name=None):
     #       smallest normal value, even when the divisor is computed in
     #       float64.
     # Casting the input itself to complex128 lifts both computations above
-    # the underflow threshold (~1e-154), and the kernel signatures match
-    # cleanly. The final result is cast back to the original dtype.
+    # the underflow threshold (~1e-154). The DivNoNan C++ kernel requires
+    # both operands to share the same dtype, so the float64 magnitude from
+    # complex_abs is cast back to complex128 before division. The final
+    # result is cast back to the original dtype.
     compute_dtype = dtypes.complex128
     x_compute = cast(x, compute_dtype) if x.dtype != compute_dtype else x
+    magnitude = cast(
+        gen_math_ops.complex_abs(x_compute, Tout=dtypes.float64),
+        compute_dtype)
     return cast(
-        gen_math_ops.div_no_nan(
-            x_compute,
-            gen_math_ops.complex_abs(x_compute, Tout=dtypes.float64),
-            name=name),
+        gen_math_ops.div_no_nan(x_compute, magnitude, name=name),
         dtype=x.dtype)
   return gen_math_ops.sign(x, name=name)
 
