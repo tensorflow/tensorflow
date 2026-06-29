@@ -197,8 +197,9 @@ absl::Status UpdateDynamicInputs(
               runtime_input.MutableBuffer(index);
           auto padded_data = std::make_shared<std::vector<int8_t>>(
               ShapeSizeCompact(compile_time_shape), -1);
-          auto raw_input_runtime = std::make_shared<std::vector<uint32_t>>(
-              ShapeSizeCompact(runtime_shape) / sizeof(uint32_t));
+          auto raw_input_runtime =
+              std::make_shared<std::vector<uint32_t>>(xla::CeilOfRatio<int64_t>(
+                  ShapeSizeCompactRaw(runtime_shape), sizeof(uint32_t)));
           TF_RETURN_IF_ERROR(stream->MemcpyD2H(
               stream_executor::DeviceAddress<int8_t>(
                   mutable_input_mem->AsDeviceAddress()),
