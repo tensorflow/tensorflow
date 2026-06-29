@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/stream_executor/gpu/buffer_debug_float_check_kernel.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -27,15 +30,16 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs_test_matchers.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/gpu/buffer_debug_float_check_kernel.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -52,7 +56,7 @@ limitations under the License.
 
 namespace se = stream_executor;
 
-namespace stream_executor::cuda {
+namespace stream_executor {
 namespace {
 
 using xla::gpu::BufferDebugFloatCheckEntry;
@@ -67,16 +71,19 @@ using xla::gpu::ZeroCountIs;
 class FloatCheckKernelTest : public ::testing::Test {
  protected:
   void SetUp() override {
+    std::string name = absl::AsciiStrToUpper(
+        xla::PlatformUtil::CanonicalPlatformName("gpu").value());
     TF_ASSERT_OK_AND_ASSIGN(platform_,
-                            se::PlatformManager::PlatformWithName("CUDA"));
+                            se::PlatformManager::PlatformWithName(name));
     TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
         std::make_unique<StreamExecutorAddressAllocator>(stream_->parent());
 
-    if (!executor_->GetDeviceDescription()
-             .cuda_compute_capability()
-             .IsAtLeastPascal()) {
+    if (const auto* cc = executor_->GetDeviceDescription()
+                             .gpu_compute_capability()
+                             .cuda_compute_capability();
+        cc != nullptr && !cc->IsAtLeastPascal()) {
       GTEST_SKIP()
           << "Buffer checking is not supported on CUDA architectures older "
              "than Pascal due to missing atomic fetch_add with system scope";
@@ -360,4 +367,4 @@ TYPED_TEST(FloatCheckKernelTypedTest, ReduceFloatCheckResults) {
 }
 
 }  // namespace
-}  // namespace stream_executor::cuda
+}  // namespace stream_executor

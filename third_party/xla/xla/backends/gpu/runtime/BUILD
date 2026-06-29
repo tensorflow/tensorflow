@@ -4978,7 +4978,6 @@ xla_test(
     },
     backends = ["gpu"],
     tags = [
-        "cuda-only",
         "gpu",
     ],
     deps = [
@@ -4995,6 +4994,7 @@ xla_test(
         "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
+        "//xla/service:platform_util",
         "//xla/service/gpu:buffer_allocations",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
@@ -5008,6 +5008,7 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -5060,7 +5061,6 @@ xla_test(
     },
     backends = ["gpu"],
     tags = [
-        "cuda-only",
         "gpu",
     ],
     deps = [
@@ -5080,6 +5080,7 @@ xla_test(
         "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
+        "//xla/service:platform_util",
         "//xla/service/gpu:buffer_allocations",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform",
@@ -5091,6 +5092,7 @@ xla_test(
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )

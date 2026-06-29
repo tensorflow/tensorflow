@@ -676,7 +676,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
 
     VLOG(1) << "Resolve ROCM kernel " << kernel_name
             << " from symbol pointer: " << symbol;
-
+    ScopedActivateContext activation(&rocm_context_);
     hipFunction_t func;
     RETURN_IF_ERROR(
         ToStatus(hipGetFuncBySymbol(&func, spec.in_process_symbol()->symbol),
