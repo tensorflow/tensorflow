@@ -42,9 +42,9 @@ class SelectOp : public XlaOpKernel {
 
     OP_REQUIRES(
         ctx, then_shape.IsSameSize(else_shape),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "'then' and 'else' must have the same size.  but received: ",
-            then_shape.DebugString(), " vs. ", else_shape.DebugString()));
+            then_shape.DebugString(), " vs. ", else_shape.DebugString())));
 
     auto cond_handle = ctx->Input(0);
     auto then_handle = ctx->Input(1);
@@ -54,18 +54,19 @@ class SelectOp : public XlaOpKernel {
     bool cond_is_scalar = TensorShapeUtils::IsScalar(cond_shape);
     if (broadcasting && !cond_is_scalar) {
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(cond_shape),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "'cond' must be a scalar or a vector, but saw shape: ",
-                      cond_shape.DebugString()));
+                      cond_shape.DebugString())));
       OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(then_shape),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "'then' must be at least a vector, but saw shape: ",
-                      then_shape.DebugString()));
-      OP_REQUIRES(ctx, then_shape.dim_size(0) == cond_shape.num_elements(),
-                  errors::InvalidArgument("Number of batches of 'then' must "
-                                          "match size of 'cond', but saw: ",
-                                          then_shape.dim_size(0), " vs. ",
-                                          cond_shape.num_elements()));
+                      then_shape.DebugString())));
+      OP_REQUIRES(
+          ctx, then_shape.dim_size(0) == cond_shape.num_elements(),
+          absl::InvalidArgumentError(absl::StrCat(
+              "Number of batches of 'then' must "
+              "match size of 'cond', but saw: ",
+              then_shape.dim_size(0), " vs. ", cond_shape.num_elements())));
 
       // Broadcast into the dimensions on the right.
       std::vector<int64_t> broadcast_dimensions(cond_shape.dims());
@@ -100,18 +101,18 @@ class SelectOpV2 : public XlaOpKernel {
                           BCast::FromShape(else_shape),
                           /*fewer_dims_optimization=*/false);
     if (!bcast_then_else.IsValid()) {
-      ctx->SetStatus(errors::InvalidArgument(
-          "Incompatible shapes: ", then_shape.DebugString(), " vs. ",
-          else_shape.DebugString()));
+      ctx->SetStatus(absl::InvalidArgumentError(
+          absl::StrCat("Incompatible shapes: ", then_shape.DebugString(),
+                       " vs. ", else_shape.DebugString())));
       return;
     }
     BCast bcast(bcast_then_else.output_shape(), BCast::FromShape(cond_shape),
                 /*fewer_dims_optimization=*/false);
     if (!bcast.IsValid()) {
-      ctx->SetStatus(errors::InvalidArgument(
+      ctx->SetStatus(absl::InvalidArgumentError(absl::StrCat(
           "Incompatible shapes: ",
           BCast::ToShape(bcast_then_else.output_shape()).DebugString(), " vs. ",
-          cond_shape.DebugString()));
+          cond_shape.DebugString())));
       return;
     }
 

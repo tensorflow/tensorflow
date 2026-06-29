@@ -127,22 +127,24 @@ class SparseSoftmaxXentWithLogitsOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape logits_shape = ctx->InputShape(0);
     const TensorShape labels_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(logits_shape),
-                errors::InvalidArgument("logits must be 2-D, but got shape ",
-                                        logits_shape.DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(labels_shape),
-                errors::InvalidArgument("labels must be 1-D, but got shape ",
-                                        labels_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(logits_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "logits must be 2-D, but got shape ", logits_shape.DebugString())));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(labels_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "labels must be 1-D, but got shape ", labels_shape.DebugString())));
     OP_REQUIRES(ctx, logits_shape.dim_size(0) == labels_shape.dim_size(0),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "logits and labels must have the same first dimension, "
                     "got logits shape ",
                     logits_shape.DebugString(), " and labels shape ",
-                    labels_shape.DebugString()));
+                    labels_shape.DebugString())));
     OP_REQUIRES(ctx, logits_shape.dim_size(1) > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Must have at least one class, but got logits shape ",
-                    logits_shape.DebugString()));
+                    logits_shape.DebugString())));
 
     int64_t batch_size = logits_shape.dim_size(0);
     int64_t depth = logits_shape.dim_size(1);

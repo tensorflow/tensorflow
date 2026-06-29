@@ -46,28 +46,31 @@ class OneHotOp : public XlaOpKernel {
     const int output_dims = indices_dims + 1;
 
     // Preliminary validation of sizes.
+    OP_REQUIRES(ctx, axis_ == -1 || (axis_ >= 0 && axis_ < output_dims),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected axis to be -1 or between [0, ",
+                                 output_dims, ").  But received: ", axis_)));
     OP_REQUIRES(
-        ctx, axis_ == -1 || (axis_ >= 0 && axis_ < output_dims),
-        errors::InvalidArgument("Expected axis to be -1 or between [0, ",
-                                output_dims, ").  But received: ", axis_));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(depth_shape),
-                errors::InvalidArgument("depth must be a scalar, but got: ",
-                                        depth_shape.DebugString()));
+        ctx, TensorShapeUtils::IsScalar(depth_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "depth must be a scalar, but got: ", depth_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(on_value_shape),
-                errors::InvalidArgument("on_value must be a scalar, but got: ",
-                                        on_value_shape.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("on_value must be a scalar, but got: ",
+                                 on_value_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(off_value_shape),
-                errors::InvalidArgument("off_value must be a scalar, but got: ",
-                                        off_value_shape.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("off_value must be a scalar, but got: ",
+                                 off_value_shape.DebugString())));
 
     const int axis = (axis_ == -1) ? indices_dims : axis_;
 
     // The one-hot dimension.
     int64_t depth;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &depth));
-    OP_REQUIRES(
-        ctx, depth >= 0,
-        errors::InvalidArgument("depth must be non-negative, got: ", depth));
+    OP_REQUIRES(ctx, depth >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("depth must be non-negative, got: ", depth)));
 
     xla::XlaOp one_hot;
     OP_REQUIRES_OK(

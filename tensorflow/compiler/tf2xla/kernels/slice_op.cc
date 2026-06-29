@@ -53,10 +53,10 @@ class SliceOp : public XlaOpKernel {
             TensorShapeUtils::IsVector(size_tensor_shape) &&
             begin_tensor_shape.num_elements() == input_dims &&
             size_tensor_shape.num_elements() == input_dims,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Expected begin and size arguments to be 1-D tensors of size ",
             input_dims, ", but got shapes ", begin_tensor_shape.DebugString(),
-            " and ", size_tensor_shape.DebugString(), " instead."));
+            " and ", size_tensor_shape.DebugString(), " instead.")));
 
     std::vector<int64_t> begin;
     std::vector<int64_t> size;
@@ -87,13 +87,13 @@ class SliceOp : public XlaOpKernel {
                           "input_shape.dim_size(", i, ") == 0"));
         } else {
           OP_REQUIRES(ctx, 0 <= b && b <= input_shape.dim_size(i),
-                      errors::InvalidArgument("Expected begin[", i, "] in [0, ",
-                                              input_shape.dim_size(i),
-                                              "], but got ", b));
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Expected begin[", i, "] in [0, ",
+                          input_shape.dim_size(i), "], but got ", b)));
           OP_REQUIRES(ctx, 0 <= s && b + s <= input_shape.dim_size(i),
-                      errors::InvalidArgument("Expected size[", i, "] in [0, ",
-                                              input_shape.dim_size(i) - b,
-                                              "], but ", "got ", s));
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Expected size[", i, "] in [0, ",
+                          input_shape.dim_size(i) - b, "], but ", "got ", s)));
         }
       }
 
@@ -132,15 +132,16 @@ class SliceOp : public XlaOpKernel {
         for (int i = 0; i < input_dims; ++i) {
           if (size[i] < 0) {
             OP_REQUIRES(ctx, size[i] == -1,
-                        errors::InvalidArgument(
+                        absl::InvalidArgumentError(
                             "Negative size of slice operator can only be -1"));
             constant_size_is_minus_one = true;
           }
 
-          OP_REQUIRES(ctx, size[i] <= input_shape.dim_size(i),
-                      errors::InvalidArgument("Expected size[", i, "] in [0, ",
-                                              input_shape.dim_size(i),
-                                              "], but ", "got ", size[i]));
+          OP_REQUIRES(
+              ctx, size[i] <= input_shape.dim_size(i),
+              absl::InvalidArgumentError(absl::StrCat(
+                  "Expected size[", i, "] in [0, ", input_shape.dim_size(i),
+                  "], but ", "got ", size[i])));
         }
       }
 

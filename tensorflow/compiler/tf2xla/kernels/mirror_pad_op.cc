@@ -88,13 +88,14 @@ class MirrorPadOp : public XlaOpKernel {
     OP_REQUIRES(
         ctx,
         TensorShapeUtils::IsMatrix(pad_shape) && pad_shape.dim_size(1) == 2,
-        errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
-                                pad_shape.DebugString()));
+        absl::InvalidArgumentError(
+            absl::StrCat("paddings must be a matrix with 2 columns: ",
+                         pad_shape.DebugString())));
     OP_REQUIRES(
         ctx, dims == pad_shape.dim_size(0),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "The first dimension of paddings must be the rank of inputs",
-            pad_shape.DebugString(), " ", input_shape.DebugString()));
+            pad_shape.DebugString(), " ", input_shape.DebugString())));
 
     // Evaluate the 'padding' constant input, reshaping to a matrix.
     xla::Literal pad_literal;
@@ -189,13 +190,14 @@ class MirrorPadGradOp : public XlaOpKernel {
     OP_REQUIRES(
         ctx,
         TensorShapeUtils::IsMatrix(pad_shape) && pad_shape.dim_size(1) == 2,
-        errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
-                                pad_shape.DebugString()));
+        absl::InvalidArgumentError(
+            absl::StrCat("paddings must be a matrix with 2 columns: ",
+                         pad_shape.DebugString())));
     OP_REQUIRES(
         ctx, dims == pad_shape.dim_size(0),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "The first dimension of paddings must be the rank of inputs",
-            pad_shape.DebugString(), " ", input_shape.DebugString()));
+            pad_shape.DebugString(), " ", input_shape.DebugString())));
 
     // Evaluate the 'padding' constant input, reshaping to a matrix.
     xla::Literal pad_literal;

@@ -57,13 +57,13 @@ absl::Status MaybeInitializeTensorArray(xla::XlaBuilder* builder,
                                         XlaResource* resource, DataType dtype,
                                         const TensorShape& elem_shape) {
   if (resource->kind() != XlaResource::kTensorArray) {
-    return errors::InvalidArgument("Unexpected non-TensorArray resource");
+    return absl::InvalidArgumentError("Unexpected non-TensorArray resource");
   }
 
   if (resource->type() != dtype) {
-    return errors::InvalidArgument(
-        "TensorArray dtype is ", DataTypeString(resource->type()),
-        " but op has dtype ", DataTypeString(dtype), ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat("TensorArray dtype is ", DataTypeString(resource->type()),
+                     " but op has dtype ", DataTypeString(dtype), "."));
   }
 
   TF_RET_CHECK(resource->max_array_size() >= 0)
@@ -85,9 +85,9 @@ absl::Status MaybeInitializeTensorArray(xla::XlaBuilder* builder,
     TF_RETURN_IF_ERROR(ta_shape.AddDimWithStatus(resource->max_array_size()));
     ta_shape.AppendShape(elem_shape);
     if (ta_shape != shape) {
-      return errors::InvalidArgument(
-          "Mismatched TensorArray sizes: ", ta_shape.DebugString(), " vs ",
-          shape.DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Mismatched TensorArray sizes: ", ta_shape.DebugString(),
+                       " vs ", shape.DebugString()));
     }
   }
   return absl::OkStatus();
@@ -99,17 +99,17 @@ absl::Status CheckTensorArrayIsInitialized(const std::string& op_name,
                                            const XlaResource* resource,
                                            DataType dtype) {
   if (resource->kind() != XlaResource::kTensorArray) {
-    return errors::InvalidArgument(
-        "Unexpected non-TensorArray resource passed to ", op_name);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Unexpected non-TensorArray resource passed to ", op_name));
   }
   if (!resource->initialized()) {
-    return errors::InvalidArgument("Uninitialized TensorArray passed to ",
-                                   op_name);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Uninitialized TensorArray passed to ", op_name));
   }
   if (resource->type() != dtype) {
-    return errors::InvalidArgument(
-        "TensorArray dtype is ", DataTypeString(resource->type()),
-        " but op has dtype ", DataTypeString(dtype), ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat("TensorArray dtype is ", DataTypeString(resource->type()),
+                     " but op has dtype ", DataTypeString(dtype), "."));
   }
 
   return absl::OkStatus();
@@ -144,7 +144,7 @@ class TensorArrayOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dynamic_size", &dynamic_size));
     OP_REQUIRES(
         ctx, !dynamic_size,
-        errors::Unimplemented(
+        absl::UnimplementedError(
             "TensorArrays with dynamic size are not supported by XLA."));
 
     OP_REQUIRES_OK(ctx, ctx->GetAttr("tensor_array_name", &tensor_array_name_));
@@ -154,7 +154,7 @@ class TensorArrayOp : public XlaOpKernel {
     int64_t size;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &size));
     OP_REQUIRES(ctx, size >= 0,
-                errors::InvalidArgument("TensorArray size must be >= 0"));
+                absl::InvalidArgumentError("TensorArray size must be >= 0"));
 
     xla::XlaBuilder* b = ctx->builder();
 
@@ -313,7 +313,7 @@ class TensorArrayGatherOp : public XlaOpKernel {
 
     const TensorShape indices_shape = ctx->InputShape(1);
     OP_REQUIRES(ctx, indices_shape.dims() == 1,
-                errors::InvalidArgument("indices must be rank 1"));
+                absl::InvalidArgumentError("indices must be rank 1"));
     auto indices = ctx->Input(1);
     DataType index_type = ctx->input_type(1);
 
@@ -382,7 +382,7 @@ class TensorArrayScatterOp : public XlaOpKernel {
 
     const TensorShape indices_shape = ctx->InputShape(1);
     OP_REQUIRES(ctx, indices_shape.dims() >= 1,
-                errors::InvalidArgument("indices must be rank 1"));
+                absl::InvalidArgumentError("indices must be rank 1"));
     const int num_indices = indices_shape.dim_size(0);
     const xla::XlaOp indices = ctx->Input(1);
 
@@ -505,16 +505,18 @@ class TensorArraySplitOp : public XlaOpKernel {
     if (!lengths.empty()) {
       length = lengths[0];
       for (int i = 1; i < lengths.size(); ++i) {
-        OP_REQUIRES(ctx, lengths[i] == length,
-                    errors::InvalidArgument("lengths must be equal: ", length,
-                                            " vs. ", lengths[i]));
+        OP_REQUIRES(
+            ctx, lengths[i] == length,
+            absl::InvalidArgumentError(absl::StrCat(
+                "lengths must be equal: ", length, " vs. ", lengths[i])));
       }
     }
 
     TensorShape value_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, value_shape.dims() >= 1,
-                errors::InvalidArgument("value must have rank >= 1, got ",
-                                        value_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, value_shape.dims() >= 1,
+        absl::InvalidArgumentError(absl::StrCat(
+            "value must have rank >= 1, got ", value_shape.DebugString())));
     TensorShape elem_shape = value_shape;
     elem_shape.set_dim(0, length);
 
@@ -530,17 +532,17 @@ class TensorArraySplitOp : public XlaOpKernel {
     ta_shape.AppendShape(elem_shape);
 
     OP_REQUIRES(ctx, lengths.size() == resource->max_array_size(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "TensorArray's size is not equal to the size of lengths (",
-                    lengths.size(), " vs. ", resource->max_array_size(), ")"));
+                    lengths.size(), " vs. ", resource->max_array_size(), ")")));
 
     const xla::XlaOp value = ctx->Input(1);
     const xla::XlaOp flow = ctx->Input(3);
 
     OP_REQUIRES(ctx, value_shape.num_elements() == ta_shape.num_elements(),
-                errors::InvalidArgument("mismatched element count ",
-                                        value_shape.DebugString(), " vs. ",
-                                        ta_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "mismatched element count ", value_shape.DebugString(),
+                    " vs. ", ta_shape.DebugString())));
 
     const xla::XlaOp reshape = xla::Reshape(value, ta_shape.dim_sizes());
     if (dtype_ == DT_BOOL) {

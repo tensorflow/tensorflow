@@ -44,18 +44,18 @@ class RollOp : public XlaOpKernel {
 
     int64_t input_dims = input_shape.dims();
     OP_REQUIRES(ctx, input_dims >= 1,
-                errors::InvalidArgument("input must be 1-D or higher"));
+                absl::InvalidArgumentError("input must be 1-D or higher"));
     OP_REQUIRES(ctx, shift_shape.dims() <= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "shift must be a scalar or a 1-D vector. Found: ",
-                    shift_shape.DebugString()));
+                    shift_shape.DebugString())));
     OP_REQUIRES(ctx, axis_shape.dims() <= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "axis must be a scalar or a 1-D vector. Found: ",
-                    shift_shape.DebugString()));
+                    shift_shape.DebugString())));
     OP_REQUIRES(
         ctx, shift_shape == axis_shape,
-        errors::InvalidArgument("shift and axis must have the same size"));
+        absl::InvalidArgumentError("shift and axis must have the same size"));
 
     xla::Literal axis;
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(2, &axis));
@@ -67,7 +67,7 @@ class RollOp : public XlaOpKernel {
       int64_t cur_axis = axis_shape.dims() == 0 ? *axis.GetIntegralAsS64({})
                                                 : *axis.GetIntegralAsS64({i});
       OP_REQUIRES(ctx, cur_axis >= -input_dims && cur_axis < input_dims,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       absl::StrCat("axis ", cur_axis, " is out of range [-",
                                    input_dims, ", ", input_dims, ").")));
       if (cur_axis < 0) {
