@@ -53,5 +53,6 @@ tf_py_strict_test(
         "//tensorflow/python/tpu/client",
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:compat",
+        "@six_archive//:six",
     ],
 )

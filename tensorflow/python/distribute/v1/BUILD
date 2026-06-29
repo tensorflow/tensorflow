@@ -17,7 +17,7 @@ cuda_py_strict_test(
         "no_windows",  # b/326464742
     ],
     deps = [
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:collective_util",
         "//tensorflow/python/distribute:combinations",

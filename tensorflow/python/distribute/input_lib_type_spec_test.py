@@ -180,9 +180,10 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
         np.ones([9, 12]).astype(np.float32)).batch(
             4, drop_remainder=drop_remainder)
     ds = distribution.experimental_distribute_dataset(ds)
-    _check_type_spec_structure(iter(ds))
+    iterator = iter(ds)
+    _check_type_spec_structure(iterator)
     element_spec = ds.element_spec
-    iter_element_spec = iter(ds).element_spec
+    iter_element_spec = iterator.element_spec
     nest.assert_same_structure(element_spec, iter_element_spec)
     self.assertAllEqual(
         nest.flatten(element_spec), nest.flatten(iter_element_spec))
