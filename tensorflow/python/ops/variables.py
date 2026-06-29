@@ -1374,7 +1374,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
         aggregation=aggregation,
         shape=shape,
         experimental_enable_variable_lifting=(
-          experimental_enable_variable_lifting),
+            experimental_enable_variable_lifting),
         **kwargs
     )
 
