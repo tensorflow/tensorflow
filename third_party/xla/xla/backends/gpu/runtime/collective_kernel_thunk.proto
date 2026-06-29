@@ -18,7 +18,6 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/backends/gpu/runtime/collective_thunk.proto";
-import "xla/core/collectives/reduction_kind.proto";
 import "xla/service/gpu/launch_dimensions.proto";
 
 option java_outer_classname = "CollectiveKernelThunk";
@@ -29,9 +28,7 @@ message CollectiveKernelThunkProto {
   // groups, number of participants, and participant ranks.
   CollectiveConfigProto collective_config = 1;
 
-  // The reduction operator (e.g., Sum, Product, Min, Max) to apply in the
-  // collective operation.
-  xla.ReductionKindProto reduction_kind = 2;
+  reserved 2;  // Was reduction_kind.
 
   // If true, execution runs asynchronously on a dedicated collective stream.
   bool is_async = 3;

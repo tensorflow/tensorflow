@@ -262,7 +262,7 @@ ShapeIndex GetDstShapeIndex(const HloInstruction* async_start,
 xla::Future<std::unique_ptr<CollectiveKernelThunk>> EmitCollectiveKernelThunk(
     IrEmitterContext* ir_emitter_context, const CallGraph& call_graph,
     Thunk::ThunkInfo thunk_info, std::vector<CollectiveThunk::Buffer> buffers,
-    const HloAllReduceInstruction* instr, const AllReduceConfig& config,
+    const HloAllReduceInstruction* instr, const CollectiveConfig& config,
     ThunkEmitter* compiler,
     std::vector<std::unique_ptr<HloFusionAnalysis>>&
         analysis_garbage_collector) {
@@ -296,9 +296,9 @@ xla::Future<std::unique_ptr<CollectiveKernelThunk>> EmitCollectiveKernelThunk(
           LaunchDimensions launch_dimensions, const std::vector<uint8_t>& cubin,
           bool use_pdl) {
         return std::make_unique<CollectiveKernelThunk>(
-            thunk_info, config.config, config.reduction_kind, is_async,
-            std::move(buffers), is_collective_kernel_enabled, kernel_name,
-            launch_dimensions, shmem_bytes, kMultimemDisabled,
+            thunk_info, config, is_async, std::move(buffers),
+            is_collective_kernel_enabled, kernel_name, launch_dimensions,
+            shmem_bytes, kMultimemDisabled,
             !cubin.empty() ? std::make_optional(cubin) : std::nullopt, use_pdl);
       };
   const GpuTopology& gpu_topology = ir_emitter_context->gpu_topology();
@@ -2071,10 +2071,11 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
   // lifted out of the all reduce thunk.
   if constexpr (kRequiresCollectiveKernelThunk<CollectiveThunkType>) {
     thunks =
-        EmitCollectiveKernelThunk(ir_emitter_context_, *call_graph_, thunk_info,
-                                  buffers, Cast<HloAllReduceInstruction>(inst),
-                                  GetAllReduceConfigInst(inst), this,
-                                  analysis_garbage_collector_)
+        EmitCollectiveKernelThunk(
+            ir_emitter_context_, *call_graph_, thunk_info, buffers,
+            Cast<HloAllReduceInstruction>(inst),
+            GetCollectiveConfig(inst, inst->use_global_device_ids()), this,
+            analysis_garbage_collector_)
             .Map([thunk_info = std::move(thunk_info),
                   use_memcpy_local_p2p = ir_emitter_context_->debug_options()
                                              .xla_gpu_use_memcpy_local_p2p(),

@@ -334,9 +334,9 @@ absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
       GetAllReduceStrategy(byte_size, is_multimem_enabled);
   ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
                    GetCollectiveOpGroupMode(all_reduce));
-  const bool is_local = IsAllReplicasLocal(gpu_topology.num_devices_per_host(),
-                                           all_reduce->replica_groups(),
-                                           group_mode, device_assignment);
+  const bool is_local = IsAllReplicasLocal(
+      gpu_topology.num_devices_per_process(), all_reduce->replica_groups(),
+      group_mode, device_assignment);
   if (device_info.device_interconnect_info().active_links <= 0) {
     return absl::UnimplementedError(
         "Collective kernels are only supported on devices with NVLink/UALink "

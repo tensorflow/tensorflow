@@ -231,7 +231,7 @@ absl::StatusOr<std::unique_ptr<AllReduceThunk>> AllReduceThunk::FromProto(
   std::unique_ptr<CollectiveKernelThunk> kernel_thunk = nullptr;
   if (!thunk_proto.kernel_name().empty()) {
     kernel_thunk = std::make_unique<CollectiveKernelThunk>(
-        thunk_info, config, reduction_kind, thunk_proto.is_async(), buffers,
+        thunk_info, config, thunk_proto.is_async(), buffers,
         thunk_proto.collective_kernel_enabled(), thunk_proto.kernel_name(),
         launch_dimensions, thunk_proto.shmem_bytes(),
         thunk_proto.is_multimem_enabled(), std::move(cubin),

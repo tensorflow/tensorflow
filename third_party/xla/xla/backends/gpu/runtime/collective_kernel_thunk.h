@@ -37,7 +37,6 @@ limitations under the License.*/
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/core/collectives/reduction_kind.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_address.h"
@@ -67,7 +66,6 @@ class CollectiveKernelThunk : public Thunk {
 
   CollectiveKernelThunk(
       ThunkInfo info, CollectiveConfig collective_config,  //
-      ReductionKind reduction_kind,                        //
       bool is_async,                                       //
       std::vector<CollectiveThunk::Buffer> buffers,        //
       bool is_collective_kernel_enabled,                   //
@@ -81,7 +79,6 @@ class CollectiveKernelThunk : public Thunk {
         collective_kernel_enabled_(is_collective_kernel_enabled),
         is_async_(is_async),
         collective_config_(std::move(collective_config)),
-        reduction_kind_(reduction_kind),
         launch_dimensions_(launch_dimensions),
         kernel_name_(kernel_name),
         cubin_(std::move(cubin)),
@@ -197,8 +194,6 @@ class CollectiveKernelThunk : public Thunk {
   const bool is_async_;
   // Collective config being used. Copied over to avoid lifetime issues.
   const CollectiveConfig collective_config_;
-  // Reduction kind being to use for AllReduce collective.
-  const ReductionKind reduction_kind_;
   // Launch dimensions for the kernel. Only relevant when the codegen kernel
   // is used.
   LaunchDimensions launch_dimensions_;

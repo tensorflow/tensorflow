@@ -44,7 +44,6 @@ limitations under the License.*/
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/core/collectives/reduction_kind.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
@@ -161,17 +160,7 @@ absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
   if (kernel_name_.empty()) {
     return false;
   }
-  absl::Status status = IsAllReduceKernelSupported(
-      collective_kernel_enabled_, executor.GetDeviceDescription(),
-      /*num_operands= */ buffers_.size(), reduction_kind_,
-      clique_key.num_local_participants(), buffers_[0].element_count,
-      collective_config_.operand_element_type[0], clique_key.is_local(),
-      is_multimem_enabled_, collective_config_.replica_groups);
-  if (absl::IsUnimplemented(status)) {
-    VLOG(3) << "Collective kernel not supported: " << status.message();
-    return false;
-  }
-  RETURN_IF_ERROR(status);
+  // Check if peer access is supported for all devices in the clique.
   for (const GlobalDeviceId& device : clique_key.devices()) {
     ASSIGN_OR_RETURN(const int peer_device_id,
                      GetLocalDeviceId(device, collective_params));
@@ -547,9 +536,6 @@ CollectiveKernelThunk::FromProto(
   CollectiveConfig collective_config =
       CollectiveConfig::FromProto(thunk_proto.collective_config());
 
-  ASSIGN_OR_RETURN(ReductionKind reduction_kind,
-                   FromReductionKindProto(thunk_proto.reduction_kind()));
-
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
   for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
@@ -572,7 +558,7 @@ CollectiveKernelThunk::FromProto(
   }
 
   return std::make_unique<CollectiveKernelThunk>(
-      std::move(thunk_info), std::move(collective_config), reduction_kind,
+      std::move(thunk_info), std::move(collective_config),
       thunk_proto.is_async(), std::move(buffers),
       thunk_proto.collective_kernel_enabled(), thunk_proto.kernel_name(),
       launch_dimensions, thunk_proto.shmem_bytes(),
@@ -588,7 +574,6 @@ absl::StatusOr<ThunkProto> CollectiveKernelThunk::ToProto() const {
       proto.mutable_collective_kernel_thunk();
 
   *thunk_proto->mutable_collective_config() = collective_config_.ToProto();
-  thunk_proto->set_reduction_kind(ToReductionKindProto(reduction_kind_));
   thunk_proto->set_is_async(is_async_);
 
   for (const CollectiveThunk::Buffer& buffer : buffers_) {
