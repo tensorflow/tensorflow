@@ -1231,18 +1231,13 @@ ENTRY %main {
   // AsyncStart defines a new value at {1} because the thread is excluded.
   EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, {1}));
 
-  // AsyncUpdate at {1} should contain that new value (it forwards it).
+  // AsyncUpdate at {1} should be empty because the thread is excluded.
   EXPECT_FALSE(analysis.ValueIsDefinedAt(async_update, {1}));
-  EXPECT_THAT(
-      HloValuesAt(async_update, {1}),
-      UnorderedElementsAre(&analysis.GetValueDefinedAt(async_start, {1})));
+  EXPECT_THAT(HloValuesAt(async_update, {1}), ::testing::IsEmpty());
 
-  // AsyncDone output should contain that new value (it forwards it from
-  // AsyncUpdate at {1}).
+  // AsyncDone output should be empty because the thread is excluded.
   EXPECT_FALSE(analysis.ValueIsDefinedAt(async_done, {}));
-  EXPECT_THAT(
-      HloValuesAt(async_done, {}),
-      UnorderedElementsAre(&analysis.GetValueDefinedAt(async_start, {1})));
+  EXPECT_THAT(HloValuesAt(async_done, {}), ::testing::IsEmpty());
 }
 
 TEST_P(HloDataflowAnalysisTest, AsyncCallWithConditional) {
