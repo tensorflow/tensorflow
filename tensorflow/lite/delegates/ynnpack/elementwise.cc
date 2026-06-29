@@ -51,7 +51,10 @@ TfLiteStatus IsUnaryOpSupported(const TfLiteRegistration* registration,
   bool is_decomposed = (builtin_code == kTfLiteBuiltinGelu ||
                         builtin_code == kTfLiteBuiltinElu ||
                         builtin_code == kTfLiteBuiltinLeakyRelu ||
-                        builtin_code == kTfLiteBuiltinHardSwish);
+                        builtin_code == kTfLiteBuiltinHardSwish ||
+                        builtin_code == kTfLiteBuiltinRelu ||
+                        builtin_code == kTfLiteBuiltinRelu6 ||
+                        builtin_code == kTfLiteBuiltinReluN1To1);
   TF_LITE_ENSURE(context, op != ynn_unary_invalid || is_decomposed);
 
   if (op != ynn_unary_convert) {
@@ -142,6 +145,20 @@ TfLiteStatus DefineUnaryNode(TfLiteContext* context, ynn_subgraph_t subgraph,
             TF_LITE_ENSURE_YNN_STATUS(
                 ynn::define_hardswish(subgraph, input_id, output_id));
             return kTfLiteOk;
+          case kTfLiteBuiltinRelu:
+          case kTfLiteBuiltinRelu6:
+          case kTfLiteBuiltinReluN1To1: {
+            TfLiteFusedActivation activation = kTfLiteActNone;
+            if (node.builtin_code == kTfLiteBuiltinRelu) {
+              activation = kTfLiteActRelu;
+            } else if (node.builtin_code == kTfLiteBuiltinRelu6) {
+              activation = kTfLiteActRelu6;
+            } else if (node.builtin_code == kTfLiteBuiltinReluN1To1) {
+              activation = kTfLiteActReluN1To1;
+            }
+            return ApplyActivation(context, subgraph, activation, input_id,
+                                   output_id, node.outputs[0], ynn_type_fp32);
+          }
           default:
             TF_LITE_ENSURE(context, false);
         }
@@ -170,8 +187,6 @@ TfLiteStatus IsBinaryOpSupported(const TfLiteRegistration* registration,
     case ynn_type_int8:
     case ynn_type_uint8:
     case ynn_type_int32:
-    case ynn_type_fp16:
-    case ynn_type_bf16:
       return kTfLiteError;
     default:
       break;
@@ -234,8 +249,10 @@ TfLiteStatus DefineBinaryNode(TfLiteContext* context, ynn_subgraph_t subgraph,
       context, subgraph, tensor_to_value_id, input2_tensor_index, input2_val_id,
       &float_input2_val_id));
 
-  ynn_type internal_type = ynn_type_fp32;
   const TfLiteTensor& output_tensor = context->tensors[output_tensor_index];
+  ynn_type internal_type = IsQuantized(output_tensor)
+                               ? ynn_type_fp32
+                               : GetYnnType(output_tensor.type);
   TfLiteFusedActivation activation = node.activation;
   bool is_output_quantized = IsQuantized(output_tensor);
 
@@ -403,8 +420,92 @@ TfLiteStatus DefineStablehloClampNode(TfLiteContext* context,
 }
 
 // ==============================================================================
-// Softmax Operations
+// Quantize/Dequantize Operations
 // ==============================================================================
+
+TfLiteStatus IsQuantizeSupported(const TfLiteRegistration* registration,
+                                 const TfLiteNode* node,
+                                 TfLiteContext* context) {
+  TF_LITE_ENSURE_EQ(context, node->inputs->size, 1);
+  TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
+
+  const TfLiteTensor& input = context->tensors[node->inputs->data[0]];
+  const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
+
+  TF_LITE_ENSURE(context, !IsQuantized(input));
+  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus DefineQuantizeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
+                                TensorToValueIdMap& tensor_to_value_id,
+                                const NodeInfo& node) {
+  TF_LITE_ENSURE_EQ(context, node.inputs.size(), 1);
+  TF_LITE_ENSURE_EQ(context, node.outputs.size(), 1);
+
+  int input_tensor_index = node.inputs[0];
+  int output_tensor_index = node.outputs[0];
+
+  uint32_t input_val_id = GetOrCreateValueId(
+      context, subgraph, tensor_to_value_id, input_tensor_index);
+  uint32_t output_val_id = GetOrCreateValueId(
+      context, subgraph, tensor_to_value_id, output_tensor_index);
+
+  const TfLiteTensor& output_tensor = context->tensors[output_tensor_index];
+  uint32_t scale_id = YNN_INVALID_VALUE_ID;
+  uint32_t zp_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_STATUS(DefineQuantizationParams(
+      context, subgraph, output_tensor, &scale_id, &zp_id));
+
+  ynn_type ynn_type = GetYnnType(output_tensor.type);
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_quantize(
+      subgraph, input_val_id, ynn_type, zp_id, scale_id, &output_val_id, 0));
+  return kTfLiteOk;
+}
+
+TfLiteStatus IsDequantizeSupported(const TfLiteRegistration* registration,
+                                   const TfLiteNode* node,
+                                   TfLiteContext* context) {
+  TF_LITE_ENSURE_EQ(context, node->inputs->size, 1);
+  TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
+
+  const TfLiteTensor& input = context->tensors[node->inputs->data[0]];
+  const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
+
+  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
+  TF_LITE_ENSURE(context, !IsQuantized(output));
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus DefineDequantizeNode(TfLiteContext* context,
+                                  ynn_subgraph_t subgraph,
+                                  TensorToValueIdMap& tensor_to_value_id,
+                                  const NodeInfo& node) {
+  TF_LITE_ENSURE_EQ(context, node.inputs.size(), 1);
+  TF_LITE_ENSURE_EQ(context, node.outputs.size(), 1);
+
+  int input_tensor_index = node.inputs[0];
+  int output_tensor_index = node.outputs[0];
+
+  uint32_t input_val_id = GetOrCreateValueId(
+      context, subgraph, tensor_to_value_id, input_tensor_index);
+  uint32_t output_val_id = GetOrCreateValueId(
+      context, subgraph, tensor_to_value_id, output_tensor_index);
+
+  const TfLiteTensor& input_tensor = context->tensors[input_tensor_index];
+
+  uint32_t scale_id = YNN_INVALID_VALUE_ID;
+  uint32_t zp_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_STATUS(DefineQuantizationParams(
+      context, subgraph, input_tensor, &scale_id, &zp_id));
+
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_dequantize(subgraph, input_val_id, zp_id,
+                                                  scale_id, ynn_type_fp32,
+                                                  &output_val_id, 0));
+  return kTfLiteOk;
+}
 
 }  // namespace ynnpack
 }  // namespace tflite

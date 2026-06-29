@@ -229,6 +229,12 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       } else if (node.builtin_code == kTfLiteBuiltinStablehloClamp) {
         TF_LITE_ENSURE_STATUS(DefineStablehloClampNode(
             context, subgraph_, tensor_to_value_id_, node));
+      } else if (node.builtin_code == kTfLiteBuiltinQuantize) {
+        TF_LITE_ENSURE_STATUS(
+            DefineQuantizeNode(context, subgraph_, tensor_to_value_id_, node));
+      } else if (node.builtin_code == kTfLiteBuiltinDequantize) {
+        TF_LITE_ENSURE_STATUS(DefineDequantizeNode(context, subgraph_,
+                                                   tensor_to_value_id_, node));
       } else {
         TF_LITE_ENSURE_MSG(context, false, "Unsupported op: %d",
                            node.builtin_code);
@@ -433,6 +439,10 @@ class YNNPackDelegate : public SimpleDelegateInterface {
     } else if (builtin_code == kTfLiteBuiltinStablehloClamp) {
       return IsStablehloClampSupported(registration, node, context) ==
              kTfLiteOk;
+    } else if (builtin_code == kTfLiteBuiltinQuantize) {
+      return IsQuantizeSupported(registration, node, context) == kTfLiteOk;
+    } else if (builtin_code == kTfLiteBuiltinDequantize) {
+      return IsDequantizeSupported(registration, node, context) == kTfLiteOk;
     }
     return false;
   }

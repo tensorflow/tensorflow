@@ -134,7 +134,9 @@ TfLiteStatus DefineDecomposedUnaryNode(TfLiteContext* context,
       context, subgraph, tensor_to_value_id, input_tensor_index, input_val_id,
       &float_input_val_id));
 
-  ynn_type internal_type = ynn_type_fp32;
+  ynn_type internal_type = IsQuantized(output_tensor)
+                               ? ynn_type_fp32
+                               : GetYnnType(output_tensor.type);
   uint32_t float_output_val_id = YNN_INVALID_VALUE_ID;
 
   if (!is_output_quantized && activation == kTfLiteActNone) {

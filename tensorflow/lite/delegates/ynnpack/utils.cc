@@ -182,6 +182,8 @@ ynn_binary_operator GetYnnBinaryOperator(int builtin_code) {
       return ynn_binary_subtract;
     case kTfLiteBuiltinSquaredDifference:
       return ynn_binary_squared_difference;
+    case kTfLiteBuiltinPrelu:
+      return ynn_binary_leaky_relu;
     default:
       return ynn_binary_invalid;
   }
@@ -206,7 +208,10 @@ bool IsUnaryOp(int builtin_code) {
          builtin_code == kTfLiteBuiltinGelu ||
          builtin_code == kTfLiteBuiltinElu ||
          builtin_code == kTfLiteBuiltinLeakyRelu ||
-         builtin_code == kTfLiteBuiltinHardSwish;
+         builtin_code == kTfLiteBuiltinHardSwish ||
+         builtin_code == kTfLiteBuiltinRelu ||
+         builtin_code == kTfLiteBuiltinRelu6 ||
+         builtin_code == kTfLiteBuiltinReluN1To1;
 }
 
 bool IsBinaryOp(int builtin_code) {

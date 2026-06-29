@@ -50,6 +50,22 @@ TfLiteStatus DefineStablehloClampNode(TfLiteContext* context,
                                       TensorToValueIdMap& tensor_to_value_id,
                                       const NodeInfo& node);
 
+// Quantize/Dequantize operations
+TfLiteStatus IsQuantizeSupported(const TfLiteRegistration* registration,
+                                 const TfLiteNode* node,
+                                 TfLiteContext* context);
+TfLiteStatus DefineQuantizeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
+                                TensorToValueIdMap& tensor_to_value_id,
+                                const NodeInfo& node);
+
+TfLiteStatus IsDequantizeSupported(const TfLiteRegistration* registration,
+                                   const TfLiteNode* node,
+                                   TfLiteContext* context);
+TfLiteStatus DefineDequantizeNode(TfLiteContext* context,
+                                  ynn_subgraph_t subgraph,
+                                  TensorToValueIdMap& tensor_to_value_id,
+                                  const NodeInfo& node);
+
 }  // namespace ynnpack
 }  // namespace tflite
 
