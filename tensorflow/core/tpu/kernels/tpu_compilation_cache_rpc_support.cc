@@ -32,7 +32,7 @@ std::shared_ptr<::grpc::ChannelCredentials> CreateChannelCredentials() {
 }
 
 template <>
-Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
+absl::Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
     absl::string_view local_proto_key, GetTpuProgramResponseExternal* response,
     std::shared_ptr<CacheEntry>* cache_entry) {
   CHECK_NE(response, nullptr);
@@ -61,7 +61,7 @@ Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
     entry.size = entry.tpu_program_group->program_size();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
@@ -73,7 +73,7 @@ absl::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
     header.set_is_empty(true);
     std::string encoded_header;
     if (!header.AppendToString(&encoded_header)) {
-      return errors::Internal("Failed to serialize TPU program metadata.");
+      return absl::InternalError("Failed to serialize TPU program metadata.");
     }
     ::grpc::Slice slice(encoded_header);
     return std::vector<::grpc::Slice>{slice};
@@ -86,9 +86,9 @@ absl::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
   CHECK_GE(tpu_program_group->program_count(), 0);
   CHECK_GE(cache_entry.core_index(), 0);
   CHECK_LT(cache_entry.core_index(), tpu_program_group->program_count());
-  const int64 program_size = tpu_program_group->program_size();
+  const int64_t program_size = tpu_program_group->program_size();
   if (program_size > INT_MAX) {
-    return errors::Internal("TPU program exceeded 2 GiB.");
+    return absl::InternalError("TPU program exceeded 2 GiB.");
   }
 
   TpuExecutableSerializedProto executable;
@@ -100,14 +100,14 @@ absl::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
   auto get_executable_status = tpu_program_group->SerializeExecutable(
       cache_entry.core_index(), &executable);
   if (!get_executable_status.ok()) {
-    return errors::Internal("Failed to serialize TPU program.");
+    return absl::InternalError("Failed to serialize TPU program.");
   }
 
   // Encode and serialize header fields.
   GetTpuProgramResponseExternal header;
   if (!header.mutable_proto()->ParseFromArray(executable.bytes,
                                               executable.size)) {
-    return errors::Internal("Failed to serialize TPU program.");
+    return absl::InternalError("Failed to serialize TPU program.");
   }
   header.set_is_empty(false);
 
@@ -121,19 +121,19 @@ absl::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
       stream_executor::tpu::SerializedProto_Free(compiler_metadata);
     }
   });
-  Status get_compiler_metadata_status =
+  absl::Status get_compiler_metadata_status =
       tpu_program_group->SerializeCompilerMetadata(cache_entry.core_index(),
                                                    &compiler_metadata);
   if (!get_compiler_metadata_status.ok()) {
-    return errors::Internal("Failed to serialize compiler metadata.");
+    return absl::InternalError("Failed to serialize compiler metadata.");
   }
   if (!header.mutable_compiler_metadata()->ParseFromArray(
           compiler_metadata.bytes, compiler_metadata.size)) {
-    return errors::Internal("Failed to deserialize compiler metadata.");
+    return absl::InternalError("Failed to deserialize compiler metadata.");
   }
   std::string encoded_header;
   if (!header.AppendToString(&encoded_header)) {
-    return errors::Internal("Failed to serialize TPU program metadata.");
+    return absl::InternalError("Failed to serialize TPU program metadata.");
   }
 
   return std::vector<::grpc::Slice>{::grpc::Slice(encoded_header)};
