@@ -988,24 +988,30 @@ TEST(TensorShapeUtilsTest, ShapeListString) {
 }
 
 TEST(TensorShapeUtilsTest, NumElements) {
-  int64_t num_elements = 0;
-  TF_EXPECT_OK(TensorShapeUtils::NumElements({}, &num_elements));
-  EXPECT_EQ(num_elements, 1);
+   // Test zero dimension with overflow sizes
+  TF_EXPECT_OK(TensorShapeUtils::NumElements({0, int64_max_val}, &num_elements));
+  EXPECT_EQ(num_elements, 0);
+  TF_EXPECT_OK(TensorShapeUtils::NumElements({int64_max_val, 0}, &num_elements));
+  EXPECT_EQ(num_elements, 0);
 
-  TF_EXPECT_OK(TensorShapeUtils::NumElements({1}, &num_elements));
-  EXPECT_EQ(num_elements, 1);
-
-  TF_EXPECT_OK(TensorShapeUtils::NumElements({2, 3, 4}, &num_elements));
-  EXPECT_EQ(num_elements, 24);
-
-  int64_t int64_max_val = std::numeric_limits<int64_t>::max();
+  // Test zero dimension with negative dimensions in TensorShapeUtils::NumElements should fail
   EXPECT_THAT(
-      TensorShapeUtils::NumElements({int64_max_val, int64_max_val},
-                                    &num_elements),
+      TensorShapeUtils::NumElements({0, -1}, &num_elements),
       absl_testing::StatusIs(
           error::Code::INVALID_ARGUMENT,
-          ::testing::ContainsRegex(
-              "Can't compute total size of shape.*product would overflow")));
+          ::testing::ContainsRegex("Invalid dimension size.*")));
+  EXPECT_THAT(
+      TensorShapeUtils::NumElements({-1, 0}, &num_elements),
+      absl_testing::StatusIs(
+          error::Code::INVALID_ARGUMENT,
+          ::testing::ContainsRegex("Invalid dimension size.*")));
+
+  // Test TensorShape with zero dimension and large sizes
+  TensorShape s1({0, int64_max_val});
+  TensorShape s2({int64_max_val, 0});
+  EXPECT_EQ(s1.num_elements(), 0);
+  EXPECT_EQ(s2.num_elements(), 0);
+  
 }
 
 // A few different test cases for tensor sizes for benchmarks

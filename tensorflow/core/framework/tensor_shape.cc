@@ -394,19 +394,22 @@ absl::Status TensorShapeBase<Shape>::RecomputeNumElements() {
     set_num_elements(-1);
     return absl::OkStatus();
   }
-  int64_t n = 1;
+  bool exist_zero = false;
   for (auto dim : *this) {
    // If any dimension is zero, total elements is zero
+   if(kIsPartial && dim.size() < 0) {
+     set_num_elements(-1);
+     return absl::OkStatus();
+   }
     if (dim.size == 0) {
-      set_num_elements(0);
-      return absl::OkStatus();
+      exist_zero = true;
     }
-
-    if (kIsPartial && dim.size < 0) {
-        n = -1;
-        break;
-    }
-
+  }
+  if (exist_zero) {
+    set_num_elements(0);
+    return absl::OkStatus();
+  }
+    int64_t n = 1;
     n = MultiplyWithoutOverflow(n, dim.size);
     if (TF_PREDICT_FALSE(n < 0)) {
         return errors::InvalidArgument(
@@ -1045,13 +1048,21 @@ bool PartialTensorShapeUtils::AreIdentical(
 
 absl::Status TensorShapeUtils::NumElements(absl::Span<const int64_t> shape,
                                            int64_t* num_elements) {
-  int64_t n = 1;
+  for (auto dim : shape) {
+     if (dim < 0) {
+        return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid dimension size ", dim, " in shape [",
+          absl::StrJoin(shape, ","), "]"));
+    }
+  }
   for (auto dim : shape) {
      if (dim == 0) {
-        *num_elements = 0;
-         return absl::OkStatus();
+      *num_elements = 0;
+      return absl::OkStatus();
     }
-
+  }
+    int64_t n = 1;
+    for (auto dim : shape) {
     n = MultiplyWithoutOverflow(n, dim);
     if (n < 0) {
       return absl::InvalidArgumentError(absl::StrCat(

@@ -389,6 +389,20 @@ TEST(PartialTensorShapeTest, MakePartialShapeInvalid) {
   EXPECT_EQ(error::INVALID_ARGUMENT,
             PartialTensorShape::MakePartialShape(dims, 3, &shape).code());
 }
+TEST(PartialTensorShapeTest, ZeroAndDynamicDims) {
+  // Test that a shape with zero and dynamic dimensions returns -1 elements regardless of order.
+  const PartialTensorShape s1({0, -1});
+  const PartialTensorShape s2({-1, 0});
+  EXPECT_EQ(s1.num_elements(), -1);
+  EXPECT_EQ(s2.num_elements(), -1);
+
+  // Test that shape with zero and large elements returns 0 elements (does not overflow).
+  int64_t int64_max_val = std::numeric_limits<int64_t>::max();
+  const PartialTensorShape s3({0, int64_max_val});
+  const PartialTensorShape s4({int64_max_val, 0});
+  EXPECT_EQ(s3.num_elements(), 0);
+  EXPECT_EQ(s4.num_elements(), 0);
+}
 
 TEST(PartialTensorShapeUtilsTest, PartialShapeListString) {
   PartialTensorShape s({2, 5, 20});
