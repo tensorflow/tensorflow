@@ -54,8 +54,8 @@ constexpr int kReverseShift = -1;
 // unsigned path is only taken for integral types.
 template <typename T>
 inline T WrappingAdd(T a, T b) {
-  if constexpr (std::is_integral<T>::value && !std::is_same<T, bool>::value) {
-    using U = typename std::make_unsigned<T>::type;
+  if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
+    using U = std::make_unsigned_t<T>;
     return static_cast<T>(static_cast<U>(a) + static_cast<U>(b));
   } else {
     return a + b;
@@ -64,8 +64,8 @@ inline T WrappingAdd(T a, T b) {
 
 template <typename T>
 inline T WrappingMul(T a, T b) {
-  if constexpr (std::is_integral<T>::value && !std::is_same<T, bool>::value) {
-    using U = typename std::make_unsigned<T>::type;
+  if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
+    using U = std::make_unsigned_t<T>;
     return static_cast<T>(static_cast<U>(a) * static_cast<U>(b));
   } else {
     return a * b;

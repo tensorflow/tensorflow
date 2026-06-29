@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {
