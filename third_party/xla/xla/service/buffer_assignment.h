@@ -194,6 +194,10 @@ class BufferAllocation {
   // buffer assignment.
   void set_page_id(int64_t page) { page_id_ = page; }
 
+  // Clears references to data owned by the Buffer Assignments. So that this
+  // allocation can safely be used after the BufferAssignment is destroyed.
+  void ClearBufferAssignmentReferences();
+
   // Access to the logical buffers assigned to this allocation, and their
   // associated logical offsets and sizes.
   const absl::flat_hash_map<const HloValue*, OffsetSize>& assigned_buffers()

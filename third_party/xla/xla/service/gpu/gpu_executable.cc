@@ -153,13 +153,23 @@ MakeConstantsMap(HloModule* absl_nullable debug_module) {
 
 // Chooses the correct allocations to be used within the GpuExecutable code.
 std::vector<const BufferAllocation*> GatherAllocationPtrs(
-    const std::optional<std::vector<BufferAllocation>>& mlir_allocations,
+    std::optional<std::vector<BufferAllocation>>& mlir_allocations,
     const BufferAssignment* buffer_assignment,
-    const std::deque<BufferAllocation>& thunk_pass_allocations) {
+    std::deque<BufferAllocation>& thunk_pass_allocations) {
   const std::vector<BufferAllocation>* allocation_vec = nullptr;
   if (mlir_allocations.has_value()) {
+    for (auto& alloc : *mlir_allocations) {
+      // Clear references to debug data in BufferAssignment to prevent dangling
+      // pointers. This is necessary because BufferAssignment will be removed
+      // from GpuExecutable and and will soon go out of scope before
+      // BufferAllocations.
+      alloc.ClearBufferAssignmentReferences();
+    }
+
     allocation_vec = &mlir_allocations.value();
   } else if (buffer_assignment != nullptr) {
+    // In this case the GpuExecutable still owns the BufferAssignment, so no
+    // need to clear references, but this branch will be removed soon.
     allocation_vec = &buffer_assignment->Allocations();
   }
 
@@ -173,7 +183,9 @@ std::vector<const BufferAllocation*> GatherAllocationPtrs(
 
   if (!thunk_pass_allocations.empty()) {
     alloc_ptrs.reserve(alloc_ptrs.size() + thunk_pass_allocations.size());
-    for (const BufferAllocation& alloc : thunk_pass_allocations) {
+    for (BufferAllocation& alloc : thunk_pass_allocations) {
+      // Same as above, clear references to avoid dangling pointers.
+      alloc.ClearBufferAssignmentReferences();
       alloc_ptrs.push_back(&alloc);
     }
   }
@@ -732,12 +744,10 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);
 
   {  // Prepare thunks for execution and collect requested GPU cliques.
-    Thunk::PrepareParams prepare_params{&collective_params,
-                                        &collective_clique_requests,
-                                        &collective_memory_requests,
-                                        executor,
-                                        &buffer_allocations,
-                                        &execution_scoped_state};
+    Thunk::PrepareParams prepare_params{
+        &collective_params,          &collective_clique_requests,
+        &collective_memory_requests, executor,
+        &buffer_allocations,         &execution_scoped_state};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
     RETURN_IF_ERROR(thunk_executor.Prepare(prepare_params));

@@ -352,7 +352,7 @@ class GpuExecutable : public Executable {
   // The allocations_ object contains allocations that **may** be used to
   // provide information for allocating memory for every output/temp buffer.
   // See the comment on allocation_ptrs_.
-  std::optional<const std::vector<BufferAllocation>> allocations_;
+  std::optional<std::vector<BufferAllocation>> allocations_;
 
   // The buffer_assignment_ object contains allocations that **may** be used to
   // provide information for allocating memory for every output/temp buffer.
@@ -370,7 +370,7 @@ class GpuExecutable : public Executable {
   // Extra allocations added by thunk passes outside of the normal buffer
   // assignment process.
   // std::deque is used to ensure pointer stability.
-  const std::deque<BufferAllocation> thunk_pass_allocations_;
+  std::deque<BufferAllocation> thunk_pass_allocations_;
 
   // Backend specific aliasing information whether operands can/should share the
   // buffer with the user.

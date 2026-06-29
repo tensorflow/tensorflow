@@ -634,6 +634,14 @@ absl::Status BufferAllocation::AddAssignment(const HloValue& buffer,
   return absl::OkStatus();
 }
 
+void BufferAllocation::ClearBufferAssignmentReferences() {
+  // The HloValue pointers are not valid after the BufferAssignment is
+  // destroyed, so clear the map that uses them for key values.
+  assigned_buffers_.clear();
+  peak_buffers_.clear();
+  cross_color_buffers_.clear();
+}
+
 BufferAllocationProto BufferAllocation::ToProto() const {
   BufferAllocationProto proto;
   proto.set_index(index_);
