@@ -22,23 +22,22 @@ instructions.
   ROOT %op = f32[32] op(f32[64] %param0), op_specific_attr=”foo”
 }
 
-%async-start = (f32[64], f32[32], s32[]) async-start(f32[64] %operand),
-                                         calls=%async_op
-%async-done = f32[32] async-done((f32[64], f32[32], s32[]) %async-start)
+%async-start = ((f32[64]), f32[32], s32[]) async-start(f32[64] %operand),
+                                           calls=%async_op
+%async-done = f32[32] async-done(((f32[64]), f32[32], s32[]) %async-start)
 ```
 
 In the representation above, only `async-start` has a called computation since
 it is trivial to find what the `async-done` does by following its operand to
 find the corresponding `async-start` to find the called computation.
 
-Also note
-that the first element in the output tuple of `async-start` aliases with the
-operand, so the buffer stays alive until at least the async-done instruction.
-Similarly, the second element aliases with the output of `async-done`, and the
-third element is the context state that is used to keep track of the
-asynchronous operation. This representation also supports multiple tensors in
-the asynchronous operation input and/or output and the aliasing works the same
-way:
+Also note that the first element in the output tuple of `async-start` is a
+tuple containing the operands. The elements of this operand tuple alias with
+the respective operands, so their buffers stay alive until at least the
+`async-done` instruction. Similarly, the second element aliases with the output
+of `async-done`, and the third element is the context state that is used to
+keep track of the asynchronous operation. This representation naturally
+supports multiple tensors in the asynchronous operation input and/or output:
 
 ```
 %async_op {
@@ -66,45 +65,53 @@ the same way with the `async-update` instruction and each `async-start` and
   ROOT %op = f32[32] op(f32[64] %param0), op_specific_attr=”foo”
 }
 
-%async-start = (f32[64], f32[32], s32[]) async-start(f32[64] %operand),
+%async-start = ((f32[64]), f32[32], s32[]) async-start(f32[64] %operand),
                                          calls=%async_op
-%async-update0 = (f32[64], f32[32], s32[]) async-update(
-                           (f32[64], f32[32], s32[]) %async-start)
-%async-update1 = (f32[64], f32[32], s32[]) async-update(
-                           (f32[64], f32[32], s32[]) %async-update0)
-%async-done = f32[32] async-done((f32[64], f32[32], s32[]) %async-update1)
+%async-update0 = ((f32[64]), f32[32], s32[]) async-update(
+                           ((f32[64]), f32[32], s32[]) %async-start)
+%async-update1 = ((f32[64]), f32[32], s32[]) async-update(
+                           ((f32[64]), f32[32], s32[]) %async-update0)
+%async-done = f32[32] async-done(((f32[64]), f32[32], s32[]) %async-update1)
 
 ```
 
 ## Syntax sugar
 
-Since having a separate computation to define the operation that will be
-performed asynchronously is a bit cumbersome, we also propose a syntax sugar to
-automatically print and parse asynchronous operations as if they are first-class
-opcodes. The idea is to treat the “-start”,  “-update”, and “-done” suffixes
-specially by automatically creating the computation and instruction (without the
-suffix) when parsing. For example, the code snippet above can be pretty-printed
-to the following and the two can be parsed to the same representation:
+The HLO parser supports syntax sugar to automatically parse and print
+asynchronous operations as if they are first-class opcodes. The parser treats
+the `-start`, `-update`, and `-done` suffixes specially by automatically
+creating the async computation and the wrapped instruction (without the suffix).
+
+For example, an asynchronous `custom-call` can be written as:
 
 ```
-%op-start = (f32[64], f32[32], s32[]) op-start(f32[64] %operand),
-                                      op_specific_attr=”foo”
-%op-update0 = (f32[64], f32[32], s32[]) op-update(
-                        (f32[64], f32[32], s32[]) %op-start),
-                        op_specific_attr=”foo”
-%op-update1 = (f32[64], f32[32], s32[]) op-update(
-                        (f32[64], f32[32], s32[]) %op-update0)
-%op-done = f32[32] op-done((f32[64], f32[32], s32[]) %op-update1)
-
+%cc-start = ((f32[64]), f32[32], s32[]) custom-call-start(%operand),
+                                        custom_call_target="foo"
+%cc-update = ((f32[64]), f32[32], s32[]) custom-call-update(%cc-start)
+%result = f32[32] custom-call-done(%cc-update)
 ```
 
-In order not to create ambiguities, the verifier will not allow an operation to
-be wrapped with async-start if we explicitly defined an opcode for that
-operation with the “-start” and/or “-done” suffixes. This is also an escape
-hatch in case we have any instructions that require HLO-level treatment that
-doesn’t fit in the model described above (e.g. the aliasing input/output
-buffers). So, initially, `copy-start`/`copy-done`,
-`collective-permute-start`/`collective-permute-done` etc. will continue to use
-their respective first-class opcodes instead of the new
-`async-start`/`async-done` opcodes until we clean up the code to remove these
-“-start”/”-done” opcodes.
+The parser desugars this into the following equivalent HLO:
+
+```
+%async_computation {
+  %p0 = f32[64] parameter(0)
+  ROOT %custom-call = f32[32] custom-call(%p0), custom_call_target="foo"
+}
+
+%async-start = ((f32[64]), f32[32], s32[]) async-start(%operand),
+                calls=%async_computation
+%async-update = ((f32[64]), f32[32], s32[]) async-update(%async-start)
+%result = f32[32] async-done(%async-update)
+```
+
+This desugaring is supported for most HLO opcodes (e.g., `custom-call`, `dot`,
+`all-reduce`, etc.).
+
+### Exceptions
+
+In order not to create ambiguities, the parser will not desugar operations that
+have explicit first-class opcodes defined with the `-start` and/or `-done`
+suffixes (e.g., `copy-start`/`copy-done`,
+`collective-permute-start`/`collective-permute-done`). These will continue to
+use their respective first-class opcodes.
