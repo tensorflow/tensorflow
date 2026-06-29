@@ -4754,9 +4754,20 @@ cc_library(
     ],
 )
 
+genrule(
+    name = "viewer_html_h",
+    srcs = ["fusion_explorer/viewer.html"],
+    outs = ["viewer_html.h"],
+    cmd = "echo 'inline const char* kViewerHtmlCode = R\"html(' > $@ && cat $< >> $@ && echo ')html\";' >> $@",
+    compatible_with = get_compatible_with_portable(),
+)
+
 cc_library(
     name = "hlo_graph_dumper",
-    srcs = ["hlo_graph_dumper.cc"],
+    srcs = [
+        "hlo_graph_dumper.cc",
+        ":viewer_html_h",
+    ],
     hdrs = ["hlo_graph_dumper.h"],
     deps = [
         ":pattern_matcher",
