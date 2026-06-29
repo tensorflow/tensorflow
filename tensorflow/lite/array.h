@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstring>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <type_traits>
 #include <vector>
@@ -102,6 +103,13 @@ TfLiteArrayUniquePtr<Type> BuildTfLiteArray(const int size,
       memcpy(array->data, values, size * sizeof(Type));
     } else {
       for (int i = 0; i < size; ++i) {
+        if (sizeof(Type) < sizeof(U) &&
+            (values[i] >
+                 static_cast<U>(std::numeric_limits<Type>::max()) ||
+             values[i] <
+                 static_cast<U>(std::numeric_limits<Type>::min()))) {
+          return {};
+        }
         array->data[i] = static_cast<Type>(values[i]);
       }
     }

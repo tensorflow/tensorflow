@@ -518,6 +518,13 @@ struct OpData {
   // Helper to resize a tensor.
   TfLiteStatus ResizeTensor(TfLiteTensor* const tensor,
                             const int64_t* const shape) {
+    for (int i = 0; i < rank; ++i) {
+      TF_LITE_ENSURE_MSG(
+          context,
+          shape[i] >= 0 &&
+              shape[i] <= std::numeric_limits<int32_t>::max(),
+          "Output shape dimension exceeds int32 range.");
+    }
     auto dims = BuildTfLiteArray<int32_t>(rank, shape);
     return context->ResizeTensor(context, tensor, dims.release());
   }
@@ -789,6 +796,14 @@ struct TFLiteData : public OpData {
         rank, input_dims, window_dimensions, window_strides, window_dilations);
 
     TfLiteTensor* const output_tensor = GetOutput(context, node, kOutput);
+    for (int i = 0; i < rank; ++i) {
+      TF_LITE_ENSURE_MSG(
+          context,
+          node_data.reduce_window_ctx.output_shape[i] >= 0 &&
+              node_data.reduce_window_ctx.output_shape[i] <=
+                  std::numeric_limits<int32_t>::max(),
+          "Output shape dimension exceeds int32 range.");
+    }
     return context->ResizeTensor(
         context, output_tensor,
         BuildTfLiteArray<int32_t>(rank,

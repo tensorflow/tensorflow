@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <numeric>
 
 #include "tensorflow/lite/c/c_api_types.h"
@@ -211,6 +212,12 @@ class PadData {
   }
 
   TfLiteIntArray* BuildOuputTensorDims() const {
+    for (int64_t i = 0; i < rank_; ++i) {
+      if (output_shape_[i] < 0 ||
+          output_shape_[i] > std::numeric_limits<int32_t>::max()) {
+        return nullptr;
+      }
+    }
     TfLiteIntArray* dims = TfLiteIntArrayCreate(rank_);
     for (int64_t i = 0; i < rank_; ++i) {
       dims->data[i] = output_shape_[i];
@@ -259,8 +266,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Output tensor setup.
   TfLiteTensor* output_tensor = GetOutput(context, node, PadData::kOutput);
   TF_LITE_ENSURE(context, input_tensor->type == output_tensor->type);
-  context->ResizeTensor(context, output_tensor,
-                        pad_data.BuildOuputTensorDims());
+  TfLiteIntArray* output_dims = pad_data.BuildOuputTensorDims();
+  TF_LITE_ENSURE_MSG(context, output_dims != nullptr,
+                     "Output shape dimension exceeds int32 range.");
+  context->ResizeTensor(context, output_tensor, output_dims);
   return kTfLiteOk;
 }
 
