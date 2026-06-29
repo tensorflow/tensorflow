@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 
@@ -75,6 +76,17 @@ constexpr int64_t WarpSize(const se::DeviceDescription& gpu_device_info) {
   return gpu_device_info.threads_per_warp();
 }
 
+inline bool IsPdlEnabled(const DebugOptions& debug_options,
+                         const se::GpuComputeCapability& gpu_cc) {
+  return debug_options.xla_gpu_enable_pdl() && gpu_cc.IsCuda() &&
+         gpu_cc.cuda_compute_capability()->IsAtLeastHopper();
+}
+
+inline bool IsPdlLaunchInsertionEnabled(
+    const DebugOptions& debug_options, const se::GpuComputeCapability& gpu_cc) {
+  return IsPdlEnabled(debug_options, gpu_cc) &&
+         debug_options.xla_gpu_enable_pdl_launch();
+}
 // Fusions that implemented with pre-compiled device kernels have
 // FusionBackendConfig.kind requel to this string.
 inline constexpr absl::string_view kCustomFusionKind = "__custom_fusion";

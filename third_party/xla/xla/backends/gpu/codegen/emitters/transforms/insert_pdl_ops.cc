@@ -15,26 +15,18 @@ limitations under the License.
 
 #include <memory>
 
-#include "llvm/ADT/TypeSwitch.h"
-#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/GPU/IR/GPUDialect.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/Value.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
-#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
-#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
-#include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/frontend_attributes.h"
+#include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
 namespace gpu {
@@ -44,10 +36,20 @@ namespace gpu {
 
 namespace {
 
+mlir::Operation* GetTopLevelOpInFunction(mlir::FunctionOpInterface func,
+                                         mlir::Operation* op) {
+  mlir::Operation* top_level_op = op;
+  while (top_level_op->getParentOp() != func.getOperation()) {
+    top_level_op = top_level_op->getParentOp();
+  }
+  return top_level_op;
+}
+
 class InsertPDLPass : public impl::InsertPDLPassBase<InsertPDLPass> {
  public:
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
+    const bool do_pdl_launch = module->hasAttr(kXlaPdlLaunch);
 
     module.walk([&](mlir::FunctionOpInterface func) {
       if (func.getFunctionBody().empty()) {
@@ -59,9 +61,28 @@ class InsertPDLPass : public impl::InsertPDLPassBase<InsertPDLPass> {
         return;
       }
 
+      mlir::Operation* last_dot = nullptr;
+      func.walk([&](mlir::Operation* op) {
+        if (mlir::isa<mlir::triton::DotOp>(op)) {
+          last_dot = op;
+        }
+      });
+
+      // Insert PDL wait unconditionally at every kernel start.
       mlir::Block& entry_block = func.getFunctionBody().front();
-      mlir::OpBuilder::atBlockBegin(&entry_block)
-          .create<xla::gpu::PdlWaitOp>(func.getLoc());
+      auto builder_at_begin = mlir::OpBuilder::atBlockBegin(&entry_block);
+      xla::gpu::PdlWaitOp::create(builder_at_begin, func.getLoc());
+
+      // Insert PDL launch at the top level after last dot only in annotated
+      // kernels.
+      if (!do_pdl_launch || last_dot == nullptr) {
+        return;
+      }
+      mlir::Operation* insertion_point =
+          GetTopLevelOpInFunction(func, last_dot);
+      mlir::OpBuilder builder(insertion_point);
+      builder.setInsertionPointAfter(insertion_point);
+      xla::gpu::PdlLaunchDependentsOp::create(builder, last_dot->getLoc());
     });
   }
 };

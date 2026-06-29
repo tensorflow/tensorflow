@@ -33,6 +33,11 @@ bool HasDisjointReadWriteRegionsAttr(HloInstruction* instruction) {
       xla::kXlaDisjointReadWriteRegions);
 }
 
+bool DoesPdlLaunch(const HloInstruction& instruction) {
+  return instruction.has_frontend_attributes() &&
+         instruction.frontend_attributes().map().contains(kXlaPdlLaunch);
+}
+
 absl::flat_hash_set<int> NonInvariantOperands(
     const HloInstruction& instruction) {
   absl::flat_hash_set<int> no_invariant_operands;

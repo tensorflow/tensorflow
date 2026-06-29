@@ -101,6 +101,7 @@ limitations under the License.
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -387,6 +388,12 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
                    CreateTritonModule(fn_name, fusion, device_info,
                                       block_level_parameters, mlir_context));
 
+  // Forward PDL launch annotation from HLO to MLIR.
+  if (DoesPdlLaunch(fusion)) {
+    kernel_source.module()->setAttr(kXlaPdlLaunch,
+                                    mlir::UnitAttr::get(&mlir_context));
+  }
+
   return CompileTritonToLLVM(fn_name, *fusion.GetModule(), device_info,
                              block_level_parameters, target_triple, data_layout,
                              std::move(kernel_source), mlir_context,
@@ -435,9 +442,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
         "(num_warps, num_ctas, num_stages) must be positive, but got: (",
         num_warps, ", ", num_ctas, ", ", num_stages, ")"));
   }
-  const bool enable_pdl = hlo_config.debug_options().xla_gpu_enable_pdl() &&
-                          gpu_cc.IsCuda() &&
-                          gpu_cc.cuda_compute_capability()->IsAtLeastHopper();
+  const bool enable_pdl = IsPdlEnabled(hlo_config.debug_options(), gpu_cc);
   CreateTritonXlaPipeline(&pm, gpu_cc, /*rewrite_int4=*/is_xla_fusion,
                           block_level_parameters.is_tma_allowed, num_stages,
                           block_level_parameters.is_warp_specialization_allowed,
