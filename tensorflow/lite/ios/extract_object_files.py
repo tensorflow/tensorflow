@@ -74,19 +74,18 @@ def extract_object_files(archive_file: io.BufferedIOBase,
 
     # Check if the name is already used. If so, come up with a different name by
     # incrementing the number suffix until it finds an unused one.
-    # For example, if 'foo.o' is used, try 'foo_1.o', 'foo_2.o', and so on.
     for final_name in _generate_modified_filenames(name):
-      if final_name not in extracted_files:
-        extracted_files[final_name] = digest
+        if final_name not in extracted_files:
+            extracted_files[final_name] = digest
 
-        # Write the file content to the desired final path.
-        with open(os.path.join(dest_dir, final_name), 'wb') as object_file:
-          object_file.write(file_content)
-        break
+            # Write the file content to the desired final path.
+            with open(os.path.join(dest_dir, final_name), 'wb') as object_file:
+                object_file.write(file_content)
+            break
 
-      # Skip writing this file if the same file was already extracted.
-      elif extracted_files[final_name] == digest:
-        break
+        # Skip writing this file if the same file was already extracted.
+        elif extracted_files[final_name] == digest:
+            break
 
 
 def _generate_modified_filenames(filename: str) -> Iterator[str]:
