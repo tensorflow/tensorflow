@@ -34,16 +34,18 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
+#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/executable_run_options.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
@@ -55,10 +57,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
 
@@ -81,23 +80,24 @@ std::vector<ExecutionInput> CreateExecutionInputsFromBuffers(
   return inputs;
 }
 
-int GetScratchBytes(const Executable* executable) {
-  int scratch_bytes = 0;
-  for (const auto* allocation : executable->GetAllocations()) {
-    if (allocation->IsPreallocatedTempBuffer()) {
-      for (const auto& [buffer, offset] : allocation->assigned_buffers()) {
-        // Scratch space is allocated as the second element in the output tuple
-        // of the instruction.
-        const auto& shape_index = buffer->positions().front().index;
-        bool is_second_element_in_output_tuple =
-            !shape_index.empty() && shape_index[0] == 1;
-        if (is_second_element_in_output_tuple) {
-          scratch_bytes += offset.size;
+int GetScratchBytes(const GpuExecutable& executable) {
+  int32_t scratch_bytes = 0;
+  CHECK_OK(executable.thunk_executor().thunks().WalkNested(
+      [&scratch_bytes](const Thunk* thunk) {
+        std::vector<BufferAllocation::Slice> scratch_slices;
+        for (const auto& buffer_use : thunk->buffer_uses()) {
+          // ContentValidity::kUndefined means the buffer is a scratch buffer.
+          if (buffer_use.content_validity() ==
+              BufferUse::ContentValidity::kUndefined) {
+            // TODO(b/517426568): De-duplicate overlapping slices.
+            scratch_bytes += buffer_use.slice().size();
+          }
         }
-      }
-    }
-  }
-  return scratch_bytes;
+
+        return absl::OkStatus();
+      }));
+
+  return static_cast<int>(scratch_bytes);
 }
 
 // Initialize a specific input buffer with custom values.
@@ -267,8 +267,12 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
   const GpuInputBuffers& gpu_buffers =
       absl::down_cast<const GpuInputBuffers&>(buffers);
   const RedzoneBuffers& rz_buffers = gpu_buffers.redzone_buffers;
+
   ProfileResult result;
-  result.scratch_bytes = GetScratchBytes(executable);
+  if (auto* gpu_executable = dynamic_cast<const GpuExecutable*>(executable);
+      gpu_executable != nullptr) {
+    result.scratch_bytes = GetScratchBytes(*gpu_executable);
+  }
   {
     // Warm up run.
     std::vector<ExecutionInput> execution_inputs =

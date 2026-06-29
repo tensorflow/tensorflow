@@ -508,6 +508,13 @@ absl::Status ThunkSequence::WalkNested(Thunk::Walker callback) {
   return absl::OkStatus();
 }
 
+absl::Status ThunkSequence::WalkNested(Thunk::ConstWalker callback) const {
+  for (const auto& thunk : *this) {
+    RETURN_IF_ERROR(thunk->Walk(callback));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status ThunkSequence::TransformNested(Thunk::Transformer callback) {
   for (std::unique_ptr<Thunk>& thunk : *this) {
     RETURN_IF_ERROR(thunk->TransformNested(callback));
