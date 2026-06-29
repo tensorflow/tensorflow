@@ -186,6 +186,13 @@ absl::Status UpdateDynamicInputs(
             return absl::OkStatus();
           }
 
+          if (!xla::ShapeUtil::IndexIsValid(runtime_input.shape(), index)) {
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Runtime input shape structure mismatch. Expected index ",
+                index.ToString(), " in shape ",
+                xla::ShapeUtil::HumanString(runtime_input.shape())));
+          }
+
           const xla::Shape& runtime_shape =
               xla::ShapeUtil::GetSubshape(runtime_input.shape(), index);
 
