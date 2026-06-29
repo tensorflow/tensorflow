@@ -20,7 +20,9 @@ the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -39,7 +41,8 @@ class HloLiveRange {
   // assuming the given HLO instruction ordering.
   static absl::StatusOr<std::unique_ptr<HloLiveRange>> Run(
       const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
-      const HloComputation* computation, bool module_scoped_analysis = true);
+      const HloComputation* computation, bool module_scoped_analysis = true,
+      absl::flat_hash_set<absl::string_view> execution_threads = {});
 
   // LogicalTime represents the time in a virtual clock. Each instruction has
   // one monotonically increasing logical time assigned according to the
@@ -101,12 +104,14 @@ class HloLiveRange {
   bool total_order_scheduled() const { return total_order_scheduled_; }
 
  private:
-  explicit HloLiveRange(const HloSchedule& schedule,
-                        const HloAliasAnalysis& alias_analysis,
-                        bool module_scoped_analysis)
+  explicit HloLiveRange(
+      const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
+      bool module_scoped_analysis,
+      absl::flat_hash_set<absl::string_view> execution_threads = {})
       : schedule_(schedule),
         alias_analysis_(alias_analysis),
-        module_scoped_analysis_(module_scoped_analysis) {}
+        module_scoped_analysis_(module_scoped_analysis),
+        execution_threads_(std::move(execution_threads)) {}
 
   // FlattenSchedule walks through the instructions in `computation`, and
   // recurse into each called computations in module_scoped_analysis mode. As it
@@ -222,6 +227,7 @@ class HloLiveRange {
   absl::flat_hash_map<const HloValue*, TimeBound> buffer_live_ranges_;
   absl::flat_hash_map<const HloComputation*, const HloComputation*>
       computations_in_async_context_;
+  absl::flat_hash_set<absl::string_view> execution_threads_;
 };
 
 }  // namespace xla

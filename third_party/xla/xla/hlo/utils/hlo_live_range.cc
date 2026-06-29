@@ -47,9 +47,11 @@ namespace xla {
 /*static*/
 absl::StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
     const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
-    const HloComputation* computation, bool module_scoped_analysis) {
+    const HloComputation* computation, bool module_scoped_analysis,
+    absl::flat_hash_set<absl::string_view> execution_threads) {
   std::unique_ptr<HloLiveRange> hlo_live_range(
-      new HloLiveRange(schedule, alias_analysis, module_scoped_analysis));
+      new HloLiveRange(schedule, alias_analysis, module_scoped_analysis,
+                       std::move(execution_threads)));
   hlo_live_range->FlattenSchedule(*computation);
   hlo_live_range->CalculateBufferStartEndMap();
   hlo_live_range->NormalizeAliasedBuffers();
@@ -88,6 +90,10 @@ void HloLiveRange::NormalizeAliasedBuffers() {
 // number of each instruction in the schedule.
 void HloLiveRange::FlattenSchedule(const HloComputation& computation,
                                    const HloComputation* async_context) {
+  if (!execution_threads_.empty() &&
+      !execution_threads_.contains(computation.execution_thread())) {
+    return;
+  }
   auto it = schedule_.sequences().find(computation.unique_id());
   if (it == schedule_.sequences().end()) {
     total_order_scheduled_ = false;
@@ -182,10 +188,30 @@ HloLiveRange::LogicalTime HloLiveRange::GetLastUsageTime(
     // module scoped mode.
     if (module_scoped_analysis_ && used->opcode() == HloOpcode::kWhile) {
       // The current live range is at the end of the while, move it to
-      // the beginning of the body.
-      used = used->while_body()->parameter_instruction(0);
-      VLOG(1) << "Moved value " << value.ToShortString()
-              << " to while param: " << used->ToString();
+      // the beginning of the body if the body is flattened.
+      if (computation_span_times_.contains(used->while_body())) {
+        used = used->while_body()->parameter_instruction(0);
+        VLOG(1) << "Moved value " << value.ToShortString()
+                << " to while param: " << used->ToString();
+      }
+    }
+
+    if (used->opcode() == HloOpcode::kAsyncStart) {
+      bool flattened = true;
+      for (const HloComputation* called_computation :
+           used->called_computations()) {
+        if (!computation_span_times_.contains(called_computation)) {
+          flattened = false;
+          break;
+        }
+      }
+      if (!flattened) {
+        HloInstruction* async_done = used->async_chain_done();
+        auto it = instruction_schedule_.find(async_done);
+        if (it != instruction_schedule_.end()) {
+          end_time = std::max(end_time, it->second);
+        }
+      }
     }
 
     // It's possible that we didn't track the instruction `used`. This
