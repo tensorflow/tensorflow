@@ -124,7 +124,7 @@ class ReductionInvalidKeepdims(test.TestCase):
         (dtypes.bool, (math_ops.reduce_all, math_ops.reduce_any))
     ]:
       for reduction in reductions:
-        with self.assertRaisesRegex(ValueError, "The truth value"):
+        with self.assertRaises((ValueError, TypeError)):
           x = True if dtype == dtypes.bool else 1
           y = reduction(
               input_tensor=x, keepdims=np.array([63600, 1], dtype=np.float16))
@@ -144,7 +144,7 @@ class ReductionInvalidKeepdims(test.TestCase):
     for reduction in (math_ops.reduce_sum, math_ops.reduce_mean,
                       math_ops.reduce_prod, math_ops.reduce_max,
                       math_ops.reduce_min):
-      for good_value in [True, False, None]:
+      for good_value in [True, False, None, np.bool_(True), np.bool_(False)]:
         reduction(x, axis=1, keepdims=good_value)
 
 

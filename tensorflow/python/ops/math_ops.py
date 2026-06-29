@@ -2158,7 +2158,7 @@ def _check_keepdims(keepdims):
   """
   if keepdims is None:
     return False
-  if not isinstance(keepdims, bool):
+  if not isinstance(keepdims, (bool, np.bool_)):
     raise TypeError(
         f"Expected bool for argument 'keepdims' not {keepdims}.")
   return keepdims
@@ -2359,7 +2359,7 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
   Returns:
     The reduced tensor, of the same dtype as the input_tensor.
   """
-  keepdims = bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.euclidean_norm(
@@ -3221,7 +3221,7 @@ def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.all
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._all(
@@ -3327,7 +3327,7 @@ def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.any
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._any(
