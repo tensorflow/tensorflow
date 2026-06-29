@@ -155,7 +155,7 @@ class ResourceHandle {
   // resource type is not `T`.
   template <typename T>
   StatusOr<T*> GetResource() const {
-    TF_RETURN_IF_ERROR(ValidateType<T>());
+    RETURN_IF_ERROR(ValidateType<T>());
     return down_cast<T*>(resource_.get());
   }
 
