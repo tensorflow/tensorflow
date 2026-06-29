@@ -10087,11 +10087,10 @@ entry {
   VLOG(2) << "module: " << module->ToString();
 }
 
-// The test verifies the schedule of prefetching window buffers. We use
-// reserved_scoped_memory_fn to reserve a large amount of memory for an
-// instruction that's not too far from the fusion and verify that a valid
-// schedule can still be found, which prefetches the window buffers right
-// after that instruction.
+// The test verifies that window prefetching can be applied and respects memory
+// constraints. We simulate memory pressure at instruction t1 to prevent early
+// window prefetching of t0 for t3. We verify that the prefetch is delayed
+// until after t1, and that the prefetch is successfully applied.
 TEST_F(MemorySpaceAssignmentTest, WindowPrefetchSchedule) {
   absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
@@ -10105,8 +10104,12 @@ entry {
   t0 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(0)
   t1 = bf16[64,8]{1,0:T(8,128)(2,1)} negate(t0)
   t2 = bf16[64,8]{1,0:T(8,128)(2,1)} negate(t1)
+  t2_1 = bf16[64,8]{1,0:T(8,128)(2,1)} negate(t2)
+  t2_2 = bf16[64,8]{1,0:T(8,128)(2,1)} negate(t2_1)
+  t2_3 = bf16[64,8]{1,0:T(8,128)(2,1)} negate(t2_2)
+  t2_4 = bf16[64,8]{1,0:T(8,128)(2,1)} negate(t2_3)
   t3 = bf16[64,8]{1,0:T(8,128)(2,1)} fusion(bf16[64,8]{1,0:T(8,128)(2,1)} t0), kind=kLoop, calls=%fused_computation
-  ROOT t4 = bf16[64,8]{1,0:T(8,128)(2,1)} add(t2, t3)
+  ROOT t4 = bf16[64,8]{1,0:T(8,128)(2,1)} add(t2_4, t3)
 }
 
 )hlo";
@@ -10124,21 +10127,23 @@ entry {
     return 0;
   };
 
-  // Set the reserved scoped memory of the negate instruction to be 128MB. This
-  // will prevent the prefetching of window buffers from starting too early.
+  // Set the reserved scoped memory of the negate instruction to be 128 bytes
+  // (matching max_size_in_bytes). This will prevent the prefetching of window
+  // buffers from starting too early (during t1).
   auto reserved_scoped_memory_fn =
       [&](const HloInstruction* instruction,
           const absl::flat_hash_set<std::pair<int, ShapeIndex>>
               operands_in_alternate_memory,
           const absl::flat_hash_set<ShapeIndex> outputs_in_alternate_memory) {
         if (instruction->name() == "t1") {
-          return 128 * 1024 * 1024;
+          return 128;
         }
         return 0;
       };
 
   Options options = DefaultMemorySpaceOptions();
   options.enable_window_prefetch = true;
+  options.window_prefetch_mode = WindowPrefetchMode::kWindowPrefetch;
   options.op_span_size_fn = op_span_size_fn;
   options.window_prefetch_min_span_size = 2;
   options.reserved_scoped_memory_fn = reserved_scoped_memory_fn;
@@ -10146,10 +10151,97 @@ entry {
                     /*max_prefetch_interval=*/10,
                     /*min_prefetch_interval=*/0);
   const HloInstruction* fusion = FindInstruction(module.get(), "t3");
-  // Verify that the fusion instruction is window prefetched. If the fusion
-  // instruction's operand is window prefetched, the fusion instruction should
-  // have more than one operand.
+  // Verify that the fusion instruction is window prefetched.
   EXPECT_GT(fusion->operand_count(), 1);
+
+  // Verify schedule to ensure memory constraint is respected (prefetch starts
+  // after t1).
+  bool found_t1 = false;
+  bool prefetch_after_t1 = false;
+  for (auto* instruction : module->schedule()
+                               .sequence(module->entry_computation())
+                               .instructions()) {
+    if (instruction->name() == "t1") {
+      found_t1 = true;
+    }
+    if (instruction->IsCustomCall("WindowPrefetch") && found_t1) {
+      prefetch_after_t1 = true;
+    }
+  }
+  EXPECT_TRUE(prefetch_after_t1);
+}
+
+TEST_F(MemorySpaceAssignmentTest, WindowPrefetchOverlapOps) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+%fused_computation {
+  %p0 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(0)
+  ROOT %neg = bf16[64,8]{1,0:T(8,128)(2,1)} negate(%p0)
+}
+
+entry {
+  t0 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(0)
+  t1 = bf16[64,8]{1,0:T(8,128)(2,1)} negate(t0)
+  t2 = bf16[64,8]{1,0:T(8,128)(2,1)} negate(t1)
+  t3 = bf16[64,8]{1,0:T(8,128)(2,1)} negate(t2)
+  t4 = bf16[64,8]{1,0:T(8,128)(2,1)} negate(t3)
+  t5 = bf16[64,8]{1,0:T(8,128)(2,1)} fusion(bf16[64,8]{1,0:T(8,128)(2,1)} t0), kind=kLoop, calls=%fused_computation
+  ROOT t6 = bf16[64,8]{1,0:T(8,128)(2,1)} add(t4, t5)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto op_span_size_fn = [&](HloInstruction* original_hlo,
+                             HloInstruction* cloned_hlo,
+                             int64_t operand_index) -> int64_t {
+    if (original_hlo->name() == "t5" && operand_index == 0) {
+      return 32;
+    }
+    return 0;
+  };
+
+  Options options = DefaultMemorySpaceOptions();
+  options.enable_window_prefetch = true;
+  options.op_span_size_fn = op_span_size_fn;
+  options.window_prefetch_min_span_size = 2;
+  options.window_prefetch_mode = WindowPrefetchMode::kWindowPrefetch;
+
+  AssignMemorySpace(module.get(), std::move(options),
+                    /*max_prefetch_interval=*/10,
+                    /*min_prefetch_interval=*/0);
+
+  const HloInstruction* fusion = FindInstruction(module.get(), "t5");
+  // Verify that the fusion instruction is window prefetched.
+  EXPECT_GT(fusion->operand_count(), 1);
+
+  // Verify schedule to ensure overlap.
+  bool found_window_prefetch = false;
+  bool found_t5 = false;
+  bool overlapped_with_ops = false;
+
+  for (auto* instruction : module->schedule()
+                               .sequence(module->entry_computation())
+                               .instructions()) {
+    if (instruction->IsCustomCall("WindowPrefetch")) {
+      found_window_prefetch = true;
+    }
+    if (instruction->name() == "t5") {
+      found_t5 = true;
+      break;
+    }
+    // If we found window prefetch and we are still seeing negate ops (t1-t4),
+    // it means it overlapped with them.
+    if (found_window_prefetch && instruction->opcode() == HloOpcode::kNegate) {
+      overlapped_with_ops = true;
+    }
+  }
+
+  EXPECT_TRUE(found_window_prefetch);
+  EXPECT_TRUE(found_t5);
+  EXPECT_TRUE(overlapped_with_ops);
 }
 
 using AsynchronousCopyOrderingTest = ::testing::Test;
@@ -15238,7 +15330,7 @@ TEST_F(MemorySpaceAssignmentTest,
   // scoped allocation of negate10 when we try to extend it for the entire live
   // range.
 
-  // To make sure we dont allocate block prefetches below MaxScopedMemorySize
+  // To make sure we don't allocate block prefetches below MaxScopedMemorySize
   // we reserve memory for scoped allocations before block prefetching and
   // process scoped allocations after block prefetching.
   absl::string_view hlo_string = R"hlo(

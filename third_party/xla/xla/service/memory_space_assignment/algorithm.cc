@@ -1217,7 +1217,7 @@ absl::Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
                   value_position.instruction->opcode() ==
                       HloOpcode::kParameter) {
                 // TODO(subhankarshah): Validate if adding to pending required
-                // assignemnts is intentional/correct, since we clear after
+                // assignments is intentional/correct, since we clear after
                 // every successful allocation.
                 AddRequiredAssignment(
                     value_position.instruction, value_position.index,
@@ -7773,17 +7773,14 @@ void MsaAlgorithm::WindowPrefetchOperand(const HloUse& use, int64_t bytes) {
   ShapeIndex shape_index = use.operand_index;
   HloInstruction* operand = instruction->mutable_operand(use.operand_number);
   // Find the defining position of the operand.
-  for (int i = 0; i < use.operand_index.size(); ++i) {
-    CHECK(operand->opcode() == HloOpcode::kGetTupleElement);
-    operand = operand->mutable_operand(0);
-  }
+  HloPosition position = GetNonTrivialSourcePosition({operand, shape_index});
+  HloInstruction* defining_inst = position.instruction;
 
   // Create a new HloValue for the window buffer.
   HloValue::Id new_value_id = alias_analysis_.dataflow_analysis().NewValueId();
   HloValue hlo_value(new_value_id, operand, shape_index);
-  int64_t start_time = hlo_live_range_.instruction_schedule().at(operand);
+  int64_t start_time = hlo_live_range_.instruction_schedule().at(defining_inst);
   int64_t end_time = hlo_live_range_.instruction_schedule().at(instruction);
-
   // Create a buffer interval, which has the same start and end time as the
   // operand. The hlo value is the operand.
   MsaBufferInterval buffer_interval;
@@ -7831,7 +7828,11 @@ void MsaAlgorithm::WindowPrefetchOperand(const HloUse& use, int64_t bytes) {
 
   if (options_.window_prefetch_mode == WindowPrefetchMode::kWindowPrefetch) {
     // Window prefetch mode
-    Prefetch(request, dummy_prev_allocation);
+    auto result = Prefetch(request, dummy_prev_allocation);
+    if (result != AllocationResult::kSuccess) {
+      VLOG(1) << "Window prefetch failed for use: " << use.instruction->name()
+              << " with result: " << SingleFailureResultToString(result);
+    }
   } else {
     // Window exposure mode, we only need to find a chunk for the window
     // buffer.
@@ -7925,6 +7926,9 @@ absl::Status MsaAlgorithm::WindowPrefetch() {
         // tuple and one or more of the tensors in that parameter are in
         // alternate memory. Let's add a check to make sure that the parameter
         // is not a tuple.
+        if (i >= cloned->fused_parameters().size()) {
+          continue;
+        }
         if (cloned->fused_parameters()[i]->shape().IsTuple()) {
           LOG(ERROR) << "Tuple parameter: "
                      << cloned->fused_parameters()[i]->shape().ToString(true);
