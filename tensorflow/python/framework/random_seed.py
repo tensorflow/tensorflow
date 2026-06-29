@@ -355,7 +355,7 @@ def set_seed(seed):
   Note: `tf.random.set_seed` only governs TensorFlow's own stateful random
   operations. It does not control seeds that higher-level components select for
   themselves. In particular, Keras layer initializers create a variable's value
-  the first time the layer is built (lazily), and an unseeded initializer chooses
+  the first time the layer is built lazily, and an unseeded initializer chooses
   its own operation-level seed independently of the global seed. Resetting the
   global seed alone therefore does not guarantee that such lazily-created
   variables (for example, layer kernels) are initialized to the same values,
