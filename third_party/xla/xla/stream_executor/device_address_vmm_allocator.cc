@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -212,6 +213,26 @@ static uint64_t LoadTimeline(const volatile uint64_t* pinned_timeline) {
   return __atomic_load_n(pinned_timeline, __ATOMIC_ACQUIRE);
 }
 
+static uintptr_t AddressStart(DeviceAddressBase address) {
+  return reinterpret_cast<uintptr_t>(address.opaque());
+}
+
+static uintptr_t AddressEnd(DeviceAddressBase address) {
+  uintptr_t start = AddressStart(address);
+  if (std::numeric_limits<uintptr_t>::max() - start < address.size()) {
+    return std::numeric_limits<uintptr_t>::max();
+  }
+  return start + address.size();
+}
+
+static bool AddressRangesOverlap(DeviceAddressBase lhs, DeviceAddressBase rhs) {
+  if (lhs.is_null() || rhs.is_null() || lhs.size() == 0 || rhs.size() == 0) {
+    return false;
+  }
+  return AddressStart(lhs) < AddressEnd(rhs) &&
+         AddressStart(rhs) < AddressEnd(lhs);
+}
+
 DeviceAddressVmmAllocator::DeviceAddressVmmAllocator(const Platform* platform)
     : DeviceAddressAllocator(platform) {}
 
@@ -322,11 +343,10 @@ MemoryAllocation* DeviceAddressVmmAllocator::GetRawAllocation(
   absl::MutexLock lock(state->mu);
 
   // Allocator addresses are keyed directly by their VA. Stale records remain in
-  // this map until deferred teardown completes, so require both active state
-  // and an exact address-range match before exposing the backing allocation.
+  // this map until deferred teardown completes, so expose their backing
+  // allocation for diagnostics/reuse checks until the pending operation drains.
   auto allocation_it = state->records_by_allocator_address.find(addr.opaque());
   if (allocation_it != state->records_by_allocator_address.end() &&
-      allocation_it->second->allocator_active() &&
       allocation_it->second->allocator_matches(addr)) {
     return allocation_it->second->raw_allocation();
   }
@@ -777,6 +797,72 @@ DeviceAddressVmmAllocator::ValidateReservationRange(
   return address.GetByteSlice(reservation_offset, size);
 }
 
+std::optional<DeviceAddressVmmAllocator::OverlappingRecord>
+DeviceAddressVmmAllocator::FindOverlappingRecord(
+    PerDeviceState& state, DeviceAddressBase address, bool include_allocator,
+    bool include_reservation, bool include_active, bool include_stale,
+    bool exact_only, bool partial_only) const {
+  auto overlaps = [&](DeviceAddressBase tracked_address) {
+    if (exact_only) {
+      return tracked_address.IsSameAs(address);
+    }
+    if (partial_only) {
+      return AddressRangesOverlap(tracked_address, address) &&
+             !tracked_address.IsSameAs(address);
+    }
+    return AddressRangesOverlap(tracked_address, address);
+  };
+
+  if (include_allocator) {
+    for (const auto& [_, record_owner] : state.records_by_allocator_address) {
+      AllocationRecord* record = record_owner.get();
+      if (((record->allocator_active() && include_active) ||
+           (record->allocator_stale() && include_stale)) &&
+          overlaps(record->allocator_address())) {
+        return OverlappingRecord{
+            .record = record,
+            .tracked_address = record->allocator_address(),
+            .is_allocator = true,
+            .is_active = record->allocator_active(),
+        };
+      }
+    }
+  }
+
+  if (include_reservation) {
+    if (include_active) {
+      for (const auto& [_, record] : state.active_reservation_records) {
+        CHECK(record->reservation_active());
+        CHECK(record->has_reservation_address());
+        if (overlaps(record->reservation_address())) {
+          return OverlappingRecord{
+              .record = record,
+              .tracked_address = record->reservation_address(),
+              .is_allocator = false,
+              .is_active = true,
+          };
+        }
+      }
+    }
+    if (include_stale) {
+      for (const auto& [_, record] : state.stale_reservation_records) {
+        CHECK(record->reservation_stale());
+        CHECK(record->has_reservation_address());
+        if (overlaps(record->reservation_address())) {
+          return OverlappingRecord{
+              .record = record,
+              .tracked_address = record->reservation_address(),
+              .is_allocator = false,
+              .is_active = false,
+          };
+        }
+      }
+    }
+  }
+
+  return std::nullopt;
+}
+
 absl::Status DeviceAddressVmmAllocator::Map(int device_ordinal,
                                             DeviceAddressBase addr,
                                             MemoryReservation* reservation,
@@ -828,19 +914,83 @@ absl::Status DeviceAddressVmmAllocator::Map(int device_ordinal,
         "mapping_size=%uB, allocation_size=%uB",
         size, raw_allocation->address().size()));
   }
-  if (state->active_reservation_records.contains(
-          reservation_address.opaque()) ||
-      state->stale_reservation_records.contains(reservation_address.opaque())) {
-    return absl::FailedPreconditionError(
-        "Reservation address is already tracked by this allocator");
+  if (auto overlap = FindOverlappingRecord(
+          *state, reservation_address, /*include_allocator=*/false,
+          /*include_reservation=*/true, /*include_active=*/true,
+          /*include_stale=*/true, /*exact_only=*/false,
+          /*partial_only=*/true)) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "reservation range at %p (%uB) partially overlaps %s reservation "
+        "range at %p (%uB); reservation mappings must be managed with the "
+        "same full range",
+        reservation_address.opaque(), reservation_address.size(),
+        overlap->is_active ? "active" : "stale",
+        overlap->tracked_address.opaque(), overlap->tracked_address.size()));
   }
   if (source_record->reservation_active()) {
     return absl::FailedPreconditionError(
         "Allocator address already has an active reservation alias");
   }
+  if (source_record->reservation_stale() &&
+      !source_record->reservation_matches(reservation_address)) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Allocator address already has a pending reservation alias at virtual "
+        "address %p (%uB)",
+        source_record->reservation_address().opaque(),
+        source_record->reservation_address().size()));
+  }
+
+  // If this exact reservation mapping is still stale for the same raw
+  // allocation, reactivate it directly and cancel the pending unmap. This keeps
+  // captured command-buffer VAs stable without waiting for the GPU timeline.
+  if (auto stale_reservation_overlap = FindOverlappingRecord(
+          *state, reservation_address, /*include_allocator=*/false,
+          /*include_reservation=*/true, /*include_active=*/false,
+          /*include_stale=*/true, /*exact_only=*/true,
+          /*partial_only=*/false)) {
+    AllocationRecord& stale_record = *stale_reservation_overlap->record;
+    if (stale_record.raw_allocation() == raw_allocation &&
+        &stale_record == source_record &&
+        stale_record.reservation_mapping_matches(reservation_address)) {
+      CHECK(source_record->reservation_stale());
+      MoveReservationRecordToActive(*state, stale_record);
+      ErasePendingDeallocation(*state, PendingDeallocationKind::kMap,
+                               reservation_address);
+      return absl::OkStatus();
+    }
+
+    // The reservation range is exact but belongs to a different raw allocation
+    // or record. Wait for the old mapping to drain before installing the new
+    // alias.
+    RETURN_IF_ERROR(WaitAndCompleteStaleReservationMapping(
+        *state, PendingDeallocationKey{PendingDeallocationKind::kMap,
+                                       stale_record.reservation_stale_seqno(),
+                                       stale_record.reservation_address()}));
+  }
   if (source_record->reservation_stale()) {
-    return absl::FailedPreconditionError(
-        "Allocator address already has a pending reservation alias");
+    CHECK(source_record->has_reservation_address());
+    auto stale_allocator_overlap = FindOverlappingRecord(
+        *state, source_record->reservation_address(),
+        /*include_allocator=*/false, /*include_reservation=*/true,
+        /*include_active=*/false, /*include_stale=*/true,
+        /*exact_only=*/true, /*partial_only=*/false);
+    CHECK(stale_allocator_overlap.has_value());
+    RETURN_IF_ERROR(WaitAndCompleteStaleReservationMapping(
+        *state, PendingDeallocationKey{PendingDeallocationKind::kMap,
+                                       source_record->reservation_stale_seqno(),
+                                       source_record->reservation_address()}));
+  }
+  if (FindOverlappingRecord(*state, reservation_address,
+                            /*include_allocator=*/false,
+                            /*include_reservation=*/true,
+                            /*include_active=*/true,
+                            /*include_stale=*/false,
+                            /*exact_only=*/false,
+                            /*partial_only=*/false)
+          .has_value()) {
+    return absl::AlreadyExistsError(absl::StrFormat(
+        "reservation range is already tracked at virtual address %p",
+        reservation_address.opaque()));
   }
 
   // Install the reservation address mapping to the raw physical allocation. The
@@ -879,6 +1029,18 @@ void DeviceAddressVmmAllocator::ErasePendingDeallocationAt(
   state.pending_deallocations.erase(it);
 }
 
+void DeviceAddressVmmAllocator::ErasePendingDeallocation(
+    PerDeviceState& state, PendingDeallocationKind kind,
+    DeviceAddressBase addr) {
+  for (auto it = state.pending_deallocations.begin();
+       it != state.pending_deallocations.end(); ++it) {
+    if (it->kind == kind && it->addr.IsSameAs(addr)) {
+      ErasePendingDeallocationAt(state, it);
+      return;
+    }
+  }
+}
+
 void DeviceAddressVmmAllocator::MoveAllocatorRecordToActive(
     PerDeviceState& state, AllocationRecord& record, uint64_t new_size) {
   CHECK(!record.allocator_active());
@@ -902,6 +1064,19 @@ void DeviceAddressVmmAllocator::MoveReservationRecordToStale(
       state.stale_reservation_records.emplace(reservation_va, &record);
   CHECK(insert_result.second);
   record.MarkReservationStale(seqno);
+}
+
+void DeviceAddressVmmAllocator::MoveReservationRecordToActive(
+    PerDeviceState& state, AllocationRecord& record) {
+  CHECK(!record.reservation_active());
+  CHECK(record.reservation_stale());
+  CHECK(record.has_reservation_address());
+  void* reservation_va = record.reservation_key();
+  CHECK_EQ(state.stale_reservation_records.erase(reservation_va), 1);
+  auto insert_result =
+      state.active_reservation_records.emplace(reservation_va, &record);
+  CHECK(insert_result.second);
+  record.ReactivateReservation();
 }
 
 void DeviceAddressVmmAllocator::CompleteStaleReservationMapping(
@@ -979,6 +1154,41 @@ bool DeviceAddressVmmAllocator::CompletePendingDeallocationByKey(
     }
   }
   return false;
+}
+
+absl::Status
+DeviceAddressVmmAllocator::WaitAndCompleteStaleAllocatorDeallocation(
+    PerDeviceState& state, const PendingDeallocationKey& key) {
+  CHECK_NE(key.kind, PendingDeallocationKind::kMap);
+  RETURN_IF_ERROR(WaitUntilSeqno(state, key.seqno));
+  CompletePendingDeallocationByKey(state, key);
+  return absl::OkStatus();
+}
+
+absl::Status DeviceAddressVmmAllocator::WaitAndCompleteStaleReservationMapping(
+    PerDeviceState& state, const PendingDeallocationKey& key) {
+  CHECK_EQ(key.kind, PendingDeallocationKind::kMap);
+  RETURN_IF_ERROR(WaitUntilSeqno(state, key.seqno));
+  CompletePendingDeallocationByKey(state, key);
+  return absl::OkStatus();
+}
+
+absl::Status DeviceAddressVmmAllocator::WaitAndCompleteStaleOverlap(
+    PerDeviceState& state, const OverlappingRecord& overlap) {
+  CHECK(!overlap.is_active);
+  if (overlap.is_allocator) {
+    AllocationRecord& record = *overlap.record;
+    return WaitAndCompleteStaleAllocatorDeallocation(
+        state, PendingDeallocationKey{record.pending_deallocation_kind(),
+                                      record.allocator_stale_seqno(),
+                                      record.allocator_address()});
+  }
+  CHECK(overlap.record->reservation_stale());
+  CHECK(overlap.record->has_reservation_address());
+  return WaitAndCompleteStaleReservationMapping(
+      state, PendingDeallocationKey{PendingDeallocationKind::kMap,
+                                    overlap.record->reservation_stale_seqno(),
+                                    overlap.record->reservation_address()});
 }
 
 void DeviceAddressVmmAllocator::CompletePendingDeallocation(

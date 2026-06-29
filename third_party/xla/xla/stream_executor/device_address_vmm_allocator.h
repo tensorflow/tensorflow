@@ -111,8 +111,10 @@ namespace stream_executor {
 // only reservation addresses created by Map() or by
 // Allocate(..., return_reservation_address=false). Passing an allocator address
 // to UnMap(), or a reservation address to Deallocate(), is an error.
-// Each allocator address may have at most one active or stale
-// reservation-address alias.
+// Each allocator address may have at most one active reservation-address alias.
+// A reservation mapping is owned as the same full range that created it:
+// partial UnMap(), Map(), or Allocate() operations that overlap an active or
+// stale reservation mapping are rejected.
 //
 // Deallocate() and UnMap() are stream-ordered deferred operations. The
 // allocator assigns the affected address record a per-device sequence number,
@@ -124,6 +126,15 @@ namespace stream_executor {
 // When the sequence completes, dropping the ScopedMapping objects performs the
 // real unmap, then the allocator releases any owned reservation and raw
 // physical memory.
+//
+// Stale records are also the fast reuse path. Allocate() first looks for a
+// compatible stale allocator address before creating new VMM state. Map() does
+// the same for a stale reservation mapping: if the requested reservation
+// address is still mapped to the same raw physical allocation, the allocator
+// reactivates the old mapping instead of unmapping and remapping. If a
+// requested reservation address is still stale for a different raw allocation,
+// Map() waits for that deferred unmap to complete before installing the new
+// mapping.
 //
 // Each registered device has independent state protected by its own mutex, so
 // operations on different devices can proceed in parallel. The per-device map
@@ -241,7 +252,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // range until all previously enqueued work on the allocator stream has
   // completed.
   // The caller must pass the same full reservation range that created the
-  // mapping.
+  // mapping; partial ranges that overlap a tracked mapping are rejected.
   // The reservation-derived allocator address returned by
   // Allocate(..., return_reservation_address=true) is not a reservation
   // address for this API and must be released with Deallocate() instead.
@@ -574,11 +585,33 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
       MemoryReservation* reservation, uint64_t reservation_offset,
       uint64_t size) const;
 
+  struct OverlappingRecord {
+    AllocationRecord* record = nullptr;
+    DeviceAddressBase tracked_address;
+    bool is_allocator = false;
+    bool is_active = false;
+  };
+
+  // Finds a tracked allocator or reservation range that overlaps `address`.
+  // `exact_only` returns only identical ranges; `partial_only` returns only
+  // non-identical overlapping ranges; both false returns any overlap.
+  std::optional<OverlappingRecord> FindOverlappingRecord(
+      PerDeviceState& state, DeviceAddressBase address, bool include_allocator,
+      bool include_reservation, bool include_active, bool include_stale,
+      bool exact_only, bool partial_only) const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+
   // UnMap/deferred teardown helpers.
 
   // Removes a pending entry when a stale record is reused.
   void ErasePendingDeallocationAt(PerDeviceState& state,
                                   std::deque<PendingDeallocation>::iterator it)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+
+  // Removes the matching pending entry when a stale record is reused.
+  void ErasePendingDeallocation(PerDeviceState& state,
+                                PendingDeallocationKind kind,
+                                DeviceAddressBase addr)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
   void MoveAllocatorRecordToActive(PerDeviceState& state,
@@ -587,6 +620,10 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
 
   void MoveReservationRecordToStale(PerDeviceState& state,
                                     AllocationRecord& record, uint64_t seqno)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+
+  void MoveReservationRecordToActive(PerDeviceState& state,
+                                     AllocationRecord& record)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
   void CompleteStaleReservationMapping(PerDeviceState& state,
@@ -625,6 +662,24 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // while state.mu was released.
   bool CompletePendingDeallocationByKey(PerDeviceState& state,
                                         const PendingDeallocationKey& key)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+
+  // Waits for and completes the selected allocator-address deallocation, if it
+  // is still pending after the wait.
+  absl::Status WaitAndCompleteStaleAllocatorDeallocation(
+      PerDeviceState& state, const PendingDeallocationKey& key)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+
+  // Waits for and completes a stale reservation-address mapping queued by
+  // UnMap().
+  absl::Status WaitAndCompleteStaleReservationMapping(
+      PerDeviceState& state, const PendingDeallocationKey& key)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+
+  // Completes only the stale allocator or reservation mapping that conflicts
+  // with the current request, leaving unrelated stale mappings reusable.
+  absl::Status WaitAndCompleteStaleOverlap(PerDeviceState& state,
+                                           const OverlappingRecord& overlap)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
   // Device ordinal -> per-device allocator state. Populated at construction by
