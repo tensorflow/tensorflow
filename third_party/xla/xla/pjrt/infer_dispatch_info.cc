@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
@@ -237,6 +238,23 @@ absl::StatusOr<PjRtLoadedExecutableDispatchInfo> InferDispatchInfo(
     std::shared_ptr<const xla::PjRtLayout> layout;
     ABSL_ASSIGN_OR_RETURN((std::tie(shape, layout)),
                      get_xla_shape(hlo_sharding, main.getArgumentTypes()[i]));
+
+    // Inputs feeding PadRealToStatic custom calls are bounded dynamic tensors
+    // supplied without the TPU hardware dynamic metadata prefix (0 bytes).
+    // During async compilation, InferDispatchInfo is called on the MLIR module
+    // before TpuLayoutAssignment runs, so we must set prefix bytes to 0 here to
+    // ensure the inferred parameter layout matches the actual compiled layout.
+    for (mlir::Operation* user : main.getArgument(i).getUsers()) {
+      if (auto attr =
+              user->getAttrOfType<mlir::StringAttr>("call_target_name")) {
+        if (attr.getValue() == "PadRealToStatic" &&
+            user->getNumOperands() > 0 &&
+            user->getOperand(0) == main.getArgument(i)) {
+          shape.mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
+          layout = std::make_shared<PjRtLayout>(shape.layout());
+        }
+      }
+    }
 
     parameter_device_shapes.push_back(shape);
     extras->parameter_shardings->push_back(hlo_sharding.ToProto());
