@@ -27,11 +27,14 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
 
 using ::testing::UnorderedElementsAre;
+using ::tsl::testing::IsOkAndHolds;
+using ::tsl::testing::StatusIs;
 
 class LogicalBufferAnalysisTest : public HloHardwareIndependentTestBase {
  protected:
@@ -40,11 +43,11 @@ class LogicalBufferAnalysisTest : public HloHardwareIndependentTestBase {
   // Verifies that a buffer is defined by `instruction` at `index` and matches.
   void VerifyBufferDefinedAt(HloInstruction* instruction,
                              const ShapeIndex& index) {
-    const LogicalBuffer& buffer = analysis_->GetBuffer(instruction, index);
-    EXPECT_EQ(buffer.instruction(), instruction);
-    EXPECT_EQ(buffer.index(), index);
-    const LogicalBuffer& buffer_by_id = analysis_->GetBuffer(buffer.id());
-    EXPECT_EQ(&buffer_by_id, &buffer);
+    ASSERT_OK_AND_ASSIGN(LogicalBuffer * buffer,
+                         analysis_->GetBuffer(instruction, index));
+    EXPECT_EQ(buffer->instruction(), instruction);
+    EXPECT_EQ(buffer->index(), index);
+    EXPECT_THAT(analysis_->GetBuffer(buffer->id()), IsOkAndHolds(buffer));
   }
 
   // Verifies that no buffer is defined by `instruction` at `index`.
@@ -401,6 +404,41 @@ TEST_F(LogicalBufferAnalysisTest, CustomCallAliasingWithDataflowFlag) {
     HloInstruction* ccall = FindInstruction(module.get(), "ccall");
     VerifyNoBufferDefinedAt(ccall, {});
   }
+}
+
+TEST_F(LogicalBufferAnalysisTest, InvalidGetBufferThrows) {
+  const absl::string_view hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    ROOT const = f32[] constant(1.0)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(module.get()));
+
+  HloInstruction* param = FindInstruction(module.get(), "p0");
+
+  EXPECT_THAT(analysis_->GetBuffer(param, {0}),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(LogicalBufferAnalysisTest, InvalidGetBufferIdBehavior) {
+  const absl::string_view hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    ROOT const = f32[] constant(1.0)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(module.get()));
+
+  // GetBuffer with invalid ID of 100 on a module containing 2 buffers.
+  EXPECT_THAT(analysis_->GetBuffer(100),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace
