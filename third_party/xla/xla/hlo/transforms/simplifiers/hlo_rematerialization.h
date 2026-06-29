@@ -27,6 +27,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -374,6 +375,14 @@ class HloRematerialization : public HloPassInterface {
   absl::StatusOr<int64_t> CalledComputationsMemoryUsage(
       const HloInstruction* instruction,
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
+
+  // Checks if rematerialization has taken too long and sets a status variable
+  // to warn the user if so.
+  void CheckTimeLimit();
+
+  absl::Time start_time_;
+  bool warned_too_long_ = false;
+  bool warned_too_little_progress_ = false;
 
   const Options options_;
 
