@@ -254,6 +254,11 @@ class HloDataflowAnalysis {
   bool UpdateAsyncStartValueSet(HloInstruction* async_start);
   bool UpdateAsyncUpdateValueSet(HloInstruction* async_update);
   bool UpdateAsyncDoneValueSet(HloInstruction* async_done);
+  // Updates the value set for a particular operand of an async-start
+  // instruction. Returns whether the instruction value set changed.
+  bool UpdateAsyncChainOperandValueSet(HloInstruction* async_start,
+                                       int64_t operand_index);
+
   bool UpdateCopyStartValueSet(HloInstruction* copy_start);
   bool UpdateCopyDoneValueSet(HloInstruction* copy_done);
   bool UpdateOptimizationBarrierValueSet(HloInstruction* barrier);

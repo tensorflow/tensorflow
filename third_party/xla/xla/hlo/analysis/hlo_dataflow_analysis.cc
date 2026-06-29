@@ -442,30 +442,37 @@ bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
   return changed;
 }
 
+bool HloDataflowAnalysis::UpdateAsyncChainOperandValueSet(
+    HloInstruction* async_start, int64_t operand_index) {
+  CHECK_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
+  bool changed = false;
+  const HloInstruction* operand = async_start->operand(operand_index);
+  ShapeUtil::ForEachSubshape(
+      operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (!subshape.IsArray() && !subshape.IsToken()) {
+          return;
+        }
+        const HloValueSet& operand_value_set = GetValueSet(operand, index);
+
+        ShapeIndex output_index = {0, operand_index};
+        output_index.insert(output_index.end(), index.begin(), index.end());
+
+        HloValueSet& value_set = GetMutableValueSet(async_start, output_index);
+        if (value_set != operand_value_set) {
+          value_set = operand_value_set;
+          changed = true;
+        }
+      });
+  return changed;
+}
+
 bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
     HloInstruction* async_start) {
   CHECK_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
   bool changed = false;
   // AsyncStart forwards the operand values to element {0} of its output.
   for (int64_t i = 0; i < async_start->operand_count(); ++i) {
-    const HloInstruction* operand = async_start->operand(i);
-    ShapeUtil::ForEachSubshape(
-        operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-          if (!subshape.IsArray() && !subshape.IsToken()) {
-            return;
-          }
-          const HloValueSet& operand_value_set = GetValueSet(operand, index);
-
-          ShapeIndex output_index = {0, i};
-          output_index.insert(output_index.end(), index.begin(), index.end());
-
-          HloValueSet& value_set =
-              GetMutableValueSet(async_start, output_index);
-          if (value_set != operand_value_set) {
-            value_set = operand_value_set;
-            changed = true;
-          }
-        });
+    changed |= UpdateAsyncChainOperandValueSet(async_start, i);
   }
   if (!HloInstruction::IsThreadIncluded(async_start->async_execution_thread(),
                                         execution_threads_)) {
