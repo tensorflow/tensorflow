@@ -242,7 +242,6 @@ cc_library(
         "//xla/service:call_graph",
         "//xla/service:hlo_phi_graph",
         "//xla/service:hlo_value",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
