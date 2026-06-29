@@ -21,10 +21,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -96,10 +99,10 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
         *result = GetMaxWidthRowSplit(row_partition_tensor);
         return absl::OkStatus();
       default:
-        return errors::InvalidArgument(
-            "Cannot handle partition type ",
-            RowPartitionTypeToString(
-                GetRowPartitionTypeByDimension(dimension - 1)));
+        return absl::InvalidArgumentError(
+            absl::StrCat("Cannot handle partition type ",
+                         RowPartitionTypeToString(
+                             GetRowPartitionTypeByDimension(dimension - 1))));
     }
   }
 
@@ -276,9 +279,9 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     INDEX_TYPE current_value_rowid = value_rowids(0);
 
     if (current_value_rowid >= parent_output_index.size()) {
-      return errors::InvalidArgument(
-          "Got current_value_rowid=", current_value_rowid,
-          " which is not less than ", parent_output_index.size());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Got current_value_rowid=", current_value_rowid,
+                       " which is not less than ", parent_output_index.size()));
     }
 
     INDEX_TYPE current_output_index = parent_output_index[current_value_rowid];
@@ -286,10 +289,10 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     for (INDEX_TYPE i = 1; i < index_size; ++i) {
       INDEX_TYPE next_value_rowid = value_rowids(i);
       if (next_value_rowid < current_value_rowid) {
-        return errors::InvalidArgument(
-            "value_rowids must be monotonically "
-            "increasing, but got ",
-            next_value_rowid, " after ", current_value_rowid);
+        return absl::InvalidArgumentError(
+            absl::StrCat("value_rowids must be monotonically "
+                         "increasing, but got ",
+                         next_value_rowid, " after ", current_value_rowid));
       }
       if (next_value_rowid == current_value_rowid) {
         if (current_output_index >= 0) {
@@ -305,9 +308,9 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
         current_value_rowid = next_value_rowid;
 
         if (next_value_rowid >= parent_output_index.size()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Got next_value_rowid=", next_value_rowid,
-              " which is not less than ", parent_output_index.size());
+              " which is not less than ", parent_output_index.size()));
         }
 
         current_output_index = parent_output_index[next_value_rowid];
@@ -337,18 +340,18 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
             output_size, result);
       case RowPartitionType::ROW_SPLITS:
         if (row_partition_tensor.size() - 1 > parent_output_index.size()) {
-          return errors::InvalidArgument(
-              "Row partition size is greater than output size: ",
-              row_partition_tensor.size() - 1, " > ",
-              parent_output_index.size());
+          return absl::InvalidArgumentError(
+              absl::StrCat("Row partition size is greater than output size: ",
+                           row_partition_tensor.size() - 1, " > ",
+                           parent_output_index.size()));
         }
         return CalculateOutputIndexRowSplit(
             row_partition_tensor, parent_output_index, output_index_multiplier,
             output_size, result);
       default:
-        return errors::InvalidArgument(
-            "Unsupported partition type:",
-            RowPartitionTypeToString(partition_type));
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unsupported partition type:",
+                         RowPartitionTypeToString(partition_type)));
     }
   }
 
@@ -532,6 +535,14 @@ class RaggedTensorToTensorOp : public RaggedTensorToTensorBaseOp<INDEX_TYPE> {
     for (INDEX_TYPE src_i = 0; src_i <= output_index_size; ++src_i) {
       // dst_i is the destination where the value at src_i should be copied.
       INDEX_TYPE dst_i = src_i < output_index_size ? output_index[src_i] : -1;
+      if (dst_i >= 0) {
+        OP_REQUIRES(
+            context,
+            (dst_i + 1) * value_element_size <= output_tensor->NumElements(),
+            absl::InternalError(absl::StrCat(
+                "Destination index out of bounds: ", dst_i, " vs ",
+                output_tensor->NumElements() / value_element_size)));
+      }
 
       // If we're still in a contiguous region, then update dst_end go to the
       // next src_i.

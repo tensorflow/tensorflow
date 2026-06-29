@@ -817,7 +817,7 @@ class DecodeImageV2Op : public OpKernel {
     const bool use_threads = (width * height > 1024 * 1024);
     uint8_t* buffer = webp::DecodeWebPAnimation(
         input,
-        [&](int num_frames, int width, int height, int channls) -> uint8_t* {
+        [&](int num_frames, int width, int height, int channels) -> uint8_t* {
           // If expand_animations is false, we want {height, width, channels}
           // otherwise, we want {num_frames, height, width, channels} even if
           // it's a single frame.

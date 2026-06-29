@@ -34,14 +34,17 @@ __global__ void IndicesFlattenKernel(const int64_t* __restrict__ indices,
                                      const int64_t ndims,
                                      int64_t* __restrict__ flat_indices) {
   GPU_1D_KERNEL_LOOP(thread_idx, nnz) {
-    eigen_assert(ndims >= 1);
-    int64_t output_idx = indices[thread_idx * ndims + ndims - 1];
-    int64_t strides = 1;
-    for (int i = ndims - 2; i >= 0; i--) {
-      strides *= dims[i + 1];
-      output_idx += indices[thread_idx * ndims + i] * strides;
+    if (ndims < 1) {
+      flat_indices[thread_idx] = 0;  // Scalar.
+    } else {
+      int64_t output_idx = indices[thread_idx * ndims + ndims - 1];
+      int64_t strides = 1;
+      for (int i = ndims - 2; i >= 0; i--) {
+        strides *= dims[i + 1];
+        output_idx += indices[thread_idx * ndims + i] * strides;
+      }
+      flat_indices[thread_idx] = output_idx;
     }
-    flat_indices[thread_idx] = output_idx;
   }
 }
 

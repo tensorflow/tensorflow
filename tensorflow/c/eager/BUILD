@@ -926,6 +926,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@xla//xla/tsl/c:tsl_status_internal",

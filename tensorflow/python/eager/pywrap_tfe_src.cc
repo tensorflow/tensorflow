@@ -2027,6 +2027,10 @@ PyObject* TFE_Py_TapeSetNew(PyObject* persistent,
 }
 
 void TFE_Py_TapeSetAdd(PyObject* tape) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   Py_INCREF(tape);
   TFE_Py_Tape* tfe_tape = reinterpret_cast<TFE_Py_Tape*>(tape);
   if (!GetTapeSet()->insert(tfe_tape).second) {
@@ -2045,13 +2049,21 @@ PyObject* TFE_Py_TapeSetIsEmpty() {
 }
 
 void TFE_Py_TapeSetRemove(PyObject* tape) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   auto* stack = GetTapeSet();
+  bool erased = false;
   if (stack != nullptr) {
-    stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape));
+    erased = stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape)) > 0;
   }
   // We kept a reference to the tape in the set to ensure it wouldn't get
   // deleted under us; cleaning it up here.
-  Py_DECREF(tape);
+  // We only decref if the tape was actually erased from the set.
+  if (erased) {
+    Py_DECREF(tape);
+  }
 }
 
 static std::vector<int64_t> MakeIntList(PyObject* list) {
@@ -2210,6 +2222,10 @@ PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors) {
 }
 
 void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   if (!CouldBackprop()) {
     return;
   }
