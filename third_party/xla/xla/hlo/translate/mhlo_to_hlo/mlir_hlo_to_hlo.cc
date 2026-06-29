@@ -1001,6 +1001,10 @@ static void ExtractOriginalValuesFromFunction(
   }
 }
 
+// Returns a projected OriginalValueProto that retains only
+// elements with a matching top-level shape index of `result_num` and strips
+// the top-level index prefix from the shape index of each element. If
+
 static bool SomeOptionalShardingsAreSet(
     llvm::ArrayRef<std::optional<xla::OpSharding>> shardings) {
   return llvm::any_of(shardings,
@@ -1191,7 +1195,11 @@ class ConvertToHloModule {
       llvm::ArrayRef<mlir::Value> implicit_results = {},
       bool ensure_single_arg = false,
       llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings = {},
-      llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings = {});
+      llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings = {},
+      llvm::ArrayRef<std::optional<xla::OriginalValueProto>>
+          arg_original_value_protos = {});
+
+  std::optional<xla::OriginalValueProto> GetOriginalValue(mlir::Value value);
 
   // Lower a single `Block` to a `XlaComputation`
   LogicalResult LowerBasicBlockAsFunction(
@@ -1302,6 +1310,9 @@ class ConvertToHloModule {
 
   // Map between function and lowered computation.
   FunctionLoweringMap lowered_computation_;
+
+  // Map between MLIR Value and its HLO OriginalValueProto.
+  llvm::DenseMap<mlir::Value, xla::OriginalValueProto> value_original_values_;
 
   // Unique suffix to give to the name of the next lowered region.
   size_t region_id_ = 0;
@@ -2052,18 +2063,75 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
     }
   }
 
-  // The body of the While needs to return the same number of values as its
-  // arguments, as they are carried over to the next iteration. Thus, we pass
-  // the `implicit_operands` as `implicit_results`, to carry them over as is.
+  std::optional<xla::OriginalValueProto> original_value_proto;
+  if (auto attr = op->getAttrOfType<mlir::mhlo::OriginalValueAttr>(
+          xla::kMhloOriginalValueAttr)) {
+    original_value_proto = xla::ConvertOriginalValue(attr);
+  }
+
+  bool has_any_original_value = original_value_proto.has_value();
+  llvm::SmallVector<std::optional<xla::OriginalValueProto>>
+      implicit_original_values(implicit_operands.size(), std::nullopt);
+  for (auto [implicit_index, implicit_operand] :
+       llvm::enumerate(implicit_operands)) {
+    auto implicit_val = ctx.converter->GetOriginalValue(implicit_operand);
+    if (implicit_val) {
+      has_any_original_value = true;
+      implicit_original_values[implicit_index] = implicit_val;
+    }
+  }
+
+  llvm::SmallVector<std::optional<xla::OriginalValueProto>>
+      arg_original_value_protos;
+
+  // Appends the original values of the implicit results to the result original
+  // value, since they will be passed as additional operands in HLO. The
+  // implicit operands are unchanged in the while loop, so the original value
+  // of the implicit results is the same as that of the implicit operands.
+  if (has_any_original_value) {
+    arg_original_value_protos.resize(
+        op.getNumResults() + implicit_operands.size(), std::nullopt);
+    for (unsigned i = 0; i < op.getNumResults(); ++i) {
+      if (original_value_proto) {
+        if (op.getNumResults() > 1) {
+          arg_original_value_protos[i] = xla::ProjectOriginalValueProto(
+              original_value_proto, i, op.getNumResults());
+        } else if (op.getNumResults() == 1) {
+          arg_original_value_protos[i] = original_value_proto;
+        }
+      }
+      if (!arg_original_value_protos[i]) {
+        arg_original_value_protos[i] = xla::CreateEmptyOriginalValueProto(
+            xla::TypeToShape(op.getResult(i).getType()));
+      }
+    }
+
+    for (auto [implicit_index, implicit_operand] :
+         llvm::enumerate(implicit_operands)) {
+      unsigned arg_index = op.getNumResults() + implicit_index;
+      if (implicit_original_values[implicit_index]) {
+        arg_original_value_protos[arg_index] =
+            implicit_original_values[implicit_index];
+      } else {
+        arg_original_value_protos[arg_index] =
+            xla::CreateEmptyOriginalValueProto(
+                xla::TypeToShape(implicit_operand.getType()));
+      }
+    }
+  }
+
   if (failed(ctx.converter->LowerRegionAsComputation(
           &op.getBody(), body, implicit_operands,
           /*implicit_results=*/implicit_operands,
           /*ensure_single_arg=*/true, /*arg_shardings=*/res_shardings,
-          /*ret_shardings=*/res_shardings)) ||
+          /*ret_shardings=*/res_shardings,
+          /*arg_original_value_protos=*/arg_original_value_protos)) ||
       failed(ctx.converter->LowerRegionAsComputation(
           &op.getCond(), condition, implicit_operands,
           /*implicit_results=*/{},
-          /*ensure_single_arg=*/true, /*arg_shardings=*/res_shardings))) {
+          /*ensure_single_arg=*/true, /*arg_shardings=*/res_shardings,
+          /*ret_shardings=*/{},
+          /*arg_original_value_protos=*/arg_original_value_protos))) {
     return failure();
   }
 
@@ -2080,7 +2148,17 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
     operand = Tuple(ctx.builder, operands);
   }
 
-  xla::XlaOp whileop = xla::While(condition, body, operand);
+  xla::XlaOp whileop;
+  {
+    std::optional<xla::OriginalValueProto> composed_proto;
+    if (has_any_original_value) {
+      composed_proto =
+          xla::ComposeOriginalValueProto(arg_original_value_protos);
+    }
+    xla::XlaScopedOriginalValueAssignment original_value(ctx.builder,
+                                                         composed_proto);
+    whileop = xla::While(condition, body, operand);
+  }
 
   auto& value_map = *ctx.values;
   auto shape_or = whileop.builder()->GetShape(whileop);
@@ -5233,6 +5311,11 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
   }
   ExtractFrontendAttributesFromFunction(f, &arg_fe_attrs);
   ExtractOriginalValuesFromFunction(f, &arg_original_value_protos);
+  for (int i = 0; i < f.getNumArguments(); ++i) {
+    if (arg_original_value_protos[i]) {
+      value_original_values_[f.getArgument(i)] = *arg_original_value_protos[i];
+    }
+  }
   ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings,
                                entry_function);
   xla::XlaComputationId computation;
@@ -5423,6 +5506,11 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
                        ? std::nullopt
                        : arg_original_value_protos[arg.getArgNumber()]);
       lowering[arg] = xla::GetTupleElement(tuple, arg.getArgNumber());
+      if (!arg_original_value_protos.empty() &&
+          arg_original_value_protos[arg.getArgNumber()]) {
+        value_original_values_[arg] =
+            *arg_original_value_protos[arg.getArgNumber()];
+      }
     }
   } else {
     if (ensure_single_arg) {
@@ -5462,6 +5550,10 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
                            ? std::nullopt
                            : arg_original_value_protos[num]);
           lowering[arg] = xla::GetTupleElement(tuple, num);
+          if (!arg_original_value_protos.empty() &&
+              arg_original_value_protos[num]) {
+            value_original_values_[arg] = *arg_original_value_protos[num];
+          }
         }
         for (auto [implicit_index, implicit_operand] :
              llvm::enumerate(implicit_operands)) {
@@ -5469,7 +5561,16 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
           xla::XlaScopedShardingAssignment scoped_sharding(
               builder,
               arg_shardings.empty() ? std::nullopt : arg_shardings[arg_index]);
+          xla::XlaScopedOriginalValueAssignment original_value(
+              builder, arg_original_value_protos.empty()
+                           ? std::nullopt
+                           : arg_original_value_protos[arg_index]);
           lowering[implicit_operand] = xla::GetTupleElement(tuple, arg_index);
+          if (!arg_original_value_protos.empty() &&
+              arg_original_value_protos[arg_index]) {
+            value_original_values_[implicit_operand] =
+                *arg_original_value_protos[arg_index];
+          }
         }
       } else if (args_size == 1) {
         // Save the location information as a name. For example JAX will set the
@@ -5494,6 +5595,10 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
           name = kArgPrefix;
         }
         lowering[arg] = xla::Parameter(builder, 0, arg_shapes[0], name);
+        if (!arg_original_value_protos.empty() &&
+            arg_original_value_protos.front()) {
+          value_original_values_[arg] = *arg_original_value_protos.front();
+        }
       } else {
         // Applicable only for IfOp or CaseOp. No implicit operands implies no
         // xla parameters. In this case, we create an empty tuple as the
@@ -5537,6 +5642,10 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
               std::vector<bool>(entry_args_same_across_replicas[num],
                                 xla::ShapeUtil::GetLeafCount(shape)));
         }
+        if (!arg_original_value_protos.empty() &&
+            arg_original_value_protos[num]) {
+          value_original_values_[arg] = *arg_original_value_protos[num];
+        }
         builder->ClearFrontendAttributes();
       }
     }
@@ -5562,12 +5671,48 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   return success();
 }
 
+std::optional<xla::OriginalValueProto> ConvertToHloModule::GetOriginalValue(
+    mlir::Value value) {
+  auto it = value_original_values_.find(value);
+  if (it != value_original_values_.end()) {
+    return it->second;
+  }
+
+  if (auto result = llvm::dyn_cast<mlir::OpResult>(value)) {
+    auto op = result.getDefiningOp();
+    if (op) {
+      if (auto attr = op->getAttrOfType<mlir::mhlo::OriginalValueAttr>(
+              xla::kMhloOriginalValueAttr)) {
+        auto op_original_value = xla::ConvertOriginalValue(attr);
+        if (op_original_value) {
+          for (auto res : op->getResults()) {
+            auto res_num = res.getResultNumber();
+            auto projected = xla::ProjectOriginalValueProto(
+                op_original_value, res_num, op->getNumResults());
+            if (projected) {
+              value_original_values_[res] = *projected;
+            }
+          }
+          auto it = value_original_values_.find(value);
+          if (it != value_original_values_.end()) {
+            return it->second;
+          }
+        }
+      }
+    }
+  }
+
+  return std::nullopt;
+}
+
 LogicalResult ConvertToHloModule::LowerRegionAsComputation(
     mlir::Region* region, xla::XlaComputationId& func,
     llvm::ArrayRef<mlir::Value> implicit_operands,
     llvm::ArrayRef<mlir::Value> implicit_results, bool ensure_single_arg,
     llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
-    llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings) {
+    llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
+    llvm::ArrayRef<std::optional<xla::OriginalValueProto>>
+        arg_original_value_protos) {
   std::unique_ptr<xla::XlaBuilder> builder = module_builder_.CreateSubBuilder(
       absl::StrCat(kRegionPrefix, region_id_++));
   if (failed(LowerBasicBlockAsFunction(
@@ -5575,8 +5720,7 @@ LogicalResult ConvertToHloModule::LowerRegionAsComputation(
           /*is_entry_function=*/false,
           /*ensure_single_arg*/ ensure_single_arg,
           /*entry_args_same_across_replicas=*/{}, arg_shardings,
-          /*arg_fe_attrs=*/{},
-          /*arg_original_value_protos=*/{}, ret_shardings, func,
+          /*arg_fe_attrs=*/{}, arg_original_value_protos, ret_shardings, func,
           implicit_operands, implicit_results))) {
     return failure();
   }

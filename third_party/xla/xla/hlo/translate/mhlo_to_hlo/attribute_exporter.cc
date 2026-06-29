@@ -912,4 +912,90 @@ mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op) {
   return subshapes[0];
 }
 
+std::optional<OriginalValueProto> ProjectOriginalValueProto(
+    const std::optional<OriginalValueProto>& original_value, unsigned index,
+    unsigned num_results) {
+  if (!original_value || index >= num_results) {
+    return std::nullopt;
+  }
+
+  OriginalValueProto projected;
+  projected.set_is_synthetic_call(original_value->is_synthetic_call());
+
+  if (num_results <= 1) {
+    *projected.mutable_elements() = original_value->elements();
+    return projected;
+  }
+
+  for (const auto& element : original_value->elements()) {
+    if (element.shape_index_size() > 0 && element.shape_index(0) == index) {
+      auto* new_element = projected.add_elements();
+      for (int i = 1; i < element.shape_index_size(); ++i) {
+        new_element->add_shape_index(element.shape_index(i));
+      }
+      if (element.has_original_array()) {
+        *new_element->mutable_original_array() = element.original_array();
+      }
+    }
+  }
+
+  return projected;
+}
+
+std::optional<OriginalValueProto> ComposeOriginalValueProto(
+    llvm::ArrayRef<std::optional<OriginalValueProto>> protos) {
+  if (protos.empty()) {
+    return std::nullopt;
+  }
+
+  bool has_any_value = false;
+  for (const auto& proto : protos) {
+    if (proto) {
+      has_any_value = true;
+      break;
+    }
+  }
+  if (!has_any_value) {
+    return std::nullopt;
+  }
+
+  OriginalValueProto composed;
+  composed.set_is_synthetic_call(false);
+
+  if (protos.size() == 1) {
+    return protos[0];
+  }
+
+  for (unsigned i = 0; i < protos.size(); ++i) {
+    if (!protos[i]) {
+      continue;
+    }
+    for (const auto& element : protos[i]->elements()) {
+      auto* new_element = composed.add_elements();
+      new_element->add_shape_index(i);
+      for (int64_t idx : element.shape_index()) {
+        new_element->add_shape_index(idx);
+      }
+      if (element.has_original_array()) {
+        *new_element->mutable_original_array() = element.original_array();
+      }
+    }
+  }
+
+  return composed;
+}
+
+OriginalValueProto CreateEmptyOriginalValueProto(const Shape& shape) {
+  OriginalValueProto proto;
+  proto.set_is_synthetic_call(false);
+  ShapeUtil::ForEachLeafShape(
+      shape, [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+        auto* element = proto.add_elements();
+        for (int64_t idx : index) {
+          element->add_shape_index(idx);
+        }
+      });
+  return proto;
+}
+
 }  // namespace xla
