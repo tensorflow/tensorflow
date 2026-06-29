@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+
+#include <gtest/gtest.h>
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/custom_call_status_test_c_caller.h"
 #include "tsl/platform/test.h"
