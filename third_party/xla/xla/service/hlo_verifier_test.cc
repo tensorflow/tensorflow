@@ -534,6 +534,11 @@ TEST_F(HloVerifierTest, CheckConditionalBranchContainsAsyncThread) {
   const char* const hlo_string = R"(
     HloModule Module
 
+    async_computation {
+      p0 = f32[4] parameter(0)
+      ROOT custom-call = f32[4] custom-call(p0), custom_call_target="foo"
+    }
+
     branch0 {
       tparam = f32[4] parameter(0)
       ROOT tgte1 = f32[4] ceil(tparam)
@@ -541,8 +546,8 @@ TEST_F(HloVerifierTest, CheckConditionalBranchContainsAsyncThread) {
 
     branch1 {
       fparam = f32[4] parameter(0)
-      %async-start = ((f32[4]), f32[4], s32[]) custom-call-start(f32[4] fparam), async_execution_thread="parallel_thread", custom_call_target="foo"
-      ROOT %async-done = f32[4] custom-call-done(((f32[4]), f32[4], s32[]) %async-start)
+      %async-start = ((f32[4]), f32[4], s32[]) call-start(fparam), to_apply=async_computation, async_execution_thread="parallel_thread"
+      ROOT %async-done = f32[4] call-done(%async-start)
     }
 
     branch2 {
@@ -1100,10 +1105,15 @@ TEST_F(HloVerifierTestLayoutSensitive, AsyncStartAndAsyncDone) {
   const char* const hlo_string = R"(
   HloModule Module
 
+  async_computation {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    ROOT custom-call = f32[2,3]{1,0:S(2)} custom-call(p0), custom_call_target="foo"
+  }
+
   ENTRY AsyncStartAndAsyncDone {
     p0 = f32[2,3]{1,0:S(1)} parameter(0)
-    async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-start(p0), custom_call_target="foo"
-    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-start)
+    async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) call-start(p0), to_apply=async_computation
+    ROOT async-done = f32[2,3]{1,0:S(2)} call-done(async-start)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1117,12 +1127,17 @@ TEST_F(HloVerifierTestLayoutSensitive, AsyncStartAndAsyncUpdateAndAsyncDone) {
   const char* const hlo_string = R"(
   HloModule Module
 
+  async_computation {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    ROOT custom-call = f32[2,3]{1,0:S(2)} custom-call(p0), custom_call_target="foo"
+  }
+
   ENTRY AsyncStartAndAsyncUpdateAndAsyncDone {
     p0 = f32[2,3]{1,0:S(1)} parameter(0)
-    async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-start(p0), custom_call_target="foo"
-    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-start)
-    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-update.1)
-    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2)
+    async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) call-start(p0), to_apply=async_computation
+    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) call-update(async-start)
+    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) call-update(async-update.1)
+    ROOT async-done = f32[2,3]{1,0:S(2)} call-done(async-update.2)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1137,12 +1152,17 @@ TEST_F(HloVerifierTestLayoutSensitive,
   const char* const hlo_string = R"(
   HloModule Module
 
+  async_computation {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    ROOT custom-call = f32[2,3]{1,0:S(2)} custom-call(p0), custom_call_target="foo"
+  }
+
   ENTRY AsyncStartAndAsyncUpdateAndAsyncDone {
     p0 = f32[2,3]{1,0:S(1)} parameter(0)
-    async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-start(p0), async_execution_thread="parallel_thread", custom_call_target="foo"
-    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-start)
-    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-update.1)
-    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2)
+    async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) call-start(p0), to_apply=async_computation, async_execution_thread="parallel_thread"
+    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) call-update(async-start)
+    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) call-update(async-update.1)
+    ROOT async-done = f32[2,3]{1,0:S(2)} call-done(async-update.2)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1156,10 +1176,15 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongType) {
   const char* const hlo_string = R"(
   HloModule Module
 
+  async_computation {
+    p0 = f32[2,3] parameter(0)
+    ROOT custom-call = f32[3,2] custom-call(p0), custom_call_target="foo"
+  }
+
   ENTRY AsyncStartAndAsyncDone {
     p0 = f32[2,3] parameter(0)
-    async-start = ((f32[2,3]), f32[3,2], u32[]) custom-call-start(p0), custom_call_target="foo"
-    ROOT async-done = f32[2,3] custom-call-done(async-start)
+    async-start = ((f32[2,3]), f32[3,2], u32[]) call-start(p0), to_apply=async_computation
+    ROOT async-done = f32[2,3] call-done(async-start)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1168,19 +1193,24 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongType) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              HasSubstr("async-done expects the shape of output to match the "
-                        "async shape at index {1}"));
+              HasSubstr("Expected instruction to have shape equal to f32[3,2], "
+                        "actual shape is f32[2,3]"));
 }
 
 TEST_F(HloVerifierTest, AsyncStartMultipleAsyncDone) {
   const char* const hlo_string = R"(
   HloModule Module
 
+  async_computation {
+    p0 = f32[2,3] parameter(0)
+    ROOT custom-call = f32[2,3] custom-call(p0), custom_call_target="foo"
+  }
+
   ENTRY AsyncStartAndAsyncDone {
     p0 = f32[2,3] parameter(0)
-    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
-    async-done.1 = f32[2,3] custom-call-done(async-start)
-    async-done.2 = f32[2,3] custom-call-done(async-start)
+    async-start = ((f32[2,3]), f32[2,3], u32[]) call-start(p0), to_apply=async_computation
+    async-done.1 = f32[2,3] call-done(async-start)
+    async-done.2 = f32[2,3] call-done(async-start)
     ROOT tuple = (f32[2,3], f32[2,3]) tuple(async-done.1, async-done.2)
   }
   )";
@@ -1198,9 +1228,14 @@ TEST_F(HloVerifierTest, AsyncStartNoAsyncDone) {
   const char* const hlo_string = R"(
   HloModule Module
 
+  async_computation {
+    p0 = f32[2,3] parameter(0)
+    ROOT custom-call = f32[2,3] custom-call(p0), custom_call_target="foo"
+  }
+
   ENTRY AsyncStartAndAsyncDone {
     p0 = f32[2,3] parameter(0)
-    ROOT async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    ROOT async-start = ((f32[2,3]), f32[2,3], u32[]) call-start(p0), to_apply=async_computation
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1217,10 +1252,15 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncUpdateNoAsyncDone) {
   const char* const hlo_string = R"(
   HloModule Module
 
+  async_computation {
+    p0 = f32[2,3] parameter(0)
+    ROOT custom-call = f32[2,3] custom-call(p0), custom_call_target="foo"
+  }
+
   ENTRY AsyncStartAndAsyncDone {
     p0 = f32[2,3] parameter(0)
-    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
-    ROOT async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start)
+    async-start = ((f32[2,3]), f32[2,3], u32[]) call-start(p0), to_apply=async_computation
+    ROOT async-update = ((f32[2,3]), f32[2,3], u32[]) call-update(async-start)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1237,12 +1277,17 @@ TEST_F(HloVerifierTest, AsyncDoneNoAsyncStart) {
   const char* const hlo_string = R"(
   HloModule Module
 
+  async_computation {
+    p0 = f32[2,3] parameter(0)
+    ROOT custom-call = f32[2,3] custom-call(p0), custom_call_target="foo"
+  }
+
   ENTRY AsyncDoneNoAsyncStart {
     p0 = f32[2,3] parameter(0)
     p1 = u32[] parameter(1)
     tuple = ((f32[2,3]), f32[2,3], u32[]) tuple(p0, p0, p1)
-    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
-    ROOT async-done = f32[2,3] custom-call-done(async-start)
+    async-start = ((f32[2,3]), f32[2,3], u32[]) call-start(p0), to_apply=async_computation
+    ROOT async-done = f32[2,3] call-done(async-start)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1269,13 +1314,18 @@ TEST_F(HloVerifierTest, AsyncUpdateAndAsyncDoneNoAsyncStart) {
   const char* const hlo_string = R"(
   HloModule Module
 
+  async_computation {
+    p0 = f32[2,3] parameter(0)
+    ROOT custom-call = f32[2,3] custom-call(p0), custom_call_target="foo"
+  }
+
   ENTRY AsyncUpdateAndAsyncDoneNoAsyncStart {
     p0 = f32[2,3] parameter(0)
     p1 = u32[] parameter(1)
     tuple = ((f32[2,3]), f32[2,3], u32[]) tuple(p0, p0, p1)
-    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
-    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start)
-    ROOT async-done = f32[2,3] custom-call-done(async-update)
+    async-start = ((f32[2,3]), f32[2,3], u32[]) call-start(p0), to_apply=async_computation
+    async-update = ((f32[2,3]), f32[2,3], u32[]) call-update(async-start)
+    ROOT async-done = f32[2,3] call-done(async-update)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1320,10 +1370,9 @@ TEST_F(HloVerifierTest, AsyncOpComputationParamWrongType) {
                           ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              HasSubstr("async-start expects the async shape at index {0} to "
-                        "match async computation parameter shape"));
+              HasSubstr("expects the shape of operand 0 to match the async "
+                        "shape at index {0}"));
 }
 
 TEST_F(HloVerifierTest, AsyncOpComputationRootWrongType) {
@@ -1430,8 +1479,8 @@ TEST_F(HloVerifierTest, AsyncDoneOutputWrongType) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              HasSubstr("async-done expects the shape of output to match the "
-                        "async shape at index {1}"));
+              HasSubstr("expects the async shape at index {1} to match the "
+                        "async computation root shape"));
 }
 
 TEST_F(HloVerifierTest, AsyncOpComputationNotTrivial) {
@@ -3195,9 +3244,9 @@ TEST_F(HloVerifierTest, CheckWhileContainsAsyncThread) {
     %condition.v3 (prev.2: s32[]) -> pred[] {
       %constant.1 = s32[] constant(5)
       %prev.2 = s32[] parameter(0)
-      %async-start = ((s32[]), s32[], s32[]) custom-call-start(s32[] %prev.2), async_execution_thread="parallel_thread", custom_call_target="async_add"
-      %async-done = s32[] custom-call-done(((s32[]), s32[], s32[]) %async-start)
-      ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %async-done), direction=GT
+      %async-start = ((s32[]), s32[], s32[]) call-start(%prev.2), to_apply=%async_add, async_execution_thread="parallel_thread"
+      %async-done = s32[] call-done(%async-start)
+      ROOT %greater-than = pred[] compare(s32[] %constant.1, %async-done), direction=GT
     }
 
     ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
@@ -5220,13 +5269,17 @@ TEST_F(HloVerifierTest, VerifyBuffersAsyncCallWithoutAlias) {
   const char* const hlo = R"(
   HloModule AsyncOpsWithBuffers
 
+  async_computation {
+    p0 = b(f32[10]) parameter(0)
+    ROOT custom-call = b(f32[10]) custom-call(p0), custom_call_target="foo"
+  }
+
   ENTRY Entry {
   p0 = f32[10] parameter(0)
   b0 = b(f32[10]) custom-call(p0), custom_call_target="Pin",
     output_to_operand_aliasing={{}: (0, {})}
-  async-start = ((b(f32[10])), b(f32[10])) custom-call-start(b0),
-    custom_call_target="foo"
-  async-done = b(f32[10]) custom-call-done(async-start)
+  async-start = ((b(f32[10])), b(f32[10])) call-start(b0), to_apply=async_computation
+  async-done = b(f32[10]) call-done(async-start)
   ROOT v = f32[10]{0} custom-call(async-done), custom_call_target="Unpin",
     output_to_operand_aliasing={{}: (0, {})}
   })";
@@ -5242,13 +5295,19 @@ TEST_F(HloVerifierTest, VerifyBuffersAsyncCallWithAlias) {
   const char* const hlo = R"(
   HloModule AsyncOpsWithBuffers
 
+  async_computation {
+    p0 = b(f32[10]) parameter(0)
+    ROOT custom-call = b(f32[10]) custom-call(p0), custom_call_target="foo",
+      output_to_operand_aliasing={{}: (0, {})}
+  }
+
   ENTRY Entry {
   p0 = f32[10] parameter(0)
   b0 = b(f32[10]) custom-call(p0), custom_call_target="Pin",
     output_to_operand_aliasing={{}: (0, {})}
-  async-start = ((b(f32[10])), b(f32[10])) custom-call-start(b0),
-    custom_call_target="foo", output_to_operand_aliasing={{}: (0, {})}
-  async-done = b(f32[10]) custom-call-done(async-start)
+  async-start = ((b(f32[10])), b(f32[10])) call-start(b0), to_apply=async_computation,
+    output_to_operand_aliasing={{1}: (0, {})}
+  async-done = b(f32[10]) call-done(async-start)
   ROOT v = f32[10]{0} custom-call(async-done), custom_call_target="Unpin",
     output_to_operand_aliasing={{}: (0, {})}
   })";
