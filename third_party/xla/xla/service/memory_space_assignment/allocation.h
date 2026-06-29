@@ -551,6 +551,10 @@ class WindowPrefetchedAllocation final : public Allocation {
   int64_t prefetch_start_schedule_after() const {
     return prefetch_start_schedule_after_;
   }
+  void set_prefetch_start_schedule_after(
+      int64_t prefetch_start_schedule_after) {
+    prefetch_start_schedule_after_ = prefetch_start_schedule_after;
+  }
   int64_t prefetch_done_schedule_before() const {
     return prefetch_done_schedule_before_;
   }
