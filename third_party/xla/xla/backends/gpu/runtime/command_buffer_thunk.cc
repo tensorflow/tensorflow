@@ -210,14 +210,14 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // memory on device and this might lead to deadlocks when we have concurrent
   // NCCL operations in flight.
 
-  // If commands require initialization (and VA remapping is not enabled), we
-  // also record them into the command buffer before execution. This is required
-  // to guarantee that collective commands are recorded on all participating
-  // ranks to avoid deadlocks.
+  // If commands require an update during initialization (and VA remapping is
+  // not enabled), we also record them into the command buffer before execution.
+  // This is required to guarantee that collective commands are recorded on all
+  // participating ranks to avoid deadlocks.
   if (cmd_buffer->command_buffer->state() ==
           se::CommandBuffer::State::kCreate ||
       (command_buffer_update_mode_ != DebugOptions::NEVER_UPDATE &&
-       commands_.requires_initialization())) {
+       commands_.requires_update_on_initialize())) {
     VLOG(3) << "Initialize command buffer on device #"
             << params.executor->device_ordinal()
             << " by recoding command buffer cmd sequence"
@@ -294,7 +294,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
       cmd_buffer->command_buffer->state() == se::CommandBuffer::State::kCreate;
   bool has_commands_requiring_update =
       command_buffer_update_mode_ != DebugOptions::NEVER_UPDATE &&
-      commands_.requires_update();
+      commands_.requires_update_on_execute();
   bool needs_update =
       (command_buffer_update_mode_ == DebugOptions::ALWAYS_UPDATE ||
        command_buffer_update_mode_ == DebugOptions::CAPTURE_CMD_NEVER_UPDATE) &&
