@@ -24,14 +24,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/tsl/platform/errors.h"
+#include "xla/hlo/utils/hlo_query.h"
 
 namespace xla {
-
 absl::StatusOr<bool> CollectivesScheduleLinearizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -44,10 +41,12 @@ absl::StatusOr<bool> CollectivesScheduleLinearizer::RunImpl(
     std::unique_ptr<HloReachabilityMap> reachability;
     HloInstruction* prev_done = nullptr;
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
-      auto* next = DynCast<HloCollectiveInstruction>(inst);
-      if (!next) {
+      if (!hlo_query::IsCollectiveCommunicationOp(inst->opcode()) &&
+          !hlo_query::IsAsyncCollectiveStartOp(inst,
+                                               /*include_send_recv=*/false)) {
         continue;
       }
+      auto* next = inst;
       // Build reachability map on demand if we actually see collectives.
       if (!reachability) {
         reachability = HloReachabilityMap::Build(computation);

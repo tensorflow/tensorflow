@@ -1180,14 +1180,15 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
         // times by recording and checking the operand number of operands that
         // have been copied.
         absl::flat_hash_set<int64_t> copied_operands;
+        // If the async-start has no output-to-operand aliasing, the actual
+        // instruction that has the aliasing is the async-wrapped instruction.
+        HloInstruction* target_instruction = instruction;
+        if (instruction->opcode() == HloOpcode::kAsyncStart &&
+            instruction->output_operand_aliasing().empty()) {
+          target_instruction = instruction->async_wrapped_instruction();
+        }
         for (const auto& operand_and_output_index :
-             alias_info_->GetInPlaceInputOutputPairs(
-                 // Input/output buffer aliasing analysis needs to be done
-                 // directly with the wrapped instruction when the compiler sees
-                 // an async box.
-                 instruction->opcode() == HloOpcode::kAsyncStart
-                     ? instruction->async_wrapped_instruction()
-                     : instruction)) {
+             alias_info_->GetInPlaceInputOutputPairs(target_instruction)) {
           const HloOperandIndex& operand_index = operand_and_output_index.first;
           if (copied_operands.contains(operand_index.operand_number)) {
             continue;
@@ -1243,6 +1244,11 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
     // Buffers are non-copyable and needed copies are added to transition
     // in and out non-copyable values.
     if (ShapeUtil::GetSubshape(instruction->shape(), index).IsBuffer()) {
+      return;
+    }
+    // Copies for async computations are determined by the async start/done
+    // instructions.
+    if (instruction->parent()->IsAsyncComputation()) {
       return;
     }
     VLOG(2) << "Adding index to copy: " << instruction->ToString() << "@"

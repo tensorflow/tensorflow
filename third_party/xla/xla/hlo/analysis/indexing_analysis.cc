@@ -1650,8 +1650,7 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
       // b/65689298.
       instr->opcode() == HloOpcode::kMap ||
       // For a single device, all-reduce is an elementwise op.
-      instr->opcode() == HloOpcode::kAllReduceStart ||
-      instr->opcode() == HloOpcode::kAllReduceDone) {
+      instr->opcode() == HloOpcode::kAllReduce) {
     return ComputeOutputToInputCwiseOpIndexing(instr, mlir_context);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
@@ -1743,8 +1742,7 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
       // b/65689298.
       instr->opcode() == HloOpcode::kMap ||
       // For a single device, all-reduce has 1:1 output to input mapping.
-      instr->opcode() == HloOpcode::kAllReduceStart ||
-      instr->opcode() == HloOpcode::kAllReduceDone) {
+      instr->opcode() == HloOpcode::kAllReduce) {
     return ComputeInputToOutputCwiseOpIndexing(instr, mlir_context);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {

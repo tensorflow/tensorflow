@@ -669,9 +669,8 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfAllReduceOp) {
     }
     ENTRY %module {
       %p0 = f32[2,8,256] parameter(0)
-      %ar-start = f32[2,8,256] all-reduce-start(p0), replica_groups={{0,1}},
+      ROOT %ar = f32[2,8,256] all-reduce(p0), replica_groups={{0,1}},
         to_apply=%add
-      ROOT %ar-done = f32[2,8,256] all-reduce-done(%ar-start)
     }
   )");
   ASSERT_OK_AND_ASSIGN(
@@ -679,23 +678,11 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfAllReduceOp) {
       TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
                           &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
-      auto ar_done_operands,
+      auto ar_operands,
       PropagateTileToInput(
           *tiling_space, *root,
           GetTestTile(*tiling_space, root->shape().dimensions()), 0));
-  EXPECT_THAT(ar_done_operands, MatchToString(R"(
-    0) (tid_0, tid_1, tid_2)
-      -> offsets [tid_0 * ts_0, tid_1 * ts_1, tid_2 * ts_2]
-         sizes [ts_0, ts_1, ts_2]
-         strides [1, 2, 3]
-         upper bounds [2, 8, 256]
-  )"));
-  ASSERT_OK_AND_ASSIGN(
-      auto ar_start_operands,
-      PropagateTileToInput(
-          *tiling_space, *root->operand(0),
-          GetTestTile(*tiling_space, root->shape().dimensions()), 0));
-  EXPECT_THAT(ar_start_operands, MatchToString(R"(
+  EXPECT_THAT(ar_operands, MatchToString(R"(
     0) (tid_0, tid_1, tid_2)
       -> offsets [tid_0 * ts_0, tid_1 * ts_1, tid_2 * ts_2]
          sizes [ts_0, ts_1, ts_2]

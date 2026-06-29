@@ -1030,7 +1030,7 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     return EmitReduce(b, tiled_hlo, values);
   }
 
-  if (hlo->opcode() == HloOpcode::kAllReduceStart) {
+  if (hlo->opcode() == HloOpcode::kAllReduce) {
     const HloComputation* computation = fusion.fused_instructions_computation();
     const HloInstruction* root_instruction = computation->root_instruction();
     if (root_instruction->opcode() == HloOpcode::kAllReduceDone) {
@@ -1039,10 +1039,6 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     return EmitAllReduce(b, computation,
                          *xla::Cast<HloAllReduceInstruction>(root_instruction),
                          tiled_hlo, values);
-  }
-
-  if (hlo->opcode() == HloOpcode::kAllReduceDone) {
-    return values[tiled_hlo.operand(0)];
   }
 
   if (hlo->IsElementwise()) {
