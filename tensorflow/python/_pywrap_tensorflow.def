@@ -275,6 +275,7 @@ EXPORTS
  ?CreateMesh@Mesh@dtensor@tensorflow@@SA?AV123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@5@AEBV?$vector@_JV?$allocator@_J@std@@@5@2121_N@Z
  ?CreateRecordReaderOptions@RecordReaderOptions@io@tsl@@SA?AU123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
  ?CreateRecordWriterOptions@RecordWriterOptions@io@tsl@@SA?AU123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+ ?CreateStatusAndConditionallyLog@StatusBuilder@lts_20260526@absl@@CA?AVStatus@23@VSourceLocation@23@V?$unique_ptr@URep@StatusBuilder@lts_20260526@absl@@U?$default_delete@URep@StatusBuilder@lts_20260526@absl@@@std@@@std@@@Z
  ?CtxFailure@OpKernelConstruction@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20260526@absl@@@Z
  ?CtxFailure@OpKernelContext@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20260526@absl@@@Z
  ?CtxFailureWithWarning@OpKernelConstruction@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20260526@absl@@@Z
@@ -298,6 +299,7 @@ EXPORTS
  ?DeleteFile@Env@tsl@@QEAA?AVStatus@lts_20260526@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
  ?DeleteProfiler@tfprof@tensorflow@@YAXXZ
  ?DeleteRecursively@Env@tsl@@QEAA?AVStatus@lts_20260526@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEA_J1@Z
+ ?Destroy@StatusBuilder@lts_20260526@absl@@CAXV?$unique_ptr@URep@StatusBuilder@lts_20260526@absl@@U?$default_delete@URep@StatusBuilder@lts_20260526@absl@@@std@@@std@@@Z
  ?DestroyCordSlow@Cord@lts_20260526@absl@@AEAAXXZ
  ?DestroyEagerContextThreadLocalData@tensorflow@@YAXPEAU_object@@@Z
  ?DestructorOutOfLine@TensorShapeRep@tensorflow@@AEAAXXZ
@@ -446,6 +448,7 @@ EXPORTS
  ?Init@DebugEventsWriter@tfdbg@tensorflow@@QEAA?AVStatus@lts_20260526@absl@@XZ
  ?Init@PyExceptionRegistry@tensorflow@@SAXPEAU_object@@@Z
  ?InitInternal@OpKernelRegistrar@kernel_factory@tensorflow@@AEAAXPEBVKernelDef@3@V?$basic_string_view@DU?$char_traits@D@std@@@std@@V?$unique_ptr@VOpKernelFactory@kernel_factory@tensorflow@@U?$default_delete@VOpKernelFactory@kernel_factory@tensorflow@@@std@@@6@@Z
+ ?InitRepImpl@StatusBuilder@lts_20260526@absl@@CAPEAURep@123@VStatus@23@@Z
  ?InitWithSuffix@EventsWriter@tensorflow@@QEAA?AVStatus@lts_20260526@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
  ?Initialize@AnalyticalCostEstimator@grappler@tensorflow@@UEAA?AVStatus@lts_20260526@absl@@AEBUGrapplerItem@23@@Z
  ?Initialize@DataServiceDispatcherClient@data@tensorflow@@UEAA?AVStatus@lts_20260526@absl@@XZ
