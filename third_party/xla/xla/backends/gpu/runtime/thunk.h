@@ -402,7 +402,7 @@ class Thunk {
   // Buffer uses do not include buffers that might be used by nested thunks,
   // they must be collected separately by walking the nested thunks using `Walk`
   // API.
-  virtual BufferUses buffer_uses() const { return {}; }
+  virtual BufferUses buffer_uses() const = 0;
 
   // Returns resources used by this thunk.
   //
