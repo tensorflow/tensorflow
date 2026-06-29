@@ -70,7 +70,7 @@ def extract_object_files(archive_file: io.BufferedIOBase,
   extracted_files = dict()
 
   for name, file_content in _extract_next_file(archive_file):
-    digest = hashlib.md5(file_content).digest()
+    digest = hashlib.sha256(file_content).digest()
 
     # Check if the name is already used. If so, come up with a different name by
     # incrementing the number suffix until it finds an unused one.
