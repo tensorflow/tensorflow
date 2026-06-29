@@ -15,14 +15,16 @@
 """Tests for convolution related functionality in tensorflow.ops.nn."""
 import numpy as np
 
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
-
 
 class Conv1DTest(test.TestCase):
 
@@ -119,6 +121,7 @@ class Conv1DTest(test.TestCase):
     self.assertAllClose(cache_values, value)
     
   def testInvalidDilationValidPaddingRaises(self):
+    # 1. Static shape validation fails during shape inference / graph construction.
     x = constant_op.constant(
         0.0, shape=[2, 10, 3], dtype=dtypes.float32)
     filters = constant_op.constant(
@@ -126,13 +129,65 @@ class Conv1DTest(test.TestCase):
 
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
-        "output size is <= 0"):
+        "Negative dimension size caused by subtracting 11 from 10"):
       nn_ops.conv1d(
           x,
           filters,
           stride=1,
           padding="VALID",
           dilations=10)
+
+  def testInvalidDilationValidPaddingRaisesDynamic(self):
+    # 2. Dynamic shape validation fails during execution (runtime).
+    if context.executing_eagerly():
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[2, None, 3], dtype=dtypes.float32),
+          tensor_spec.TensorSpec(shape=[2, 3, 1], dtype=dtypes.float32),
+          tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32)
+      ])
+      def run_conv(x, filters, length):
+        x_dynamic = x[:, :length, :]
+        return nn_ops.conv1d(
+            x_dynamic,
+            filters,
+            stride=1,
+            padding="VALID",
+            dilations=10)
+
+      x_val = np.zeros([2, 15, 3], dtype=np.float32)
+      filters_val = np.zeros([2, 3, 1], dtype=np.float32)
+
+      dyn_len = array_ops.identity(constant_op.constant(10))
+
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          "must be at least effective_filter_size"):
+        self.evaluate(run_conv(x_val, filters_val, dyn_len))
+
+    else:
+      with self.cached_session() as sess:
+        x = array_ops.placeholder(dtypes.float32, shape=[2, None, 3])
+        filters = array_ops.placeholder(dtypes.float32,
+                                        shape=[2, 3, 1])
+
+        output = nn_ops.conv1d(
+            x,
+            filters,
+            stride=1,
+            padding="VALID",
+            dilations=10)
+
+        x_val = np.zeros([2, 10, 3], dtype=np.float32)
+        filters_val = np.zeros([2, 3, 1], dtype=np.float32)
+
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            "must be at least effective_filter_size"):
+          sess.run(output, feed_dict={
+              x: x_val,
+              filters: filters_val,
+          })
 
 
 if __name__ == "__main__":
