@@ -162,41 +162,6 @@ inline absl::Status CreateWithUpdatedMessage(const absl::Status& status,
   return new_status;
 }
 
-// Append some context to an error message.  Each time we append
-// context put it on a new line, since it is possible for there
-// to be several layers of additional context.
-template <typename... Args>
-void AppendToMessage(absl::Status* status, Args... args) {
-  auto new_status = CreateWithUpdatedMessage(
-      *status, absl::StrCat(status->message(), "\n\t", args...));
-  CopyPayloads(*status, new_status);
-  *status = std::move(new_status);
-}
-
-ABSL_DEPRECATED(
-    "TF_RETURN_IF_ERROR is deprecated. Call RETURN_IF_ERROR instead")
-inline void TfReturnIfErrorDeprecationMarker() {}
-
-// For propagating errors when calling a function.
-#define TF_RETURN_IF_ERROR(...)                        \
-  do {                                                 \
-    ::tsl::errors::TfReturnIfErrorDeprecationMarker(); \
-    absl::Status _status = (__VA_ARGS__);              \
-    if (TF_PREDICT_FALSE(!_status.ok())) {             \
-      MAYBE_ADD_SOURCE_LOCATION(_status)               \
-      return _status;                                  \
-    }                                                  \
-  } while (0)
-
-#define TF_RETURN_WITH_CONTEXT_IF_ERROR(expr, ...)           \
-  do {                                                       \
-    absl::Status _status = (expr);                           \
-    if (TF_PREDICT_FALSE(!_status.ok())) {                   \
-      ::tsl::errors::AppendToMessage(&_status, __VA_ARGS__); \
-      return _status;                                        \
-    }                                                        \
-  } while (0)
-
 // Convenience functions for generating and using error status.
 // Example usage:
 //   status.Update(errors::InvalidArgument("The ", foo, " isn't right."));

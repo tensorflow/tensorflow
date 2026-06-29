@@ -382,7 +382,7 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   static absl::StatusOr<TensorShape> BuildTensorShape(
       const TensorShapeProto& proto) {
     TensorShape out;
-    TF_RETURN_IF_ERROR(BuildTensorShape(proto, &out));
+    RETURN_IF_ERROR(BuildTensorShape(proto, &out));
     return out;
   }
 
@@ -568,7 +568,7 @@ class PartialTensorShape : public TensorShapeBase<PartialTensorShape> {
   static absl::StatusOr<PartialTensorShape> BuildPartialTensorShape(
       const TensorShapeProto& proto) {
     PartialTensorShape out;
-    TF_RETURN_IF_ERROR(BuildTensorShapeBase(proto, &out));
+    RETURN_IF_ERROR(BuildTensorShapeBase(proto, &out));
     return out;
   }
 
