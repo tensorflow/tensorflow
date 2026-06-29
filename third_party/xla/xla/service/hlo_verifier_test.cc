@@ -1377,9 +1377,11 @@ TEST_F(HloVerifierTest, AsyncOpTupleWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("async-start expects the async shape to be a tuple of "
-                        "at least two elements"));
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("async-start (opcode: async-start) expects the async shape to "
+                "be in the form of "
+                "{{op0_shape, param_1_shape, ...}, output_shape, ...}"));
 }
 
 TEST_F(HloVerifierTest, AsyncStartOperandWrongType) {
@@ -5479,7 +5481,8 @@ TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigInvalidOperandIndex) {
                           ParseAndReturnUnverifiedModule(hlo_string));
   auto status = verifier().Run(module.get()).status();
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.message(), HasSubstr("Invalid aliasing operand index."));
+  EXPECT_THAT(status.message(),
+              HasSubstr("Operand number in aliasing config is out of bounds."));
 }
 
 TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigInvalidShapeIndex) {
