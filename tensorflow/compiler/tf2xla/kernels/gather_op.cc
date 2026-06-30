@@ -243,7 +243,7 @@ absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
   // Use Max(gather_dim_size, 1) - 1 as upper bound to handle dim_size <= 1.
   const int64_t clamp_upper = gather_dim_size > 0 ? gather_dim_size - 1 : 0;
   xla::XlaOp clamped_indices = xla::Clamp(
-      xla::Zero(builder, index_type), indices,
+      XlaHelpers::Zero(builder, index_type), indices,
       XlaHelpers::IntegerLiteral(builder, index_type, clamp_upper));
 
   xla::XlaOp gather;
@@ -261,7 +261,7 @@ absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
   // Build a validity mask to zero out results from out-of-bounds indices.
   // This matches the "IGNORE" bad_indices_policy behavior in GatherNdOp and
   // prevents silent data corruption from OOB index reads.
-  xla::XlaOp ge_zero = xla::Ge(indices, xla::Zero(builder, index_type));
+  xla::XlaOp ge_zero = xla::Ge(indices, XlaHelpers::Zero(builder, index_type));
   xla::XlaOp lt_limit = xla::Lt(
       indices, XlaHelpers::IntegerLiteral(builder, index_type, gather_dim_size));
   xla::XlaOp valid_mask = xla::And(ge_zero, lt_limit);
