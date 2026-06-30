@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -26,8 +28,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/op_resolver.h"
@@ -199,6 +199,29 @@ class FloatActivationsOpModel : public BaseActivationsOpModel {
 
   void SetInput(const std::vector<T>& data) { PopulateTensor(input_, data); }
   std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
+};
+
+class NonDelegatedFloatActivationsOpModel : public SingleOpModel {
+ public:
+  NonDelegatedFloatActivationsOpModel(TfLiteRegistration* registration,
+                                      BuiltinOperator type, TensorData input) {
+    input_ = AddInput(input);
+    output_ = AddOutput({input.type, {}});
+    SetBuiltinOp(type, BuiltinOptions_NONE, 0);
+    resolver_ = std::make_unique<SingleOpResolver>(type, registration);
+    BuildInterpreter({GetShape(input_)}, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false, /*allocate_and_delegate=*/true);
+  }
+
+  void SetInput(const std::vector<float>& data) {
+    PopulateTensor(input_, data);
+  }
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+ protected:
+  int input_;
+  int output_;
 };
 
 // Our fixed-point math function implementations have roughly 12 bits of
@@ -708,8 +731,8 @@ TEST_P(LeakyReluOpTest, LeakyReluUint8NegativeAlpha) {
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      0.0f, 1.0f, 3.0f,   // Row 1
-                      1.0f, 0.5f, 1.0f,   // Row 2
+                      0.0f, 1.0f, 3.0f,  // Row 1
+                      1.0f, 0.5f, 1.0f,  // Row 2
                   },
                   kQuantizedTolerance * 8)));
 }
@@ -1256,6 +1279,32 @@ TEST_P(TanhOpTest, TanhInt16General) {
                   kQuantizedToleranceInt16)));
 }
 
+TEST_P(TanhOpTest, TanhFloat32ExtremeInput) {
+  NonDelegatedFloatActivationsOpModel m(GetRegistration(), BuiltinOperator_TANH,
+                                        /*input=*/{TensorType_FLOAT32, {1, 7}});
+  m.SetInput({
+      5e29f,
+      1e25f,
+      -5e29f,
+      -1e25f,
+      std::numeric_limits<float>::max(),
+      -std::numeric_limits<float>::max(),
+      std::numeric_limits<float>::quiet_NaN(),
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  auto output = m.GetOutput();
+  EXPECT_THAT(std::vector<float>(output.begin(), output.begin() + 6),
+              ElementsAreArray(ArrayFloatNear({
+                  1.0f,
+                  1.0f,
+                  -1.0f,
+                  -1.0f,
+                  1.0f,
+                  -1.0f,
+              })));
+  EXPECT_TRUE(std::isnan(output[6]));
+}
+
 TEST_P(LogisticOpTest, SigmoidFloat32) {
   FloatActivationsOpModel<float> m(
       GetRegistration(), BuiltinOperator_LOGISTIC,
@@ -1557,6 +1606,33 @@ TEST_P(LogisticOpTest, SigmoidInt16General) {
                   kQuantizedToleranceInt16)));
 }
 
+TEST_P(LogisticOpTest, SigmoidFloat32ExtremeInput) {
+  NonDelegatedFloatActivationsOpModel m(GetRegistration(),
+                                        BuiltinOperator_LOGISTIC,
+                                        /*input=*/{TensorType_FLOAT32, {1, 7}});
+  m.SetInput({
+      5e29f,
+      1e25f,
+      -5e29f,
+      -1e25f,
+      std::numeric_limits<float>::max(),
+      -std::numeric_limits<float>::max(),
+      std::numeric_limits<float>::quiet_NaN(),
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  auto output = m.GetOutput();
+  EXPECT_THAT(std::vector<float>(output.begin(), output.begin() + 6),
+              ElementsAreArray(ArrayFloatNear({
+                  1.0f,
+                  1.0f,
+                  0.0f,
+                  0.0f,
+                  1.0f,
+                  0.0f,
+              })));
+  EXPECT_TRUE(std::isnan(output[6]));
+}
+
 TEST_P(SoftmaxOpTest, Softmax4DInplace) {
   FloatActivationsOpModel<float> m(GetRegistration(), 0.1f,
                                    {TensorType_FLOAT32, {1, 2, 1, 4}},
@@ -1616,13 +1692,9 @@ TEST_P(SoftmaxOpTest, Softmax4DHalf) {
                                   {TensorType_FLOAT16, {1, 2, 1, 4}},
                                   TensorType_FLOAT16);
   m.SetInput({
-      half(0),
-      half(-6),
-      half(2),
+      half(0), half(-6), half(2),
       half(4),  // depth = 0
-      half(3),
-      half(-2),
-      half(10),
+      half(3), half(-2), half(10),
       half(1),  // depth = 1
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
@@ -3024,8 +3096,8 @@ TEST(FloatActivationsOpTest, LeakyReluNegativeAlpha) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               Pointwise(FloatingPointEq(), {
-                                               0.0f, 1.0f, 3.0f,    // Row 1
-                                               1.0f, 0.5f, 1.0f,    // Row 2
+                                               0.0f, 1.0f, 3.0f,  // Row 1
+                                               1.0f, 0.5f, 1.0f,  // Row 2
                                            }));
 }
 
@@ -3114,22 +3186,18 @@ TEST(FloatActivationsOpTest, GeluHalf) {
   FloatGeluOpModel<half> m({TensorType_FLOAT16, {2, 3}}, /*approximate=*/false);
 
   m.SetInput({
-      half(0.0f),
-      half(1.0f),
+      half(0.0f), half(1.0f),
       half(3.0f),  // Row 1
-      half(1.0f),
-      half(-1.0f),
+      half(1.0f), half(-1.0f),
       half(-2.0f),  // Row 2
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      0.0f,
-                      0.841345f,
+                      0.0f, 0.841345f,
                       2.99595f,  // Row 1
-                      0.841345f,
-                      -0.158655f,
+                      0.841345f, -0.158655f,
                       -0.0455003f,  // Row 2
                   },
                   static_cast<float>(NumericLimits<half>::epsilon()) * 10)));

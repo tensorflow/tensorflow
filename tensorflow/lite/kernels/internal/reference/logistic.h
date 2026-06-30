@@ -30,30 +30,12 @@ namespace reference_ops {
 template <typename T>
 inline void Logistic(const RuntimeShape& input_shape, const T* input_data,
                      const RuntimeShape& output_shape, T* output_data) {
-  const float cutoff_upper = 16.619047164916992188f;
-  const float cutoff_lower = -9.f;
-
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  // Rational for using approximation in reference kernel.
-  // 0. This approximation gives enough precision for float.
-  // 1. This works around an issue on an embedded chipset where exp() does not
-  // return correctly as expected - exp(x) should return inf when overflown
-  // not 1.701417   IEEE 754 defines representation for inf.
-  // 2. This will speed up calculation and is matching the behavior in the
-  // optimized kernels. (check the definition of scalar_logistic_op<float>)
-
   for (int i = 0; i < flat_size; i++) {
-    T val = input_data[i];
-    float result;
-    if (val > cutoff_upper) {
-      result = 1.0f;
-    } else if (val < cutoff_lower) {
-      result = std::exp(val);
-    } else {
-      result = 1.f / (1.f + std::exp(-val));
-    }
-    output_data[i] = static_cast<T>(result);
+    const float val = static_cast<float>(input_data[i]);
+    const float clamped_val =
+        std::isnan(val) ? val : std::max(-100.0f, std::min(100.0f, val));
+    output_data[i] = static_cast<T>(1.0f / (1.0f + std::exp(-clamped_val)));
   }
 }
 

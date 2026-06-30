@@ -1047,8 +1047,8 @@ cc_library_with_tflite(
     ],
 )
 
-# The builtin_ops target will resolve to optimized kernels when available. This
-# target uses reference kernels only, and is useful for validation and testing.
+# The builtin_ops target will resolve to optimized kernels when available.
+# This target uses reference kernels only, and is useful for validation and testing.
 # It should *not* generally be used in production.
 cc_library(
     name = "reference_ops",
