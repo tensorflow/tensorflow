@@ -578,11 +578,17 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
 }
 
 absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
-    mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant) {
+    mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant,
+    std::optional<llvm::ArrayRef<int64_t>> tile_shape) {
   ASSIGN_OR_RETURN(Type ty,
                    PrimitiveTypeToMlirType(b, constant.shape().element_type()));
-  llvm::SmallVector<int64_t> shape{constant.shape().dimensions().begin(),
-                                   constant.shape().dimensions().end()};
+  llvm::SmallVector<int64_t> shape;
+  if (tile_shape.has_value()) {
+    shape.assign(tile_shape->begin(), tile_shape->end());
+  } else {
+    shape.assign(constant.shape().dimensions().begin(),
+                 constant.shape().dimensions().end());
+  }
 
   if (constant.shape().AreAllLeavesIntegers()) {
     if (constant.shape().element_type() == U64) {
@@ -747,7 +753,8 @@ absl::StatusOr<TensorValue> EmitScope(
           "Broadcast is not yet supported in EmitScope().");
     }
     if (hlo->opcode() == HloOpcode::kConstant) {
-      ASSIGN_OR_RETURN(result, EmitConstant(b, *hlo));
+      ASSIGN_OR_RETURN(result,
+                       EmitConstant(b, *hlo, /*tile_shape=*/std::nullopt));
     } else if (HloInstruction::IsOpElementwise(hlo->opcode())) {
       std::vector<Value> operands;
       operands.reserve(hlo->operands().size());

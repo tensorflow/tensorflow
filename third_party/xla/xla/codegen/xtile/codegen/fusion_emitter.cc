@@ -1012,7 +1012,7 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
 
   if (hlo->opcode() == HloOpcode::kConstant) {
     if (ShapeUtil::IsEffectiveScalar(hlo->shape())) {
-      return EmitConstant(b, *hlo);
+      return EmitConstant(b, *hlo, GetPaddedTileSizes(tiled_hlo.tile_sizes()));
     }
     return absl::UnimplementedError(
         absl::StrCat("Unsupported non-scalar constant ", hlo->ToString()));
