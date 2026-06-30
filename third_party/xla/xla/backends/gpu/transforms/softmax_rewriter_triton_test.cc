@@ -508,7 +508,7 @@ ENTRY main {
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
-       CanNotFuseSoftmaxDiamondWithNonFusibleBitcastBetweenReduceAndProducer) {
+       CanFuseSoftmaxDiamondWithBitcastBetweenReduceAndProducer) {
   const std::string hlo_string = R"(
 HloModule softmax
 
@@ -529,7 +529,12 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
+
+  // Fusible with added support for reduction dim tiling, available via the
+  // experimental_tiling.
+  bool experimental_tiling = GetParam();
+  ASSERT_OK_AND_ASSIGN(bool fused, fusion_rewriter_.Run(module.get()));
+  EXPECT_EQ(fused, experimental_tiling);
 }
 
 TEST_P(SoftmaxRewriterTritonTest, CanFuseSoftmaxDiamondWithBitcastsOnEachUse) {
@@ -1066,9 +1071,7 @@ ENTRY main {
   EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
 }
 
-// Triton has a requirement that any tile in the program should not have more
-// than 1048576 elements.
-TEST_P(SoftmaxRewriterTritonTest, DoesNotFuseIfResultingFusionCannotBeTiled) {
+TEST_P(SoftmaxRewriterTritonTest, CanFuseAndTileLargeRowReduction) {
   const std::string hlo_string = R"(
 HloModule softmax
 max_computation {
@@ -1085,7 +1088,12 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
+
+  // Fusible with added support for reduction dim tiling, available via the
+  // experimental_tiling.
+  bool experimental_tiling = GetParam();
+  ASSERT_OK_AND_ASSIGN(bool fused, fusion_rewriter_.Run(module.get()));
+  EXPECT_EQ(fused, experimental_tiling);
 }
 
 TEST_P(SoftmaxRewriterTritonTest, DoesNotFuseNormalizationWithVeryLongRows) {
@@ -1106,8 +1114,9 @@ ENTRY main {
 
   {
     // Verify that SoftmaxRewriterTriton without Cost Model will not fuse the
-    // normalization diamond, because the row size is too large to fit in
-    // registers.
+    // normalization diamond with the current tiling because the row size is too
+    // large to fit in registers. However, with experimental tiling, we can tile
+    // the reduction dimension and fuse the normalization diamond.
     SoftmaxRewriterTriton fusion_rewriter_without_cost_model{
         device_info_,
         HloCostAnalysis::DefaultShapeSize,
@@ -1117,12 +1126,16 @@ ENTRY main {
         /*use_experimental_tiling=*/GetParam()};
 
     auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-    EXPECT_FALSE(fusion_rewriter_without_cost_model.Run(module.get()).value());
+    bool experimental_tiling = GetParam();
+    ASSERT_OK_AND_ASSIGN(bool fused_without_cost_model,
+                         fusion_rewriter_without_cost_model.Run(module.get()));
+    EXPECT_EQ(fused_without_cost_model, experimental_tiling);
   }
 
   {
-    // SoftmaxRewriterTriton with Cost Model will discard the normalization
-    // diamond, because row size is too large.
+    // SoftmaxRewriterTriton with Cost Model should discard the normalization
+    // diamond, because it isn't profitable, even with reduction dimension
+    // tiling.
     SoftmaxRewriterTriton fusion_rewriter_with_cost_model{
         device_info_,
         HloCostAnalysis::DefaultShapeSize,

@@ -925,9 +925,7 @@ ENTRY triton_computation {
                  DefaultDeviceForTesting());
 }
 
-TEST_P(
-    ReduceTest,
-    UnsupportedReduceWithMoreThanOneReduceDimensionsFailsGracefullyWithTriton) {
+TEST_P(ReduceTest, SupportedReduceWithThreeNonNeighboringReduceDimensions) {
   auto [data_type, opcode, cc, tiling] = GetParam();
   const std::string kHloTestTemplate = absl::Substitute(R"(
 add {
@@ -937,15 +935,22 @@ add {
 }
 
 ENTRY triton_computation {
-  parameter_0 = $$0[2,125,127] parameter(0)
+  parameter_0 = $$0[2,3,4,5] parameter(0)
   constant_0 = $$0[] constant($0)
-  ROOT reduce = $$0[2] reduce(parameter_0, constant_0),
-    dimensions={1,2}, to_apply=add
+  ROOT reduce = $$0[3] reduce(parameter_0, constant_0),
+    dimensions={0,2,3}, to_apply=add
 })",
                                                         init_value(data_type));
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  if (!tiling) {
+    EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+    return;
+  }
+  if (!IsTritonSupportedInstruction(ti.Instruction(), cc)) {
+    return;
+  }
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 

@@ -1,0 +1,55 @@
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation %s
+
+region {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+fusion {
+  p = f32[8,15] parameter(0)
+  p_abs = f32[8,15] abs(p)
+  c_minus_ten = f32[] constant(-10.0)
+  b_minus_ten = f32[8,15] broadcast(c_minus_ten), dimensions={}
+  p_mul = f32[8,15] multiply(p_abs, b_minus_ten)
+  c_init = f32[] constant(-20.0)
+  ROOT reduce = f32[8] reduce(p_mul, c_init), dimensions={1}, to_apply=region,
+    backend_config={sizes:[4]}
+}
+
+ENTRY main {
+  p = f32[8,15] parameter(0)
+  ROOT fusion = f32[8] fusion(p), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["4"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}
+
+// CHECK-DAG:  %[[CST_INIT:.*]] = arith.constant dense<-2.000000e+01> : tensor<4x4xf32>
+// CHECK-DAG:  %[[CST_BOUND:.*]] = arith.constant dense<15> : tensor<4xi32>
+// CHECK:      %[[FOR:.*]] = scf.for %[[IV:.*]] = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %[[CST_INIT]]) -> (tensor<4x4xf32>) {
+// CHECK:        %[[IV_I32:.*]] = arith.index_cast %[[IV]] : index to i32
+// CHECK:        %[[COND:.*]] = arith.cmpi sge, %[[IV_I32]], %{{.*}} : i32
+// CHECK:        %[[MASKED_INPUT:.*]] = scf.if %[[COND]] -> (tensor<4x4xf32>) {
+// CHECK:          %[[RANGE:.*]] = tt.make_range {end = 4 : i32, start = 0 : i32} : tensor<4xi32>
+// CHECK:          %[[SPLAT:.*]] = tt.splat %{{.*}} : i32 -> tensor<4xi32>
+// CHECK:          %[[GLOBAL_INDICES:.*]] = arith.addi %[[RANGE]], %[[SPLAT]] : tensor<4xi32>
+// CHECK:          %[[MASK_1D:.*]] = arith.cmpi slt, %[[GLOBAL_INDICES]], %[[CST_BOUND]] : tensor<4xi32>
+// CHECK:          %[[EXPAND:.*]] = tt.expand_dims %[[MASK_1D]] {axis = 0 : i32} : tensor<4xi1> -> tensor<1x4xi1>
+// CHECK:          %[[MASK:.*]] = tt.broadcast %[[EXPAND]] : tensor<1x4xi1> -> tensor<4x4xi1>
+// CHECK:          %[[SELECT:.*]] = arith.select %[[MASK]], %{{.*}}, %[[CST_INIT]] : tensor<4x4xi1>, tensor<4x4xf32>
+// CHECK:          scf.yield %[[SELECT]] : tensor<4x4xf32>
+// CHECK:        } else {
+// CHECK:          scf.yield %{{.*}} : tensor<4x4xf32>
+// CHECK:        }
+// CHECK:        %[[COMBINE:.*]] = arith.maximumf %[[ACC]], %[[MASKED_INPUT]] : tensor<4x4xf32>
+// CHECK:        scf.yield %[[COMBINE]] : tensor<4x4xf32>
+// CHECK:      }
+// CHECK:      %[[REDUCE:.*]] = "tt.reduce"(%[[FOR]]) <{axis = 1 : i32}>
+
