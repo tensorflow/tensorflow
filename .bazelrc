@@ -74,6 +74,7 @@
 # The generated version suffix is used in
 # third_party/tensorflow/core/public/release_version.h and
 # third_party/tensorflow/tools/pip_package/setup.oss.py.tpl
+common --toolchain_resolution_debug=.*
 common --repo_env=ML_WHEEL_TYPE="snapshot"
 common --repo_env=ML_WHEEL_BUILD_DATE=""
 common --repo_env=ML_WHEEL_VERSION_SUFFIX=""
