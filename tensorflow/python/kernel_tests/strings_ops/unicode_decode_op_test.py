@@ -476,8 +476,14 @@ class UnicodeDecodeTest(test_util.TensorFlowTestCase,
     self.assertEqual(result.row_splits.dtype, dtypes.int32)
     self.assertEqual(result.char_to_byte_starts.dtype, dtypes.int64)
     self.assertAllEqual(result.row_splits, [0, 5, 10])
-    self.assertAllEqual(result.char_values, [104, 101, 108, 108, 111, 119, 111, 114, 108, 100])
-    self.assertAllEqual(result.char_to_byte_starts, [0, 1, 2, 3, 4, 0, 1, 2, 3, 4])
+    self.assertAllEqual(
+        result.char_values,
+        [104, 101, 108, 108, 111, 119, 111, 114, 108, 100]
+    )
+    self.assertAllEqual(
+        result.char_to_byte_starts,
+        [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]
+    )
 
 
 @test_util.run_all_in_graph_and_eager_modes
