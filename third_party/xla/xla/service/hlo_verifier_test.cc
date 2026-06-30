@@ -1152,6 +1152,59 @@ TEST_F(HloVerifierTestLayoutSensitive,
   ASSERT_TRUE(status.ok());
 }
 
+TEST_F(HloVerifierTestLayoutSensitive,
+       VerifyAsyncStartAliasConfigLayoutMismatch) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32,32]{0,1} parameter(0)
+    ROOT custom-call = (f32[32,32]{1,0}) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32,32]{0,1} parameter(0)
+    async-start = ((f32[32,32]{0,1}), (f32[32,32]{1,0}), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{1, 0}: (0, {})}
+    async-update = ((f32[32,32]{0,1}), (f32[32,32]{1,0}), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32,32]{1,0}) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr(
+          "Different aliasing shapes: f32[32,32]{0,1} vs f32[32,32]{1,0}"));
+}
+
+TEST_F(HloVerifierTestLayoutSensitive,
+       VerifyAsyncStartAliasConfigOperandMatchesButComputationMismatches) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32,32]{0,1} parameter(0)
+    ROOT custom-call = (f32[32,32]{0,1}) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32,32]{1,0} parameter(0)
+    async-start = ((f32[32,32]{1,0}), (f32[32,32]{0,1}), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{0, 0}: (0, {})}
+    async-update = ((f32[32,32]{1,0}), (f32[32,32]{0,1}), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32,32]{0,1}) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("expects the async shape at index {0} to match async "
+                        "computation parameter shape"));
+}
+
 TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongType) {
   const char* const hlo_string = R"(
   HloModule Module
@@ -5460,7 +5513,7 @@ TEST_F(HloVerifierTest, VerifyAsyncStartOutputToOperandAliasing) {
   EXPECT_OK(verifier().Run(module.get()).status());
 }
 
-TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigInvalidOperandIndex) {
+TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigOutofBoundsOperandNumber) {
   const char* const hlo_string = R"(
   HloModule module
 
@@ -5481,7 +5534,58 @@ TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigInvalidOperandIndex) {
                           ParseAndReturnUnverifiedModule(hlo_string));
   auto status = verifier().Run(module.get()).status();
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.message(), HasSubstr("Invalid aliasing operand index."));
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("Operand number 5 in aliasing config is out of bounds."));
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigNegativeOperandNumber) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32] parameter(0)
+    ROOT custom-call = (f32[32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32] parameter(0)
+    async-start = ((f32[32]), (f32[32]), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{0, 0}: (-1, {})}
+    async-update = ((f32[32]), (f32[32]), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32]) async-done(async-update)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Negative operand number in aliasing config."));
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigOutputIndexEmpty) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32] parameter(0)
+    ROOT custom-call = (f32[32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32] parameter(0)
+    async-start = ((f32[32]), (f32[32]), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{}: (0, {})}
+    async-update = ((f32[32]), (f32[32]), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32]) async-done(async-update)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Output index should not be empty."));
 }
 
 TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigInvalidShapeIndex) {
@@ -5507,6 +5611,77 @@ TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigInvalidShapeIndex) {
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
               HasSubstr("Invalid aliasing output shape index."));
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigInvalidOperandShapeIndex) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32] parameter(0)
+    ROOT custom-call = (f32[32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32] parameter(0)
+    async-start = ((f32[32]), (f32[32]), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{0, 0}: (0, {0})}
+    async-update = ((f32[32]), (f32[32]), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32]) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Invalid aliasing operand shape index."));
+}
+
+TEST_F(HloVerifierTest,
+       VerifyAsyncStartAliasConfigDifferentOperandOutputShapes) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[64] parameter(0)
+    ROOT custom-call = (f32[32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[64] parameter(0)
+    async-start = ((f32[64]), (f32[32]), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{1, 0}: (0, {})}
+    async-update = ((f32[64]), (f32[32]), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32]) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Different aliasing shapes: f32[64]{0} vs f32[32]{0}"));
+}
+
+TEST_F(HloVerifierTest,
+       VerifyAsyncStartAliasConfigLayoutMismatchAllowedWhenInsensitive) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32,32]{0,1} parameter(0)
+    ROOT custom-call = (f32[32,32]{1,0}) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32,32]{0,1} parameter(0)
+    async-start = ((f32[32,32]{0,1}), (f32[32,32]{1,0}), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{1, 0}: (0, {})}
+    async-update = ((f32[32,32]{0,1}), (f32[32,32]{1,0}), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32,32]{1,0}) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, RejectsGetRngSeedWithOperand) {
