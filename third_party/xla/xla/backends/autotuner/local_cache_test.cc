@@ -120,4 +120,62 @@ TEST_F(LocalCacheTest, StrictMatchingMode) {
   EXPECT_FALSE(result.has_value());
 }
 
+TEST_F(LocalCacheTest, SerializeAndDeserializeAll) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+
+  LocalCacheStorage storage_src;
+  LocalCache cache_src(KeyMatchingMode::kStrict, &storage_src);
+  AutotunerCacheInterface::Config config1 =
+      CreateTestConfig(autotuner::Backend::TRITON);
+  EXPECT_OK(cache_src.Insert(dot, config1));
+
+  // Serialize all entries
+  ASSERT_OK_AND_ASSIGN(std::string serialized, cache_src.Serialize({}));
+
+  // Deserialize into a second cache
+  LocalCacheStorage storage_dest;
+  LocalCache cache_dest(KeyMatchingMode::kStrict, &storage_dest);
+  EXPECT_OK(cache_dest.Deserialize(serialized));
+
+  // Verify lookup has the entry
+  std::optional<AutotunerCacheInterface::Config> result =
+      cache_dest.Lookup(dot);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->codegen_backend, autotuner::Backend::TRITON);
+}
+
+TEST_F(LocalCacheTest, SerializeInstructionsSubset) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+  const HloInstruction* operand = dot->operand(0);
+
+  LocalCacheStorage storage_src;
+  LocalCache cache_src(KeyMatchingMode::kStrict, &storage_src);
+  EXPECT_OK(
+      cache_src.Insert(dot, CreateTestConfig(autotuner::Backend::TRITON)));
+  EXPECT_OK(
+      cache_src.Insert(operand, CreateTestConfig(autotuner::Backend::TRITON)));
+
+  // Serialize only the dot instruction
+  ASSERT_OK_AND_ASSIGN(std::string serialized, cache_src.Serialize({dot}));
+
+  // Deserialize into a second cache
+  LocalCacheStorage storage_dest;
+  LocalCache cache_dest(KeyMatchingMode::kStrict, &storage_dest);
+  EXPECT_OK(cache_dest.Deserialize(serialized));
+
+  // Verify dot is present but operand is missing
+  std::optional<AutotunerCacheInterface::Config> result_dot =
+      cache_dest.Lookup(dot);
+  ASSERT_TRUE(result_dot.has_value());
+  EXPECT_EQ(result_dot->codegen_backend, autotuner::Backend::TRITON);
+
+  std::optional<AutotunerCacheInterface::Config> result_operand =
+      cache_dest.Lookup(operand);
+  EXPECT_FALSE(result_operand.has_value());
+}
+
 }  // namespace xla
