@@ -575,6 +575,101 @@ TEST_F(BufferAssignmentTest, Basic) {
   GetAssignedOutputAllocation(*buffers, sub);
 }
 
+// Verifies the fallback mechanism for FAST_MERGE on potential OOM.
+// Constructs a graph with sequentially growing buffers.
+// FAST_MERGE allocates sequentially by time, resulting in more fragmentation.
+// DEFAULT (fallback) allocates largest-first, packing smaller buffers tighter.
+// We trigger an OOM to verify the fallback uses DEFAULT packing.
+TEST_F(BufferAssignmentTest, OOMFallbackToDefault) {
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p1"));
+
+  Shape s10 = ShapeUtil::MakeShape(F32, {10});  // 40 bytes
+  Shape s20 = ShapeUtil::MakeShape(F32, {20});  // 80 bytes
+  Shape s30 = ShapeUtil::MakeShape(F32, {30});  // 120 bytes
+  Shape s40 = ShapeUtil::MakeShape(F32, {40});  // 160 bytes
+  Shape s1 = ShapeUtil::MakeShape(F32, {1});    // 4 bytes
+
+  auto a = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s10, {param}, "dummy"));
+  auto b = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s20, {a}, "dummy"));
+  auto c = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s30, {b}, "dummy"));
+  auto d = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s40, {c}, "dummy"));
+  auto root = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s1, {d}, "dummy"));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(module->entry_computation(), {param, a, b, c, d, root});
+  CHECK_OK(module->set_schedule(schedule));
+
+  // Options enforcing FAST_MERGE_WITH_FALLBACK.
+  BufferAssigner::Options opts;
+  opts.assignment_algorithm_for_computations_without_ordering =
+      buffer_assignment::
+          AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE;
+  opts.buffer_assignment_algorithm = buffer_assignment::
+      BufferAssignmentAlgorithmProto::FAST_MERGE_WITH_FALLBACK;
+  opts.fallback_algorithm =
+      buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
+
+  // Run 1: Severely constrained memory -> triggers fallback to DEFAULT.
+  int limit_calls_fallback = 0;
+  constexpr int64_t kSafetyMargin = int64_t{5} << 29;
+  opts.color_memory_limit = [&](LogicalBuffer::Color color) {
+    limit_calls_fallback++;
+    return kSafetyMargin + 10;
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> assignment_fallback,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<SequentialHloOrdering>(schedule),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+
+  // Run 2: Unconstrained memory -> runs optimally on FAST_MERGE.
+  BufferAssigner::Options opts_fast;
+  opts_fast.assignment_algorithm_for_computations_without_ordering =
+      buffer_assignment::
+          AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE;
+  opts_fast.enable_fallback = true;
+  opts_fast.buffer_assignment_algorithm =
+      buffer_assignment::BufferAssignmentAlgorithmProto::FAST_MERGE;
+  opts_fast.fallback_algorithm =
+      buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
+
+  int limit_calls_fast = 0;
+  opts_fast.color_memory_limit = [&](LogicalBuffer::Color color) {
+    limit_calls_fast++;
+    return kSafetyMargin + 10000000;
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> assignment_fast,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<SequentialHloOrdering>(schedule),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts_fast)));
+
+  // Verify both assignments succeeded and independently queried their limits.
+  EXPECT_NE(assignment_fallback, nullptr);
+  EXPECT_NE(assignment_fast, nullptr);
+  EXPECT_GT(limit_calls_fallback, 0);
+  EXPECT_GT(limit_calls_fast, 0);
+
+  // Validate that the DEFAULT fallback achieves a tighter layout
+  // (288 bytes) compared to FAST_MERGE (408 bytes).
+  EXPECT_EQ(assignment_fallback->GetStats().total_allocation_bytes, 288);
+  EXPECT_EQ(assignment_fast->GetStats().total_allocation_bytes, 408);
+}
+
 MATCHER(IdEq, "") {
   auto* actual = std::get<0>(arg);
   auto* expected = std::get<1>(arg);
@@ -5331,7 +5426,7 @@ void BM_FastMergeManagerStress(::testing::benchmark::State& state) {
   for (auto s : state) {
     // 3. Benchmark Loop: Measure the exact sweep-line pooling and reuse
     // performance.
-    base_assignment->ResetAllocationsForTest();
+    base_assignment->ClearAllocations();
     auto manager = BufferAssigner::CreateFastMergeManagerForTest(
         base_assignment.get(), &assigner);
 

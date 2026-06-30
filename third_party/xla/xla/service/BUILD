@@ -2183,6 +2183,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:sorted_range",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
