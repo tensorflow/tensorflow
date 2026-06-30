@@ -2161,7 +2161,7 @@ def _check_keepdims(keepdims):
   if not isinstance(keepdims, (bool, np.bool_)):
     raise TypeError(
         f"Expected bool for argument 'keepdims' not {keepdims}.")
-  return keepdims
+  return bool(keepdims)
 
 
 @tf_export(v1=["math.reduce_sum", "reduce_sum"])
