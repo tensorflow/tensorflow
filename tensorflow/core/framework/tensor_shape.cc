@@ -394,34 +394,32 @@ absl::Status TensorShapeBase<Shape>::RecomputeNumElements() {
     set_num_elements(-1);
     return absl::OkStatus();
   }
-  bool exist_zero = false;
+  bool exists_zero = false;
   for (auto dim : *this) {
-   // If any dimension is zero, total elements is zero
-   if(kIsPartial && dim.size() < 0) {
-     set_num_elements(-1);
-     return absl::OkStatus();
-   }
+    if (kIsPartial && dim.size < 0) {
+      set_num_elements(-1);
+      return absl::OkStatus();
+    }
     if (dim.size == 0) {
-      exist_zero = true;
+      exists_zero = true;
     }
   }
-  if (exist_zero) {
+  if (exists_zero) {
     set_num_elements(0);
     return absl::OkStatus();
   }
-    int64_t n = 1;
+  int64_t n = 1;
+  for (auto dim : *this) {
     n = MultiplyWithoutOverflow(n, dim.size);
     if (TF_PREDICT_FALSE(n < 0)) {
-        return errors::InvalidArgument(
-        "Shape ", this->DebugString(),
-        " results in overflow when computing number of elements");
+      return errors::InvalidArgument(
+          "Shape ", this->DebugString(),
+          " results in overflow when computing number of elements");
+    }
   }
-}
-
   set_num_elements(n);
   return absl::OkStatus();
 }
-
 template <class Shape>
 void TensorShapeBase<Shape>::AddDim(int64_t size) {
   if (!kIsPartial) CHECK_GE(size, 0);
