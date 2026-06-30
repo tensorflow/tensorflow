@@ -424,6 +424,13 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
         new_output_index.clear();
       }
 
+      // Validate that row_splits do not reference beyond the values tensor.
+      OP_REQUIRES(
+          context, static_cast<INDEX_TYPE>(output_index.size()) <= nvals,
+          errors::InvalidArgument("Row partition size (", output_index.size(),
+                                  ") exceeds the number of values (", nvals,
+                                  ")"));
+
       SetOutput(context, ragged_rank_, output_index, output_tensor);
     }
   }
