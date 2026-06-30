@@ -32,6 +32,7 @@ limitations under the License.
 
 namespace xla {
 namespace profiler {
+namespace {}  // namespace
 
 PLUGIN_Profiler_Error* PLUGIN_Profiler_Create(
     PLUGIN_Profiler_Create_Args* args) {
@@ -95,14 +96,58 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_CollectData(
   const size_t profiler_data_size = space.ByteSizeLong();
   if (args->buffer == nullptr) {
     args->profiler->buffer =
-        std::make_unique<std::vector<uint8_t>>(profiler_data_size + 1);
+        std::make_unique<std::vector<uint8_t>>(profiler_data_size);
     space.SerializeToArray(args->profiler->buffer->data(), profiler_data_size);
 
     args->buffer_size_in_bytes = args->profiler->buffer->size();
     args->buffer = args->profiler->buffer->data();
     return nullptr;
   }
+  space.SerializeToArray(const_cast<uint8_t*>(args->buffer),
+                         profiler_data_size);
+  args->buffer_size_in_bytes = profiler_data_size;
   return nullptr;
 }
+
+PLUGIN_Profiler_Error* PLUGIN_Profiler_Consume(
+    PLUGIN_Profiler_Consume_Args* args) {
+  VLOG(1) << "Consuming data from profiler";
+  auto status_or = args->profiler->impl->Consume();
+  if (!status_or.ok()) {
+    return new PLUGIN_Profiler_Error{status_or.status()};
+  }
+  auto result = std::make_unique<PLUGIN_Profiler_ConsumeResult>();
+  result->consume_result = *std::move(status_or);
+  args->result = result.release();
+  return nullptr;
+}
+
+PLUGIN_Profiler_Error* PLUGIN_Profiler_Serialize(
+    PLUGIN_Profiler_Serialize_Args* args) {
+  VLOG(1) << "Serializing data from profiler";
+  tensorflow::profiler::XSpace space;
+  absl::Status s = args->profiler->impl->Serialize(
+      std::move(args->consume_result->consume_result.data), &space);
+  if (!s.ok()) {
+    return new PLUGIN_Profiler_Error{s};
+  }
+  const size_t profiler_data_size = space.ByteSizeLong();
+  args->profiler->buffer =
+      std::make_unique<std::vector<uint8_t>>(profiler_data_size);
+  space.SerializeToArray(args->profiler->buffer->data(), profiler_data_size);
+  args->serialized_bytes =
+      reinterpret_cast<const char*>(args->profiler->buffer->data());
+  args->serialized_size = args->profiler->buffer->size();
+  return nullptr;
+}
+
+void PLUGIN_Profiler_ConsumeResult_Destroy(
+    PLUGIN_Profiler_ConsumeResult* result) {
+  VLOG(1) << "Destroying consume result";
+  if (result != nullptr) {
+    delete result;
+  }
+}
+
 }  // namespace profiler
 }  // namespace xla

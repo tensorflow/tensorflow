@@ -261,6 +261,7 @@ cc_library(
     deps = [
         ":c_api_decl",
         ":libtftpu_header",
+        "//xla/backends/profiler/plugin:profiler_c_api_hdrs",
     ],
 )
 

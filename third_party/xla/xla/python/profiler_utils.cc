@@ -45,6 +45,7 @@ static const PLUGIN_Profiler_Api* FindProfilerApi(const PJRT_Api* pjrt_api) {
 }
 
 void RegisterProfiler(const PJRT_Api* pjrt_api) {
+  ABSL_LOG(INFO) << "RegisterProfiler called";
   const PLUGIN_Profiler_Api* profiler_api = FindProfilerApi(pjrt_api);
   // Don't return an error. Not all plugins implement the extension.
   if (profiler_api == nullptr) {

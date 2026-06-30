@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <any>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -248,15 +249,36 @@ NB_MODULE(_profiler, m) {
           },
           nb::call_guard<nb::gil_scoped_release>(),
           nb::sig("def stop_and_get_profile_data() -> ProfileData"))
-      .def("export", [](ProfilerSessionWrapper* sess, nb::bytes xspace,
-                        const std::string& tensorboard_dir) {
-        tensorflow::profiler::XSpace xspace_proto;
-        absl::string_view bytes(xspace.c_str(), xspace.size());
-        nb::gil_scoped_release release;
-        xspace_proto.ParseFromString(bytes);
-        xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
-            xspace_proto, tensorboard_dir,
-            /* also_export_trace_json= */ true));
+      .def("export",
+           [](ProfilerSessionWrapper* sess, nb::bytes xspace,
+              const std::string& tensorboard_dir) {
+             tensorflow::profiler::XSpace xspace_proto;
+             absl::string_view bytes(xspace.c_str(), xspace.size());
+             nb::gil_scoped_release release;
+             xspace_proto.ParseFromString(bytes);
+             xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
+                 xspace_proto, tensorboard_dir,
+                 /* also_export_trace_json= */ true));
+           })
+      .def("consume",
+           [](ProfilerSessionWrapper* sess) {
+             auto result_or = sess->session->Consume();
+             xla::ThrowIfError(result_or.status());
+             auto* payload = new std::any(std::move(result_or->data));
+             return nb::capsule(payload, "ConsumeResult", [](void* p) noexcept {
+               delete static_cast<std::any*>(p);
+             });
+           })
+      .def("serialize", [](ProfilerSessionWrapper* sess, nb::capsule cap) {
+        if (absl::string_view(cap.name()) != "ConsumeResult") {
+          throw xla::XlaRuntimeError("Invalid capsule");
+        }
+        std::any* payload = static_cast<std::any*>(cap.data());
+        tensorflow::profiler::XSpace space;
+        xla::ThrowIfError(
+            sess->session->Serialize(std::move(*payload), &space));
+        std::string xspace_str = space.SerializeAsString();
+        return nb::bytes(xspace_str.data(), xspace_str.size());
       });
 
   nb::class_<tensorflow::ProfileOptions> profile_options_class(

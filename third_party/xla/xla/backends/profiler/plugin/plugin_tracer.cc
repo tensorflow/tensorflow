@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/profiler/plugin/plugin_tracer.h"
 
+#include <any>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -172,6 +173,84 @@ absl::Status PluginTracer::CollectData(XSpace* space) {
       plane->Swap(&tpu_plane);
     }
   }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<tsl::profiler::ConsumeResult> PluginTracer::Consume() {
+  if (!profiler_api_->consume) {
+    return absl::UnimplementedError("consume not implemented by plugin");
+  }
+  PLUGIN_Profiler_Consume_Args args;
+  args.struct_size = PLUGIN_Profiler_Consume_Args_STRUCT_SIZE;
+  args.profiler = profiler_;
+  args.result = nullptr;
+
+  PLUGIN_Profiler_Error* error = profiler_api_->consume(&args);
+  if (error != nullptr) {
+    std::unique_ptr<PLUGIN_Profiler_Error,
+                    std::function<void(PLUGIN_Profiler_Error*)>>
+        error_ptr(error, MakeErrorDeleter(profiler_api_));
+    return PluginProfilerErrorToStatus(error_ptr.get(), profiler_api_);
+  }
+
+  // To support std::any, we wrap the raw pointer inside a shared_ptr with a
+  // custom deleter
+  auto deleter = [profiler_api =
+                      profiler_api_](PLUGIN_Profiler_ConsumeResult* res) {
+    if (res && profiler_api->consume_result_destroy) {
+      profiler_api->consume_result_destroy(res);
+    }
+  };
+  std::shared_ptr<PLUGIN_Profiler_ConsumeResult> handle(args.result, deleter);
+
+  tsl::profiler::ConsumeResult result;
+  result.data = std::move(handle);
+  return result;
+}
+
+absl::Status PluginTracer::Serialize(std::any data,
+                                     tensorflow::profiler::XSpace* space) {
+  if (!profiler_api_->serialize) {
+    return absl::UnimplementedError("serialize not implemented by plugin");
+  }
+
+  if (data.type() != typeid(std::shared_ptr<PLUGIN_Profiler_ConsumeResult>)) {
+    return absl::InvalidArgumentError(
+        "Invalid data type passed to PluginTracer::Serialize");
+  }
+  auto handle =
+      std::any_cast<std::shared_ptr<PLUGIN_Profiler_ConsumeResult>>(data);
+
+  PLUGIN_Profiler_Serialize_Args args;
+  args.struct_size = PLUGIN_Profiler_Serialize_Args_STRUCT_SIZE;
+  args.profiler = profiler_;
+  args.consume_result = handle.get();
+  args.serialized_bytes = nullptr;
+  args.serialized_size = 0;
+
+  PLUGIN_Profiler_Error* error = profiler_api_->serialize(&args);
+  if (error != nullptr) {
+    std::unique_ptr<PLUGIN_Profiler_Error,
+                    std::function<void(PLUGIN_Profiler_Error*)>>
+        error_ptr(error, MakeErrorDeleter(profiler_api_));
+    return PluginProfilerErrorToStatus(error_ptr.get(), profiler_api_);
+  }
+
+  if (args.serialized_bytes && args.serialized_size > 0) {
+    tensorflow::profiler::XSpace plugin_space;
+    if (plugin_space.ParseFromArray(args.serialized_bytes,
+                                    args.serialized_size)) {
+      for (tensorflow::profiler::XPlane& tpu_plane :
+           *plugin_space.mutable_planes()) {
+        tensorflow::profiler::XPlane* plane = space->add_planes();
+        plane->Swap(&tpu_plane);
+      }
+    } else {
+      return absl::InternalError(
+          "Failed to parse XSpace from plugin serialized bytes");
+    }
+  }
+
   return absl::OkStatus();
 }
 

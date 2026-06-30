@@ -71,6 +71,28 @@ class PluginTracerImpl : public ProfilerInterface {
     return absl::OkStatus();
   }
 
+  absl::StatusOr<tsl::profiler::ConsumeResult> Consume() override {
+    LOG(INFO) << "Consuming data";
+    tsl::profiler::ConsumeResult result;
+    result.data = options_.SerializeAsString();
+    return result;
+  }
+
+  absl::Status Serialize(std::any data,
+                         tensorflow::profiler::XSpace* space) override {
+    LOG(INFO) << "Serializing data";
+    std::string options_str = std::any_cast<std::string>(data);
+    tensorflow::profiler::XPlane* plane = space->add_planes();
+    XPlaneBuilder builder(plane);
+    builder.SetName("GpuBackendTracer");
+    tensorflow::profiler::XStatMetadata* metadata =
+        builder.GetOrCreateStatMetadata((int64_t)0);
+    metadata->set_name("ProfileOptions");
+
+    builder.AddStatValue(*metadata, options_str);
+    return absl::OkStatus();
+  }
+
  private:
   ProfileOptions options_;
 };
@@ -86,7 +108,7 @@ static auto register_test_tracer = [] {
 }();
 
 TEST(PluginTracerTest, TestPluginWithPluginTracer) {
-  PLUGIN_Profiler_Api api;
+  PLUGIN_Profiler_Api api = {};
   api.create = &PLUGIN_Profiler_Create;
   api.start = &PLUGIN_Profiler_Start;
   api.stop = &PLUGIN_Profiler_Stop;
@@ -95,6 +117,9 @@ TEST(PluginTracerTest, TestPluginWithPluginTracer) {
   api.error_destroy = &PLUGIN_Profiler_Error_Destroy;
   api.error_message = &PLUGIN_Profiler_Error_Message;
   api.error_get_code = &PLUGIN_Profiler_Error_GetCode;
+  api.consume = &PLUGIN_Profiler_Consume;
+  api.serialize = &PLUGIN_Profiler_Serialize;
+  api.consume_result_destroy = &PLUGIN_Profiler_ConsumeResult_Destroy;
   api.struct_size = PLUGIN_Profiler_Api_STRUCT_SIZE;
 
   // The options would be emmited by the tracer in the XPlane Stat which can be
@@ -114,6 +139,53 @@ TEST(PluginTracerTest, TestPluginWithPluginTracer) {
 
   int num_expected_planes = 1;
 
+  ASSERT_THAT(xspace.planes(), testing::SizeIs(num_expected_planes));
+
+  const tensorflow::profiler::XPlane* plane =
+      tsl::profiler::FindPlaneWithName(xspace, "GpuBackendTracer");
+  ASSERT_NE(plane, nullptr);
+  ASSERT_THAT(plane->stats(), testing::SizeIs(1));
+
+  tsl::profiler::XPlaneVisitor visitor(plane);
+  std::optional<tsl::profiler::XStatVisitor> stat =
+      visitor.GetStat(0, *visitor.GetStatMetadata(0));
+
+  ASSERT_TRUE(stat.has_value());
+  EXPECT_EQ(stat->Name(), "ProfileOptions");
+  EXPECT_EQ(stat->StrOrRefValue(), options.SerializeAsString());
+}
+
+TEST(PluginTracerTest, TestPluginWithPluginTracerTwoPhase) {
+  PLUGIN_Profiler_Api api = {};
+  api.create = &PLUGIN_Profiler_Create;
+  api.start = &PLUGIN_Profiler_Start;
+  api.stop = &PLUGIN_Profiler_Stop;
+  api.collect_data = &PLUGIN_Profiler_CollectData;
+  api.destroy = &PLUGIN_Profiler_Destroy;
+  api.error_destroy = &PLUGIN_Profiler_Error_Destroy;
+  api.error_message = &PLUGIN_Profiler_Error_Message;
+  api.error_get_code = &PLUGIN_Profiler_Error_GetCode;
+  api.consume = &PLUGIN_Profiler_Consume;
+  api.serialize = &PLUGIN_Profiler_Serialize;
+  api.consume_result_destroy = &PLUGIN_Profiler_ConsumeResult_Destroy;
+  api.struct_size = PLUGIN_Profiler_Api_STRUCT_SIZE;
+
+  ProfileOptions options;
+  options.set_repository_path("TestRepositoryPath");
+  options.set_device_tracer_level(2);
+
+  PluginTracer tracer(&api, options);
+
+  tensorflow::profiler::XSpace xspace;
+  EXPECT_TRUE(tracer.Start().ok());
+  EXPECT_TRUE(tracer.Stop().ok());
+
+  auto consume_result = tracer.Consume();
+  EXPECT_TRUE(consume_result.ok());
+
+  EXPECT_TRUE(tracer.Serialize(std::move(consume_result->data), &xspace).ok());
+
+  int num_expected_planes = 1;
   ASSERT_THAT(xspace.planes(), testing::SizeIs(num_expected_planes));
 
   const tensorflow::profiler::XPlane* plane =

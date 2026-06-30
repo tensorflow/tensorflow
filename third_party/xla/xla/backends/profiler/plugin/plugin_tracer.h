@@ -39,6 +39,11 @@ class PluginTracer : public tsl::profiler::ProfilerInterface {
 
   absl::Status CollectData(tensorflow::profiler::XSpace* space) override;
 
+  absl::StatusOr<tsl::profiler::ConsumeResult> Consume() override;
+
+  absl::Status Serialize(std::any data,
+                         tensorflow::profiler::XSpace* space) override;
+
  private:
   const PLUGIN_Profiler_Api* profiler_api_;
   PLUGIN_Profiler* profiler_;

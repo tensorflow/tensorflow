@@ -48,6 +48,7 @@ namespace {
 using tensorflow::ProfileOptions;
 using tensorflow::profiler::XPlane;
 using tensorflow::profiler::XSpace;
+using tsl::profiler::ConsumeResult;
 using tsl::profiler::ProfilerInterface;
 
 class ProfilerStatusHelper {
@@ -98,6 +99,10 @@ class TpuTracer : public ProfilerInterface {
   absl::Status Stop() override;
 
   absl::Status CollectData(XSpace* space) override;
+
+  absl::StatusOr<ConsumeResult> Consume() override;
+
+  absl::Status Serialize(std::any data, XSpace* space) override;
 
  private:
   TpuProfiler* tpu_profiler_;
@@ -157,10 +162,85 @@ absl::Status TpuTracer::CollectData(XSpace* space) {
       XPlane* plane = space->add_planes();
       plane->Swap(&tpu_plane);
     }
+    for (auto& error : tpu_space.errors()) {
+      space->add_errors(error);
+    }
+    for (auto& hostname : tpu_space.hostnames()) {
+      space->add_hostnames(hostname);
+    }
   }
   if (!status.ok()) {
     LOG(ERROR) << "TPU tracer failed to collect data.";
     return status.status();
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<ConsumeResult> TpuTracer::Consume() {
+  PLUGIN_Profiler_Consume_Args args;
+  args.struct_size = PLUGIN_Profiler_Consume_Args_STRUCT_SIZE;
+  args.profiler = reinterpret_cast<PLUGIN_Profiler*>(tpu_profiler_);
+  args.result = nullptr;
+
+  stream_executor::tpu::ProfilerApiFn()->TpuProfiler_ConsumeFn(&args);
+
+  if (args.result == nullptr) {
+    return absl::InternalError("TPU Profiler Consume returned null handle.");
+  }
+
+  size_t estimated_size_bytes =
+      stream_executor::tpu::ProfilerApiFn()
+          ->TpuProfiler_ConsumeResult_GetByteSizeFn(args.result);
+
+  // Wrap opaque pointer with a custom deleter in std::shared_ptr to manage its
+  // lifecycle inside std::any
+  auto deleter = [](PLUGIN_Profiler_ConsumeResult* ptr) {
+    if (ptr)
+      stream_executor::tpu::ProfilerApiFn()
+          ->TpuProfiler_ConsumeResult_DestroyFn(ptr);
+  };
+  std::shared_ptr<PLUGIN_Profiler_ConsumeResult> shared_result(args.result,
+                                                               deleter);
+  return ConsumeResult{
+      .data = std::move(shared_result),
+      .estimated_size_bytes = estimated_size_bytes,
+  };
+}
+
+absl::Status TpuTracer::Serialize(std::any data, XSpace* space) {
+  auto* shared_result =
+      std::any_cast<std::shared_ptr<PLUGIN_Profiler_ConsumeResult>>(&data);
+  if (shared_result == nullptr) {
+    return absl::InvalidArgumentError(
+        "Invalid data type passed to TpuTracer::Serialize");
+  }
+
+  PLUGIN_Profiler_Serialize_Args args;
+  args.struct_size = PLUGIN_Profiler_Serialize_Args_STRUCT_SIZE;
+  args.profiler = reinterpret_cast<PLUGIN_Profiler*>(tpu_profiler_);
+  args.consume_result = shared_result->get();
+  args.serialized_bytes = nullptr;
+  args.serialized_size = 0;
+
+  stream_executor::tpu::ProfilerApiFn()->TpuProfiler_SerializeFn(&args);
+
+  if (args.serialized_size > 0 && args.serialized_bytes != nullptr) {
+    XSpace tpu_space;
+    if (!tpu_space.ParseFromArray(args.serialized_bytes,
+                                  args.serialized_size)) {
+      return absl::InternalError(
+          "Failed to parse XSpace from serialized TPU profile data");
+    }
+    for (XPlane& tpu_plane : *tpu_space.mutable_planes()) {
+      XPlane* plane = space->add_planes();
+      plane->Swap(&tpu_plane);
+    }
+    for (auto& error : tpu_space.errors()) {
+      space->add_errors(error);
+    }
+    for (auto& hostname : tpu_space.hostnames()) {
+      space->add_hostnames(hostname);
+    }
   }
   return absl::OkStatus();
 }
