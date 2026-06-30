@@ -1,0 +1,48 @@
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s --abs_error_bound=1e-4 --rel_error_bound=1e-6
+
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-4 --rel_error_bound=1e-6
+
+fusion {
+  p0 = f32[16,32]{1,0} parameter(0)
+  p1 = f32[32,16]{1,0} parameter(1)
+  dot = f32[16,16]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[16]}
+  ROOT broadcast = f32[2,16,16]{2,1,0} broadcast(dot), dimensions={1,2}
+}
+
+// CHECK: xtile.entry_func @triton_fn(
+// CHECK-SAME: %[[ARG0:[^:]+]]: memref<16x32xf32>,
+// CHECK-SAME: %[[ARG1:[^:]+]]: memref<32x16xf32>,
+// CHECK-SAME: %[[ARG2:[^:]+]]: memref<2x16x16xf32>,
+// CHECK-SAME: %[[PID:[^:]+]]: index)
+// CHECK-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : tensor<16x16xf32>
+// CHECK-DAG: %[[CONSTANT_0:.*]] = arith.constant 0 : index
+// CHECK-DAG: %[[CONSTANT_1:.*]] = arith.constant 1 : index
+// CHECK-DAG: %[[CONSTANT_2:.*]] = arith.constant 2 : index
+// CHECK: %[[LOOP:.*]] = scf.for %[[LOOP_VAR:.*]] = %[[CONSTANT_0]] to %[[CONSTANT_2]] step %[[CONSTANT_1]]
+// CHECK:     %[[OFFSET:.*]] = xla.apply_indexing #indexing_map(%[[LOOP_VAR]])
+// CHECK:     %[[EXTRACT_LHS:.*]] = xtile.extract %[[ARG0]][%[[CONSTANT_0]], %[[OFFSET]]] [16, 16] [1, 1] : memref<16x32xf32> -> tensor<16x16xf32>
+// CHECK:     %[[EXTRACT_RHS:.*]] = xtile.extract %[[ARG1]][%[[OFFSET]], %[[CONSTANT_0]]] [16, 16] [1, 1] : memref<32x16xf32> -> tensor<16x16xf32>
+// CHECK:     %{{.*}} = tt.dot %[[EXTRACT_LHS]], %[[EXTRACT_RHS]], %{{.*}} : tensor<16x16xf32> * tensor<16x16xf32> -> tensor<16x16xf32>
+// CHECK:     scf.yield
+// CHECK: }
+// CHECK: %[[EXPAND:.*]] = tt.expand_dims %[[LOOP]] {axis = 0 : i32} : tensor<16x16xf32> -> tensor<1x16x16xf32>
+// CHECK: xtile.insert %[[EXPAND]] into %[[ARG2]][%[[PID]], %[[CONSTANT_0]], %[[CONSTANT_0]]] [1, 16, 16] [1, 1, 1] : tensor<1x16x16xf32> -> memref<2x16x16xf32>
+// CHECK: xtile.return
+
+ENTRY main {
+  p0 = f32[16,32]{1,0} parameter(0)
+  p1 = f32[32,16]{1,0} parameter(1)
+  ROOT fusion = f32[2,16,16]{2,1,0} fusion(p0, p1), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1","16","16"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

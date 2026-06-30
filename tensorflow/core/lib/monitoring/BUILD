@@ -201,7 +201,7 @@ cc_library(
 
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "mobile_srcs_only_runtime",
+    name = "mobile_hdrs_only_runtime",
     srcs = [
         "cell_reader.h",
         "collection_registry.h",
@@ -213,7 +213,7 @@ filegroup(
         "test_utils.h",
         "timed.h",
         "types.h",
-        "@xla//xla/tsl/lib/monitoring:mobile_srcs_only_runtime",
+        "@xla//xla/tsl/lib/monitoring:mobile_hdrs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

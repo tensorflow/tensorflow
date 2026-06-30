@@ -3,11 +3,12 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/backends/gpu/runtime/thunk.proto";
-import "xla/service/gpu/ir_emission_utils.proto";
+import "xla/service/cpu/executable.proto";
+import "xla/service/gpu/dense_data_intermediate.proto";
 import "xla/service/hlo.proto";
 import "xla/shape_util.proto";
-import "xla/stream_executor/device_description.proto";
 import "xla/stream_executor/abi/executable_abi_version.proto";
+import "xla/stream_executor/device_description.proto";
 import "xla/xla.proto";
 import "xla/xla_data.proto";
 
@@ -28,7 +29,8 @@ message GpuExecutableProto {
     repeated BufferAllocationProto values = 1;
   }
 
-  // Used in the legacy format.
+  // Used in the legacy format and exists for debugging purposes in the new
+  // format.
   BufferAssignmentProto buffer_assignment = 2;
   // The buffer allocations of the executable, used in the new format.
   RepeatedBufferAllocations buffer_allocations = 10;
@@ -96,6 +98,14 @@ message GpuExecutableProto {
 
   // The ABI version of the executable.
   stream_executor.ExecutableAbiVersionProto executable_abi_version = 14;
+
+  // The host target machine options of the executable.
+  optional xla.cpu.TargetMachineOptionsProto cpu_target_machine_options = 15;
+
+  // Human readable summary of the buffer allocations. Tailored to debugging
+  // OOMs, includes the Hlo op metadata for every buffer associated with each
+  // allocation.
+  string buffer_allocations_debug_summary = 16;
 
   reserved 7;
 }

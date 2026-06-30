@@ -150,20 +150,52 @@ def tflite_schema_utils_friends():
     # Flatbuffer creation/manipulation in unofficially supported ways."
     return ["//..."]
 
+def flex_portable_tensorflow_hdrs():
+    """Returns header files for building portable tensorflow in Flex delegate."""
+
+    return [
+        "//tensorflow/core/lib/gif:hdrs",
+        "//tensorflow/core/lib/jpeg:hdrs",
+        "//tensorflow/core/lib/jxl:hdrs",
+        "//tensorflow/core/lib/png:hdrs",
+        "//tensorflow/core/lib/webp:hdrs",
+    ]
+
 def flex_portable_tensorflow_deps():
     """Returns dependencies for building portable tensorflow in Flex delegate."""
 
     return [
-        "//third_party/fft2d:fft2d_headers",
-        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/base:prefetch",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@eigen_archive//:eigen3",
         "@gemmlowp",
         "@icu//:common",
+        "//third_party/fft2d:fft2d_headers",
         "//third_party/icu/data:conversion_data",
+        "@com_googlesource_code_re2//:re2",
+        "@xla//xla/tsl/framework/fixedpoint",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:types",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:mutex",
     ]
 
 def tflite_copts_extra():

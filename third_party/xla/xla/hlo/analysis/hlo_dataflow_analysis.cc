@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -442,42 +442,44 @@ bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
   return changed;
 }
 
-bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
-    HloInstruction* async_start) {
+bool HloDataflowAnalysis::UpdateAsyncChainOperandValueSet(
+    HloInstruction* async_start, int64_t operand_index) {
   CHECK_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
   bool changed = false;
-  // AsyncStart forwards the operand values to element {0} of its output.
-  for (int64_t i = 0; i < async_start->operand_count(); ++i) {
-    const HloInstruction* operand = async_start->operand(i);
-    ShapeUtil::ForEachSubshape(
-        operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-          if (!subshape.IsArray()) {
-            return;
-          }
-          const HloValueSet& operand_value_set = GetValueSet(operand, index);
+  const HloInstruction* operand = async_start->operand(operand_index);
+  ShapeUtil::ForEachSubshape(
+      operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (!subshape.IsArray() && !subshape.IsToken()) {
+          return;
+        }
+        const HloValueSet& operand_value_set = GetValueSet(operand, index);
 
-          ShapeIndex output_index = {0, i};
-          output_index.insert(output_index.end(), index.begin(), index.end());
+        ShapeIndex output_index = {0, operand_index};
+        output_index.insert(output_index.end(), index.begin(), index.end());
 
-          HloValueSet& value_set =
-              GetMutableValueSet(async_start, output_index);
-          if (value_set != operand_value_set) {
-            value_set = operand_value_set;
-            changed = true;
-          }
-        });
-  }
-  if (!HloInstruction::IsThreadIncluded(async_start->async_execution_thread(),
-                                        execution_threads_)) {
+        HloValueSet& value_set = GetMutableValueSet(async_start, output_index);
+        if (value_set != operand_value_set) {
+          value_set = operand_value_set;
+          changed = true;
+        }
+      });
+  return changed;
+}
+
+bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
+    HloInstruction* async_op) {
+  bool changed = false;
+  bool is_thread_included = HloInstruction::IsThreadIncluded(
+      async_op->async_execution_thread(), execution_threads_);
+
+  if (!is_thread_included) {
     return changed;
   }
-  // AsyncStart forwards the async wrapped computation root values to element
-  // {1} of its output.
   HloInstruction* root =
-      async_start->async_wrapped_computation()->root_instruction();
+      async_op->async_wrapped_computation()->root_instruction();
   ShapeUtil::ForEachSubshape(
       root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray()) {
+        if (!subshape.IsArray() && !subshape.IsToken()) {
           return;
         }
         const HloValueSet& root_value_set = GetValueSet(root, index);
@@ -485,12 +487,24 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
         ShapeIndex output_index = {1};
         output_index.insert(output_index.end(), index.begin(), index.end());
 
-        HloValueSet& value_set = GetMutableValueSet(async_start, output_index);
-        if (value_set != root_value_set) {
-          value_set = root_value_set;
-          changed = true;
-        }
+        HloValueSet& value_set = GetMutableValueSet(async_op, output_index);
+        changed |= value_set.AssignUnionOf({&value_set, &root_value_set});
       });
+  return changed;
+}
+
+bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
+    HloInstruction* async_start) {
+  CHECK_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
+  bool changed = false;
+  // AsyncStart forwards the operand values to element {0} of its output.
+  for (int64_t i = 0; i < async_start->operand_count(); ++i) {
+    changed |= UpdateAsyncChainOperandValueSet(async_start, i);
+  }
+
+  // AsyncStart forwards the async wrapped computation root values to element
+  // {1} of its output.
+  changed |= UpdateAsyncChainOutputValueSet(async_start);
   return changed;
 }
 
@@ -509,7 +523,7 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
   ShapeUtil::ForEachSubshape(
       async_update->operand(0)->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray()) {
+        if (!subshape.IsArray() && !subshape.IsToken()) {
           return;
         }
         const HloValueSet& operand_value_set =
@@ -545,7 +559,8 @@ bool HloDataflowAnalysis::UpdateAsyncDoneValueSet(HloInstruction* async_done) {
   ShapeUtil::ForEachSubshape(
       async_done->operand(0)->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray() || index.front() != 1) {
+        if ((!subshape.IsArray() && !subshape.IsToken()) ||
+            index.front() != 1) {
           return;
         }
         const HloValueSet& operand_value_set =
@@ -808,14 +823,11 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
     } else if (opcode == HloOpcode::kAsyncStart) {
       inputs.push_back(&GetInstructionValueSet(
           callsite.instruction()->operand(parameter->parameter_number())));
-    } else if (opcode == HloOpcode::kAsyncUpdate ||
-               opcode == HloOpcode::kAsyncDone) {
-      return GetInstructionValueSet(parameter).AssignUnionOf(
-          GetInstructionValueSet(callsite.instruction()->operand(0)),
-          {0, parameter->parameter_number()});
     } else {
-      LOG(FATAL) << "CallContext::kSequential computations should only be "
-                    "called from call, while, or conditional instructions";
+      LOG(FATAL) << "CallContext::kControlFlow computations should only be "
+                    "called from call, while, conditional, or async-start "
+                    "instructions, but got: "
+                 << HloOpcodeString(opcode) << "(" << opcode << ")";
     }
   }
   if (ssa_form_ && need_phi) {
@@ -1440,9 +1452,10 @@ void HloDataflowAnalysis::OptimizePhiValues() {
       VLOG(1) << instruction_value_set.ToString();
       instruction_value_set.ForEachMutableElement(
           [&](const xla::ShapeIndex& index, HloValueSet* value_set) {
-            auto values = value_set->values();
+            const std::vector<const HloValue*>& values = value_set->values();
             bool changed = false;
             std::vector<const HloValue*> new_values;
+            new_values.reserve(values.size());
             for (const HloValue* value : values) {
               if (value->is_phi()) {
                 HloValue::Id phi_id = value->id();
@@ -1460,10 +1473,7 @@ void HloDataflowAnalysis::OptimizePhiValues() {
               new_values.push_back(value);
             }
             if (changed) {
-              value_set->Clear();
-              for (const HloValue* new_value : new_values) {
-                value_set->AddValue(new_value);
-              }
+              *value_set = HloValueSet(new_values);
             }
           });
     }
@@ -1479,12 +1489,12 @@ absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
 
   auto dataflow_analysis = absl::WrapUnique(new HloDataflowAnalysis(
       module, ssa_form, bitcast_defines_value, execution_threads));
-  TF_RETURN_IF_ERROR(dataflow_analysis->RunImpl());
+  RETURN_IF_ERROR(dataflow_analysis->RunImpl());
   return dataflow_analysis;
 }
 
 absl::Status HloDataflowAnalysis::RunImpl() {
-  TF_RETURN_IF_ERROR(InitializeInstructionValueSets());
+  RETURN_IF_ERROR(InitializeInstructionValueSets());
   Propagate();
   OptimizePhiValues();
 

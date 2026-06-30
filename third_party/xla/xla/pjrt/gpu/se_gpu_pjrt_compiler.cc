@@ -23,10 +23,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -35,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_runtime_abi_version.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
+#include "xla/pjrt/layout_mode.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_abi_version.h"
@@ -44,6 +49,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/utils.h"
+#include "xla/primitive_util.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
@@ -60,26 +66,12 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/casts.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace {
 
 bool IsGpuClient(const PjRtClient& client) {
-  return client.platform_id() == CudaId() || client.platform_id() == RocmId() ||
-         client.platform_id() == SyclId();
-}
-
-bool IsSameTopology(const PjRtTopologyDescription& topology1,
-                    const PjRtTopologyDescription& topology2) {
-  const StreamExecutorGpuTopologyDescription& gpu_topology1 =
-      tensorflow::down_cast<const StreamExecutorGpuTopologyDescription&>(
-          topology1);
-  const StreamExecutorGpuTopologyDescription& gpu_topology2 =
-      tensorflow::down_cast<const StreamExecutorGpuTopologyDescription&>(
-          topology2);
-  return gpu_topology1 == gpu_topology2;
+  return IsGpuId(client.platform_id());
 }
 
 absl::Status IsValidTopologyAndClientForCompile(
@@ -97,8 +89,8 @@ absl::Status IsValidTopologyAndClientForCompile(
 
 absl::StatusOr<std::unique_ptr<xla::Compiler>>
 GetCompilerForDefaultGpuPlatform() {
-  TF_ASSIGN_OR_RETURN(stream_executor::Platform * platform,
-                      PlatformUtil::GetPlatform("gpu"));
+  ASSIGN_OR_RETURN(stream_executor::Platform * platform,
+                   PlatformUtil::GetPlatform("gpu"));
   return Compiler::GetForPlatform(platform->id());
 }
 
@@ -108,10 +100,22 @@ absl::StatusOr<std::unique_ptr<xla::Compiler>> GetCompilerForPlatform(
     return GetCompilerForDefaultGpuPlatform();
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       stream_executor::Platform * platform,
       stream_executor::PlatformManager::PlatformWithId(platform_id.value()));
   return Compiler::GetForPlatform(platform->id());
+}
+
+absl::StatusOr<stream_executor::StreamExecutor*> GetStreamExecutor(
+    PjRtClient* client) {
+  const StreamExecutorGpuClient* gpu_client =
+      dynamic_cast<const StreamExecutorGpuClient*>(client);
+  if (gpu_client != nullptr) {
+    return gpu_client->client()->backend().default_stream_executor();
+  }
+
+  return absl::InvalidArgumentError(
+      "Given PjRtClient is not a StreamExecutorGpuClient.");
 }
 
 }  // namespace
@@ -120,6 +124,10 @@ StreamExecutorGpuCompiler::StreamExecutorGpuCompiler(
     PjRtPlatformId pjrt_platform_id, stream_executor::Platform::Id platform_id)
     : requested_platform_id_(platform_id),
       pjrt_platform_id_(pjrt_platform_id) {}
+
+StreamExecutorGpuCompiler::StreamExecutorGpuCompiler(
+    PjRtPlatformId pjrt_platform_id, std::unique_ptr<Compiler> compiler)
+    : compiler_(std::move(compiler)), pjrt_platform_id_(pjrt_platform_id) {}
 
 absl::StatusOr<Compiler*> StreamExecutorGpuCompiler::GetOrCreateCompiler() {
   absl::MutexLock lock(compiler_mutex_);
@@ -130,61 +138,118 @@ absl::StatusOr<Compiler*> StreamExecutorGpuCompiler::GetOrCreateCompiler() {
     // registered with Compiler::RegisterCompilerFactory). For the same reason,
     // we can't fail construction of this class, therefore we have this
     // GetOrCreate function and we can return on error when calling Compile.
-    TF_ASSIGN_OR_RETURN(compiler_,
-                        GetCompilerForPlatform(requested_platform_id_));
+    ASSIGN_OR_RETURN(compiler_, GetCompilerForPlatform(requested_platform_id_));
   }
   return compiler_.get();
 }
 
-absl::StatusOr<std::unique_ptr<PjRtExecutable>>
-StreamExecutorGpuCompiler::Compile(CompileOptions options,
-                                   const XlaComputation& computation,
-                                   const PjRtTopologyDescription& topology,
-                                   PjRtClient* client) {
-  TF_ASSIGN_OR_RETURN(Compiler * gpu_compiler, GetOrCreateCompiler());
+namespace {
+// Returns a `GpuTopology` populated with a target config obtained from the
+// given parameters. Will fail if no target_config is found.
+absl::StatusOr<GpuTopology> GetTopologyWithTargetConfig(
+    const PjRtTopologyDescription& topology, const CompileOptions& options) {
+  const auto gpu_topology_description =
+      dynamic_cast<const xla::StreamExecutorGpuTopologyDescription*>(&topology);
+  if (gpu_topology_description == nullptr) {
+    return absl::InvalidArgumentError(
+        "The PjRtTopologyDescription must be a "
+        "StreamExecutorGpuTopologyDescription.");
+  }
+  // TODO: b/491510579 - The gpu_topology_description has 2 fields for a target
+  // config, we should fold them and we can get rid of this if branch.
+  if (gpu_topology_description->target_config().has_value()) {
+    VLOG(2) << "Found GPU target config in PjRt topology description.";
+    ASSIGN_OR_RETURN(gpu::GpuTargetConfig gpu_target_config,
+                     Compiler::GpuTargetConfig::FromProto(
+                         *gpu_topology_description->target_config()));
+    return gpu_topology_description->gpu_topology().CopyWithNewTargetConfig(
+        gpu_target_config);
+  }
+  if (gpu_topology_description->gpu_topology().has_gpu_target_config()) {
+    VLOG(2) << "Found GPU target config in GpuTopology.";
+    return gpu_topology_description->gpu_topology();
+  }
+  if (options.gpu_target_config.has_value()) {
+    VLOG(2) << "Found GPU target config in compile options.";
+    return gpu_topology_description->gpu_topology().CopyWithNewTargetConfig(
+        options.gpu_target_config.value());
+  }
+  return absl::InvalidArgumentError(
+      "No GPU target config found in topology description or compile options.");
+}
+}  // namespace
 
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+StreamExecutorGpuCompiler::Compile(
+    CompileOptions options, const XlaComputation& computation,
+    const PjRtTopologyDescription& topology, PjRtClient* client,
+    LayoutCanonicalizationCallback layout_callback) {
+  ASSIGN_OR_RETURN(Compiler * gpu_compiler, GetOrCreateCompiler());
+
+  // This function does a bunch of temporary modifications to the CompileOptions
+  // which should not be reflected in the options that we keep with the
+  // resulting executable. Therefore we make a copy here. `input_options` are
+  // the options as provided by the caller.
   CompileOptions input_options = options;
-  if (xla::IsEarlyExitCompilation(options)) {
-    auto* se_gpu_topology =
-        tsl::down_cast<const xla::StreamExecutorGpuTopologyDescription*>(
-            &topology);
-    const xla::GpuTopology& gpu_topology = se_gpu_topology->gpu_topology();
-    TF_RET_CHECK(gpu_topology.has_gpu_target_config())
-        << "GPU cross-compile is not yet implemented for topology "
-        << se_gpu_topology->ToProto()->ShortDebugString();
-    options.gpu_target_config = gpu_topology.gpu_target_config();
+
+  absl::StatusOr<GpuTopology> topology_with_target_config =
+      GetTopologyWithTargetConfig(topology, options);
+  if (!topology_with_target_config.ok() && client == nullptr) {
+    // Note that we have code that depends on this being an UnimplementedError,
+    // therefore we have this explicit early return here.
+    return absl::UnimplementedError(absl::StrCat(
+        "Compilation without client and without target config specified is not "
+        "implemented. Details: ",
+        topology_with_target_config.status().ToString()));
   }
-  if (!options.gpu_target_config) {
-    if (client != nullptr) {
-      TF_RET_CHECK(IsGpuClient(*client))
-          << "GPU compilation requires a GPU PjRt client.";
-      TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                          client->Compile(computation, options));
-      return executable;
-    }
-    const auto& gpu_topology =
-        tensorflow::down_cast<const xla::StreamExecutorGpuTopologyDescription&>(
-            topology);
-    if (gpu_topology.target_config().has_value()) {
-      TF_ASSIGN_OR_RETURN(
-          Compiler::GpuTargetConfig target_config,
-          Compiler::GpuTargetConfig::FromProto(*gpu_topology.target_config()));
-      options.gpu_target_config.emplace(std::move(target_config));
-    } else {
-      return absl::UnimplementedError(
-          "Compilation without client and without target_config specified is "
-          "not implemented");
-    }
+  if (!topology_with_target_config.ok() && client != nullptr) {
+    LOG(INFO) << "Found PjRtClient and no GPU target config. Performing a JIT "
+                 "compilation. Details: "
+              << topology_with_target_config.status();
+    TF_RET_CHECK(IsGpuClient(*client))
+        << "JIT compilation requires a GPU PjRt client.";
+    RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
+    return client->Compile(computation, input_options);
   }
-  TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
+
+  ASSIGN_OR_RETURN(GpuTopology xla_gpu_topology, topology_with_target_config);
+  options.gpu_target_config = xla_gpu_topology.gpu_target_config();
+  if (layout_callback != nullptr) {
+    options.executable_build_options.set_layout_canonicalization_callback(
+        std::move(layout_callback));
+  }
+
+  if (IsEarlyExitCompilation(options)) {
+    LOG(INFO) << "Early exit compilation is enabled. Note that this is always "
+                 "a deviceless compilation.";
+  } else if (client != nullptr) {
+    ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
+                     GetStreamExecutor(client));
+    gpu::GpuTargetConfig local_gpu_target_config(stream_executor);
+
+    if (local_gpu_target_config ==
+        topology_with_target_config->gpu_target_config()) {
+      LOG(INFO) << "Found GPU target config and a PjRtClient with matching "
+                   "configuration. Performing a JIT compilation.";
+      // This code path is necessary as long as the legacy AOT compilation is
+      // still in use.
+      return client->Compile(computation, input_options);
+    }
+
+    LOG(INFO) << "Found GPU target config and a PjRtClient. Performing a cross "
+                 "compilation.";
+  } else {
+    LOG(INFO) << "Found GPU target config and no PjRtClient. Performing a "
+                 "deviceless compilation.";
+  }
+  RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
   std::vector<const Shape*> argument_layout_pointers;
   const ExecutableBuildOptions& build_options =
       options.executable_build_options;
   const bool allow_auto_layout =
       build_options.has_debug_options() &&
       build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
-  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+  RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
       computation,
       [allow_auto_layout](Shape shape) {
         if (allow_auto_layout && !shape.has_layout()) {
@@ -195,14 +260,13 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
       options.argument_layouts, &options.executable_build_options,
       &argument_layout_pointers));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> hlo_config,
-                      GetHloModuleConfig(computation, argument_layout_pointers,
-                                         options.executable_build_options));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> hlo_config,
+                   GetHloModuleConfig(computation, argument_layout_pointers,
+                                      options.executable_build_options));
 
   HloModuleProto hlo_module_proto = computation.proto();
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(hlo_module_proto, *hlo_config));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                   HloModule::CreateFromProto(hlo_module_proto, *hlo_config));
   hlo_module->mutable_config()
       .mutable_debug_options()
       .set_xla_pjrt_allow_auto_layout_in_hlo(true);
@@ -212,8 +276,6 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
 
   AotCompilationOptions aot_options(gpu_compiler->PlatformId());
-  GpuTopology xla_gpu_topology = GetSingleDeviceGpuTopology(
-      /*platform_version=*/"", *options.gpu_target_config);
   aot_options.set_gpu_topology(xla_gpu_topology);
   aot_options.set_run_backend_only(
       options.executable_build_options.run_backend_only());
@@ -221,12 +283,16 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
     aot_options.set_early_exit_point(
         AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment);
     aot_options.set_executor(nullptr);
+  } else if (client != nullptr) {
+    ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
+                     GetStreamExecutor(client));
+    aot_options.set_executor(stream_executor);
   }
   const int num_replicas = hlo_module->config().replica_count();
   const int num_partitions = hlo_module->config().num_partitions();
   const std::string name = hlo_module->name();
   const std::string fingerprint = hlo_module->GetFingerprint128();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<CompiledModule>> aot_results,
       gpu_compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
   return std::make_unique<StreamExecutorExecutable>(
@@ -237,28 +303,108 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 StreamExecutorGpuCompiler::Compile(CompileOptions options,
+                                   const XlaComputation& computation,
+                                   const PjRtTopologyDescription& topology,
+                                   PjRtClient* client) {
+  return Compile(std::move(options), computation, topology, client,
+                 /*layout_callback=*/nullptr);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+StreamExecutorGpuCompiler::Compile(CompileOptions options,
                                    MaybeOwningMlirModule module,
                                    const PjRtTopologyDescription& topology,
                                    PjRtClient* client) {
-  if (!options.gpu_target_config && client != nullptr) {
+  absl::StatusOr<GpuTopology> topology_with_target_config =
+      GetTopologyWithTargetConfig(topology, options);
+
+  if (!topology_with_target_config.ok() && client != nullptr) {
     TF_RET_CHECK(IsGpuClient(*client))
         << "GPU compilation requires a GPU PjRt client.";
-    TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                        client->Compile(std::move(module), options));
+    RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
+    ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                     client->Compile(std::move(module), options));
     return executable;
   }
 
+  if (topology_with_target_config.ok() && client != nullptr) {
+    ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
+                     GetStreamExecutor(client));
+    gpu::GpuTargetConfig local_gpu_target_config(stream_executor);
+    if (local_gpu_target_config ==
+        topology_with_target_config->gpu_target_config()) {
+      LOG(INFO) << "Found GPU target config and a PjRtClient with matching "
+                   "configuration. Performing a JIT compilation.";
+      // This code path is necessary as long as the legacy AOT compilation is
+      // still in use.
+      return client->Compile(std::move(module), options);
+    }
+  }
+
   XlaComputation xla_computation;
-  TF_RETURN_IF_ERROR(MlirToXlaComputation(
+  RETURN_IF_ERROR(MlirToXlaComputation(
       module.mlir_module(), xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false,
       /*exec_build_options=*/&options.executable_build_options,
       mlir::mhlo::getGpuChloToHighLevelMhloOptions()));
+
+  // If the compile options specify argument layout, then let's
+  // fall back to using the options to determine layouts.
+  if (options.argument_layouts) {
+    // MLIR module no longer required - release any memory if owned.
+    module = MaybeOwningMlirModule();
+    return Compile(std::move(options), xla_computation, topology, client,
+                   /*layout_callback=*/nullptr);
+  }
+
+  ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
+                   GetArgLayoutModes(module.mlir_module()));
+  ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
+                   GetOutputLayoutModes(module.mlir_module()));
+  ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
+                   GetArgMemoryKinds(module.mlir_module()));
+  ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
+                   GetOutputMemoryKinds(module.mlir_module()));
+
   // MLIR module no longer required - release any memory if owned.
   module = MaybeOwningMlirModule();
-  return Compile(std::move(options), xla_computation, topology, client);
+
+  const auto choose_compact_layout_for_shape =
+      [](const Shape& shape) -> absl::StatusOr<Shape> {
+    Shape compact_shape = LayoutUtil::GetWithDefaultLayout(shape);
+    if (primitive_util::IsSubByteNonPredType(compact_shape.element_type())) {
+      compact_shape.mutable_layout()->set_element_size_in_bits(
+          primitive_util::BitWidth(compact_shape.element_type()));
+    }
+    return compact_shape;
+  };
+
+  // If auto-sharding modifies shapes of arguments and/or result,
+  // we get a callback to restore the layouts. Let us restore the layouts
+  // according to the attributes we parsed from MLIR.
+  auto layout_callback = [&choose_compact_layout_for_shape, &arg_layout_modes,
+                          &out_layout_modes, &arg_memory_spaces,
+                          &out_memory_spaces](const HloModule& module)
+      -> absl::StatusOr<std::pair<std::vector<Shape>, Shape>> {
+    XlaComputation xla_computation(XlaComputation(module.ToProto()));
+    return LayoutModesToXlaShapes(
+        xla_computation, arg_layout_modes, out_layout_modes, arg_memory_spaces,
+        out_memory_spaces, choose_compact_layout_for_shape);
+  };
+
+  ASSIGN_OR_RETURN(
+      auto arg_layouts_and_pointers,
+      LayoutModesToXla(xla_computation, arg_layout_modes, out_layout_modes,
+                       arg_memory_spaces, out_memory_spaces,
+                       choose_compact_layout_for_shape,
+                       options.executable_build_options));
+
+  options.argument_layouts = std::move(arg_layouts_and_pointers.first);
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_pjrt_allow_auto_layout_in_hlo(true);
+  return Compile(std::move(options), xla_computation, topology, client,
+                 std::move(layout_callback));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>

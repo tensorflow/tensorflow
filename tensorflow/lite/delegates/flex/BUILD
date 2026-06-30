@@ -5,7 +5,6 @@ load(
     "if_mobile",
     "if_not_mobile",
     "tf_cc_test",
-    "tf_features_nolayering_check_if_ios",
     "tf_opts_nortti_if_lite_protos",
     "tf_opts_nortti_if_mobile",
 )
@@ -41,7 +40,6 @@ cc_library(
     hdrs = ["buffer_map.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tf_opts_nortti_if_lite_protos(),
-    features = tf_features_nolayering_check_if_ios() + if_android(["-layering_check"]),
     deps = [
         ":buffer_map_util",
         ":util",
@@ -62,13 +60,16 @@ cc_library(
     hdrs = ["buffer_map_util.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tf_opts_nortti_if_lite_protos(),
-    features = tf_features_nolayering_check_if_ios() + if_android(["-layering_check"]),
     deps = [
         ":util",
+        "//tensorflow/core/platform:tstring",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
+        "@com_google_absl//absl/status",
+        "@eigen_archive//:eigen3",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
@@ -87,12 +88,14 @@ tf_cc_test(
     deps = [
         ":buffer_map",
         ":buffer_map_util",
+        ":util",
         "//tensorflow/core:framework",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -161,7 +164,6 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tf_opts_nortti_if_mobile(),
-    features = tf_features_nolayering_check_if_ios() + if_android(["-layering_check"]),
     visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
@@ -219,7 +221,6 @@ cc_library(
     hdrs = ["delegate_data.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tf_opts_nortti_if_mobile(),
-    features = tf_features_nolayering_check_if_ios() + if_android(["-layering_check"]),
     visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
@@ -271,7 +272,6 @@ cc_library(
     hdrs = ["subgraph_resource.h"],
     compatible_with = get_compatible_with_portable(),
     copts = if_android(["-Wno-private-header"]),
-    features = tf_features_nolayering_check_if_ios(),
     deps = [
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
@@ -327,7 +327,6 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     compatible_with = get_compatible_with_portable(),
-    features = tf_features_nolayering_check_if_ios() + if_android(["-layering_check"]),
     #TODO(b/206038955): Consider restrict the visibility to '//third_party/fcp/client:__subpackages__'.
     visibility = ["//visibility:public"],
     deps = [
@@ -365,6 +364,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:tstring",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
@@ -383,7 +383,6 @@ tf_cc_test(
         "allowlisted_flex_ops_test.cc",
     ],
     extra_copts = if_android(["-Wno-private-header"]),
-    features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":delegate",
         "//tensorflow/compiler/mlir/lite/delegates/flex:allowlisted_flex_ops_lib",
@@ -414,7 +413,6 @@ cc_library(
     srcs = ["tflite_subgraph_execute.cc"],
     compatible_with = get_compatible_with_portable(),
     copts = tf_opts_nortti_if_mobile(),
-    features = tf_features_nolayering_check_if_ios() + if_android(["-layering_check"]),
     deps = [
         ":buffer_map_util",
         ":subgraph_resource",

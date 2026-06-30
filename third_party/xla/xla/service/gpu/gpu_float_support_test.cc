@@ -655,6 +655,32 @@ ENTRY main {
       Normalize(module_exp.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
 
+TEST_F(FloatSupportTest, BF16ExpOnGfx1250IsNotNormalized) {
+  // gfx1250 has a native bf16 exponential instruction, so bf16 exp should be
+  // kept as bf16 instead of being upcast to f32.
+  auto cc = se::RocmComputeCapability("gfx1250");
+  constexpr absl::string_view kHloModule = R"(
+HloModule module
+
+ENTRY main {
+      p0 = bf16[4] parameter(0)
+      ROOT r = bf16[4] $0(p0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module_exp,
+                          ParseAndReturnVerifiedModule(
+                              absl::Substitute(kHloModule, "exponential")));
+  EXPECT_FALSE(
+      Normalize(module_exp.get(), se::GpuComputeCapability{cc}, BF16, F32));
+
+  // log has no native bf16 instruction wired up, so it is still normalized.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module_log,
+      ParseAndReturnVerifiedModule(absl::Substitute(kHloModule, "log")));
+  EXPECT_TRUE(
+      Normalize(module_log.get(), se::GpuComputeCapability{cc}, BF16, F32));
+}
+
 TEST_F(FloatSupportTest, ScaledDotIsIgnored) {
   auto cc = se::CudaComputeCapability::Hopper();
   constexpr absl::string_view kHloModule = R"(

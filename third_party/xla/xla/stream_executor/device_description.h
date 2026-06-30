@@ -27,8 +27,10 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/base/macros.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -186,9 +188,34 @@ struct DeviceInterconnectInfo {
   // ID of the fabric clique to which this GPU belongs.
   std::string clique_id;
 
+  bool is_in_cluster() const {
+    return !cluster_uuid.empty() &&
+           cluster_uuid != "00000000-0000-0000-0000-000000000000";
+  }
+
   bool operator==(const DeviceInterconnectInfo& other) const {
     return active_links == other.active_links &&
            cluster_uuid == other.cluster_uuid && clique_id == other.clique_id;
+  }
+  bool operator!=(const DeviceInterconnectInfo& other) const {
+    return !(*this == other);
+  }
+
+  DeviceInterconnectInfoProto ToProto() const {
+    DeviceInterconnectInfoProto proto;
+    proto.set_active_links(active_links);
+    proto.set_cluster_uuid(cluster_uuid);
+    proto.set_clique_id(clique_id);
+    return proto;
+  }
+
+  static absl::StatusOr<DeviceInterconnectInfo> FromProto(
+      const DeviceInterconnectInfoProto& proto) {
+    DeviceInterconnectInfo info;
+    info.active_links = proto.active_links();
+    info.cluster_uuid = proto.cluster_uuid();
+    info.clique_id = proto.clique_id();
+    return info;
   }
 };
 
@@ -424,7 +451,10 @@ class DeviceDescription {
     return interconnect_info_;
   }
 
-  GpuDeviceInfoProto ToGpuProto() const;
+  ABSL_DEPRECATE_AND_INLINE() GpuDeviceInfoProto ToGpuProto() const {
+    return ToProto();
+  }
+  GpuDeviceInfoProto ToProto() const;
 
   std::string ToString() const;
 
@@ -541,7 +571,22 @@ class DeviceDescription {
     matrix_unit_description_ = std::move(descr);
   }
 
+  enum class CompareOptions {
+    kIgnoreVersionNumbers,  // Ignores driver, kernel mode driver, runtime,
+                            // compile time toolkit, dnn, and cub versions.
+    kPortable,  // Ignores all fields that differ between hosts and between
+                // devices on the same host.
+  };
+
+  bool EqualsTo(const DeviceDescription& other,
+                absl::Span<const CompareOptions> compare_options = {}) const;
+
+  // Returns a copy of the device description with device-specific fields
+  // cleared.
+  DeviceDescription DeviceSpecificFieldsCleared() const;
+
  private:
+  // LINT.IfChange
   // For description of the following members, see the corresponding accessor
   // above.
   std::string device_vendor_ = kUndefinedString;
@@ -598,6 +643,9 @@ class DeviceDescription {
   SemanticVersion cub_version_{0, 0, 0};
 
   DeviceInterconnectInfo interconnect_info_;
+
+  // Please keep the fields in sync with the proto.
+  // LINT.ThenChange(//tensorflow/compiler/xla/stream_executor/device_description.proto)
 };
 
 std::string MakeComputeCapabilityAttributeString(const DeviceDescription& desc);

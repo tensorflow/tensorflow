@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_CONVERSIONS_MPMD_LOWER_TO_IFRT_H_
 #define XLA_PYTHON_IFRT_IR_CONVERSIONS_MPMD_LOWER_TO_IFRT_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -24,9 +25,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/pjrt/pjrt_executable.h"
 
 namespace xla::ifrt::mpmd {
@@ -48,17 +51,11 @@ inline constexpr llvm::StringLiteral kIfrtMeshNameAttrName = "ifrt.mesh_name";
 
 std::unique_ptr<mlir::Pass> CreateLowerToIfrtPass();
 
-// Registers:
-// -mpmd-lower-to-ifrt:
-// -mpmd-ifrt-add-ctrl-dependencies
+// Registers -mpmd-lower-to-ifrt and -ifrt-mpmd-lower-to-ifrt-pipeline.
 void RegisterLowerToIfrtPasses();
 
 // Lowers a Shardy:MPMD module as an IFRT module.
-// `add_control_dependencies` is used to add control dependencies between
-// fragments. This will enforce strict fragment execution order and is useful
-// for guaranteeing correct pipelining.
-absl::Status LowerToIfrt(mlir::ModuleOp module,
-                         bool add_control_dependencies = true);
+absl::Status LowerToIfrt(mlir::ModuleOp module);
 
 // Gets the per fragment compile options from the IFRT IR module.
 // `compile_options_overrides` is a mapping from mesh name to compile option

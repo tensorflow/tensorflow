@@ -39,6 +39,8 @@ class GpuAliasInfo : public AliasInfo {
                                const ShapeIndex& user_index) const override;
 
  protected:
+  bool IsNoOpForAliasAnalysis(const HloInstruction* instruction) const override;
+
   se::DeviceDescription device_description_;
 };
 }  // namespace xla::gpu

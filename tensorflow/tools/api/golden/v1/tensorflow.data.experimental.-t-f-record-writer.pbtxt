@@ -1,7 +1,7 @@
 path: "tensorflow.data.experimental.TFRecordWriter"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.experimental.ops.writers.TFRecordWriter\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'filename\', \'compression_type\'], varargs=None, keywords=None, defaults=[\'None\'], "

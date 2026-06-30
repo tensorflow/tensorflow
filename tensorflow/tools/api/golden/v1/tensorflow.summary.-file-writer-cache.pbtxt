@@ -1,7 +1,7 @@
 path: "tensorflow.summary.FileWriterCache"
 tf_class {
   is_instance: "<class \'tensorflow.python.summary.writer.writer_cache.FileWriterCache\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
   }

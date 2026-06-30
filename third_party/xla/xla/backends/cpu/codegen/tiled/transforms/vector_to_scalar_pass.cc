@@ -162,9 +162,4 @@ class VectorToScalarPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateVectorToScalarPass() {
-  return std::make_unique<VectorToScalarPass>();
-}
-
 }  // namespace xla::cpu

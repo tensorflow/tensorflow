@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/python/framework/op_def_util.h"
 
 #include <map>
+#include <string>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -195,13 +196,16 @@ Safe_PyObjectPtr ConvertListAttr(PyObject* value, T convert_functor) {
   if (!result) return nullptr;
 
   // Check the type of each item in the list.
-  Py_ssize_t len = PySequence_Fast_GET_SIZE(result.get());
-  PyObject** items = PySequence_Fast_ITEMS(result.get());
-  for (Py_ssize_t i = 0; i < len; ++i) {
+  // Do not use PySequence_Fast_ITEMS because convert_functor can execute
+  // arbitrary Python code which might mutate the list (e.g. clear it),
+  // invalidating the raw items pointer.
+  for (Py_ssize_t i = 0; i < PyList_Size(result.get()); ++i) {
     if (!PyFloat_Check(value)) {
-      Safe_PyObjectPtr item = convert_functor(items[i]);
+      PyObject* elem = PyList_GetItem(result.get(), i);
+      if (!elem) return nullptr;
+      Safe_PyObjectPtr item = convert_functor(elem);
       if (!item) return nullptr;
-      PySequence_SetItem(result.get(), i, item.get());
+      if (PyList_SetItem(result.get(), i, item.release()) < 0) return nullptr;
     }
   }
   return result;

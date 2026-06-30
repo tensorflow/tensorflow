@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -47,8 +46,12 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_abi_version_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_callback_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_tpu_topology_extension.h"
+#include "xla/pjrt/compiled_memory_stats.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -58,15 +61,18 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/pjrt/scoped_async_tracking_event.h"
+#include "xla/runtime/chip_id.h"
+#include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -121,6 +127,8 @@ class PjRtCApiMemorySpace : public PjRtMemorySpace {
   explicit PjRtCApiMemorySpace(PJRT_Memory* c_memory, PjRtCApiClient* client)
       : client_(client), c_memory_(c_memory) {}
 
+  PJRT_Memory* ToCApiPtr() override { return c_memory_; }
+
   PjRtClient* client() const override;
 
   absl::Span<PjRtDevice* const> devices() const override { return devices_; }
@@ -144,6 +152,7 @@ class PjRtCApiMemorySpace : public PjRtMemorySpace {
   PjRtCApiClient* client_;
   PJRT_Memory* c_memory_;
   std::vector<PjRtDevice*> devices_;
+  std::unique_ptr<PjRtMemorySpaceCApiDelegator> capi_delegator_;
 };
 
 class PjRtCApiDevice : public PjRtDevice {
@@ -196,6 +205,8 @@ class PjRtCApiDevice : public PjRtDevice {
   }
 
   absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
+
+  absl::Status ClearMemoryStats() override;
 
   absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents()
       const override;
@@ -258,7 +269,7 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
       const override;
 
-  absl::StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<uint64_t> Fingerprint() const override;
 
   // Returns vendor specific attributes about the topology.
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
@@ -269,6 +280,12 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
+
+  absl::StatusOr<xla::Shape> MakeCanonicalShapeForMemorySpace(
+      int memory_space_kind_id, xla::Shape shape,
+      const xla::Layout* layout) const override;
+
+  absl::Span<const int> GetMemorySpaceKindIds() const override;
 
   absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> Subslice(
       const PjRtDeviceDimensions& chips_per_host_bounds,
@@ -314,6 +331,8 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   absl::StatusOr<PjRtDeviceDimensions> ProcessBounds() const override;
 
  private:
+  absl::StatusOr<std::string> Serialize() const;
+
   std::unique_ptr<PjRtCApiCompiler> compiler_;
   const PJRT_Api* c_api_;
   const PJRT_TpuTopology_Extension* tpu_topology_extension_;
@@ -368,7 +387,7 @@ class PjRtCApiClient : public PjRtClient {
       LocalDeviceId local_device_id) const override;
 
   void UpdateGlobalProcessInfo(
-      absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) override;
+      absl::Span<xla::coordination::TaskInfo> infos) override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
@@ -382,6 +401,12 @@ class PjRtCApiClient : public PjRtClient {
       const override;
 
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
+
+  bool SupportsMemoryUserData() const {
+    return c_api_->pjrt_api_version.minor_version >= 105;
+  }
+
+  static const char kPjRtCApiMemorySpaceKey;
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -430,6 +455,7 @@ class PjRtCApiClient : public PjRtClient {
       const override;
 
   absl::StatusOr<HostAllocator*> GetHostAllocator() const override;
+  HostMemoryAllocator* GetHostMemoryAllocator() const override;
 
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
@@ -487,6 +513,14 @@ class PjRtCApiClient : public PjRtClient {
   }
 
   PjRtCApiMemorySpace* GetCppMemory(PJRT_Memory* c_memory) const {
+    if (SupportsMemoryUserData() && c_memory->vtable &&
+        c_memory->vtable->get_user_data) {
+      void* data = c_memory->vtable->get_user_data(
+          c_memory, &PjRtCApiClient::kPjRtCApiMemorySpaceKey);
+      if (data) {
+        return static_cast<PjRtCApiMemorySpace*>(data);
+      }
+    }
     auto it = c_to_cpp_memory_map_.find(c_memory);
     CHECK(it != c_to_cpp_memory_map_.end());
     return it->second;
@@ -563,6 +597,7 @@ class PjRtCApiClient : public PjRtClient {
   absl::flat_hash_map<PJRT_Extension_Type, PJRT_Extension_Base*> extensions_;
   // Not all PJRT C API implementations support the host allocator extension.
   absl::StatusOr<std::unique_ptr<PjRtClient::HostAllocator>> host_allocator_;
+  std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
 
   const std::string platform_version_;
   const std::string platform_name_;
@@ -719,6 +754,9 @@ class PjRtCApiExecutable : public PjRtExecutable {
   absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetParameterLayouts() const override;
 
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override;
+
   absl::StatusOr<std::vector<Shape>> GetOutputShapes() const override;
 
   absl::StatusOr<std::vector<std::vector<PrimitiveType>>>
@@ -836,6 +874,11 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   }
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    return executable_->GetParameterMemoryKinds();
+  }
+
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
     return executable_->GetOutputMemoryKinds();
   }
@@ -878,6 +921,10 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       PJRT_Chunk*, PJRT_CallbackError*, size_t, bool)>;
   // std::function version of PJRT_RecvCallback
   using RecvCallbackFunction = std::function<void(PJRT_CopyToDeviceStream*)>;
+  // std::function version of PJRT_HloOutputCallback
+  using HloOutputCallbackFunction = std::function<void(
+      int64_t replica_id, int64_t partition_id,
+      absl::Span<std::shared_ptr<const Literal> const> literals)>;
 
   // Override to call FingerprintExecutable through the wrapped
   // PjRtCApiExecutable.
@@ -888,13 +935,41 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
  private:
   std::vector<LogicalDeviceIds> addressable_device_logical_ids_;
   // Groups data needed to support send/recv execution callbacks.
+  struct HloOutputCallbackState {
+    // Key is {replica_id, partition_id}.
+    absl::flat_hash_map<std::pair<int64_t, int64_t>,
+                        std::vector<std::shared_ptr<const Literal>>>
+        accumulated_literals;
+    absl::flat_hash_map<std::pair<int64_t, int64_t>, std::vector<bool>>
+        received_operands;
+    absl::Mutex mu;
+    HloOutputCallbackFunction callback;
+    size_t num_operands;
+  };
+
+  friend PJRT_HloOutputCallbackInfo CppHloOutputCallbackToC(
+      const xla::HloOutputCallback& cpp_callback, size_t num_operands,
+      PjRtCApiLoadedExecutable::HloOutputCallbackState* state);
+
+  friend void CppHloOutputCallbacksToC(
+      absl::Span<const xla::HloOutputCallback> cpp_list,
+      std::vector<
+          std::unique_ptr<PjRtCApiLoadedExecutable::HloOutputCallbackState>>&
+          hlo_output_callback_states,
+      std::vector<PJRT_HloOutputCallbackInfo>& c_list);
+
+ private:
   struct SendRecvCallbackData {
     std::vector<std::vector<PJRT_SendCallbackInfo>> c_send_callbacks;
     std::vector<PJRT_SendCallbackInfo*> c_send_callback_lists;
     std::vector<std::vector<PJRT_RecvCallbackInfo>> c_recv_callbacks;
     std::vector<PJRT_RecvCallbackInfo*> c_recv_callback_lists;
+    std::vector<PJRT_HloOutputCallbackInfo> c_hlo_output_callbacks;
     std::vector<SendCallbackFunction> send_callback_functions;
     std::vector<RecvCallbackFunction> recv_callback_functions;
+    std::vector<HloOutputCallbackFunction> hlo_output_callback_functions;
+    std::vector<std::unique_ptr<HloOutputCallbackState>>
+        hlo_output_callback_states;
   };
 
   // Returns the number of outputs of the executable.

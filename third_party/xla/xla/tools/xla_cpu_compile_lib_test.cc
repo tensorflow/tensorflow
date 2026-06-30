@@ -47,7 +47,7 @@ using ::testing::IsEmpty;
 using ::testing::IsNull;
 using ::testing::Not;
 
-class XlaCompileLibTest : public HloPjRtTestBase {
+class XlaCompileLibTest : public HloTestBase {
  protected:
   void SetUp() override {
     const std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),

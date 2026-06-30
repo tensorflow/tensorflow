@@ -79,6 +79,9 @@ def kaiser_window(window_length, beta=12., dtype=dtypes.float32, name=None):
                          dtype=dtypes.float32)
     # Convert everything into given dtype which can be float16.
     arg = math_ops.cast(arg, dtype=dtype)
+    # I0 (modified Bessel function of the first kind) is an even function,
+    # i.e., I0(-x) = I0(x). Take abs(beta) so that negative beta values
+    # produce the same (correct) result as positive ones.
     beta = math_ops.abs(math_ops.cast(beta, dtype=dtype))
     one = math_ops.cast(1.0, dtype=dtype)
     halflen_float = math_ops.cast(halflen_float, dtype=dtype)

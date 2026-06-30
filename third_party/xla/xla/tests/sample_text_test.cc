@@ -29,8 +29,7 @@ namespace {
 
 using std::nullopt;
 
-class SampleTextTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
+class SampleTextTest : public HloPjRtInterpreterReferenceMixin<HloTestBase> {};
 
 TEST_F(SampleTextTest, Axpy) {
   const std::string& hlo_string = R"hlo(

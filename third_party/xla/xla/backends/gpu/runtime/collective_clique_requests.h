@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/runtime/device_id.h"
@@ -58,12 +59,12 @@ class CollectiveCliqueRequests {
   // For each requested clique key, we also assign a monotonically increasing
   // id, that allows us to deterministically order clique requests.
   //
-  // Example: 8 ranks splitted in different groups of communicators
+  // Example: 8 ranks split in different groups of communicators
   //
   // Group #0: [0,1], [2,3], [4,5], [6,7]
   // Group #1: [0,4], [1,5], [2,6], [3,7]
   //
-  // Both groups #0 and #1 can be acqured by splitting [0...7] clique. To avoid
+  // Both groups #0 and #1 can be acquired by splitting [0...7] clique. To avoid
   // deadlocks all participants should acquire all cliques in a group #0 before
   // acquiring any cliques in a group #1.
   //
@@ -133,11 +134,15 @@ class CollectiveCliqueRequests {
     std::optional<BarrierRequirements> barrier_reqs;
   };
 
-  // Adds a clique key to the list of requested cliques.
+  // Adds a clique key to the list of requested cliques. Callers must pass
+  // device_groups pre-sorted: each inner group sorted in ascending device id
+  // order, and the outer vector sorted by the first device id of each group.
+  //
+  // WARNING: This invariant is verified in debug builds only, if it doesn't
+  // hold, XLA will acquire duplicate communicators for same set of devices.
   absl::Status RequestClique(
       const GpuCliqueKey& clique_key,
-      // TODO(ezhulenev): Remove default once JAX is fixed.
-      std::vector<std::vector<GlobalDeviceId>> device_groups = {},
+      absl::Span<const std::vector<GlobalDeviceId>> device_groups,
       const CliqueRequirements& requirements = {});
 
   // Returns all requested cliques in undefined order.

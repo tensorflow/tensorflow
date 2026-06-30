@@ -28,8 +28,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -41,6 +44,17 @@ namespace xla {
 // Returns the most frequent all-gather dim if it can be a valid gather dim
 // for all shapes involved, else returns 0.
 int64_t FindMostFrequentGatherDim(absl::Span<HloInstruction* const> to_combine);
+
+// Merges frontend_attributes from all instructions, deduplicating keys.
+// When two instructions have the same key with different values, the values
+// are joined with a comma.
+FrontendAttributes MergeFrontendAttributes(
+    absl::Span<HloInstruction* const> to_combine);
+
+// Merges metadata from all instructions. Uses the first instruction's metadata
+// as a base, then extends source_line/source_end_line to cover all instructions
+// from the same source file, and joins distinct op_names with commas.
+OpMetadata MergeMetadata(absl::Span<HloInstruction* const> to_combine);
 
 // Combines instructions with matching keys together.
 //
@@ -148,7 +162,13 @@ absl::StatusOr<bool> CombineInstructionsByKey(
             return reachable;
           });
       if (is_reachable) {
-        VLOG(1) << "Instruction is reachable.";
+        VLOG(1) << "Instruction is reachable, skipping.";
+        if (computation->parent()
+                ->config()
+                .debug_options()
+                .xla_enable_enzyme_comms_opt()) {
+          continue;
+        }
         break;
       }
 
@@ -164,7 +184,7 @@ absl::StatusOr<bool> CombineInstructionsByKey(
     }
 
     if (to_combine.size() > 1) {
-      TF_RETURN_IF_ERROR(combine_fn(to_combine));
+      RETURN_IF_ERROR(combine_fn(to_combine));
       changed = true;
     }
   }

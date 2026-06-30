@@ -3,7 +3,7 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "if_oss", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pywrap_binaries", "pywrap_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
@@ -14,7 +14,7 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
         "//third_party/odml/infra/genai/conversion:__subpackages__",
-        "//third_party/odml/litert/litert/python:__subpackages__",
+        "//third_party/odml/litert:__subpackages__",
         "//third_party/odml/model_customization/quantization:__subpackages__",
         "//third_party/py/ai_edge_torch:__subpackages__",
         "//third_party/py/litert_torch:__subpackages__",
@@ -299,6 +299,13 @@ py_test(
         "//tensorflow/lite/python/testdata:test_delegate.so",
         "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
     ],
+    exec_properties = if_oss(
+        None,
+        select({
+            "@bazel_tools//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
+            "//conditions:default": None,
+        }),
+    ),
     shard_count = 18,
     strict_deps = True,
     tags = [
@@ -419,7 +426,7 @@ py_library(
         "//tensorflow/python/training:saver",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
-        "@pypi_flatbuffers//:pkg",
+        "@pypi//flatbuffers",
     ],
 )
 

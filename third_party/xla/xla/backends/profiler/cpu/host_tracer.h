@@ -34,6 +34,7 @@ struct HostTracerOptions {
   // - Level 3 enables tracing of all level 2 TraceMe(s) and more verbose
   //           (low-level) program execution details (cheap TF ops, etc).
   int trace_level = 2;
+  bool enable_source_location = true;
   uint64_t filter_mask = std::numeric_limits<uint64_t>::max();
 };
 

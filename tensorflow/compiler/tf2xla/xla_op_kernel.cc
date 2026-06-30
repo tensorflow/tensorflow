@@ -141,10 +141,10 @@ absl::Status XlaOpKernelContext::ConstantInput(int index,
                                                xla::Literal* constant_literal,
                                                xla::ValueInferenceMode mode) {
   if (this->InputXlaShape(index)->is_dynamic()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Reading input as constant from a dynamic tensor is not yet supported. "
         "Xla shape: ",
-        this->InputXlaShape(index)->ToString());
+        this->InputXlaShape(index)->ToString()));
   }
   return ConstantInputReshaped(index,
                                context_->input(index).shape().dim_sizes(),
@@ -156,10 +156,10 @@ static absl::StatusOr<int> InputIndex(XlaOpKernelContext* context,
   int start, stop;
   TF_RETURN_IF_ERROR(context->op_kernel().InputRange(name, &start, &stop));
   if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued input name '",
-                                   name,
-                                   "' when single-valued input was "
-                                   "expected");
+    return absl::InvalidArgumentError(
+        absl::StrCat("OpKernel used list-valued input name '", name,
+                     "' when single-valued input was "
+                     "expected"));
   }
   return start;
 }
@@ -189,11 +189,11 @@ absl::Status XlaOpKernelContext::ConstantInputReshaped(
   TF_ASSIGN_OR_RETURN(Tensor constant, ConstantInputTensor(index, mode));
   Tensor temp(constant.dtype());
   if (!temp.CopyFrom(constant, TensorShape(new_dims))) {
-    return errors::InvalidArgument(
-        context_->op_kernel().name(), " input ", index, " has shape ",
-        constant.shape().DebugString(),
-        " but was asked to be reshaped to incompatible shape ",
-        TensorShape(new_dims).DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat(context_->op_kernel().name(), " input ", index,
+                     " has shape ", constant.shape().DebugString(),
+                     " but was asked to be reshaped to incompatible shape ",
+                     TensorShape(new_dims).DebugString()));
   }
 
   TF_ASSIGN_OR_RETURN(*constant_literal, HostTensorToLiteral(temp));
@@ -204,7 +204,7 @@ absl::Status XlaOpKernelContext::ConstantInputReshaped(
 static absl::Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
                                          int64_t* out) {
   if (!literal.shape().dimensions().empty()) {
-    return errors::InvalidArgument("value is not a scalar");
+    return absl::InvalidArgumentError("value is not a scalar");
   }
   if (literal.shape().element_type() == xla::S16) {
     *out = literal.Get<int16_t>({});
@@ -213,7 +213,7 @@ static absl::Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
   } else if (literal.shape().element_type() == xla::S64) {
     *out = literal.Get<int64_t>({});
   } else {
-    return errors::InvalidArgument("value must be int16, int32, or int64");
+    return absl::InvalidArgumentError("value must be int16, int32, or int64");
   }
   return absl::OkStatus();
 }
@@ -222,14 +222,15 @@ static absl::Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
 static absl::Status LiteralToFloat64Scalar(const xla::LiteralSlice& literal,
                                            double* out) {
   if (!literal.shape().dimensions().empty()) {
-    return errors::InvalidArgument("value is not a scalar");
+    return absl::InvalidArgumentError("value is not a scalar");
   }
   if (literal.shape().element_type() == xla::F32) {
     *out = literal.Get<float>({});
   } else if (literal.shape().element_type() == xla::F64) {
     *out = literal.Get<double>({});
   } else {
-    return errors::InvalidArgument("value must be either float32 or float64");
+    return absl::InvalidArgumentError(
+        "value must be either float32 or float64");
   }
   return absl::OkStatus();
 }
@@ -264,12 +265,12 @@ absl::Status XlaOpKernelContext::ConstantInputAsFloatScalar(
 static absl::Status LiteralToPredVector(const xla::LiteralSlice& literal,
                                         std::vector<bool>* out) {
   if (literal.shape().dimensions().size() != 1) {
-    return errors::InvalidArgument("output_shape must be rank 1, got shape ",
-                                   literal.shape().ToString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "output_shape must be rank 1, got shape ", literal.shape().ToString()));
   }
   int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() != xla::PRED) {
-    return errors::InvalidArgument("value is not PRED");
+    return absl::InvalidArgumentError("value is not PRED");
   }
   for (int64_t i = 0; i < size; ++i) {
     out->push_back(literal.Get<bool>({i}));
@@ -340,11 +341,11 @@ absl::Status XlaOpKernelContext::ResolveInputDynamismReshaped(
 
   Tensor temp(dynamism.dtype());
   if (!temp.CopyFrom(dynamism, TensorShape(new_dims))) {
-    return errors::InvalidArgument(
-        context_->op_kernel().name(), " input ", index, " has shape ",
-        dynamism.shape().DebugString(),
-        " but was asked to be reshaped to incompatible shape ",
-        TensorShape(new_dims).DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat(context_->op_kernel().name(), " input ", index,
+                     " has shape ", dynamism.shape().DebugString(),
+                     " but was asked to be reshaped to incompatible shape ",
+                     TensorShape(new_dims).DebugString()));
   }
 
   TF_ASSIGN_OR_RETURN(*dynamism_literal, HostTensorToLiteral(temp));
@@ -364,8 +365,8 @@ absl::Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
 static absl::Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
                                          std::vector<int64_t>* out) {
   if (literal.shape().dimensions().size() != 1) {
-    return errors::InvalidArgument("output_shape must be rank 1, got shape ",
-                                   literal.shape().ToString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "output_shape must be rank 1, got shape ", literal.shape().ToString()));
   }
   int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() == xla::S32) {
@@ -377,7 +378,7 @@ static absl::Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
       out->push_back(literal.Get<int64_t>({i}));
     }
   } else {
-    return errors::InvalidArgument("value must be either int32 or int64");
+    return absl::InvalidArgumentError("value must be either int32 or int64");
   }
   return absl::OkStatus();
 }
@@ -433,9 +434,9 @@ absl::Status XlaOpKernelContext::ConstantInputAsInt64Literal(
       return absl::OkStatus();
 
     default:
-      return errors::InvalidArgument(
-          "Invalid argument to ConstantInputAsInt64Literal: ",
-          xla::ShapeUtil::HumanString(literal.shape()));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid argument to ConstantInputAsInt64Literal: ",
+                       xla::ShapeUtil::HumanString(literal.shape())));
   }
 }
 
@@ -458,10 +459,10 @@ absl::Status XlaOpKernelContext::ConstantInputAsShape(
   for (auto i = dims.begin(); i != dims.end(); ++i) {
     num_elements = MultiplyWithoutOverflow(num_elements, *i);
     if (num_elements < 0)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "The total elements specified by orig_input_shape is too large.",
           "Encountered overflow after multiplying", *i,
-          ", result: ", num_elements);
+          ", result: ", num_elements));
   }
   *shape = TensorShape(dims);
   return absl::OkStatus();
@@ -476,8 +477,8 @@ absl::Status XlaOpKernelContext::ConstantInputAsPartialShape(
     int64_t shape_val;
     TF_RETURN_IF_ERROR(LiteralToInt64Scalar(literal, &shape_val));
     if (shape_val != -1) {
-      return errors::InvalidArgument(
-          "Cannot convert value to PartialTensorShape: ", shape_val);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Cannot convert value to PartialTensorShape: ", shape_val));
     }
     *shape = PartialTensorShape();  // Shape with unknown rank.
     return absl::OkStatus();
@@ -530,7 +531,7 @@ absl::StatusOr<Tensor> XlaOpKernelContext::ConstantInputTensor(
   }
   std::optional<Tensor> constant = constant_or_status.value();
   if (!constant.has_value()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Input ", index, " to node `", context_->op_kernel().name(),
         "` with op ", context_->op_kernel().type_string(),
         " must be a compile-time constant.\n\n"
@@ -539,7 +540,7 @@ absl::StatusOr<Tensor> XlaOpKernelContext::ConstantInputTensor(
         "This error means that a shape or dimension argument could not be "
         "evaluated at compile time, usually because the value of the argument "
         "depends on a parameter to the computation, on a variable, or on a "
-        "stateful operation such as a random number generator.");
+        "stateful operation such as a random number generator."));
   }
   return *constant;
 }
@@ -555,15 +556,15 @@ absl::Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
   TF_RET_CHECK(variable != nullptr);
   TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
   if (!variable->initialized()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "Read variable failure ", variable->name(),
         ". It could mean the variable is uninitialized or the variable is on "
-        "another device ");
+        "another device "));
   }
   if (variable->type() != type) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Trying to read variable with wrong dtype. Expected ",
-        DataTypeString(type), " got ", DataTypeString(variable->type()));
+        DataTypeString(type), " got ", DataTypeString(variable->type())));
   }
   if (shape) {
     *shape = variable->shape();
@@ -621,10 +622,10 @@ absl::Status XlaOpKernelContext::GetVariableTypeAndShape(
   TF_RET_CHECK(variable != nullptr);
   TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
   if (!variable->initialized()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Read variable failure ", variable->name(),
         ". It could mean the variable is uninitialized or the variable is on "
-        "another device ");
+        "another device "));
   }
   *type = variable->type();
   *shape = variable->shape();

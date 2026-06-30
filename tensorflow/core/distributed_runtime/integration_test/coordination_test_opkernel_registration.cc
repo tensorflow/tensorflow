@@ -44,20 +44,20 @@ class TestSetConfigKeyValueOp : public OpKernel {
     const Tensor* key_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(key_tensor->shape()),
-                errors::InvalidArgument("Key must be scalar."));
+                absl::InvalidArgumentError("Key must be scalar."));
     const std::string& config_key = key_tensor->scalar<tstring>()();
     const Tensor* val_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("value", &val_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(key_tensor->shape()),
-                errors::InvalidArgument("Value must be scalar."));
+                absl::InvalidArgumentError("Value must be scalar."));
     const std::string& config_value = val_tensor->scalar<tstring>()();
     LOG(INFO) << "TestSetConfigKeyValueOp key=" << config_key
               << "value=" << config_value;
     auto* coord_agent = ctx->coordination_service_agent();
     if (coord_agent == nullptr || !coord_agent->IsInitialized()) {
-      ctx->SetStatus(
-          errors::Internal("Coordination service agent is not instantiated or "
-                           "initialized properly."));
+      ctx->SetStatus(absl::InternalError(
+          "Coordination service agent is not instantiated or "
+          "initialized properly."));
       return;
     }
     OP_REQUIRES_OK(ctx, coord_agent->InsertKeyValue(config_key, config_value));
@@ -89,15 +89,15 @@ class TestGetConfigKeyValueOp : public OpKernel {
     const Tensor* key_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(key_tensor->shape()),
-                errors::InvalidArgument("Key must be scalar."));
+                absl::InvalidArgumentError("Key must be scalar."));
     const std::string& config_key = key_tensor->scalar<tstring>()();
     LOG(INFO) << "TestGetConfigKeyValueOp key=" << config_key;
 
     auto* coord_agent = ctx->coordination_service_agent();
     if (coord_agent == nullptr || !coord_agent->IsInitialized()) {
-      ctx->SetStatus(
-          errors::Internal("Coordination service agent is not instantiated or "
-                           "initialized properly."));
+      ctx->SetStatus(absl::InternalError(
+          "Coordination service agent is not instantiated or "
+          "initialized properly."));
       return;
     }
     auto status_or_val = blocking_ ? coord_agent->GetKeyValue(config_key)
@@ -136,21 +136,21 @@ class TestReportErrorToClusterOp : public OpKernel {
     const Tensor* error_code_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("error_code", &error_code_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(error_code_tensor->shape()),
-                errors::InvalidArgument("Error code must be scalar."));
+                absl::InvalidArgumentError("Error code must be scalar."));
     const int& error_code = error_code_tensor->scalar<int32_t>()();
     const Tensor* error_message_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("error_message", &error_message_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(error_message_tensor->shape()),
-                errors::InvalidArgument("Error message must be scalar."));
+                absl::InvalidArgumentError("Error message must be scalar."));
     const std::string& error_message =
         error_message_tensor->scalar<tstring>()();
     LOG(INFO) << "TestReportErrorToClusterOp error_code=" << error_code
               << " error_message=" << error_message;
     auto* coord_agent = ctx->coordination_service_agent();
     if (coord_agent == nullptr || !coord_agent->IsInitialized()) {
-      ctx->SetStatus(
-          errors::Internal("Coordination service agent is not instantiated or "
-                           "initialized properly."));
+      ctx->SetStatus(absl::InternalError(
+          "Coordination service agent is not instantiated or "
+          "initialized properly."));
       return;
     }
     absl::Status s(static_cast<absl::StatusCode>(error_code), error_message);

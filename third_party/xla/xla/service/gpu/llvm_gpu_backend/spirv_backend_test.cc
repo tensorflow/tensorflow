@@ -20,28 +20,20 @@ limitations under the License.
 namespace xla::gpu::spirv {
 namespace {
 
-TEST(SpirvBackendTest, TestUnsupportedExtensions) {
-  llvm::Triple target_triple("spirv64-unknown-unknown");
-  const std::vector<std::string> unsupported_extensions = {
-      "SPV_EXT_optnone", "SPV_EXT_arithmetic_fence", "SPV_EXT_hypthetical_name",
-      "SPV_KHR_uniform_group_instructions", "SPV_KHR_linkonce_odr"};
-
-  auto extensions =
-      RemoveUnsupportedExtensionsFromAll(target_triple, unsupported_extensions);
+TEST(SpirvBackendTest, TestSPIRVExtensions) {
+  auto extensions = SPIRVExtensionsEnumToString(common_spirv_extensions);
   auto extensions_set =
       std::set<std::string>(extensions.begin(), extensions.end());
 
-  EXPECT_EQ(extensions_set.find("SPV_EXT_optnone"), extensions_set.end());
-  EXPECT_EQ(extensions_set.find("SPV_EXT_arithmetic_fence"),
+  EXPECT_NE(extensions_set.find("SPV_EXT_optnone"), extensions_set.end());
+  EXPECT_NE(extensions_set.find("SPV_KHR_uniform_group_instructions"),
             extensions_set.end());
-  EXPECT_EQ(extensions_set.find("SPV_EXT_hypthetical_name"),
-            extensions_set.end());
-  EXPECT_EQ(extensions_set.find("SPV_KHR_uniform_group_instructions"),
-            extensions_set.end());
-  EXPECT_EQ(extensions_set.find("SPV_KHR_linkonce_odr"), extensions_set.end());
+  EXPECT_NE(extensions_set.find("SPV_KHR_linkonce_odr"), extensions_set.end());
   EXPECT_NE(extensions_set.find("SPV_KHR_cooperative_matrix"),
             extensions_set.end());
   EXPECT_NE(extensions_set.find("SPV_EXT_shader_atomic_float_add"),
+            extensions_set.end());
+  EXPECT_EQ(extensions_set.find("SPV_NV_cooperative_matrix"),
             extensions_set.end());
 }
 

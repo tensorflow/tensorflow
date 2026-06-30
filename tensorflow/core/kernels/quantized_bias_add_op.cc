@@ -46,18 +46,20 @@ class QuantizedBiasAddOp : public OpKernel {
     const Tensor& max_bias = context->input(5);
     OP_REQUIRES(
         context, TensorShapeUtils::IsScalar(min_input.shape()),
-        errors::InvalidArgument("`min_input` must be rank 0 but is rank ",
-                                min_input.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`min_input` must be rank 0 but is rank ", min_input.dims())));
     OP_REQUIRES(
         context, TensorShapeUtils::IsScalar(max_input.shape()),
-        errors::InvalidArgument("`max_input` must be rank 0 but is rank ",
-                                max_input.dims()));
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_bias.shape()),
-                errors::InvalidArgument(
-                    "`min_bias` must be rank 0 but is rank ", min_bias.dims()));
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_bias.shape()),
-                errors::InvalidArgument(
-                    "`max_bias` must be rank 0 but is rank ", max_bias.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`max_input` must be rank 0 but is rank ", max_input.dims())));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(min_bias.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "`min_bias` must be rank 0 but is rank ", min_bias.dims())));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(max_bias.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "`max_bias` must be rank 0 but is rank ", max_bias.dims())));
 
     const float input_min = min_input.flat<float>()(0);
     const float input_max = max_input.flat<float>()(0);
@@ -65,20 +67,21 @@ class QuantizedBiasAddOp : public OpKernel {
     const float bias_max = max_bias.flat<float>()(0);
 
     OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input.shape()),
-                errors::InvalidArgument("Input tensor must be at least 2D: ",
-                                        input.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input tensor must be at least 2D: ",
+                                 input.shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(bias.shape()),
-                errors::InvalidArgument("Biases must be 1D: ",
-                                        bias.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Biases must be 1D: ", bias.shape().DebugString())));
     const auto last_dim = input.shape().dims() - 1;
     OP_REQUIRES(
         context, bias.shape().dim_size(0) == input.shape().dim_size(last_dim),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Must provide as many biases as the last dimension "
             "of the input tensor: ",
-            bias.shape().DebugString(), " vs. ", input.shape().DebugString()));
+            bias.shape().DebugString(), " vs. ", input.shape().DebugString())));
     OP_REQUIRES(context, bias.NumElements() > 0,
-                errors::InvalidArgument("Must provide at least 1 bias"));
+                absl::InvalidArgumentError("Must provide at least 1 bias"));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,

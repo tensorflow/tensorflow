@@ -150,6 +150,14 @@ BenchmarkParams CreateMultiSignatureParams(std::string signature_key) {
       /*signature_key=*/signature_key);
   return params;
 }
+BenchmarkParams CreateMultiSignatureParamsWithUnspecifiedSignature() {
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  InitializeParams(
+      params, /*num_runs=*/2, /*min_secs=*/1.0f, /*max_secs=*/150.0f,
+      /*model_read_option=*/ModelReadOption::FROM_PATH, ModelGraphType::FP32);
+  params.Set<std::string>("graph", *g_multi_signature_model_path);
+  return params;
+}
 
 std::string CreateFilePath(const std::string& file_name) {
   const char* tmp_dir = getenv("TEST_TMPDIR");
@@ -191,9 +199,9 @@ void CheckInputTensorValue(const TfLiteTensor* input_tensor,
                            int tensor_dim_index,
                            const std::string& expected_value) {
   StringRef tensor_value = GetString(input_tensor, tensor_dim_index);
-  EXPECT_TRUE(absl::equal(tensor_value.str, tensor_value.str + tensor_value.len,
-                          expected_value.c_str(),
-                          expected_value.c_str() + expected_value.length()));
+  EXPECT_TRUE(std::equal(tensor_value.str, tensor_value.str + tensor_value.len,
+                         expected_value.c_str(),
+                         expected_value.c_str() + expected_value.length()));
 }
 
 class TestBenchmark : public BenchmarkTfLiteModel {
@@ -268,6 +276,24 @@ TEST(BenchmarkTest, MultiSignatureModelWithInvalidSignatureKeyFails) {
   ASSERT_THAT(g_multi_signature_model_path, testing::NotNull());
 
   TestBenchmark benchmark(CreateMultiSignatureParams("addisabbaba"));
+  auto status = benchmark.Run();
+  EXPECT_EQ(kTfLiteError, status);
+}
+
+TEST(BenchmarkTest, SingleSignatureModelWithInvalidSignatureKeyFails) {
+  ASSERT_THAT(g_string_model_path, testing::NotNull());
+
+  BenchmarkParams params = CreateStringParams();
+  params.Set<std::string>("signature_to_run_for", "invalid_signature_key");
+  TestBenchmark benchmark(std::move(params));
+  auto status = benchmark.Run();
+  EXPECT_EQ(kTfLiteError, status);
+}
+
+TEST(BenchmarkTest, MultiSignatureModelWithUnspecifiedSignatureKeyFails) {
+  ASSERT_THAT(g_multi_signature_model_path, testing::NotNull());
+
+  TestBenchmark benchmark(CreateMultiSignatureParamsWithUnspecifiedSignature());
   auto status = benchmark.Run();
   EXPECT_EQ(kTfLiteError, status);
 }
@@ -592,9 +618,9 @@ TEST(BenchmarkTest, ParametersArePopulatedWhenInputShapeIsNotSpecified) {
 
   // Expect data is not the same.
   EXPECT_EQ(input_bytes.size(), input_tensor->bytes);
-  EXPECT_FALSE(absl::equal(input_bytes.begin(), input_bytes.end(),
-                           input_tensor->data.raw,
-                           input_tensor->data.raw + input_tensor->bytes));
+  EXPECT_FALSE(std::equal(input_bytes.begin(), input_bytes.end(),
+                          input_tensor->data.raw,
+                          input_tensor->data.raw + input_tensor->bytes));
 }
 
 TEST(BenchmarkTest, InitializationFailedWhenInvalidGraphPathIsProvided) {

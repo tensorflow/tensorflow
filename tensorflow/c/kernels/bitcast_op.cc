@@ -96,7 +96,7 @@ static void BitcastOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   auto* k = static_cast<BitcastOp*>(kernel);
   int dim_count = 0;
 
-  TF_Tensor* tensor;
+  TF_Tensor* tensor = nullptr;
   TF_Status* status = TF_NewStatus();
   TF_GetInput(ctx, 0, &tensor, status);
   if (TF_GetCode(status) == TF_OK) {

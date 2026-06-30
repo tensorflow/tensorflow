@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/tsl/platform/errors.h"
@@ -137,7 +138,7 @@ using StatusReturningFunction = std::function<absl::Status()>;
 
 absl::StatusOr<int> CallStatusReturningFunction(
     const StatusReturningFunction& func) {
-  TF_RETURN_IF_ERROR(func());
+  RETURN_IF_ERROR(func());
   return 42;
 }
 
@@ -155,7 +156,7 @@ TEST(StatusMacros, ReturnIfErrorOnError) {
 
 TEST(StatusMacros, AssignOrReturnSuccessfully) {
   absl::Status status = []() {
-    TF_ASSIGN_OR_RETURN(int value, CreateIntSuccessfully());
+    ASSIGN_OR_RETURN(int value, CreateIntSuccessfully());
     EXPECT_EQ(value, 42);
     return absl::OkStatus();
   }();
@@ -164,7 +165,7 @@ TEST(StatusMacros, AssignOrReturnSuccessfully) {
 
 TEST(StatusMacros, AssignOrReturnUnsuccessfully) {
   absl::Status status = []() {
-    TF_ASSIGN_OR_RETURN(int value, CreateIntUnsuccessfully());
+    ASSIGN_OR_RETURN(int value, CreateIntUnsuccessfully());
     (void)value;
     return absl::OkStatus();
   }();

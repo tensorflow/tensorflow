@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
@@ -200,7 +201,7 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
     const Shape& shape, bool allow_missing_layouts) {
   if (shape.IsTuple()) {
     for (auto& element_shape : shape.tuple_shapes()) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           ValidateLayoutInShape(element_shape, allow_missing_layouts));
     }
     return absl::OkStatus();
@@ -277,16 +278,60 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
         shape.ToString());
   }
   for (const auto& tile : layout.tiles()) {
-    if (tile.dimensions().empty() ||
-        absl::c_any_of(tile.dimensions(),
-                       [](int64_t dim) { return dim == 0; })) {
+    if (tile.dimensions().empty()) {
       return InvalidArgument("layout has invalid tiles: %s", shape.ToString());
+    }
+    for (int64_t dim : tile.dimensions()) {
+      if (dim <= 0 && dim != Tile::kCombineDimension) {
+        return InvalidArgument(
+            "layout has invalid tiles: tile dimension %d must be positive or "
+            "kCombineDimension: %s",
+            dim, shape.ToString());
+      }
     }
   }
 
   if (layout.element_size_in_bits() < 0) {
     return InvalidArgument("layout element_size_in_bits field is negative: %d",
                            layout.element_size_in_bits());
+  }
+
+  // Validate split configs.
+  absl::InlinedVector<bool, InlineRank()> physical_dims_in_split_config(
+      shape.dimensions().size(), false);
+  for (const SplitConfig& config : layout.split_configs()) {
+    int64_t physical_dim = config.dimension();
+    if (physical_dim < 0 || physical_dim >= shape.dimensions().size()) {
+      return InvalidArgument(
+          "split config has out-of-bounds physical dimension: %d; shape: %s",
+          physical_dim, shape.ToString());
+    }
+    if (physical_dims_in_split_config[physical_dim]) {
+      return InvalidArgument(
+          "split config has duplicate physical dimension: %d; shape: %s",
+          physical_dim, shape.ToString());
+    }
+    physical_dims_in_split_config[physical_dim] = true;
+
+    int64_t logical_dim = Major(layout, physical_dim);
+    int64_t dim_size = shape.dimensions(logical_dim);
+
+    int64_t last_split_index = 0;
+    for (int64_t split_index : config.split_indices()) {
+      if (split_index <= last_split_index) {
+        return InvalidArgument(
+            "split config split indices must be strictly increasing and "
+            "positive: {%s}; shape: %s",
+            absl::StrJoin(config.split_indices(), ", "), shape.ToString());
+      }
+      if (split_index >= dim_size) {
+        return InvalidArgument(
+            "split config split index is out of bounds: %d (dim size %d); "
+            "shape: %s",
+            split_index, dim_size, shape.ToString());
+      }
+      last_split_index = split_index;
+    }
   }
 
   return absl::OkStatus();
@@ -416,16 +461,15 @@ absl::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
           "cannot copy layout from shape: tuple element count differs");
     }
     for (int64_t i = 0; i < ShapeUtil::TupleElementCount(src); ++i) {
-      TF_RETURN_IF_ERROR(CopyLayoutInternal(src.tuple_shapes(i),
-                                            dst->mutable_tuple_shapes(i)));
+      RETURN_IF_ERROR(CopyLayoutInternal(src.tuple_shapes(i),
+                                         dst->mutable_tuple_shapes(i)));
     }
   } else if (src.IsArray()) {
     if (src.has_layout()) {
       if (src.dimensions().size() != dst->dimensions().size()) {
         return InvalidArgument("cannot copy layout from shape: ranks differs");
       }
-      TF_RETURN_IF_ERROR(
-          LayoutUtil::ValidateLayoutForShape(src.layout(), *dst));
+      RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(src.layout(), *dst));
       *dst->mutable_layout() = src.layout();
     } else {
       dst->clear_layout();
@@ -601,6 +645,11 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
   // 2. Iteratively apply each tile level.
   for (const Tile& tile : shape.layout().tiles()) {
     const int64_t tile_rank = tile.dimensions().size();
+    if (tile_rank > current_shape.size()) {
+      int64_t pad_size = tile_rank - current_shape.size();
+      current_shape.insert(current_shape.begin(), pad_size, 1);
+      current_indices.insert(current_indices.begin(), pad_size, 0);
+    }
     // Tiling applies to a suffix of the current physical dimensions.
     CHECK_LE(tile_rank, current_shape.size());
 
@@ -679,9 +728,13 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
   std::vector<TilingStep> steps;
 
   for (const Tile& tile : shape.layout().tiles()) {
+    const int64_t tile_rank = tile.dimensions().size();
+    if (tile_rank > current_shape.size()) {
+      int64_t pad_size = tile_rank - current_shape.size();
+      current_shape.insert(current_shape.begin(), pad_size, 1);
+    }
     steps.push_back({current_shape, tile});
 
-    const int64_t tile_rank = tile.dimensions().size();
     const int64_t suffix_start = current_shape.size() - tile_rank;
 
     std::vector<int64_t> next_shape;
@@ -739,10 +792,11 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
 
   // 4. Map the physical major-to-minor indices back to logical dimensions.
   std::vector<int64_t> logical_indices(num_dims);
+  int64_t pad_offset = current_indices.size() - num_dims;
   for (int i = 0; i < num_dims; ++i) {
     // The physical order was minor_to_major(num_dims-1) down to 0.
     int64_t logical_dim = shape.layout().minor_to_major(num_dims - 1 - i);
-    logical_indices[logical_dim] = current_indices[i];
+    logical_indices[logical_dim] = current_indices[pad_offset + i];
   }
 
   return logical_indices;

@@ -39,7 +39,7 @@ OpSharding Manual() {
   return result;
 }
 
-OpSharding AssignDevice(int device) {
+OpSharding SingleDevice(int device) {
   OpSharding result;
   result.set_type(OpSharding::MAXIMAL);
   result.add_tile_assignment_dimensions(1);

@@ -16,10 +16,7 @@ limitations under the License.
 // This files implements a pass that changes a partially bufferized function
 // back to tensor arguments and return values.
 
-#include <cstdint>
 #include <memory>
-#include <tuple>
-#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"

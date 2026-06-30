@@ -19,9 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 
 namespace tsl {
 
@@ -97,6 +97,13 @@ class SubProcess {
   virtual int Communicate(const string* stdin_input, string* stdout_output,
                           string* stderr_output);
 
+  // GetArgv()
+  //    Return the argv passed to SetProgram().
+  virtual const char* const* GetArgv() const {
+    absl::MutexLock lock(&data_mu_);
+    return exec_argv_;
+  }
+
  private:
   static const int kNFds = 3;
   static bool chan_valid(int chan) { return ((chan >= 0) && (chan < kNFds)); }
@@ -107,11 +114,11 @@ class SubProcess {
 
   // The separation between proc_mu_ and data_mu_ mutexes allows Kill() to be
   // called by a thread while another thread is inside Wait() or Communicate().
-  mutable mutex proc_mu_;
+  mutable absl::Mutex proc_mu_;
   bool running_ TF_GUARDED_BY(proc_mu_);
   void* win_pi_ TF_GUARDED_BY(proc_mu_);
 
-  mutable mutex data_mu_ TF_ACQUIRED_AFTER(proc_mu_);
+  mutable absl::Mutex data_mu_ TF_ACQUIRED_AFTER(proc_mu_);
   char* exec_path_ TF_GUARDED_BY(data_mu_);
   char** exec_argv_ TF_GUARDED_BY(data_mu_);
   ChannelAction action_[kNFds] TF_GUARDED_BY(data_mu_);

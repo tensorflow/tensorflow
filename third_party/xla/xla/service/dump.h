@@ -38,6 +38,8 @@ limitations under the License.
 
 namespace xla {
 
+struct DumpOptions;
+
 // Argument used when calling DumpHloModuleIfEnabled before optimizations are
 // performed on an HloModule.
 constexpr char kBeforeOptimizationsDumpName[] = "before_optimizations";
@@ -49,7 +51,7 @@ class HloSnapshot;
 
 // Creates dir if doesn't exist (analogue of `mkdir -p`), tries to get around
 // race conditions by trying again on collision.
-absl::Status CreateDirIfNeeded(const std::string& dir, tsl::Env* env);
+absl::Status CreateDirIfNeeded(absl::string_view dir, tsl::Env* env);
 
 // Get a timestamp which we can use as a filename prefix specific to this
 // module.
@@ -104,7 +106,8 @@ void DumpProtobufToFile(const tsl::protobuf::Message& proto,
                         absl::string_view filename,
                         absl::AnyInvocable<absl::StatusOr<std::string>(
                             tsl::Env*, const tsl::protobuf::Message&)>
-                            text_formatter = nullptr);
+                            text_formatter = nullptr,
+                        const DumpOptions* override_opts = nullptr);
 
 // Render graph in a given format.
 std::string RenderGraph(absl::string_view label, const HloModule& module,
@@ -215,7 +218,7 @@ bool DumpingToStdout(const DebugOptions& opts);
 // If 'full_name' is not null then it is set to the name of the file the
 // protobuf was written to.
 absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
-                                  const std::string& directory,
+                                  absl::string_view directory,
                                   absl::string_view file_name,
                                   std::string* full_path = nullptr);
 

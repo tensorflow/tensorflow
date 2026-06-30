@@ -89,8 +89,4 @@ class TensorLowerToTritonPass
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateTensorLowerToTritonPass() {
-  return std::make_unique<TensorLowerToTritonPass>();
-}
-
 }  // namespace mlir::triton::xla

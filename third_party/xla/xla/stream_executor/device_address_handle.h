@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_DEVICE_ADDRESS_HANDLE_H_
 #define XLA_STREAM_EXECUTOR_DEVICE_ADDRESS_HANDLE_H_
 
-#include "absl/base/macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -43,11 +42,6 @@ class DeviceAddressHandle {
   // Accessors for the DeviceAddressBase.
   const DeviceAddressBase& address() const { return address_; }
   DeviceAddressBase* address_ptr() { return &address_; }
-
-  ABSL_DEPRECATE_AND_INLINE()
-  const DeviceAddressBase& memory() const { return address(); }
-  ABSL_DEPRECATE_AND_INLINE()
-  DeviceAddressBase* memory_ptr() { return address_ptr(); }
 
  private:
   // Frees the associated address.

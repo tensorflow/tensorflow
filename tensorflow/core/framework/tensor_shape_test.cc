@@ -682,15 +682,15 @@ absl::Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
   int64_t num_elements = 1;
   for (const auto& d : proto.dim()) {
     if (d.size() < 0) {
-      return errors::InvalidArgument("Shape ", DebugString(proto),
-                                     " has negative dimensions; ",
-                                     "perhaps an un-fed placeholder?");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Shape ", DebugString(proto), " has negative dimensions; ",
+          "perhaps an un-fed placeholder?"));
     }
     num_elements *= d.size();
     if (num_elements > kMaxElements) {
-      return errors::InvalidArgument("Shape ", DebugString(proto),
-                                     " is too large (more than ", kMaxElements,
-                                     " entries)");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Shape ", DebugString(proto),
+                       " is too large (more than ", kMaxElements, " entries)"));
     }
   }
   return absl::OkStatus();

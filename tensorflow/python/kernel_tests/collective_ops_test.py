@@ -1177,7 +1177,7 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
         tokens[device] = create_ordering_token()
 
     @def_function.function
-    def collective_fn():
+    def collective_fn(group_key, instance_key):
       for device in [dev0, dev1]:
         with ops.device(device):
           collective_op(
@@ -1190,7 +1190,7 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
 
     # Local params resolution cannot be cancelled yet, so we perform a normal
     # collective so that the group is resolved.
-    collective_fn()
+    collective_fn(group_key, instance_key)
 
     # Make the dataset sleep a while so that the collective is being executed
     # when the EOF happens.
@@ -1219,7 +1219,7 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
       f()
     # Collective ops shouldn't be aborted and new collectives should be able to
     # proceed.
-    collective_fn()
+    collective_fn(group_key, instance_key + 1)
 
   @combinations.generate(
       combinations.times(

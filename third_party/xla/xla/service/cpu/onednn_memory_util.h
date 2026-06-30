@@ -135,39 +135,37 @@ dnnl::memory::desc ShapeToMemDesc(const Shape& shape);
 
 Shape MemDescToXlaShapeFlattened(const dnnl::memory::desc& md);
 
-// Define a struct to encapsulate oneDNN memory and primitive objects.
-struct OneDnnResources {
-  // Primitive object
-  dnnl::primitive primitive;
+// Base resources: common arg/result memrefs.
+struct OneDnnBaseResources {
+  std::vector<MemrefInfoHandler> arg_memrefs;
+  std::vector<MemrefInfoHandler> result_memrefs;
+  OneDnnBaseResources() = default;
+  virtual ~OneDnnBaseResources() = default;
+};
 
-  // Memory objects
+// oneDNN primitive resources.
+struct OneDnnPrimResources : public OneDnnBaseResources {
+  dnnl::primitive primitive;
   dnnl::memory src_mem;
   dnnl::memory wei_mem;
   dnnl::memory dst_mem;
   dnnl::memory scratch_mem;
   dnnl::memory scale_mem;
   dnnl::memory shift_mem;
-
-  // Post-operation arguments
   std::vector<std::pair<int, dnnl::memory>> postop_args;
 
-  // Memory reference handlers for arguments and results.
-  std::vector<MemrefInfoHandler> arg_memrefs;
-  std::vector<MemrefInfoHandler> result_memrefs;
-
-  // Constructor to initialize all members to default values.
-  OneDnnResources()
-      : primitive(dnnl::primitive()),
-        src_mem(dnnl::memory()),
-        wei_mem(dnnl::memory()),
-        dst_mem(dnnl::memory()),
-        scratch_mem(dnnl::memory()),
-        scale_mem(dnnl::memory()),
-        shift_mem(dnnl::memory()),
-        postop_args(),
-        arg_memrefs(),
-        result_memrefs() {}
+  OneDnnPrimResources()
+      : primitive(),
+        src_mem(),
+        wei_mem(),
+        dst_mem(),
+        scratch_mem(),
+        scale_mem(),
+        shift_mem(),
+        postop_args() {}
 };
+
+// TODO(intel-tf): Add a child struct of OneDnnBaseResources for oneDNN graph.
 
 }  // namespace cpu
 }  // namespace xla

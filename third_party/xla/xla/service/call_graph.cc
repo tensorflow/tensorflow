@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -336,7 +337,7 @@ absl::Status CallGraph::VisitNodesInternal(
   }
 
   for (const HloComputation* computation : node.callees()) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         VisitNodesInternal(visitor_func, GetNode(computation), visited));
   }
 
@@ -354,13 +355,13 @@ absl::StatusOr<bool> CallGraph::VisitNodesInternal(
 
   bool changed = false;
   for (const HloComputation* computation : node.callees()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bool node_changed,
         VisitNodesInternal(visitor_func, GetNode(computation), visited));
     changed |= node_changed;
   }
 
-  TF_ASSIGN_OR_RETURN(bool node_changed, visitor_func(node));
+  ASSIGN_OR_RETURN(bool node_changed, visitor_func(node));
   changed |= node_changed;
   return changed;
 }
@@ -372,12 +373,12 @@ absl::Status CallGraph::VisitNodes(VisitorFunction visitor_func,
     // Traverse from all roots in the call graph.
     for (const CallGraphNode& node : nodes()) {
       if (node.callers().empty()) {
-        TF_RETURN_IF_ERROR(VisitNodesInternal(visitor_func, node, &visited));
+        RETURN_IF_ERROR(VisitNodesInternal(visitor_func, node, &visited));
       }
     }
   } else {
     // Traverse only from the entry computation.
-    TF_RETURN_IF_ERROR(VisitNodesInternal(
+    RETURN_IF_ERROR(VisitNodesInternal(
         visitor_func, GetNode(module_->entry_computation()), &visited));
   }
 
@@ -392,14 +393,14 @@ absl::StatusOr<bool> CallGraph::VisitNodesWithReturn(
     // Traverse from all roots in the call graph.
     for (const CallGraphNode& node : nodes()) {
       if (node.callers().empty()) {
-        TF_ASSIGN_OR_RETURN(bool node_changed,
-                            VisitNodesInternal(visitor_func, node, &visited));
+        ASSIGN_OR_RETURN(bool node_changed,
+                         VisitNodesInternal(visitor_func, node, &visited));
         changed |= node_changed;
       }
     }
   } else {
     // Traverse only from the entry computation.
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         changed,
         VisitNodesInternal(visitor_func, GetNode(module_->entry_computation()),
                            &visited));

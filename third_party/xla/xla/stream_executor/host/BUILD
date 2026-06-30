@@ -59,6 +59,7 @@ cc_library(
     hdrs = ["host_event.h"],
     deps = [
         "//xla/stream_executor:event",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -79,7 +80,6 @@ cc_library(
         "//xla/stream_executor:stream_common",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
     ],
@@ -95,7 +95,9 @@ cc_library(
     ],
     deps = [
         ":host_stream",
+        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -121,21 +123,18 @@ cc_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:memory_allocator",
+        "//xla/stream_executor:memory_space",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_common",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/platform:env",
         "//xla/tsl/platform/profile_utils:profile_utils_cpu_utils",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@tsl//tsl/platform:platform_port",
     ],
-    alwayslink = True,
 )
 
 xla_cc_test(
@@ -143,11 +142,30 @@ xla_cc_test(
     srcs = ["host_stream_test.cc"],
     deps = [
         ":host_platform",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:event",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "host_stream_factory_test",
+    srcs = ["host_stream_factory_test.cc"],
+    deps = [
+        ":host_platform",
+        ":host_stream",
+        ":host_stream_factory",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",

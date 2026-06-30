@@ -19,7 +19,6 @@ limitations under the License.
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/Passes.h"
-#include "xla/service/spmd/shardy/round_trip_common/export_named_computations.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_callback_custom_calls.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_manual_reduction_collectives.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_ops.h"
@@ -31,7 +30,8 @@ namespace sdy {
 
 void addStablehloExportPipeline(mlir::OpPassManager& pm,
                                 const StablehloExportPipelineOptions& options) {
-  pm.addPass(createStablehloExportManualReductionCollectivesPass());
+  pm.addPass(createStablehloExportManualReductionCollectivesPass(
+      options.exportAllReduceScatter));
   // This pass converts `sdy.constant` (which isn't foldable) into
   // `stablehlo.constant` (which is foldable), therefore greedy pattern
   // rewriters shouldn't be applied before converting to HLO as they apply
@@ -39,7 +39,6 @@ void addStablehloExportPipeline(mlir::OpPassManager& pm,
   pm.addPass(createExportOpsPass(options.keepHloShardingConstraints));
   pm.addPass(createStablehloRoundTripShardMapExportPass(
       options.keepHloShardingConstraints));
-  pm.addPass(createExportNamedComputationsPass(options.dedupFunctionsFully));
   pm.addPass(mlir::createSymbolDCEPass());
   // If we don't add a sharding to a control flow op without one,
   // StableHLO -> HLO conversion won't add a sharding for that op even if a
@@ -48,7 +47,8 @@ void addStablehloExportPipeline(mlir::OpPassManager& pm,
   pm.addPass(createExportStablehloShardingsPass(
       /*addMissingShardingToControlFlow=*/options
           .addMissingShardingToControlFlow,
-      /*enableHloShardingV3=*/options.enableHloShardingV3));
+      /*enableHloShardingV3=*/options.enableHloShardingV3,
+      /*simplifyReplicatedShardings=*/options.simplifyReplicatedShardings));
   pm.addPass(createStablehloRoundTripExportCallbackCustomCallsPass());
 }
 

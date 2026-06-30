@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -423,19 +424,19 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
 
   auto div_red_mul_src =
       m::Divide()
-          .WithOperand(0, m::Reduce(m::Multiply().WithBinaryOperandsAnyOrder(
-                                        pu::OptionalConvert(m::Op(&mul_in0)),
-                                        pu::OptionalConvert(m::Op(&mul_in1))),
-                                    m::Constant())
-                              .WithPredicate([](const HloInstruction* reduce) {
-                                HloComputation* reducer = reduce->to_apply();
-                                return (
-                                    reducer->root_instruction()->opcode() ==
-                                        HloOpcode::kAdd &&
-                                    reduce->dimensions().size() == 1 &&
-                                    reduce->dimensions()[0] ==
-                                        reduce->shape().dimensions().size());
-                              }))
+          .WithOperand(0,
+                       m::Reduce(m::Multiply().WithBinaryOperandsAnyOrder(
+                                     pu::OptionalConvert(m::Op(&mul_in0)),
+                                     pu::OptionalConvert(m::Op(&mul_in1))),
+                                 m::Constant())
+                           .WithPredicate([](const HloInstruction* reduce) {
+                             HloComputation* reducer = reduce->to_apply();
+                             return (reducer->root_instruction()->opcode() ==
+                                         HloOpcode::kAdd &&
+                                     reduce->dimensions().size() == 1 &&
+                                     reduce->dimensions()[0] ==
+                                         reduce->shape().dimensions().size());
+                           }))
           .WithOperand(1, m::Op(&broadcast0).WithOpcode(HloOpcode::kBroadcast))
           .WithOneUser();
 
@@ -546,13 +547,13 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
         backend_config.mutable_onednn_layer_norm_config();
     ln_config->set_rescale(OneDnnNormConfig::SCALE_AND_SHIFT);
     ln_config->set_epsilon_typecast(*(reinterpret_cast<int32_t*>(&eps)));
-    TF_RETURN_IF_ERROR(ln_call->set_backend_config(backend_config));
+    RETURN_IF_ERROR(ln_call->set_backend_config(backend_config));
 
     if (convert_instr != nullptr && is_bf16orfp16_convert &&
         is_producer_bf16orfp16) {
-      TF_RETURN_IF_ERROR(ReplaceInstruction(convert_instr, ln_call));
+      RETURN_IF_ERROR(ReplaceInstruction(convert_instr, ln_call));
     } else {
-      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, ln_call));
+      RETURN_IF_ERROR(ReplaceInstruction(instr, ln_call));
     }
 
     return absl::OkStatus();
@@ -589,7 +590,7 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
       newoperands.at(0) = newinp;
       HloInstruction* updated_call = instr->AddInstruction(
           custom_call->CloneWithNewOperands(instr->shape(), newoperands));
-      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, updated_call));
+      RETURN_IF_ERROR(ReplaceInstruction(instr, updated_call));
     }
 
     return absl::OkStatus();
@@ -614,8 +615,10 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
     OneDnnSoftmaxConfig* softmax_config =
         backend_config.mutable_onednn_softmax_config();
     softmax_config->set_softmax_axis(axis);
-    TF_RETURN_IF_ERROR(softmax_call->set_backend_config(backend_config));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(divide_instr, softmax_call));
+    RETURN_IF_ERROR(softmax_call->set_backend_config(backend_config));
+    xla::Cast<HloCallableInstruction>(softmax_call)
+        ->set_output_to_operand_aliasing({{{}, {0, {}}}});
+    RETURN_IF_ERROR(ReplaceInstruction(divide_instr, softmax_call));
 
     return absl::OkStatus();
   }
@@ -627,8 +630,7 @@ absl::StatusOr<bool> OneDnnOpsRewriter::RunImpl(
   XLA_VLOG_LINES(
       3, "OneDnnOpsRewriter::RunImpl(), before:\n" + module->ToString());
   OneDnnOpsRewriterVisitor visitor;
-  TF_ASSIGN_OR_RETURN(auto result,
-                      visitor.RunOnModule(module, execution_threads));
+  ASSIGN_OR_RETURN(auto result, visitor.RunOnModule(module, execution_threads));
   XLA_VLOG_LINES(3,
                  "OneDnnOpsRewriter::RunImpl(), after:\n" + module->ToString());
   return result;

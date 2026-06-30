@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -43,7 +44,7 @@ StatusOr<mlir::Value> ExpandIndices(mlir::OpBuilder& builder,
   int64_t num_dim =
       mlir::dyn_cast<mlir::RankedTensorType>(indices.getType()).getDimSize(1);
   if (num_dim != 2)
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Sparse tensors with dense rank not equal to 2 is not yet supported in "
         "DTensor.");
   mlir::Location loc = indices.getLoc();
@@ -81,7 +82,7 @@ StatusOr<mlir::Operation*> DynamicEnqueueSparseExpander::ExpandOp(
 
   for (mlir::Value sparse_feature_value : feature) {
     if (!IsSparseValue(sparse_feature_value)) {
-      return errors::Internal(
+      return absl::InternalError(
           "Expected feature input to DynamicEnqueueOp to be a sparse input, "
           "but was not. This should not happen.");
     }

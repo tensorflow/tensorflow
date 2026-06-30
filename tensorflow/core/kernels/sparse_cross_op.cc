@@ -106,7 +106,7 @@ class KeyedSparseTensorColumn : public ColumnInterface<InternalType> {
 
  private:
   const Tensor& values_;
-  tensorflow::uint64 key_[2];
+  uint64_t key_[2];
   std::vector<int64_t> feature_counts_;
   std::vector<int64_t> feature_start_indices_;
 };
@@ -214,7 +214,7 @@ class KeyedDenseTensorColumn : public ColumnInterface<InternalType> {
 
  private:
   const Tensor& tensor_;
-  tensorflow::uint64 key_[2];
+  uint64_t key_[2];
 };
 
 // InternalType is int64 only when using HashCrosser.
@@ -303,15 +303,16 @@ class OutputUpdater {
 template <typename InternalType>
 class StringCrosser {
  public:
-  StringCrosser(const std::vector<
-                    std::unique_ptr<ColumnInterface<InternalType>>>& columns,
-                const int64_t num_buckets_unused, const uint64 hash_key_unused,
-                const tstring k_feature_separator)
+  StringCrosser(
+      const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>&
+          columns,
+      const int64_t num_buckets_unused, const uint64_t hash_key_unused,
+      const tstring k_feature_separator)
       : columns_(columns), k_feature_separator_(k_feature_separator) {}
 
-  string Generate(const int64_t batch_index,
-                  const std::vector<int>& permutation,
-                  bool unused_strong_hash) const {
+  std::string Generate(const int64_t batch_index,
+                       const std::vector<int>& permutation,
+                       bool unused_strong_hash) const {
     gtl::InlinedVector<InternalType, 6> cross_vec(columns_.size());
     for (int i = 0; i < permutation.size(); i++) {
       cross_vec[i] = columns_[i]->Feature(batch_index, permutation[i], false);
@@ -331,7 +332,7 @@ class HashCrosser {
  public:
   HashCrosser(
       const std::vector<std::unique_ptr<ColumnInterface<int64_t>>>& columns,
-      const int64_t num_buckets, const uint64 hash_key,
+      const int64_t num_buckets, const uint64_t hash_key,
       const tstring k_feature_separator_unused)
       : columns_(columns), num_buckets_(num_buckets), hash_key_(hash_key) {}
 
@@ -339,9 +340,10 @@ class HashCrosser {
                    const std::vector<int>& permutation,
                    bool unused_strong_hash) const {
     // Do the fingerprint concatenation on uint64.
-    uint64 hashed_output = hash_key_;
+    uint64_t hashed_output = hash_key_;
     for (size_t i = 0; i < permutation.size(); ++i) {
-      uint64 hash_i = columns_[i]->Feature(batch_index, permutation[i], false);
+      uint64_t hash_i =
+          columns_[i]->Feature(batch_index, permutation[i], false);
       hashed_output = FingerprintCat64(hashed_output, hash_i);
     }
     // The return value is int64 based on the number of buckets.
@@ -356,7 +358,7 @@ class HashCrosser {
  private:
   const std::vector<std::unique_ptr<ColumnInterface<int64_t>>>& columns_;
   const int64_t num_buckets_;
-  const uint64 hash_key_;
+  const uint64_t hash_key_;
 };
 
 // Generates the sparse crosses as nested hash to avoid string manipulations.
@@ -364,7 +366,7 @@ class HashCrosserV2 {
  public:
   HashCrosserV2(
       const std::vector<std::unique_ptr<ColumnInterface<int64_t>>>& columns,
-      const int64_t num_buckets, const uint64 hash_key_unused,
+      const int64_t num_buckets, const uint64_t hash_key_unused,
       const tstring k_feature_separator_unused)
       : columns_(columns), num_buckets_(num_buckets) {}
 
@@ -372,10 +374,10 @@ class HashCrosserV2 {
                    const std::vector<int>& permutation,
                    bool strong_hash) const {
     // Do the fingerprint concatenation on uint64.
-    uint64 hashed_output =
+    uint64_t hashed_output =
         columns_[0]->Feature(batch_index, permutation[0], strong_hash);
     for (size_t i = 1; i < permutation.size(); ++i) {
-      uint64 hash_i =
+      uint64_t hash_i =
           columns_[i]->Feature(batch_index, permutation[i], strong_hash);
       hashed_output = FingerprintCat64(hashed_output, hash_i);
     }
@@ -487,71 +489,71 @@ absl::Status ValidateInput(const OpInputList& indices_list_in,
   // Validates indices_list_in OpInputList.
   for (int i = 0; i < size; i++) {
     if (check_type && indices_list_in[i].dtype() != DT_INT64) {
-      return errors::InvalidArgument("Input indices should be of type ",
-                                     DT_INT64, " but received ",
-                                     indices_list_in[i].dtype());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Input indices should be of type ", DT_INT64,
+                       " but received ", indices_list_in[i].dtype()));
     }
     if (!TensorShapeUtils::IsMatrix(indices_list_in[i].shape())) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Input indices should be a matrix but received shape ",
-          indices_list_in[i].shape().DebugString(), " at position ", i);
+          indices_list_in[i].shape().DebugString(), " at position ", i));
     }
     if (indices_list_in[i].shape().dim_size(1) != 2) {
-      return errors::InvalidArgument("Expected D2 of index to be 2 got ",
-                                     indices_list_in[i].shape().dim_size(1),
-                                     " at position ", i);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Expected D2 of index to be 2 got ",
+          indices_list_in[i].shape().dim_size(1), " at position ", i));
     }
   }
 
   // Validates values_list_in OpInputList.
   if (values_list_in.size() != size) {
-    return errors::InvalidArgument("Expected ", size, " input values, got ",
-                                   values_list_in.size());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Expected ", size, " input values, got ", values_list_in.size()));
   }
   for (int i = 0; i < size; i++) {
     // Make sure to avoid the expected type to be string, but input values to be
     // int64.
     if (check_type && internal_type == DT_STRING &&
         values_list_in[i].dtype() == DT_INT64) {
-      return errors::InvalidArgument("Input values should be of internal type ",
-                                     internal_type, " but received ",
-                                     values_list_in[i].dtype());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Input values should be of internal type ", internal_type,
+          " but received ", values_list_in[i].dtype()));
     }
     if (!TensorShapeUtils::IsVector(values_list_in[i].shape())) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Input values should be a vector but received shape ",
-          values_list_in[i].shape().DebugString(), " at position ", i);
+          values_list_in[i].shape().DebugString(), " at position ", i));
     }
     if (indices_list_in[i].shape().dim_size(0) !=
         values_list_in[i].shape().dim_size(0)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Expected size of values to be ",
           indices_list_in[i].shape().dim_size(0), " got ",
-          values_list_in[i].shape().dim_size(0), " at position ", i);
+          values_list_in[i].shape().dim_size(0), " at position ", i));
     }
   }
 
   // Validates shapes_list_in OpInputList
   if (shapes_list_in.size() != size) {
-    return errors::InvalidArgument("Expected ", size, " input shapes, got ",
-                                   shapes_list_in.size());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Expected ", size, " input shapes, got ", shapes_list_in.size()));
   }
   for (int i = 0; i < size; i++) {
     if (check_type && shapes_list_in[i].dtype() != DT_INT64) {
-      return errors::InvalidArgument("Input shape should be of type ", DT_INT64,
-                                     " but received ",
-                                     shapes_list_in[i].dtype());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Input shape should be of type ", DT_INT64,
+                       " but received ", shapes_list_in[i].dtype()));
     }
     if (!TensorShapeUtils::IsVector(shapes_list_in[i].shape())) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Input shapes should be a vector but received shape ",
-          shapes_list_in[i].shape().DebugString(), " at position ", i);
+          shapes_list_in[i].shape().DebugString(), " at position ", i));
     }
 
     if (shapes_list_in[i].vec<int64_t>().size() != 2) {
-      return errors::InvalidArgument("shape should imply a 2D tensor, but got ",
-                                     shapes_list_in[i].shape().DebugString(),
-                                     " at position ", i);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "shape should imply a 2D tensor, but got ",
+          shapes_list_in[i].shape().DebugString(), " at position ", i));
     }
   }
 
@@ -561,14 +563,14 @@ absl::Status ValidateInput(const OpInputList& indices_list_in,
     // int64.
     if (check_type && internal_type == DT_STRING &&
         dense_list_in[i].dtype() == DT_INT64) {
-      return errors::InvalidArgument("Dense inputs should be of internal type ",
-                                     internal_type, " but received ",
-                                     dense_list_in[i].dtype());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Dense inputs should be of internal type ", internal_type,
+          " but received ", dense_list_in[i].dtype()));
     }
     if (!TensorShapeUtils::IsMatrix(dense_list_in[i].shape())) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Dense inputs should be a matrix but received shape ",
-          dense_list_in[i].shape().DebugString(), " at position ", i);
+          dense_list_in[i].shape().DebugString(), " at position ", i));
     }
   }
 
@@ -578,16 +580,16 @@ absl::Status ValidateInput(const OpInputList& indices_list_in,
   const auto batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
   for (int i = 0; i < size; i++) {
     if (shapes_list_in[i].vec<int64_t>()(0) != batch_size) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Expected batch size ", batch_size, " got ",
-          shapes_list_in[i].vec<int64_t>()(0), " at position ", i);
+          shapes_list_in[i].vec<int64_t>()(0), " at position ", i));
     }
   }
   for (int i = 0; i < dense_list_in.size(); ++i) {
     if (dense_list_in[i].dim_size(0) != batch_size) {
-      return errors::InvalidArgument("Expected batch size ", batch_size,
-                                     " got ", dense_list_in[i].dim_size(0),
-                                     " at dense tensor ", i);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected batch size ", batch_size, " got ",
+                       dense_list_in[i].dim_size(0), " at dense tensor ", i));
     }
   }
 
@@ -745,7 +747,7 @@ class SparseCrossOp : public OpKernel {
     // supported by REGISTER_OP.
     int64_t signed_hash_key_;
     OP_REQUIRES_OK(context, context->GetAttr("hash_key", &signed_hash_key_));
-    hash_key_ = static_cast<uint64>(signed_hash_key_);
+    hash_key_ = static_cast<uint64_t>(signed_hash_key_);
     OP_REQUIRES_OK(context, context->GetAttr("internal_type", &internal_type_));
   }
 
@@ -807,7 +809,7 @@ class SparseCrossOp : public OpKernel {
 
  private:
   int64_t num_buckets_;
-  uint64 hash_key_;
+  uint64_t hash_key_;
   DataType internal_type_;
 };
 
@@ -835,9 +837,10 @@ class SparseCrossV2Op : public OpKernel {
     const Tensor* sep_t;
     OP_REQUIRES_OK(context, context->input("sep", &sep_t));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(sep_t->shape()),
-                errors::InvalidArgument("Input separator should be a scalar. "
-                                        "Received: ",
-                                        sep_t->DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input separator should be a scalar. "
+                                 "Received: ",
+                                 sep_t->DebugString())));
     const tstring separator = sep_t->scalar<tstring>()();
 
     std::vector<std::unique_ptr<ColumnInterface<tstring>>> columns =
@@ -912,9 +915,9 @@ class SparseCrossHashedOp : public OpKernel {
     OP_REQUIRES_OK(
         context, salt.size() == 2
                      ? absl::Status()
-                     : errors::InvalidArgument(
+                     : absl::InvalidArgumentError(absl::StrCat(
                            "Input \"salt\" must have length 2 but has length ",
-                           salt.size()));
+                           salt.size())));
     std::vector<int64_t> key_{salt(0), salt(1)};
 
     std::vector<std::unique_ptr<ColumnInterface<int64_t>>> columns =
@@ -973,13 +976,13 @@ REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<int64_t>("out_type")
                             .TypeConstraint<tstring>("internal_type"),
-                        SparseCrossOp<true, int64>);
+                        SparseCrossOp<true, int64_t>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<int64_t>("out_type")
                             .TypeConstraint<int64_t>("internal_type"),
-                        SparseCrossOp<true, int64>);
+                        SparseCrossOp<true, int64_t>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCrossV2").Device(DEVICE_CPU),
                         SparseCrossV2Op);

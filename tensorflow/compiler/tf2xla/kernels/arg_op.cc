@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
@@ -52,9 +54,9 @@ class XlaArgOp : public XlaOpKernel {
       // cases. See XlaOpKernelContext::SetOutputExpression for details.
       if (DataTypeCanUseMemcpy(dtype_)) {
         OP_REQUIRES(ctx, val->dtype() == dtype_,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Type mismatch: actual ", DataTypeString(val->dtype()),
-                        " vs. expect ", DataTypeString(dtype_)));
+                        " vs. expect ", DataTypeString(dtype_))));
       }
       // Forwards the argument from the frame.
       ctx->op_kernel_context()->set_output(0, *val);
@@ -62,8 +64,9 @@ class XlaArgOp : public XlaOpKernel {
     }
 
     const XlaExpression& arg = ctx->xla_context()->args()[index_];
-    OP_REQUIRES(ctx, arg.kind() != XlaExpression::Kind::kInvalid,
-                errors::InvalidArgument("Invalid/missing argument expression"));
+    OP_REQUIRES(
+        ctx, arg.kind() != XlaExpression::Kind::kInvalid,
+        absl::InvalidArgumentError("Invalid/missing argument expression"));
     if (ctx->expected_output_dtype(0) == DT_VARIANT) {
       ctx->SetTensorListOutput(0, arg.handle());
     } else if (arg.value_bound().has_value()) {

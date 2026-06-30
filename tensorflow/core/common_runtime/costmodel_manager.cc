@@ -59,7 +59,7 @@ absl::Status CostModelManager::AddToCostGraphDef(const Graph* graph,
   // Get the cost model for the graph.
   auto it = cost_models_.find(graph);
   if (it == cost_models_.end()) {
-    return errors::InvalidArgument("The cost model graph doesn't exist.");
+    return absl::InvalidArgumentError("The cost model graph doesn't exist.");
   }
   CostModel* cost_model = it->second;
   cost_model->AddToCostGraphDef(graph, cost_graph);

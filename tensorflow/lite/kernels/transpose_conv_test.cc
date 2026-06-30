@@ -124,6 +124,42 @@ class TransposeConvOpModel : public BaseTransposeConvOpModel<float> {
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 };
 
+template <typename InputType>
+class PrepareOnlyTransposeConvOpModel : public SingleOpModel {
+ public:
+  PrepareOnlyTransposeConvOpModel(
+      TfLiteRegistration* registration,
+      std::initializer_list<int> output_shape_data, const TensorData& filter,
+      const TensorData& input, const TensorData& output, Padding padding,
+      int stride_w, int stride_h,
+      tflite::ActivationFunctionType fused_activation, int version = 1,
+      const TensorType& bias_type = TensorType_INT32) {
+    output_shape_ = AddConstInput(TensorType_INT32, output_shape_data, {4});
+    filter_ = AddInput(filter);
+    input_ = AddInput(input);
+    output_ = AddOutput(output);
+
+    SetBuiltinOp(
+        BuiltinOperator_TRANSPOSE_CONV, BuiltinOptions_TransposeConvOptions,
+        CreateTransposeConvOptions(builder_, padding, stride_w, stride_h,
+                                   fused_activation, bias_type)
+            .Union());
+    resolver_ = std::make_unique<SingleOpResolver>(
+        BuiltinOperator_TRANSPOSE_CONV, registration, version);
+    BuildInterpreter(
+        {GetShape(output_shape_), GetShape(filter_), GetShape(input_)},
+        /*num_threads=*/1, /*allow_fp32_relax_to_fp16=*/false,
+        /*apply_delegate=*/false,
+        /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  int output_shape_;
+  int filter_;
+  int input_;
+  int output_;
+};
+
 const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_TRANSPOSECONV_REF()},
     {"GenericOptimized", ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT()},
@@ -137,6 +173,34 @@ class TransposeConvOpTest
   }
   TestType GetTestType() { return std::get<1>(GetParam()); }
 };
+
+TEST(TransposeConvPrepareSecurityTest, RejectsCol2ImOverflow) {
+  constexpr int kHugeDim = 46341;
+  PrepareOnlyTransposeConvOpModel<uint8_t> m(
+      ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), {1, 1, 1, 0},
+      {TensorType_UINT8, {1, 1, 1, 1}, 0.0f, 255.0f},
+      {TensorType_UINT8, {1, kHugeDim, kHugeDim, 1}, 0.0f, 255.0f},
+      {TensorType_UINT8, {}}, Padding_SAME, /*stride_w=*/1, /*stride_h=*/1,
+      ActivationFunctionType_NONE);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(TransposeConvPrepareSecurityTest, RejectsHybridInputOverflow) {
+  if (sizeof(void*) <= 4) {
+    GTEST_SKIP() << "Interpreter construction overflows before kernel Prepare "
+                    "on 32-bit.";
+  }
+  constexpr int kHugeDim = 46341;
+  PrepareOnlyTransposeConvOpModel<float> m(
+      ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), {1, 1, 1, 1},
+      {TensorType_INT8, {1, 1, 1, 1}, -1.0f, 1.0f},
+      {TensorType_FLOAT32, {kHugeDim, kHugeDim, 1, 1}},
+      {TensorType_FLOAT32, {}}, Padding_SAME, /*stride_w=*/1,
+      /*stride_h=*/1, ActivationFunctionType_NONE);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
 
 // Test case:
 // output = tf.nn.conv2d_backprop_input(
@@ -656,7 +720,7 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannel16x8NoBiasInt32) {
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /*bias_type=*/TensorType_INT32);
   model.SetInput({
       // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
@@ -723,7 +787,7 @@ TEST_P(TransposeConvOpTest,
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_RELU, GetTestType());
+      /*fused_activation=*/ActivationFunctionType_RELU, GetTestType());
   model.SetInput({
       // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
       3, 2,    // batch = 0, y = 0, x = 0
@@ -784,7 +848,7 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannel16x8NoBiasInt64) {
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /*version=*/1,
       /*bias_type=*/TensorType_INT64);
   model.SetInput({
@@ -944,7 +1008,7 @@ TEST_P(TransposeConvOpTest, MultiChannelBiasTest) {
       /*input=*/{TensorType_FLOAT32, {1, 2, 2, 1}},
       /*output=*/{TensorType_FLOAT32, {}}, Padding_VALID,
       /*stride_w=*/2, /*stride_h=*/2,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /* version */ 3);
   model.SetInput({1, 2, 3, 4});
   model.SetBias({3, 4});
@@ -985,7 +1049,7 @@ TEST_P(TransposeConvOpTest, MultiChannelBiasWithFusedActivationTest) {
       /*input=*/{TensorType_FLOAT32, {1, 2, 2, 1}},
       /*output=*/{TensorType_FLOAT32, {}}, Padding_VALID,
       /*stride_w=*/2, /*stride_h=*/2,
-      /*fused_activation_function=*/ActivationFunctionType_RELU, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_RELU, GetTestType(),
       /* version */ 3);
   model.SetInput({1, 2, -3, 4});
   model.SetBias({3, 4});
@@ -1167,7 +1231,7 @@ TEST_P(TransposeConvOpTest, SimpleBiasTestQuantizedPerChannel16x8Bias32) {
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /*bias_type=*/TensorType_INT32);
   model.SetInput({
       // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
@@ -1231,7 +1295,7 @@ TEST_P(TransposeConvOpTest, SimpleBiasTestQuantizedPerChannel16x8Bias64) {
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /*bias_type=*/TensorType_INT64);
   model.SetInput({
       // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]

@@ -67,6 +67,12 @@ jobs:
             repo: "openxla/xla",
           },
           {
+            pool: "linux-x86-n2-16",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            name: "XLA Linux x86 GPU Hermetic ROCm",
+            repo: "openxla/xla",
+          },
+          {
             pool: "linux-x86-g2-16-l4-1gpu",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "XLA Linux x86 GPU L4",
@@ -92,7 +98,7 @@ jobs:
           },
           {
             pool: "linux-x86-g2-16-l4-1gpu",
-            container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
+            container: "gcr.io/tensorflow-sigs/build:latest-python3.12",
             name: "JAX Linux x86 GPU L4",
             repo: "jax-ml/jax",
           },
@@ -111,19 +117,19 @@ jobs:
         ]
     name: ${{ matrix.job_info.name }}
     runs-on: ${{ matrix.job_info.pool }}
-    container: ${{ matrix.job_info.container }}
+    container: ${{ matrix.job_info.container }} # zizmor: ignore[unpinned-images]
     defaults:
       run:
         shell: bash
     steps:
       - name: "Checking out openxla/xla"
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           path: "openxla/xla"
           persist-credentials: false
       - name: Checking out ${{ matrix.job_info.repo }}
         if: ${{ matrix.job_info.repo != 'openxla/xla' }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: ${{ matrix.job_info.repo }}
           path: ${{ matrix.job_info.repo }}
@@ -136,10 +142,13 @@ jobs:
         working-directory: ${{ matrix.job_info.repo }}
         timeout-minutes: 60
         run: |
-          if [[ "${{ matrix.job_info.pool }}" == *windows* ]]; then
-            python $GITHUB_WORKSPACE\\openxla\\xla\\build_tools\\ci\\build.py --build="${{ matrix.job_info.name }}_github_actions"
+          # Shellcheck doesn't understand GitHub Actions expressions and incorrectly
+          # thinks this comparison will always fail.
+          # shellcheck disable=SC2193
+          if [[ "${{ matrix.job_info.pool }}" == *"windows"* ]]; then
+            python "$GITHUB_WORKSPACE"\\openxla\\xla\\build_tools\\ci\\build.py --build="${{ matrix.job_info.name }}_github_actions"
           else
-            $GITHUB_WORKSPACE/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
+            "$GITHUB_WORKSPACE"/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
           fi
 
 

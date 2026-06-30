@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -29,6 +30,8 @@ limitations under the License.
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
 #include "xla/hlo/tools/hlo_diff/utils/test_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::hlo_diff {
@@ -219,6 +222,99 @@ ENTRY entry {
   EXPECT_THAT(matched_params,
               UnorderedElementsAre(Pair("iota", "iota"), Pair("p1", "p1"),
                                    Pair("c1", "c1")));
+}
+
+TEST_F(BipartiteMatcherUtilsTest, ConstantPhaseZeroThresholdBypass) {
+  const char* left_hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  c1 = bf16[2]{0} constant({1.1, 2.2})
+  ROOT tuple = (bf16[2]{0}) tuple(c1)
+}
+)";
+  const char* right_hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  c1 = bf16[4]{0} constant({1.1, 2.2, 3.3, 4.4})
+  ROOT tuple = (bf16[4]{0}) tuple(c1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
+                          ParseAndReturnVerifiedModule(left_hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
+                          ParseAndReturnVerifiedModule(right_hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
+                          HloGumgraph::Create(left_module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
+                          HloGumgraph::Create(right_module.get()));
+  auto mappings = std::make_unique<HloGumgraphMappings>();
+  const CallGraphNode& left_entry_computation =
+      left_gumgraph->GetCallGraph().GetNode(left_module->entry_computation());
+  const CallGraphNode& right_entry_computation =
+      right_gumgraph->GetCallGraph().GetNode(right_module->entry_computation());
+
+  mappings->MapComputationsIfAbsent(left_entry_computation,
+                                    right_entry_computation,
+                                    ComputationMatchType::kSignature);
+  std::vector<const HloInstructionNode*> left_constants, right_constants;
+  for (const HloInstruction* instruction :
+       left_entry_computation.computation()->instructions()) {
+    if (instruction->IsConstant()) {
+      left_constants.push_back(left_gumgraph->GetNode(instruction));
+    }
+  }
+  for (const HloInstruction* instruction :
+       right_entry_computation.computation()->instructions()) {
+    if (instruction->IsConstant()) {
+      right_constants.push_back(right_gumgraph->GetNode(instruction));
+    }
+  }
+
+  // With phase_zero_threshold > 0.0 and differing constant values (they are
+  // different shapes/values), the single-instruction bypass prevents phase zero
+  // mapping, and differing shapes prevents phase 2 mapping.
+  MatchSameOpcodeInstructions(
+      *left_gumgraph, *right_gumgraph, left_constants, right_constants,
+      *mappings, MatcherType::kComputationGraphExactSignatureMatcher,
+      MapByPositionMode::kNever, /*phase_zero_threshold=*/0.5);
+
+  auto matched_params = ExtractMappedInstructionNames(*mappings);
+  EXPECT_TRUE(matched_params.empty());
+}
+
+TEST_F(BipartiteMatcherUtilsTest, SafelyHandlesConstantsWithoutLiterals) {
+  auto builder = HloComputation::Builder("entry");
+  builder.AddInstruction(
+      std::make_unique<HloConstantInstruction>(ShapeUtil::MakeShape(F32, {2})));
+  HloModuleConfig config;
+  auto module = std::make_unique<HloModule>("module", config);
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> gumgraph,
+                          HloGumgraph::Create(module.get()));
+  auto mappings = std::make_unique<HloGumgraphMappings>();
+  const CallGraphNode& entry_computation =
+      gumgraph->GetCallGraph().GetNode(module->entry_computation());
+
+  std::vector<const HloInstructionNode*> constants;
+  for (const HloInstruction* instruction :
+       entry_computation.computation()->instructions()) {
+    if (instruction->IsConstant()) {
+      constants.push_back(gumgraph->GetNode(instruction));
+    }
+  }
+
+  // Calling MatchSameOpcodeInstructions should not crash when constants lack
+  // literals.
+  MatchSameOpcodeInstructions(
+      *gumgraph, *gumgraph, constants, constants, *mappings,
+      MatcherType::kComputationGraphExactSignatureMatcher,
+      MapByPositionMode::kNever, /*phase_zero_threshold=*/0.5);
+
+  auto matched_params = ExtractMappedInstructionNames(*mappings);
+  EXPECT_EQ(matched_params.size(), 1);
 }
 
 }  // namespace

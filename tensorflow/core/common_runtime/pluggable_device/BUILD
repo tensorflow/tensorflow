@@ -57,8 +57,10 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@xla//xla/stream_executor:device_memory",
@@ -246,5 +248,28 @@ tf_cc_test(
         "//tensorflow/core/common_runtime/next_pluggable_device/c:test_next_pluggable_device_plugin",  # buildcleaner: keep
         "@com_google_googletest//:gtest_main",
         "@xla//xla/pjrt/c:pjrt_c_api_hdrs",
+    ],
+)
+
+tf_cc_test(
+    name = "pluggable_device_factory_test",
+    size = "small",
+    srcs = ["pluggable_device_factory_test.cc"],
+    deps = [
+        ":pluggable_device_plugin_init",
+        ":pluggable_device_runtime_impl",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
+        "//tensorflow/c/experimental/stream_executor/test:test_pluggable_device",  # buildcleaner: keep
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla/stream_executor:platform",
+        "@xla//xla/stream_executor:platform_manager",
     ],
 )

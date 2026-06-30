@@ -14,6 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/permuter.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/collective_util.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
@@ -63,7 +71,7 @@ absl::Status Permuter::InitializeCollectiveContext(
 void Permuter::Run(StatusCallback done) {
   if (col_params_->instance.permutation.size() !=
       col_params_->instance.devices.size()) {
-    done(errors::Internal("Permutation must be the same size as devices"));
+    done(absl::InternalError("Permutation must be the same size as devices"));
   }
   done_ = std::move(done);
   DispatchSend(col_params_->default_rank,

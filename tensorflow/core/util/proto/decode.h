@@ -327,7 +327,7 @@ inline absl::Status ReadPrimitive(CodedInputStream* input, int index,
                                   void* data) {
   ValueType v;
   if (!WireFormatLite::ReadPrimitive<ValueType, DeclaredType>(input, &v)) {
-    return errors::DataLoss("Failed reading primitive");
+    return absl::DataLossError("Failed reading primitive");
   }
 
   reinterpret_cast<TensorType*>(data)[index] = v;
@@ -342,13 +342,13 @@ inline absl::Status ReadBytes(CodedInputStream* input, int index, void* datap) {
 
   uint32_t length;
   if (!input->ReadVarint32(&length)) {
-    return errors::DataLoss("Failed reading bytes");
+    return absl::DataLossError("Failed reading bytes");
   }
 
   data->resize_uninitialized(length);
 
   if (!input->ReadRaw(data->data(), length)) {
-    return errors::DataLoss("Failed reading bytes");
+    return absl::DataLossError("Failed reading bytes");
   }
   return absl::OkStatus();
 }
@@ -379,7 +379,7 @@ inline absl::Status ReadGroupBytes(CodedInputStream* input, int field_number,
             WireFormatLite::MakeTag(field_number,
                                     WireFormatLite::WIRETYPE_START_GROUP),
             &out)) {
-      return errors::DataLoss("Failed reading group");
+      return absl::DataLossError("Failed reading group");
     }
   }
   *data = buf;
@@ -405,8 +405,8 @@ inline absl::Status ReadValue(CodedInputStream* input,
           return ReadPrimitive<float, float, WireFormatLite::TYPE_FLOAT>(
               input, index, datap);
         default:
-          return errors::DataLoss("Failed reading TYPE_FLOAT for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed reading TYPE_FLOAT for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_INT64:
       return ReadPrimitive<protobuf_int64, int64_t, WireFormatLite::TYPE_INT64>(
@@ -423,8 +423,8 @@ inline absl::Status ReadValue(CodedInputStream* input,
           return ReadPrimitive<int32_t, int32_t, WireFormatLite::TYPE_INT32>(
               input, index, datap);
         default:
-          return errors::DataLoss("Failed reading TYPE_INT32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed reading TYPE_INT32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_FIXED64:
       return ReadPrimitive<protobuf_uint64, uint64_t,
@@ -440,8 +440,8 @@ inline absl::Status ReadValue(CodedInputStream* input,
                                WireFormatLite::TYPE_FIXED32>(input, index,
                                                              datap);
         default:
-          return errors::DataLoss("Failed reading TYPE_FIXED32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed reading TYPE_FIXED32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_BOOL:
       return ReadPrimitive<bool, bool, WireFormatLite::TYPE_BOOL>(input, index,
@@ -463,8 +463,8 @@ inline absl::Status ReadValue(CodedInputStream* input,
           return ReadPrimitive<uint32_t, uint32_t, WireFormatLite::TYPE_UINT32>(
               input, index, datap);
         default:
-          return errors::DataLoss("Failed reading TYPE_UINT32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed reading TYPE_UINT32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_ENUM:
       return ReadPrimitive<int32_t, int32_t, WireFormatLite::TYPE_ENUM>(
@@ -478,8 +478,8 @@ inline absl::Status ReadValue(CodedInputStream* input,
           return ReadPrimitive<int32_t, int32_t, WireFormatLite::TYPE_SFIXED32>(
               input, index, datap);
         default:
-          return errors::DataLoss("Failed reading TYPE_SFIXED32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed reading TYPE_SFIXED32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_SFIXED64:
       return ReadPrimitive<protobuf_int64, int64_t,
@@ -493,8 +493,8 @@ inline absl::Status ReadValue(CodedInputStream* input,
           return ReadPrimitive<int32_t, int32_t, WireFormatLite::TYPE_SINT32>(
               input, index, datap);
         default:
-          return errors::DataLoss("Failed reading TYPE_SINT32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed reading TYPE_SINT32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_SINT64:
       return ReadPrimitive<protobuf_int64, int64_t,
@@ -502,7 +502,7 @@ inline absl::Status ReadValue(CodedInputStream* input,
       // default: intentionally omitted in order to enable static checking.
   }
   // Unreachable.
-  return errors::DataLoss("Failed reading unknown wire type");
+  return absl::DataLossError("Failed reading unknown wire type");
 }
 
 // Reads and stores a length-delimited list of values.
@@ -527,8 +527,8 @@ inline absl::Status ReadPackedFromArray(
               buf, buf_size, *index, stride, data);
           return absl::OkStatus();
         default:
-          return errors::DataLoss("Failed reading TYPE_FLOAT for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed reading TYPE_FLOAT for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_INT64:
       *index += ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_INT64>(
@@ -549,8 +549,8 @@ inline absl::Status ReadPackedFromArray(
               buf, buf_size, *index, stride, data);
           return absl::OkStatus();
         default:
-          return errors::DataLoss("Failed reading TYPE_INT32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed reading TYPE_INT32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_FIXED64:
       *index += ReadPackedPrimitives<uint64_t, WireFormatLite::TYPE_FIXED64>(
@@ -569,8 +569,8 @@ inline absl::Status ReadPackedFromArray(
                   buf, buf_size, *index, stride, data);
           return absl::OkStatus();
         default:
-          return errors::DataLoss("Failed reading TYPE_FIXED32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed reading TYPE_FIXED32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_BOOL:
       *index += ReadPackedPrimitives<bool, WireFormatLite::TYPE_BOOL>(
@@ -580,7 +580,7 @@ inline absl::Status ReadPackedFromArray(
     case WireFormatLite::TYPE_GROUP:
     case WireFormatLite::TYPE_MESSAGE:
     case WireFormatLite::TYPE_BYTES:
-      return errors::DataLoss("Non-primitive type encountered as packed");
+      return absl::DataLossError("Non-primitive type encountered as packed");
     case WireFormatLite::TYPE_UINT32:
       switch (dtype) {
         case DataType::DT_UINT64:
@@ -592,8 +592,8 @@ inline absl::Status ReadPackedFromArray(
               buf, buf_size, *index, stride, data);
           return absl::OkStatus();
         default:
-          return errors::DataLoss("Failed reading TYPE_UINT32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed reading TYPE_UINT32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_ENUM:
       *index += ReadPackedPrimitives<int32_t, WireFormatLite::TYPE_ENUM>(
@@ -612,8 +612,8 @@ inline absl::Status ReadPackedFromArray(
                   buf, buf_size, *index, stride, data);
           return absl::OkStatus();
         default:
-          return errors::DataLoss("Failed reading TYPE_INT32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed reading TYPE_INT32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_SFIXED64:
       *index += ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_SFIXED64>(
@@ -631,8 +631,8 @@ inline absl::Status ReadPackedFromArray(
               buf, buf_size, *index, stride, data);
           return absl::OkStatus();
         default:
-          return errors::DataLoss("Failed reading TYPE_SINT32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed reading TYPE_SINT32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_SINT64:
       *index += ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_SINT64>(
@@ -641,7 +641,7 @@ inline absl::Status ReadPackedFromArray(
       // default: intentionally omitted in order to enable static checking.
   }
   // Unreachable.
-  return errors::DataLoss("Failed reading unknown wire type");
+  return absl::DataLossError("Failed reading unknown wire type");
 }
 
 // Reads a varint from the given buffer, write it to *value, and return the

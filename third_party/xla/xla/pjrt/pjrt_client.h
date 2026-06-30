@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -63,12 +64,14 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/int_type.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+
 namespace xla {
 
 class PjRtBuffer;
@@ -81,9 +84,15 @@ struct CompileOptions;
 typedef absl::AnyInvocable<absl::Status(absl::StatusOr<PjRtBuffer*>)>
     PjRtFulfillAliasBufferCallback;
 
+class PjRtMemorySpaceCApiDelegator;
+
 class PjRtMemorySpace {
  public:
   virtual ~PjRtMemorySpace() = default;
+
+  static PjRtMemorySpace* FromC(PJRT_Memory* c_space);
+
+  virtual PJRT_Memory* ToCApiPtr() = 0;
 
   // The owner of this memory space.
   virtual PjRtClient* client() const = 0;
@@ -109,6 +118,31 @@ class PjRtMemorySpace {
 
   // Debug string suitable for reading by end users, should be reasonably terse.
   virtual absl::string_view ToString() const = 0;
+};
+
+// Helper for building a PJRT_Memory from a PjRtMemorySpace.
+class PjRtMemorySpaceCApiDelegator {
+ public:
+  explicit PjRtMemorySpaceCApiDelegator(PjRtMemorySpace* owner);
+  ~PjRtMemorySpaceCApiDelegator();
+
+  PJRT_Memory* ToCApiPtr() { return &c_memory_; }
+
+ private:
+  using CApiDtor = void (*)(void*);
+
+  static void* GetUserDataImpl(PJRT_Memory* memory, const void* key);
+  static void SetUserDataImpl(PJRT_Memory* memory, const void* key, void* data,
+                              CApiDtor dtor);
+  static const PJRT_Memory_FunctionTable kDelegatorVtable;
+  PJRT_Memory c_memory_;
+  PjRtMemorySpace* owner_;
+
+  struct UserData {
+    void* data;
+    CApiDtor dtor;
+  };
+  absl::flat_hash_map<const void*, UserData> user_data_;
 };
 
 class PjRtDevice {
@@ -262,16 +296,19 @@ class PjRtDevice {
                                                absl::Status error) {
     return absl::UnimplementedError("PoisonExecution is not supported");
   }
+
+  virtual absl::Status ClearMemoryStats() {
+    return absl::UnimplementedError("ClearMemoryStats is not supported");
+  }
 };
 
 // Helper struct for cross host transfers, returned by the callback from a call
-// to PjRtBuffer::MakeCrossHostReceiveBuffers or
-// PjRtBuffer::MakeCrossHostReceiveBuffersForGather.
+// to PjRtBuffer::MakeCrossHostReceiveBuffers.
 struct PjRtCrossHostRecvDescriptors {
-  // There is one serialized_descriptor per sub-buffer being gathered (i.e. a
-  // single descriptor if the buffer is returned from a call to
-  // MakeCrossHostReceiveBuffers). The descriptor should be transmitted to the
-  // sender(s) and passed to a call to src_buffer->CopyToRemoteDevice.
+  // This vector contains one serialized descriptor. (For usages outside of
+  // MakeCrossHostReceiveBuffers, serialized_descriptors may have length > 1).
+  // The descriptor should be transmitted to the sender and passed to a call to
+  // src_buffer->CopyToRemoteDevice.
   absl::InlinedVector<std::string, 1> serialized_descriptors;
 };
 // Function that the client should call at the receiver if it needs to cancel a
@@ -557,7 +594,7 @@ class PjRtClient {
 
   // Updates the client with information about all global processes.
   virtual void UpdateGlobalProcessInfo(
-      absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
+      absl::Span<xla::coordination::TaskInfo> infos) {
     LOG(WARNING) << "UpdateGlobalProcessInfo is not supported.";
   }
 
@@ -881,9 +918,11 @@ class PjRtClient {
     absl::InlinedVector<PjRtClient::ShapeSpec, 4> shape_specs;
     shape_specs.reserve(shapes.size());
     for (const auto& shape : shapes) {
-      shape_specs.emplace_back(ShapeSpec{
-          shape.element_type(), DimensionVector(shape.dimensions().begin(),
-                                                shape.dimensions().end())});
+      ShapeSpec& spec = shape_specs.emplace_back();
+      spec.element_type = shape.element_type();
+      if (shape.IsArray()) {
+        spec.dims.assign(shape.dimensions().begin(), shape.dimensions().end());
+      }
     }
     return CreateBuffersForAsyncHostToDevice(
         shape_specs, /*device_layouts=*/std::nullopt, memory_space);
@@ -1126,7 +1165,7 @@ class PjRtBuffer {
   // Since this method actually acquires locks and communicate with the device,
   // it does not have the const qualifier, similar to what ToLiteral does.
   virtual absl::StatusOr<std::vector<int64_t>> logical_dimensions() {
-    TF_ASSIGN_OR_RETURN(Shape logical_shape, logical_on_device_shape());
+    ASSIGN_OR_RETURN(Shape logical_shape, logical_on_device_shape());
     absl::Span<const int64_t> dims = logical_shape.dimensions();
     return std::vector<int64_t>(dims.begin(), dims.end());
   }
@@ -1588,8 +1627,15 @@ class PjRtLoadedExecutable {
     return GetExecutable()->GetOutputLayouts();
   }
 
-  // Returns a list of lists of memory kind strings for output. The returned
-  // should be equal to `GetHloModules()`.
+  // Returns a list of lists of memory kind strings for parameter. The size of
+  // the outer list should be equal to `GetHloModules()`.
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const {
+    return GetExecutable()->GetParameterMemoryKinds();
+  }
+
+  // Returns a list of lists of memory kind strings for output. The size of the
+  // outer list should be equal to `GetHloModules()`.
   virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const {
     return GetExecutable()->GetOutputMemoryKinds();
@@ -1651,6 +1697,15 @@ class PjRtExecutableForwarder : public PjRtExecutable {
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
     return executable_->GetHloModules();
+  }
+
+  // Returns a list of lists of memory kind strings for parameter. The returned
+  // value is `[num_programs, num_parameter]`. The size of the outer list should
+  // be equal to `GetHloModules()`. Under SPMD, one can use
+  // `GetParameterMemoryKinds().front()`.
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    return executable_->GetParameterMemoryKinds();
   }
 
   // Returns a list of lists of memory kind strings for output. The returned

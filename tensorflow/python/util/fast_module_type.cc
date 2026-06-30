@@ -15,6 +15,7 @@ limitations under the License.
 #include <Python.h>
 
 #include <array>
+#include <vector>
 
 // clang-format off
 // These headers must be at the top, before including Python.h header
@@ -24,8 +25,9 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 // clang-format on
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/platform/logging.h"
+#include "absl/synchronization/mutex.h"
 
 namespace py = pybind11;
 
@@ -40,11 +42,13 @@ struct FastModuleObject {
   // because it's inherited from PyModuleObject.
   const std::array<char, PY_MODULE_TYPE_TP_BASIC_SIZE> opaque_base_fields;
   // A cache that helps reduce attribute lookup overhead.
-  absl::flat_hash_map<PyObject *, PyObject *> attr_map;
+  absl::flat_hash_map<PyObject*, PyObject*> attr_map ABSL_GUARDED_BY(mutex);
   // pointer to the external getattribute function
   PyObject *cb_getattribute;
   // pointer to the external getattr function
   PyObject *cb_getattr;
+  // mutex to protect attr_map
+  absl::Mutex mutex;
   // static PyTypeObject type;
 
   FastModuleObject() = delete;
@@ -58,6 +62,7 @@ static PyObject *FastModule_new(PyTypeObject *subtype, PyObject *args,
   PyObject *obj = PyModule_Type.tp_new(subtype, args, kwds);
   FastModuleObject *self = reinterpret_cast<FastModuleObject *>(obj);
   new (&(self->attr_map)) absl::flat_hash_map<PyObject *, PyObject *>();
+  new (&(self->mutex)) absl::Mutex();
   self->cb_getattribute = nullptr;
   self->cb_getattr = nullptr;
   return obj;
@@ -67,10 +72,16 @@ static int FastModule_traverse(PyObject *self, visitproc visit, void *arg) {
   if (int super_result = PyModule_Type.tp_traverse(self, visit, arg) != 0) {
     return super_result;
   }
-  auto &attr_map = FastModuleObject::UncheckedCast(self)->attr_map;
-  for (auto &it : attr_map) {
-    Py_VISIT(it.first);
-    Py_VISIT(it.second);
+  FastModuleObject* fast_module = FastModuleObject::UncheckedCast(self);
+  {
+    absl::MutexLock lock(&fast_module->mutex);
+    for (auto& it : fast_module->attr_map) {
+      Py_VISIT(it.first);
+      Py_VISIT(it.second);
+    }
+    // Visit the callbacks to ensure the GC tracks them and detects cycles.
+    Py_VISIT(fast_module->cb_getattribute);
+    Py_VISIT(fast_module->cb_getattr);
   }
   return 0;
 }
@@ -91,10 +102,14 @@ static PyObject *ParseFunc(PyObject *args) {
 // corresponding to 'self'.
 static PyObject *SetGetattributeCallback(PyObject *self, PyObject *args) {
   PyObject *func = ParseFunc(args);
-  // Dispose of previous callback
-  Py_XDECREF(FastModuleObject::UncheckedCast(self)->cb_getattribute);
-  // Remember new callback
-  FastModuleObject::UncheckedCast(self)->cb_getattribute = func;
+  FastModuleObject* fast_module = FastModuleObject::UncheckedCast(self);
+  PyObject* old_func = nullptr;
+  {
+    absl::MutexLock lock(&fast_module->mutex);
+    old_func = fast_module->cb_getattribute;
+    fast_module->cb_getattribute = func;
+  }
+  Py_XDECREF(old_func);
   Py_RETURN_NONE;
 }
 
@@ -102,10 +117,14 @@ static PyObject *SetGetattributeCallback(PyObject *self, PyObject *args) {
 // corresponding to 'self'.
 static PyObject *SetGetattrCallback(PyObject *self, PyObject *args) {
   PyObject *func = ParseFunc(args);
-  // Dispose of previous callback
-  Py_XDECREF(FastModuleObject::UncheckedCast(self)->cb_getattr);
-  // Remember new callback
-  FastModuleObject::UncheckedCast(self)->cb_getattr = func;
+  FastModuleObject* fast_module = FastModuleObject::UncheckedCast(self);
+  PyObject* old_func = nullptr;
+  {
+    absl::MutexLock lock(&fast_module->mutex);
+    old_func = fast_module->cb_getattr;
+    fast_module->cb_getattr = func;
+  }
+  Py_XDECREF(old_func);
   Py_RETURN_NONE;
 }
 
@@ -117,14 +136,19 @@ static PyObject *FastDictInsert(FastModuleObject *self, PyObject *args) {
     PyErr_SetString(PyExc_TypeError, "_fastdict_insert: incorrect inputs");
     return nullptr;
   }
-  auto &attr_map = self->attr_map;
   Py_INCREF(value);
-  if (auto [it, inserted] = attr_map.emplace(name, value); inserted) {
-    Py_INCREF(name);
-  } else {
-    Py_DECREF(it->second);
-    it->second = value;
+  PyObject* to_decref = nullptr;
+  {
+    absl::MutexLock lock(&self->mutex);
+    auto& attr_map = self->attr_map;
+    if (auto [it, inserted] = attr_map.emplace(name, value); inserted) {
+      Py_INCREF(name);
+    } else {
+      to_decref = it->second;
+      it->second = value;
+    }
   }
+  Py_XDECREF(to_decref);
 
   // Properly handle returning Py_None
   Py_RETURN_NONE;
@@ -138,10 +162,13 @@ static PyObject *FastDictGet(FastModuleObject *self, PyObject *args) {
     PyErr_SetString(PyExc_TypeError, "_fastdict_get: incorrect inputs");
     return nullptr;
   }
-  auto &attr_map = self->attr_map;
-  if (auto it = attr_map.find(name); it != attr_map.end()) {
-    Py_INCREF(it->second);
-    return it->second;
+  {
+    absl::MutexLock lock(&self->mutex);
+    auto& attr_map = self->attr_map;
+    if (auto it = attr_map.find(name); it != attr_map.end()) {
+      Py_INCREF(it->second);
+      return it->second;
+    }
   }
   // Copied from CPython's moduleobject.c
   PyErr_Format(PyExc_KeyError, "module has no attribute '%U'", name);
@@ -156,11 +183,19 @@ static PyObject *FastDictPop(FastModuleObject *self, PyObject *args) {
     PyErr_SetString(PyExc_TypeError, "_fastdict_pop: incorrect inputs");
     return nullptr;
   }
-  auto &attr_map = self->attr_map;
-  if (auto it = attr_map.find(name); it != attr_map.end()) {
-    Py_DECREF(it->first);
-    PyObject *value = it->second;
-    attr_map.erase(it);
+  PyObject* key_to_decref = nullptr;
+  PyObject* value = nullptr;
+  {
+    absl::MutexLock lock(&self->mutex);
+    auto& attr_map = self->attr_map;
+    if (auto it = attr_map.find(name); it != attr_map.end()) {
+      key_to_decref = it->first;
+      value = it->second;
+      attr_map.erase(it);
+    }
+  }
+  if (value) {
+    Py_DECREF(key_to_decref);
     return value;
   }
   // Copied from CPython's moduleobject.c
@@ -177,8 +212,12 @@ static PyObject *FastDictContains(FastModuleObject *self, PyObject *args) {
     PyErr_SetString(PyExc_TypeError, "_fastdict_key_in: incorrect inputs");
     return nullptr;
   }
-  const auto &attr_map = self->attr_map;
-  const auto result = attr_map.contains(name);
+  bool result;
+  {
+    absl::MutexLock lock(&self->mutex);
+    const auto& attr_map = self->attr_map;
+    result = attr_map.contains(name);
+  }
   if (result) {
     // Properly handle returning Py_True
     Py_RETURN_TRUE;
@@ -229,18 +268,28 @@ static PyMethodDef FastModule_methods[] = {
 // or the default 'tp_getattro' function to look for the attribute.
 static PyObject *FastTpGetattro(PyObject *module, PyObject *name) {
   FastModuleObject *fast_module = FastModuleObject::UncheckedCast(module);
-  auto &attr_map = fast_module->attr_map;
-  // If the attribute lookup is successful in the cache, directly return it.
-  if (auto it = attr_map.find(name); it != attr_map.end()) {
-    PyObject *value = it->second;
-    Py_INCREF(value);
-    return value;
+  {
+    absl::MutexLock lock(&fast_module->mutex);
+    auto& attr_map = fast_module->attr_map;
+    // If the attribute lookup is successful in the cache, directly return it.
+    if (auto it = attr_map.find(name); it != attr_map.end()) {
+      PyObject* value = it->second;
+      Py_INCREF(value);
+      return value;
+    }
   }
   PyObject *arglist = Py_BuildValue("(O)", name);
   PyObject *result;
+  PyObject* cb_getattribute = nullptr;
+  {
+    absl::MutexLock lock(&fast_module->mutex);
+    cb_getattribute = fast_module->cb_getattribute;
+    Py_XINCREF(cb_getattribute);
+  }
   // Prefer the customized callback function over the default function.
-  if (fast_module->cb_getattribute != nullptr) {
-    result = CallFunc(fast_module, arglist, fast_module->cb_getattribute);
+  if (cb_getattribute != nullptr) {
+    result = CallFunc(fast_module, arglist, cb_getattribute);
+    Py_DECREF(cb_getattribute);
   } else {
     result = PyModule_Type.tp_getattro(module, name);
   }
@@ -252,10 +301,16 @@ static PyObject *FastTpGetattro(PyObject *module, PyObject *name) {
   // If the default lookup fails and an AttributeError is raised,
   // clear the error status before using the __getattr__ callback function.
   auto is_error = PyErr_Occurred();
-  if (is_error && PyErr_ExceptionMatches(PyExc_AttributeError) &&
-      fast_module->cb_getattr != nullptr) {
+  PyObject* cb_getattr = nullptr;
+  if (is_error && PyErr_ExceptionMatches(PyExc_AttributeError)) {
+    absl::MutexLock lock(&fast_module->mutex);
+    cb_getattr = fast_module->cb_getattr;
+    Py_XINCREF(cb_getattr);
+  }
+  if (cb_getattr != nullptr) {
     PyErr_Clear();
-    result = CallFunc(fast_module, arglist, fast_module->cb_getattr);
+    result = CallFunc(fast_module, arglist, cb_getattr);
+    Py_DECREF(cb_getattr);
   }
   // If all options were used up
   Py_DECREF(arglist);
@@ -266,11 +321,20 @@ static PyObject *FastTpGetattro(PyObject *module, PyObject *name) {
 // In addition to default behavior it also clears up the contents in attr_map.
 static void FastModuleObjectDealloc(PyObject *module) {
   FastModuleObject *fast_module = FastModuleObject::UncheckedCast(module);
-  for (auto [key, value] : fast_module->attr_map) {
+  std::vector<std::pair<PyObject*, PyObject*>> items;
+  {
+    absl::MutexLock lock(&fast_module->mutex);
+    items.reserve(fast_module->attr_map.size());
+    for (auto [key, value] : fast_module->attr_map) {
+      items.push_back({key, value});
+    }
+    fast_module->attr_map.~flat_hash_map<PyObject*, PyObject*>();
+  }
+  for (auto [key, value] : items) {
     Py_DECREF(key);
     Py_DECREF(value);
   }
-  fast_module->attr_map.~flat_hash_map<PyObject *, PyObject *>();
+  fast_module->mutex.~Mutex();
   Py_XDECREF(fast_module->cb_getattribute);
   Py_XDECREF(fast_module->cb_getattr);
   Py_TYPE(module)->tp_free(module);
@@ -313,16 +377,22 @@ FastModuleObject *FastModuleObject::UncheckedCast(PyObject *obj) {
 
 PYBIND11_MODULE(fast_module_type, m) {
   FastModuleType.tp_base = &PyModule_Type;
-  FastModuleType.tp_setattro = [](PyObject *module, PyObject *name,
-                                  PyObject *value) -> int {
-    auto &attr_map = FastModuleObject::UncheckedCast(module)->attr_map;
+  FastModuleType.tp_setattro = [](PyObject* module, PyObject* name,
+                                  PyObject* value) -> int {
+    auto* fast_module = FastModuleObject::UncheckedCast(module);
+    PyObject* to_decref = nullptr;
     Py_INCREF(value);
-    if (auto [it, inserted] = attr_map.emplace(name, value); inserted) {
-      Py_INCREF(name);
-    } else {
-      Py_DECREF(it->second);
-      it->second = value;
+    {
+      absl::MutexLock lock(&fast_module->mutex);
+      auto& attr_map = fast_module->attr_map;
+      if (auto [it, inserted] = attr_map.emplace(name, value); inserted) {
+        Py_INCREF(name);
+      } else {
+        to_decref = it->second;
+        it->second = value;
+      }
     }
+    Py_XDECREF(to_decref);
     PyObject_GenericSetAttr(module, name, value);
     return 0;
   };

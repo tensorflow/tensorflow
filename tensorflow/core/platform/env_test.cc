@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -298,10 +299,7 @@ TEST_F(DefaultEnvTest, SleepForMicroseconds) {
 
 class TmpDirFileSystem : public NullFileSystem {
  public:
-  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
-
-  absl::Status FileExists(const std::string& dir,
-                          TransactionToken* token) override {
+  absl::Status FileExists(absl::string_view dir) override {
     absl::string_view scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     if (path.empty()) return errors::NotFound(dir, " not found");
@@ -317,8 +315,7 @@ class TmpDirFileSystem : public NullFileSystem {
     return Env::Default()->FileExists(io::JoinPath(BaseDir(), path));
   }
 
-  absl::Status CreateDir(const std::string& dir,
-                         TransactionToken* token) override {
+  absl::Status CreateDir(const std::string& dir) override {
     absl::string_view scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     if (scheme != "tmpdirfs") {
@@ -336,8 +333,7 @@ class TmpDirFileSystem : public NullFileSystem {
     return status;
   }
 
-  absl::Status IsDirectory(const std::string& dir,
-                           TransactionToken* token) override {
+  absl::Status IsDirectory(const std::string& dir) override {
     absl::string_view scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     for (const auto& existing_dir : created_directories_)
@@ -345,7 +341,7 @@ class TmpDirFileSystem : public NullFileSystem {
     return errors::NotFound(dir, " not found");
   }
 
-  void FlushCaches(TransactionToken* token) override { flushed_ = true; }
+  void FlushCaches() override { flushed_ = true; }
 
  private:
   bool flushed_ = false;
