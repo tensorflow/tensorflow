@@ -460,8 +460,8 @@ def list_physical_devices(device_type=None):
     List of discovered `tf.config.PhysicalDevice` objects
   """
   global _warned_windows_gpu
-  is_windows_gpu = (platform.system() == 'Windows' and device_type == 'GPU')
-  if not _warned_windows_gpu and is_windows_gpu:
+  if (not _warned_windows_gpu and device_type == 'GPU'
+      and platform.system() == 'Windows'):
     logging.warning(
         'TensorFlow GPU support is not available on native Windows for '
         'TensorFlow >= 2.11. Even if CUDA/cuDNN are installed, GPU will '
