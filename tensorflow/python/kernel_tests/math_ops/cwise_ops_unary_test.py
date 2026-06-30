@@ -680,6 +680,44 @@ class UnaryOpTest(test.TestCase):
         *gradient_checker_v2.compute_gradient(g, [ops.convert_to_tensor(2.0)]))
     self.assertLess(err, 1e-3)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testDigamma(self):
+    for dtype in [np.float32, np.float64]:
+      x = np.array([1.0, 0.5, 0.0, -0.0, -1.0, -2.0, 2.5]).astype(dtype)
+      with self.cached_session():
+        x_tf = constant_op.constant(x)
+        y_tf = math_ops.digamma(x_tf)
+        y_val = self.evaluate(y_tf)
+
+        # Use hardcoded expected values for boundary/pole inputs to avoid
+        # scipy inconsistencies (e.g., scipy returns nan for digamma(0.0) in
+        # some environments). The key behaviors being tested:
+        #   x=0.0, x=-0.0 -> -inf  (pole fix: PR #111945)
+        #   x=-1.0, x=-2.0 -> nan  (negative integer poles)
+        expected = np.array([
+            -0.57721566490153286,  # digamma(1.0)   = -euler_mascheroni
+            -1.9635100260214238,   # digamma(0.5)
+            -np.inf,               # digamma(0.0)   -> -inf (pole)
+            -np.inf,               # digamma(-0.0)  -> -inf (pole)
+            np.nan,                # digamma(-1.0)  -> nan (negative integer)
+            np.nan,                # digamma(-2.0)  -> nan (negative integer)
+            0.7031566378415714,    # digamma(2.5)
+        ]).astype(dtype)
+
+        # For non-boundary values, optionally verify against scipy if available.
+        try:
+          from scipy import special  # pylint: disable=g-import-not-at-top
+          regular_mask = np.array(
+              [True, True, False, False, False, False, True])
+          scipy_expected = special.digamma(x[regular_mask])
+          self.assertAllClose(
+              scipy_expected, y_val[regular_mask], rtol=1e-5, atol=1e-5)
+        except ImportError:
+          pass
+
+        # Always check the full array including boundary/pole values.
+        self.assertAllClose(expected, y_val)
+
 
 if __name__ == "__main__":
   test.main()

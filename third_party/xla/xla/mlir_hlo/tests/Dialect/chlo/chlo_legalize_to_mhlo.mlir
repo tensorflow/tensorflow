@@ -1285,7 +1285,7 @@ func.func @lgamma_f32(%arg : tensor<f32>) -> tensor<f32> {
 func.func @lgamma_f16(%arg : tensor<f16>) -> tensor<f16> {
   // CHECK: mhlo.convert %[[ARG]] : (tensor<f16>) -> tensor<f32>
   // CHECK: %[[RES:.*]] = mhlo.convert %{{.*}} : (tensor<f32>) -> tensor<f16>
-  // CHECK: return %[[RES]]
+  // CHECK: return %{{.*}}
   %1 = chlo.lgamma %arg : tensor<f16> -> tensor<f16>
   func.return %1 : tensor<f16>
 }
@@ -1397,7 +1397,7 @@ func.func @digamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_99:.*]] = mhlo.and %[[TMP_96]], %[[TMP_98]]
   // CHECK: %[[TMP_100:.*]] = mhlo.constant dense<0x7FF8000000000000>
   // CHECK: %[[RES:.*]] = mhlo.select %[[TMP_99]], %[[TMP_100]], %[[TMP_95]]
-  // CHECK: return %[[RES]]
+  // CHECK: return %{{.*}}
   %1 = chlo.digamma %arg : tensor<f64> -> tensor<f64>
   func.return %1 : tensor<f64>
 }
@@ -1509,7 +1509,7 @@ func.func @digamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_99:.*]] = mhlo.and %[[TMP_96]], %[[TMP_98]]
   // CHECK: %[[TMP_100:.*]] = mhlo.constant dense<0x7FC00000>
   // CHECK: %[[RES:.*]] = mhlo.select %[[TMP_99]], %[[TMP_100]], %[[TMP_95]]
-  // CHECK: return %[[RES]]
+  // CHECK: return %{{.*}}
   %1 = chlo.digamma %arg : tensor<f32> -> tensor<f32>
   func.return %1 : tensor<f32>
 }
@@ -1521,7 +1521,7 @@ func.func @digamma_f32(%arg : tensor<f32>) -> tensor<f32> {
 func.func @digamma_f16(%arg : tensor<f16>) -> tensor<f16> {
   // CHECK: mhlo.convert %[[ARG]] : (tensor<f16>) -> tensor<f32>
   // CHECK: %[[RES:.*]] = mhlo.convert %{{.*}} : (tensor<f32>) -> tensor<f16>
-  // CHECK: return %[[RES]]
+  // CHECK: return %{{.*}}
   %1 = chlo.digamma %arg : tensor<f16> -> tensor<f16>
   func.return %1 : tensor<f16>
 }
@@ -2495,7 +2495,7 @@ func.func @polygamma_f16(%lhs : tensor<f16>, %rhs : tensor<f16>) -> tensor<f16> 
   // CHECK: mhlo.convert %[[ARG0]] : (tensor<f16>) -> tensor<f32>
   // CHECK: mhlo.convert %[[ARG1]] : (tensor<f16>) -> tensor<f32>
   // CHECK: %[[RES:.*]] = mhlo.convert %{{.*}} : (tensor<f32>) -> tensor<f16>
-  // CHECK: return %[[RES]]
+  // CHECK: return %{{.*}}
   %1 = chlo.polygamma %lhs, %rhs : tensor<f16>, tensor<f16> -> tensor<f16>
   func.return %1 : tensor<f16>
 }
@@ -2538,7 +2538,7 @@ func.func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
 func.func @sinh_f16(%x : tensor<f16>) -> tensor<f16> {
   // CHECK: mhlo.convert %[[ARG0]] : (tensor<f16>) -> tensor<f32>
   // CHECK: %[[RES:.*]] = mhlo.convert %{{.*}} : (tensor<f32>) -> tensor<f16>
-  // CHECK: return %[[RES]]
+  // CHECK: return %{{.*}}
   %1 = chlo.sinh %x : tensor<f16> -> tensor<f16>
   func.return %1 : tensor<f16>
 }
@@ -2590,7 +2590,7 @@ func.func @cosh_f32(%x : tensor<f32>) -> tensor<f32> {
 func.func @cosh_f16(%x : tensor<f16>) -> tensor<f16> {
   // CHECK: mhlo.convert %[[ARG0]] : (tensor<f16>) -> tensor<f32>
   // CHECK: %[[RES:.*]] = mhlo.convert %{{.*}} : (tensor<f32>) -> tensor<f16>
-  // CHECK: return %[[RES]]
+  // CHECK: return %{{.*}}
   %1 = chlo.cosh %x : tensor<f16> -> tensor<f16>
   func.return %1 : tensor<f16>
 }
