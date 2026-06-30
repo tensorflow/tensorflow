@@ -32,6 +32,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu/kernels:cross_replica_ops",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@xla//xla:shape_util",
         "@xla//xla:side_effect_util",
