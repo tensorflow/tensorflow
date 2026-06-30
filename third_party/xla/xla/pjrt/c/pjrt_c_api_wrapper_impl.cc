@@ -2001,7 +2001,7 @@ PJRT_Error* PJRT_Executable_OptimizedProgram(
           "supported protobuff size of 2 GiB."));
     }
     return nullptr;
-  } else {
+  }
     if (program->code_size < proto.ByteSizeLong()) {
       return StatusToPjRtError(
           xla::InvalidArgument("`program->code_size` %d < required bytes %d",
@@ -2014,7 +2014,6 @@ PJRT_Error* PJRT_Executable_OptimizedProgram(
                                  "supported protobuff size of 2 GiB."));
     }
     return nullptr;
-  }
 }
 
 PJRT_Error* PJRT_Executable_Fingerprint(

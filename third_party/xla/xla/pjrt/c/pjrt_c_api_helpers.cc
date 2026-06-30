@@ -1088,7 +1088,9 @@ std::vector<xla::PjRtMemorySpaceDescription> GetMemorySpaceDescriptions(
   const PJRT_MemoryDescriptions_Extension* extension =
       pjrt::FindExtension<PJRT_MemoryDescriptions_Extension>(
           c_api, PJRT_Extension_Type::PJRT_Extension_Type_MemoryDescriptions);
-  if (!extension) return {};
+  if (!extension) {
+    return {};
+  }
 
   PJRT_DeviceDescription_MemoryDescriptions_Args mem_desc_args;
   mem_desc_args.struct_size =
