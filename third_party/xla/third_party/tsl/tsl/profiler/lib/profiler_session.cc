@@ -100,10 +100,30 @@ absl::Status ProfilerSession::CollectData(XSpace* space) {
   TF_RETURN_IF_ERROR(CollectDataInternal(space));
   profiler::SetXSpacePidIfNotSet(*space, tsl::Env::Default()->GetProcessId());
   profiler::PostProcessSingleHostXSpace(space, start_time_ns_, stop_time_ns_);
-#endif
   SetProfileOptionsIntoSpace(options_, space);
+#endif
   return absl::OkStatus();
 }
+
+#if !defined(IS_MOBILE_PLATFORM)
+absl::StatusOr<profiler::ConsumeResult> ProfilerSession::Consume() {
+  absl::MutexLock l(mutex_);
+  TF_RETURN_IF_ERROR(status_);
+  if (profilers_ != nullptr) {
+    return profilers_->Consume();
+  }
+  return absl::UnimplementedError("Consume not implemented");
+}
+
+absl::Status ProfilerSession::Serialize(std::any data, XSpace* space) {
+  absl::MutexLock l(mutex_);
+  TF_RETURN_IF_ERROR(status_);
+  if (profilers_ != nullptr) {
+    return profilers_->Serialize(std::move(data), space);
+  }
+  return absl::UnimplementedError("Serialize not implemented");
+}
+#endif
 
 ProfilerSession::ProfilerSession(const ProfileOptions& options)
 #if defined(IS_MOBILE_PLATFORM)

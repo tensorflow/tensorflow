@@ -15,11 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_LIB_PROFILER_SESSION_H_
 #define TENSORFLOW_TSL_PROFILER_LIB_PROFILER_SESSION_H_
 
+#include <any>
 #include <functional>
 #include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
@@ -66,6 +68,15 @@ class ProfilerSession {
   // Collects profile data into XSpace.
   absl::Status CollectData(tensorflow::profiler::XSpace* space)
       TF_LOCKS_EXCLUDED(mutex_);
+
+#if !defined(IS_MOBILE_PLATFORM)
+  // Consumes collected profile data without stopping the profiler.
+  absl::StatusOr<profiler::ConsumeResult> Consume() TF_LOCKS_EXCLUDED(mutex_);
+
+  // Serializes consumed profile data into XSpace.
+  absl::Status Serialize(std::any data, tensorflow::profiler::XSpace* space)
+      TF_LOCKS_EXCLUDED(mutex_);
+#endif
 
  private:
   // Constructs an instance of the class and starts profiling
