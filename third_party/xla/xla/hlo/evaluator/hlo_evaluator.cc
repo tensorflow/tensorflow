@@ -27,7 +27,6 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <random>
 #include <string>
@@ -79,9 +78,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -276,9 +273,8 @@ std::optional<DynamicOrStaticInteger> GetInstructionValueAsInteger(
     if (instruction->shape().element_type() == PrimitiveType::PRED) {
       return DynamicOrStaticInteger{
           static_cast<int64_t>(static_value->GetFirstElement<bool>())};
-    } else {
-      return DynamicOrStaticInteger{static_value->GetFirstInteger()};
     }
+    return DynamicOrStaticInteger{static_value->GetFirstInteger()};
   }
 
   std::optional<internal::EvalErrorDetail> eval_error_detail =
@@ -415,7 +411,7 @@ std::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondRoot(
   if (Match(loop_cond_root, match::GetTupleElement().WithOperand(
                                 0, match::Parameter().WithParameterNum(0)))) {
     if (loop_cond_root->shape().element_type() != PrimitiveType::PRED &&
-        loop_cond_root->shape().dimensions().size() != 0) {
+        !loop_cond_root->shape().dimensions().empty()) {
       return std::nullopt;
     }
     return ParamIndexAndValue{{/*param_index=*/loop_cond_root->tuple_index()}};
@@ -474,13 +470,12 @@ std::optional<DynamicOrStaticInteger> PatternMatchInductionVarUpdate(
         // no changes.
         VLOG(3) << "PatternMatchInductionVarUpdate, pattern: [induc_var].";
         return DynamicOrStaticInteger{/*static_value=*/0};
-      } else {
-        VLOG(3)
-            << "PatternMatchInductionVarUpdate, induction variable is set to "
-               "another parameter value. Parsed update: "
-            << update_param_index_and_value->ToString();
-        return std::nullopt;
       }
+
+      VLOG(3) << "PatternMatchInductionVarUpdate, induction variable is set to "
+                 "another parameter value. Parsed update: "
+              << update_param_index_and_value->ToString();
+      return std::nullopt;
     }
     if (update_param_index_and_value->value.has_value() &&
         !update_param_index_and_value->value->is_dynamic()) {
@@ -631,15 +626,15 @@ std::optional<ParsedWhileLoop> HandleNoopLoopCondition(
                                   /*induction_var_init_value=*/0,
                                   /*step_size=*/1,
                                   /*loop_bound=*/1}};
-      } else {
-        // This is an infinite loop and we set trip_count to -1.
-        return ParsedWhileLoop{
-            ParsedStaticWhileLoop{/*trip_count=*/-1,
-                                  /*induction_var_index=*/loop_cond_var_index,
-                                  /*induction_var_init_value=*/0,
-                                  /*step_size=*/0,
-                                  /*loop_bound=*/1}};
       }
+
+      // This is an infinite loop and we set trip_count to -1.
+      return ParsedWhileLoop{
+          ParsedStaticWhileLoop{/*trip_count=*/-1,
+                                /*induction_var_index=*/loop_cond_var_index,
+                                /*induction_var_init_value=*/0,
+                                /*step_size=*/0,
+                                /*loop_bound=*/1}};
     }
   }
   return std::nullopt;
@@ -3357,7 +3352,7 @@ absl::Status HloEvaluator::HandleAsyncStart(const HloInstruction* async_start) {
       embedded_evaluator->Evaluate(*async_start->async_wrapped_computation(),
                                    arg_literals));
 
-  Literal literal = Literal(async_start->shape());
+  ASSIGN_OR_RETURN(Literal literal, Literal::Make(async_start->shape()));
 
   // Copy the operand values to the index {0, i} of the output.
   for (int i = 0; i < arg_literals.size(); ++i) {
@@ -3378,7 +3373,7 @@ absl::Status HloEvaluator::HandleAsyncUpdate(
     const HloInstruction* async_update) {
   const Literal& operand_tuple_literal =
       GetEvaluatedLiteralFor(async_update->operand(0));
-  Literal literal = Literal(async_update->shape());
+  ASSIGN_OR_RETURN(Literal literal, Literal::Make(async_update->shape()));
   RETURN_IF_ERROR(literal.CopyFrom(operand_tuple_literal,
                                    /*dest_shape_index=*/{},
                                    /*src_shape_index=*/{}));
@@ -3389,7 +3384,7 @@ absl::Status HloEvaluator::HandleAsyncUpdate(
 absl::Status HloEvaluator::HandleAsyncDone(const HloInstruction* async_done) {
   const Literal& operand_tuple_literal =
       GetEvaluatedLiteralFor(async_done->operand(0));
-  Literal literal = Literal(async_done->shape());
+  ASSIGN_OR_RETURN(Literal literal, Literal::Make(async_done->shape()));
   RETURN_IF_ERROR(literal.CopyFrom(operand_tuple_literal,
                                    /*dest_shape_index=*/{},
                                    /*src_shape_index=*/{1}));
@@ -3429,8 +3424,9 @@ absl::Status HloEvaluator::HandleCopyDone(const HloInstruction* copy_done) {
   }
 
   const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
-  Literal literal =
-      Literal(ShapeUtil::GetTupleElementShape(operand->shape(), /*index=*/0));
+  ASSIGN_OR_RETURN(Literal literal,
+                   Literal::Make(ShapeUtil::GetTupleElementShape(
+                       operand->shape(), /*index=*/0)));
   RETURN_IF_ERROR(literal.CopyFrom(operand_tuple_literal,
                                    /*dest_shape_index=*/{},
                                    /*src_shape_index=*/{0}));
@@ -3746,10 +3742,9 @@ absl::Status HloEvaluator::HandleWhile(const HloInstruction* while_hlo) {
       if (result.ok()) {
         lcv = std::move(result).value();
         break;
-      } else {
-        return InvalidArgument("Loop %s exceeded loop iteration limit (%d).",
-                               while_hlo->name(), max_loop_iterations_);
       }
+      return InvalidArgument("Loop %s exceeded loop iteration limit (%d).",
+                             while_hlo->name(), max_loop_iterations_);
     }
     ASSIGN_OR_RETURN(auto cond_val,
                      cond_evaluator->Evaluate(*cond_comp, {&lcv}));
@@ -4362,7 +4357,7 @@ absl::Status HloEvaluator::HandleSort(const HloInstruction* sort) {
           literals_to_sort.push_back(std::move(literal_to_sort));
         }
         std::vector<int64_t> indices_to_sort(sort_dim_elements);
-        std::iota(indices_to_sort.begin(), indices_to_sort.end(), 0);
+        absl::c_iota(indices_to_sort, 0);
         RETURN_IF_ERROR(mergesort(literals_to_sort,
                                   absl::MakeSpan(indices_to_sort), nullptr,
                                   nullptr));
@@ -4626,7 +4621,9 @@ absl::Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
 
   absl::InlinedVector<Literal, 1> results(num_args);
   for (int64_t i = 0; i < num_args; ++i) {
-    results[i] = Literal(is_tuple ? out_shape.tuple_shapes(i) : out_shape);
+    ASSIGN_OR_RETURN(
+        results[i],
+        Literal::Make(is_tuple ? out_shape.tuple_shapes(i) : out_shape));
   }
 
   RETURN_IF_ERROR(ShapeUtil::ForEachIndexParallelWithStatus(

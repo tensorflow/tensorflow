@@ -232,7 +232,7 @@ static void AddGenericLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::createCSEPass());
 
-  pm.addNestedPass<mlir::func::FuncOp>(cpu::CreateExpandFloatOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(cpu::createExpandFloatOpsPass());
   emitters::ExpandFloatOpsPassOptions expand_float_ops_options;
   expand_float_ops_options.approximate_tanh_ = false;
   pm.addPass(emitters::createExpandFloatOpsPass(expand_float_ops_options));
@@ -264,10 +264,10 @@ static std::unique_ptr<::mlir::Pass> CreateInlinerAndCsePass() {
 static void AddScalarOptimizationPasses(mlir::OpPassManager& pm,
                                         int32_t vector_width) {
   emitters::RegisterOptimizationPasses(pm);
-  pm.addPass(CreateAddReductionFastMathFlagsPass());
+  pm.addPass(cpu::createAddReductionFastMathFlagsPass());
   pm.addPass(CreateInlinerAndCsePass());
-  pm.addNestedPass<mlir::func::FuncOp>(CreatePeelWorkgroupLoopPass());
-  pm.addNestedPass<mlir::func::FuncOp>(CreateLowerXlaSharedPass());
+  pm.addNestedPass<mlir::func::FuncOp>(cpu::createPeelWorkgroupLoopPass());
+  pm.addNestedPass<mlir::func::FuncOp>(cpu::createLowerXlaSharedPass());
   pm.addNestedPass<mlir::func::FuncOp>(emitters::createLowerXlaToScfPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
@@ -291,7 +291,7 @@ static void AddScalarOptimizationPasses(mlir::OpPassManager& pm,
   //     emitters::createVectorizeLoadsAndStoresPass(vectorize_options));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<mlir::func::FuncOp>(CreateAddLoopUnrollFlagsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(cpu::createAddLoopUnrollFlagsPass());
 }
 
 // Lowering passes for the "hero" emitters, e.g. loop emitter.
@@ -332,7 +332,7 @@ static void AddBufferizationPasses(mlir::OpPassManager& pm) {
   // We must initialize allocs to ensure that we don't get false positives from
   // msan due to inconsistent instrumentation: memcpy will be instrumented
   // but all other instructions will not.
-  pm.addPass(CreateInitializeAllocsPass());
+  pm.addPass(cpu::createInitializeAllocsPass());
 #endif  // ABSL_HAVE_MEMORY_SANITIZER
 
   mlir::bufferization::PromoteBuffersToStackPassOptions
@@ -353,18 +353,18 @@ static void AddBufferizationPasses(mlir::OpPassManager& pm) {
 static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
   emitters::RegisterOptimizationPasses(pm);
 
-  pm.addPass(CreateLowerXTileEntryPass());
+  pm.addPass(cpu::createLowerXTileEntryPass());
 
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
 
   pm.addPass(xtile::createStablehloLowerToArithPass());
-  pm.addPass(CreateShloToVectorPass());
+  pm.addPass(cpu::createShloToVectorPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::vector::createLowerVectorMultiReductionPass(
           mlir::vector::VectorMultiReductionLowering::InnerParallel));
-  pm.addPass(CreateTensorOpsToBufferizablePass());
+  pm.addPass(cpu::createTensorOpsToBufferizablePass());
 
   mlir::stablehlo::StablehloLegalizeToLinalgPassOptions
       stablehlo_to_linalg_options;
@@ -376,11 +376,11 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
   pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
 
   pm.addPass(mlir::createConvertElementwiseToLinalgPass());
-  pm.addPass(CreateFuseElementwisePass());
+  pm.addPass(cpu::createFuseElementwisePass());
 
   AddBufferizationPasses(pm);
 
-  pm.addPass(CreateLinalgElementwiseToVectorPass());
+  pm.addPass(cpu::createLinalgElementwiseToVectorPass());
 
   pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -391,12 +391,12 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
 // The input IR is from the xtile dialect which uses tensors that are converted
 // first to the vector dialect and then to LLVM.
 static void AddTiledLoweringPasses(mlir::OpPassManager& pm, bool fast_min_max) {
-  pm.addPass(CreateVectorToScalarPass());
-  pm.addPass(cpu::CreateMemrefCopyToLoopsPass());
+  pm.addPass(cpu::createVectorToScalarPass());
+  pm.addPass(cpu::createMemrefCopyToLoopsPass());
   pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::createConvertVectorToSCFPass(
       mlir::VectorTransferToSCFOptions().enableFullUnroll(false)));
-  pm.addPass(cpu::CreateUnpackSubByteVectorWritePass());
+  pm.addPass(cpu::createUnpackSubByteVectorWritePass());
 
   mlir::ConvertVectorToLLVMPassOptions options;
 

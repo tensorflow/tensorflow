@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/collective_quantizer.h"
 
-#include <algorithm>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -29,8 +29,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -169,7 +172,8 @@ std::vector<HloInstruction*> FindDequantizationSubgraphRecursive(
   if (instr->operand_count() == 1 || instr->opcode() == HloOpcode::kDivide) {
     return FindDequantizationSubgraphRecursive(instr->mutable_operand(0),
                                                visited_instrs, subgraph);
-  } else if (instr->opcode() == HloOpcode::kMultiply) {
+  }
+  if (instr->opcode() == HloOpcode::kMultiply) {
     for (HloInstruction* operand : instr->unique_operands()) {
       auto binary_subgraph = FindDequantizationSubgraphRecursive(
           operand, visited_instrs, subgraph);
@@ -193,7 +197,7 @@ std::optional<ConversionSubgraph> IsSupportedDequantization(
   std::vector<HloInstruction*> candidate_subgraph =
       FindDequantizationSubgraphRecursive(instr, visited_instrs,
                                           std::vector<HloInstruction*>{});
-  std::reverse(candidate_subgraph.begin(), candidate_subgraph.end());
+  absl::c_reverse(candidate_subgraph);
 
   // In the dequantization case, the type conversion is followed by a
   // multiplication or division by a broadcasted scalar.

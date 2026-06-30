@@ -935,6 +935,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
     ],
 )
 

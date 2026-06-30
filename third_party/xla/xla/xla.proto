@@ -451,11 +451,27 @@ message DebugOptions {
     reserved 2;
   }
 
+  // Filter which allows enabling NCCL symmetric buffers for a subset of
+  // collectives based on their type and size.
+  message CollectiveFilter {
+    CollectiveOpType collective = 1;
+    // If set, only collectives with size <= max_size_bytes will be enabled.
+    optional int64 max_size_bytes = 2;
+    // If set, only collectives with this operand type will be enabled.
+    optional PrimitiveType op_type = 3;
+  }
+
   optional DevicelessCubMode xla_gpu_deviceless_cub_mode = 483;
 
   // Limits the thunk buffer debug instrumentation to specific thunks.
   optional ThunkBufferDebugFilter
       xla_gpu_experimental_thunk_buffer_debug_filter = 424;
+
+  // Enable NCCL symmetric buffers for specific collectives and sizes.
+  // Example:
+  // --xla_enable_nccl_symmetric_buffers_for_collectives=allreduce:1024:0,alltoall:1024,allgather
+  repeated CollectiveFilter xla_enable_nccl_symmetric_buffers_for_collectives =
+      503;
 
   // List of autotuner backends to enable. If empty, all backends are enabled.
   // Backends not relevant to the platform will be ignored, e.g. cuDNN on AMD.
@@ -706,12 +722,6 @@ message DebugOptions {
   // If enabled, uses the libnvptxcompiler library to compile PTX to cuBIN.
   optional bool xla_gpu_enable_libnvptxcompiler = 269;
 
-  // Indicates whether to do LLVM module compilation in a parallelised way. When
-  // set, the number of threads depends on
-  // `xla_gpu_force_compilation_parallelism`.
-  optional bool xla_gpu_enable_llvm_module_compilation_parallelism = 268
-      [deprecated = true];
-
   // DEPRECATED: This flag is a no-op.
   optional bool xla_gpu_enable_nccl_clique_optimization = 244
       [deprecated = true];
@@ -724,6 +734,10 @@ message DebugOptions {
 
   // Enable PDL - Programmatic Dependent Launch.
   optional bool xla_gpu_enable_pdl = 460;
+
+  // Enable selective insertion of PDL launch instructions
+  // (on top of basic use of PDL without them enabled by xla_gpu_enable_pdl).
+  optional bool xla_gpu_enable_pdl_launch = 504;
 
   optional bool xla_gpu_enable_pipelined_all_gather = 227;
 
@@ -1218,12 +1232,6 @@ message DebugOptions {
   // ragged-all-to-all operations.
   optional bool xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel = 375;
 
-  // Use embeded device library in codegen
-  optional bool xla_gpu_use_embeded_device_lib = 420;
-
-  // Use lld as a library for the linking step
-  optional bool xla_gpu_use_inprocess_lld = 389;
-
   // This instructs the runtime whether to use memcpy for p2p communication when
   // source and target are located within a node(nvlink).
   optional bool xla_gpu_use_memcpy_local_p2p = 287;
@@ -1637,7 +1645,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 499
+  // Next id: 505
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1666,6 +1674,7 @@ message DebugOptions {
   reserved "xla_gpu_asm_extra_flags";
   reserved "xla_gpu_bef_executable";
   reserved "xla_gpu_bef_thunk";
+  reserved "xla_gpu_enable_llvm_module_compilation_parallelism";
   reserved "xla_gpu_collectives_use_persistent_cliques";
   reserved "xla_gpu_deterministic_reductions";
   reserved "xla_gpu_disable_multi_streaming";
@@ -1742,7 +1751,9 @@ message DebugOptions {
   reserved "xla_gpu_unsupported_force_triton_gemm";
   reserved "xla_gpu_unsupported_generic_triton_emitter_features";
   reserved "xla_gpu_use_cudnn_batchnorm";
+  reserved "xla_gpu_use_embeded_device_lib";
   reserved "xla_gpu_use_horizontal_fusion";
+  reserved "xla_gpu_use_inprocess_lld";
   reserved "xla_gpu_use_random_streams";
   reserved "xla_hlo_dump_as_graphdef";
   reserved "xla_hlo_tfgraph_device_scopes";
@@ -1757,8 +1768,8 @@ message DebugOptions {
       206, 207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 241, 242,
       243, 249, 263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298,
       299, 302, 303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 354, 355,
-      358, 361, 367, 369, 371, 385, 388, 394, 396, 398, 402, 423, 430, 443, 446,
-      458, 464, 477;
+      358, 361, 367, 369, 371, 385, 388, 389, 394, 396, 398, 402, 420, 423, 430,
+      443, 446, 458, 464, 477;
 }
 
 // Contains flags which affects the GPU compilation result.

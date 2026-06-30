@@ -7,6 +7,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
         "//learning/brain/experimental/dtensor:__subpackages__",
+        "//learning/brain/google/xla/compiler/kernels:__subpackages__",
         "//learning/brain/google/xla/kernels:__subpackages__",
         "//learning/brain/research/pjrt:__subpackages__",
         "//learning/brain/tfrc/executor:__subpackages__",

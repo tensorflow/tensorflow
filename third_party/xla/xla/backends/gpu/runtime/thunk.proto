@@ -134,6 +134,7 @@ message CudnnThunkProto {
   repeated ShapedSliceProto args = 2;
   repeated bool output_args = 4;
   optional int64 sdpa_dropout_seed = 3;
+  bool should_memzero = 5;
 }
 
 message HostSendThunkProto {

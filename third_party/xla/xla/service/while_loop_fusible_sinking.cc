@@ -468,13 +468,13 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
     }
     *(init_value->mutable_shape()) = parameter->shape();
     *(while_instr->mutable_shape()) = parameter->shape();
+    *(while_cond->parameter_instruction(0)->mutable_shape()) =
+        parameter->shape();
+    *(root->mutable_shape()) = parameter->shape();
     //
     // The new body root tuple elements have the same value as the fusion
     // operands.
     AppendToWhileLoopOriginalValue(while_instr, fusion->operands());
-    *(while_cond->parameter_instruction(0)->mutable_shape()) =
-        parameter->shape();
-    *(root->mutable_shape()) = parameter->shape();
 
     auto cloned_fusion = while_body->AddInstruction(
         fusion->CloneWithNewOperands(fusion->shape(), new_operands));

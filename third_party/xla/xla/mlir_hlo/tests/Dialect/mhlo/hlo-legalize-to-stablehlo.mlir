@@ -1795,6 +1795,15 @@ func.func @op_topk(%arg0: tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>
   func.return %0#0, %0#1 : tensor<5x8xf32>, tensor<5x8xi32>
 }
 
+// CHECK-LABEL: "topk_unstable"
+func.func @topk_unstable(%arg0: tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>) {
+  // CHECK: "stablehlo.custom_call"([[ARG:%arg[0-9]+]]) <{
+  // CHECK-SAME:   call_target_name = "mhlo.topk"}> {mhlo.attributes = {is_stable = false, k = 8 : i64, largest = true}, mhlo.version = 1 : i64}
+  // CHECK-SAME: (tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true, is_stable = false) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  func.return %0#0, %0#1 : tensor<16x8xf32>, tensor<16x8xi32>
+}
+
 // CHECK-LABEL: "op_torch_index_select"
 func.func @op_torch_index_select(%arg0: tensor<5x1x5xf32>, %arg1: tensor<2xi32>) ->  tensor<2x1x5xf32> {
   //      CHECK: "stablehlo.torch_index_select"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) <{

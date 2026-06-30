@@ -325,8 +325,8 @@ def DotScaledOp : XTile_Op<"dot_scaled", [Pure, AttrSizedOperandSegments]> {
 
     let arguments = (
       ins
-      // inputs are floats if we have a type for them, otherwise (fp4),
-      // they are packed in pairs in an I8Tensor
+      // Data operands carry logical element types separately from their tensor
+      // element types because packed operands use i8 storage.
       RankedTensorOf<[AnyFloat,I8]>:$lhs,
       RankedTensorOf<[AnyFloat,I8]>:$rhs,
       Optional<RankedTensorOf<[AnyFloat,I8]>>:$lhs_scale,
@@ -334,6 +334,8 @@ def DotScaledOp : XTile_Op<"dot_scaled", [Pure, AttrSizedOperandSegments]> {
       BoolAttr:$fastMath,
       DefaultValuedAttr<BoolAttr, "true">:$lhs_k_pack,
       DefaultValuedAttr<BoolAttr, "true">:$rhs_k_pack,
+      TypeAttr:$lhs_elem_type,
+      TypeAttr:$rhs_elem_type,
       OptionalAttr<AnyAttr>:$dot_dimension_numbers
     );
 
@@ -346,4 +348,3 @@ def DotScaledOp : XTile_Op<"dot_scaled", [Pure, AttrSizedOperandSegments]> {
 }
 
 #endif // XLA_CODEGEN_XTILE_IR_XTILE_OPS
-

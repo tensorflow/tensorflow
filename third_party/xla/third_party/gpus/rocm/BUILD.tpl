@@ -222,6 +222,7 @@ rocm_lib_import(
     name = "rocblas",
     data = glob([
         "%{rocm_root}/lib/librocblas.so*",
+        "%{rocm_root}/lib/rocblas/library/*fallback.dat",
     ]) + glob([
         pattern
         for arch in rocm_gpu_architectures()

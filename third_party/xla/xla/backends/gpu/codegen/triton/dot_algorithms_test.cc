@@ -1587,22 +1587,10 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
       break;
     case PC::ALG_DOT_BF16_BF16_F32_X6:
     case PC::ALG_DOT_BF16_BF16_F32_X9:
-      if (GpuComputeComp().IsRocm()) {
-        if (result_or_status.status().ok()) {
-          // X6 and X9 algorithms on ROCm marked as not supported
-          // because they often require too much shared memory.
-          EXPECT_FALSE(result_or_status.value())
-              << "algorithms not supported on ROCm";
-        } else if (GpuComputeComp().rocm_compute_capability()->gfx9_mi200()) {
-          EXPECT_EQ(result_or_status.status().code(),
-                    absl::StatusCode::kInternal);
-        }
-      } else {
         ASSERT_TRUE(result_or_status.status().ok())
             << "failed to compile " << algorithm_;
         EXPECT_TRUE(result_or_status.value())
             << "wrong result for " << algorithm_;
-      }
       break;
     case PC::ALG_DOT_F64_F64_F64:
       EXPECT_EQ(result_or_status.status().code(),

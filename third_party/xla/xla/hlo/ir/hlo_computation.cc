@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_payload_deduplicator.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/literal.h"
@@ -71,9 +70,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -1082,7 +1079,7 @@ HloComputation::MakeInstructionPostOrderWithReshapeFirst() const {
     }
   }
 
-  std::reverse(sorted.begin(), sorted.end());
+  absl::c_reverse(sorted);
   CHECK_EQ(sorted.size(), instruction_count());
   return sorted;
 }
@@ -1814,6 +1811,10 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
                            !old_instruction->metadata().op_name().empty();
   if (overwrite_op_name) {
     new_instruction->set_metadata(old_instruction->metadata());
+  } else if (!new_instruction->metadata().has_metadata_payload() &&
+             old_instruction->metadata().has_metadata_payload()) {
+    *new_instruction->mutable_metadata().mutable_metadata_payload() =
+        old_instruction->metadata().metadata_payload();
   }
   if (preserve_frontend_attributes &&
       new_instruction->frontend_attributes().map().empty()) {

@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -53,7 +53,7 @@ TEST_F(HloHardwareIndependentTestBase, SlowReduceWindow) {
       Literal actual_literal,
       evaluator.Evaluate(*hlo_module->entry_computation(), {&input}));
   std::vector<int32_t> expected(4096);
-  std::iota(expected.begin(), expected.end(), 1);
+  absl::c_iota(expected, 1);
   EXPECT_THAT(actual_literal.data<int32_t>(),
               ::testing::ElementsAreArray(expected));
 }

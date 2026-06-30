@@ -274,6 +274,27 @@ ROOT r = bf16[1024,1024] transpose(d), dimensions={1,0}
               absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
+TEST_F(GpuDotFusionCostModelTest, CalculateIterBytes) {
+  gpu_dot_fusion_cost_model::detail::DotProblemInfo dot_info;
+  dot_info.b = 1;
+  dot_info.m = 1024;
+  dot_info.n = 1024;
+  dot_info.k = 2048;
+  dot_info.lhs_element_type = PrimitiveType::BF16;
+  dot_info.rhs_element_type = PrimitiveType::BF16;
+
+  gpu_dot_fusion_cost_model::detail::DotTileSize dot_tile{/*m=*/128, /*n=*/256,
+                                                          /*k=*/32, /*b=*/1};
+
+  // lhs_iter_bytes = ceil(1 * 128 * 32 * 2 (bf16 - 2 bytes)) = 8192
+  // rhs_iter_bytes = ceil(1 * 32 * 256 * 2 (bf16 - 2 bytes)) = 16384
+  // total = 8192 + 16384 = 24576
+  int64_t iter_bytes =
+      gpu_dot_fusion_cost_model::detail::CalculateLoopIterBytes(dot_info,
+                                                                dot_tile);
+  EXPECT_EQ(iter_bytes, 24576);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/debug_options_flags.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"  // NOLINT
 
 namespace xla {
@@ -299,7 +301,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_enable_enzyme_comms_opt(false);
   opts.set_xla_recognize_reduction_optimization_level(0);
 
-  opts.set_xla_gpu_enable_dynamic_slice_fusion(false);
+  opts.set_xla_gpu_enable_dynamic_slice_fusion(true);
   opts.set_xla_gpu_enable_dus_accumulator_zero_init_elimination(false);
   opts.set_xla_gpu_experimental_dynamic_slice_fusion_verify_offsets(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
@@ -360,7 +362,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(false);
 
   opts.set_xla_gpu_collective_inflation_factor(1);
-  opts.set_xla_llvm_force_inline_before_split(true);
 
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
@@ -387,7 +388,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(false);
 
-  opts.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
   opts.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(false);
   opts.set_xla_gpu_enable_libnvptxcompiler(
       stream_executor::IsLibNvPtxCompilerSupported());
@@ -407,14 +407,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // on V100 and H100 GPUs. See openxla/xla #9319 for details.
   const int64_t kDefaultMinGemmRewriteSize = 100;
   opts.set_xla_gpu_gemm_rewrite_size_threshold(kDefaultMinGemmRewriteSize);
-
-#ifdef HAS_SUPPORT_FOR_EMBEDDED_LIB_DEVICE
-  opts.set_xla_gpu_use_embeded_device_lib(true);
-#endif
-
-#ifdef HAS_SUPPORT_FOR_LLD_AS_A_LIBRARY
-  opts.set_xla_gpu_use_inprocess_lld(true);
-#endif
 
   opts.set_xla_gpu_use_memcpy_local_p2p(false);
   opts.set_xla_gpu_collective_permute_connected_components(false);
@@ -529,6 +521,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_print_compilation_stats(false);
 
   opts.set_xla_gpu_enable_pdl(true);
+  opts.set_xla_gpu_enable_pdl_launch(true);
   opts.set_xla_gpu_command_buffer_update_mode(DebugOptions::ALWAYS_UPDATE);
 
   opts.set_xla_gpu_experimental_aot_compiled_thunks(true);
@@ -705,6 +698,76 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
   auto setter_for_xla_gpu_llvm_ir_file =
       [debug_options](const std::string& value) {
         debug_options->add_xla_gpu_llvm_ir_file(value);
+        return true;
+      };
+
+  // Custom "sub-parser" lambda for
+  // xla_enable_nccl_symmetric_buffers_for_collectives.
+  auto setter_for_xla_enable_nccl_symmetric_buffers_for_collectives =
+      [debug_options](std::string comma_separated_values) {
+        for (const absl::string_view& token :
+             absl::StrSplit(comma_separated_values, ',')) {
+          if (token.empty()) {
+            continue;
+          }
+
+          absl::string_view remaining = token;
+          std::vector<absl::string_view> parts = absl::StrSplit(remaining, ':');
+          if (parts.empty()) {
+            continue;
+          }
+
+          std::string op_name = absl::AsciiStrToUpper(parts[0]);
+          op_name.erase(std::remove(op_name.begin(), op_name.end(), '-'),
+                        op_name.end());
+          op_name.erase(std::remove(op_name.begin(), op_name.end(), '_'),
+                        op_name.end());
+          if (op_name == "ALL") {
+            op_name = "ALLCOLLECTIVES";
+          }
+
+          DebugOptions::CollectiveOpType op_type;
+          if (!DebugOptions::CollectiveOpType_Parse(op_name, &op_type)) {
+            LOG(ERROR) << "Invalid collective op name: " << parts[0];
+            return false;
+          }
+
+          auto* filter =
+              debug_options
+                  ->add_xla_enable_nccl_symmetric_buffers_for_collectives();
+          filter->set_collective(op_type);
+
+          // If max_size_bytes is specified, only collectives with size <=
+          // max_size_bytes will be enabled.
+          if (parts.size() > 1) {
+            int64_t max_size;
+            if (absl::SimpleAtoi(parts[1], &max_size)) {
+              filter->set_max_size_bytes(max_size);
+            } else {
+              LOG(QFATAL) << "Invalid max_size_bytes: " << parts[1];
+              return false;
+            }
+          }
+
+          // If op_type is specified, only collectives with this operand type
+          // will be enabled.
+          if (parts.size() > 2) {
+            PrimitiveType primitive_type;
+            std::string type_str = absl::AsciiStrToUpper(parts[2]);
+            if (!PrimitiveType_Parse(type_str, &primitive_type)) {
+              // Try parsing as integer for backward compatibility.
+              int type_val;
+              if (absl::SimpleAtoi(parts[2], &type_val) &&
+                  PrimitiveType_IsValid(type_val)) {
+                primitive_type = static_cast<PrimitiveType>(type_val);
+              } else {
+                LOG(QFATAL) << "Invalid op_type (PrimitiveType): " << parts[2];
+                return false;
+              }
+            }
+            filter->set_op_type(primitive_type);
+          }
+        }
         return true;
       };
 
@@ -1770,17 +1833,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_force_compilation_parallelism(),
       "Overrides normal multi-threaded compilation setting to use this many "
       "threads. Setting to 0 (the default value) means no enforcement."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_llvm_module_compilation_parallelism",
-      bool_setter_for(
-          &DebugOptions::
-              set_xla_gpu_enable_llvm_module_compilation_parallelism),
-      debug_options->xla_gpu_enable_llvm_module_compilation_parallelism(),
-      "Decides whether we can do LLVM module compilation in a parallelised "
-      "way. If set to false, then it will be single threaded, otherwise the "
-      "number of threads depends on the "
-      "--xla_gpu_force_compilation_parallelism flag and the thread pool "
-      "supplied to GpuCompiler."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_default_to_alg_dot_bf16_bf16_f32",
@@ -2070,6 +2122,26 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_experimental_enable_nccl_symmetric_buffers),
       debug_options->xla_gpu_experimental_enable_nccl_symmetric_buffers(),
       "Enables NCCL symmetric buffer registration."));
+  flag_list->push_back(tsl::Flag(
+      "xla_enable_nccl_symmetric_buffers_for_collectives",
+      setter_for_xla_enable_nccl_symmetric_buffers_for_collectives,
+      absl::StrJoin(
+          debug_options->xla_enable_nccl_symmetric_buffers_for_collectives(),
+          ",",
+          [](std::string* out, const DebugOptions::CollectiveFilter& filter) {
+            absl::StrAppend(
+                out, DebugOptions::CollectiveOpType_Name(filter.collective()));
+            if (filter.has_max_size_bytes()) {
+              absl::StrAppend(out, ":", filter.max_size_bytes());
+            }
+            if (filter.has_op_type()) {
+              absl::StrAppend(out, ":", PrimitiveType_Name(filter.op_type()));
+            }
+          }),
+      "Enables NCCL symmetric buffer registration for specific collectives and "
+      "sizes. "
+      "Format: op:size:op_type or op. E.g. "
+      "AllReduce:1024:F32,AllGather:2048,ReduceScatter,all."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_aot_compiled_thunks",
       bool_setter_for(
@@ -2578,11 +2650,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "(minimum combined number of elements of both matrices "
       "in non-batch dimensions to be considered for a rewrite)."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_use_embeded_device_lib",
-      bool_setter_for(&DebugOptions::set_xla_gpu_use_embeded_device_lib),
-      debug_options->xla_gpu_use_embeded_device_lib(),
-      "Whether to use embeded bitcode library in codegen."));
-  flag_list->push_back(tsl::Flag(
       "xla_gpu_use_memcpy_local_p2p",
       bool_setter_for(&DebugOptions::set_xla_gpu_use_memcpy_local_p2p),
       debug_options->xla_gpu_use_memcpy_local_p2p(),
@@ -2607,11 +2674,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       std::string("private"),
       "Memory mode for all-gather: private, symmetric, peer. "
       "See CollectivesMode for details."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_use_inprocess_lld",
-                bool_setter_for(&DebugOptions::set_xla_gpu_use_inprocess_lld),
-                debug_options->xla_gpu_use_inprocess_lld(),
-                "Whether to use lld as a library for the linking."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dump_autotune_logs_to",
       string_setter_for(&DebugOptions::set_xla_gpu_dump_autotune_logs_to),
@@ -3298,6 +3360,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_pdl),
                 debug_options->xla_gpu_enable_pdl(),
                 "Enable PDL (Programmatic Dependent Launch)."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_pdl_launch",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_pdl_launch),
+                debug_options->xla_gpu_enable_pdl_launch(),
+                "Enable use of PDL launch instructions."));
   flag_list->push_back(tsl::Flag(
       "xla_dump_buffer_assignment_analysis",
       bool_setter_for(&DebugOptions::set_xla_dump_buffer_assignment_analysis),

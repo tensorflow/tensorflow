@@ -1461,7 +1461,6 @@ TEST(ThunkProtoDeserializationTest, CollectiveKernelThunk) {
             replica_groups { replica_ids: 0 replica_ids: 1 }
             group_mode: COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
           }
-          reduction_kind: REDUCTION_KIND_SUM
           is_async: false
           buffers {
             element_count: 64

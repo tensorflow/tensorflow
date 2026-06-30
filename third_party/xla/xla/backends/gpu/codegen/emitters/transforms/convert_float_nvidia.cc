@@ -304,17 +304,5 @@ class ConvertFloatNvidiaPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateConvertFloatNvidiaPass(
-    int compute_capability_major, int compute_capability_minor,
-    int ptx_version_major, int ptx_version_minor) {
-  ConvertFloatNvidiaPassOptions options;
-  options.compute_capability_major_ = compute_capability_major;
-  options.compute_capability_minor_ = compute_capability_minor;
-  options.ptx_version_major_ = ptx_version_major;
-  options.ptx_version_minor_ = ptx_version_minor;
-  return std::make_unique<ConvertFloatNvidiaPass>(options);
-}
-
 }  // namespace gpu
 }  // namespace xla

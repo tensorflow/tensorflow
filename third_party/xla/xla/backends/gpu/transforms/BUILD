@@ -2841,7 +2841,6 @@ cc_library(
     ],
 )
 
-# TODO(b/358278858): Currently lacking test coverage.
 cc_library(
     name = "scatter_expander",
     srcs = ["scatter_expander.cc"],
@@ -2850,7 +2849,20 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:scatter_expander",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "scatter_expander_test",
+    srcs = ["scatter_expander_test.cc"],
+    deps = [
+        ":scatter_expander",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3991,6 +4003,35 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "pdl_launch_annotation",
+    srcs = ["pdl_launch_annotation.cc"],
+    hdrs = ["pdl_launch_annotation.h"],
+    deps = [
+        "//xla:frontend_attributes",
+        "//xla:status_macros",
+        "//xla/backends/gpu/codegen/triton:support",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "pdl_launch_annotation_test",
+    srcs = ["pdl_launch_annotation_test.cc"],
+    deps = [
+        ":pdl_launch_annotation",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "@com_google_googletest//:gtest_main",
     ],
 )

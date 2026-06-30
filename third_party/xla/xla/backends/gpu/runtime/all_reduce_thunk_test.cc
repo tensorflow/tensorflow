@@ -568,7 +568,7 @@ TEST(AllReduceThunkTest, RecordCommandBufferCreateUpdateAsyncCollectiveKernel) {
       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA;
 
   auto collective_kernel_thunk = std::make_unique<CollectiveKernelThunk>(
-      Thunk::ThunkInfo(), config.config, config.reduction_kind,
+      Thunk::ThunkInfo(), config.config,
       /*is_async=*/true, buffers,
       /*is_collective_kernel_enabled=*/true, "dummy_kernel",
       LaunchDimensions(1, 1));

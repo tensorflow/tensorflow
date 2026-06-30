@@ -33,6 +33,12 @@ void SetDisjointReadWriteRegionsAttr(HloInstruction* instruction);
 // frontend attribute set (returns false otherwise).
 bool HasDisjointReadWriteRegionsAttr(HloInstruction* instruction);
 
+// Indicates that an operation issues PDL launch.
+inline constexpr absl::string_view kXlaPdlLaunch = "xla.pdl_launch";
+
+// Indicates that an operation issues PDL launch.
+bool DoesPdlLaunch(const HloInstruction&);
+
 // Frontend attribute name for operands that should not be assumed invariant.
 // The attribute value is a comma-separated list of operand indices.
 inline constexpr absl::string_view kXlaNoInvariantOperands =

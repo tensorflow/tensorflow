@@ -408,14 +408,15 @@ DynamicSliceFusionV2Thunk::Record(const Thunk::ExecuteParams& execute_params,
   return Internal("Invalid record action");
 }
 
-bool DynamicSliceFusionV2Thunk::requires_initialization() const {
+bool DynamicSliceFusionV2Thunk::requires_update_on_initialize() const {
   return command_executor_.has_value() &&
-         command_executor_->requires_initialization();
+         command_executor_->requires_update_on_initialize();
 }
 
-bool DynamicSliceFusionV2Thunk::requires_update() const {
-  return HasLoopDependentOffsets() || (command_executor_.has_value() &&
-                                       command_executor_->requires_update());
+bool DynamicSliceFusionV2Thunk::requires_update_on_execute() const {
+  return HasLoopDependentOffsets() ||
+         (command_executor_.has_value() &&
+          command_executor_->requires_update_on_execute());
 }
 
 bool DynamicSliceFusionV2Thunk::support_loop_unroll() const {

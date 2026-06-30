@@ -176,6 +176,10 @@ constexpr AccuracyBudget kSinF64Budget = {
     /*gpu=*/
     {/*regular=*/1,
      /*subnormal=*/0},
+    /*rocm_gpu=*/std::nullopt,
+    /*intel_gpu=*/
+    UlpBudget{/*regular=*/2,
+              /*subnormal=*/0},
 };
 
 // Cos
@@ -193,6 +197,10 @@ constexpr AccuracyBudget kCosF64Budget = {
     /*gpu=*/
     {/*regular=*/1,
      /*subnormal=*/0},
+    /*rocm_gpu=*/std::nullopt,
+    /*intel_gpu=*/
+    UlpBudget{/*regular=*/2,
+              /*subnormal=*/0},
 };
 
 // Erf

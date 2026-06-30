@@ -59,6 +59,15 @@ func.func @lower_broadcast_in_dim_on_0d_tensor_produced_by_to_tensor_to_splat(%a
   return %0 : tensor<4x2xf32>
 }
 
+// CHECK: func @lower_broadcast_in_dim_to_scalar_to_from_elements(%[[ARG0:.*]]: f32) -> tensor<f32>
+func.func @lower_broadcast_in_dim_to_scalar_to_from_elements(%arg0: f32) -> tensor<f32> {
+  // CHECK: %[[FROM_ELEMENTS:.*]] = tensor.from_elements %arg0 : tensor<f32>
+  %to_tensor = tensor.from_elements %arg0 : tensor<f32>
+  %2 = stablehlo.broadcast_in_dim %to_tensor, dims = [] : (tensor<f32>) -> tensor<f32>
+  // CHECK: return %[[FROM_ELEMENTS]] : tensor<f32>
+  return %2 : tensor<f32>
+}
+
 // CHECK: func @reduce(%[[ARG0:.*]]: tensor<16x8xf32>) -> tensor<8xf32>
 func.func @reduce(%arg0: tensor<16x8xf32>) -> tensor<8xf32> {
   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>

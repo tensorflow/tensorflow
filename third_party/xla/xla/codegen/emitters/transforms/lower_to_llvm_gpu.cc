@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"
 #include "mlir/Conversion/GPUToROCDL/Runtimes.h"
+#include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"  // IWYU pragma: keep
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
@@ -68,6 +70,60 @@ namespace emitters {
 namespace {
 
 namespace se = ::stream_executor;
+
+// log2(e), used to express exp(x) = exp2(x * log2(e)).
+constexpr double kLog2E = 1.4426950408889634;
+
+// Lowers a scalar bf16 `math.exp2` to the native gfx1250 `v_exp_bf16`
+// instruction via the `llvm.amdgcn.exp2` intrinsic. Without this, the default
+// MathToROCDL lowering upcasts bf16 to f32 and calls `__ocml_exp2_f32`, never
+// using the hardware bf16 transcendental unit. Vector ops are scalarized first
+// by MathToROCDL's ScalarizeVectorOpLowering (lower benefit), so this pattern
+// only needs to handle the scalar case.
+struct Exp2BF16ToAMDGPU
+    : public mlir::ConvertOpToLLVMPattern<mlir::math::Exp2Op> {
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::math::Exp2Op op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    if (!op.getType().isBF16()) {
+      return rewriter.notifyMatchFailure(op, "not a scalar bf16 exp2");
+    }
+    mlir::Value operand = adaptor.getOperands().front();
+    rewriter.replaceOpWithNewOp<mlir::LLVM::CallIntrinsicOp>(
+        op, /*resultType=*/operand.getType(),
+        rewriter.getStringAttr("llvm.amdgcn.exp2"), mlir::ValueRange{operand});
+    return mlir::success();
+  }
+};
+
+// Lowers a scalar bf16 `math.exp` to the native gfx1250 `v_exp_bf16`
+// instruction by rewriting exp(x) = exp2(x * log2(e)) and emitting the
+// `llvm.amdgcn.exp2` intrinsic. See Exp2BF16ToAMDGPU for the rationale.
+struct ExpBF16ToAMDGPU
+    : public mlir::ConvertOpToLLVMPattern<mlir::math::ExpOp> {
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::math::ExpOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    if (!op.getType().isBF16()) {
+      return rewriter.notifyMatchFailure(op, "not a scalar bf16 exp");
+    }
+    mlir::Location loc = op.getLoc();
+    mlir::Value operand = adaptor.getOperands().front();
+    mlir::Type bf16 = operand.getType();
+    mlir::Value log2e = rewriter.create<mlir::LLVM::ConstantOp>(
+        loc, bf16, rewriter.getFloatAttr(bf16, kLog2E));
+    mlir::Value scaled =
+        rewriter.create<mlir::LLVM::FMulOp>(loc, operand, log2e);
+    rewriter.replaceOpWithNewOp<mlir::LLVM::CallIntrinsicOp>(
+        op, /*resultType=*/bf16, rewriter.getStringAttr("llvm.amdgcn.exp2"),
+        mlir::ValueRange{scaled});
+    return mlir::success();
+  }
+};
 
 class LowerToLLVMGPUPass
     : public impl::LowerToLLVMGPUPassBase<LowerToLLVMGPUPass> {
@@ -111,6 +167,15 @@ class LowerToLLVMGPUPass
         mlir::configureGpuToROCDLConversionLegality(target);
         mlir::populateAMDGPUToROCDLConversionPatterns(converter, patterns,
                                                       *maybeChipset);
+        // On gfx1250 emit native bf16 exp via v_exp_bf16 instead of upcasting
+        // to f32 and calling __ocml_exp(2)_f32. Higher benefit than the default
+        // MathToROCDL patterns so it wins for scalar bf16 ops.
+        if (device_spec_.gpu()
+                .rocm_compute_capability()
+                .has_bf16_transcendental_support()) {
+          patterns.add<ExpBF16ToAMDGPU, Exp2BF16ToAMDGPU>(
+              converter, /*benefit=*/mlir::PatternBenefit(2));
+        }
         target.addIllegalDialect<mlir::amdgpu::AMDGPUDialect>();
       } else if (device_spec_.IsIntelGpu()) {
         // Add sub-group-size attribute to functions.

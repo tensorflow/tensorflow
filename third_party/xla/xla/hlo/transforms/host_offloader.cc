@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/transforms/host_offloader.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <iomanip>
 #include <memory>
@@ -30,6 +29,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -55,8 +55,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -104,7 +102,7 @@ void PrintTrace(InstructionAndShapeIndex instruction_and_shape_index,
     instruction_and_shape_index = it->second;
     it = previous.find(instruction_and_shape_index);
   }
-  std::reverse(trace.begin(), trace.end());
+  absl::c_reverse(trace);
   for (const auto& instruction_and_shape_index : trace) {
     VLOG(1) << "  " << instruction_and_shape_index.ToString();
   }

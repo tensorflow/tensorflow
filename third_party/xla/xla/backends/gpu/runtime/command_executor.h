@@ -154,12 +154,12 @@ class CommandExecutor {
   bool empty() const { return commands_.empty(); }
   size_t size() const { return commands_.size(); }
 
-  bool requires_initialization() const {
-    bool requires_initialization = false;
+  bool requires_update_on_initialize() const {
+    bool requires_update_on_initialize = false;
     commands_.Walk([&](const Command* command) {
-      requires_initialization |= command->requires_initialization();
+      requires_update_on_initialize |= command->requires_update_on_initialize();
     });
-    return requires_initialization;
+    return requires_update_on_initialize;
   }
 
   bool requires_warmup() const {
@@ -170,12 +170,12 @@ class CommandExecutor {
     return requires_warmup;
   }
 
-  bool requires_update() const {
-    bool requires_update = false;
+  bool requires_update_on_execute() const {
+    bool requires_update_on_execute = false;
     commands_.Walk([&](const Command* command) {
-      requires_update |= command->requires_update();
+      requires_update_on_execute |= command->requires_update_on_execute();
     });
-    return requires_update;
+    return requires_update_on_execute;
   }
 
   bool support_loop_unroll() const {

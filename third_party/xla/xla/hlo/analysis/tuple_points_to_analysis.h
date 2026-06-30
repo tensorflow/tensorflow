@@ -176,6 +176,13 @@ class PointsToSet {
     });
   }
   template <typename Fn>
+  absl::Status ForEachMutableElementWithStatus(const Fn& fn) {
+    return tree_.ForEachMutableElementWithStatus(
+        [&fn](const ShapeIndex& index, Elem* elem) {
+          return fn(index, &elem->buffers);
+        });
+  }
+  template <typename Fn>
   absl::Status ForEachElementWithStatus(const Fn& fn) const {
     return tree_.ForEachElementWithStatus(
         [&fn](const ShapeIndex& index, const Elem& elem) {
@@ -351,6 +358,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // Information kept per instruction
   struct PerInstruction {
     std::unique_ptr<PointsToSet> points_to_set;
+    // Buffers defined by this instruction.
     // Empirically, ~92% of instructions have 1
     // instruction_defined_buffer, and 99% have 0 or 1
     BufferDefinitionVector instruction_defined_buffers;

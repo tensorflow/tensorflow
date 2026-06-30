@@ -776,15 +776,10 @@ CodegenDecision IsTritonSupportedInstructionImpl(
                                         gpu_version);
     case HloOpcode::kFusion:
       return CodegenDecision::Forbid("Nested fusions are not supported.");
-    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduce:
       return IsTritonSupportedAllReduce(*Cast<HloAllReduceInstruction>(&instr),
                                         gpu_version);
-    case HloOpcode::kAllReduceDone:
-      return IsTritonSupportedAllReduce(
-          *Cast<HloAllReduceInstruction>(instr.operand(0)), gpu_version);
     case HloOpcode::kAllGather:
-    case HloOpcode::kAllGatherStart:
-    case HloOpcode::kAllGatherDone:
       if (instr.shape().element_type() == S4) {
         return CodegenDecision::Forbid("S4 is not supported.");
       }

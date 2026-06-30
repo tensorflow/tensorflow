@@ -132,10 +132,10 @@ absl::Status RunMain(int argc, char** argv) {
 
   std::unique_ptr<riegeli::Reader> reader;
   if (argc < 3 || std::string(argv[2]) == "-") {
-    LOG(INFO) << "Reading input from stdin";
+    std::cout << "Reading input from stdin" << "\n";
     reader = riegeli::Maker<riegeli::StdIn>();
   } else {
-    LOG(INFO) << "Reading input from file: " << argv[2];
+    std::cout << "Reading input from file: " << argv[2] << "\n";
     reader = CreateRiegeliFileReader(argv[2]);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         reader->status(), absl::StrCat("Failed to open input file: ", argv[2]));
@@ -144,10 +144,10 @@ absl::Status RunMain(int argc, char** argv) {
 
   std::unique_ptr<riegeli::Writer> writer;
   if (output_file.empty() || output_file == "-") {
-    LOG(INFO) << "Output will be written to stdout";
+    std::cout << "Output will be written to stdout" << "\n";
     writer = riegeli::Maker<riegeli::StdOut>();
   } else {
-    LOG(INFO) << "Output will be written to file: " << output_file;
+    std::cout << "Output will be written to file: " << output_file << "\n";
     writer = CreateRiegeliFileWriter(output_file);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         writer->status(),
@@ -207,6 +207,13 @@ int main(int argc, char** argv) {
   absl::Status status = xla::split_proto_cli::RunMain(argc, argv);
   if (!status.ok()) {
     std::cerr << "Error: " << status.ToString() << "\n";
+    if (status.code() == absl::StatusCode::kOutOfRange) {
+      std::cerr << "If you are writing to a file in a workspace directory, "
+                   "there may be size limits. Try writing to a different "
+                   "directory (e.g. "
+                   "in /tmp)"
+                << "\n";
+    }
     return 1;
   }
   return 0;

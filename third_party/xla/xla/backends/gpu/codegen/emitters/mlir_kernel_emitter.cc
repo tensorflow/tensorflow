@@ -103,6 +103,7 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/frontend_attributes.h"
 #include "xla/future.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -115,6 +116,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -140,14 +142,6 @@ using llvm::SmallVector;
 using mlir::MLIRContext;
 using mlir::Value;
 using mlir::func::FuncOp;
-
-bool EnablePDL(const HloModule& module, const se::DeviceDescription& device) {
-  return module.config().debug_options().xla_gpu_enable_pdl() &&
-         device.gpu_compute_capability().IsCuda() &&
-         device.gpu_compute_capability()
-             .cuda_compute_capability()
-             ->IsAtLeastHopper();
-}
 
 void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
                llvm::Module* module) {
@@ -389,11 +383,12 @@ AsyncThunkSequence MlirKernelFusion::Emit(
                   LaunchDimensions launch_dims,
                   LaunchDimensions::FromWorkDimensions(spec.work_dimensions()));
 
-              bool use_pdl = EnablePDL(*fusion.GetModule(),
-                                       ir_emitter_context.gpu_device_info());
+              bool use_pdl =
+                  IsPdlEnabled(fusion.GetModule()->config().debug_options(),
+                               ir_emitter_context.gpu_compute_capability());
 
               return ir_emitter_context.kernel_compiler()
-                  ->CompileToPtx(std::move(kernel_def).TakeSource())
+                  ->CompileToTargetBinary(std::move(kernel_def).TakeSource())
                   .Map([kernel_name = std::move(kernel_name),
                         launch_dims = std::move(launch_dims),
                         use_pdl](const std::vector<uint8_t>& cubin) {
@@ -441,6 +436,10 @@ xla::Future<LlvmKernelSource> MlirKernelFusion::CreateLLVMModule(
   ASSIGN_OR_RETURN(MlirKernelSource source,
                    emitter_->Emit(mlir_context, fusion, entry_function_name,
                                   buffer_assignment));
+
+  if (DoesPdlLaunch(fusion)) {
+    source.module()->setAttr(kXlaPdlLaunch, mlir::UnitAttr::get(mlir_context));
+  }
 
   return kernel_compiler->CompileMlirToLlvm(
       device, *fusion.GetModule(), entry_function_name,
@@ -557,7 +556,7 @@ IndexingMap MlirKernelEmitter::GetDefaultThreadIdIndexingMap(
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
                                  const se::DeviceDescription& device,
                                  int max_unroll_factor) {
-  pm.addNestedPass<FuncOp>(CreateLowerXlaSharedPass());
+  pm.addNestedPass<FuncOp>(createLowerXlaSharedPass());
   emitters::LowerXlaToScfPassOptions lower_xla_to_scf_options;
   lower_xla_to_scf_options.warp_size = device.threads_per_warp();
   pm.addNestedPass<FuncOp>(
@@ -568,7 +567,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   }));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<FuncOp>(CreatePeelLoopsPass());
+  pm.addNestedPass<FuncOp>(createPeelLoopsPass());
   pm.addNestedPass<FuncOp>(emitters::createLowerXlaLoopsToScfPass());
   pm.addPass(mlir::stablehlo::createStablehloConvertToSignlessPass());
   pm.addPass(emitters::createPropagateSliceIndicesPass());
@@ -582,7 +581,9 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   // instructions over ifs.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addNestedPass<FuncOp>(emitters::createVectorizeLoadsAndStoresPass(device));
-  pm.addNestedPass<FuncOp>(CreateOptimizeLoopsPass(max_unroll_factor));
+  OptimizeLoopsPassOptions optimize_loops_options;
+  optimize_loops_options.max_unroll_factor_ = max_unroll_factor;
+  pm.addNestedPass<FuncOp>(createOptimizeLoopsPass(optimize_loops_options));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 }
@@ -612,7 +613,7 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addNestedPass<FuncOp>(
       emitters::createSimplifyArithPass(simplify_arith_options));
   pm.addPass(emitters::createSimplifyAffinePass());
-  pm.addPass(CreateConvertIndexTypePass());
+  pm.addPass(createConvertIndexTypePass());
   // simplify-affine lowers most affine.apply ops, but if it can't prove a
   // division or modulo is unsigned, affine.apply ops will remain.
   pm.addPass(mlir::createLowerAffinePass());
@@ -626,15 +627,18 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
     se::SemanticVersion ptx_version =
         nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
             device.runtime_version());
-    pm.addPass(CreateConvertFloatNvidiaPass(cc->major, cc->minor,
-                                            ptx_version.major_version(),
-                                            ptx_version.minor_version()));
+    ConvertFloatNvidiaPassOptions nv_options;
+    nv_options.compute_capability_major_ = cc->major;
+    nv_options.compute_capability_minor_ = cc->minor;
+    nv_options.ptx_version_major_ = ptx_version.major_version();
+    nv_options.ptx_version_minor_ = ptx_version.minor_version();
+    pm.addPass(createConvertFloatNvidiaPass(nv_options));
   } else if (auto* cc =
                  device.gpu_compute_capability().rocm_compute_capability()) {
     if (cc->has_fp8_support()) {
       pm.addPass(CreateConvertFloatAMDPass(*cc));
     }
-    pm.addPass(CreateRecoverExp2Pass());
+    pm.addPass(createRecoverExp2Pass());
   }
 
   pm.addPass(emitters::createExpandFloatOpsPass());
@@ -642,7 +646,7 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createSCFToControlFlowPass());
 
   if (device.gpu_compute_capability().rocm_compute_capability()) {
-    pm.addPass(CreatePromoteShuffleToDPPPass());
+    pm.addPass(createPromoteShuffleToDPPPass());
   }
 
   pm.addPass(emitters::createLowerToLLVMGPUPass(device));
@@ -669,8 +673,9 @@ absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
 
   emitters::RegisterOptimizationPasses(pm);
   AddLoopTransformationPasses(pm, device, unroll_factor);
-  if (EnablePDL(hlo_module, device)) {
-    pm.addPass(CreateInsertPDLPass());
+  if (IsPdlEnabled(hlo_module.config().debug_options(),
+                   device.gpu_compute_capability())) {
+    pm.addPass(createInsertPDLPass());
   }
   AddLoweringPasses(pm, device);
 

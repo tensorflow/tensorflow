@@ -273,7 +273,7 @@ common:rocm_base --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a,gfx942,gfx950,
 
 common:rocm_clang_local --config=rocm_base
 common:rocm_clang_local --config=clang_local
-common:rocm_clang_local --crosstool_top=@local_config_rocm//crosstool:toolchain
+common:rocm_clang_local --extra_toolchains=@local_config_rocm//crosstool:toolchain-linux-x86_64
 common:rocm_clang_local --config=rocm_base
 common:rocm_clang_local --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
 
@@ -295,6 +295,7 @@ common:rocm_ci_hermetic --dynamic_mode=off
 common:rocm_ci_hermetic --config=rocm_clang_hermetic
 common:rocm_ci_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a"
 common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.12.0_gfx90a"
+common:rocm_ci_hermetic --repo_env=SYSROOT_DIST=linux_glibc_2_31
 common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 # This config option is used for SYCL as GPU backend.
@@ -305,6 +306,7 @@ common:sycl --define=tensorflow_mkldnn_contraction_kernel=0
 common:sycl --cxxopt=-std=c++17
 common:sycl --host_cxxopt=-std=c++17
 common:sycl --repo_env=SYCL_BUILD_HERMETIC=0
+common:sycl --define=build_with_onednn_async=true
 
 # Enable Clang for host and icpx for SYCL
 common:icpx_clang --repo_env TF_ICPX_CLANG=1

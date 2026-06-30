@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/parse_flags_from_env.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 
 using ::testing::ElementsAre;
@@ -93,6 +94,51 @@ TEST(DebugOptions, AllFieldsHavePresence) {
   EXPECT_THAT(fields_missing_presence, IsEmpty())
       << "All scalar fields in DebugOptions must have presence defined by "
          "being labeled `optional`.";
+}
+
+TEST(DebugOptions, EnableNcclSymmetricBuffersForCollectives) {
+  int* pargc;
+  std::vector<char*>* pargv;
+  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+
+  DebugOptions empty_options;
+  tsl::setenv("XLA_FLAGS",
+              "--xla_enable_nccl_symmetric_buffers_for_collectives="
+              "AllReduce:1024:f32,AllGather:2048:S32,ReduceScatter,all",
+              1);
+
+  DebugOptions options = GetDebugOptionsFromProtoAndFlags(&empty_options);
+  ASSERT_EQ(options.xla_enable_nccl_symmetric_buffers_for_collectives_size(),
+            4);
+
+  {
+    const auto& filter =
+        options.xla_enable_nccl_symmetric_buffers_for_collectives(0);
+    EXPECT_EQ(filter.collective(), DebugOptions::ALLREDUCE);
+    EXPECT_EQ(filter.max_size_bytes(), 1024);
+    EXPECT_EQ(filter.op_type(), xla::F32);
+  }
+  {
+    const auto& filter =
+        options.xla_enable_nccl_symmetric_buffers_for_collectives(1);
+    EXPECT_EQ(filter.collective(), DebugOptions::ALLGATHER);
+    EXPECT_EQ(filter.max_size_bytes(), 2048);
+    EXPECT_EQ(filter.op_type(), xla::S32);
+  }
+  {
+    const auto& filter =
+        options.xla_enable_nccl_symmetric_buffers_for_collectives(2);
+    EXPECT_EQ(filter.collective(), DebugOptions::REDUCESCATTER);
+    EXPECT_FALSE(filter.has_max_size_bytes());
+    EXPECT_FALSE(filter.has_op_type());
+  }
+  {
+    const auto& filter =
+        options.xla_enable_nccl_symmetric_buffers_for_collectives(3);
+    EXPECT_EQ(filter.collective(), DebugOptions::ALLCOLLECTIVES);
+    EXPECT_FALSE(filter.has_max_size_bytes());
+    EXPECT_FALSE(filter.has_op_type());
+  }
 }
 
 }  // namespace

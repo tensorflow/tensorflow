@@ -80,6 +80,5 @@ bazel --bazelrc=build_tools/rocm/rocm_xla.bazelrc test \
     --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
     --action_env=TF_ROCM_AMDGPU_TARGETS=${AMD_GPU_GFX_ID} \
     --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
-    --action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
     --action_env=NCCL_MAX_NCHANNELS=1 \
     --repo_env="ROCM_PATH=$ROCM_PATH"

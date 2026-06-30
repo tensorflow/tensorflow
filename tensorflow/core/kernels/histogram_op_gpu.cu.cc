@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -59,6 +61,11 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
                                                static_cast<double>(nbins) -
                                            static_cast<double>(value_range(0)) /
                                                static_cast<double>(nbins);
+    if (nbins > 1 && step <= 0.0) {
+      return absl::InvalidArgumentError(
+          "Step size in histogram computation must be positive. Check if "
+          "value_range is too narrow or suffers from precision loss.");
+    }
     levels(0) = std::numeric_limits<T>::lowest();
     for (int i = 1; i < nbins; i++) {
       levels(i) =
@@ -86,9 +93,9 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
         /* num_samples */ num_samples,
         /* stream */ stream);
     if (err != gpuSuccess) {
-      return errors::Internal(
-          "Could not launch HistogramRange to get temp storage: ",
-          GpuGetErrorString(err), ".");
+      return absl::InternalError(
+          absl::StrCat("Could not launch HistogramRange to get temp storage: ",
+                       GpuGetErrorString(err), "."));
     }
 
     Tensor temp_storage;
@@ -111,8 +118,8 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
         /* num_samples */ num_samples,
         /* stream */ stream);
     if (err != gpuSuccess) {
-      return errors::Internal(
-          "Could not launch HistogramRange: ", GpuGetErrorString(err), ".");
+      return absl::InternalError(absl::StrCat(
+          "Could not launch HistogramRange: ", GpuGetErrorString(err), "."));
     }
 
     return absl::OkStatus();

@@ -226,7 +226,9 @@ class TilingSpace {
  private:
   void ProcessDotLike(const HloInstruction& hlo);
   void ProcessReduce(const HloInstruction& hlo);
+  void ProcessScan(const HloInstruction& hlo);
   void ProcessDynamicSlice(const HloInstruction& hlo);
+  void ProcessGetTupleElement(const HloInstruction& hlo);
   void ProcessInstruction(const HloInstruction& hlo);
 
   // Initializes cached indexing map variables. This is necessary to allow

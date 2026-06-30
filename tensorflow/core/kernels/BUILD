@@ -943,6 +943,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -1474,6 +1476,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util:ragged_to_dense_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2820,7 +2824,11 @@ tf_kernel_library(
         "gpu_device_array_gpu.h",
     ],
     prefix = "dynamic_stitch_op",
-    deps = DYNAMIC_DEPS + [":loose_headers"],
+    deps = DYNAMIC_DEPS + [
+        ":loose_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -3884,7 +3892,11 @@ tf_kernel_library(
         "scan_ops_gpu_half.cu.cc",
         "scan_ops_gpu_int.cu.cc",
     ],
-    deps = MATH_DEPS + [":gpu_prim_hdrs"],
+    deps = MATH_DEPS + [
+        ":gpu_prim_hdrs",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -4568,7 +4580,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "nth_element_op",
     prefix = "nth_element_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + ["@com_google_absl//absl/status"],
 )
 
 tf_kernel_library(
@@ -4588,6 +4600,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
@@ -4601,6 +4614,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -5168,6 +5183,8 @@ tf_kernel_library(
     prefix = "sendrecv_ops",
     deps = REQUIRED_DEPS + [
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -5222,7 +5239,10 @@ SPARSE_DEPS = [
 tf_kernel_library(
     name = "sparse_add_grad_op",
     prefix = "sparse_add_grad_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -6013,6 +6033,7 @@ tf_kernel_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@icu//:common",
     ],
@@ -6192,6 +6213,7 @@ tf_kernel_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

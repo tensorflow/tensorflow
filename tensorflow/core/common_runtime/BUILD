@@ -6,7 +6,6 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_libtpu",
     "if_macos",
     "if_oss",
     "tf_cc_test",
@@ -92,7 +91,7 @@ cc_library(
         ":core_cpu",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime",
         "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime",
-    ] + if_libtpu(["//tensorflow/core/tpu:tpu_runtime"]),
+    ],
 )
 
 filegroup(

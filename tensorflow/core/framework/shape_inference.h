@@ -18,9 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -296,6 +296,7 @@ class InferenceContext {
   // This requires idx to be in the [0, num_inputs) range. If the merge is
   // successful, return true. Return false otherwise.
   bool MergeInput(int idx, ShapeHandle shape) {
+    if (idx < 0 || idx >= num_inputs()) return false;
     ShapeHandle new_shape;
     if (!Merge(inputs_[idx], shape, &new_shape).ok()) return false;
     inputs_[idx] = new_shape;

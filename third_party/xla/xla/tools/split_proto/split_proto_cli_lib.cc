@@ -132,8 +132,8 @@ absl::Status ParseProto(riegeli::Reader& reader, ProtoFormat format,
 absl::Status Pack(std::unique_ptr<riegeli::Reader> reader,
                   std::unique_ptr<riegeli::Writer> writer,
                   const PackOptions& options) {
-  LOG(INFO) << "Packing standard protobuf (type: " << options.proto_type
-            << ") to split proto format";
+  std::cout << "Packing standard protobuf (type: " << options.proto_type
+            << ") to split proto format" << "\n";
   std::unique_ptr<google::protobuf::Message> message;
   if (options.proto_type == "xla.gpu.GpuExecutableProto") {
     message = std::make_unique<xla::gpu::GpuExecutableProto>();
@@ -161,7 +161,7 @@ absl::Status Pack(std::unique_ptr<riegeli::Reader> reader,
   }
 
   if (options.proto_type == "xla.HloProto") {
-    auto* hlo_proto = absl::down_cast<xla::HloProto*>(message.get());
+    auto* hlo_proto = google::protobuf::DownCastMessage<xla::HloProto>(message.get());
     return WriteSplitHloProto(*hlo_proto, std::move(writer));
   }
 
@@ -215,9 +215,9 @@ absl::Status Unpack(std::unique_ptr<riegeli::Reader> reader,
                     std::unique_ptr<riegeli::Writer> writer,
                     const UnpackOptions& options) {
   ASSIGN_OR_RETURN(SplitProtoManifest manifest, ReadManifest(*reader));
-  LOG(INFO) << "Unpacking split proto format (type: "
+  std::cout << "Unpacking split proto format (type: "
             << manifest.result_proto_type() << ") to standard protobuf ("
-            << AbslUnparseFlag(options.output_format) << " format)";
+            << AbslUnparseFlag(options.output_format) << " format)" << "\n";
 
   std::unique_ptr<google::protobuf::Message> message;
   if (manifest.result_proto_type() == "xla.gpu.GpuExecutableProto") {
@@ -245,8 +245,9 @@ absl::Status Unpack(std::unique_ptr<riegeli::Reader> reader,
 absl::Status PackAot(std::unique_ptr<riegeli::Reader> reader,
                      std::unique_ptr<riegeli::Writer> writer,
                      const PackOptions& options) {
-  LOG(INFO) << "Packing DeserializedSplitExecutableAndOptions to split "
-               "ExecutableAndOptionsProto";
+  std::cout << "Packing DeserializedSplitExecutableAndOptions to split "
+               "ExecutableAndOptionsProto"
+            << "\n";
   DeserializedSplitExecutableAndOptions wrapper;
   RETURN_IF_ERROR(ParseProto(*reader, options.input_format, wrapper));
 
@@ -267,9 +268,9 @@ absl::Status PackAot(std::unique_ptr<riegeli::Reader> reader,
 absl::Status UnpackAot(std::unique_ptr<riegeli::Reader> reader,
                        std::unique_ptr<riegeli::Writer> writer,
                        const UnpackOptions& options) {
-  LOG(INFO) << "Unpacking split ExecutableAndOptionsProto to "
+  std::cout << "Unpacking split ExecutableAndOptionsProto to "
                "DeserializedSplitExecutableAndOptions ("
-            << AbslUnparseFlag(options.output_format) << " format)";
+            << AbslUnparseFlag(options.output_format) << " format)" << "\n";
   ExecutableAndOptionsProto executable_and_options_proto;
   RETURN_IF_ERROR(
       ReadSplitProto(std::move(reader), executable_and_options_proto));

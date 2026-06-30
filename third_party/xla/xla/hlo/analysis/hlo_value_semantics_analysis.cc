@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -51,7 +50,6 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -1626,7 +1624,7 @@ absl::Status HloValueSemanticsPropagation::DefaultAction(
     HloInstruction* instruction) {
   RETURN_IF_ALREADY_PROPAGATED(instruction);
   std::vector<int64_t> operand_indices(instruction->operand_count());
-  std::iota(operand_indices.begin(), operand_indices.end(), 0);
+  absl::c_iota(operand_indices, 0);
   ASSIGN_OR_RETURN(HloValueSemantics semantics,
                    ComputeSemanticsFromOperands(instruction, operand_indices));
 
@@ -1660,7 +1658,7 @@ absl::Status HloValueSemanticsPropagation::HandleSparseDenseMatmul(
     HloInstruction* instruction) {
   RETURN_IF_ALREADY_PROPAGATED(instruction);
   std::vector<int64_t> operand_indices(instruction->operand_count());
-  std::iota(operand_indices.begin(), operand_indices.end(), 0);
+  absl::c_iota(operand_indices, 0);
 
   // Similar to ComputeSemanticsFromOperands except that we expand tuple inputs.
   std::vector<const HloInstruction*> flattened_operands;

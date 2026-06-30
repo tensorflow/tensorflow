@@ -93,6 +93,7 @@ cc_library(
         "//xla/codegen/tiling:tiled_hlo_instruction",
         "//xla/codegen/tiling:tiled_hlo_schedule",
         "//xla/codegen/tiling:tiling_specification",
+        "//xla/codegen/tiling/experimental:reshape_analysis",
         "//xla/codegen/tiling/experimental:scheduling",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",

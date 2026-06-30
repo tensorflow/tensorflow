@@ -12,7 +12,6 @@ load("//tensorflow/compiler/jit:package_groups.bzl", "legacy_jit_users_package_g
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
-    "if_static",
     "tf_cuda_tests_tags",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -134,7 +133,6 @@ cc_library(
     deps = if_libtpu([
         "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
         "//tensorflow/core/tpu/graph_rewrite:configure_tpu_embedding_rewrite_registration",
-        "@xla//xla/stream_executor/tpu:tpu_transfer_manager",
     ]),
     alwayslink = 1,
 )
@@ -202,42 +200,15 @@ cc_library(
 cc_library(
     name = "xla_tpu_device",
     srcs = ["xla_tpu_device.cc"],
-    hdrs = ["xla_tpu_device.h"],
     visibility = [":friends"],
     deps = [
         ":xla_device",
-        ":xla_device_context",
-        ":xla_kernel_creator",  # buildcleaner: keep
-        "//tensorflow/compiler/jit/kernels:xla_ops",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:layout_util",
-        "//tensorflow/compiler/tf2xla:tf2xla_util",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/jit/kernels:xla_ops_no_jit_rewrite_registration",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:session_options",
-        "//tensorflow/core/common_runtime:device",
-        "//tensorflow/core/common_runtime:device_factory",
-        "//tensorflow/core/common_runtime:dma_helper",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core/framework:kernel_def_proto_cc",
         "//tensorflow/core/tpu:tpu_defs",
-        "//tensorflow/core/tpu:tpu_node_device_util",
-        "//tensorflow/core/tpu:virtual_device",
-        "@com_google_absl//absl/types:optional",
-        "@tsl//tsl/platform:statusor",
-        "@xla//xla/stream_executor/tpu:tpu_executor_base",
-        "@xla//xla/stream_executor/tpu:tpu_node_context",
-        "@xla//xla/stream_executor/tpu:tpu_platform_interface",
-        "@xla//xla/stream_executor/tpu:tpu_stream_interface",
-        "@xla//xla/tpu:c_api_conversions",
-        "@xla//xla/tpu:status_helper",
-        "@xla//xla/tpu:tpu_api",
-    ] + if_static([
-        "//tensorflow/core/common_runtime:copy_tensor",
-        ":jit_compilation_passes",
-    ]),
+    ],
     alwayslink = 1,
 )
 

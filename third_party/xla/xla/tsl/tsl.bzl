@@ -796,6 +796,10 @@ def nvtx_headers():
 def tsl_google_bzl_deps():
     return []
 
+def if_include_google_deps(default_deps, no_google_deps = []):
+    _ = default_deps  # buildifier: disable=unused-variable
+    return no_google_deps
+
 def tsl_extra_config_settings():
     pass
 

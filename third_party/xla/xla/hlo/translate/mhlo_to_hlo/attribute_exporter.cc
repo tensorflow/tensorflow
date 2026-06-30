@@ -19,7 +19,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -40,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/LLVM.h"
@@ -63,7 +63,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -272,7 +271,7 @@ MeshInfo ExtractSdyMeshInfo(mlir::sdy::MeshAttr mesh_attr) {
       total_size *= size;
     }
     info.device_ids.resize(total_size);
-    std::iota(info.device_ids.begin(), info.device_ids.end(), 0);
+    absl::c_iota(info.device_ids, 0);
   }
   return info;
 }
@@ -297,7 +296,7 @@ MeshInfo ExtractStablehloMeshInfo(
       total_size *= size;
     }
     info.device_ids.resize(total_size);
-    std::iota(info.device_ids.begin(), info.device_ids.end(), 0);
+    absl::c_iota(info.device_ids, 0);
   }
   return info;
 }
@@ -311,7 +310,7 @@ xla::Mesh BuildXlaMesh(const MeshInfo& info) {
   }
 
   std::vector<int64_t> iota_ids(info.device_ids.size());
-  std::iota(iota_ids.begin(), iota_ids.end(), 0);
+  absl::c_iota(iota_ids, 0);
   if (info.device_ids == iota_ids) {
     return xla::Mesh(info.axes_sizes, axes_names_sv);
   }
@@ -911,6 +910,92 @@ mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op) {
     return xla::ShapeUtil::MakeTupleShape(subshapes);
   }
   return subshapes[0];
+}
+
+std::optional<OriginalValueProto> ProjectOriginalValueProto(
+    const std::optional<OriginalValueProto>& original_value, unsigned index,
+    unsigned num_results) {
+  if (!original_value || index >= num_results) {
+    return std::nullopt;
+  }
+
+  OriginalValueProto projected;
+  projected.set_is_synthetic_call(original_value->is_synthetic_call());
+
+  if (num_results <= 1) {
+    *projected.mutable_elements() = original_value->elements();
+    return projected;
+  }
+
+  for (const auto& element : original_value->elements()) {
+    if (element.shape_index_size() > 0 && element.shape_index(0) == index) {
+      auto* new_element = projected.add_elements();
+      for (int i = 1; i < element.shape_index_size(); ++i) {
+        new_element->add_shape_index(element.shape_index(i));
+      }
+      if (element.has_original_array()) {
+        *new_element->mutable_original_array() = element.original_array();
+      }
+    }
+  }
+
+  return projected;
+}
+
+std::optional<OriginalValueProto> ComposeOriginalValueProto(
+    llvm::ArrayRef<std::optional<OriginalValueProto>> protos) {
+  if (protos.empty()) {
+    return std::nullopt;
+  }
+
+  bool has_any_value = false;
+  for (const auto& proto : protos) {
+    if (proto) {
+      has_any_value = true;
+      break;
+    }
+  }
+  if (!has_any_value) {
+    return std::nullopt;
+  }
+
+  OriginalValueProto composed;
+  composed.set_is_synthetic_call(false);
+
+  if (protos.size() == 1) {
+    return protos[0];
+  }
+
+  for (unsigned i = 0; i < protos.size(); ++i) {
+    if (!protos[i]) {
+      continue;
+    }
+    for (const auto& element : protos[i]->elements()) {
+      auto* new_element = composed.add_elements();
+      new_element->add_shape_index(i);
+      for (int64_t idx : element.shape_index()) {
+        new_element->add_shape_index(idx);
+      }
+      if (element.has_original_array()) {
+        *new_element->mutable_original_array() = element.original_array();
+      }
+    }
+  }
+
+  return composed;
+}
+
+OriginalValueProto CreateEmptyOriginalValueProto(const Shape& shape) {
+  OriginalValueProto proto;
+  proto.set_is_synthetic_call(false);
+  ShapeUtil::ForEachLeafShape(
+      shape, [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+        auto* element = proto.add_elements();
+        for (int64_t idx : index) {
+          element->add_shape_index(idx);
+        }
+      });
+  return proto;
 }
 
 }  // namespace xla

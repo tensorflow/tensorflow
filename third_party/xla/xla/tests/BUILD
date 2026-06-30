@@ -3621,3 +3621,19 @@ xla_test(
         "//xla/tsl/platform:statusor",
     ],
 )
+
+cc_library(
+    name = "aot_interception_pjrt_client",
+    testonly = True,
+    srcs = ["aot_interception_pjrt_client.cc"],
+    hdrs = ["aot_interception_pjrt_client.h"],
+    deps = [
+        "//xla/hlo/builder:xla_computation",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:pjrt_executable",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)

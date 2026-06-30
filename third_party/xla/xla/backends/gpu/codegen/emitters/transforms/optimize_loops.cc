@@ -159,8 +159,12 @@ class OptimizeLoopsPass
 
   void runOnOperation() override {
     // First unroll loops. If unrolling is possible, we prefer it.
+    int max_unroll_factor = max_unroll_factor_;
+    if (max_unroll_factor == 0) {
+      max_unroll_factor = MaxUnrollFactor();
+    }
     mlir::RewritePatternSet unroll_patterns(&getContext());
-    unroll_patterns.add<UnrollLoops>(&getContext(), max_unroll_factor_);
+    unroll_patterns.add<UnrollLoops>(&getContext(), max_unroll_factor);
     if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),
                                                  std::move(unroll_patterns)))) {
       signalPassFailure();
@@ -170,13 +174,5 @@ class OptimizeLoopsPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateOptimizeLoopsPass(int max_unroll_factor) {
-  OptimizeLoopsPassOptions options;
-  options.max_unroll_factor_ =
-      max_unroll_factor ? max_unroll_factor : MaxUnrollFactor();
-  return std::make_unique<OptimizeLoopsPass>(options);
-}
-
 }  // namespace gpu
 }  // namespace xla

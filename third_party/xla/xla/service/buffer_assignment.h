@@ -675,10 +675,39 @@ class BufferAssignment {
   // Returns the HloModule used to construct this assignment.
   const HloModule& module() const { return *module_; }
 
+  // Clears all buffer allocations and assignment stats to allow re-runs of
+  // buffer assignment. Preserves read-only analyses (like `alias_analysis_`,
+  // `hlo_ordering_`, and `hlo_live_range_`) and the `cached_buffer_sizes_`
+  // cache.
+  void ClearAllocations() {
+    allocations_.clear();
+    temp_allocation_total_size_ = 0;
+    allocation_index_for_value_.clear();
+    stats_ = Stats();
+  }
+
+  // Creates and returns a new BufferAllocation, with no assigned
+  // LogicalBuffers. Ownership is maintained internally.
+  BufferAllocation* NewEmptyAllocation(int64_t size,
+                                       LogicalBuffer::Color color);
+
+  int64_t HloBufferSize(const HloBuffer& buffer) {
+    auto [it, inserted] = cached_buffer_sizes_.try_emplace(buffer.id());
+    if (inserted) {
+      int64_t result = 0;
+      for (const HloValue* value : buffer.values()) {
+        result = std::max(result, buffer_size_(*value));
+      }
+      it->second = result;
+    }
+    return it->second;
+  }
+
  private:
   // Only BufferAssigner can build or modify BufferAssignments.
   friend class BufferAssigner;
   friend class DefaultBufferAllocationsManagerForComputationsWithoutOrdering;
+  friend class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering;
 
   BufferAssignment(const HloModule* module,
                    std::unique_ptr<HloOrdering> hlo_ordering,
@@ -700,11 +729,6 @@ class BufferAssignment {
         (raw_value == -1) ? UINT64_MAX : raw_value;
   }
 
-  // Creates and returns a new BufferAllocation, with no assigned
-  // LogicalBuffers. Ownership is maintained internally.
-  BufferAllocation* NewEmptyAllocation(int64_t size,
-                                       LogicalBuffer::Color color);
-
   // Helper that calls NewEmptyAllocation and AddAssignment in one call,
   // creating an allocation containing a single LogicalBuffer.
   absl::StatusOr<BufferAllocation*> NewAllocation(const HloBuffer& buffer,
@@ -722,19 +746,6 @@ class BufferAssignment {
   // Mutable accessors for allocations.
   BufferAllocation* GetMutableAssignedAllocation(const HloBuffer& buffer);
   BufferAllocation* GetMutableAllocation(BufferAllocation::Index index);
-
-  int64_t HloBufferSize(const HloBuffer& buffer) {
-    auto iter = cached_buffer_sizes_.find(buffer.id());
-    if (iter != cached_buffer_sizes_.end()) {
-      return iter->second;
-    }
-    int64_t result = 0;
-    for (const HloValue* value : buffer.values()) {
-      result = std::max(result, buffer_size_(*value));
-    }
-    cached_buffer_sizes_.insert({buffer.id(), result});
-    return result;
-  }
 
   // Combines allocations of temporary buffers into one big BufferAllocation.
   absl::Status CombineTempAllocations(
@@ -838,6 +849,7 @@ class BufferAllocationsManagerForComputationsWithoutOrdering {
 // A class which constructs a buffer assignment.
 class BufferAssigner {
  public:
+  friend class BufferAssignmentTest;
   using Colorer =
       std::function<absl::Status(HloAliasAnalysis*, const HloOrdering&)>;
 
@@ -861,8 +873,9 @@ class BufferAssigner {
 
   // The order in which to process buffers during buffer assignment.
   enum class BufferOrder {
-    kBiggestFirst,  // Process the biggest buffers first.
-    kTopological,   // Process buffers in topological order.
+    kBiggestFirst,    // Process the biggest buffers first.
+    kTopological,     // Process buffers in topological order.
+    kLiveRangeStart,  // Process buffers sorted by live range start.
   };
 
   // Options for BufferAssigner::Run.
@@ -899,6 +912,11 @@ class BufferAssigner {
             buffer_assignment::
                 AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT;
 
+    buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
+        Value fallback_algorithm_for_computations_without_ordering =
+            buffer_assignment::
+                AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT;
+
     BufferOrder buffer_order = BufferOrder::kBiggestFirst;
 
     buffer_assignment::BufferAssignmentAlgorithmProto::Value
@@ -909,11 +927,18 @@ class BufferAssigner {
         fallback_algorithm =
             buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
 
+    // If true, evaluate memory usage and fallback to DEFAULT algorithm.
+    bool enable_fallback = false;
+
     // Optional callback to return the memory limit for a given buffer color.
     // If set and returns > 0, the returned limit is used instead of the
     // default module config's device memory size.
     std::function<int64_t(LogicalBuffer::Color)> color_memory_limit;
   };
+
+  static std::unique_ptr<BufferAllocationsManagerForComputationsWithoutOrdering>
+  CreateFastMergeManagerForTest(BufferAssignment* assignment,
+                                BufferAssigner* assigner);
 
   static CanUseAllocation DefaultCanUseAllocation() {
     return [](BufferValue::Color buffer_color,
@@ -958,13 +983,9 @@ class BufferAssigner {
   static absl::StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info,
-      LogicalBuffer::AlignmentFunction color_alignment, Options options);
+      LogicalBuffer::AlignmentFunction color_alignment, Options opts);
 
- private:
-  friend class DefaultBufferAllocationsManagerForComputationsWithoutOrdering;
-
-  BufferAssigner(const AliasInfo* alias_info, Options opts)
-      : alias_info_(alias_info), opts_(std::move(opts)) {}
+  BufferAssigner(const AliasInfo* alias_info, Options opts);
   virtual ~BufferAssigner() = default;
 
   // Create a buffer assignment.
@@ -973,7 +994,35 @@ class BufferAssigner {
       BufferValue::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment);
 
-  // Assigns buffers to the instructions in the given computations. "assignment"
+  // Tries to assign the given instruction to the given buffer. Returns if the
+  // assignment was successful.
+  absl::StatusOr<bool> MaybeAssignBuffer(BufferAllocation* allocation,
+                                         const HloBuffer& buffer,
+                                         BufferAssignment* assignment);
+
+  // Returns the memory limit for a given color. If no limit is configured,
+  // returns 0, indicating that fallback or FastMerge bounds don't apply.
+  int64_t GetMemoryLimit(const BufferAssignment& assignment,
+                         LogicalBuffer::Color color) const;
+
+ private:
+  absl::Status RunAssignBuffers(
+      const HloModule* module,
+      const std::vector<const HloComputation*>& global_computations,
+      const std::vector<const HloComputation*>& thread_local_computations,
+      BufferAssignment* assignment,
+      buffer_assignment::BufferAssignmentAlgorithmProto::Value
+          sequential_algorithm,
+      buffer_assignment::
+          AssignmentAlgorithmForComputationsWithoutOrderingProto::Value
+              non_sequential_algorithm);
+
+  absl::Status RunAssignBuffersWithFallback(
+      const HloModule* module,
+      const std::vector<const HloComputation*>& global_computations,
+      const std::vector<const HloComputation*>& thread_local_computations,
+      BufferAssignment* assignment);
+
   // is modified to reflect the new buffer assignments. If is_thread_local is
   // true, then all assigned buffers have the is_thread_local flag set to
   // true.
@@ -1082,12 +1131,6 @@ class BufferAssigner {
       LogicalBuffer::Color color,
       std::optional<BufferAssignment::BufferIsolationOptions>
           isolation_options);
-
-  // Tries to assign the given instruction to the given buffer. Returns if the
-  // assignment was successful.
-  absl::StatusOr<bool> MaybeAssignBuffer(BufferAllocation* allocation,
-                                         const HloBuffer& buffer,
-                                         BufferAssignment* assignment);
 
   // Split a set of buffers into several sets, each of which contains buffers
   // colored with the same color.

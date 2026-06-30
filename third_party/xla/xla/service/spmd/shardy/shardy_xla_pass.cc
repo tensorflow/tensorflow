@@ -444,7 +444,8 @@ absl::StatusOr<bool> eraseInlineableAttrForShardyManualComputations(
             instruction->frontend_attributes().map().find(kXlaInlineableAttr);
         if (it != instruction->frontend_attributes().map().end()) {
           absl::string_view value = it->second;
-          TF_RET_CHECK(value == "false" || value == "xla_late")
+          TF_RET_CHECK(value == "false" || value == "xla_late" ||
+                       value == "auto")
               << "Unexpected inlineable attribute value: " << value;
           instruction->erase_frontend_attribute(kXlaInlineableAttr);
           // TODO(b/436603025). CallInliner do not inline the Shardy related

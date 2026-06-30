@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/rnn/gru_ops.h"

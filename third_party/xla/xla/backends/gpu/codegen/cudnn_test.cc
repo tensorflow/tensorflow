@@ -154,6 +154,31 @@ class CuDnnFusionFileCheckTest : public CuDnnFusionTest {
   std::string output_directory_;
 };
 
+TEST_F(CuDnnFusionFileCheckTest, ClampGraphConvertedCorrectly) {
+  EXPECT_TRUE(*RunCuDnnFileCheck(R"(
+fd0 {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  d = f32[64,64] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p_min = f32[] constant(0.0)
+  p_max = f32[] constant(1.0)
+  b_min = f32[64,64] broadcast(p_min), dimensions={}
+  b_max = f32[64,64] broadcast(p_max), dimensions={}
+  ROOT c = f32[64,64] clamp(b_min, d, b_max)
+}
+
+ENTRY e {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  ROOT c0 = f32[64,64] fusion(p0, p1), kind=kCustom, calls=fd0,
+    backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
+})",
+                                 R"(
+CHECK: "mode": "MIN"
+CHECK: "mode": "MAX"
+)"));
+}
+
 TEST_F(CuDnnFusionFileCheckTest, F32DotGraphIsConvertedCorrectly) {
   EXPECT_TRUE(*RunCuDnnFileCheck(R"(
 fd0 {
@@ -171,37 +196,56 @@ ENTRY e {
                                  R"(
 CHECK: "nodes": [
 CHECK:   "inputs": {
-CHECK:     "A": "p0",
-CHECK:     "B": "p1"
+CHECK:     "A": 1,
+CHECK:     "B": 2
 CHECK:    },
 CHECK:    "outputs": {
-CHECK:     "C": "d"
+CHECK:     "C": 3
 CHECK:    },
 CHECK:    "tag": "MATMUL"
 CHECK:   }
 CHECK:  ],
 CHECK:  "tensors": {
-CHECK:   "d": {
-CHECK:    "data_type": "FLOAT",
-CHECK:    "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
-CHECK:    "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
-CHECK:    "uid": 3,
-CHECK:    "uid_assigned": true
-CHECK:   },
-CHECK:   "p0": {
-CHECK:    "data_type": "FLOAT",
-CHECK:    "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
-CHECK:    "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
-CHECK:    "uid": 1,
-CHECK:    "uid_assigned": true
-CHECK:   },
-CHECK:   "p1": {
-CHECK:    "data_type": "FLOAT",
-CHECK:    "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
-CHECK:    "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
-CHECK:    "uid": 2,
-CHECK:    "uid_assigned": true
-CHECK:   }
+CHECK:   "data_type": "FLOAT",
+CHECK:   "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
+CHECK:   "name": "p0",
+CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
+CHECK:   "uid": 1,
+CHECK:   "data_type": "FLOAT",
+CHECK:   "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
+CHECK:   "name": "p1",
+CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
+CHECK:   "uid": 2,
+CHECK:   "data_type": "FLOAT",
+CHECK:   "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
+CHECK:   "name": "d",
+CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
+CHECK:   "uid": 3,
+CHECK:   "uid_assigned": true
+)"));
+}
+
+TEST_F(CuDnnFusionFileCheckTest,
+       ScalarConstantBroadcastGraphConvertedCorrectly) {
+  EXPECT_TRUE(*RunCuDnnFileCheck(R"(
+fd0 {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  d = f32[64,64] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c0 = f32[] constant(2.5)
+  b0 = f32[64,64] broadcast(c0), dimensions={}
+  ROOT add = f32[64,64] add(d, b0)
+}
+
+ENTRY e {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  ROOT a0 = f32[64,64] fusion(p0, p1), kind=kCustom, calls=fd0,
+    backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
+})",
+                                 R"(
+CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*1[[:space:]]*}}],
+CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*1[[:space:]]*}}],
 )"));
 }
 
@@ -387,14 +431,14 @@ ENTRY e {
 
   EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(
 CHECK: "tensors"
-CHECK: "out"
-CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}128{{[[:space:]]*}}]
-CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}128,{{[[:space:]]*}}1{{[[:space:]]*}}]
-CHECK: "p0"
 CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}64{{[[:space:]]*}}]
+CHECK: "name": "p0"
 CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}64,{{[[:space:]]*}}1{{[[:space:]]*}}]
-CHECK: "p1"
 CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}64,{{[[:space:]]*}}128{{[[:space:]]*}}]
+CHECK: "name": "p1"
+CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}128,{{[[:space:]]*}}1{{[[:space:]]*}}]
+CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}128{{[[:space:]]*}}]
+CHECK: "name": "out"
 CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}128,{{[[:space:]]*}}1{{[[:space:]]*}}]
   )"));
 
@@ -420,15 +464,15 @@ ENTRY e {
 
   EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(
 CHECK: "tensors"
-CHECK: "out"
-CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}256,{{[[:space:]]*}}1{{[[:space:]]*}}]
-CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}256{{[[:space:]]*}}]
-CHECK: "p0"
 CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}256,{{[[:space:]]*}}64{{[[:space:]]*}}]
+CHECK: "name": "p0"
 CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}256{{[[:space:]]*}}]
-CHECK: "p1"
 CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}64,{{[[:space:]]*}}1{{[[:space:]]*}}]
+CHECK: "name": "p1"
 CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}64{{[[:space:]]*}}]
+CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}256,{{[[:space:]]*}}1{{[[:space:]]*}}]
+CHECK: "name": "out"
+CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}256{{[[:space:]]*}}]
   )"));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -1312,44 +1356,44 @@ CHECK: "nodes"
 CHECK: {
 CHECK: "block_size": [{{[[:space:]]*32[[:space:]]*}}]
 CHECK: "compute_data_type": "FLOAT"
-CHECK: "X": "lhs"
-CHECK: "scale": "lhs_scale"
+CHECK: "X": 1
+CHECK: "scale": 3
 CHECK: "Y": "result_lhs_dq"
 CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
 CHECK: {
 CHECK: "block_size": [{{[[:space:]]*32[[:space:]]*}}]
 CHECK: "compute_data_type": "FLOAT"
-CHECK: "X": "rhs"
-CHECK: "scale": "rhs_scale"
+CHECK: "X": 2
+CHECK: "scale": 4
 CHECK: "Y": "result_rhs_dq"
 CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
 CHECK: {
 CHECK: "A": "result_lhs_dq"
 CHECK: "B": "result_rhs_dq"
-CHECK: "C": "result"
+CHECK: "C": 5
 CHECK: "tag": "MATMUL"
 CHECK: "tensors"
-CHECK: "lhs":
 CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*256,[[:space:]]*128[[:space:]]*}}]
+CHECK: "name": "lhs"
 CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*128,[[:space:]]*1[[:space:]]*}}]
-CHECK: "lhs_scale":
+CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*128,[[:space:]]*384[[:space:]]*}}]
+CHECK: "name": "rhs"
+CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*1,[[:space:]]*128[[:space:]]*}}]
 CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*256,[[:space:]]*4[[:space:]]*}}]
+CHECK: "name": "lhs_scale"
 CHECK: "reordering_type": "F8_128x4"
 CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*4,[[:space:]]*1[[:space:]]*}}]
-CHECK: "result":
-CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*256,[[:space:]]*384[[:space:]]*}}]
-CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*384,[[:space:]]*1[[:space:]]*}}]
-CHECK: "result_lhs_dq":
-CHECK: "is_virtual": true
-CHECK: "result_rhs_dq":
-CHECK: "is_virtual": true
-CHECK: "rhs":
-CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*128,[[:space:]]*384[[:space:]]*}}]
-CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*1,[[:space:]]*128[[:space:]]*}}]
-CHECK: "rhs_scale":
 CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*4,[[:space:]]*384[[:space:]]*}}]
+CHECK: "name": "rhs_scale"
 CHECK: "reordering_type": "F8_128x4"
 CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*1,[[:space:]]*4[[:space:]]*}}]
+CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*256,[[:space:]]*384[[:space:]]*}}]
+CHECK: "name": "result"
+CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*384,[[:space:]]*1[[:space:]]*}}]
+CHECK: "is_virtual": true
+CHECK: "name": "result_lhs_dq"
+CHECK: "is_virtual": true
+CHECK: "name": "result_rhs_dq"
 )"));
 }
 
@@ -1374,13 +1418,13 @@ CHECK:  {
 CHECK:   "compute_data_type": "FLOAT",
 CHECK:   "dilation": [{{[[:space:]]*1,[[:space:]]*1[[:space:]]*}}],
 CHECK:   "inputs": {
-CHECK:    "W": "filter",
-CHECK:    "X": "input"
+CHECK:    "W": 2,
+CHECK:    "X": 1
 CHECK:   },
 CHECK:   "math_mode": "CROSS_CORRELATION",
 CHECK:   "name": "0",
 CHECK:   "outputs": {
-CHECK:    "Y": "conv"
+CHECK:    "Y": 3
 CHECK:   },
 CHECK:   "post_padding": [{{[[:space:]]*1,[[:space:]]*1[[:space:]]*}}],
 CHECK:   "pre_padding": [{{[[:space:]]*1,[[:space:]]*1[[:space:]]*}}],
@@ -1389,25 +1433,18 @@ CHECK:   "tag": "CONV_FPROP"
 CHECK:  }
 CHECK: ],
 CHECK:"tensors": {
-CHECK:  "conv": {
-CHECK:   "data_type": "FLOAT",
-CHECK:   "dim": [{{[[:space:]]*2,[[:space:]]*32,[[:space:]]*9,[[:space:]]*9[[:space:]]*}}],
-CHECK:   "name": "conv",
-CHECK:   "stride": [{{[[:space:]]*2592,[[:space:]]*1,[[:space:]]*288,[[:space:]]*32[[:space:]]*}}],
-CHECK:  },
-CHECK:  "filter": {
-CHECK:   "data_type": "FLOAT",
-CHECK:   "dim": [{{[[:space:]]*32,[[:space:]]*17,[[:space:]]*3,[[:space:]]*3[[:space:]]*}}],
-CHECK:   "name": "filter",
-CHECK:   "stride": [{{[[:space:]]*153,[[:space:]]*1,[[:space:]]*51,[[:space:]]*17[[:space:]]*}}],
-CHECK:  },
-CHECK:  "input": {
 CHECK:   "data_type": "FLOAT",
 CHECK:   "dim": [{{[[:space:]]*2,[[:space:]]*17,[[:space:]]*9,[[:space:]]*9[[:space:]]*}}],
 CHECK:   "name": "input",
 CHECK:   "stride": [{{[[:space:]]*1377,[[:space:]]*1,[[:space:]]*153,[[:space:]]*17[[:space:]]*}}],
-CHECK:  }
-CHECK: }
+CHECK:   "data_type": "FLOAT",
+CHECK:   "dim": [{{[[:space:]]*32,[[:space:]]*17,[[:space:]]*3,[[:space:]]*3[[:space:]]*}}],
+CHECK:   "name": "filter",
+CHECK:   "stride": [{{[[:space:]]*153,[[:space:]]*1,[[:space:]]*51,[[:space:]]*17[[:space:]]*}}],
+CHECK:   "data_type": "FLOAT",
+CHECK:   "dim": [{{[[:space:]]*2,[[:space:]]*32,[[:space:]]*9,[[:space:]]*9[[:space:]]*}}],
+CHECK:   "name": "conv",
+CHECK:   "stride": [{{[[:space:]]*2592,[[:space:]]*1,[[:space:]]*288,[[:space:]]*32[[:space:]]*}}],
 )"));
 }
 }  // namespace

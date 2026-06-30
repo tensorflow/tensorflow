@@ -15,16 +15,17 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
-#include <atomic>
-
-#include "tensorflow/core/platform/errors.h"
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/kernels/bincount_op.h"
+
+#include <atomic>
+
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bincount_op.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/sparse_utils.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -302,9 +303,9 @@ class DenseBincountOp : public OpKernel {
                     weights.shape().DebugString())));
 
     Tidx size = size_t.scalar<Tidx>()();
-    OP_REQUIRES(
-        ctx, size >= 0,
-        errors::InvalidArgument("size (", size, ") must be non-negative"));
+    OP_REQUIRES(ctx, size >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("size (", size, ") must be non-negative")));
 
     Tensor* out_t;
     functor::SetZeroFunctor<Device, T> fill;
@@ -402,13 +403,18 @@ class SparseBincountOp : public OpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "Shape must be rank 0 but is rank ", size_t.dims())));
     Tidx size = size_t.scalar<Tidx>()();
-    OP_REQUIRES(
-        ctx, size >= 0,
-        errors::InvalidArgument("size (", size, ") must be non-negative"));
+    OP_REQUIRES(ctx, size >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("size (", size, ") must be non-negative")));
     OP_REQUIRES_OK(ctx, sparse_utils::ValidateSparseTensor<int64_t>(
                             indices, values, dense_shape,
                             sparse_utils::IndexValidation::kUnordered));
-            
+
+    OP_REQUIRES(ctx, dense_shape.NumElements() > 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "dense_shape must have at least 1 dimension, got ",
+                    dense_shape.NumElements())));
+
     bool is_1d = dense_shape.NumElements() == 1;
 
     Tensor* out_t;
@@ -493,9 +499,9 @@ class RaggedBincountOp : public OpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "Shape must be rank 0 but is rank ", size_t.dims())));
     Tidx size = size_t.scalar<Tidx>()();
-    OP_REQUIRES(
-        ctx, size >= 0,
-        errors::InvalidArgument("size (", size, ") must be non-negative"));
+    OP_REQUIRES(ctx, size >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("size (", size, ") must be non-negative")));
 
     int num_rows = splits.size() - 1;
     int num_values = values.size();

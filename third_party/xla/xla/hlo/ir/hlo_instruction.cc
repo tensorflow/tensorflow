@@ -85,11 +85,9 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/sort_json.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -434,8 +432,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kAsyncUpdate: {
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "Async update requires one singular operand";
+      TF_RET_CHECK(proto.operand_ids_size() >= 1)
+          << "Async update requires at least one operand";
       HloInstruction* prev_op = operands(0);
       TF_RET_CHECK(prev_op->IsAsynchronous())
           << "Async update requires its operand to be an asynchronous op";
@@ -453,7 +451,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             << " async_wrapped_computation, but sees "
             << computations(0)->name();
       }
-      instruction = CreateAsyncUpdate(shape, prev_op);
+      instruction = CreateAsyncUpdate(shape, all_operands());
       break;
     }
     case HloOpcode::kAsyncDone: {
@@ -620,8 +618,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(proto.operand_ids_size() == 1)
           << "TopK instruction should have exactly 1 operand but has "
           << proto.operand_ids_size();
-      instruction =
-          CreateTopK(shape, all_operands()[0], proto.k(), proto.largest());
+      instruction = CreateTopK(shape, all_operands()[0], proto.k(),
+                               proto.largest(), proto.is_stable());
       break;
     }
     case HloOpcode::kTranspose:
@@ -1476,8 +1474,10 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTopK(
-    const Shape& shape, HloInstruction* input, int64_t k, bool largest) {
-  return std::make_unique<HloTopKInstruction>(shape, input, k, largest);
+    const Shape& shape, HloInstruction* input, int64_t k, bool largest,
+    bool is_stable) {
+  return std::make_unique<HloTopKInstruction>(shape, input, k, largest,
+                                              is_stable);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -3017,7 +3017,7 @@ HloInstruction::LatestNonGteAncestorAndIndex() const {
   }
 
   // We built up index in the reverse order from what we want.
-  std::reverse(index.begin(), index.end());
+  absl::c_reverse(index);
 
   return {hlo, index};
 }

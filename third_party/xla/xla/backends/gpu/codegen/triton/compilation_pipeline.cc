@@ -63,7 +63,7 @@ void CreateTritonXlaPipeline(
   }
 
   if (enable_pdl) {
-    pm->addPass(CreateInsertPDLPass());
+    pm->addPass(createInsertPDLPass());
   }
   mlir::triton::xla::TritonXLAExtractInsertToTritonPassOptions
       extract_insert_options;
@@ -81,7 +81,7 @@ void CreateTritonXlaPipeline(
 
   // Lower xla_gpu.apply_indexing into arithmetic ops.
   pm->addPass(emitters::createSimplifyAffinePass());
-  pm->addPass(CreateConvertIndexTypePass());
+  pm->addPass(createConvertIndexTypePass());
   pm->addPass(mlir::createCompositeFixedPointPass(
       "TritonXLAUnswitchLoopsComposite", [](mlir::OpPassManager& pm) {
         // Loop unswitcher needs loop invariant code to be outside of the loop.

@@ -120,7 +120,7 @@ func.func @type_mismatch_insert(%src: tensor<24xf64>, %dst: memref<1024xf32>) {
 // -----
 
 func.func @dot_scaled(%lhs: tensor<128x128xf32>, %lhs_scale: tensor<128x4xi8>, %rhs: tensor<128x256xf32>, %rhs_scale: tensor<256x4xi8>, %acc: tensor<128x256xf32>) -> tensor<128x256xf32> {
-  %0 = xtile.dot_scaled %lhs scale %lhs_scale, %rhs scale %rhs_scale {fastMath = true} : tensor<128x128xf32>, tensor<128x4xi8> * tensor<128x256xf32>, tensor<256x4xi8> -> tensor<128x256xf32>
+  %0 = xtile.dot_scaled %lhs scale %lhs_scale, %rhs scale %rhs_scale {fastMath = true, lhs_elem_type = f32, rhs_elem_type = f32} : tensor<128x128xf32>, tensor<128x4xi8> * tensor<128x256xf32>, tensor<256x4xi8> -> tensor<128x256xf32>
   return %0 : tensor<128x256xf32>
 }
 

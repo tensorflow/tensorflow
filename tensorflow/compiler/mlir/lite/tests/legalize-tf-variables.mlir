@@ -87,7 +87,7 @@ module attributes {tf_saved_model.semantics, tfl._legalize_tfl_variables = true}
   func.func @serving_default() ->
     () attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = ""}, tf_saved_model.exported_names = ["serving_default"]} {
     %handle_0 = "tf.VarHandleOp"() {container="c", shared_name="a"} : () -> tensor<!tf_type.resource<tensor<1x10xui64>>>
-    %cst = arith.constant dense<2> : tensor<1x10xui64>
+    %cst = "tf.Const"() {value = dense<2> : tensor<1x10xui64>} : () -> tensor<1x10xui64>
     "tf.AssignVariableOp"(%handle_0, %cst) : (tensor<!tf_type.resource<tensor<1x10xui64>>>, tensor<1x10xui64>) -> ()
     func.return
   }

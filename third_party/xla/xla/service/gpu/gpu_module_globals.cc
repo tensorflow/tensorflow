@@ -69,11 +69,9 @@ GpuModuleGlobals::ConstantInfo::FromProto(
           "Instruction for ", proto.symbol_name(), " constant missing."));
     }
     const HloInstruction* instr = it->second;
-    const Literal& literal = instr->literal();
-    auto base = static_cast<const uint8_t*>(literal.untyped_data());
-    return ConstantInfo{proto.symbol_name(),
-                        DenseDataIntermediate::Alias(
-                            absl::MakeSpan(base, base + literal.size_bytes())),
+    ASSIGN_OR_RETURN(DenseDataIntermediate content,
+                     LiteralToXlaFormat(instr->literal()));
+    return ConstantInfo{proto.symbol_name(), content,
                         static_cast<int>(proto.allocation_index())};
   }
   return ConstantInfo{proto.symbol_name(),

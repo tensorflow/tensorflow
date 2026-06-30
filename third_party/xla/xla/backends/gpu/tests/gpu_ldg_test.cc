@@ -27,14 +27,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
-class GpuLdgTest : public GpuPjRtCodegenTest {};
+using GpuLdgTest = GpuPjRtCodegenTest;
 
 // Parameters are never overwritten, so parameter reads should get ld.global.nc
 // reads.
@@ -192,6 +194,89 @@ TEST_F(NonInvariantLdgTest, DoSelectiveCoherentLoadWithNoInvariantAnnotation) {
      CHECK: ld.global.b16
      CHECK: ld.global.nc.b16
    )");
+}
+
+class PdlLdgTest : public GpuLdgTest {
+ protected:
+  void SetUp() override {
+    GpuLdgTest::SetUp();
+    if (const auto& cc = device_description().cuda_compute_capability();
+        !cc.IsAtLeastHopper()) {
+      GTEST_SKIP() << "Test requires Hopper or higher";
+    }
+  }
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> CreateTestModule(
+      bool enable_pdl_launch) {
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_pdl(true);
+    debug_options.set_xla_gpu_enable_pdl_launch(enable_pdl_launch);
+    HloModuleConfig config;
+    config.set_debug_options(debug_options);
+    return ParseAndReturnVerifiedModule(R"(
+HloModule m, is_scheduled=true
+
+triton_gemm {
+  lhs = f16[15,19] parameter(0)
+  rhs = f16[19,17] parameter(1)
+  dot = f16[15,17] dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[64]}
+}
+
+add {
+  a = f16[15, 17] parameter(0)
+  b = f16[15, 17] parameter(1)
+  c = f16[15, 17] add(a, b)
+}
+
+e {
+  lhs = f16[15,19] parameter(0)
+  rhs = f16[19,17] parameter(1)
+  triton_gemm = f16[15,17] fusion(lhs, rhs), kind=kCustom,
+    calls=triton_gemm, backend_config={
+      fusion_backend_config:{
+        kind:"__triton_nested_gemm_fusion",
+        block_level_fusion_config:{
+          output_tiles:[{sizes:[64,32]}],
+          num_stages:2,
+          num_warps:8,
+          num_ctas:1
+        }
+      }
+    }
+  x = f16[15, 17] parameter(2)
+  a = f16[15, 17] fusion(triton_gemm, x), kind=kLoop, calls=add
+  t = tuple(triton_gemm, a)
+})",
+                                        config);
+  }
+};
+
+TEST_F(PdlLdgTest, DoNonCoherentLoadWhenPrecedentKernelHasNoPdlLaunch) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       CreateTestModule(/*enable_pdl_launch=*/false));
+  CompileAndOptionallyVerifyPtx(std::move(module),
+                                R"(
+    CHECK-LABEL: .entry triton_gemm
+    CHECK-NOT: griddepcontrol.launch_dependents
+    CHECK-LABEL: .entry loop_add_fusion
+    CHECK-NOT: ld.global.b16
+    CHECK: ld.global.nc.b16
+    CHECK: ld.global.nc.b16
+  )");
+}
+
+TEST_F(PdlLdgTest, DoCoherentLoadWhenPrecedentKernelHasPdlLaunch) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       CreateTestModule(/*enable_pdl_launch=*/true));
+  CompileAndOptionallyVerifyPtx(std::move(module),
+                                R"(
+    CHECK-LABEL: .entry triton_gemm
+    CHECK: griddepcontrol.launch_dependents
+    CHECK-LABEL: .entry loop_add_fusion
+    CHECK: ld.global.b16
+    CHECK: ld.global.nc.b16
+  )");
 }
 
 }  // namespace

@@ -74,6 +74,8 @@ class CommandBufferThunk : public Thunk {
   absl::StatusOr<se::DeviceAddressBase> GetCommandBufferAllocationAddress(
       const ExecuteParams& params, int64_t index);
 
+  BufferUses buffer_uses() const override { return {}; }
+
   absl::Status WalkNested(Walker callback) override;
 
   std::string ToString(int indent) const override;

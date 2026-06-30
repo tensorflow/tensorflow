@@ -66,6 +66,7 @@ tf_cc_binary(
     ],
     deps = TFG_GRAPH_TRANSFORM_DEPS + [
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:Support",
     ],
@@ -82,6 +83,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = TFG_GRAPH_TRANSFORM_DEPS + [
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:Support",
     ],

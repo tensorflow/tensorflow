@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/executor.h"
 
 namespace xla::gpu {
@@ -38,7 +39,8 @@ class NcclSymmetricMemory final : public SymmetricMemory {
   static absl::StatusOr<std::unique_ptr<NcclSymmetricMemory>> Create(
       std::shared_ptr<NcclCommState> comm_state,
       stream_executor::DeviceAddressBase addr,
-      std::shared_ptr<tsl::Executor> executor);
+      std::shared_ptr<tsl::Executor> executor,
+      stream_executor::StreamExecutor* stream_executor);
 
   stream_executor::DeviceAddressBase addr() const final;
   absl::StatusOr<stream_executor::DeviceAddressBase> multimem_addr()

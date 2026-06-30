@@ -5,12 +5,12 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1289 @@
+@@ -0,0 +1,1290 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
-+# load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
-+# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +# copybara:uncomment load("//tools/build_defs/license:license.bzl", "license")
 +
@@ -31,6 +31,7 @@ new file mode 100644
 +        # "//third_party/tensorflow/compiler/xla:__subpackages__",  # bchetioui@
 +        # "@xla-experimental//gpu:__subpackages__",  # csigg@
 +        # "@xla-experimental//tools/triton:__subpackages__",  # vwbaker@
++        # "@xla-experimental//rosetta:__subpackages__",
 +        # "//third_party/py/enzyme_ad:__subpackages__",  # wmoses@
 +        # # Triton-internal visibility
 +        # "@triton//:__subpackages__",
@@ -1304,7 +1305,7 @@ new file mode 100644
 +# NOTE: Do not depend on any targets from this directory,
 +# but use //third_party/py/triton instead.
 +
-+# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 +load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
 +
@@ -2150,7 +2151,7 @@ new file mode 100644
 --- /dev/null
 +++ b/test/BUILD
 @@ -0,0 +1,119 @@
-+# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +
 +# copybara:uncomment_begin
 +# load("//third_party/llvm/build_defs:lit.bzl", "glob_lit_tests")
@@ -2275,7 +2276,7 @@ new file mode 100644
 --- /dev/null
 +++ b/third_party/amd/BUILD
 @@ -0,0 +1,382 @@
-+# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
 +package(
@@ -2663,7 +2664,7 @@ new file mode 100644
 --- /dev/null
 +++ b/third_party/amd/backend/BUILD
 @@ -0,0 +1,46 @@
-+# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +
 +package(
 +    # copybara:uncomment_begin
@@ -2715,7 +2716,7 @@ new file mode 100644
 --- /dev/null
 +++ b/third_party/f2reduce/BUILD
 @@ -0,0 +1,40 @@
-+# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +# copybara:uncomment load("//tools/build_defs/license:license.bzl", "license")
 +
 +package(
@@ -2761,7 +2762,7 @@ new file mode 100644
 --- /dev/null
 +++ b/third_party/nvidia/BUILD
 @@ -0,0 +1,558 @@
-+# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +# copybara:uncomment load("@pybind11_bazel//:build_defs.bzl", "pybind_library")
 +
@@ -3405,7 +3406,7 @@ new file mode 100644
 --- /dev/null
 +++ b/third_party/proton/BUILD
 @@ -0,0 +1,435 @@
-+# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
 +
@@ -3919,7 +3920,7 @@ new file mode 100644
 --- /dev/null
 +++ b/unittest/BUILD
 @@ -0,0 +1,158 @@
-+# load("@rules_cc//cc:cc_test.bzl", "cc_test")
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
 +load("//tools/build_defs/build_test:build_test.bzl", "build_test")
 +
 +package(

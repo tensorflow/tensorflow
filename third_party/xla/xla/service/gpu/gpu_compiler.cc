@@ -121,6 +121,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/backends/gpu/transforms/layout_assignment.h"
 #include "xla/backends/gpu/transforms/move_copy_to_users.h"
+#include "xla/backends/gpu/transforms/pdl_launch_annotation.h"
 #include "xla/backends/gpu/transforms/ragged_all_to_all_canonicalizer.h"
 #include "xla/backends/gpu/transforms/ragged_all_to_all_decomposer.h"
 #include "xla/backends/gpu/transforms/ragged_all_to_all_multi_host_decomposer.h"
@@ -3289,6 +3290,13 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     auto& pipeline =
         main_pipeline.AddPass<HloPassPipeline>("sanitize-constant-names");
     pipeline.AddPass<SanitizeConstantNames>();
+  }
+
+  if (IsPdlLaunchInsertionEnabled(module->config().debug_options(),
+                                  gpu_device_info.gpu_compute_capability())) {
+    HloPassPipeline& pipeline =
+        main_pipeline.AddPass<HloPassPipeline>("pdl-launch-annotation");
+    pipeline.AddPass<PdlLaunchAnnotationPass>();
   }
 
   if (module->config().debug_options().xla_gpu_pgle_accuracy_checker() ==

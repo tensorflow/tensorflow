@@ -2303,29 +2303,38 @@ TEST_P(ArrayImplHashTest, HashValuesInconsistentReplicas) {
 
   absl::Span<Device* const> devices =
       client->addressable_devices().subspan(0, 2);
+  ASSERT_OK_AND_ASSIGN(
+      auto array0,
+      client->MakeArrayFromHostBuffer(
+          data0.data(), dtype, shape, /*byte_strides=*/std::nullopt,
+          SingleDeviceSharding::Create(devices[0], MemoryKind()),
+          /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto array1,
+      client->MakeArrayFromHostBuffer(
+          data1.data(), dtype, shape, /*byte_strides=*/std::nullopt,
+          SingleDeviceSharding::Create(devices[1], MemoryKind()),
+          /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+
+  std::vector<ArrayRef> arrays = {array0, array1};
+
   ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
                        client->MakeDeviceList(devices));
   ShardingRef sharding = ConcreteEvenSharding::Create(
       device_list, MemoryKind(), shape, /*shard_shape=*/shape,
       /*is_fully_replicated=*/true);
 
-  std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs;
-  specs.push_back({
-      /*buffers=*/{{{0},
-                    {data0.data(), dtype, shape,
-                     /*byte_strides=*/std::nullopt, /*layout=*/nullptr}},
-                   {{1},
-                    {data1.data(), dtype, shape,
-                     /*byte_strides=*/std::nullopt, /*layout=*/nullptr}}},
-      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
-  });
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       client->AssembleArrayFromSingleDeviceArrays(
+                           dtype, shape, sharding, absl::MakeSpan(arrays),
+                           ArrayCopySemantics::kAlwaysCopy,
+                           SingleDeviceShardSemantics::kAddressableShards));
 
-  ASSERT_OK_AND_ASSIGN(
-      std::vector<ArrayRef> arrays,
-      client->MakeArraysFromHostBufferShards(
-          absl::MakeSpan(specs),
-          Client::HostBufferSemantics::kImmutableOnlyDuringCall));
-  ArrayRef array = arrays.front();
   ASSERT_OK(array->GetReadyFuture().Await());
 
   absl::StatusOr<std::vector<uint64_t>> result =

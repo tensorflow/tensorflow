@@ -50,6 +50,7 @@ cc_library(
         "//xla/codegen/xtile/codegen:fusion_emitter",
         "//xla/codegen/xtile/codegen:tiled_emitter_constraints",
         "//xla/codegen/xtile/ir:xtile",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/runtime:work_dimensions",

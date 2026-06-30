@@ -329,6 +329,24 @@ inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
 int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode);
 
+class NcclSymmetricBuffersSpec {
+ public:
+  explicit NcclSymmetricBuffersSpec(const DebugOptions& debug_options);
+
+  bool IsEnabled(const HloInstruction& inst) const;
+
+ private:
+  struct Filter {
+    DebugOptions::CollectiveOpType collective;
+    std::optional<int64_t> max_size_bytes;
+    std::optional<PrimitiveType> op_type;
+  };
+  std::vector<Filter> filters_;
+};
+
+bool IsNcclSymmetricBuffersEnabledForCollective(
+    const HloInstruction* instruction, const DebugOptions& opts);
+
 }  // end namespace xla
 
 #endif  // XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_

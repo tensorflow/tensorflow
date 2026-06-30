@@ -53,8 +53,8 @@ xla_cc_binary(
 deviceless_tests = [
     "collectives/all_reduce.hlo",
     "collectives/all_gather.hlo",
+    "concat/concat_active_scalar_constant.hlo",
     "concat/concat_offset_not_a_multiple_of_tile_size.hlo",
-    "concat/concat_repro_crash.hlo",
     "constraints/max_tensor_elements_violation.hlo",
     "dot/duplicate_dot_operand.hlo",
 ]

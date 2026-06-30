@@ -174,6 +174,10 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
   // Ops that require special handling.
   if (user->opcode() == HloOpcode::kCollectivePermute &&
       user->operands().size() == 4) {
+    auto cp = Cast<HloCollectivePermuteInstruction>(user);
+    if (!cp->inplace()) {
+      return {};
+    }
     if (user->operand(1)->shape().IsTuple()) {
       std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs(
           {{HloOperandIndex{1, {}}, {}}});

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
@@ -51,6 +53,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/codegen/tiling/experimental/reshape_analysis.h"
 #include "xla/codegen/tiling/experimental/scheduling.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
@@ -681,6 +684,31 @@ absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
           .getResult());
 }
 
+// Trivial dimensions in output might be tiled with tile size > 1 and a
+// simple reshape op will fail as tile size of input and output are
+// different. For example:
+// f32[1,8] result = reshape(f32[2,4] operand)
+// where `result` has tile sizes [2,8]. Simple reshape will fail as we go from
+// 8 to 16 elements in a tile.
+// But if we represent this as a reshape followed by a broadcast
+//   [2,4] - reshape -> [8] - broadcast -> [1,8]
+// Broadcast handles the expansion of the tile size.
+absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
+    mlir::ImplicitLocOpBuilder& b, const Shape& output_shape,
+    llvm::ArrayRef<int64_t> output_tile_sizes, TensorValue input) {
+  SmallVector<int64_t> dim_positions =
+      ge::PositionsOfNonTrivialDims(output_shape.dimensions());
+  SmallVector<int64_t> reshape_tile_sizes;
+  reshape_tile_sizes.reserve(dim_positions.size());
+  for (int64_t dim : dim_positions) {
+    reshape_tile_sizes.push_back(output_tile_sizes[dim]);
+  }
+  ASSIGN_OR_RETURN(TensorValue re,
+                   EmitTiledReshape(b, reshape_tile_sizes, input));
+  // Instead of expand we create broadcast as some tile sizes might be > 1.
+  return xtile::BroadcastInDims(b, re, output_tile_sizes, dim_positions);
+}
+
 absl::StatusOr<TensorValue> EmitBitcast(
     EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_bitcast,
     TensorValue input) {
@@ -726,7 +754,8 @@ absl::StatusOr<TensorValue> EmitBitcast(
   // Bitcast is reshape.
   if (ShapeUtil::ReshapeIsBitcast(input_shape, output_shape,
                                   /*ignore_element_type=*/true)) {
-    return EmitTiledReshape(b, output_tile_sizes, input);
+    return EmitTiledBroadcastedReshape(b, output_shape, output_tile_sizes,
+                                       input);
   }
 
   // Bitcast is decomposable to a transpose+reshape+transpose.
@@ -765,8 +794,10 @@ absl::StatusOr<TensorValue> EmitBitcast(
   if (ShapeUtil::Equal(trt->transpose1_shape, trt->reshape_shape)) {
     normalized_reshape = normalized_input;
   } else {
-    ASSIGN_OR_RETURN(normalized_reshape,
-                     EmitTiledReshape(b, reshape_tile_sizes, normalized_input));
+    ASSIGN_OR_RETURN(
+        normalized_reshape,
+        EmitTiledBroadcastedReshape(b, trt->reshape_shape, reshape_tile_sizes,
+                                    normalized_input));
   }
 
   // The final transpose simply uses the tile sizes computed for the original
@@ -1033,26 +1064,17 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
   // Please keep the cases in alphabetical order.
   switch (hlo->opcode()) {
-    case HloOpcode::kAllGather:
-    case HloOpcode::kAllGatherStart:
-    case HloOpcode::kAllGatherDone: {
-      // AllGatherStart and AllGatherDone are no-ops.
-      // Tile extraction handles the data movement.
+    case HloOpcode::kAllGather: {
+      // AllGather is a no-op. Tile extraction handles the data movement.
       return emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(0));
     }
-    case (HloOpcode::kAllReduceStart): {
+    case HloOpcode::kAllReduce: {
       const HloComputation* computation =
           fusion.fused_instructions_computation();
       const HloInstruction* root_instruction = computation->root_instruction();
-      if (root_instruction->opcode() == HloOpcode::kAllReduceDone) {
-        root_instruction = root_instruction->operand(0);
-      }
       return EmitAllReduce(emitter_ctx,
                            xla::Cast<HloAllReduceInstruction>(root_instruction),
                            tiled_hlo, operands);
-    }
-    case (HloOpcode::kAllReduceDone): {
-      return emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(0));
     }
     case HloOpcode::kBitcast: {
       return EmitBitcast(emitter_ctx, tiled_hlo,
@@ -1063,7 +1085,9 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     }
     case HloOpcode::kConstant: {
       if (ShapeUtil::IsEffectiveScalar(hlo->shape())) {
-        return EmitConstant(b, *hlo);
+        ASSIGN_OR_RETURN(auto tile_sizes,
+                         tiled_hlo.tile().GetStaticTileSizes());
+        return EmitConstant(b, *hlo, GetPaddedTileSizes(tile_sizes));
       }
       return absl::UnimplementedError(
           absl::StrCat("Unsupported non-scalar constant ", hlo->ToString()));

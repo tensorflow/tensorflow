@@ -157,6 +157,42 @@ TEST_F(TilingSpaceTest, SingleOutputReductionDim) {
   )"));
 }
 
+TEST_F(TilingSpaceTest, SingleOutputScanDim) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add = f32[] add(p0, p1)
+      ROOT tuple = (f32[], f32[]) tuple(add, add)
+    }
+    fused_computation {
+      p0 = f32[150] parameter(0)
+      p1 = f32[] constant(0.0)
+      scan = (f32[150], f32[]) scan(p0, p1), dimensions={0}, num_carries=1, is_associative=false, to_apply=add
+      ROOT get-tuple-element = f32[150] get-tuple-element(scan), index=0
+    }
+    ENTRY e {
+      p0 = f32[150] parameter(0)
+      ROOT fusion = f32[150] fusion(p0), kind=kLoop, calls=fused_computation
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_THAT(*tiling_space, MatchString(R"(
+    Dimensions:
+      0 type: parallel size: 150 dim ID:0
+        hlo: %get-tuple-element = f32[150]{0} get-tuple-element(%scan), index=0
+    Root tiles:
+      0 root tile:
+           offsets [tid_0 * ts_0] sizes [ts_0]
+           strides [1] upper bounds [150]
+    Constraints:
+      -v0 + 150 in [0, 0]
+  )"));
+}
+
 TEST_F(TilingSpaceTest, VariadicReduce) {
   auto root = ParseAndGetRoot(R"(
     HloModule m

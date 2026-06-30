@@ -30,10 +30,38 @@ cc_library(
 )
 
 cc_library(
+    name = "autotune_fingerprint",
+    srcs = ["autotune_fingerprint.cc"],
+    hdrs = ["autotune_fingerprint.h"],
+    deps = [
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
+        "@tsl//tsl/platform:fingerprint",
+    ],
+)
+
+xla_cc_test(
+    name = "autotune_fingerprint_test",
+    srcs = ["autotune_fingerprint_test.cc"],
+    deps = [
+        ":autotune_fingerprint",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:fingerprint",
+    ],
+)
+
+cc_library(
     name = "hlo_extractor",
     srcs = ["hlo_extractor.cc"],
     hdrs = ["hlo_extractor.h"],
     deps = [
+        ":autotune_fingerprint",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/util:sorted_range",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -233,10 +261,162 @@ cc_library(
         ":backend_config_proto_cc",
         ":backends_proto_cc",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "persistent_cache",
+    srcs = ["persistent_cache.cc"],
+    hdrs = ["persistent_cache.h"],
+    deps = [
+        ":autotune_fingerprint",
+        ":autotuner_cache_interface",
+        ":autotuning_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_cc_test(
+    name = "persistent_cache_test",
+    srcs = ["persistent_cache_test.cc"],
+    deps = [
+        ":autotuner_cache_interface",
+        ":backends_proto_cc",
+        ":persistent_cache",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:protobuf",
+    ],
+)
+
+cc_library(
+    name = "directory_cache",
+    srcs = ["directory_cache.cc"],
+    hdrs = ["directory_cache.h"],
+    deps = [
+        ":autotuner_cache_interface",
+        ":autotuning_proto_cc",
+        ":persistent_cache",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_cc_test(
+    name = "directory_cache_test",
+    srcs = ["directory_cache_test.cc"],
+    deps = [
+        ":autotuner_cache_interface",
+        ":backends_proto_cc",
+        ":directory_cache",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/testing:temporary_directory",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+cc_library(
+    name = "tiered_cache",
+    srcs = ["tiered_cache.cc"],
+    hdrs = ["tiered_cache.h"],
+    deps = [
+        ":autotuner_cache_interface",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "tiered_cache_test",
+    srcs = ["tiered_cache_test.cc"],
+    deps = [
+        ":autotuner_cache_interface",
+        ":backends_proto_cc",
+        ":directory_cache",
+        ":local_cache",
+        ":tiered_cache",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/testing:temporary_directory",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+cc_library(
+    name = "local_cache",
+    srcs = ["local_cache.cc"],
+    hdrs = ["local_cache.h"],
+    deps = [
+        ":autotune_fingerprint",
+        ":autotuner_cache_interface",
+        ":autotuning_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:fingerprint",
+    ],
+)
+
+xla_cc_test(
+    name = "local_cache_test",
+    srcs = ["local_cache_test.cc"],
+    deps = [
+        ":autotuner_cache_interface",
+        ":backends_proto_cc",
+        ":local_cache",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

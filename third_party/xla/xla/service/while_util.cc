@@ -677,6 +677,8 @@ void AppendToWhileLoopOriginalValue(
       while_shape.tuple_shapes().size() - new_while_input_tuple_elements.size();
   append_to_original_value(while_instr->while_init(), next_index);
   append_to_original_value(while_instr, next_index);
+  append_to_original_value(while_instr->while_body()->root_instruction(),
+                           next_index);
 }
 
 }  // namespace xla

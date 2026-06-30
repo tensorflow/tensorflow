@@ -296,7 +296,8 @@ mlir::Value Cast(mlir::ImplicitLocOpBuilder& b, mlir::Value value,
 
 // Emits a scalar constant.
 absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
-    mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant);
+    mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant,
+    std::optional<llvm::ArrayRef<int64_t>> tile_shape);
 
 absl::StatusOr<mlir::Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
                                             const HloInstruction& hlo,

@@ -568,7 +568,7 @@ absl::Status CommandExecutor::RecordUpdate(
 
     Command* command = commands_[id];
 
-    if (command->requires_update()) {
+    if (command->requires_update_on_execute()) {
       return false;
     }
 
@@ -579,10 +579,10 @@ absl::Status CommandExecutor::RecordUpdate(
     // executions and no update is needed.
     //
     // Note: CollectiveThunk satisfies both IsTracedCommand() and
-    // requires_initialization(), but the requires_initialization() check below
-    // is intentionally unreachable for traced commands in this mode. Because
-    // their buffer addresses are stable (VA-mapped), re-initialization is
-    // unnecessary.
+    // requires_update_on_initialize(), but the
+    // requires_update_on_initialize() check below is intentionally unreachable
+    // for traced commands in this mode. Because their buffer addresses are
+    // stable (VA-mapped), re-initialization is unnecessary.
     if (record_params.command_buffer_update_mode ==
             DebugOptions::CAPTURE_CMD_NEVER_UPDATE &&
         command->IsTracedCommand()) {
@@ -591,9 +591,10 @@ absl::Status CommandExecutor::RecordUpdate(
       return true;
     }
 
-    // We always update commands that require initialization, even if buffer
-    // allocations didn't change.
-    if (command->requires_initialization() && record_params.is_initialization) {
+    // We always update commands that require updates on initialization, even if
+    // buffer allocations didn't change.
+    if (command->requires_update_on_initialize() &&
+        record_params.is_initialization) {
       return false;
     }
 
