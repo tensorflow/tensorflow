@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <cassert>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/util.h"
 
@@ -33,7 +34,7 @@ namespace builtin {
 namespace stablehlo_pad {
 namespace {
 
-static constexpr int kMaxDims = TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT;
+constexpr int kMaxDims = TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT;
 
 // Fills a buffer with the given data.
 //
@@ -43,7 +44,7 @@ void FillBuffer(char* buffer, int64_t buffer_bytes, const char* data,
   if (buffer_bytes == 0) {
     return;
   }
-  assert(buffer_bytes % data_bytes == 0);
+  TFLITE_DCHECK(buffer_bytes % data_bytes == 0);
   std::memcpy(buffer, data, data_bytes);
   buffer_bytes -= data_bytes;
   while (buffer_bytes) {
@@ -59,11 +60,19 @@ void StridedCopy(const int rank, const char* input, const int64_t* input_shape,
                  const int64_t* input_strides, char* output,
                  const int64_t* output_strides, const int64_t element_size,
                  const int depth) {
+  if (input_shape[depth] <= 0) {
+    return;
+  }
   if (depth + 1 == rank) {
-    for (int64_t i = 0; i < input_shape[depth]; ++i) {
-      std::memcpy(output, input, element_size);
-      input += input_strides[depth];
-      output += output_strides[depth];
+    if (output_strides[depth] == element_size &&
+        input_strides[depth] == element_size) {
+      std::memcpy(output, input, element_size * input_shape[depth]);
+    } else {
+      for (int64_t i = 0; i < input_shape[depth]; ++i) {
+        std::memcpy(output, input, element_size);
+        input += input_strides[depth];
+        output += output_strides[depth];
+      }
     }
   } else {
     for (int64_t i = 0; i < input_shape[depth]; ++i) {
@@ -92,23 +101,21 @@ void StridedCopy(const int rank, const char* input, const int64_t* input_shape,
 // information.
 class PadData {
  public:
-  enum { kInput, kPaddingValue, kInputTensorCount };
-  enum { kOutput, kOutputTensorCount };
+  static constexpr int kInput = 0;
+  static constexpr int kPaddingValue = 1;
+  static constexpr int kOutput = 0;
 
   explicit PadData(const TfLiteStablehloPadParams& params) {
-    std::memcpy(
-        edge_pad_low_, params.edge_padding_low,
-        TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT * sizeof(int64_t));
-    std::memcpy(
-        edge_pad_high_, params.edge_padding_high,
-        TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT * sizeof(int64_t));
-    std::memcpy(
-        interior_pad_, params.interior_padding,
-        TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT * sizeof(int64_t));
+    std::memcpy(edge_pad_low_, params.edge_padding_low, sizeof(edge_pad_low_));
+    std::memcpy(edge_pad_high_, params.edge_padding_high,
+                sizeof(edge_pad_high_));
+    std::memcpy(interior_pad_, params.interior_padding, sizeof(interior_pad_));
   }
 
   // Computes the shapes and strides that are needed for the final strided copy.
-  void Setup(const int* dims, const int rank, const int64_t element_size) {
+  TfLiteStatus Setup(TfLiteContext* context, const int* dims, const int rank,
+                     const int64_t element_size) {
+    TF_LITE_ENSURE(context, rank > 0 && rank <= kMaxDims);
     rank_ = rank;
     element_size_ = element_size;
     input_offset_ = 0;
@@ -117,15 +124,24 @@ class PadData {
 
     // Compute the output shape.
     for (int i = 0; i < rank; ++i) {
-      output_shape_[i] = (dims[i] - 1) * (interior_pad_[i] + 1) + 1 +
-                         edge_pad_low_[i] + edge_pad_high_[i];
+      TF_LITE_ENSURE(context,
+                     interior_pad_[i] >= 0 && interior_pad_[i] <= INT_MAX);
+      TF_LITE_ENSURE(
+          context, edge_pad_low_[i] >= -INT_MAX && edge_pad_low_[i] <= INT_MAX);
+      TF_LITE_ENSURE(context, edge_pad_high_[i] >= -INT_MAX &&
+                                  edge_pad_high_[i] <= INT_MAX);
+      int64_t interior_gaps = std::max<int64_t>(0, dims[i] - 1);
+      int64_t out_dim = dims[i] + interior_gaps * interior_pad_[i] +
+                        edge_pad_low_[i] + edge_pad_high_[i];
+      TF_LITE_ENSURE(context, out_dim <= INT_MAX);
+      output_shape_[i] = std::max<int64_t>(0, out_dim);
     }
     if (std::any_of(output_shape_, output_shape_ + rank,
                     [](auto s) { return s <= 0; })) {
       std::memset(input_shape_, 0, sizeof(input_shape_));
       std::memset(output_shape_, 0, sizeof(output_shape_));
       output_size_ = 0;
-      return;
+      return kTfLiteOk;
     }
     // Compute the output size for each dimension.
     //
@@ -134,8 +150,12 @@ class PadData {
     // interior padding elements.
     output_dimension_sizes_[rank - 1] = element_size;
     for (int i = rank - 2; i >= 0; --i) {
-      output_dimension_sizes_[i] =
-          output_shape_[i + 1] * output_dimension_sizes_[i + 1];
+      auto checked_val = CheckedInt<int64_t>(output_shape_[i + 1]) *
+                         output_dimension_sizes_[i + 1];
+      if (checked_val.Overflow()) {
+        return kTfLiteError;
+      }
+      output_dimension_sizes_[i] = checked_val.Value();
     }
     // Compute the output stride for each dimension.
     //
@@ -143,25 +163,50 @@ class PadData {
     // tensor (i.e. not generated by interior padding).
     output_strides_[rank - 1] = element_size * (interior_pad_[rank - 1] + 1);
     for (int i = rank - 2; i >= 0; --i) {
-      output_strides_[i] = output_dimension_sizes_[i] * (interior_pad_[i] + 1);
+      auto checked_val = CheckedInt<int64_t>(output_dimension_sizes_[i]) *
+                         (interior_pad_[i] + 1);
+      if (checked_val.Overflow()) {
+        return kTfLiteError;
+      }
+      output_strides_[i] = checked_val.Value();
     }
     // Compute the output offset from the eventual pads.
     for (int i = 0; i < rank; ++i) {
-      output_offset_ +=
-          std::max<int64_t>(edge_pad_low_[i], 0) * output_dimension_sizes_[i];
+      auto checked_pad_offset =
+          CheckedInt<int64_t>(std::max<int64_t>(edge_pad_low_[i], 0)) *
+          output_dimension_sizes_[i];
+      if (checked_pad_offset.Overflow()) {
+        return kTfLiteError;
+      }
+      auto checked_output_offset =
+          CheckedInt<int64_t>(output_offset_) + checked_pad_offset.Value();
+      if (checked_output_offset.Overflow()) {
+        return kTfLiteError;
+      }
+      output_offset_ = checked_output_offset.Value();
     }
     // Compute the final output size.
-    output_size_ = std::accumulate(output_shape_, output_shape_ + rank,
-                                   element_size, std::multiplies<>());
+    output_size_ = element_size;
+    for (int i = 0; i < rank; ++i) {
+      auto checked_val = CheckedInt<int64_t>(output_size_) * output_shape_[i];
+      if (checked_val.Overflow()) {
+        return kTfLiteError;
+      }
+      output_size_ = checked_val.Value();
+    }
     // Compute input strides.
     input_strides_[rank - 1] = element_size;
     for (int i = rank - 1; i >= 1; --i) {
-      input_strides_[i - 1] = dims[i] * input_strides_[i];
+      auto checked_val = CheckedInt<int64_t>(dims[i]) * input_strides_[i];
+      if (checked_val.Overflow()) {
+        return kTfLiteError;
+      }
+      input_strides_[i - 1] = checked_val.Value();
     }
     // Helper that computes the division between a negative num and a positive
     // denum, rounding away from 0, or returns 0 if num is positive.
     auto DivNegRoundAwayOrZero = [](int64_t num, int64_t denum) -> int64_t {
-      assert(denum > 0);
+      TFLITE_DCHECK(denum > 0);
       return num < 0 ? (num - denum + 1) / denum : 0;
     };
     // Compute the input bounds from the eventual crops.
@@ -200,6 +245,7 @@ class PadData {
         output_offset_ += tmp_offset * output_dimension_sizes_[i];
       }
     }
+    return kTfLiteOk;
   }
 
   void Apply(const char* input, const char* padding_value, char* output) const {
@@ -210,10 +256,10 @@ class PadData {
                 /*depth=*/0);
   }
 
-  TfLiteIntArray* BuildOuputTensorDims() const {
+  TfLiteIntArray* BuildOutputTensorDims() const {
     TfLiteIntArray* dims = TfLiteIntArrayCreate(rank_);
     for (int64_t i = 0; i < rank_; ++i) {
-      dims->data[i] = output_shape_[i];
+      dims->data[i] = static_cast<int>(output_shape_[i]);
     }
     return dims;
   }
@@ -245,30 +291,40 @@ void Free(TfLiteContext* context, void* node_data) {
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Input checks.
-  const TfLiteTensor* input_tensor = GetInput(context, node, PadData::kInput);
-  const TfLiteTensor* padding_value_tensor =
-      GetInput(context, node, PadData::kPaddingValue);
+  const TfLiteTensor* input_tensor;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, PadData::kInput, &input_tensor));
+  const TfLiteTensor* padding_value_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, PadData::kPaddingValue,
+                                          &padding_value_tensor));
   TF_LITE_ENSURE(context, input_tensor->type == padding_value_tensor->type);
   // PadData computations.
   size_t element_size;
   TF_LITE_ENSURE(context, GetSizeOfType(context, input_tensor->type,
                                         &element_size) == kTfLiteOk);
   PadData& pad_data = *reinterpret_cast<PadData*>(node->user_data);
-  pad_data.Setup(input_tensor->dims->data, input_tensor->dims->size,
-                 element_size);
+  TF_LITE_ENSURE_STATUS(pad_data.Setup(context, input_tensor->dims->data,
+                                       input_tensor->dims->size, element_size));
   // Output tensor setup.
-  TfLiteTensor* output_tensor = GetOutput(context, node, PadData::kOutput);
+  TfLiteTensor* output_tensor;
+  TF_LITE_ENSURE_OK(
+      context, GetOutputSafe(context, node, PadData::kOutput, &output_tensor));
   TF_LITE_ENSURE(context, input_tensor->type == output_tensor->type);
-  context->ResizeTensor(context, output_tensor,
-                        pad_data.BuildOuputTensorDims());
+  TF_LITE_ENSURE_STATUS(context->ResizeTensor(
+      context, output_tensor, pad_data.BuildOutputTensorDims()));
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input_tensor = GetInput(context, node, PadData::kInput);
-  const TfLiteTensor* padding_value_tensor =
-      GetInput(context, node, PadData::kPaddingValue);
-  TfLiteTensor* output_tensor = GetOutput(context, node, PadData::kOutput);
+  const TfLiteTensor* input_tensor;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, PadData::kInput, &input_tensor));
+  const TfLiteTensor* padding_value_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, PadData::kPaddingValue,
+                                          &padding_value_tensor));
+  TfLiteTensor* output_tensor;
+  TF_LITE_ENSURE_OK(
+      context, GetOutputSafe(context, node, PadData::kOutput, &output_tensor));
   // Pad using PadData
   PadData& pad_data = *reinterpret_cast<PadData*>(node->user_data);
   pad_data.Apply(input_tensor->data.raw_const,
