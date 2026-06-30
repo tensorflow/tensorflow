@@ -38,6 +38,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -102,8 +103,14 @@ void TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
     case HloOpcode::kReduce:
       ProcessReduce(hlo);
       break;
+    case HloOpcode::kScan:
+      ProcessScan(hlo);
+      break;
     case HloOpcode::kDynamicSlice:
       ProcessDynamicSlice(hlo);
+      break;
+    case HloOpcode::kGetTupleElement:
+      ProcessGetTupleElement(hlo);
       break;
     default:
       // TODO(goncharov): should have a explicit list of supported instructions?
@@ -136,6 +143,31 @@ void TilingSpace::ProcessReduce(const HloInstruction& hlo) {
   }
 }
 
+// Ensure scan dimensions are not tiled across CTAs.
+void TilingSpace::ProcessScan(const HloInstruction& hlo) {
+  auto scan = Cast<HloScanInstruction>(&hlo);
+  int64_t scan_dim_idx = scan->scan_dimension();
+
+  auto it = hlo_to_dimension_.find(std::make_pair(&hlo, scan_dim_idx));
+  if (it == hlo_to_dimension_.end()) {
+    // Without indexing maps, we cannot express constraints for intermediate
+    // scan operations in TilingSpace.
+    return;
+  }
+
+  int64_t global_dim_id = it->second->id.value();
+  SymbolicExpr scan_dim_tile_size = CreateDimExpr(global_dim_id, mlir_context_);
+
+  const Shape& shape = GetFirstShape(&hlo);
+  SymbolicExpr scan_dim_bound =
+      CreateSymbolicConstant(shape.dimensions(scan_dim_idx), mlir_context_);
+
+  // Require that the tile size equals the dimension bound.
+  ConstraintExpression::Constraint eq_constraint{
+      scan_dim_bound - scan_dim_tile_size, Interval{0, 0}};
+  constraint_ = constraint_ && eq_constraint;
+}
+
 // Add offsets of dynamic slice.
 void TilingSpace::ProcessDynamicSlice(const HloInstruction& hlo) {
   auto ds = Cast<HloDynamicSliceInstruction>(&hlo);
@@ -154,6 +186,16 @@ const Shape& GetFirstShape(const HloInstruction* instr, int64_t index) {
   return instr->shape().IsTuple()
              ? ShapeUtil::GetSubshape(instr->shape(), {index})
              : instr->shape();
+}
+
+// Propagate dimensions from get-tuple-element to its operand.
+void TilingSpace::ProcessGetTupleElement(const HloInstruction& hlo) {
+  for (int64_t i = 0; i < hlo.shape().dimensions().size(); ++i) {
+    auto it = hlo_to_dimension_.find(std::make_pair(&hlo, i));
+    if (it != hlo_to_dimension_.end()) {
+      hlo_to_dimension_[std::make_pair(hlo.operand(0), i)] = it->second;
+    }
+  }
 }
 
 std::string TilingSpace::ToString() const {
@@ -288,7 +330,8 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
   // before any symbols are generated.
   for (const HloInstructionAdaptor& root : roots) {
     const Shape& root_shape = root.shape();
-    if (!root.shape().IsArray() && root.opcode() != HloOpcode::kReduce) {
+    if (!root.shape().IsArray() && root.opcode() != HloOpcode::kReduce &&
+        root.opcode() != HloOpcode::kScan) {
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported root shape ", root_shape.ToString(),
                        " for root ", root.instruction().ToString()));
