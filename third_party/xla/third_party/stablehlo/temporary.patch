@@ -232,6 +232,26 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/
    %cst_18 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf4E2M1FN>
    %cst_19 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf6E2M3FN>
    %cst_20 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf6E3M2FN>
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+@@ -1021,6 +1021,16 @@
+   %0 = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1", foo = "0"}} : tensor<f32>
+   %1 = stablehlo.multiply %0, %cst {mhlo.frontend_attributes = {foo = "1"}} : tensor<f32>
+   // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1", foo = "1"}} : tensor<f32>
++  // CHECK: return %[[ADD]] : tensor<f32>
++  return %1 : tensor<f32>
++}
++
++// CHECK-LABEL: @multiply_by_one_merge_attrs_conflict_xla_metadata_payload
++func.func @multiply_by_one_merge_attrs_conflict_xla_metadata_payload(%arg0: tensor<f32>) -> tensor<f32> {
++  %cst = stablehlo.constant dense<1.0> : tensor<f32>
++  %0 = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {foo = "1", xla_metadata_payload = "0"}} : tensor<f32>
++  %1 = stablehlo.multiply %0, %cst {mhlo.frontend_attributes = {xla_metadata_payload = "1"}} : tensor<f32>
++  // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {foo = "1", xla_metadata_payload = "0"}} : tensor<f32>
+   // CHECK: return %[[ADD]] : tensor<f32>
+   return %1 : tensor<f32>
+ }
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
@@ -258,4 +278,26 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
                       /*direction=*/mlir::stablehlo::ComparisonDirection::GT);
  
      // Get the sorted input and index tuple element.
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+@@ -87,12 +87,17 @@
+   for (auto attr : sourceAttrs.getValue()) {
+     if (attr.getName() == "mhlo.frontend_attributes" &&
+         mergedAttrs.get("mhlo.frontend_attributes")) {
+-      // Merge frontend attributes, prioritizing source attributes.
++      // Merge frontend attributes, prioritizing source attributes except for
++      // `xla_metadata_payload`, which is set by the surviving op.
+       auto destFrontendAttrs =
+           cast<DictionaryAttr>(mergedAttrs.get("mhlo.frontend_attributes"));
+       auto sourceFrontendAttrs = cast<DictionaryAttr>(attr.getValue());
+       NamedAttrList frontendAttrs(destFrontendAttrs);
+       for (auto sourceAttr : sourceFrontendAttrs) {
++        if (sourceAttr.getName() == "xla_metadata_payload" &&
++            frontendAttrs.get("xla_metadata_payload")) {
++          continue;  // keep the surviving op's own identity
++        }
+         frontendAttrs.set(sourceAttr.getName(), sourceAttr.getValue());
+       }
+       mergedAttrs.set("mhlo.frontend_attributes",
 
