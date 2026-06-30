@@ -2756,6 +2756,18 @@ func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32
 
 // -----
 
+// CHECK-LABEL: func.func @top_k_unstable
+// CHECK-HIGH-LEVEL-LABEL: func.func @top_k_unstable
+// CHECK-SAME: (%[[ARG:.*]]: tensor<16x16xf32>)
+func.func @top_k_unstable(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>) {
+  // CHECK-HIGH-LEVEL: mhlo.topk
+  // CHECK: %values, %indices = mhlo.topk(%[[ARG]], k = 8, is_stable = false) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  %1:2 = chlo.top_k(%arg, k=8, is_stable = false) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  func.return %1#0, %1#1 : tensor<16x8xf32>, tensor<16x8xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func.func @dyn_top_k
 // CHECK-HIGH-LEVEL-LABEL: func.func @dyn_top_k
 // CHECK-SAME: ([[ARG:%.*]]: tensor<?x5x?xi1>
@@ -3681,4 +3693,3 @@ func.func @mulhi_i16(%arg0 : tensor<4xi16>, %arg1 : tensor<4xi16>) -> tensor<4xi
   %result = "chlo.mulhi"(%arg0, %arg1) : (tensor<4xi16>, tensor<4xi16>) -> tensor<4xi16>
   func.return %result : tensor<4xi16>
 }
-

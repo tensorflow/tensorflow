@@ -31,6 +31,6 @@ def : Pat<(CHLO_ErfOp $v),
           (MHLO_ErfOp $v),
           [], [], (addBenefit 10)>;
 
-def : Pat<(CHLO_TopKOp AnyRankedTensor:$v, $k),
-          (MHLO_TopKOp $v, $k, ConstBoolAttrTrue, ConstBoolAttrTrue),
+def : Pat<(CHLO_TopKOp AnyRankedTensor:$v, $k, $is_stable),
+          (MHLO_TopKOp $v, $k, ConstBoolAttrTrue, $is_stable),
           [], [], (addBenefit 10)>;
