@@ -478,6 +478,7 @@ cc_library(
         ":cudnn_api_wrappers",
         ":cudnn_frontend_helpers",
         ":cudnn_sdpa_score_mod",
+        "//xla/backends/gpu/target_config:cudnn_device_props",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:data_type",
         "//xla/stream_executor:device_address",

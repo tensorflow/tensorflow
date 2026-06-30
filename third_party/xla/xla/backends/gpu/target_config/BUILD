@@ -77,6 +77,61 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "cudnn_device_props",
+    srcs = ["cudnn_device_props.cc"],
+    hdrs = ["cudnn_device_props.h"],
+    compatible_with = get_compatible_with_portable(),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cudnn_frontend_helpers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@cudnn_frontend_archive//:cudnn_frontend",
+    ],
+)
+
+xla_test(
+    name = "cudnn_device_props_test",
+    srcs = ["cudnn_device_props_test.cc"],
+    backend_tags = {
+        "h100": ["full"],
+        "b200": ["full"],
+        "gb200": ["full"],
+        "gb300": ["full"],
+    },
+    backends = [
+        "p100",
+        "v100",
+        "a100",
+        "h100",
+        "b200",
+        "gb200",
+        "gb300",
+    ],
+    tags = ["cuda-only"],
+    deps = [
+        ":cudnn_device_props",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+        "@cudnn_frontend_archive//:cudnn_frontend",
+        "@jsoncpp_git//:jsoncpp",
+    ],
+)
+
+cc_library(
     name = "gpu_topology_utils",
     srcs = ["gpu_topology_utils.cc"],
     hdrs = ["gpu_topology_utils.h"],

@@ -419,6 +419,21 @@ message DebugOptions {
     CAPTURE_CMD_NEVER_UPDATE = 2;
   }
 
+  // Controls when cuDNN fusions are compiled in "deviceless" mode, i.e. driven
+  // purely by the DeviceDescription without a live cuDNN handle. Deviceless
+  // compilation requires cuDNN >= 9.8.
+  enum CudnnDevicelessCompilationMode {
+    CUDNN_DEVICELESS_COMPILATION_UNSET = 0;
+    // Never use deviceless compilation; always require a live device.
+    CUDNN_DEVICELESS_COMPILATION_DISABLED = 1;
+    // Use deviceless compilation only when no live device is available (e.g.
+    // ahead-of-time compilation); use the device-dependent path otherwise.
+    CUDNN_DEVICELESS_COMPILATION_AUTO = 2;
+    // Always use deviceless compilation, even when a live device is available.
+    // Provides a testing path toward deprecating the device-dependent path.
+    CUDNN_DEVICELESS_COMPILATION_ALWAYS = 3;
+  }
+
   // Controls CUB sort behavior during deviceless GPU compilation. CUB sort
   // needs a scratch buffer whose size is usually queried from a live device.
   // Deviceless compilation relies on pre-computed lookups instead.
@@ -460,6 +475,9 @@ message DebugOptions {
     // If set, only collectives with this operand type will be enabled.
     optional PrimitiveType op_type = 3;
   }
+
+  optional CudnnDevicelessCompilationMode
+      xla_gpu_cudnn_deviceless_compilation_mode = 504;
 
   optional DevicelessCubMode xla_gpu_deviceless_cub_mode = 483;
 

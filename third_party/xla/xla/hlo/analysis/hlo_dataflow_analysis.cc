@@ -466,22 +466,17 @@ bool HloDataflowAnalysis::UpdateAsyncChainOperandValueSet(
   return changed;
 }
 
-bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
-    HloInstruction* async_start) {
-  CHECK_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
+bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
+    HloInstruction* async_op) {
   bool changed = false;
-  // AsyncStart forwards the operand values to element {0} of its output.
-  for (int64_t i = 0; i < async_start->operand_count(); ++i) {
-    changed |= UpdateAsyncChainOperandValueSet(async_start, i);
-  }
-  if (!HloInstruction::IsThreadIncluded(async_start->async_execution_thread(),
-                                        execution_threads_)) {
+  bool is_thread_included = HloInstruction::IsThreadIncluded(
+      async_op->async_execution_thread(), execution_threads_);
+
+  if (!is_thread_included) {
     return changed;
   }
-  // AsyncStart forwards the async wrapped computation root values to element
-  // {1} of its output.
   HloInstruction* root =
-      async_start->async_wrapped_computation()->root_instruction();
+      async_op->async_wrapped_computation()->root_instruction();
   ShapeUtil::ForEachSubshape(
       root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray() && !subshape.IsToken()) {
@@ -492,12 +487,27 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
         ShapeIndex output_index = {1};
         output_index.insert(output_index.end(), index.begin(), index.end());
 
-        HloValueSet& value_set = GetMutableValueSet(async_start, output_index);
+        HloValueSet& value_set = GetMutableValueSet(async_op, output_index);
         if (value_set != root_value_set) {
           value_set = root_value_set;
           changed = true;
         }
       });
+  return changed;
+}
+
+bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
+    HloInstruction* async_start) {
+  CHECK_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
+  bool changed = false;
+  // AsyncStart forwards the operand values to element {0} of its output.
+  for (int64_t i = 0; i < async_start->operand_count(); ++i) {
+    changed |= UpdateAsyncChainOperandValueSet(async_start, i);
+  }
+
+  // AsyncStart forwards the async wrapped computation root values to element
+  // {1} of its output.
+  changed |= UpdateAsyncChainOutputValueSet(async_start);
   return changed;
 }
 

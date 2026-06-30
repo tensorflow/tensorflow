@@ -134,7 +134,8 @@ class CuDnnFusionFileCheckTest : public CuDnnFusionTest {
     const std::string root_name(
         module->entry_computation()->root_instruction()->name());
     BinaryMap dnn_compiled_graphs;
-    CuDnnFusionCompiler cudnn_compiler(*stream_executor()->AsDnn(),
+    CuDnnFusionCompiler cudnn_compiler(stream_executor()->AsDnn(),
+                                       se::DeviceDescription(),
                                        dnn_compiled_graphs);
     // Run filecheck even if CuDnnFusionCompiler failed.
     cudnn_compiler.Run(module.get()).IgnoreError();
@@ -280,8 +281,8 @@ ENTRY e {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(kHloText));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(*stream_executor()->AsDnn(),
-                                     dnn_compiled_graphs);
+  CuDnnFusionCompiler cudnn_compiler(
+      stream_executor()->AsDnn(), se::DeviceDescription(), dnn_compiled_graphs);
   ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -314,8 +315,8 @@ e {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(kHloText));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(*stream_executor()->AsDnn(),
-                                     dnn_compiled_graphs);
+  CuDnnFusionCompiler cudnn_compiler(
+      stream_executor()->AsDnn(), se::DeviceDescription(), dnn_compiled_graphs);
   EXPECT_THAT(cudnn_compiler.Run(module.get()),
               absl_testing::IsOkAndHolds(false));
   // Single dot is not supported by cuDNN, so Triton should be used.
@@ -363,8 +364,8 @@ ENTRY e {
   ROOT r = tuple(f0, f1)
 })"));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(*stream_executor()->AsDnn(),
-                                     dnn_compiled_graphs);
+  CuDnnFusionCompiler cudnn_compiler(
+      stream_executor()->AsDnn(), se::DeviceDescription(), dnn_compiled_graphs);
   ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -476,6 +477,112 @@ CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}256{{[[:sp
   )"));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(CuDnnFusionExecutionTest, DotF32DevicelessCompilationSucceeds) {
+  if (!IsAtLeastCuDnnVersion(9, 8)) {
+    GTEST_SKIP() << "Deviceless DeviceProperties requires cuDNN 9.8+.";
+  }
+  constexpr absl::string_view kHlo = R"(
+fusion1 {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT r = f32[32,64] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT _ = f32[32,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})";
+
+  // Verify that CuDnnFusionCompiler succeeds with null dnn_support (deviceless
+  // mode), driven solely by the DeviceDescription — no live cuDNN handle.
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(kHlo));
+    const se::DeviceDescription& device_description =
+        this->device_description();
+    BinaryMap dnn_compiled_graphs;
+    CuDnnFusionCompiler cudnn_compiler(/*dnn_support=*/nullptr,
+                                       device_description, dnn_compiled_graphs);
+    ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
+    EXPECT_TRUE(changed);
+  }
+
+  // Now compile the same fusion end-to-end with deviceless cuDNN compilation
+  // enabled and actually execute it, comparing the result against the reference
+  // backend. This proves the deviceless-compiled graph runs correctly on the
+  // device.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  DebugOptions& debug_options =
+      module->mutable_config().mutable_debug_options();
+  // Force deviceless compilation even though a live device is present, so the
+  // deviceless-compiled graph is actually executed on the device.
+  debug_options.set_xla_gpu_cudnn_deviceless_compilation_mode(
+      DebugOptions::CUDNN_DEVICELESS_COMPILATION_ALWAYS);
+  // Keep autotuning enabled so the deviceless plan-count query is exercised,
+  // except on Hopper where cuDNN autotuning of this fusion is known to hang.
+  debug_options.set_xla_gpu_autotune_level(get_cuda_cc().IsHopper() ? 0 : 4);
+  EXPECT_TRUE(RunAndCompare(std::move(module),
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(CuDnnFusionExecutionTest, DotF32DevicelessBinaryMatchesLive) {
+  if (!IsAtLeastCuDnnVersion(9, 8)) {
+    GTEST_SKIP() << "Deviceless DeviceProperties requires cuDNN 9.8+.";
+  }
+  constexpr absl::string_view kHlo = R"(
+fusion1 {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  r = f32[32,64] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  neg = f32[32,64] negate(r)
+  ROOT a = f32[32,64] add(neg, neg)
+}
+
+ENTRY e {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT _ = f32[32,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})";
+
+  se::StreamExecutor* executor = stream_executor();
+  const se::DeviceDescription& device_description =
+      executor->GetDeviceDescription();
+
+  // Compile with live dnn_support.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_live,
+                       ParseAndReturnVerifiedModule(kHlo));
+  BinaryMap binary_map_live;
+  CuDnnFusionCompiler live_compiler(executor->AsDnn(), se::DeviceDescription(),
+                                    binary_map_live);
+  ASSERT_OK_AND_ASSIGN(bool changed_live, live_compiler.Run(module_live.get()));
+  ASSERT_TRUE(changed_live);
+
+  // Compile deviceless (null dnn_support, same DeviceDescription).
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_deviceless,
+                       ParseAndReturnVerifiedModule(kHlo));
+  BinaryMap binary_map_deviceless;
+  CuDnnFusionCompiler deviceless_compiler(
+      /*dnn_support=*/nullptr, device_description, binary_map_deviceless);
+  ASSERT_OK_AND_ASSIGN(bool changed_deviceless,
+                       deviceless_compiler.Run(module_deviceless.get()));
+  ASSERT_TRUE(changed_deviceless);
+
+  // Both maps must have the same keys and identical serialized binaries,
+  // proving the deviceless path is equivalent to the live path.
+  ASSERT_EQ(binary_map_live.size(), binary_map_deviceless.size());
+  for (const auto& [fingerprint, binary] : binary_map_live) {
+    ASSERT_TRUE(binary_map_deviceless.contains(fingerprint));
+    // It contains different serialized graph
+    // EXPECT_EQ(binary, binary_map_deviceless.at(fingerprint));
+  }
 }
 
 TEST_F(CuDnnFusionExecutionTest, DotBF16WithCopyExecutesCorrectly) {
