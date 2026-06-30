@@ -48,18 +48,18 @@ namespace ttir = ::mlir::triton;
 
 namespace {
 
-absl::StatusOr<ttir::ScaleDotElemType> GetScaleDotElemType(Type value) {
-  Type type = getElementTypeOrSelf(value);
-  if (type == mlir::Float8E4M3FNType::get(value.getContext())) {
+absl::StatusOr<ttir::ScaleDotElemType> GetScaleDotElemType(Type type) {
+  MLIRContext* context = type.getContext();
+  if (type == mlir::Float8E4M3FNType::get(context)) {
     return ttir::ScaleDotElemType::E4M3;
   }
-  if (type == mlir::Float8E5M2Type::get(value.getContext())) {
+  if (type == mlir::Float8E5M2Type::get(context)) {
     return ttir::ScaleDotElemType::E5M2;
   }
-  if (type == mlir::Float4E2M1FNType::get(value.getContext())) {
+  if (type == mlir::Float4E2M1FNType::get(context)) {
     return ttir::ScaleDotElemType::E2M1;
   }
-  if (type == mlir::BFloat16Type::get(value.getContext())) {
+  if (type == mlir::BFloat16Type::get(context)) {
     return ttir::ScaleDotElemType::BF16;
   }
   return absl::InvalidArgumentError(
@@ -144,7 +144,9 @@ LogicalResult CanonicalDotScaled(::xla::xtile::DotScaledOp op,
 
   canonical_dot = ::xla::xtile::DotScaledOp::create(
       builder, new_result_type, lhs, rhs, lhs_scale, rhs_scale,
-      op.getFastMath(), op.getLhsKPack(), op.getRhsKPack(), canonical_dims);
+      op.getFastMath(), op.getLhsKPack(), op.getRhsKPack(),
+      op.getLhsElemTypeAttr().getValue(), op.getRhsElemTypeAttr().getValue(),
+      canonical_dims);
   return mlir::success();
 }
 
@@ -193,7 +195,7 @@ class LowerDotScaled
     }
 
     absl::StatusOr<ttir::ScaleDotElemType> lhs_dot_elem_type =
-        GetScaleDotElemType(op.getLhs().getType());
+        GetScaleDotElemType(op.getLhsElemTypeAttr().getValue());
     if (!lhs_dot_elem_type.ok()) {
       return rewriter.notifyMatchFailure(
           op_loc, absl::StrCat("Failed to get dot element type for LHS: ",
@@ -201,7 +203,7 @@ class LowerDotScaled
     }
 
     absl::StatusOr<ttir::ScaleDotElemType> rhs_dot_elem_type =
-        GetScaleDotElemType(op.getRhs().getType());
+        GetScaleDotElemType(op.getRhsElemTypeAttr().getValue());
     if (!rhs_dot_elem_type.ok()) {
       return rewriter.notifyMatchFailure(
           op_loc, absl::StrCat("Failed to get dot element type for RHS: ",
