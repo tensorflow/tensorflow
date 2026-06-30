@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/autotuner/backend_config.pb.h"
@@ -65,7 +66,24 @@ struct AutotuneScope {
   std::string device;
   std::string explicit_version;
   std::string codegen_version;
+  // Version of each codegen backend. They should already represented by the
+  // codegen version, but we maintain them separately for backend specific
+  // version matching.
   absl::flat_hash_map<autotuner::Backend, std::string> per_backend_versions;
+
+  std::string GetId() const {
+    return absl::StrCat(device, explicit_version, codegen_version);
+  }
+
+  bool operator==(const AutotuneScope& other) const {
+    return device == other.device &&
+           explicit_version == other.explicit_version &&
+           codegen_version == other.codegen_version;
+  }
+
+  bool operator!=(const AutotuneScope& other) const {
+    return !(*this == other);
+  }
 };
 
 // AutotunerCacheInterface is an interface for managing autotuning cache.
