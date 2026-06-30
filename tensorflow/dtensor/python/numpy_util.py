@@ -59,7 +59,9 @@ def to_numpy(tensor: TensorLike) -> np.ndarray:
   layout = api.fetch_layout(tensor)
   if layout.mesh.is_remote():
     raise NotImplementedError(
-        "to_numpy does not support remote DTensor meshes."
+        "to_numpy() is not supported on a remote mesh. Use "
+        "dtensor.copy_to_client() to fetch the tensor onto the local "
+        "client mesh first."
     )
 
   unpacked = [tensor.numpy() for tensor in api.unpack(tensor)]

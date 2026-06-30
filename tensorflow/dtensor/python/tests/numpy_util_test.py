@@ -14,8 +14,9 @@
 # ==============================================================================
 """Tests for the buffer and DTensor conversion helpers."""
 
-import numpy as np
 from unittest import mock
+
+import numpy as np
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.dtensor.python import layout
@@ -141,7 +142,9 @@ class NumpyUtilTest(test_util.DTensorBaseTest):
 
     with mock.patch.object(
         numpy_util.api, 'fetch_layout', return_value=mock_layout):
-      with self.assertRaises(NotImplementedError):
+      with self.assertRaisesRegex(
+          NotImplementedError,
+          'to_numpy\\(\\) is not supported on a remote mesh'):
         numpy_util.to_numpy(mock.Mock())
 
 
