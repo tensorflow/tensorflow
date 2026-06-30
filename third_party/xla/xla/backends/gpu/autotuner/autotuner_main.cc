@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/config_assigner.h"
