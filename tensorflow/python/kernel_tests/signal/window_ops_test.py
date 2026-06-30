@@ -185,5 +185,19 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
     self._check_mdct_window(window_ops.kaiser_bessel_derived_window(
         window_length, beta=beta, dtype=tf_dtype_tol[0]), tol=tf_dtype_tol[1])
 
+  @parameterized.parameters(
+      itertools.product(
+          _MDCT_WINDOW_LENGTHS,
+          (4., 8., 10., 12.),
+          _TF_DTYPE_TOLERANCE))
+  def test_kaiser_bessel_derived_window_negative_beta(self, window_length, beta,
+                                                      tf_dtype_tol):
+    """Check that kaiser_bessel_derived_window handles negative beta same as positive."""
+    pos_beta_win = window_ops.kaiser_bessel_derived_window(
+        window_length, beta, tf_dtype_tol[0])
+    neg_beta_win = window_ops.kaiser_bessel_derived_window(
+        window_length, -beta, tf_dtype_tol[0])
+    self.assertAllClose(pos_beta_win, neg_beta_win, tf_dtype_tol[1], tf_dtype_tol[1])
+
 if __name__ == '__main__':
   test.main()
