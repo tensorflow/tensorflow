@@ -757,6 +757,7 @@ cc_library(
     deps = [
         ":gpu_codegen_backend",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",

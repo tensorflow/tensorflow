@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -80,7 +81,13 @@ absl::Status InlineFissionedComputation(HloInstruction* fusion_instr,
   }
   HloInstruction* new_root =
       cloned_instructions.at(fissioned_computation->root_instruction());
-  return parent_computation->ReplaceInstruction(fusion_instr, new_root);
+  ASSIGN_OR_RETURN(bool replaced,
+                   parent_computation->ReplaceInstruction(
+                       fusion_instr, new_root, /*preserve_sharding=*/false,
+                       /*relay_control_dependency=*/true));
+  TF_RET_CHECK(replaced) << "Failed to inline fissioned computation for "
+                         << fusion_instr->name();
+  return absl::OkStatus();
 }
 
 }  // namespace

@@ -387,6 +387,31 @@ class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
             &mlir_context_, stream_executor_)) {}
 };
 
+TEST_F(CublasFissionBackendTest, ApplyConfigReplacesFusionWithControlDeps) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+  c {
+    p0 = bf16[1024,1024] parameter(0)
+    p1 = bf16[1024,1024] parameter(1)
+    dot = bf16[1024,1024] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  main {
+    p0 = bf16[1024,1024] parameter(0)
+    p1 = bf16[1024,1024] parameter(1)
+    a = bf16[1024,1024] add(p0, p0)
+    f = bf16[1024,1024] fusion(p0, p1),
+      kind=kCustom, calls=c, control-predecessors={a},
+      backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  })"));
+  HloInstruction& fusion = *module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       fission_backend_->GetDefaultConfig(fusion));
+  EXPECT_OK(fission_backend_->ApplyConfig(fusion, *config));
+  EXPECT_THAT(module->ToString(), testing::Not(HasSubstr("__triton_gemm")));
+}
+
 TEST_F(CublasFissionBackendTest, ApplyConfigRemovesComputation) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kTritonFusionHlo));
