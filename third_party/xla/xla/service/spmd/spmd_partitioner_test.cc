@@ -102,6 +102,20 @@ void VerifyNoShardingOnCollectives(HloModule* module) {
   }
 }
 
+void VerifyNoCollectives(const HloModule* module) {
+  for (const HloComputation* c : module->computations()) {
+    for (const HloInstruction* inst : c->instructions()) {
+      bool is_collective = absl::c_linear_search(
+          std::vector<HloOpcode>{HloOpcode::kAllToAll, HloOpcode::kAllReduce,
+                                 HloOpcode::kAllGather,
+                                 HloOpcode::kCollectivePermute,
+                                 HloOpcode::kReduceScatter},
+          inst->opcode());
+      EXPECT_FALSE(is_collective) << "Found collective: " << inst->ToString();
+    }
+  }
+}
+
 class SpmdPartitioningTest
     : public HloHardwareIndependentTestBase,
       public ::testing::WithParamInterface<ShardingFormatPicker::ShardingType> {
@@ -252,6 +266,43 @@ ENTRY entry {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root,
               AllOf(op::CustomCall(op::Parameter(0)), op::Shape("f32[4,128]")));
+  VerifyNoCollectives(module.get());
+}
+
+TEST_P(SpmdPartitioningTest, LayoutConstraintCustomCallUnreduced) {
+  absl::string_view hlo_string = R"(
+HloModule module
+ENTRY entry {
+  %param = f32[8,128]{1,0} parameter(0), sharding={unreduced}
+  ROOT %cc = f32[8,128]{0,1} custom-call(%param), custom_call_target="LayoutConstraint",
+    operand_layout_constraints={f32[8,128]{0,1}}, sharding={unreduced}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::CustomCall(op::Parameter(0)), op::Shape("f32[8,128]")));
+  EXPECT_TRUE(module->has_spmd_output_sharding());
+  EXPECT_EQ(module->spmd_output_sharding(), HloSharding::Unreduced());
+  VerifyNoCollectives(module.get());
+}
+
+TEST_P(SpmdPartitioningTest,
+       LayoutConstraintCustomCallUnreducedInputShardedOutput) {
+  absl::string_view hlo_string = R"(
+HloModule module
+ENTRY entry {
+  %param = f32[8,128]{1,0} parameter(0), sharding={unreduced}
+  ROOT %cc = f32[8,128]{0,1} custom-call(%param), custom_call_target="LayoutConstraint",
+    operand_layout_constraints={f32[8,128]{0,1}}, sharding={devices=[2,1]0,1}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::CustomCall(), op::Shape("f32[4,128]")));
+  VerifyNoCollectives(module.get());
 }
 
 TEST_P(SpmdPartitioningTest, SingleDeviceToSingleDevice) {
