@@ -3072,6 +3072,19 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "tensor_list_test",
+    srcs = ["tensor_list_test.cc"],
+    deps = [
+        ":tensor_list",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
+    ],
+)
+
 cc_library(
     name = "tensor_list_util",
     srcs = ["tensor_list_util.cc"],
