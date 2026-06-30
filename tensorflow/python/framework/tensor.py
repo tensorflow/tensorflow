@@ -14,7 +14,7 @@
 # ==============================================================================
 """Tensor and TensorSpec classes."""
 
-from typing import Any, Optional, Type
+from typing import Any, Optional, Type, Union
 
 import numpy as np
 
@@ -340,6 +340,26 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
 
   def __ge__(self, other: Any) -> "Tensor":
     """Returns element-wise `self >= other`."""
+    ...
+
+  def __eq__(self, other: Any) -> Union["Tensor", bool]:
+    """Returns element-wise `self == other`.
+
+    Returns a boolean `Tensor` when tensor equality is enabled (the
+    default in TF2, see `Tensor._USE_EQUALITY`) and we are executing
+    eagerly or building a `tf.function`. Otherwise falls back to plain
+    Python object-identity comparison and returns a `bool`.
+    """
+    ...
+
+  def __ne__(self, other: Any) -> Union["Tensor", bool]:
+    """Returns element-wise `self != other`.
+
+    Returns a boolean `Tensor` when tensor equality is enabled (the
+    default in TF2, see `Tensor._USE_EQUALITY`) and we are executing
+    eagerly or building a `tf.function`. Otherwise falls back to plain
+    Python object-identity comparison and returns a `bool`.
+    """
     ...
 
   def __neg__(self) -> "Tensor":

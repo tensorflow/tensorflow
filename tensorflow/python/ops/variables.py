@@ -19,7 +19,7 @@ import enum
 import functools
 import itertools
 import os
-from typing import Any
+from typing import Any, Union
 from typing_extensions import Self
 
 from tensorflow.core.framework import variable_pb2
@@ -392,6 +392,10 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
 
   # Type stubs for dynamically-added operators (for static type checkers).
   # These methods are overridden at runtime by _OverloadAllOperators().
+  # Note: __eq__ and __ne__ are intentionally NOT stubbed here. Unlike the
+  # operators below, they are excluded from _OverloadOperator() (see above)
+  # and are instead real, statically-defined methods further down in this
+  # class; their return type is annotated directly at their definition.
   def __getitem__(self, key: Any) -> tensor_lib.Tensor:
     """Returns the specified slice or element of this variable."""
     ...
@@ -1164,7 +1168,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
       return id(self)
 
   # TODO(gjn): duplicate of math_ops.tensor_equals, consider removing
-  def __eq__(self, other):
+  def __eq__(self, other: Any) -> Union[tensor_lib.Tensor, bool]:
     """Compares two variables element-wise for equality."""
     if (
         tensor_lib.Tensor._USE_EQUALITY
@@ -1176,7 +1180,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
       return self is other
 
   # TODO(gjn): duplicate of math_ops.tensor_not_equals, consider removing
-  def __ne__(self, other):
+  def __ne__(self, other: Any) -> Union[tensor_lib.Tensor, bool]:
     """Compares two variables element-wise for equality."""
     if (
         tensor_lib.Tensor._USE_EQUALITY
