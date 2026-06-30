@@ -2374,9 +2374,6 @@ absl::StatusOr<InstructionsAdded> RematerializeBestBlock(
                          instruction_list, schedule, rematerialization,
                          rematerializable_map));
   }
-
-  rematerialization->on_block_rematerialized(
-      num_instructions_added.remat_count);
   return num_instructions_added;
 }
 }  // namespace
@@ -2451,24 +2448,14 @@ absl::Status HloRematerialization::UpdateScheduleFromSequence(
   // the points_to_analysis_ after rematerializing each computation. Recompute
   // points_to_analysis_ since the older analysis does not include
   // rematerialized instructions.
-  RETURN_IF_ERROR(UpdatePointsToAnalysis(computation->parent()));
+  ASSIGN_OR_RETURN(points_to_analysis_,
+                   TuplePointsToAnalysis::Run(computation->parent()));
   ASSIGN_OR_RETURN(
       computation_peak_memory_[computation],
       ComputePeakMemory(computation, schedule->sequence(computation),
                         execution_threads));
 
   return absl::OkStatus();
-}
-
-absl::Status HloRematerialization::UpdatePointsToAnalysis(HloModule* module) {
-  if (points_to_analysis_ == nullptr) {
-    ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module));
-  }
-  return absl::OkStatus();
-}
-
-void HloRematerialization::SetPointsToAnalysisStale() {
-  points_to_analysis_ = nullptr;
 }
 
 absl::StatusOr<bool>
@@ -2580,7 +2567,8 @@ HloRematerialization::PeakPrioritySubPass(
   VLOG(3) << "Creating memory tracker for rematerialization on "
           << computation->name() << " instruction list size "
           << state.instruction_list->size();
-  RETURN_IF_ERROR(UpdatePointsToAnalysis(computation->parent()));
+  ASSIGN_OR_RETURN(points_to_analysis_,
+                   TuplePointsToAnalysis::Run(computation->parent()));
   MemoryUsageTracker memory_tracker(options_, computation, *points_to_analysis_,
                                     *state.instruction_list);
   state.instruction_list->PromoteNodesToSkip([&](HloRematItem* item) {
@@ -3120,10 +3108,9 @@ absl::StatusOr<bool> HloRematerialization::RunImpl(
   rematerialized_computations_.clear();
   instructions_rematerialized_ = 0;
   net_instructions_added_ = 0;
-  SetPointsToAnalysisStale();
 
   TF_RET_CHECK(module->has_schedule());
-  RETURN_IF_ERROR(UpdatePointsToAnalysis(module));
+  ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module));
   next_channel_id_ = hlo_query::NextChannelId(*module);
 
   // Adjust memory limit to account for the output of the entry
