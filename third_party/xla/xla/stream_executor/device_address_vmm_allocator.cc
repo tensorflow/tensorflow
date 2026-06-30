@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/stream_executor/device_address_vmm_allocator.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <limits>
