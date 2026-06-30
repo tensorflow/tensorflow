@@ -653,12 +653,12 @@ class UnaryOpTest(test.TestCase):
 
 
   def testRoundInt(self):
-    # tf.math.round short-circuits in Python for integer dtypes, so it never
-    # calls the C++ kernel. Target tf.raw_ops.Round directly to exercise the
+    # math_ops.round short-circuits in Python for integer dtypes, so it never
+    # calls the C++ kernel. Target gen_math_ops.round directly to exercise the
     # scalar_round_half_to_even_op template specialization for integers.
-    for dtype in [tf.int32, tf.int64]:
-      inputs = tf.constant([-3, 1, 0, -1], dtype=dtype)
-      outputs = tf.raw_ops.Round(x=inputs)
+    for dtype in [dtypes_lib.int32, dtypes_lib.int64]:
+      inputs = constant_op.constant([-3, 1, 0, -1], dtype=dtype)
+      outputs = gen_math_ops.round(inputs)
       self.assertAllEqual([-3, 1, 0, -1], self.evaluate(outputs))
 
 
