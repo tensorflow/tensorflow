@@ -67,8 +67,9 @@ xla::Array<T> ArrayFromDenseElementsAttr(mlir::DenseElementsAttr dense_attr) {
 absl::StatusOr<xla::Literal> CreateLiteralFromAttribute(mlir::ElementsAttr attr,
                                                         xla::Layout layout) {
   auto dense_attr = mlir::dyn_cast<mlir::DenseElementsAttr>(attr);
-  if (!dense_attr)
+  if (!dense_attr) {
     return absl::UnimplementedError("Only dense elements attr are supported");
+  }
 
   xla::Shape shape = xla::TypeToShape(dense_attr.getType());
 
