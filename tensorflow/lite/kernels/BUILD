@@ -3505,6 +3505,9 @@ tflite_combine_cc_tests(
     deps_conditions = [":test_main"],
     shard_count = 50,
     tags = ["nochromiumos_arm"],  # b/436979680
+    deps = [
+        "//tensorflow/lite/delegates/ynnpack:ynnpack_delegate",
+    ],
 )
 
 tflite_self_contained_libs_test_suite(name = "self_contained_libs_tests")

@@ -777,6 +777,10 @@ def tflite_combine_cc_tests(
           can plugin their own test driver and entry point.
       **kwargs: kwargs to pass to the cc_test rule of the test suite.
     """
+    cc_test_args = dict(kwargs)
+    size = cc_test_args.pop("size", "large")
+    extra_deps = cc_test_args.pop("deps", [])
+
     combined_test_srcs = {}
     combined_test_deps = {}
     for r in native.existing_rules().values():
@@ -812,12 +816,16 @@ def tflite_combine_cc_tests(
         else:
             combined_test_deps.pop("@@rules_cc" + "//:link_extra_lib", None)
 
+        # Merge explicitly provided extra dependencies
+        for d in extra_deps:
+            combined_test_deps[d] = True
+
         cc_test(
             name = name,
-            size = "large",
+            size = size,
             srcs = list(combined_test_srcs),
             deps = list(combined_test_deps),
-            **kwargs
+            **cc_test_args
         )
         build_test(
             name = "%s_build_test" % name,
