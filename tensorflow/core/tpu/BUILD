@@ -259,8 +259,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:function_proto_cc",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
