@@ -1,7 +1,7 @@
 # Description:
 #   tf.llm — High-level API for loading and fine-tuning open-source LLMs.
 #   Provides tf.llm.from_pretrained(), model.compile(), model.fit(),
-#   and model.generate() — a Keras-compatible interface over HuggingFace.
+#   and model.generate() — a Keras-compatible interface over HuggingFace
 
 load("@xla//third_party/rules_python/python:defs.bzl", "py_library", "py_test")
 
@@ -43,7 +43,11 @@ py_test(
     srcs_version = "PY3",
     deps = [
         ":llm",
+        "//tensorflow/python/framework:test_util",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:googletest",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/core/config:flags_py",
     ],
 )
 
