@@ -47,6 +47,8 @@ class PersistentCache : public AutotunerCacheInterface {
 
  protected:
   // TargetKey-based read, used for loose key matching.
+  // Returns a vector of entries that match the target key, or an empty vector
+  // if no match is found.
   virtual absl::StatusOr<std::vector<autotuner::AutotuneEntry>> Read(
       const autotuner::AutotuneTargetKey& target_key) = 0;
   // Full-key based read, for strict key matching.

@@ -312,6 +312,44 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "directory_cache",
+    srcs = ["directory_cache.cc"],
+    hdrs = ["directory_cache.h"],
+    deps = [
+        ":autotuner_cache_interface",
+        ":autotuning_proto_cc",
+        ":persistent_cache",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_cc_test(
+    name = "directory_cache_test",
+    srcs = ["directory_cache_test.cc"],
+    deps = [
+        ":autotuner_cache_interface",
+        ":backends_proto_cc",
+        ":directory_cache",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/testing:temporary_directory",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+cc_library(
     name = "local_cache",
     srcs = ["local_cache.cc"],
     hdrs = ["local_cache.h"],
