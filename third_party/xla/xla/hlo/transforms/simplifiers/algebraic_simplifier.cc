@@ -9612,6 +9612,12 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryFoldTransposeIntoScatter(
       !xla::ScatterSimplifier::IsSimplifiedScatter(scatter)) {
     return false;
   }
+  const ScatterDimensionNumbers& old_dnums =
+      scatter->scatter_dimension_numbers();
+  if (!old_dnums.input_batching_dims().empty() ||
+      !old_dnums.scatter_indices_batching_dims().empty()) {
+    return false;
+  }
 
   absl::Span<const int64_t> permutation = transpose->dimensions();
   std::vector<int64_t> inverse_permutation = InversePermutation(permutation);
@@ -9637,8 +9643,6 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryFoldTransposeIntoScatter(
       transpose->AddInstruction(HloInstruction::CreateTranspose(
           new_update_shape, scatter_update, update_permutation));
 
-  const ScatterDimensionNumbers& old_dnums =
-      scatter->scatter_dimension_numbers();
   ScatterDimensionNumbers new_dnums = old_dnums;
   new_dnums.clear_scatter_dims_to_operand_dims();
   for (int64_t dim : old_dnums.scatter_dims_to_operand_dims()) {
