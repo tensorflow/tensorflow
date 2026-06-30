@@ -6,17 +6,19 @@ exports_files(["COPYING"])
 
 config_setting(
     name = "windows",
-    values = {
-        "cpu": "x64_windows",
-    },
+    constraint_values = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+    ],
 )
 
 config_setting(
     name = "windows_x86_64_clang",
-    values = {
-        "compiler": "clang",
-        "cpu": "x64_windows",
-    },
+    constraint_values = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+        "@bazel_tools//tools/cpp:clang-cl",
+    ],
 )
 
 cc_library(
