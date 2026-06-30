@@ -43,10 +43,10 @@ absl::Status ProfilerController::Start() {
     if (status_.ok()) {
       status = status_ = profiler_->Start();
     } else {
-      status = errors::Aborted("Previous call returned an error.");
+      status = absl::AbortedError("Previous call returned an error.");
     }
   } else {
-    status = errors::Aborted("Start called in the wrong order");
+    status = absl::AbortedError("Start called in the wrong order");
   }
   if (!status.ok()) LOG(ERROR) << status;
   return status;
@@ -59,10 +59,10 @@ absl::Status ProfilerController::Stop() {
     if (status_.ok()) {
       status = status_ = profiler_->Stop();
     } else {
-      status = errors::Aborted("Previous call returned an error.");
+      status = absl::AbortedError("Previous call returned an error.");
     }
   } else {
-    status = errors::Aborted("Stop called in the wrong order");
+    status = absl::AbortedError("Stop called in the wrong order");
   }
   if (!status.ok()) LOG(ERROR) << status;
   return status;
@@ -76,10 +76,10 @@ absl::Status ProfilerController::CollectData(
     if (status_.ok()) {
       status = status_ = profiler_->CollectData(space);
     } else {
-      status = errors::Aborted("Previous call returned an error.");
+      status = absl::AbortedError("Previous call returned an error.");
     }
   } else {
-    status = errors::Aborted("CollectData called in the wrong order.");
+    status = absl::AbortedError("CollectData called in the wrong order.");
   }
   if (!status.ok()) LOG(ERROR) << status;
   return status;
