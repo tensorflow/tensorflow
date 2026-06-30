@@ -488,10 +488,7 @@ bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
         output_index.insert(output_index.end(), index.begin(), index.end());
 
         HloValueSet& value_set = GetMutableValueSet(async_op, output_index);
-        if (value_set != root_value_set) {
-          value_set = root_value_set;
-          changed = true;
-        }
+        changed |= value_set.AssignUnionOf({&value_set, &root_value_set});
       });
   return changed;
 }
