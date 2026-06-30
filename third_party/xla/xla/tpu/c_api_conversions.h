@@ -23,17 +23,12 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/maybe_owning_device_address.h"
-#include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tpu/c_api_decl.h"
 #include "xla/xla_data.pb.h"
 
@@ -55,13 +50,6 @@ absl::Span<const bool> MakeSpan(const BoolList& src_list);
 void CreateVector(absl::Span<const bool> src, BoolList* dst);
 
 void CreateVector(absl::Span<const xla::DimLevelType> src, IntList* dst);
-
-// se::DeviceAddressBase
-SE_DeviceAddressBase ToC(const stream_executor::DeviceAddressBase& base);
-void ToC(const stream_executor::DeviceAddressBase& base,
-         SE_DeviceAddressBase* se_base);
-stream_executor::DeviceAddressBase FromC(const SE_DeviceAddressBase& se_base);
-void Destroy(SE_DeviceAddressBase*);
 
 // xla::Tile
 xla::Tile FromC(const XLA_Tile* c_tile);
@@ -88,25 +76,10 @@ void ToC(const xla::LiteralSlice& literal, XLA_Literal* c_literal);
 xla::MutableBorrowingLiteral FromC(XLA_Literal* c_literal);
 void Destroy(XLA_Literal* c_literal);
 
-// ShapedBuffer
-void ToC(const xla::ShapedBuffer& buffer, XLA_ShapedBuffer* c_device_buffer);
-xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer);
-void Destroy(XLA_ShapedBuffer* c_buffer);
-
-// se::DeviceAddressBase
-SE_DeviceAddressBase ToC(const stream_executor::DeviceAddressBase& base);
-stream_executor::DeviceAddressBase FromC(const SE_DeviceAddressBase& se_base);
-void Destroy(SE_DeviceAddressBase*);
-
 // Literal
 void ToC(const xla::LiteralSlice& literal, XLA_Literal* c_literal);
 xla::MutableBorrowingLiteral FromC(XLA_Literal* c_literal);
 void Destroy(XLA_Literal* c_literal);
-
-// ShapedBuffer
-void ToC(const xla::ShapedBuffer& buffer, XLA_ShapedBuffer* c_device_buffer);
-xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer);
-void Destroy(XLA_ShapedBuffer* c_buffer);
 
 // TpuEmbeddingEngineParametersData
 struct TpuEmbeddingEngineParametersData {
@@ -116,25 +89,6 @@ struct TpuEmbeddingEngineParametersData {
 };
 
 std::unique_ptr<TpuEmbeddingEngineParametersData> Create(int num_tables);
-
-xla::MaybeOwningDeviceAddress FromC(
-    SE_MaybeOwningDeviceAddress* se_mem,
-    stream_executor::DeviceAddressAllocator* allocator);
-
-// DeviceAddressAllocator
-SE_DeviceAddressAllocator ToC(
-    stream_executor::DeviceAddressAllocator* allocator);
-stream_executor::DeviceAddressAllocator* FromC(
-    const SE_DeviceAddressAllocator& c_allocator);
-
-// OwningDeviceAddress
-SE_MaybeOwningDeviceAddress ToC(
-    stream_executor::ScopedDeviceAddress<uint8_t>* mem);
-// mem.HasOwnership() may be true if the buffer is aliased and shouldn't be
-// released. 'aliased' should be true in this case. 'aliased' has no effect if
-// 'mem' is unowned.
-SE_MaybeOwningDeviceAddress ToC(xla::MaybeOwningDeviceAddress& mem,
-                                bool aliased);
 
 // HloModule
 XLA_HloModule ToC(const xla::HloModule& module);

@@ -395,7 +395,6 @@ Build(
         "//xla/...",
         "//build_tools/...",
         "@tsl//tsl/...",
-        "-//xla/stream_executor/tpu/...",
         "-//xla/tpu/...",
         # mpitrampoline and gloo are not windows compatible
         "-//xla/backends/cpu/collectives:gloo_collectives_test",
