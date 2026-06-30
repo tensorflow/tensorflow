@@ -75,17 +75,17 @@ def extract_object_files(archive_file: io.BufferedIOBase,
     # Check if the name is already used. If so, come up with a different name by
     # incrementing the number suffix until it finds an unused one.
     for final_name in _generate_modified_filenames(name):
-        if final_name not in extracted_files:
-            extracted_files[final_name] = digest
+      if final_name not in extracted_files:
+        extracted_files[final_name] = digest
 
-            # Write the file content to the desired final path.
-            with open(os.path.join(dest_dir, final_name), 'wb') as object_file:
-                object_file.write(file_content)
-            break
+        # Write the file content to the desired final path.
+        with open(os.path.join(dest_dir, final_name), 'wb') as object_file:
+          object_file.write(file_content)
+        break
 
-        # Skip writing this file if the same file was already extracted.
-        elif extracted_files[final_name] == digest:
-            break
+      # Skip writing this file if the same file was already extracted.
+      elif extracted_files[final_name] == digest:
+        break
 
 
 def _generate_modified_filenames(filename: str) -> Iterator[str]:
@@ -103,7 +103,7 @@ def _generate_modified_filenames(filename: str) -> Iterator[str]:
   yield filename
 
   base, ext = os.path.splitext(filename)
-  for name_suffix in itertools.count(1, 1):
+  for name_suffix in itertools.count(1):
     yield '{}_{}{}'.format(base, name_suffix, ext)
 
 
@@ -119,6 +119,13 @@ def _check_archive_signature(archive_file: io.BufferedIOBase) -> None:
   Raises:
     RuntimeError: The archive signature is invalid.
   """
+  # Ensure we start from beginning.
+  try:
+    archive_file.seek(0)
+  except (OSError, IOError):
+    # If the file-like object doesn't support seek, proceed (read will consume).
+    pass
+
   signature = archive_file.read(8)
   if signature != b'!<arch>\n':
     raise RuntimeError('Invalid archive file format.')
@@ -146,31 +153,58 @@ def _extract_next_file(
     header = archive_file.read(60)
     if not header:
       return
-    elif len(header) < 60:
+    if len(header) < 60:
       raise RuntimeError('Invalid file header format.')
 
     # For the details of the file header format, see:
     # https://en.wikipedia.org/wiki/Ar_(Unix)#File_header
     # We only need the file name and the size values.
-    name, _, _, _, _, size, end = struct.unpack('=16s12s6s6s8s10s2s', header)
+    name_raw, _, _, _, _, size_bytes, end = struct.unpack('=16s12s6s6s8s10s2s',
+                                                          header)
     if end != b'`\n':
       raise RuntimeError('Invalid file header format.')
 
-    # Convert the bytes into more natural types.
-    name = name.decode('ascii').strip()
-    size = int(size, base=10)
-    odd_size = size % 2 == 1
+    # Parse size (ASCII numeric, possibly padded with spaces).
+    try:
+      size = int(size_bytes.decode('ascii').strip() or 0)
+    except ValueError:
+      raise RuntimeError('Invalid file size in header.')
 
-    # Handle the extended filename scheme.
-    if name.startswith('#1/'):
-      filename_size = int(name[3:])
-      name = archive_file.read(filename_size).decode('utf-8').strip(' \x00')
+    odd_size = (size % 2) == 1
+
+    # Handle the extended filename scheme (#1/<len>), which stores the real
+    # filename in the bytes immediately following the header.
+    name = None
+    if name_raw.startswith(b'#1/'):
+      # parse the number after '#1/'
+      try:
+        filename_size = int(name_raw[3:].decode('ascii').strip())
+      except ValueError:
+        raise RuntimeError('Invalid extended filename size in header.')
+
+      raw_name_bytes = archive_file.read(filename_size)
+      if len(raw_name_bytes) < filename_size:
+        raise RuntimeError('Unexpected end of archive while reading filename.')
+      # Remove trailing NULs and spaces.
+      name = raw_name_bytes.decode('utf-8', errors='replace').rstrip('\x00 ')
       size -= filename_size
+    else:
+      # Regular name field: decode and strip trailing spaces. Some variants
+      # append a trailing '/' — strip that as well.
+      name = name_raw.decode('utf-8', errors='replace').rstrip()
+      if name.endswith('/'):
+        name = name[:-1]
 
+    # Read the file content.
     file_content = archive_file.read(size)
+    if len(file_content) < size:
+      raise RuntimeError('Unexpected end of archive while reading file content.')
+
     # The file contents are always 2 byte aligned, and 1 byte is padded at the
     # end in case the size is odd.
     if odd_size:
-      archive_file.read(1)
+      pad = archive_file.read(1)
+      if len(pad) < 1:
+        raise RuntimeError('Invalid archive padding.')
 
     yield (name, file_content)
