@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1289 @@
+@@ -0,0 +1,1290 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -31,6 +31,7 @@ new file mode 100644
 +        # "//third_party/tensorflow/compiler/xla:__subpackages__",  # bchetioui@
 +        # "@xla-experimental//gpu:__subpackages__",  # csigg@
 +        # "@xla-experimental//tools/triton:__subpackages__",  # vwbaker@
++        # "@xla-experimental//rosetta:__subpackages__",
 +        # "//third_party/py/enzyme_ad:__subpackages__",  # wmoses@
 +        # # Triton-internal visibility
 +        # "@triton//:__subpackages__",
