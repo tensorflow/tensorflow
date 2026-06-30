@@ -507,6 +507,17 @@ class RaggedTensorToTensorOp : public RaggedTensorToTensorBaseOp<INDEX_TYPE> {
     int value_element_size = element_shape.num_elements();
     size_t output_index_size = output_index.size();
 
+    // Validate that output_index (derived from row_splits) does not reference
+    // more values than the values tensor actually contains. Without this check,
+    // the copy below would read past the values buffer into adjacent heap
+    // memory.
+    const int64_t num_values = values_tensor.dim_size(0);
+    OP_REQUIRES(
+        context, static_cast<int64_t>(output_index_size) <= num_values,
+        errors::InvalidArgument(
+            "row_partition_tensors indicate ", output_index_size,
+            " values, but the values tensor has only ", num_values, " values"));
+
     // Broadcast the default value to value_element_size.  (We can skip this
     // if default_value_tensor.NumElements() == 1, since we use std::fill
     // when that's true.)
