@@ -82,6 +82,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "buffer_slice_merge",
+    srcs = ["buffer_slice_merge.cc"],
+    hdrs = ["buffer_slice_merge.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/util:sorted_range",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 xla_cc_test(
     name = "embedded_constant_buffers_test",
     srcs = ["embedded_constant_buffers_test.cc"],
@@ -122,5 +136,15 @@ bzl_library(
         "//xla/tsl:package_groups_bzl",
         "@bazel_skylib//lib:new_sets",
         "@com_google_protobuf//bazel/common:proto_info_bzl",
+    ],
+)
+
+xla_cc_test(
+    name = "buffer_slice_merge_test",
+    srcs = ["buffer_slice_merge_test.cc"],
+    deps = [
+        ":buffer_slice_merge",
+        "//xla/service:buffer_assignment",
+        "@com_google_googletest//:gtest_main",
     ],
 )

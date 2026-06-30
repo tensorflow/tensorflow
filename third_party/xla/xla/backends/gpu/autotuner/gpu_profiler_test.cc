@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -56,7 +58,11 @@ namespace gpu {
 
 namespace {
 
+using absl_testing::IsOkAndHolds;
 using absl_testing::StatusIs;
+
+constexpr absl::string_view kGemmBackendConfig =
+    R"(backend_config={"gemm_backend_config":{"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["1"]}}})";
 
 class MockExecutable : public Executable {
  public:
@@ -132,6 +138,26 @@ class GpuProfilerTest : public HloHardwareIndependentTestBase {
         std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
             stream_exec_);
   }
+
+  absl::StatusOr<int64_t> GetScratchBytes(absl::string_view hlo_text) {
+    NVPTXCompiler compiler;
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(hlo_text));
+    module->mutable_config()
+        .mutable_debug_options()
+        .clear_xla_gpu_enable_command_buffer();
+    ASSIGN_OR_RETURN(auto gpu_executable,
+                     compiler.RunBackend(std::move(module), stream_exec_,
+                                         GpuCompiler::CompileOptions()));
+    auto profiler =
+        GpuProfiler::Create(stream_exec_, ProfileOptions(), allocator_.get());
+    ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
+                     profiler->CreateInputBuffers(gpu_executable.get()));
+    ASSIGN_OR_RETURN(ProfileResult profile,
+                     profiler->Profile(gpu_executable.get(), *buffers));
+    return profile.scratch_bytes;
+  }
+
   se::StreamExecutor* stream_exec_;
   std::unique_ptr<se::DeviceAddressAllocator> allocator_;
 };
@@ -288,37 +314,39 @@ TEST_F(GpuProfilerTest, CheckOutputBufferWithTupleShapeAreDifferent) {
 }
 
 TEST_F(GpuProfilerTest, CheckScratchBytesArePopulated) {
-  constexpr absl::string_view kHloModule = R"hlo(
-HloModule gemm_fusion_dot.1, is_scheduled=true, entry_computation_layout={(bf16[32,120,6,512]{3,2,1,0}, f32[3072,512]{1,0})->bf16[3840,512]{1,0}}, frontend_attributes={fingerprint_before_lhs="40f912baf5b53a4f75b1ba9b3442042f"}
-
-%wrapped_convert_computation (param_0: f32[3072,512]) -> bf16[3072,512] {
-  %param_0 = f32[3072,512]{1,0} parameter(0)
-  ROOT %convert.1 = bf16[3072,512]{1,0} convert(%param_0)
+  constexpr int64_t kScratchBytes = 26738688;
+  std::string hlo_text = absl::Substitute(R"hlo(
+    HloModule gemm_fusion_dot.1
+    ENTRY %entry_computation (lhs: bf16[3072,512], rhs: bf16[3840,3072]) -> bf16[512,3840] {
+      %lhs = bf16[3072,512]{1,0} parameter(0)
+      %rhs = bf16[3840,3072]{1,0} parameter(1)
+      %custom-call.1 = (bf16[512,3840]{0,1}, s8[$1]{0}) custom-call(%lhs, %rhs), custom_call_target="__cublas$$lt$$matmul", $0
+      ROOT %get-tuple-element = bf16[512,3840]{0,1} get-tuple-element(%custom-call.1), index=0
+    }
+  )hlo",
+                                          kGemmBackendConfig, kScratchBytes);
+  EXPECT_THAT(GetScratchBytes(hlo_text), IsOkAndHolds(kScratchBytes));
 }
 
-ENTRY %entry_computation (transpose.562: bf16[32,120,6,512], Arg_1.2: f32[3072,512]) -> bf16[3840,512] {
-  %Arg_1.2 = f32[3072,512]{1,0} parameter(1)
-  %transpose.562 = bf16[32,120,6,512]{3,2,1,0} parameter(0)
-  %bitcast.0 = bf16[1,32,120,6,512]{4,3,2,1,0} bitcast(%transpose.562)
-  %bitcast.1 = bf16[3840,3072]{1,0} bitcast(%bitcast.0)
-  %wrapped_convert = bf16[3072,512]{1,0} fusion(%Arg_1.2), kind=kLoop, calls=%wrapped_convert_computation
-  %custom-call.1 = (bf16[512,3840]{0,1}, s8[26738688]{0}) custom-call(%wrapped_convert, %bitcast.1), custom_call_target="__cublas$lt$matmul", backend_config={"operation_queue_id":"0","gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["1"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"1572864","rhs_stride":"11796480","grad_x":false,"grad_y":false,"damax_output":false},"force_earliest_schedule":false,"reification_cost":[]}
-  %get-tuple-element = bf16[512,3840]{0,1} get-tuple-element(%custom-call.1), index=0
-  ROOT %bitcast.2 = bf16[3840,512]{1,0} bitcast(%get-tuple-element)
-})hlo";
-  NVPTXCompiler compiler;
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(kHloModule));
-  ASSERT_OK_AND_ASSIGN(auto gpu_executable,
-                       compiler.RunBackend(std::move(module), stream_exec_,
-                                           GpuCompiler::CompileOptions()));
-  auto profiler =
-      GpuProfiler::Create(stream_exec_, ProfileOptions(), allocator_.get());
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
-                       profiler->CreateInputBuffers(gpu_executable.get()));
-  ASSERT_OK_AND_ASSIGN(ProfileResult profile,
-                       profiler->Profile(gpu_executable.get(), *buffers));
-  EXPECT_EQ(profile.scratch_bytes, 26738688);
+TEST_F(GpuProfilerTest, CheckScratchBytesAreDeDuplicated) {
+  constexpr int64_t kScratchBytes = 26738688;
+  std::string hlo_text = absl::Substitute(R"hlo(
+    HloModule gemm_fusion_dot.2
+    ENTRY %entry_computation (lhs: bf16[3072,512], rhs: bf16[3840,3072]) -> (bf16[512,3840], bf16[512,3840]) {
+      %lhs = bf16[3072,512]{1,0} parameter(0)
+      %rhs = bf16[3840,3072]{1,0} parameter(1)
+      %custom-call.1 = (bf16[512,3840]{0,1}, s8[$1]{0}) custom-call(%lhs, %rhs), custom_call_target="__cublas$$lt$$matmul", $0
+      %val1 = bf16[512,3840]{0,1} get-tuple-element(%custom-call.1), index=0
+
+      %custom-call.2 = (bf16[512,3840]{0,1}, s8[$1]{0}) custom-call(%lhs, %rhs), custom_call_target="__cublas$$lt$$matmul", $0
+      %val2 = bf16[512,3840]{0,1} get-tuple-element(%custom-call.2), index=0
+
+      ROOT %tuple = (bf16[512,3840]{0,1}, bf16[512,3840]{0,1}) tuple(%val1, %val2)
+    }
+  )hlo",
+                                          kGemmBackendConfig, kScratchBytes);
+
+  EXPECT_THAT(GetScratchBytes(hlo_text), IsOkAndHolds(kScratchBytes));
 }
 
 }  // namespace

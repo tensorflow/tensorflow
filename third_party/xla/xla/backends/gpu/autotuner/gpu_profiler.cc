@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
+#include "xla/util/buffer_slice_merge.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -81,21 +83,34 @@ std::vector<ExecutionInput> CreateExecutionInputsFromBuffers(
 }
 
 int GetScratchBytes(const GpuExecutable& executable) {
-  int32_t scratch_bytes = 0;
+  // Group scratch slices by allocation.
+  absl::flat_hash_map<const BufferAllocation*,
+                      std::vector<BufferAllocation::Slice>>
+      alloc_to_slices;
+
   CHECK_OK(executable.thunk_executor().thunks().WalkNested(
-      [&scratch_bytes](const Thunk* thunk) {
-        std::vector<BufferAllocation::Slice> scratch_slices;
+      [&alloc_to_slices](const Thunk* thunk) {
         for (const auto& buffer_use : thunk->buffer_uses()) {
           // ContentValidity::kUndefined means the buffer is a scratch buffer.
           if (buffer_use.content_validity() ==
               BufferUse::ContentValidity::kUndefined) {
-            // TODO(b/517426568): De-duplicate overlapping slices.
-            scratch_bytes += buffer_use.slice().size();
+            const auto& slice = buffer_use.slice();
+            alloc_to_slices[slice.allocation()].push_back(slice);
           }
         }
 
         return absl::OkStatus();
       }));
+
+  int64_t scratch_bytes = 0;
+  for (auto& [alloc, slices] : alloc_to_slices) {
+    // We might be re-using the same physical buffer for different slices (e.g.
+    // we need to use the same scratch buffer for two sequential operations), so
+    // we need to merge overlapping slices.
+    for (const auto& merged_slice : MergeOverlappingSlices(slices)) {
+      scratch_bytes += merged_slice.size();
+    }
+  }
 
   return static_cast<int>(scratch_bytes);
 }
