@@ -970,6 +970,25 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "to_tf_record_op_test",
+    size = "small",
+    srcs = ["to_tf_record_op_test.cc"],
+    deps = [
+        ":to_tf_record_op",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/kernels/data:model_dataset_op",
+        "//tensorflow/core/kernels/data:prefetch_dataset_op",
+        "//tensorflow/core/kernels/data:tensor_dataset_op",
+        "@com_google_absl//absl/status",
+    ],
+)
+
 tf_kernel_library(
     name = "unbatch_dataset_op",
     srcs = ["unbatch_dataset_op.cc"],

@@ -24,9 +24,12 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.lib.io import tf_record
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -139,6 +142,90 @@ class TFRecordWriterTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(self.evaluate(get_next()), shard_filename)
       for j, r in enumerate(tf_record.tf_record_iterator(shard_filename)):
         self.assertAllEqual(self._record(i + 2*j), r)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDatasetToTFRecordNonScalarShapeError(self):
+    # Create a dataset yielding 1D empty string tensors (shape [0]), which
+    # are not scalars.
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        constant_op.constant([[], [], []], dtype=dtypes.string)
+    )
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(
+          gen_experimental_dataset_ops.dataset_to_tf_record(
+              dataset._variant_tensor, self._outputFilename(), ""
+          )
+      )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testExperimentalDatasetToTFRecord(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([b"hello", b"world"])
+    self.evaluate(
+        gen_experimental_dataset_ops.experimental_dataset_to_tf_record(
+            dataset._variant_tensor, self._outputFilename(), ""
+        )
+    )
+    for i, r in enumerate(tf_record.tf_record_iterator(self._outputFilename())):
+      self.assertAllEqual([b"hello", b"world"][i], r)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testExperimentalDatasetToTFRecordNonScalarShapeError(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        constant_op.constant([[], [], []], dtype=dtypes.string)
+    )
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(
+          gen_experimental_dataset_ops.experimental_dataset_to_tf_record(
+              dataset._variant_tensor, self._outputFilename(), ""
+          )
+      )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDatasetToTFRecordInvalidDtypeError(self):
+    dataset = dataset_ops.Dataset.from_tensors(10)
+    for op in (
+        gen_experimental_dataset_ops.dataset_to_tf_record,
+        gen_experimental_dataset_ops.experimental_dataset_to_tf_record,
+    ):
+      with self.assertRaises(errors.InvalidArgumentError):
+        self.evaluate(op(dataset._variant_tensor, self._outputFilename(), ""))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDatasetToTFRecordMultipleColumnsError(self):
+    dataset = dataset_ops.Dataset.zip((
+        dataset_ops.Dataset.from_tensors(b"a"),
+        dataset_ops.Dataset.from_tensors(b"b"),
+    ))
+    for op in (
+        gen_experimental_dataset_ops.dataset_to_tf_record,
+        gen_experimental_dataset_ops.experimental_dataset_to_tf_record,
+    ):
+      with self.assertRaises(errors.InvalidArgumentError):
+        self.evaluate(op(dataset._variant_tensor, self._outputFilename(), ""))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDatasetToTFRecordNonScalarFilenameError(self):
+    dataset = dataset_ops.Dataset.from_tensors(b"hello")
+    filename = constant_op.constant(["file1", "file2"])
+    for op in (
+        gen_experimental_dataset_ops.dataset_to_tf_record,
+        gen_experimental_dataset_ops.experimental_dataset_to_tf_record,
+    ):
+      with self.assertRaises(errors.InvalidArgumentError):
+        self.evaluate(op(dataset._variant_tensor, filename, ""))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDatasetToTFRecordNonScalarCompressionError(self):
+    dataset = dataset_ops.Dataset.from_tensors(b"hello")
+    compression = constant_op.constant(["ZLIB", "GZIP"])
+    for op in (
+        gen_experimental_dataset_ops.dataset_to_tf_record,
+        gen_experimental_dataset_ops.experimental_dataset_to_tf_record,
+    ):
+      with self.assertRaises(errors.InvalidArgumentError):
+        self.evaluate(
+            op(dataset._variant_tensor, self._outputFilename(), compression)
+        )
 
 
 if __name__ == "__main__":
