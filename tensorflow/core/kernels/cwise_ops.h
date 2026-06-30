@@ -875,10 +875,16 @@ template <typename RealType>
 struct safe_complex_sign_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<RealType> operator()(
       const std::complex<RealType>& z) const {
-    if (z.real() == RealType(0) && z.imag() == RealType(0)) {
+    const RealType re = z.real();
+    const RealType im = z.imag();
+    if (re == RealType(0) && im == RealType(0)) {
       return std::complex<RealType>(0, 0);
     }
-    return z / std::abs(z);
+    // Use hypot directly to avoid intermediate underflow/overflow.
+    // std::abs(complex) may compute sqrt(re*re + im*im) which underflows
+    // when FTZ is enabled and |re|^2 or |im|^2 is subnormal.
+    const RealType mag = std::hypot(re, im);
+    return std::complex<RealType>(re / mag, im / mag);
   }
 };
 
