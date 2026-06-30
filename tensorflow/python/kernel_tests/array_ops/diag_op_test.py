@@ -559,6 +559,17 @@ class MatrixDiagTest(test.TestCase):
           align="RIGHT_LEFT",
       )
 
+  def testInvalidBandShape(self):
+    # Regression test for GitHub issue #110796 (rank-1 diagonal):
+    # tf.linalg.diag with a band k=(low, high) (low != high) must reject a
+    # rank-1 diagonal with InvalidArgumentError instead of crashing with a
+    # C++ CHECK failure.
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "diagonal must be at least 2-dim when a band range"):
+      array_ops.matrix_diag(
+          constant_op.constant([1.0, 2.0, 3.0, 4.0]), k=(-2, 1))
+
   @test_util.run_deprecated_v1
   def testGrad(self):
     shapes = ((3,), (7, 4))
