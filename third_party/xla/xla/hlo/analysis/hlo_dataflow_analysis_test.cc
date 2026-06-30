@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 
+#include <cstdint>
 #include <initializer_list>
 #include <memory>
 #include <optional>
@@ -24,14 +25,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -39,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -869,6 +875,52 @@ ENTRY main {
     EXPECT_FALSE(analysis.ValueIsDefinedAt(bitcast));
     EXPECT_TRUE(analysis.GetValueDefinedAt(constant).live_out_of_module());
   }
+}
+
+TEST_P(HloDataflowAnalysisTest, LateBoundAsyncUpdateTypeSafety) {
+  // Test that a late-bound async-update that expands an empty tuple slot
+  // into a physical array tensor leaf does not pollute its value set with
+  // the predecessor's dummy tuple value.
+  std::string hlo_str = R"(
+HloModule LateBoundAsyncUpdateTypeSafety, is_scheduled=true
+
+InnerComputation (p0: f32[16]{0}) -> f32[16]{0} {
+  p0 = f32[16]{0} parameter(0)
+  ROOT add = f32[16]{0} add(p0, p0)
+}
+
+AsyncWrappedComputation (p0: f32[16]{0}) -> f32[16]{0} {
+  p0 = f32[16]{0} parameter(0)
+  ROOT call = f32[16]{0} call(p0), to_apply=InnerComputation
+}
+
+ENTRY main () -> f32[16]{0} {
+  p = f32[16]{0} parameter(0)
+  async-start = ((f32[16]{0}), (), s32[]{:S(2)}) async-start(p), calls=AsyncWrappedComputation
+  async-update = ((f32[16]{0}), f32[16]{0}, s32[]{:S(2)}) async-update(async-start)
+  ROOT async-done = f32[16]{0} async-done(async-update)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  HloInstruction* async_update = FindInstruction(module_.get(), "async-update");
+  HloComputation* inner_comp =
+      FindComputation(module_.get(), "InnerComputation");
+  HloInstruction* add = inner_comp->root_instruction();
+  SCOPED_TRACE(module_->ToString());
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis =
+      RunAnalysis(ssa_form, /*bitcast_defines_value=*/false, /*run_dce=*/false);
+
+  // The value set for the expanded leaf array output slot (index {1}) should
+  // contain exactly ONE type-safe HloValue pointer originating from the wrapped
+  // computation's root operation, and MUST NOT contain the predecessor's tuple
+  // value!
+  const HloValueSet& output_value_set = analysis.GetValueSet(async_update, {1});
+  EXPECT_EQ(output_value_set.values().size(), 1);
+  EXPECT_EQ(output_value_set.values().at(0)->defining_instruction(), add);
 }
 
 TEST_P(HloDataflowAnalysisTest, TupleCopy) {
@@ -3385,6 +3437,305 @@ TEST_P(HloDataflowAnalysisTest, b409756077) {
     defining_instructions.push_back(value->defining_instruction());
   }
   EXPECT_THAT(defining_instructions, UnorderedElementsAre(param2, add0));
+}
+
+TEST_P(HloDataflowAnalysisTest, AsyncUpdateMismatchedContextShape) {
+  std::string hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    async-update = ((f32[2,3]), f32[2,3]) custom-call-update(async-start)
+    ROOT async-done = f32[2,3] custom-call-done(async-update)
+  }
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_update =
+      FindInstruction(module_.get(), "async-update");
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, /*index=*/{2}));
+  EXPECT_FALSE(ShapeUtil::IndexIsValid(async_update->shape(), {2}));
+}
+
+TEST_P(HloDataflowAnalysisTest, AsyncUpdateIncompatibleContextSubshape) {
+  std::string hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    async-update = ((f32[2,3]), f32[2,3], f32[4]) custom-call-update(async-start)
+    ROOT async-done = f32[2,3] custom-call-done(async-update)
+  }
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_update =
+      FindInstruction(module_.get(), "async-update");
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, /*index=*/{2}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(async_update, /*index=*/{2}));
+}
+
+TEST_P(HloDataflowAnalysisTest, LateBoundOperandDataflow) {
+  // HLO program with two parameters bound incrementally using async-update.
+  std::string hlo_text = R"hlo(
+HloModule LateBoundOperandDataflow, is_scheduled=true
+
+%Subcomputation (param0: f32[], param1: f32[]) -> f32[] {
+  %param0 = f32[] parameter(0)
+  %param1 = f32[] parameter(1)
+  ROOT %add = f32[] add(%param0, %param1)
+}
+
+ENTRY %entry () -> f32[] {
+  %constant.1 = f32[] constant(1)
+  %constant.2 = f32[] constant(2)
+  // Initially, no parameters are bound.
+  %async-start = ((), f32[], s32[]{:S(2)}) async-start(),
+      calls=%Subcomputation, async_execution_thread="sparsecore"
+  // Bind the first parameter (param0).
+  %async-update.0 = ((f32[]), f32[], s32[]{:S(2)}) async-update(%async-start, %constant.1)
+  // Bind the second parameter (param1) incrementally.
+  %async-update.1 = ((f32[], f32[]), f32[], s32[]{:S(2)}) async-update(%async-update.0, %constant.2)
+  ROOT %async-done = f32[] async-done(%async-update.1)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+
+  const HloDataflowAnalysis& analysis = RunAnalysis(GetParam());
+
+  const HloComputation* subcomputation =
+      FindComputation(module_.get(), "Subcomputation");
+  const HloInstruction* subparam0 = subcomputation->parameter_instruction(0);
+  const HloInstruction* subparam1 = subcomputation->parameter_instruction(1);
+
+  const HloInstruction* constant1 =
+      FindInstruction(module_.get(), "constant.1");
+  const HloInstruction* constant2 =
+      FindInstruction(module_.get(), "constant.2");
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_update_0 =
+      FindInstruction(module_.get(), "async-update.0");
+  const HloInstruction* async_update_1 =
+      FindInstruction(module_.get(), "async-update.1");
+  const HloInstruction* async_done =
+      FindInstruction(module_.get(), "async-done");
+
+  const HloInstruction* sub_add = FindInstruction(module_.get(), "add");
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(constant1, {}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(constant2, {}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, {}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update_0, {}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update_1, {}));
+
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(async_done, {}));
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(sub_add, {}));
+
+  // Verify that constant1 correctly reaches param0 via the first async-update.
+  EXPECT_EQ(analysis.GetUniqueValueAt(subparam0),
+            analysis.GetValueDefinedAt(constant1));
+
+  // Verify that constant2 correctly reaches param1 via the second async-update.
+  EXPECT_EQ(analysis.GetUniqueValueAt(subparam1),
+            analysis.GetValueDefinedAt(constant2));
+
+  EXPECT_THAT(analysis.GetValueSet(async_done).values(),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(sub_add)));
+}
+
+TEST_P(HloDataflowAnalysisTest, LateBoundOutputDataflow) {
+  std::string hlo_text = R"hlo(
+HloModule Module, is_scheduled=true
+
+async_computation {
+  p0 = f32[10] parameter(0)
+  ROOT custom-call = f32[10] custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY main {
+  p = f32[10] parameter(0)
+  async-start = ((f32[10]), (), s32[]) async-start(p), calls=async_computation
+  async-update = ((f32[10]), f32[10], s32[]) async-update(async-start)
+  ROOT async-done = f32[10] async-done(async-update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+
+  const HloDataflowAnalysis& analysis = RunAnalysis(GetParam());
+
+  const HloInstruction* custom_call =
+      FindInstruction(module_.get(), "custom-call");
+  const HloInstruction* async_done =
+      FindInstruction(module_.get(), "async-done");
+
+  const HloValueSet& async_done_values = analysis.GetValueSet(async_done);
+  const HloValue& cc_value = analysis.GetValueDefinedAt(custom_call);
+
+  EXPECT_TRUE(absl::c_linear_search(async_done_values.values(), &cc_value));
+}
+
+TEST_P(HloDataflowAnalysisTest, AliasInfoPropagation) {
+  std::string hlo_text = R"hlo(
+HloModule Module, is_scheduled=true
+
+Subcomputation (param0: f32[]) -> f32[] {
+  ROOT p0 = f32[] parameter(0)
+}
+
+ENTRY main {
+  constant = f32[] constant(1)
+  async-start = ((f32[]), (), s32[]) async-start(constant), calls=Subcomputation
+  async-update = ((f32[]), f32[], s32[]) async-update(async-start)
+  ROOT async-done = f32[] async-done(async-update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+
+  HloInstruction* async_start = FindInstruction(module_.get(), "async-start");
+  HloInstruction* constant = FindInstruction(module_.get(), "constant");
+
+  // Programmatically set output-to-operand aliasing on AsyncStart.
+  auto* async_start_concrete = Cast<HloAsyncStartInstruction>(async_start);
+
+  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasing;
+  aliasing.push_back({ShapeIndex({0, 0}), {0, ShapeIndex({})}});
+  async_start_concrete->set_output_to_operand_aliasing(aliasing);
+
+  // Run HloAliasAnalysis
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+
+  // Verify that constant and async-start at {0, 0} are in the same buffer!
+  const HloBuffer& constant_buffer =
+      alias_analysis->GetUniqueBufferAt(constant);
+  const HloBuffer& async_start_buffer =
+      alias_analysis->GetUniqueBufferAt(async_start, {0, 0});
+  EXPECT_EQ(constant_buffer.id(), async_start_buffer.id());
+}
+
+TEST_P(HloDataflowAnalysisTest, AsyncStartValueSet) {
+  std::string hlo_text = R"hlo(
+HloModule Module, is_scheduled=true
+
+Subcomputation (param0: f32[]) -> f32[] {
+  ROOT p0 = f32[] parameter(0)
+}
+
+ENTRY main {
+  constant = f32[] constant(1)
+  async-start = ((f32[]), (), s32[]) async-start(constant), calls=Subcomputation
+  async-update = ((f32[]), f32[], s32[]) async-update(async-start)
+  ROOT async-done = f32[] async-done(async-update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+
+  // Programmatically set output-to-operand aliasing on AsyncStart.
+  HloInstruction* async_start_non_const =
+      FindInstruction(module_.get(), "async-start");
+  auto* async_start_concrete =
+      Cast<HloAsyncStartInstruction>(async_start_non_const);
+
+  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasing;
+  aliasing.push_back({ShapeIndex({0, 0}), {0, ShapeIndex({})}});
+  async_start_concrete->set_output_to_operand_aliasing(aliasing);
+
+  const HloDataflowAnalysis& analysis = RunAnalysis(GetParam());
+
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+
+  const HloValueSet& value_set = analysis.GetValueSet(async_start, {0, 0});
+
+  EXPECT_EQ(value_set.values().size(), 1);
+}
+
+TEST_P(HloDataflowAnalysisTest, LateBoundOutputBufferDataflow) {
+  std::string hlo_text = R"hlo(
+HloModule Module, is_scheduled=true
+
+async_computation {
+  p0 = f32[10] parameter(0)
+  ROOT custom-call = f32[10] custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY main {
+  p = f32[10] parameter(0)
+  async-start = ((f32[10]), (), s32[]) async-start(p), calls=async_computation
+  async-update = ((f32[10]), f32[10], s32[]) async-update(async-start)
+  ROOT async-done = f32[10] async-done(async-update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+
+  const HloDataflowAnalysis& analysis = RunAnalysis(GetParam());
+
+  const HloInstruction* async_done =
+      FindInstruction(module_.get(), "async-done");
+
+  const HloValueSet& async_done_values = analysis.GetValueSet(async_done);
+
+  EXPECT_FALSE(async_done_values.values().empty());
+}
+
+TEST_P(HloDataflowAnalysisTest, LateBoundNestedTupleOutputDataflow) {
+  std::string hlo_text = R"hlo(
+HloModule Module, is_scheduled=true
+
+async_computation {
+  p0 = f32[10] parameter(0)
+  ROOT tuple = (f32[10], f32[10]) tuple(p0, p0)
+}
+
+ENTRY main {
+  p = f32[10] parameter(0)
+  async-start = ((f32[10]), (), s32[]) async-start(p), calls=async_computation
+  // The output shape starts empty {}, and gets bound later.
+  async-update = ((f32[10]), (f32[10], f32[10]), s32[]) async-update(async-start)
+  ROOT async-done = (f32[10], f32[10]) async-done(async-update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+
+  const HloDataflowAnalysis& analysis = RunAnalysis(GetParam());
+
+  const HloInstruction* async_done =
+      FindInstruction(module_.get(), "async-done");
+
+  const HloValueSet& async_done_values_0 =
+      analysis.GetValueSet(async_done, {0});
+
+  EXPECT_FALSE(async_done_values_0.values().empty());
 }
 
 }  // namespace
