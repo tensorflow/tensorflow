@@ -384,6 +384,14 @@ class VarianceScalingInitializerTest(InitializersTest):
     self.assertNear(np.mean(x), expect_mean, err=2e-3)
     self.assertNear(np.var(x), expect_var, err=2e-3)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidDistributionType(self):
+    with self.assertRaisesRegex(ValueError, "must be a string"):
+      init_ops_v2.VarianceScaling(distribution=None)
+    with self.assertRaisesRegex(ValueError, "must be a string"):
+      init_ops_v2.VarianceScaling(distribution=123)
+
+
 
 class OrthogonalInitializerTest(InitializersTest):
 

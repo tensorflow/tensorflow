@@ -842,6 +842,9 @@ class VarianceScaling(Initializer):
     if mode not in {"fan_in", "fan_out", "fan_avg"}:
       raise ValueError("Argument `mode` should be one of ('fan_in', 'fan_out', "
                        f"'fan_avg'). Received: {mode}")
+    if not isinstance(distribution, str):
+      raise ValueError("Argument `distribution` must be a string. Received: "
+                       f"{distribution} (of type {type(distribution).__name__})")
     distribution = distribution.lower()
     if distribution not in {
         "normal", "uniform", "truncated_normal", "untruncated_normal"
