@@ -55,7 +55,7 @@ struct OutOfRange {
                "likely a bug in your model. A crash immediately after this " \
                "under ubsan is expected.";                                   \
       }                                                                      \
-      out_tensor.device(d) = in_tensor.template cast<I>();                   \
+      out_tensor.device(d) = in_tensor.unaryExpr(GpuSafeCastOp<F, I>());     \
     }                                                                        \
   };
 

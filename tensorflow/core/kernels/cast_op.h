@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CAST_OP_H_
 #define TENSORFLOW_CORE_KERNELS_CAST_OP_H_
 
+#include <type_traits>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -88,7 +90,8 @@ limitations under the License.
                     typename TTypes<OUT_TYPE>::Flat out_tensor,       \
                     typename TTypes<IN_TYPE>::ConstFlat in_tensor,    \
                     bool truncate = false) {                          \
-      out_tensor.device(d) = in_tensor.template cast<OUT_TYPE>();     \
+      out_tensor.device(d) =                                          \
+          in_tensor.unaryExpr(GpuSafeCastOp<IN_TYPE, OUT_TYPE>());    \
     }                                                                 \
   };
 
@@ -158,6 +161,19 @@ class CpuCastOp : public CastOpBase {
 };
 
 namespace functor {
+
+template <typename Tin, typename Tout>
+struct GpuSafeCastOp {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Tout operator()(const Tin& v) const {
+    return (std::is_floating_point<Tin>::value ||
+            std::is_same<Tin, Eigen::half>::value ||
+            std::is_same<Tin, bfloat16>::value) &&
+           std::is_integral<Tout>::value &&
+           Eigen::numext::isnan(v)
+       ? Tout(0)
+       : Eigen::internal::scalar_cast_op<Tin, Tout>()(v);
+  }
+};
 
 template <typename I>
 constexpr int MantissaWidth() {
