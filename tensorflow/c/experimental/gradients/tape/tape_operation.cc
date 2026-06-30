@@ -173,7 +173,7 @@ absl::Status TapeOperation::SetAttrTypeList(const char* attr_name,
                                             const DataType* values,
                                             int num_values) {
   forward_op_.attrs.Set(attr_name,
-                        gtl::ArraySlice<const DataType>(values, num_values));
+                        absl::Span<const const DataType>(values, num_values));
   return parent_op_->SetAttrTypeList(attr_name, values, num_values);
 }
 absl::Status TapeOperation::SetAttrBoolList(const char* attr_name,
