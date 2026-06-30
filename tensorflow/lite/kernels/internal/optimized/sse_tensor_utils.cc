@@ -64,14 +64,30 @@ static inline __m128i _mm_loadu_si32(const void* address) {
 // Dot product of four int8 vectors of 4 elements packed into a XMM register.
 // Result is four int32 scalars packed into a XMM register.
 // int8x4x4 · int8x4x4 => int32x4
+// Note: We unpack and sign-extend 8-bit operands to 16-bit integers before
+// multiplying with _mm_madd_epi16 to prevent intermediate 16-bit saturation.
 static inline __m128i DotProdInt8x4x4(__m128i a_8x16, __m128i b_8x16) {
-  // Transfer sign from 'a' to 'b', as _mm_maddubs_epi16 treats 'a' unsigned.
-  b_8x16 = _mm_sign_epi8(b_8x16, a_8x16);
-  a_8x16 = _mm_abs_epi8(a_8x16);
-  // sumprod[i] = a[2*i]*b[2*i] + a[2*i+1]*b[2*i+1] (i = 0..7)
-  __m128i sumprod_16x8 = _mm_maddubs_epi16(a_8x16, b_8x16);
-  // sumprod[i] = sumprod[2*i]*1 + sumprod[2*i+1]*1 (i = 0..3)
-  return _mm_madd_epi16(sumprod_16x8, _mm_set1_epi16(1));
+#ifdef __SSE4_1__
+  // a_lo[i] = (int16_t)a[i]  (i = 0..7),  a_hi[i] = (int16_t)a[i+8]  (i = 0..7)
+  __m128i a_lo = _mm_cvtepi8_epi16(a_8x16);
+  __m128i a_hi = _mm_cvtepi8_epi16(_mm_srli_si128(a_8x16, 8));
+  // b_lo[i] = (int16_t)b[i]  (i = 0..7),  b_hi[i] = (int16_t)b[i+8]  (i = 0..7)
+  __m128i b_lo = _mm_cvtepi8_epi16(b_8x16);
+  __m128i b_hi = _mm_cvtepi8_epi16(_mm_srli_si128(b_8x16, 8));
+#else
+  // SSE2/SSSE3 fallback: a_lo[i] = (int16_t)a[i], a_hi[i] = (int16_t)a[i+8]
+  __m128i zero = _mm_setzero_si128();
+  __m128i a_lo = _mm_srai_epi16(_mm_unpacklo_epi8(zero, a_8x16), 8);
+  __m128i a_hi = _mm_srai_epi16(_mm_unpackhi_epi8(zero, a_8x16), 8);
+  __m128i b_lo = _mm_srai_epi16(_mm_unpacklo_epi8(zero, b_8x16), 8);
+  __m128i b_hi = _mm_srai_epi16(_mm_unpackhi_epi8(zero, b_8x16), 8);
+#endif
+  // prod_lo[i] = a_lo[2*i]*b_lo[2*i] + a_lo[2*i+1]*b_lo[2*i+1]  (i = 0..3)
+  __m128i prod_lo = _mm_madd_epi16(a_lo, b_lo);
+  // prod_hi[i] = a_hi[2*i]*b_hi[2*i] + a_hi[2*i+1]*b_hi[2*i+1]  (i = 0..3)
+  __m128i prod_hi = _mm_madd_epi16(a_hi, b_hi);
+  // Horizontally add adjacent partial sums within each register => int32x4
+  return _mm_hadd_epi32(prod_lo, prod_hi);
 }
 
 // Horizontally add 4 int32 values stored in a single XMM register to int32_t.
@@ -108,14 +124,25 @@ static inline float ReduceFloat32x8(__m256 acc) {
 // Dot product of four int8 vectors of 4 elements packed into a YMM register.
 // Result is eight int32 scalars packed into a YMM register.
 // int8x4x8 · int8x4x8 => int32x8
+// Note: We unpack and sign-extend 8-bit operands to 16-bit integers before
+// multiplying with _mm256_madd_epi16 to prevent intermediate 16-bit saturation.
 static inline __m256i DotProdInt8x4x8(__m256i a_16x16, __m256i b_16x16) {
-  // Transfer sign from 'a' to 'b', as _mm256_maddubs_epi16 treats 'a' unsigned.
-  b_16x16 = _mm256_sign_epi8(b_16x16, a_16x16);
-  a_16x16 = _mm256_abs_epi8(a_16x16);
-  // sumprod[i] = a[2*i]*b[2*i] + a[2*i+1]*b[2*i+1] (i = 0..15)
-  __m256i sumprod_16x16 = _mm256_maddubs_epi16(a_16x16, b_16x16);
-  // sumprod[i] = sumprod[2*i]*1 + sumprod[2*i+1]*1 (i = 0..7)
-  return _mm256_madd_epi16(sumprod_16x16, _mm256_set1_epi16(1));
+  // a_lo[i] = (int16_t)a[i]  (i = 0..15),  a_hi[i] = (int16_t)a[i+16]  (i =
+  // 0..15)
+  __m256i a_lo = _mm256_cvtepi8_epi16(_mm256_castsi256_si128(a_16x16));
+  __m256i a_hi = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(a_16x16, 1));
+  // b_lo[i] = (int16_t)b[i]  (i = 0..15),  b_hi[i] = (int16_t)b[i+16]  (i =
+  // 0..15)
+  __m256i b_lo = _mm256_cvtepi8_epi16(_mm256_castsi256_si128(b_16x16));
+  __m256i b_hi = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(b_16x16, 1));
+  // prod_lo[i] = a_lo[2*i]*b_lo[2*i] + a_lo[2*i+1]*b_lo[2*i+1]  (i = 0..7)
+  __m256i prod_lo = _mm256_madd_epi16(a_lo, b_lo);
+  // prod_hi[i] = a_hi[2*i]*b_hi[2*i] + a_hi[2*i+1]*b_hi[2*i+1]  (i = 0..7)
+  __m256i prod_hi = _mm256_madd_epi16(a_hi, b_hi);
+  // Horizontally add registers, then permute 64-bit blocks to restore
+  // correct [V0..V7] order => int32x8.
+  __m256i hadd = _mm256_hadd_epi32(prod_lo, prod_hi);
+  return _mm256_permute4x64_epi64(hadd, _MM_SHUFFLE(3, 1, 2, 0));
 }
 #endif  // __AVX2__
 
