@@ -183,6 +183,7 @@ _TEXTUAL_HDRS_LIST = glob([
     "src/graph/utils/pm/*.hpp",
     "third_party/**/*.h",
     "third_party/ittnotify/**/*.h",
+    "third_party/ngen/**/*.hpp",
 ] + if_sycl_build_is_configured(
     [
         "src/gpu/*.hpp",
@@ -315,6 +316,7 @@ sycl_library(
             "src/gpu/generic/*.cpp",
             "src/gpu/intel/*.cpp",
             "src/gpu/intel/**/*.cpp",
+            "third_party/ngen/**/*.cpp",
         ],
         exclude = [
             "src/cpu/aarch64/**",
