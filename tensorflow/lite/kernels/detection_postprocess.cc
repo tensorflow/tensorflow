@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <initializer_list>
+#include <limits>
 #include <numeric>
 #include <vector>
 
@@ -161,9 +162,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_box_encodings), 3);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_class_predictions), 3);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_anchors), 2);
-  // number of detected boxes
-  const int num_detected_boxes =
-      op_data->max_detections * op_data->max_classes_per_detection;
+  // number of detected boxes. max_detections and max_classes_per_detection come
+  // straight from the model's flexbuffer custom_options and are not checked by
+  // the flatbuffer verifier, so guard against a negative value or an overflow
+  // of the int multiply before it is used to size the output tensors.
+  TF_LITE_ENSURE(context, op_data->max_detections >= 0);
+  TF_LITE_ENSURE(context, op_data->max_classes_per_detection >= 0);
+  const int64_t num_detected_boxes_64 =
+      static_cast<int64_t>(op_data->max_detections) *
+      op_data->max_classes_per_detection;
+  TF_LITE_ENSURE(context, num_detected_boxes_64 <=
+                              std::numeric_limits<int>::max());
+  const int num_detected_boxes = static_cast<int>(num_detected_boxes_64);
 
   // Outputs: detection_boxes, detection_scores, detection_classes,
   // num_detections

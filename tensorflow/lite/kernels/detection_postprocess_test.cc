@@ -123,6 +123,63 @@ class BaseDetectionPostprocessOpModel : public SingleOpModel {
   int output4_;
 };
 
+// Builds the op but stops short of allocating tensors, so a Prepare() failure
+// can be observed via AllocateTensors() instead of crashing during model
+// construction.
+class PrepareOnlyDetectionPostprocessOpModel : public SingleOpModel {
+ public:
+  PrepareOnlyDetectionPostprocessOpModel(int max_detections,
+                                         int max_classes_per_detection) {
+    input1_ = AddInput({TensorType_FLOAT32, {1, 1, 4}});
+    input2_ = AddInput({TensorType_FLOAT32, {1, 1, 2}});
+    input3_ = AddInput({TensorType_FLOAT32, {1, 4}});
+    AddOutput({TensorType_FLOAT32, {}});
+    AddOutput({TensorType_FLOAT32, {}});
+    AddOutput({TensorType_FLOAT32, {}});
+    AddOutput({TensorType_FLOAT32, {}});
+
+    flexbuffers::Builder fbb;
+    fbb.Map([&]() {
+      fbb.Int("max_detections", max_detections);
+      fbb.Int("max_classes_per_detection", max_classes_per_detection);
+      fbb.Float("nms_score_threshold", 0.0);
+      fbb.Float("nms_iou_threshold", 0.5);
+      fbb.Int("num_classes", 1);
+      fbb.Float("y_scale", 10.0);
+      fbb.Float("x_scale", 10.0);
+      fbb.Float("h_scale", 5.0);
+      fbb.Float("w_scale", 5.0);
+    });
+    fbb.Finish();
+    SetCustomOp("TFLite_Detection_PostProcess", fbb.GetBuffer(),
+                Register_DETECTION_POSTPROCESS);
+    BuildInterpreter({GetShape(input1_), GetShape(input2_), GetShape(input3_)},
+                     /*num_threads=*/1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  int input1_;
+  int input2_;
+  int input3_;
+};
+
+// max_detections * max_classes_per_detection overflows int and used to wrap to
+// a non-positive output dimension, producing undersized output tensors that the
+// kernel then wrote past. Prepare() must reject it instead.
+TEST(DetectionPostprocessOpTest, RejectsDetectedBoxesOverflow) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1 << 29,
+                                           /*max_classes_per_detection=*/8);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(DetectionPostprocessOpTest, RejectsNegativeMaxDetections) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/-1,
+                                           /*max_classes_per_detection=*/1);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 TEST(DetectionPostprocessOpTest, FloatTest) {
   BaseDetectionPostprocessOpModel m(
       {TensorType_FLOAT32, {1, 6, 4}}, {TensorType_FLOAT32, {1, 6, 3}},
