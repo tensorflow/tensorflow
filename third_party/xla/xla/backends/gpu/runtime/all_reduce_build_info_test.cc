@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 #include "xla/tsl/platform/test.h"

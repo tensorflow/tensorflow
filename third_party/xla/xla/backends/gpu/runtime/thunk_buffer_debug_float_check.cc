@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/ffi.h"

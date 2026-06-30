@@ -4150,6 +4150,7 @@ xla_cc_test(
         "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor/gpu:all_reduce_kernel",
         "//xla/stream_executor/host:host_platform",
         "//xla/tsl/lib/gtl:int_type",
