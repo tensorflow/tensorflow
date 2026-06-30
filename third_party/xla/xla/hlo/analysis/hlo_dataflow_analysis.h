@@ -258,6 +258,9 @@ class HloDataflowAnalysis {
   // instruction. Returns whether the instruction value set changed.
   bool UpdateAsyncChainOperandValueSet(HloInstruction* async_start,
                                        int64_t operand_index);
+  // Updates the value set for element {1} of the async operation's output,
+  // which corresponds to the wrapped computation's root.
+  bool UpdateAsyncChainOutputValueSet(HloInstruction* async_op);
 
   bool UpdateCopyStartValueSet(HloInstruction* copy_start);
   bool UpdateCopyDoneValueSet(HloInstruction* copy_done);
