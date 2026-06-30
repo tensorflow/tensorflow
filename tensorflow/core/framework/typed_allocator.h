@@ -43,9 +43,9 @@ class TypedAllocator {
       return nullptr;
     }
 
-    void* p = raw_allocator->AllocateRawAlignedNew(
-        Allocator::kAllocatorAlignment, sizeof(T) * num_elements,
-        allocation_attr);
+    void* p =
+        raw_allocator->AllocateRaw(Allocator::kAllocatorAlignment,
+                                   sizeof(T) * num_elements, allocation_attr);
     T* typed_p = reinterpret_cast<T*>(p);
     if (typed_p) RunCtor<T>(raw_allocator, typed_p, num_elements);
     return typed_p;
@@ -56,8 +56,8 @@ class TypedAllocator {
                          size_t num_elements) {
     if (ptr) {
       RunDtor<T>(raw_allocator, ptr, num_elements);
-      raw_allocator->DeallocateRawAlignedDelete(
-          ptr, Allocator::kAllocatorAlignment, sizeof(T) * num_elements);
+      raw_allocator->DeallocateRaw(ptr, Allocator::kAllocatorAlignment,
+                                   sizeof(T) * num_elements);
     }
   }
 

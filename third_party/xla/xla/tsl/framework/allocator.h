@@ -169,23 +169,6 @@ class Allocator {
     return AllocateRaw(alignment, num_bytes);
   }
 
-  // Return an uninitialized block of memory that is "num_bytes" bytes
-  // in size. The returned pointer is guaranteed to be aligned to a
-  // multiple of "alignment" bytes. This version indicates alignment will be
-  // passed to the DeallocateRawAlignedDelete invocation.
-  // The default implementation calls the original AllocateRaw. Derived classes
-  // can take advantage of the interface guarantees to invoke AlignedNew.
-  // REQUIRES: "alignment" is a power of 2.
-  virtual void* AllocateRawAlignedNew(size_t alignment, size_t num_bytes) {
-    return AllocateRaw(alignment, num_bytes);
-  }
-
-  virtual void* AllocateRawAlignedNew(
-      size_t alignment, size_t num_bytes,
-      const AllocationAttributes& allocation_attr) {
-    return AllocateRawAlignedNew(alignment, num_bytes);
-  }
-
   // Deallocate a block of memory pointer to by "ptr"
   // REQUIRES: "ptr" was previously returned by a call to AllocateRaw
   virtual void DeallocateRaw(void* ptr) = 0;
@@ -195,15 +178,6 @@ class Allocator {
     (void)num_bytes;
 
     DeallocateRaw(ptr);
-  }
-
-  // Deallocate a block of memory pointed to by "ptr".
-  // The default implementation calls the original DeallocateRaw. Derived
-  // classes can take advantage of the interface guarantees to invoke
-  // AlignedDelete.
-  virtual void DeallocateRawAlignedDelete(void* ptr, size_t alignment,
-                                          size_t num_bytes) {
-    DeallocateRaw(ptr, alignment, num_bytes);
   }
 
   // Returns true if this allocator tracks the sizes of allocations.
