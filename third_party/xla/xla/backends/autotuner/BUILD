@@ -350,6 +350,39 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "tiered_cache",
+    srcs = ["tiered_cache.cc"],
+    hdrs = ["tiered_cache.h"],
+    deps = [
+        ":autotuner_cache_interface",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "tiered_cache_test",
+    srcs = ["tiered_cache_test.cc"],
+    deps = [
+        ":autotuner_cache_interface",
+        ":backends_proto_cc",
+        ":directory_cache",
+        ":local_cache",
+        ":tiered_cache",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/testing:temporary_directory",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+cc_library(
     name = "local_cache",
     srcs = ["local_cache.cc"],
     hdrs = ["local_cache.h"],
