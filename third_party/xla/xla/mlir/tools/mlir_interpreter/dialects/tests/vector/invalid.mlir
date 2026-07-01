@@ -1,4 +1,4 @@
-// RUN: (! mlir-interpreter-runner %s -run-all 2>&1) | FileCheck %s
+// RUN: not mlir-interpreter-runner %s -run-all 2>&1 | FileCheck %s
 
 func.func @write_4_at_3_inbounds() {
   %a = memref.alloc() : memref<5xi32>

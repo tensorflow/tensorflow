@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <iterator>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <vector>
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -200,32 +200,19 @@ absl::StatusOr<Shape> DotOperandDims::ComputeOutputShape(
   TF_RET_CHECK(lhs_dims.Indices(kContracting).size() ==
                rhs_dims.Indices(kContracting).size());
   std::vector<int64_t> output_dimensions;
-  std::vector<bool> output_dynamic_dimensions;
-
   for (int64_t i = 0; i < lhs_dims.Indices(kBatch).size(); ++i) {
     int64_t lhs_batch_dim = lhs_dims.Indices(kBatch)[i];
     int64_t rhs_batch_dim = rhs_dims.Indices(kBatch)[i];
     TF_RET_CHECK(lhs_dims.shape_.dimensions(lhs_batch_dim) ==
                  rhs_dims.shape_.dimensions(rhs_batch_dim));
     output_dimensions.push_back(lhs_dims.shape_.dimensions(lhs_batch_dim));
-    TF_RET_CHECK(lhs_dims.shape_.is_dynamic_dimension(lhs_batch_dim) ==
-                 rhs_dims.shape_.is_dynamic_dimension(rhs_batch_dim));
-    output_dynamic_dimensions.push_back(
-        lhs_dims.shape_.is_dynamic_dimension(lhs_batch_dim));
   }
   for (auto& operand : {lhs_dims, rhs_dims}) {
     for (int64_t nc_dim : operand.Indices(kNonContracting)) {
       output_dimensions.push_back(operand.shape_.dimensions(nc_dim));
-      output_dynamic_dimensions.push_back(
-          operand.shape_.is_dynamic_dimension(nc_dim));
     }
   }
-  ASSIGN_OR_RETURN(Shape output_shape, ShapeUtil::MakeValidatedShape(
-                                           element_type, output_dimensions));
-  for (int64_t i = 0; i < output_dynamic_dimensions.size(); ++i) {
-    output_shape.set_dynamic_dimension(i, output_dynamic_dimensions[i]);
-  }
-  return output_shape;
+  return ShapeUtil::MakeValidatedShape(element_type, output_dimensions);
 }
 
 std::vector<int64_t> DotOperandDims::Sizes(Category category) const {
@@ -234,6 +221,21 @@ std::vector<int64_t> DotOperandDims::Sizes(Category category) const {
   absl::c_transform(dim_numbers_[category], std::back_inserter(dim_sizes),
                     [this](int64_t dim) { return shape_.dimensions(dim); });
   return dim_sizes;
+}
+
+int64_t DotOperandDims::TotalSize(Category category) const {
+  return Product<int64_t>(Sizes(category));
+}
+
+std::vector<DotOperandDims::Category> DotOperandDims::Categories() const {
+  std::vector<Category> categories(shape_.dimensions().size(),
+                                   static_cast<Category>(-1));
+  for (Category category : {kBatch, kNonContracting, kContracting}) {
+    for (int64_t dim : Indices(category)) {
+      categories[dim] = category;
+    }
+  }
+  return categories;
 }
 
 void DotOperandDims::ApplyPermutation(absl::Span<const int64_t> permutation) {
@@ -246,27 +248,63 @@ void DotOperandDims::ApplyPermutation(absl::Span<const int64_t> permutation) {
   }
 }
 
-absl::Status DotOperandDims::Collapse(Category category, bool remove_if_empty) {
+DotOperandDims DotOperandDims::GetPermuted(
+    absl::Span<const int64_t> permutation) const {
+  DotOperandDims copy = *this;
+  copy.ApplyPermutation(permutation);
+  return copy;
+}
+
+bool DotOperandDims::IsConsecutive(Category category) const {
+  const auto& dims = dim_numbers_[category];
+  return absl::c_adjacent_find(dims, [](int64_t a, int64_t b) {
+           return a + 1 != b;
+         }) == dims.end();
+}
+
+absl::Status DotOperandDims::CollapseCategory(Category category,
+                                              bool remove_if_empty) {
+  if (!IsConsecutive(category)) {
+    return absl::InvalidArgumentError(
+        "Attempting to collapse non-sorted or non-consecutive dimensions");
+  }
   const auto& dims = dim_numbers_[category];
   if (dims.empty()) {
     return absl::OkStatus();
   }
-  int64_t min_dim = *absl::c_min_element(dims);
-  int64_t max_dim = *absl::c_max_element(dims);
-  if (max_dim - min_dim + 1 != dims.size()) {
-    return absl::InvalidArgumentError(
-        "Attempting to collapse non-consecutive dimensions");
-  }
-  const int64_t total_size = absl::c_accumulate(
-      dims, int64_t{1},
-      [&](int64_t size, int64_t idx) { return size * shape_.dimensions(idx); });
+  const int64_t min_dim = dims.front();
+  const int64_t max_dim = dims.back();
+  const int64_t total_size = TotalSize(category);
   if (total_size == 1 && remove_if_empty) {
+    // Remove all dimensions if the total size is 1 and we're asked to remove
+    // empty dimensions.
     return EraseDimensions(min_dim, max_dim + 1);
   }
-  bool is_dynamic = absl::c_any_of(
-      dims, [this](int64_t dim) { return shape_.is_dynamic_dimension(dim); });
-  shape_.set_dimensions(min_dim, total_size, is_dynamic);
+  // Set the first dimension to the total size and remove the rest.
+  shape_.set_dimensions(min_dim, total_size);
   return EraseDimensions(min_dim + 1, max_dim + 1);
+}
+
+std::optional<std::vector<int64_t>> DotOperandDims::PermuteToConsecutive(
+    Category category) {
+  if (IsConsecutive(category)) {
+    return std::nullopt;
+  }
+
+  const auto& dims = dim_numbers_[category];
+  std::vector<int64_t> permutation(shape_.dimensions().size());
+  std::iota(permutation.begin(), permutation.end(), 0);
+  // Partition into non-category and category dimensions, preserving relative
+  // order.
+  auto dims_begin = absl::c_stable_partition(permutation, [&dims](int64_t dim) {
+    return !absl::c_linear_search(dims, dim);
+  });
+  // Overwrite the category dimensions part with the actual `dims` to preserve
+  // its order.
+  absl::c_copy(dims, dims_begin);
+
+  ApplyPermutation(permutation);
+  return permutation;
 }
 
 std::string DotOperandDims::ToString() const {
@@ -277,6 +315,31 @@ std::string DotOperandDims::ToString() const {
       "shape=", shape_.ToString(), " batch=", format_dims(dim_numbers_[kBatch]),
       " noncontracting=", format_dims(dim_numbers_[kNonContracting]),
       " contracting=", format_dims(dim_numbers_[kContracting]));
+}
+
+absl::Status DotOperandDims::RemoveDegenerateDimensions() {
+  for (int64_t i = shape_.dimensions().size() - 1; i >= 0; --i) {
+    if (shape_.dimensions(i) == 1) {
+      RETURN_IF_ERROR(EraseDimensions(i, i + 1));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status DotOperandDims::MergeAdjacentDimensions() {
+  for (Category cat : {kBatch, kNonContracting, kContracting}) {
+    auto& dims = dim_numbers_[cat];
+    for (int64_t i = dims.size() - 1; i > 0; --i) {
+      if (dims[i - 1] + 1 != dims[i]) {
+        continue;
+      }
+      const int64_t dim_idx = dims[i - 1];
+      shape_.set_dimensions(
+          dim_idx, shape_.dimensions(dim_idx) * shape_.dimensions(dim_idx + 1));
+      RETURN_IF_ERROR(EraseDimensions(dim_idx + 1, dim_idx + 2));
+    }
+  }
+  return absl::OkStatus();
 }
 
 absl::Status DotOperandDims::EraseDimensions(int64_t start, int64_t end) {
@@ -332,10 +395,109 @@ absl::StatusOr<int64_t> DotOperandDims::InsertDimension(
   return index_within_category;
 }
 
-absl::Status DotOperandDims::UpdateShape(const Shape& new_shape) {
+absl::Status DotOperandDims::SetShape(const Shape& new_shape) {
   TF_RET_CHECK(new_shape.dimensions().size() == shape_.dimensions().size());
   shape_ = new_shape;
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::optional<DotOperandDims>> DotOperandDims::Reshape(
+    const Shape& target_shape) const {
+  if (ShapeUtil::ElementsIn(shape_) != ShapeUtil::ElementsIn(target_shape)) {
+    return absl::InvalidArgumentError(
+        "Reshape would change the total number of elements");
+  }
+
+  DotOperandDims merged_dims = *this;
+  RETURN_IF_ERROR(merged_dims.RemoveDegenerateDimensions());
+  RETURN_IF_ERROR(merged_dims.MergeAdjacentDimensions());
+
+  // If the source contains just one element (e.g. scalar), and the target is
+  // something like [1, 1, 1], assign all dimensions to non-contracting.
+  if (merged_dims.shape().dimensions().empty()) {
+    std::array<std::vector<int64_t>, 3> new_dim_numbers;
+    new_dim_numbers[kNonContracting].resize(target_shape.dimensions().size());
+    absl::c_iota(new_dim_numbers[kNonContracting], 0);
+    return DotOperandDims(target_shape, new_dim_numbers[kBatch],
+                          new_dim_numbers[kNonContracting],
+                          new_dim_numbers[kContracting]);
+  }
+
+  int64_t target_dim_idx = 0;
+  // Every dimension of the merged source shape contains a whole number of
+  // dimensions of the target shape. The mapping vector we build has one extra
+  // element compared to the target shape, so that i-th merged dimension covers
+  // target dimensions in the range [mapping[i], mapping[i+1]).
+  std::vector<int64_t> mapping(merged_dims.shape().dimensions().size() + 1);
+  mapping.back() = target_shape.dimensions().size();
+
+  for (int64_t i = 0; i < merged_dims.shape().dimensions().size(); ++i) {
+    mapping[i] = target_dim_idx;
+    int64_t src_size = merged_dims.shape().dimensions(i);
+    int64_t accumulated_size = 1;
+    while (accumulated_size < src_size &&
+           target_dim_idx < target_shape.dimensions().size()) {
+      accumulated_size *= target_shape.dimensions(target_dim_idx);
+      target_dim_idx++;
+    }
+    if (accumulated_size != src_size) {
+      return std::nullopt;
+    }
+  }
+
+  std::array<std::vector<int64_t>, 3> new_dim_numbers;
+  for (Category cat : {kBatch, kNonContracting, kContracting}) {
+    for (int64_t dim : merged_dims.Indices(cat)) {
+      for (int64_t j = mapping[dim]; j < mapping[dim + 1]; ++j) {
+        new_dim_numbers[cat].push_back(j);
+      }
+    }
+  }
+
+  return DotOperandDims(target_shape, new_dim_numbers[kBatch],
+                        new_dim_numbers[kNonContracting],
+                        new_dim_numbers[kContracting]);
+}
+
+absl::StatusOr<std::optional<DotOperandDims>> DotOperandDims::MapBackward(
+    const HloInstruction* inst) const {
+  switch (inst->opcode()) {
+    case HloOpcode::kTranspose: {
+      if (inst->dimensions().size() != shape_.dimensions().size()) {
+        return absl::InvalidArgumentError(
+            "Permutation size mismatch in MapBackward");
+      }
+      return std::optional<DotOperandDims>(
+          GetPermuted(InversePermutation(inst->dimensions())));
+    }
+    case HloOpcode::kReshape: {
+      return Reshape(inst->operand(0)->shape());
+    }
+    default:
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported opcode for MapBackward: ",
+                       HloOpcodeString(inst->opcode())));
+  }
+}
+
+absl::StatusOr<std::optional<DotOperandDims>> DotOperandDims::MapForward(
+    const HloInstruction* inst) const {
+  switch (inst->opcode()) {
+    case HloOpcode::kTranspose: {
+      if (inst->dimensions().size() != shape_.dimensions().size()) {
+        return absl::InvalidArgumentError(
+            "Permutation size mismatch in MapForward");
+      }
+      return std::optional<DotOperandDims>(GetPermuted(inst->dimensions()));
+    }
+    case HloOpcode::kReshape: {
+      return Reshape(inst->shape());
+    }
+    default:
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported opcode for MapForward: ",
+                       HloOpcodeString(inst->opcode())));
+  }
 }
 
 absl::StatusOr<int64_t> DotOperandDims::IndexWithinCategory(

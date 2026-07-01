@@ -194,7 +194,7 @@ TEST_F(StreamExecutorTest, Allocate) {
     mem->size = 0;
   };
   StreamExecutor* executor = GetExecutor(0);
-  DeviceMemory<int> mem = executor->AllocateArray<int>(2);
+  DeviceAddress<int> mem = executor->AllocateArray<int>(2);
   ASSERT_NE(mem.opaque(), nullptr);
   ASSERT_EQ(mem.size(), 2 * sizeof(int));
   executor->Deallocate(&mem);
@@ -474,7 +474,7 @@ TEST_F(StreamExecutorTest, MemcpyToHost) {
   size_t size = sizeof(int);
   int src_data = 34;
   int dst_data = 2;
-  DeviceMemoryBase device_src(&src_data, size);
+  DeviceAddressBase device_src(&src_data, size);
   TF_ASSERT_OK(stream->Memcpy(&dst_data, device_src, size));
   ASSERT_EQ(dst_data, 34);
 }
@@ -493,7 +493,7 @@ TEST_F(StreamExecutorTest, MemcpyFromHost) {
   size_t size = sizeof(int);
   int src_data = 18;
   int dst_data = 0;
-  DeviceMemoryBase device_dst(&dst_data, size);
+  DeviceAddressBase device_dst(&dst_data, size);
   TF_ASSERT_OK(stream->Memcpy(&device_dst, &src_data, size));
   ASSERT_EQ(dst_data, 18);
 }
@@ -512,8 +512,8 @@ TEST_F(StreamExecutorTest, MemcpyDeviceToDevice) {
   size_t size = sizeof(int);
   int src_data = 18;
   int dst_data = 0;
-  DeviceMemoryBase device_dst(&dst_data, size);
-  DeviceMemoryBase device_src(&src_data, size);
+  DeviceAddressBase device_dst(&dst_data, size);
+  DeviceAddressBase device_src(&src_data, size);
   TF_ASSERT_OK(stream->Memcpy(&device_dst, device_src, size));
   ASSERT_EQ(dst_data, 18);
 }
@@ -530,7 +530,7 @@ TEST_F(StreamExecutorTest, SyncMemcpyToHost) {
   size_t size = sizeof(int);
   int src_data = 34;
   int dst_data = 2;
-  DeviceMemoryBase device_src(&src_data, size);
+  DeviceAddressBase device_src(&src_data, size);
   TF_ASSERT_OK(executor->SynchronousMemcpyD2H(device_src, size, &dst_data));
   ASSERT_EQ(dst_data, 34);
 }
@@ -547,7 +547,7 @@ TEST_F(StreamExecutorTest, SyncMemcpyFromHost) {
   size_t size = sizeof(int);
   int src_data = 18;
   int dst_data = 0;
-  DeviceMemoryBase device_dst(&dst_data, size);
+  DeviceAddressBase device_dst(&dst_data, size);
   TF_ASSERT_OK(executor->SynchronousMemcpyH2D(&src_data, size, &device_dst));
   ASSERT_EQ(dst_data, 18);
 }
@@ -644,7 +644,7 @@ TEST_F(StreamExecutorTest, HostCallbackError) {
   StreamExecutor* executor = GetExecutor(0);
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   std::function<absl::Status()> callback = []() -> absl::Status {
-    return tsl::errors::Unimplemented("Unimplemented");
+    return absl::UnimplementedError("Unimplemented");
   };
   ASSERT_FALSE(stream->DoHostCallbackWithStatus(callback).ok());
 }
@@ -722,7 +722,7 @@ TEST_F(StreamExecutorTest, MemZero) {
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   size_t size = sizeof(int);
   int data = 2;
-  DeviceMemoryBase device_data(&data, size);
+  DeviceAddressBase device_data(&data, size);
   TF_ASSERT_OK(stream->MemZero(&device_data, size));
   ASSERT_EQ(data, 0);
 }
@@ -751,7 +751,7 @@ TEST_F(StreamExecutorTest, Memset32) {
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   size_t size = sizeof(int);
   int data = 2;
-  DeviceMemoryBase device_data(&data, size);
+  DeviceAddressBase device_data(&data, size);
   TF_ASSERT_OK(stream->Memset32(&device_data, 18, size));
   ASSERT_EQ(data, 18);
 }

@@ -49,7 +49,7 @@ struct StackFrameId {
   int value = 0;  // 0 is reserved for "not present".
   bool operator==(StackFrameId other) const { return value == other.value; }
   bool operator!=(StackFrameId other) const { return value != other.value; }
-  bool valid() const { return value != 0; }
+  bool valid() const { return value > 0; }
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, StackFrameId id) {
@@ -188,12 +188,12 @@ class HloModuleMetadata {
   // Clears all pass metadata.
   void ClearPassMetadata() { module_metadata_.clear_pass_metadata(); }
 
- private:
   // Gets mutable metadata for the currently running pass. If passes are nested,
   // finds the deepest one still running. Returns NotFound if metadata for the
   // currently running pass cannot be found.
   absl::StatusOr<HloPassMetadata*> GetCurrentHloPassMetadata();
 
+ private:
   void CopyFrom(const HloModuleMetadata& other) {
     module_metadata_ = other.module_metadata_;
     env_ = other.env_;

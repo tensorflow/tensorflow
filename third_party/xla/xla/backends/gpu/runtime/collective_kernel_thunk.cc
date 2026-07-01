@@ -24,7 +24,6 @@ limitations under the License.*/
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -38,11 +37,14 @@ limitations under the License.*/
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/backends/gpu/runtime/collective_kernel_api.h"
+#include "xla/backends/gpu/runtime/collective_kernel_thunk.pb.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/core/collectives/reduction_kind.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
@@ -60,8 +62,6 @@ limitations under the License.*/
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -155,17 +155,12 @@ absl::Status CopyCollectiveMetadataToDevice(
 absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
     const GpuCliqueKey& clique_key, se::StreamExecutor& executor,
     const CollectiveParams& collective_params) const {
-  absl::Status status = IsAllReduceKernelSupported(
-      collective_kernel_enabled_, executor.GetDeviceDescription(),
-      /*num_operands= */ buffers_.size(), reduction_kind_,
-      clique_key.num_local_participants(), buffers_[0].element_count,
-      collective_config_.operand_element_type[0], clique_key.is_local(),
-      is_multimem_enabled_, collective_config_.replica_groups);
-  if (absl::IsUnimplemented(status)) {
-    VLOG(3) << "Collective kernel not supported: " << status.message();
+  // For backward compatibility in proto we drop support for collective
+  // kernels if the kernel name is empty.
+  if (kernel_name_.empty()) {
     return false;
   }
-  RETURN_IF_ERROR(status);
+  // Check if peer access is supported for all devices in the clique.
   for (const GlobalDeviceId& device : clique_key.devices()) {
     ASSIGN_OR_RETURN(const int peer_device_id,
                      GetLocalDeviceId(device, collective_params));
@@ -212,12 +207,8 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
     // Allocate scratch buffers.
     const AllReduceStrategy strategy =
         GetAllReduceStrategy(GetInputSizeBytes(), is_multimem_enabled_);
-    const LaunchDimensions launch_dimensions =
-        launch_dimensions_.value_or(AllReduceLaunchDimensions(
-            buffers_[0].element_count, clique_key.num_local_participants(),
-            strategy));
     const int64_t kNumSignalFlags =
-        clique_key.num_local_participants() * launch_dimensions.num_blocks();
+        clique_key.num_local_participants() * launch_dimensions_.num_blocks();
     const int64_t kSignalBufferSize = xla::RoundUpTo<uint64_t>(
         kNumSignalFlags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
     const int64_t kLocalBufferSize = xla::RoundUpTo<uint64_t>(
@@ -289,29 +280,24 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
           memory_state->signal_buffers_handle.address_ptr(),
           memory_state->signal_buffers_handle.address().size()));
       RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
+      TF_RET_CHECK(!kernel_name_.empty())
+          << "Kernel name must be set for collective kernel thunk.";
       // Create a kernel for execution.
       std::unique_ptr<se::Kernel> kernel = nullptr;
-      if (!kernel_name_.empty()) {
-        TF_RET_CHECK(launch_dimensions_.has_value())
-            << "Launch dimensions are not set for when using emitted "
-               "collective kernel.";
-        if (cubin_.has_value()) {
-          ASSIGN_OR_RETURN(
-              kernel, CreateKernel(kernel_name_, kAllReduceArgsCount, *cubin_,
-                                   params.executor, shmem_bytes_));
-        } else if (!params.src.binary.empty()) {
-          ASSIGN_OR_RETURN(
-              kernel,
-              CreateKernel(kernel_name_, kAllReduceArgsCount, params.src.binary,
-                           params.executor, shmem_bytes_));
-        } else {
-          ASSIGN_OR_RETURN(
-              kernel,
-              CreateKernel(kernel_name_, kAllReduceArgsCount, params.src.text,
-                           params.executor, shmem_bytes_));
-        }
-        kernel->set_use_pdl(use_pdl_);
+      if (cubin_.has_value()) {
+        ASSIGN_OR_RETURN(
+            kernel, CreateKernel(kernel_name_, kAllReduceArgsCount, *cubin_,
+                                 params.executor, shmem_bytes_));
+      } else if (!params.src.binary.empty()) {
+        ASSIGN_OR_RETURN(kernel, CreateKernel(kernel_name_, kAllReduceArgsCount,
+                                              params.src.binary,
+                                              params.executor, shmem_bytes_));
+      } else {  // Use PTX.
+        ASSIGN_OR_RETURN(kernel, CreateKernel(kernel_name_, kAllReduceArgsCount,
+                                              params.src.text, params.executor,
+                                              shmem_bytes_));
       }
+      kernel->set_use_pdl(use_pdl_);
       // Step2: Emplace into the stream state.
       per_stream_state_.emplace(
           params.executor,
@@ -448,7 +434,6 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
         "Variadic arguments are not implemented for collective kernels.");
   }
   const CollectiveThunk::Buffer& buffer = buffers_[0];
-  const PrimitiveType element_type = collective_config_.operand_element_type[0];
   se::DeviceAddressBase source_buffer =
       params.buffer_allocations->GetDeviceAddress(buffer.source_buffer.slice);
   se::DeviceAddressBase destination_buffer =
@@ -485,60 +470,44 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   XLA_VLOG_DEVICE(3, device_ordinal)
       << "input_buffer_ptr: " << input_buffer_ptr.opaque()
       << " signal_buffer_ptr: " << signal_buffer_ptr.opaque();
+  TF_RET_CHECK(state->kernel != nullptr)
+      << "Kernel is not initialized for collective kernel thunk.";
 
-  if (state->kernel != nullptr) {
-    TF_RET_CHECK(launch_dimensions_.has_value())
-        << "Launch dimensions are not set for when using emitted "
-           "collective kernel.";
-    XLA_VLOG_DEVICE(3, device_ordinal)
-        << "Emitted kernel launch dimensions: "
-        << launch_dimensions_->num_blocks() << "x"
-        << launch_dimensions_->num_threads_per_block()
-        << "(block x threadsPerBlock)";
-    ASSIGN_OR_RETURN(se::DeviceAddressBase remote_buffers,
-                     GetParameterDeviceMemoryBase(
-                         state->metadata, /*num_parameters=*/kNumParameters,
-                         /*num_devices=*/num_devices,
-                         /*parameter_index=*/0));
-    ASSIGN_OR_RETURN(se::DeviceAddressBase signal_buffers,
-                     GetParameterDeviceMemoryBase(
-                         state->metadata, /*num_parameters=*/kNumParameters,
-                         /*num_devices=*/num_devices,
-                         /*parameter_index=*/1));
-    std::array<se::KernelArg, kAllReduceArgsCount> kernel_args = {
-        source_buffer,
-        destination_buffer,
-        static_cast<int32_t>(state->rank.value()),
-        /* signal_value= */ state->invocation_count,
-        signal_buffers,
-        remote_buffers};
-    return ExecuteKernelOnStream(*state->kernel, kernel_args,
-                                 launch_dimensions_.value(),
-                                 /*cluster_dim=*/std::nullopt, stream);
-  }
-  const LaunchDimensions launch_dimensions =
-      AllReduceLaunchDimensions(buffer.element_count, num_devices, strategy);
   XLA_VLOG_DEVICE(3, device_ordinal)
-      << "CUDA kernel launch dimensions: " << launch_dimensions.num_blocks()
-      << "x" << launch_dimensions.num_threads_per_block()
+      << "Emitted kernel launch dimensions: " << launch_dimensions_.num_blocks()
+      << "x" << launch_dimensions_.num_threads_per_block()
       << "(block x threadsPerBlock)";
+  ASSIGN_OR_RETURN(se::DeviceAddressBase remote_buffers,
+                   GetParameterDeviceMemoryBase(
+                       state->metadata, /*num_parameters=*/kNumParameters,
+                       /*num_devices=*/num_devices,
+                       /*parameter_index=*/0));
+  ASSIGN_OR_RETURN(se::DeviceAddressBase signal_buffers,
+                   GetParameterDeviceMemoryBase(
+                       state->metadata, /*num_parameters=*/kNumParameters,
+                       /*num_devices=*/num_devices,
+                       /*parameter_index=*/1));
+  std::array<se::KernelArg, kAllReduceArgsCount> kernel_args = {
+      source_buffer,
+      destination_buffer,
+      static_cast<int32_t>(state->rank.value()),
+      /* signal_value= */ state->invocation_count,
+      signal_buffers,
+      remote_buffers};
+  return ExecuteKernelOnStream(*state->kernel, kernel_args, launch_dimensions_,
+                               /*cluster_dim=*/std::nullopt, stream);
+}
 
-  // TODO(b/407736956): Change this to emitted kernel.
-  return RunAllReduceKernel(
-      /*stream=*/stream,
-      /*launch_dimensions=*/launch_dimensions,
-      /*element_type=*/element_type,
-      /*reduction_kind=*/reduction_kind_,
-      /*all_reduce_strategy=*/strategy,
-      /*symmetric_input_buffer=*/input_buffer_ptr,
-      /*local_input_buffer=*/source_buffer,
-      /*output_buffer=*/destination_buffer,
-      /*rank=*/rank.value(),
-      /*num_ranks=*/num_devices,
-      /*num_elements=*/buffer.element_count,
-      /*symmetric_signal_buffer=*/signal_buffer_ptr,
-      /*signal_value=*/state->invocation_count,
-      /*metadata=*/state->metadata);
+Thunk::BufferUses CollectiveKernelThunk::buffer_uses() const {
+  BufferUses uses;
+  uses.reserve(buffers_.size() * 2);
+  for (const CollectiveThunk::Buffer& buffer : buffers_) {
+    uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
+                                   buffer.source_buffer.shape));
+    uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
+                                    buffer.destination_buffer.shape));
+  }
+  return uses;
 }
 
 /* static */ absl::StatusOr<se::DeviceAddressBase>
@@ -567,9 +536,6 @@ CollectiveKernelThunk::FromProto(
   CollectiveConfig collective_config =
       CollectiveConfig::FromProto(thunk_proto.collective_config());
 
-  ASSIGN_OR_RETURN(ReductionKind reduction_kind,
-                   FromReductionKindProto(thunk_proto.reduction_kind()));
-
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
   for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
@@ -579,7 +545,7 @@ CollectiveKernelThunk::FromProto(
     buffers.push_back(std::move(buffer));
   }
 
-  std::optional<LaunchDimensions> launch_dimensions = std::nullopt;
+  LaunchDimensions launch_dimensions;
   if (thunk_proto.has_launch_dimensions()) {
     ASSIGN_OR_RETURN(launch_dimensions, LaunchDimensions::FromProto(
                                             thunk_proto.launch_dimensions()));
@@ -592,7 +558,7 @@ CollectiveKernelThunk::FromProto(
   }
 
   return std::make_unique<CollectiveKernelThunk>(
-      std::move(thunk_info), std::move(collective_config), reduction_kind,
+      std::move(thunk_info), std::move(collective_config),
       thunk_proto.is_async(), std::move(buffers),
       thunk_proto.collective_kernel_enabled(), thunk_proto.kernel_name(),
       launch_dimensions, thunk_proto.shmem_bytes(),
@@ -608,7 +574,6 @@ absl::StatusOr<ThunkProto> CollectiveKernelThunk::ToProto() const {
       proto.mutable_collective_kernel_thunk();
 
   *thunk_proto->mutable_collective_config() = collective_config_.ToProto();
-  thunk_proto->set_reduction_kind(ToReductionKindProto(reduction_kind_));
   thunk_proto->set_is_async(is_async_);
 
   for (const CollectiveThunk::Buffer& buffer : buffers_) {
@@ -617,10 +582,7 @@ absl::StatusOr<ThunkProto> CollectiveKernelThunk::ToProto() const {
 
   thunk_proto->set_collective_kernel_enabled(collective_kernel_enabled_);
   thunk_proto->set_kernel_name(kernel_name_);
-
-  if (launch_dimensions_.has_value()) {
-    *thunk_proto->mutable_launch_dimensions() = launch_dimensions_->ToProto();
-  }
+  *thunk_proto->mutable_launch_dimensions() = launch_dimensions_.ToProto();
 
   thunk_proto->set_shmem_bytes(shmem_bytes_);
   thunk_proto->set_is_multimem_enabled(is_multimem_enabled_);

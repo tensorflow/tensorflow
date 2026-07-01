@@ -64,26 +64,27 @@ std::vector<OpMetadata> ListMetadata() {
 
 class HloShardingTest : public HloHardwareIndependentTestBase {};
 
-// TODO(b/456418464): Parameterize `HloShardingTest` itself after supporting
-// NamedSharding in all methods.
 class HloShardingRepresentationTest
     : public HloShardingTest,
       public ::testing::WithParamInterface<bool> {};
 
 TEST_P(HloShardingRepresentationTest, Replicate) {
   bool use_named_sharding = GetParam();
-  HloSharding sharding = HloSharding::Replicate({}, use_named_sharding);
+  HloSharding sharding = use_named_sharding
+                             ? HloSharding(NamedSharding::Replicate())
+                             : HloSharding::Replicate();
   EXPECT_EQ(sharding.UseNamedShardingLeaf(), use_named_sharding);
   EXPECT_TRUE(sharding.IsReplicated());
   EXPECT_TRUE(sharding.IsReplicatedOrSingleDevice());
   EXPECT_TRUE(sharding.UsesDevice(0));
   EXPECT_TRUE(sharding.UsesDevice(65535));
 
-  HloSharding other = HloSharding::Replicate({}, use_named_sharding);
+  HloSharding other = use_named_sharding
+                          ? HloSharding(NamedSharding::Replicate())
+                          : HloSharding::Replicate();
   EXPECT_EQ(other, sharding);
   // Shardings are compared regardless of representation.
-  EXPECT_EQ(HloSharding::Replicate(),
-            HloSharding::Replicate({}, /*use_named_sharding=*/true));
+  EXPECT_EQ(HloSharding::Replicate(), HloSharding(NamedSharding::Replicate()));
 
   EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4}),
                                  /*num_devices=*/2));
@@ -92,7 +93,9 @@ TEST_P(HloShardingRepresentationTest, Replicate) {
 
 TEST_P(HloShardingRepresentationTest, DevicePlacement) {
   bool use_named_sharding = GetParam();
-  HloSharding sharding = HloSharding::SingleDevice(5, {}, use_named_sharding);
+  HloSharding sharding = use_named_sharding
+                             ? HloSharding(NamedSharding::SingleDevice(5))
+                             : HloSharding::SingleDevice(5);
   EXPECT_EQ(sharding.UseNamedShardingLeaf(), use_named_sharding);
   EXPECT_FALSE(sharding.IsReplicated());
   EXPECT_TRUE(sharding.IsReplicatedOrSingleDevice());
@@ -100,11 +103,13 @@ TEST_P(HloShardingRepresentationTest, DevicePlacement) {
   EXPECT_TRUE(sharding.UsesDevice(5));
   EXPECT_EQ(5, sharding.GetUniqueDevice());
 
-  HloSharding other = HloSharding::Replicate({}, use_named_sharding);
+  HloSharding other = use_named_sharding
+                          ? HloSharding(NamedSharding::Replicate())
+                          : HloSharding::Replicate();
   EXPECT_NE(other, sharding);
   // Shardings are compared regardless of representation.
   EXPECT_EQ(HloSharding::SingleDevice(5),
-            HloSharding::SingleDevice(5, {}, /*use_named_sharding=*/true));
+            HloSharding(NamedSharding::SingleDevice(5)));
 
   EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4}),
                                  /*num_devices=*/6));
@@ -605,7 +610,8 @@ TEST_P(HloShardingRepresentationTest, EmptySingleTuple) {
   bool use_named_sharding = GetParam();
   HloSharding sharding = HloSharding::SingleTuple(
       ShapeUtil::MakeTupleShape({}),
-      HloSharding::SingleDevice(0, {}, use_named_sharding));
+      use_named_sharding ? HloSharding(NamedSharding::SingleDevice(0))
+                         : HloSharding::SingleDevice(0));
   EXPECT_TRUE(sharding.ExtractSingleSharding());
   EXPECT_EQ(sharding.ExtractSingleSharding()->UseNamedShardingLeaf(),
             use_named_sharding);
@@ -616,7 +622,8 @@ TEST_P(HloShardingRepresentationTest, EmptySingleTupleIsNotShardGroup) {
   bool use_named_sharding = GetParam();
   HloSharding sharding = HloSharding::SingleTuple(
       ShapeUtil::MakeTupleShape({}),
-      HloSharding::SingleDevice(0, {}, use_named_sharding));
+      use_named_sharding ? HloSharding(NamedSharding::SingleDevice(0))
+                         : HloSharding::SingleDevice(0));
   EXPECT_FALSE(sharding.IsShardGroup());
   EXPECT_FALSE(sharding.IsShardAs());
   EXPECT_FALSE(sharding.IsShardLike());

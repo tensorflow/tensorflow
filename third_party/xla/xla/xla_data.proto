@@ -1037,12 +1037,11 @@ message StatisticsViz {
 //     integer, we call it a **maximal-sharding mesh**.
 
 // If the list of axes is provided
-//   - If a device ID list is specified, the product of the axis sizes should
+//   - If a device ID list is specified, the product of the axis sizes must
 //     match the number of devices.
-//   - If a device ID list is not specified, the implicit device ID list is
-//     iota(product(axes)). For simplicity, we also disallow specifying a
-//     device ID list that is the same as iota(product(axes)); in this case, a
-//     device ID list shouldn't be specified.
+//   - If a device ID list is not specified, then the device ID list is
+//     implicitly `iota(product(axis_sizes))` with an optional transform
+//     in the `iota_transform` field applied.
 //   - It is not a maximal-sharding mesh even if the total size of axes is 1.
 
 // Here are some examples of meshes:
@@ -1051,27 +1050,34 @@ message StatisticsViz {
 //   propagation: <[]>
 // - A mesh without axes list and a single non-negative device ID, which is a
 //   maximal-sharding mesh: <[], device_ids=[3]>
-// - A mesh with two axes and implicit device IDs iota(6): <["a"=2, "b"=3]>
+// - A mesh with two axes and device IDs defined as iota(6) with no
+//   transformation applied: <["a"=2, "b"=3]>
+// - A mesh with two axes and device IDs defined as iota(6) with a transpose
+//   applied: <["a"=2, "b"=3], iota_transform=<[2, 3], [1, 0]>>
 // - A mesh with two axes and explicit device IDs specifying the device
 //   ordering: <["a"=3, "b"=2], device_ids=[0, 2, 4, 1, 3, 5]>
 
 // **Constraints:**
-// - Elements in `device_ids` should be non-negative.
+// - Elements in `device_ids` must be non-negative.
 // - If `axes` is empty, the size of `device_ids` can be 0 (empty mesh) or 1
 //   (maximal-sharding mesh).
 // - If `axes` is not empty,
 //     - Elements in `axes` must not have duplicate names.
 //     - If `device_ids` is specified, the original `device_ids` is not
-//       `iota(product(axis_sizes))` and the sorted `device_ids` is
-//       `iota(product(axis_sizes))`.
+//       describable via an iota with an IotaTransform and the sorted
+//       `device_ids` is `iota(product(axis_sizes))`.
 message MeshProto {
   message MeshAxis {
     string name = 1;
     int64 size = 2;
   }
-
+  message IotaTransform {
+    repeated int64 reshape_dims = 1;
+    repeated int64 transpose_perm = 2;
+  }
   repeated MeshAxis axes = 1;
   repeated int64 device_ids = 2;
+  optional IotaTransform iota_transform = 3;
 }
 
 // Reference to either a full axis via index into Mesh axes or a split
@@ -1472,9 +1478,9 @@ message WhileLoopBackendConfig {
   }
 
   // Tuple positions that should be treated as induction variables for dynamic
-  // memcpy analysis, even though they are not the primary induction variable.
-  // When `init`/`step` are set, they take precedence over `known_init_step`
-  // for offset computation.
+  // slice offset analysis, even though they are not the primary induction
+  // variable. When `init`/`step` are set, they take precedence over
+  // `known_init_step` for offset computation.
   repeated DynamicVariable dynamic_variables = 5;
 }
 

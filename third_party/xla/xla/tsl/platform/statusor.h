@@ -68,6 +68,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_STATUSOR_H_
 #define XLA_TSL_PLATFORM_STATUSOR_H_
 
+#include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/status.h"
@@ -85,6 +86,10 @@ namespace tsl {
 template <typename T>
 using StatusOr ABSL_DEPRECATE_AND_INLINE() = absl::StatusOr<T>;
 
+ABSL_DEPRECATED(
+    "TF_ASSERT_OK_AND_ASSIGN is deprecated. Use ASSERT_OK_AND_ASSIGN instead")
+inline void TfAssertOkAndAssignDeprecationMarker() {}
+
 }  // namespace tsl
 
 #define TF_ASSERT_OK_AND_ASSIGN(lhs, rexpr)                             \
@@ -92,10 +97,10 @@ using StatusOr ABSL_DEPRECATE_AND_INLINE() = absl::StatusOr<T>;
       TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, \
       rexpr);
 
-#define TF_ASSERT_OK_AND_ASSIGN_IMPL(statusor, lhs, rexpr) \
-  auto statusor = (rexpr);                                 \
-  ASSERT_TRUE(statusor.status().ok())                      \
-      << ADD_SOURCE_LOCATION(statusor.status());           \
+#define TF_ASSERT_OK_AND_ASSIGN_IMPL(statusor, lhs, rexpr)                  \
+  auto statusor = (::tsl::TfAssertOkAndAssignDeprecationMarker(), (rexpr)); \
+  ASSERT_TRUE(statusor.status().ok())                                       \
+      << ADD_SOURCE_LOCATION(statusor.status());                            \
   lhs = std::move(statusor).value()
 
 #define TF_STATUS_MACROS_CONCAT_NAME(x, y) TF_STATUS_MACROS_CONCAT_IMPL(x, y)

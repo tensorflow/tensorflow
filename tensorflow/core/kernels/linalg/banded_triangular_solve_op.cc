@@ -18,6 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"

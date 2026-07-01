@@ -42,11 +42,11 @@ class RecordInputOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("compression_type", &compression_type));
 
     OP_REQUIRES(ctx, file_parallelism >= 0,
-                errors::InvalidArgument("file_parallelism should >= 0, got ",
-                                        file_parallelism));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "file_parallelism should >= 0, got ", file_parallelism)));
     OP_REQUIRES(ctx, batch_size >= 0,
-                errors::InvalidArgument(
-                    "batch_size must be non-negative but got ", batch_size));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "batch_size must be non-negative but got ", batch_size)));
 
     RecordYielder::Options yopts;
     yopts.file_pattern = file_pattern;

@@ -29,10 +29,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -359,7 +361,8 @@ absl::Status MemorySpaceAssignment::VerifyAllocations() const {
   // Verify that all alternate memory allocations are free of overlapping
   // Allocations in time and space, and add them to interval_tree one by one.
   for (const auto& allocation : allocations_) {
-    if (allocation->memory_space() == MemorySpace::kAlternate) {
+    if (allocation->memory_space() == MemorySpace::kAlternate &&
+        !allocation->is_mirrored_allocation()) {
       RETURN_IF_ERROR(add_allocation_and_verify(allocation.get()));
     }
   }

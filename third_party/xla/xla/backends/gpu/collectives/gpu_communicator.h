@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -37,6 +38,10 @@ limitations under the License.
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+
+namespace stream_executor {
+class StreamExecutor;
+}  // namespace stream_executor
 
 namespace xla::gpu {
 
@@ -132,6 +137,12 @@ class GpuCommunicator : public Communicator {
   // Returns true iff communicator supports device-initiated communication.
   virtual bool SupportsDeviceComm() const { return false; }
 
+  // Returns the StreamExecutor (and thus the device) this communicator runs on,
+  // or nullptr if not backed by a StreamExecutor.
+  virtual stream_executor::StreamExecutor* stream_executor() const {
+    return nullptr;
+  }
+
   // Creates a new device communicator linked to *this GPU communicator object.
   virtual absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
   CreateDeviceComm(const GpuDeviceCommunicator::Requirements& requirements) {
@@ -160,10 +171,12 @@ class GpuCommunicator : public Communicator {
   // Host-side collective communication APIs
   //===--------------------------------------------------------------------===//
 
-  // Executes f in a group. f should invoke synchronous collective methods like
-  // LaunchAllReduce and not asynchronous collective methods like AllReduce.
-  virtual Future<> GroupExecute(
-      absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) = 0;
+  // Executes a group of collective launches on this communicator. All
+  // collective operations in the `group` must use only *this communicator,
+  // otherwise behavior is undefined.
+  virtual Future<> GroupExecute(absl::AnyInvocable<absl::Status() &&> group) {
+    return Future<>(std::move(group)());
+  }
 
   virtual absl::Status LaunchAllReduce(se::DeviceAddressBase send_buffer,
                                        se::DeviceAddressBase recv_buffer,
@@ -222,6 +235,11 @@ class GpuCommunicator : public Communicator {
                                         const SignalDesc& signal_desc,
                                         const Executor& executor) {
     return Unimplemented("LaunchWaitSignal is not implemented");
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const GpuCommunicator& comm) {
+    absl::Format(&sink, "%s", comm.ToString());
   }
 };
 

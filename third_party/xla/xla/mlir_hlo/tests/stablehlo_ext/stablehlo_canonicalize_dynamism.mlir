@@ -214,6 +214,17 @@ func.func @dynamic_top_k_success(%arg0: tensor<16xf32>) -> (tensor<3xf32>, tenso
 
 // -----
 
+// CHECK-LABEL: func @dynamic_top_k_is_stable_false
+func.func @dynamic_top_k_is_stable_false(%arg0: tensor<16xf32>) -> (tensor<3xf32>, tensor<3xi32>) {
+  // CHECK: chlo.top_k
+  // CHECK-SAME: is_stable = false
+  %k = stablehlo.constant dense<3> : tensor<ui64>
+  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) {is_stable = false} : (tensor<16xf32>, tensor<ui64>) -> (tensor<3xf32>, tensor<3xi32>)
+  return %1#0, %1#1 : tensor<3xf32>, tensor<3xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @dynamic_top_k_failure_k_mismatch
 func.func @dynamic_top_k_failure_k_mismatch(%arg0: tensor<16xf32>) -> (tensor<3xf32>, tensor<3xi32>) {
   // CHECK: @stablehlo.dynamic_top_k

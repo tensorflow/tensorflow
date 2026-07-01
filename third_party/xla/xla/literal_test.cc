@@ -2728,6 +2728,80 @@ TEST_F(LiteralUtilTest, InvalidProtoMissingLayout) {
   EXPECT_THAT(status.message(), HasSubstr("LiteralProto has no layout"));
 }
 
+TEST_F(LiteralUtilTest, InvalidProtoDynamicSizeExceedsBound) {
+  // Regression test: dynamic_sizes that exceed the static dimension bound must
+  // be rejected by CreateFromProto.  Before the fix, the poisoned value was
+  // silently stored via Piece::SetDynamicSize (which lacked the CHECK_GE
+  // present in MutableLiteralBase::SetDynamicSize), leading to a heap OOB read
+  // in CopyElementsWithDynamicBound when ToStatic() was called.
+  LiteralProto proto;
+
+  // Shape: f32[<=4] — rank 1, 1 dynamic dim, static bound = 4.
+  ShapeProto* shape = proto.mutable_shape();
+  shape->set_element_type(F32);
+  shape->add_dimensions(4);
+  shape->add_is_dynamic_dimension(true);
+  LayoutProto* layout = shape->mutable_layout();
+  layout->add_minor_to_major(0);
+
+  // Provide exactly 4 float values (matches static bound).
+  proto.add_f32s(1.0f);
+  proto.add_f32s(2.0f);
+  proto.add_f32s(3.0f);
+  proto.add_f32s(4.0f);
+
+  // dynamic_sizes[0] = 100 — exceeds the static bound of 4.
+  proto.add_dynamic_sizes(100);
+
+  absl::Status status = Literal::CreateFromProto(proto).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("dynamic_sizes"));
+  EXPECT_THAT(status.message(), HasSubstr("out of range"));
+}
+
+TEST_F(LiteralUtilTest, InvalidProtoDynamicSizeNegative) {
+  // Negative dynamic_sizes must also be rejected.
+  LiteralProto proto;
+  ShapeProto* shape = proto.mutable_shape();
+  shape->set_element_type(F32);
+  shape->add_dimensions(4);
+  shape->add_is_dynamic_dimension(true);
+  LayoutProto* layout = shape->mutable_layout();
+  layout->add_minor_to_major(0);
+  proto.add_f32s(1.0f);
+  proto.add_f32s(2.0f);
+  proto.add_f32s(3.0f);
+  proto.add_f32s(4.0f);
+  proto.add_dynamic_sizes(-1);
+
+  absl::Status status = Literal::CreateFromProto(proto).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("dynamic_sizes"));
+  EXPECT_THAT(status.message(), HasSubstr("out of range"));
+}
+
+TEST_F(LiteralUtilTest, ValidProtoDynamicSizeWithinBound) {
+  // A dynamic_size within the static bound must still be accepted.
+  LiteralProto proto;
+  ShapeProto* shape = proto.mutable_shape();
+  shape->set_element_type(F32);
+  shape->add_dimensions(4);
+  shape->add_is_dynamic_dimension(true);
+  LayoutProto* layout = shape->mutable_layout();
+  layout->add_minor_to_major(0);
+  proto.add_f32s(1.0f);
+  proto.add_f32s(2.0f);
+  proto.add_f32s(3.0f);
+  proto.add_f32s(4.0f);
+  proto.add_dynamic_sizes(2);
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(proto));
+  EXPECT_EQ(literal.GetDynamicSize(0), 2);
+  auto static_literal = literal.ToStatic();
+  EXPECT_EQ(static_literal.shape(), ShapeUtil::MakeShape(F32, {2}));
+  EXPECT_TRUE(static_literal.shape().is_static());
+}
+
 TEST_F(LiteralUtilTest, InvalidProtoTooFewTupleElements) {
   // Proto has the too few tuple elements.
   LiteralProto proto;
@@ -3490,6 +3564,21 @@ BENCHMARK_POPULATE(Populate);
 BENCHMARK_POPULATE(PopulateParallel);
 BENCHMARK_POPULATE(PopulateLinear);
 BENCHMARK_POPULATE(PopulateLinearParallel);
+
+void BM_MakeFakeLiteral(::testing::benchmark::State& state) {
+  int64_t d0 = state.range(0);
+  Shape shape = ShapeUtil::MakeShape(F32, {d0, d0});
+  for (auto s : state) {
+    auto literal = MakeFakeLiteral(shape, /*pseudo_random=*/true,
+                                   /*use_large_range=*/true);
+    benchmark::DoNotOptimize(literal);
+  }
+}
+BENCHMARK(BM_MakeFakeLiteral)
+    ->MeasureProcessCPUTime()
+    ->Arg(64)
+    ->Arg(256)
+    ->Arg(1024);
 
 TEST(LiteralTest, SetShapeClearsCustomElementSizeInBitsOnTupleLeafArrays) {
   Shape leaf = ShapeUtil::MakeShape(F32, {1024});

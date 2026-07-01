@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/allocator_memory_registration.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/client/local_client.h"
@@ -121,7 +122,9 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::shared_ptr<KeyValueStoreInterface> kv_store,
       bool abort_collectives_on_failure,
       std::shared_ptr<const GpuTopology> gpu_topology,
-      std::optional<int> num_processes);
+      std::optional<int> num_processes,
+      std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration =
+          nullptr);
 
   std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store()
       const override {
@@ -151,12 +154,12 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
   // ScheduleRemoteSend and MakeCrossHostReceiveBuffers are methods implemented
   // to support the legacy cross-host transfers API.
-  void ScheduleRemoteSend(
-      PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
-      std::vector<PjRtDeviceEventRef> definition_events,
-      tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise,
-      Future<std::string> serialized_descriptor,
-      PjRtBuffer::RemoteSendCallback on_done) override;
+  void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
+                          PjRtRawBufferRef raw_buffer,
+                          PjRtDeviceEventRefVector definition_events,
+                          PjRtDeviceEventPromiseRef usage_event_promise,
+                          Future<std::string> serialized_descriptor,
+                          PjRtBuffer::RemoteSendCallback on_done) override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
@@ -208,19 +211,20 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   std::optional<int> num_nodes_;
   const bool abort_collectives_on_failure_ = false;
   std::optional<xla::StreamExecutorGpuTopologyDescription> topology_;
+  std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration_;
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   // Helpers for cross host transfers.
   absl::Duration cross_host_transfer_timeout_ = absl::Minutes(3);
 
-  absl::StatusOr<std::vector<PjRtDeviceEventRef>> CrossHostTransferBuffers(
-      std::vector<PjRtDeviceEventRef> transfer_dependencies,
+  absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
+      PjRtDeviceEventRefVector transfer_dependencies,
       std::vector<CrossHostTransferSpec> transfer_specs) override;
 
   void ScheduleTransfersOnLocalDevice(
       LocalDeviceState* local_device_state, GlobalDeviceId device_id,
       tsl::AsyncValueRef<BufferSequencingEvent> transfer_event,
-      std::vector<PjRtDeviceEventRef> transfer_dependencies,
+      PjRtDeviceEventRefVector transfer_dependencies,
       std::vector<CrossHostTransferSpec> transfer_specs);
 
   struct PrepareReceiveBufferResult {

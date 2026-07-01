@@ -118,7 +118,7 @@ cc_library(
         "//xla/service/cpu:executable_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tools:llvm_targets",  # fixdeps: keep
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -206,7 +206,6 @@ cc_library(
         "//xla/codegen/emitters/transforms:passes",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/codegen/xtile/ir/transforms:passes",
-        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc",
         "//xla/mlir_hlo",

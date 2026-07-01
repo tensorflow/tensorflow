@@ -625,8 +625,9 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     const HloFusionAdaptor& fusion_adaptor,
     const BlockLevelParameters& block_level_parameters) {
   if (use_experimental_tiling_) {
-    std::unique_ptr<experimental::TilingSpace> tiling_space =
-        experimental::TilingSpace::Create(fusion_adaptor, mlir_context_);
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<experimental::TilingSpace> tiling_space,
+        experimental::TilingSpace::Create(fusion_adaptor, mlir_context_));
 
     ASSIGN_OR_RETURN(
         llvm::SmallVector<int64_t> tile_sizes,
@@ -699,20 +700,27 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
 absl::StatusOr<TopKTiledRunTimeDataOrError>
 GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
     const HloFusionAdaptor& fusion_adaptor, int top_k) {
+  XLA_SCOPED_LOGGING_TIMER(
+      "GpuPerformanceModelWithIndexingAnalysis::"
+      "TryFindTopKBestTilingsForFusion");
   absl::InlinedVector<TiledRunTimeData, 4> candidates;
 
   if (use_experimental_tiling_) {
     using experimental::TiledHloComputation;
     using experimental::TilingSpace;
 
-    std::unique_ptr<TilingSpace> sampling_tiling_space =
-        TilingSpace::Create(fusion_adaptor, mlir_context_);
+    ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+                     TilingSpace::Create(fusion_adaptor, mlir_context_));
 
-    ASSIGN_OR_RETURN(auto tilings, sampling_tiling_space->GetValidTilings());
+    ASSIGN_OR_RETURN(auto tilings, tiling_space->GetValidTilings());
+    VLOG(1) << absl::StrCat(
+        "TryFindTopKBestTilingsForFusion tiling_space evaluating ",
+        tilings.size(), " tilings.");
 
     for (const llvm::SmallVector<int64_t, 4>& tiling : tilings) {
-      std::unique_ptr<TilingSpace> tiling_space =
-          TilingSpace::Create(fusion_adaptor, mlir_context_);
+      VLOG(2) << "Trying tiling: " << absl::StrJoin(tiling, ",");
+      ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(fusion_adaptor, mlir_context_));
 
       RETURN_IF_ERROR(tiling_space->AssignTileSizes(
           xla::xtile::GetPaddedTileSizes(tiling)));
@@ -722,14 +730,14 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
       if (!tiled_computation.ok()) {
         // TODO: b/511080616 - GetValidTilings() must return only tilings that
         // can be tiled and we should treat all errors here as a failure.
-        VLOG(1) << "Tiling failed for " << absl::StrJoin(tiling, ",")
+        VLOG(2) << "Tiling failed for " << absl::StrJoin(tiling, ",")
                 << " with error: " << tiled_computation.status().message();
         continue;
       }
       if (const Decision valid = experimental::VerifyTritonConstraints(
               *tiled_computation, *device_info_);
           !valid) {
-        VLOG(1) << "Triton constraints violated for tiling " << valid.Explain();
+        VLOG(2) << "Triton constraints violated for tiling " << valid.Explain();
         continue;
       }
 
@@ -752,6 +760,9 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
 
     if (const auto* fusion_decision =
             std::get_if<FusionDecision>(&analysis_or_error)) {
+      VLOG(2)
+          << "TryFindTopKBestTilingsForFusion SymbolicTileAnalysis rejected: "
+          << fusion_decision->Explain();
       return *fusion_decision;
     }
 
@@ -759,7 +770,9 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
         std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
     ASSIGN_OR_RETURN(auto tilings, analysis.GetValidTilings());
-
+    VLOG(1) << absl::StrCat(
+        "TryFindTopKBestTilingsForFusion symbolic analysis evaluating ",
+        tilings.size(), " tilings.");
     for (const auto& tiling : tilings) {
       // TODO(b/372454662): This needs to be adjusted if we want to support more
       // than one "real root" (i.e. a root without users).
@@ -792,6 +805,8 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
     }
   }
 
+  VLOG(1) << absl::StrCat("TryFindTopKBestTilingsForFusion found ",
+                          candidates.size(), " valid tiling candidates.");
   absl::c_stable_sort(
       candidates, [](const TiledRunTimeData& a, const TiledRunTimeData& b) {
         return a.runtime_data.exec_time < b.runtime_data.exec_time;

@@ -344,20 +344,6 @@ NamedSharding convertToNamedSharding(
     TensorShardingAttr sdySharding,
     std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
     ArrayRef<StringAttr> manualAxes, bool simplifyReplicatedShardings) {
-  // If simplifyReplicatedShardings is enabled, we convert fully replicated,
-  // closed, non-manual, and non-unreduced shardings to
-  // NamedSharding::Replicate(), which is represented as "{mesh[], replicated}".
-  // We do this only during the final export at the end of ShardyXLA pass to
-  // make the final HLO strings much shorter and more human-readable. We must
-  // NOT do this during the initial MLIR-to-HLO export, because preserving the
-  // rank and open/closed dimension states is required for Shardy verification
-  // passes.
-  if (simplifyReplicatedShardings && sdySharding.isFullyReplicated() &&
-      sdySharding.isFullyClosed() && sdySharding.getUnreducedAxes().empty() &&
-      manualAxes.empty()) {
-    return NamedSharding::Replicate();
-  }
-
   MeshAttr sdyMesh = getMeshAttr(sdySharding);
   // If there are no axes, convert to:
   // - maximal sharding if the mesh has a device id
@@ -375,6 +361,20 @@ NamedSharding convertToNamedSharding(
           NamedSharding::DimensionSharding({}, dimSharding.getIsClosed()));
     }
     return NamedSharding(Mesh(), dimShardings);
+  }
+
+  // If simplifyReplicatedShardings is enabled, we convert fully replicated,
+  // closed, non-manual, and non-unreduced shardings to
+  // NamedSharding::Replicate(), which is represented as "{mesh[], replicated}".
+  // We do this only during the final export at the end of ShardyXLA pass to
+  // make the final HLO strings much shorter and more human-readable. We must
+  // NOT do this during the initial MLIR-to-HLO export, because preserving the
+  // rank and open/closed dimension states is required for Shardy verification
+  // passes.
+  if (simplifyReplicatedShardings && sdySharding.isFullyReplicated() &&
+      sdySharding.isFullyClosed() && sdySharding.getUnreducedAxes().empty() &&
+      manualAxes.empty()) {
+    return NamedSharding::Replicate();
   }
 
   std::vector<int64_t> axisSizes;

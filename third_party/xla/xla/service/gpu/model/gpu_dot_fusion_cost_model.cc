@@ -320,6 +320,15 @@ HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
   return result;
 }
 
+int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
+                               const DotTileSize& dot_tile) {
+  int64_t lhs_iter_bytes = CeilOfRatio<int64_t>(
+      dot_tile.b * dot_tile.m * dot_tile.k * BitWidth(dot.lhs_element_type), 8);
+  int64_t rhs_iter_bytes = CeilOfRatio<int64_t>(
+      dot_tile.b * dot_tile.k * dot_tile.n * BitWidth(dot.rhs_element_type), 8);
+  return lhs_iter_bytes + rhs_iter_bytes;
+}
+
 }  // namespace detail
 
 absl::Status IsSupported(const HloDotInstruction* dot) {

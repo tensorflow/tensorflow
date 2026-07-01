@@ -1402,7 +1402,6 @@ SmallBitVector ConcatenateBitVectors(const SmallBitVector& lhs,
 }
 
 void GetUsedParametersImpl(const SymbolicExpr& expr,
-
                            SmallVector<int64_t>& dimension_ids,
                            SmallVector<int64_t>& symbol_ids, int64_t num_dims) {
   if (IsDimension(expr, num_dims)) {
@@ -1421,7 +1420,6 @@ void GetUsedParametersImpl(const SymbolicExpr& expr,
 
 }  // namespace
 
-// Returns IDs of dimensions and symbols that participate in SymbolicExpr.
 UsedParameters GetUsedParameters(absl::Span<const SymbolicExpr> exprs,
                                  int64_t num_dims) {
   SmallVector<int64_t> dimension_ids, symbol_ids;

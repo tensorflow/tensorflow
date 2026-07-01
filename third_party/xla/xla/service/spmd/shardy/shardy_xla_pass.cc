@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -371,11 +372,16 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   // 6 months compatibility window.
   // TODO (b/519501636): Remove this fallback once 6 months compatibility window
   // for ifrt has passed in Nov'2026.
-  if (xla::sdy::hasFrontendMhloShardings(mlirModule)) {
+  if (enableHloShardingV3 && (xla::sdy::hasFrontendMhloShardings(mlirModule) ||
+                              xla::sdy::hasFrontendMeshes(mlirModule))) {
+    // Fallback checks for mhlo sharding is not sufficient, we need to check for
+    // meshes as well to handle shard map cases.
     LOG(WARNING)
-        << "Module contains sdy shardings in frontend_attributes even when "
-           "HloShardingV3 is enabled. Disabling HloShardingV3 to prevent "
-           "conflicts during Shardy import.";
+        << "Module contains sdy shardings or meshes in frontend_attributes "
+           "even when HloShardingV3 is enabled. This is probably due to stale "
+           "model export, try re-exporting the model on HEAD (with "
+           "HloShardingV3 enabled). Disabling HloShardingV3 here to prevent "
+           "conflicts during Shardy import";
     hloModule->mutable_config()
         .mutable_debug_options()
         .set_xla_enable_hlo_sharding_v3(false);
@@ -426,23 +432,30 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   return diagnosticHandler.consumeStatus(pm.run(mlirModule));
 }
 
-bool eraseInlineableAttrForShardyManualComputations(HloModule* module) {
+absl::StatusOr<bool> eraseInlineableAttrForShardyManualComputations(
+    HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kCall &&
-          instruction->frontend_attributes().map().contains(
-              kXlaInlineableAttr) &&
           absl::StrContains(instruction->to_apply()->name(),
                             sdy::kManualComputationFuncName.str())) {
-        instruction->erase_frontend_attribute(kXlaInlineableAttr);
-        // TODO(b/436603025). CallInliner do not inline the Shardy related
-        // manual computations based on the callee name. We have to rename the
-        // callee to a name such that it can be inlined. If we can remove the
-        // special handling in CallInliner, we can remove this renaming.
-        module->SetAndUniquifyComputationName(instruction->to_apply(),
-                                              "inlineable_callee");
-        changed = true;
+        auto it =
+            instruction->frontend_attributes().map().find(kXlaInlineableAttr);
+        if (it != instruction->frontend_attributes().map().end()) {
+          absl::string_view value = it->second;
+          TF_RET_CHECK(value == "false" || value == "xla_late" ||
+                       value == "auto")
+              << "Unexpected inlineable attribute value: " << value;
+          instruction->erase_frontend_attribute(kXlaInlineableAttr);
+          // TODO(b/436603025). CallInliner do not inline the Shardy related
+          // manual computations based on the callee name. We have to rename the
+          // callee to a name such that it can be inlined. If we can remove the
+          // special handling in CallInliner, we can remove this renaming.
+          module->SetAndUniquifyComputationName(instruction->to_apply(),
+                                                "inlineable_callee");
+          changed = true;
+        }
       }
     }
   }
@@ -461,7 +474,8 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
   // If propagation is enabled, we don't need to erase the inlineable attribute
   // for manual computations, since StablehloExportPipeline can handle it.
   if (!runSdyShardingPropagation) {
-    bool changed = eraseInlineableAttrForShardyManualComputations(hloModule);
+    ASSIGN_OR_RETURN(bool changed,
+                     eraseInlineableAttrForShardyManualComputations(hloModule));
     if (!useTupleArgs) {
       // Nothing more to do.
       return changed;

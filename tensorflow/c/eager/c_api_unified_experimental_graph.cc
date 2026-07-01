@@ -17,9 +17,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
@@ -33,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -112,7 +113,7 @@ class GraphOperation : public TracingOperation {
   void Release() override { delete this; }
   absl::Status Reset(const char* op, const char* raw_device_name) override {
     if (op_) {
-      return errors::FailedPrecondition("Reset called on already built op.");
+      return absl::FailedPreconditionError("Reset called on already built op.");
     }
     if (raw_device_name) {
       device_name_ = raw_device_name;
@@ -122,11 +123,11 @@ class GraphOperation : public TracingOperation {
   }
   absl::Status SetOpName(const char* const op_name) override {
     if (op_) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "SetOpName called on already built op.");
     }
     if (op_type_.empty()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "GraphOperation::Reset must be called before calling SetOpName.");
     }
     // TODO(b/145674566): We use Graph::NewName to get a unique name here but
@@ -148,8 +149,7 @@ class GraphOperation : public TracingOperation {
   absl::Status AddInput(AbstractTensorHandle* input) override {
     GraphTensor* t = dyn_cast<GraphTensor>(input);
     if (!t) {
-      return tensorflow::errors::InvalidArgument(
-          "Unable to cast input to GraphTensor");
+      return absl::InvalidArgumentError("Unable to cast input to GraphTensor");
     }
     TF_AddInput(op_.get(), t->output_);
     return absl::OkStatus();
@@ -160,7 +160,7 @@ class GraphOperation : public TracingOperation {
     for (int i = 0; i < inputs.size(); i++) {
       GraphTensor* t = dyn_cast<GraphTensor>(inputs[i]);
       if (!t) {
-        return tensorflow::errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Unable to cast input to GraphTensor");
       }
       tf_outputs[i] = t->output_;
@@ -172,13 +172,18 @@ class GraphOperation : public TracingOperation {
                        int* num_retvals) override {
     auto* tf_opdesc = op_.release();
     if (tf_opdesc == nullptr) {
-      return errors::InvalidArgument("AbstractOp is incomplete.");
+      return absl::InvalidArgumentError("AbstractOp is incomplete.");
     }
     TF_Status* s = TF_NewStatus();
     auto* operation = TF_FinishOperation(tf_opdesc, s);
     TF_RETURN_IF_ERROR(StatusFromTF_Status(s));
     TF_DeleteStatus(s);
     *num_retvals = TF_OperationNumOutputs(operation);
+    if (*num_retvals > retvals.size()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "retvals span capacity (", retvals.size(),
+          ") is smaller than operation output count (", *num_retvals, ")"));
+    }
     for (int i = 0; i < *num_retvals; ++i) {
       retvals[i] = new GraphTensor({operation, i}, g_);
     }
@@ -225,7 +230,7 @@ class GraphOperation : public TracingOperation {
   }
   absl::Status SetAttrFunction(const char* attr_name,
                                const AbstractOperation* value) override {
-    return tensorflow::errors::Unimplemented(
+    return absl::UnimplementedError(
         "SetAttrFunction has not been implemented yet.");
   }
   absl::Status SetAttrFunctionName(const char* attr_name, const char* value,
@@ -237,7 +242,7 @@ class GraphOperation : public TracingOperation {
   }
   absl::Status SetAttrTensor(const char* attr_name,
                              AbstractTensorInterface* tensor) override {
-    return tensorflow::errors::Unimplemented(
+    return absl::UnimplementedError(
         "SetAttrTensor has not been implemented yet.");
   }
   absl::Status SetAttrStringList(const char* attr_name,
@@ -309,7 +314,7 @@ class GraphOperation : public TracingOperation {
   absl::Status SetAttrFunctionList(
       const char* attr_name,
       absl::Span<const AbstractOperation*> values) override {
-    return tensorflow::errors::Unimplemented(
+    return absl::UnimplementedError(
         "SetAttrFunctionList has not been implemented yet.");
   }
   // For LLVM style RTTI.
@@ -363,12 +368,12 @@ class GraphContext : public TracingContext {
         absl::Span<AbstractTensorHandle*>(outputs), &num_outputs));
 
     if (num_outputs != 1) {
-      return errors::Internal("Expected 1 output but found ", num_outputs);
+      return absl::InternalError(
+          absl::StrCat("Expected 1 output but found ", num_outputs));
     }
     auto* t = dyn_cast<GraphTensor>(outputs[0]);
     if (!t) {
-      return tensorflow::errors::InvalidArgument(
-          "Unable to cast input to GraphTensor");
+      return absl::InvalidArgumentError("Unable to cast input to GraphTensor");
     }
     inputs_.push_back(t->output_);
     *output = tensorflow::down_cast<TracingTensorHandle*>(outputs[0]);
@@ -381,7 +386,7 @@ class GraphContext : public TracingContext {
     for (auto* abstract_output : outputs->outputs) {
       GraphTensor* output = dyn_cast<GraphTensor>(abstract_output);
       if (!output) {
-        return errors::Unimplemented(
+        return absl::UnimplementedError(
             "Returning a non-graph tensor from a function has not "
             "been implemented yet.");
       }
@@ -401,12 +406,12 @@ class GraphContext : public TracingContext {
   }
 
   absl::Status RegisterFunction(AbstractFunction* func) override {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Registering graph functions has not been implemented yet.");
   }
 
   absl::Status RemoveFunction(const string& func) override {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "GraphContext::RemoveFunction has not been implemented yet.");
   }
   // For LLVM style RTTI.

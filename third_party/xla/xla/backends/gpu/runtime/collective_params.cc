@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -72,7 +73,7 @@ static GpuCollectives* ResolveCollectives(
         CollectivesRegistry::Get(platform_name, *implementation_name);
     CHECK_OK(collectives) << "Failed to get GPU collectives implementation: "
                           << *implementation_name;
-    return tsl::down_cast<GpuCollectives*>(*collectives);
+    return absl::down_cast<GpuCollectives*>(*collectives);
   }
   return GpuCollectives::Default(platform_name);
 }

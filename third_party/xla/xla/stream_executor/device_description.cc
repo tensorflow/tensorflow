@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/sorted_range.h"
+#include "xla/xla_data.pb.h"
 
 namespace stream_executor {
 
@@ -266,6 +267,14 @@ bool DeviceDescription::EqualsTo(
     if (interconnect_info_.clique_id != other.interconnect_info_.clique_id) {
       return false;
     }
+    // Device memory size can vary between hosts due to driver versions.
+    if (device_memory_size_ != other.device_memory_size_) {
+      return false;
+    }
+    // Model string embeds the device memory size.
+    if (model_str_ != other.model_str_) {
+      return false;
+    }
     // interconnect_info.active_links is portable and comparison is below.
   }
   if (!absl::c_linear_search(compare_options,
@@ -292,7 +301,7 @@ bool DeviceDescription::EqualsTo(
 
   return name_ == other.name_ && device_vendor_ == other.device_vendor_ &&
          platform_version_ == other.platform_version_ &&
-         model_str_ == other.model_str_ && core_count_ == other.core_count_ &&
+         core_count_ == other.core_count_ &&
          fpus_per_core_ == other.fpus_per_core_ &&
          thread_dim_limit_ == other.thread_dim_limit_ &&
          block_dim_limit_ == other.block_dim_limit_ &&
@@ -302,7 +311,6 @@ bool DeviceDescription::EqualsTo(
          registers_per_core_limit_ == other.registers_per_core_limit_ &&
          registers_per_block_limit_ == other.registers_per_block_limit_ &&
          device_address_bits_ == other.device_address_bits_ &&
-         device_memory_size_ == other.device_memory_size_ &&
          l2_cache_size_ == other.l2_cache_size_ &&
          memory_bandwidth_ == other.memory_bandwidth_ &&
          pcie_bandwidth_ == other.pcie_bandwidth_ &&

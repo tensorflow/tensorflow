@@ -57,7 +57,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
       const se::DeviceDescription* device_info,
       HloFusionAnalysisCache* fusion_analysis_cache,
       HloCostAnalysis::ShapeSizeFunction shape_size,
-      mlir::MLIRContext* mlir_context, bool use_experimental_tiling = false)
+      mlir::MLIRContext* mlir_context, bool use_experimental_tiling)
       : hlo_op_profile_(&HloOpProfiles::Singleton().GetProfile(*device_info)),
         device_info_(device_info),
         fusion_analysis_cache_(fusion_analysis_cache),

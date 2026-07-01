@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
@@ -104,7 +105,7 @@ absl::StatusOr<OwningOpRef<mlir::ModuleOp>> LoadModule(
   std::string error_message;
   auto file = openInputFile(file_name, &error_message);
   if (!file) {
-    return tensorflow::errors::InvalidArgument("fail to open input file");
+    return absl::InvalidArgumentError("fail to open input file");
   }
 
   llvm::SourceMgr source_mgr;

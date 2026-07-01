@@ -61,6 +61,7 @@ tf_staging/tensorflow/lite/acceleration/configuration/c/stable_delegate.h:
 tf_staging/tensorflow/lite/acceleration/configuration/c/xnnpack_plugin.h:
 tf_staging/tensorflow/lite/acceleration/configuration/configuration_generated.h:
 tf_staging/tensorflow/lite/acceleration/configuration/delegate_registry.h:
+tf_staging/tensorflow/lite/api_visibility.bzl:
 tf_staging/tensorflow/lite/async/c/BUILD:
 tf_staging/tensorflow/lite/async/c/async_kernel.h:
 tf_staging/tensorflow/lite/async/c/async_signature_runner.h:

@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
@@ -41,14 +42,13 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
 
 struct CompileModuleResults {
-  std::unique_ptr<llvm::Module> llvm_module_constants;
+  std::vector<uint8_t> constants_binary;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::unique_ptr<ExecutionStreamAssignment> execution_stream_assignment;
   std::vector<BufferAllocation> allocations;

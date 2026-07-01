@@ -97,7 +97,7 @@ bool CustomCallDynamicDimensionInference(
   return false;
 }
 
-class DynamicPadderTest : public HloPjRtTestBase {
+class DynamicPadderTest : public HloTestBase {
  protected:
   DynamicPadderTest() { module_ = CreateNewVerifiedModule(); }
 
@@ -152,7 +152,7 @@ class DynamicPadderTest : public HloPjRtTestBase {
 };
 
 class MemoryAlignmentTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {};
 
 // Test that dynamic padder will not cause memory misalignment in CUDA
 // when the read or write address is not aligned with 32 bits.
@@ -745,8 +745,49 @@ ENTRY main {
             .is_dynamic_dimension(0));
 }
 
+TEST_F(DynamicPadderTest, ConcatToPad) {
+  const std::string hlo_text = R"(
+HloModule ConcatToPad
+
+ENTRY main {
+  param_0 = f32[4] parameter(0)
+  param_1 = f32[4] parameter(1)
+  size_0 = s32[] parameter(2)
+  size_1 = s32[] parameter(3)
+  padded_0 = f32[<=4] set-dimension-size(param_0, size_0), dimensions={0}
+  padded_1 = f32[<=4] set-dimension-size(param_1, size_1), dimensions={0}
+  ROOT concat = f32[<=8] concatenate(padded_0, padded_1), dimensions={0}
+}
+)";
+  module_ = GetHloModule(hlo_text);
+  TF_ASSERT_OK(RunPadder().status());
+
+  auto root = module_->entry_computation()->root_instruction();
+  ASSERT_THAT(root->opcode(), HloOpcode::kDynamicUpdateSlice);
+
+  auto pad = root->operand(0);
+  ASSERT_THAT(pad->opcode(), HloOpcode::kPad);
+  EXPECT_EQ(pad->operand(0)->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(pad->operand(0)->parameter_number(), 0);
+
+  // Check padding config
+  EXPECT_EQ(pad->padding_config().dimensions_size(), 1);
+  EXPECT_EQ(pad->padding_config().dimensions(0).edge_padding_low(), 0);
+  EXPECT_EQ(pad->padding_config().dimensions(0).edge_padding_high(), 4);
+  EXPECT_EQ(pad->padding_config().dimensions(0).interior_padding(), 0);
+
+  // Check DUS operands
+  auto operand_1_static = root->operand(1);
+  EXPECT_EQ(operand_1_static->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(operand_1_static->parameter_number(), 1);
+
+  auto offset = root->operand(2);
+  EXPECT_EQ(offset->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(offset->parameter_number(), 2);
+}
+
 // Test that dynamic padder has the same result as if not padded.
-class ExecutionTest : public HloPjRtTestBase {
+class ExecutionTest : public HloTestBase {
  protected:
   std::unique_ptr<HloModule> GetHloModule(const std::string& hlo_text) {
     std::unique_ptr<HloModule> module =
@@ -2304,7 +2345,7 @@ ENTRY main {
 
 namespace op = xla::testing::opcode_matchers;
 
-class HloDimensionSizeLegalizerTest : public HloPjRtTestBase {
+class HloDimensionSizeLegalizerTest : public HloTestBase {
  protected:
   HloDimensionSizeLegalizerTest() {}
 };
@@ -2367,7 +2408,7 @@ ENTRY gds {
   EXPECT_FALSE(pass.Run(module.get()).ok());
 }
 
-class SizeCheckTest : public HloPjRtTestBase {
+class SizeCheckTest : public HloTestBase {
  protected:
   SizeCheckTest() {}
 };

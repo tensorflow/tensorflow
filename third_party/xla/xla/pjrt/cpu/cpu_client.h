@@ -238,13 +238,9 @@ class PjRtCpuClient final : public CommonPjRtClient {
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom) override;
 
-  absl::StatusOr<
-      std::pair<tsl::RCReference<PjRtDeviceEventPromise>, PjRtDeviceEventRef>>
+  absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info) override;
-
-  std::unique_ptr<PjRtDeviceEventSet> CreateDeviceEventSet(
-      size_t preallocated_size) const override;
 
   using CommonPjRtClient::GetOnDeviceBytesCount;
   absl::StatusOr<int64_t> GetOnDeviceBytesCount(
@@ -382,9 +378,9 @@ class CpuPjRtRawLoadedExecutable : public PjRtRawLoadedExecutable {
       const ExecuteOptions& options,
       absl::Span<const PjRtRawBufferRef> input_buffers,
       absl::Span<const PjRtRawBufferRef> output_leaf_buffers,
-      std::unique_ptr<PjRtDeviceEventSet> extra_deps,
-      std::unique_ptr<PjRtDeviceEventSet> control_deps,
-      bool is_predetermined_error, bool fill_future) &&
+      PjRtDeviceEventRefVector extra_deps,
+      PjRtDeviceEventRefVector control_deps, bool is_predetermined_error,
+      bool fill_future) &&
       override;
 
  private:

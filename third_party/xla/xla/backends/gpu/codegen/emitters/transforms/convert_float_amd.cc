@@ -553,8 +553,7 @@ struct RewriteFp8ExtFPattern : public Fp8OpRewritePattern<arith::ExtFOp> {
 class ConvertFloatAMDPass
     : public impl::ConvertFloatAMDPassBase<ConvertFloatAMDPass> {
  public:
-  explicit ConvertFloatAMDPass(const ConvertFloatAMDPassOptions& options)
-      : ConvertFloatAMDPassBase(options) {}
+  using ConvertFloatAMDPassBase::ConvertFloatAMDPassBase;
 
   explicit ConvertFloatAMDPass(const se::RocmComputeCapability& cc) : cc_(cc) {}
 
@@ -583,13 +582,6 @@ class ConvertFloatAMDPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateConvertFloatAMDPass(
-    const std::string& gpu_device_info) {
-  ConvertFloatAMDPassOptions options;
-  options.gpu_device_info_ = gpu_device_info;
-  return std::make_unique<ConvertFloatAMDPass>(options);
-}
 
 std::unique_ptr<mlir::Pass> CreateConvertFloatAMDPass(
     const se::RocmComputeCapability& cc) {

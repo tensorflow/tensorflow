@@ -17,10 +17,13 @@ package(
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
-    data = glob([
-        "**/*.cc",
-        "**/*.h",
-    ]),
+    data = glob(
+        [
+            "**/*.cc",
+            "**/*.h",
+        ],
+        allow_empty = True,
+    ),
     visibility = ["//xla:internal"],
 )
 

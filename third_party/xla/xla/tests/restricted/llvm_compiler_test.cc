@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/llvm_compiler.h"
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>

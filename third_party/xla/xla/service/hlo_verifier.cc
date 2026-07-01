@@ -71,7 +71,6 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -1940,16 +1939,93 @@ absl::Status CheckCallableInstructionThreadName(
 }
 }  // namespace
 
-absl::Status ShapeVerifier::CheckAsyncOpComputationShapes(
-    const HloInstruction* async_op, const Shape& async_shape) {
-  if (!async_shape.IsTuple() || async_shape.tuple_shapes().size() < 2) {
-    return Internal(
-        "The %s expects the async shape to be a tuple of at least two "
-        "elements, found %s.",
-        HloOpcodeString(async_op->opcode()),
-        async_shape.ToString(/*print_layout=*/true));
+absl::Status ShapeVerifier::CheckAsyncOpAliasConfig(
+    const HloInstruction* async_op) {
+  if (async_op->opcode() == HloOpcode::kAsyncUpdate ||
+      async_op->opcode() == HloOpcode::kAsyncDone) {
+    return absl::OkStatus();
   }
 
+  CHECK(async_op->opcode() == HloOpcode::kAsyncStart);
+
+  const HloAsyncStartInstruction* async_start =
+      Cast<HloAsyncStartInstruction>(async_op);
+  HloComputation* async_computation = async_start->async_wrapped_computation();
+  ProgramShape computation_shape = async_computation->ComputeProgramShape();
+  std::vector<Shape> async_shapes;
+  async_shapes.reserve(async_start->shape().tuple_shapes().size());
+  async_shapes.push_back(
+      ShapeUtil::MakeTupleShape(computation_shape.parameters()));
+  async_shapes.push_back(computation_shape.result());
+  for (int i = 2; i < async_start->shape().tuple_shapes().size(); ++i) {
+    async_shapes.push_back(async_start->shape().tuple_shapes(i));
+  }
+  // async_shape is a tuple: { {params...}, result, original_context_states... }
+  Shape async_shape = ShapeUtil::MakeTupleShape(async_shapes);
+
+  for (const auto& pair : async_start->output_to_operand_aliasing()) {
+    int64_t operand_number = pair.second.first;
+    const ShapeIndex& operand_index = pair.second.second;
+    const ShapeIndex& output_index = pair.first;
+
+    TF_RET_CHECK(operand_number >= 0)
+        << "Negative operand number in aliasing config.";
+    TF_RET_CHECK(operand_number < async_computation->num_parameters())
+        << "Operand number " << operand_number
+        << " in aliasing config is out of bounds.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(
+        async_computation->parameter_instruction(operand_number)->shape(),
+        operand_index))
+        << "Invalid aliasing operand shape index.";
+    TF_RET_CHECK(!output_index.empty()) << "Output index should not be empty.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(async_shape, output_index))
+        << "Invalid aliasing output shape index.";
+
+    // TODO(phui): Is the following change OK?
+    const Shape& output_subshape =
+        ShapeUtil::GetSubshape(async_shape, output_index);
+    const Shape& operand_subshape = ShapeUtil::GetSubshape(
+        async_computation->parameter_instruction(operand_number)->shape(),
+        operand_index);
+    if (opts_.layout_sensitive) {
+      TF_RET_CHECK(
+          Shape::Equal().IgnoreBuffer()(operand_subshape, output_subshape))
+          << absl::Substitute("Different aliasing shapes: $0 vs $1",
+                              operand_subshape.ToString(/*print_layout=*/true),
+                              output_subshape.ToString(/*print_layout=*/true));
+    } else {
+      TF_RET_CHECK(
+          Shape::Equal().IgnoreDynamicDimension().IgnoreLayout().IgnoreBuffer()(
+              output_subshape, operand_subshape))
+          << absl::Substitute("Different aliasing shapes: $0 vs $1",
+                              operand_subshape.ToString(/*print_layout=*/true),
+                              output_subshape.ToString(/*print_layout=*/true));
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status ShapeVerifier::CheckAsyncOpOutputShape(
+    const HloInstruction* async_op) {
+  if (async_op->opcode() == HloOpcode::kAsyncStart ||
+      async_op->opcode() == HloOpcode::kAsyncUpdate) {
+    const Shape& async_shape = async_op->shape();
+    if (!async_shape.IsTuple() || async_shape.tuple_shapes().size() < 2 ||
+        !async_shape.tuple_shapes(0).IsTuple()) {
+      return Internal(
+          "%s (opcode: %s) expects the async shape to be in the form of "
+          "((op0_shape, op1_shape, ...), output_shape, ...), found %s.",
+          async_op->name(), HloOpcodeString(async_op->opcode()),
+          async_op->shape().ToString(/*print_layout=*/true));
+    }
+  }
+  // No specific checks for async-done
+  return absl::OkStatus();
+}
+
+absl::Status ShapeVerifier::CheckAsyncOpComputationShapes(
+    const HloInstruction* async_op, const Shape& async_shape) {
   ProgramShape computation_shape =
       async_op->async_wrapped_computation()->ComputeProgramShape();
   Shape param_shape = ShapeUtil::MakeTupleShape(computation_shape.parameters());
@@ -1973,6 +2049,7 @@ absl::Status ShapeVerifier::CheckAsyncOpComputationShapes(
 }
 
 absl::Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
+  RETURN_IF_ERROR(CheckAsyncOpOutputShape(async_start));
   RETURN_IF_ERROR(
       CheckAsyncOpComputationShapes(async_start, async_start->shape()));
   RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_start));
@@ -1989,38 +2066,11 @@ absl::Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
     }
   }
 
-  for (const auto& pair : Cast<HloAsyncStartInstruction>(async_start)
-                              ->output_to_operand_aliasing()) {
-    TF_RET_CHECK(pair.second.first < async_start->operand_count())
-        << "Invalid aliasing operand index.";
-    TF_RET_CHECK(ShapeUtil::IndexIsValid(
-        async_start->operand(pair.second.first)->shape(), pair.second.second))
-        << "Invalid aliasing operand shape index.";
-    TF_RET_CHECK(ShapeUtil::IndexIsValid(async_start->shape(), pair.first))
-        << "Invalid aliasing output shape index.";
-    const Shape& output_subshape =
-        ShapeUtil::GetSubshape(async_start->shape(), pair.first);
-    const Shape& operand_subshape = ShapeUtil::GetSubshape(
-        async_start->operand(pair.second.first)->shape(), pair.second.second);
-    if (opts_.layout_sensitive) {
-      TF_RET_CHECK(
-          Shape::Equal().IgnoreBuffer()(operand_subshape, output_subshape))
-          << absl::Substitute("Different aliasing shapes: $0 vs $1",
-                              operand_subshape.ToString(/*print_layout=*/true),
-                              output_subshape.ToString(/*print_layout=*/true));
-    } else {
-      TF_RET_CHECK(
-          Shape::Equal().IgnoreDynamicDimension().IgnoreLayout().IgnoreBuffer()(
-              output_subshape, operand_subshape))
-          << absl::Substitute("Different aliasing shapes: $0 vs $1",
-                              operand_subshape.ToString(/*print_layout=*/true),
-                              output_subshape.ToString(/*print_layout=*/true));
-    }
-  }
-  return absl::OkStatus();
+  return CheckAsyncOpAliasConfig(async_start);
 }
 
 absl::Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
+  RETURN_IF_ERROR(CheckAsyncOpOutputShape(async_update));
   RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_update));
   if (!ShapesSame(async_update->operand(0)->shape(), async_update->shape())) {
     return Internal(
@@ -2035,6 +2085,7 @@ absl::Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
 }
 
 absl::Status ShapeVerifier::HandleAsyncDone(HloInstruction* async_done) {
+  RETURN_IF_ERROR(CheckAsyncOpOutputShape(async_done));
   RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_done));
   RETURN_IF_ERROR(CheckAsyncOpComputationShapes(
       async_done, async_done->operand(0)->shape()));
@@ -2673,8 +2724,8 @@ absl::Status VerifySingleOperand(
     const std::vector<HloOpcode>& expected_operands) {
   TF_RET_CHECK(instruction->operands().size() == 1)
       << "The " << instruction->opcode()
-      << " instruction requires one consumer, found "
-      << instruction->users().size();
+      << " instruction requires one operand, found "
+      << instruction->operand_count();
 
   const HloInstruction* operand = instruction->operand(0);
   TF_RET_CHECK(absl::c_find(expected_operands, operand->opcode()) !=
@@ -3168,11 +3219,17 @@ std::string FormatShapeIndexValidationError(
   auto shape_index_formatter = [](std::string* out, const ShapeIndex& i) {
     absl::StrAppend(out, i.ToString());
   };
+  std::string module_info = "";
+  if (instruction->GetModule() != nullptr) {
+    module_info =
+        absl::StrCat("Module: ", instruction->GetModule()->name(), "\n");
+  }
   return absl::StrFormat(
-      "Mismatched tuple structure in original_value for "
-      "instruction %s. Leaf indices in shape and original_value "
-      "do not match.\nIn shape only: {%s}\nIn original_value only: {%s}",
-      instruction->ToString(),
+      "Mismatched tuple structure in shape and original value.\n%s"
+      "Instruction: %s\nShape indices in shape only: {%s}\nShape indices in "
+      "original value "
+      "only: {%s}",
+      module_info, instruction->ToString(),
       absl::StrJoin(shape_only, ", ", shape_index_formatter),
       absl::StrJoin(ov_only, ", ", shape_index_formatter));
 }

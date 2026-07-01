@@ -228,9 +228,4 @@ class LowerXTileEntryPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateLowerXTileEntryPass() {
-  return std::make_unique<LowerXTileEntryPass>();
-}
-
 }  // namespace xla::cpu

@@ -20,6 +20,12 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "hdrs",
+    srcs = ["jpeg_mem.h"],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "jpeg_internal",
     srcs = [
@@ -101,6 +107,7 @@ tf_cc_test(
         "//tensorflow/core/platform:jpeg",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@libjpeg_turbo//:jpeg",
     ],
 )

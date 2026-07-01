@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/printer.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -73,6 +74,8 @@ class IotaTileAssignment {
   static IotaTileAssignment Create(absl::Span<const int64_t> dims,
                                    absl::Span<const int64_t> reshape_dims,
                                    absl::Span<const int> transpose_perm);
+  static IotaTileAssignment Create(absl::Span<const int64_t> dims,
+                                   const MeshProto::IotaTransform& transform);
 
   ~IotaTileAssignment() = default;
   IotaTileAssignment(const IotaTileAssignment& other);

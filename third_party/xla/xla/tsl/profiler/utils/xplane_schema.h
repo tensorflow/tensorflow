@@ -44,6 +44,8 @@ TF_CONST_INIT extern const absl::string_view kVirtualDevicePlanePrefix;
 TF_CONST_INIT extern const char kTpuPlaneRegex[];
 // Regex for XPlanes that contain TPU Core planes.
 TF_CONST_INIT extern const char kSparseCorePlaneRegex[];
+// Regex for XPlanes that contain SparseCore CAE planes.
+TF_CONST_INIT extern const char kSparseCoreCAEPlaneRegex[];
 // Name prefix of XPlane that contains custom device events.
 TF_CONST_INIT extern const absl::string_view kCustomPlanePrefix;
 // Name prefix of XPlane that contains TPU non-core events such as HBM, ICI etc.
@@ -156,6 +158,8 @@ enum HostEventType {
   kScheduleWithSplit,
   kScheduleWithEagerSplit,
   kASBSQueueSchedule,
+  kOrbaxConcatInputBuffers,
+  kOrbaxProcessBatch,
   // TFRT related.
   kTfrtModelRun,
   // Serving related.

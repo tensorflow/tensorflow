@@ -1,5 +1,5 @@
-// RUN: litert-opt %s --tfl-dense-to-dense-resource-elements | FILECHECK_OPTS="" FileCheck %s
-// RUN: litert-opt %s --tfl-dense-to-dense-resource-elements | litert-opt --tfl-dense-resource-to-dense-elements | FILECHECK_OPTS="" FileCheck %s --check-prefix=ROUNDTRIP
+// RUN: litert-opt %s --tfl-dense-to-dense-resource-elements | env FILECHECK_OPTS="" FileCheck %s
+// RUN: litert-opt %s --tfl-dense-to-dense-resource-elements | litert-opt --tfl-dense-resource-to-dense-elements | env FILECHECK_OPTS="" FileCheck %s --check-prefix=ROUNDTRIP
 
 // CHECK-LABEL: @test_f32
 // ROUNDTRIP-LABEL: @test_f32

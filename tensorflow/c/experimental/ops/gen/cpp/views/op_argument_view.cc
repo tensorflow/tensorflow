@@ -22,13 +22,12 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/gen/cpp/views/attr_view.h"
 #include "tensorflow/c/experimental/ops/gen/model/arg_spec.h"
 #include "tensorflow/c/experimental/ops/gen/model/attr_spec.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace generator {
 namespace cpp {
 
-std::string OpArgumentView::Declaration() const {
+std::string OpArgumentView::Declaration(bool is_header) const {
   return absl::Substitute("$0 $1", type_name_, variable_name_);
 }
 

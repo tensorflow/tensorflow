@@ -45,32 +45,34 @@ REGISTER_OP("AllToAll")
       int split_count;
       TF_RETURN_IF_ERROR(c->GetAttr("split_count", &split_count));
       if (split_count < 1) {
-        return errors::InvalidArgument("split_count ", split_count,
-                                       " must at least be one.");
+        return absl::InvalidArgumentError(absl::StrCat(
+            "split_count ", split_count, " must at least be one."));
       }
       if (c->RankKnown(group_assignment) && c->Rank(group_assignment) != 2) {
-        return errors::InvalidArgument("group_assignment must have rank 2.");
+        return absl::InvalidArgumentError("group_assignment must have rank 2.");
       }
       DimensionHandle num_replicas_per_group = c->Dim(group_assignment, 1);
       if (c->ValueKnown(num_replicas_per_group) &&
           (c->Value(num_replicas_per_group) != split_count)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "split_count ", split_count,
             " must equal the size of the second dimension of group_assignment ",
-            c->Value(num_replicas_per_group));
+            c->Value(num_replicas_per_group)));
       }
 
       TF_RETURN_IF_ERROR(c->GetAttr("concat_dimension", &concat_dimension));
 
       if (concat_dimension < 0 || concat_dimension >= rank) {
-        return errors::InvalidArgument("concat_dimension ", concat_dimension,
-                                       " is out of range of input rank ", rank);
+        return absl::InvalidArgumentError(
+            absl::StrCat("concat_dimension ", concat_dimension,
+                         " is out of range of input rank ", rank));
       }
 
       TF_RETURN_IF_ERROR(c->GetAttr("split_dimension", &split_dimension));
       if (split_dimension < 0 || split_dimension >= rank) {
-        return errors::InvalidArgument("split_dimension ", split_dimension,
-                                       " is out of range of input rank ", rank);
+        return absl::InvalidArgumentError(
+            absl::StrCat("split_dimension ", split_dimension,
+                         " is out of range of input rank ", rank));
       }
 
       if (!c->ValueKnown(c->Dim(input, concat_dimension)) ||
@@ -90,9 +92,9 @@ REGISTER_OP("AllToAll")
         if (i == split_dimension) {
           if (c->ValueKnown(dims[i]) &&
               (c->Value(dims[i]) % split_count != 0)) {
-            return errors::InvalidArgument(
-                "input dimension ", c->Value(dims[i]),
-                " not divisible by split_count ", split_count);
+            return absl::InvalidArgumentError(
+                absl::StrCat("input dimension ", c->Value(dims[i]),
+                             " not divisible by split_count ", split_count));
           }
           dims[i] = c->MakeDim(c->Value(dims[i]) / split_count);
         }

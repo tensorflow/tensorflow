@@ -58,12 +58,27 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   if (args->create_options != nullptr) {
     absl::flat_hash_map<std::string, xla::PjRtValueType> create_options =
         ConvertFromPjRtNamedValueList(args->create_options, args->num_options);
-    if (create_options.contains("cpu_device_count")) {
-      int64_t device_count_option =
-          std::get<int64_t>(create_options["cpu_device_count"]);
+    const auto kExpectedOptionNameAndTypes =
+        absl::flat_hash_map<std::string, PJRT_NamedValue_Type>({
+            {"cpu_device_count", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+            {"asynchronous", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+        });
+    PJRT_RETURN_IF_ERROR(
+        ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
+
+    if (auto it = create_options.find("cpu_device_count");
+        it != create_options.end()) {
+      int64_t device_count_option = std::get<int64_t>(it->second);
       options.cpu_device_count = device_count_option;
       LOG(INFO) << "cpu_device_count set via create_options: "
                 << device_count_option;
+    }
+    if (auto it = create_options.find("asynchronous");
+        it != create_options.end()) {
+      bool asynchronous_option = std::get<bool>(it->second);
+      options.asynchronous = asynchronous_option;
+      LOG(INFO) << "asynchronous set via create_options: "
+                << asynchronous_option;
     }
   }
 

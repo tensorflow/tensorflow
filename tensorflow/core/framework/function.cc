@@ -1168,7 +1168,7 @@ FunctionCallFrame::FunctionCallFrame(DataTypeSlice arg_types,
   rets_.resize(ret_types_.size());
 }
 
-FunctionCallFrame::~FunctionCallFrame() {}
+FunctionCallFrame::~FunctionCallFrame() = default;
 
 absl::Status FunctionCallFrame::SetArgs(absl::Span<const Tensor> args) {
   // Input type checks.
@@ -1316,6 +1316,13 @@ FunctionLibraryDefinition::FunctionLibraryDefinition(
 }
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
+    const OpRegistryInterface* default_registry, FunctionDefLibrary&& lib_def,
+    const FunctionDefLibraryStackTraces& library_traces)
+    : default_registry_(default_registry), records_(lib_def.function_size()) {
+  Initialize(std::move(lib_def), library_traces);
+}
+
+FunctionLibraryDefinition::FunctionLibraryDefinition(
     const OpRegistryInterface* default_registry, const GraphDef& graph_def)
     : default_registry_(default_registry) {
   const FunctionDefLibrary& library = graph_def.library();
@@ -1369,23 +1376,52 @@ FunctionLibraryDefinition::CreateStackTracesForFunctionDefLibrary(
 void FunctionLibraryDefinition::Initialize(
     const FunctionDefLibrary& library,
     const FunctionDefLibraryStackTraces& library_traces) {
-  tf_shared_lock lock(mu_);
+  mutex_lock lock(mu_);
   for (const auto& fdef : library.function()) {
+    const std::string& name = fdef.signature().name();
     // The latter function definition wins.
-    auto iter = records_.find(fdef.signature().name());
+    auto iter = records_.find(name);
+    const auto& it = library_traces.find(name);
+    StackTracesMap stack_traces =
+        it != library_traces.end() ? it->second : StackTracesMap();
     if (iter != records_.end()) {
       iter->second->Unref();
-      records_.erase(iter);
+      iter->second = new FunctionRecord(fdef, stack_traces, true);
+    } else {
+      records_.insert({name, new FunctionRecord(fdef, stack_traces, true)});
     }
-    const auto& it = library_traces.find(fdef.signature().name());
-    records_.insert(
-        {fdef.signature().name(),
-         new FunctionRecord(
-             fdef, it != library_traces.end() ? it->second : StackTracesMap(),
-             true)});
   }
   for (const auto& grad : library.gradient()) {
     func_grad_[grad.function_name()] = grad.gradient_func();
+  }
+}
+
+void FunctionLibraryDefinition::Initialize(
+    FunctionDefLibrary&& library,
+    const FunctionDefLibraryStackTraces& library_traces) {
+  mutex_lock lock(mu_);
+  for (FunctionDef& fdef : *library.mutable_function()) {
+    std::string name = fdef.signature().name();
+    const auto& it = library_traces.find(name);
+    StackTracesMap stack_traces;
+    if (it != library_traces.end()) {
+      stack_traces = it->second;
+    }
+
+    auto iter = records_.find(name);
+    if (iter != records_.end()) {
+      iter->second->Unref();
+      iter->second =
+          new FunctionRecord(std::move(fdef), std::move(stack_traces), true);
+    } else {
+      records_.insert(
+          {std::move(name),
+           new FunctionRecord(std::move(fdef), std::move(stack_traces), true)});
+    }
+  }
+  for (GradientDef& grad : *library.mutable_gradient()) {
+    func_grad_[std::move(*grad.mutable_function_name())] =
+        std::move(*grad.mutable_gradient_func());
   }
 }
 

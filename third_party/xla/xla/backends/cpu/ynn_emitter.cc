@@ -450,7 +450,6 @@ absl::StatusOr<uint32_t> DefineReduceOp(ynn_subgraph_t subgraph,
   const HloReduceInstruction* reduce_instr = Cast<HloReduceInstruction>(instr);
   const HloInstruction* input = instr->operand(0);
   const HloInstruction* init = instr->operand(1);
-  CHECK_EQ(input->shape().element_type(), instr->shape().element_type());
   CHECK_EQ(init->shape().element_type(), instr->shape().element_type());
 
   CHECK_EQ(reduce_instr->to_apply()->num_parameters(), 2);

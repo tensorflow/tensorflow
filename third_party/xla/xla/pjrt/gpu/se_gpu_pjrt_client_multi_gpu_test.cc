@@ -340,7 +340,7 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyTest) {
   [[deprecated(
       "remove after absl upgrade")]] const StreamExecutorGpuTopologyDescription&
       gpu_topology =
-          tensorflow::down_cast<const StreamExecutorGpuTopologyDescription&>(
+          absl::down_cast<const StreamExecutorGpuTopologyDescription&>(
               *topology);
 
   EXPECT_EQ(gpu_topology.gpu_topology().num_partitions(), 2);
@@ -1221,8 +1221,7 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
 TEST(StreamExecutorGpuClientTest, FailedCrossHostTransferSrcAndDstAddressable) {
   ASSERT_OK_AND_ASSIGN(auto pjrt_client,
                        GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
-  auto* client =
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(pjrt_client.get());
+  auto* client = absl::down_cast<PjRtStreamExecutorClient*>(pjrt_client.get());
   auto* memory_space = client->memory_spaces()[0];
   auto literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
   ASSERT_OK_AND_ASSIGN(
@@ -1373,7 +1372,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
 
   // Usage event promises that set the usage events on owned_buffers
   // corresponding to the data transfers.
-  std::vector<tsl::RCReference<PjRtDeviceEventPromise>> usage_event_promises;
+  std::vector<PjRtDeviceEventPromiseRef> usage_event_promises;
   usage_event_promises.reserve(num_transfers);
 
   // Passed as input to CrossHostTransferBuffers; contains raw buffers wrapped
@@ -1382,7 +1381,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
   transfer_specs.reserve(num_transfers);
 
   // Holds definition events of owned_buffers.
-  std::vector<PjRtDeviceEventRef> transfer_dependencies;
+  PjRtDeviceEventRefVector transfer_dependencies;
 
   LOG(INFO) << log_prefix << ": preparing transfers.";
   for (int i = 0; i < num_transfers; ++i) {
@@ -1402,28 +1401,29 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
             default_memory_space, /*device_layout=*/nullptr));
 
     // Create a usage event for the transfer of this buffer.
-    tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise;
+    PjRtDeviceEventPromiseRef usage_event_promise;
     PjRtDeviceEventRef usage_event;
     ASSIGN_OR_RETURN(
         std::tie(usage_event_promise, usage_event),
-        tensorflow::down_cast<CommonPjRtClient*>(client.get())
+        absl::down_cast<CommonPjRtClient*>(client.get())
             ->CreateLinkedEventPromise(default_memory_space,
                                        absl::StrFormat("buffer %i", i)));
     usage_event_promises.push_back(std::move(usage_event_promise));
 
     // Get a raw buffer.
-    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
+    PjRtRawBufferRef raw_buffer;
     RETURN_IF_ERROR(
-        tensorflow::down_cast<CommonPjRtBufferImpl*>(buffer.get())
+        absl::down_cast<CommonPjRtBufferImpl*>(buffer.get())
             ->AcquireScopedRawBuffer(
-                [&](tsl::RCReference<CommonPjRtRawBuffer> buf_raw_buffer,
-                    std::vector<PjRtDeviceEventRef>
-                        buf_definition_events) mutable
+                [&](PjRtRawBufferRef buf_raw_buffer,
+                    PjRtDeviceEventRefVector buf_definition_events) mutable
                     -> absl::StatusOr<PjRtDeviceEventRef> {
                   raw_buffer = std::move(buf_raw_buffer);
-                  for (PjRtDeviceEventRef& event : buf_definition_events) {
-                    transfer_dependencies.push_back(std::move(event));
-                  }
+                  ConsumeEvents(
+                      std::move(buf_definition_events),
+                      [&](PjRtDeviceEventRef&& ev) {
+                        transfer_dependencies.push_back(std::move(ev));
+                      });
                   return PjRtDeviceEventRef(usage_event);
                 },
                 "SuccessfulCrossHostTransferTestBody"));
@@ -1441,8 +1441,8 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
   // Perform transfers.
   LOG(INFO) << log_prefix << ": enqueuing transfers";
   ASSIGN_OR_RETURN(
-      std::vector<PjRtDeviceEventRef> usage_events,
-      tensorflow::down_cast<CommonPjRtClient*>(client.get())
+      PjRtDeviceEventRefVector usage_events,
+      absl::down_cast<CommonPjRtClient*>(client.get())
           ->CrossHostTransferBuffers(std::move(transfer_dependencies),
                                      std::move(transfer_specs)));
   EXPECT_EQ(usage_events.size(), num_transfers);
@@ -1450,13 +1450,13 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
   // Populate usage events.
   LOG(INFO) << log_prefix << ": setting usage events";
   for (int i = 0; i < usage_events.size(); ++i) {
-    usage_event_promises[i]->Set(usage_events[i]);
+    usage_event_promises[i].Set(usage_events[i].CopyRef());
   }
 
   // Wait until the transfers are complete.
   LOG(INFO) << log_prefix << ": waiting for transfers to complete";
-  for (PjRtDeviceEventRef& usage_event : usage_events) {
-    BlockUntilReady(usage_event.down_cast<BufferSequencingEvent>());
+  for (int i = 0; i < usage_events.size(); ++i) {
+    BlockUntilReady(usage_events[i].down_cast<BufferSequencingEvent>());
   }
 
   // Verify we received the correct data, and that the data we sent is
@@ -1497,7 +1497,7 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
 
   if (tsl::kIsOpenSource) {
     // Test relies on VLOG(1) messages. Enable VLOG(1) in OSS.
-    tsl::setenv("TF_CPP_VMODULE", "autotuner_pass=10,autotuner=10",
+    tsl::setenv("TF_CPP_VMODULE", "autotuner_pass=10,config_assigner=10",
                 /*overwrite=*/true);
   }
 
@@ -1518,7 +1518,7 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
       argv.push_back(absl::StrFormat("--cache_dir=%s", cache_dir));
       // Test relies on VLOG(1) messages. Enable VLOG(1) in Non-OSS.
       if (!tsl::kIsOpenSource) {
-        argv.push_back("--vmodule=autotuner_pass=10,autotuner=10");
+        argv.push_back("--vmodule=autotuner_pass=10,config_assigner=10");
         argv.push_back("--logtostderr");
       }
       child[node_id].SetProgram(test_binary_name, argv);
@@ -1552,7 +1552,7 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
                   "Shard %d/%d: finding configs for %d/1 unique instructions",
                   node_id, kNumNodes, num_fusions_to_autotune)));
         } else {
-          EXPECT_THAT(stderr_str, HasSubstr("No instructions to autotune."));
+          EXPECT_THAT(stderr_str, HasSubstr("Found cached config for HLO"));
         }
       } else {
         stderr_str = absl::StrReplaceAll(

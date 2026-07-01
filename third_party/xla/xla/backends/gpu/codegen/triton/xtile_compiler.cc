@@ -88,6 +88,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
+#include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/ir_printing.h"
@@ -100,7 +101,7 @@ limitations under the License.
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -220,8 +221,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     using experimental::TilingSpace;
 
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(&fusion);
-    std::unique_ptr<TilingSpace> tiling_space =
-        TilingSpace::Create(*fusion_adaptor, &mlir_context);
+    ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+                     TilingSpace::Create(*fusion_adaptor, &mlir_context));
 
     VLOG(6) << "fusion instruction: " << fusion.ToString() << "\n";
     VLOG(6) << "tiling space: " << tiling_space->ToString();
@@ -285,7 +286,6 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
           .xla_gpu_experimental_enable_tiling_propagation();
 
   LoadMlirDialectsForTriton(mlir_context);
-  RegisterSymbolicExprStorage(&mlir_context);
 
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
@@ -388,6 +388,12 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
                    CreateTritonModule(fn_name, fusion, device_info,
                                       block_level_parameters, mlir_context));
 
+  // Forward PDL launch annotation from HLO to MLIR.
+  if (DoesPdlLaunch(fusion)) {
+    kernel_source.module()->setAttr(kXlaPdlLaunch,
+                                    mlir::UnitAttr::get(&mlir_context));
+  }
+
   return CompileTritonToLLVM(fn_name, *fusion.GetModule(), device_info,
                              block_level_parameters, target_triple, data_layout,
                              std::move(kernel_source), mlir_context,
@@ -436,9 +442,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
         "(num_warps, num_ctas, num_stages) must be positive, but got: (",
         num_warps, ", ", num_ctas, ", ", num_stages, ")"));
   }
-  const bool enable_pdl = hlo_config.debug_options().xla_gpu_enable_pdl() &&
-                          gpu_cc.IsCuda() &&
-                          gpu_cc.cuda_compute_capability()->IsAtLeastHopper();
+  const bool enable_pdl = IsPdlEnabled(hlo_config.debug_options(), gpu_cc);
   CreateTritonXlaPipeline(&pm, gpu_cc, /*rewrite_int4=*/is_xla_fusion,
                           block_level_parameters.is_tma_allowed, num_stages,
                           block_level_parameters.is_warp_specialization_allowed,
@@ -448,7 +452,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 
   // Triton generates pointers to the global address space, while XLA needs a
   // kernel signature with pointers to the generic address space.
-  pm.addPass(mlir::triton::xla::CreateGeneralizeKernelSignaturePass());
+  pm.addPass(mlir::triton::xla::createGeneralizeKernelSignaturePass());
   // llvm::Linker::linkModules() segfaults if we don't strip locations.
   pm.addPass(mlir::createStripDebugInfoPass());
 
@@ -595,31 +599,37 @@ absl::Status LowerXTileToTriton(
     // Disable verifier because the Triton code may be invalid due to the
     // unsupported types.
     pm.enableVerifier(/*enabled=*/false);
-    pm.addPass(mlir::triton::xla::CreateTensorLowerToTritonPass());
-    pm.addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass(
-        block_level_parameters.is_warp_specialization_allowed));
+    pm.addPass(mlir::triton::xla::createTensorLowerToTritonPass());
+    mlir::triton::xla::StableHLOLowerToTritonPassOptions stablehlo_options;
+    stablehlo_options.warp_specialization_allowed_ =
+        block_level_parameters.is_warp_specialization_allowed;
+    pm.addPass(
+        mlir::triton::xla::createStableHLOLowerToTritonPass(stablehlo_options));
     pm.addPass(xtile::createStablehloLowerToArithPass());
     pm.addPass(xtile::createStablehloLowerToXtilePass());
     pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
-    pm.addPass(mlir::triton::xla::CreateArithFP8ConversionToTritonPass());
-    pm.addPass(mlir::triton::xla::CreateXTileLowerToTritonPass());
+    pm.addPass(mlir::triton::xla::createArithFP8ConversionToTritonPass());
+    pm.addPass(mlir::triton::xla::createXTileLowerToTritonPass());
     pm.addPass(
-        mlir::triton::xla::CreateTritonXLAFoldReshapeAroundForLoopPass());
+        mlir::triton::xla::createTritonXLAFoldReshapeAroundForLoopPass());
 
     std::string libdevice_path =
         GetLibdevicePath(fusion.GetModule()->config(), device_info);
     absl::string_view triple = device_info.gpu_compute_capability().IsRocm()
                                    ? "amdgcn-unknown-unknown"
                                    : "nvptx64-unknown-unknown";
-    pm.addPass(mlir::triton::xla::CreateTritonXLAMathToLibdevicePass(
-        libdevice_path, triple));
+    mlir::triton::xla::TritonXLAMathToLibdevicePassOptions math_options;
+    math_options.libdevice_path_ = libdevice_path;
+    math_options.triple_string_ = std::string(triple);
+    pm.addPass(
+        mlir::triton::xla::createTritonXLAMathToLibdevicePass(math_options));
 
     if (fusion.GetModule()
             ->config()
             .debug_options()
             .xla_gpu_experimental_scaled_dot_with_triton()) {
       pm.addPass(
-          mlir::triton::xla::CreateTritonXLAConvertUnsupportedTypesPass());
+          mlir::triton::xla::createTritonXLAConvertUnsupportedTypesPass());
     }
     tsl::StatusScopedDiagnosticHandler diagnostic_handler(&mlir_context);
     if (absl::Status status =

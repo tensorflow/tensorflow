@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
@@ -105,7 +105,7 @@ class AllReduceThunk : public AllReduceReduceScatterThunkBase {
   bool CanUseSymmetricBuffer() const override { return true; }
 
  private:
-  std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk_;
+  std::unique_ptr<CollectiveKernelThunk> absl_nullable collective_kernel_thunk_;
 };
 
 // -----------------------------------------------------------------------------

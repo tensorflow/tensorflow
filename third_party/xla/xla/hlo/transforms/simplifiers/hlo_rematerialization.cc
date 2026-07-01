@@ -42,6 +42,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
@@ -2372,6 +2374,9 @@ absl::StatusOr<InstructionsAdded> RematerializeBestBlock(
                          instruction_list, schedule, rematerialization,
                          rematerializable_map));
   }
+
+  rematerialization->on_block_rematerialized(
+      num_instructions_added.remat_count);
   return num_instructions_added;
 }
 }  // namespace
@@ -2446,14 +2451,24 @@ absl::Status HloRematerialization::UpdateScheduleFromSequence(
   // the points_to_analysis_ after rematerializing each computation. Recompute
   // points_to_analysis_ since the older analysis does not include
   // rematerialized instructions.
-  ASSIGN_OR_RETURN(points_to_analysis_,
-                   TuplePointsToAnalysis::Run(computation->parent()));
+  RETURN_IF_ERROR(UpdatePointsToAnalysis(computation->parent()));
   ASSIGN_OR_RETURN(
       computation_peak_memory_[computation],
       ComputePeakMemory(computation, schedule->sequence(computation),
                         execution_threads));
 
   return absl::OkStatus();
+}
+
+absl::Status HloRematerialization::UpdatePointsToAnalysis(HloModule* module) {
+  if (points_to_analysis_ == nullptr) {
+    ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module));
+  }
+  return absl::OkStatus();
+}
+
+void HloRematerialization::SetPointsToAnalysisStale() {
+  points_to_analysis_ = nullptr;
 }
 
 absl::StatusOr<bool>
@@ -2565,8 +2580,7 @@ HloRematerialization::PeakPrioritySubPass(
   VLOG(3) << "Creating memory tracker for rematerialization on "
           << computation->name() << " instruction list size "
           << state.instruction_list->size();
-  ASSIGN_OR_RETURN(points_to_analysis_,
-                   TuplePointsToAnalysis::Run(computation->parent()));
+  RETURN_IF_ERROR(UpdatePointsToAnalysis(computation->parent()));
   MemoryUsageTracker memory_tracker(options_, computation, *points_to_analysis_,
                                     *state.instruction_list);
   state.instruction_list->PromoteNodesToSkip([&](HloRematItem* item) {
@@ -2729,6 +2743,7 @@ absl::StatusOr<bool> HloRematerialization::RematerializeComputationPeakPriority(
   int64_t cost_estimate_memory_limit_bytes =
       std::max(kMinimumCostEstimateMemoryLimitBytes, memory_limit_bytes);
 
+  RETURN_IF_ERROR(UpdatePointsToAnalysis(computation->parent()));
   ASSIGN_OR_RETURN(
       HloRematerialization::MemoryUsageAndInstruction peak_memory_result,
       ComputePeakMemoryAndInstruction(
@@ -2775,6 +2790,8 @@ absl::StatusOr<bool> HloRematerialization::RematerializeComputationPeakPriority(
   RematSubpassStatus remat_subpass_status;
   bool changed = false;
   do {
+    CheckTimeLimit();
+    int64_t previous_peak_memory = peak_memory_during_remat;
     ASSIGN_OR_RETURN(
         RematSubpassResult remat_subpass_result,
         PeakPrioritySubPass(peak_memory_instruction, rematerialization_state,
@@ -2785,6 +2802,22 @@ absl::StatusOr<bool> HloRematerialization::RematerializeComputationPeakPriority(
     remat_subpass_status = remat_subpass_result.status;
     peak_memory_during_remat = remat_subpass_result.peak_memory_during_remat;
     peak_memory_instruction = remat_subpass_result.peak_memory_instruction;
+
+    if (remat_subpass_status ==
+        RematSubpassStatus::kChangedButOverMemoryLimit) {
+      if (previous_peak_memory > 0) {
+        int64_t memory_saved = previous_peak_memory - peak_memory_during_remat;
+        double savings_pct =
+            static_cast<double>(memory_saved) / previous_peak_memory;
+        if (savings_pct < 0.01 && !warned_too_little_progress_) {
+          LOG(WARNING) << absl::StrFormat(
+              "Rematerialization making too little progress: saved %s (%.2f%%) "
+              "between passes, which is less than 1%%.",
+              HumanReadableNumBytes(memory_saved), savings_pct * 100.0);
+          warned_too_little_progress_ = true;
+        }
+      }
+    }
   } while (remat_subpass_status ==
            RematSubpassStatus::kChangedButOverMemoryLimit);
 
@@ -2892,6 +2925,7 @@ absl::StatusOr<bool> HloRematerialization::RematerializeComputation(
     int max_block_size = 1;
     // Only trigger rematerialization when the memory usage changes.
     if (memory_tracker.AllocatedSize(item) + callee_usage > 0) {
+      CheckTimeLimit();
       // Finding larger blocks of instructions to rematerialize can be time
       // consuming. To limit the amount of time spent attempting to find such
       // large blocks, count the amount of effort expended to find single
@@ -3043,9 +3077,25 @@ HloRematerialization::GetRematAlgorithmFunction(
   }
 }
 
+void HloRematerialization::CheckTimeLimit() {
+  if (warned_too_long_) {
+    return;
+  }
+  absl::Duration elapsed = absl::Now() - start_time_;
+  if (elapsed > absl::Minutes(3)) {
+    LOG(WARNING) << "Rematerialization is taking too long: elapsed time is "
+                 << absl::FormatDuration(elapsed)
+                 << ", which is more than 3 minutes.";
+    warned_too_long_ = true;
+  }
+}
+
 absl::StatusOr<bool> HloRematerialization::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  start_time_ = absl::Now();
+  warned_too_long_ = false;
+  warned_too_little_progress_ = false;
   if (options_.remat_mode_config.host_offload) {
     CHECK(options_.host_memory_offload_config.has_value())
         << "Host memory config is required when host memory offload strategy "
@@ -3070,9 +3120,10 @@ absl::StatusOr<bool> HloRematerialization::RunImpl(
   rematerialized_computations_.clear();
   instructions_rematerialized_ = 0;
   net_instructions_added_ = 0;
+  SetPointsToAnalysisStale();
 
   TF_RET_CHECK(module->has_schedule());
-  ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module));
+  RETURN_IF_ERROR(UpdatePointsToAnalysis(module));
   next_channel_id_ = hlo_query::NextChannelId(*module);
 
   // Adjust memory limit to account for the output of the entry

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -31,7 +32,9 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -47,7 +50,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 
@@ -191,18 +193,15 @@ absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
                           bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal) << "Performing all-gather";
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
-  Future<> future = gpu_comm->GroupExecute(
-      [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
-        for (DeviceBufferPair& buffer : buffers) {
-          RETURN_IF_ERROR(comm->LaunchAllGather(
-              buffer.source_buffer, buffer.destination_buffer,
-              buffer.element_type, buffer.element_count,
-              GpuCollectives::On(stream)));
-        }
-        return absl::OkStatus();
-      });
-
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
+  Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
+    for (DeviceBufferPair& buffer : buffers) {
+      RETURN_IF_ERROR(gpu_comm->LaunchAllGather(
+          buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
+          buffer.element_count, GpuCollectives::On(stream)));
+    }
+    return absl::OkStatus();
+  });
   RETURN_IF_ERROR(future.Await());
   XLA_VLOG_DEVICE(3, device_ordinal) << "Done performing all-gather";
   return absl::OkStatus();
@@ -264,7 +263,8 @@ static absl::Status RunOneSidedAllGather(
   }
 
   // Step 3: Put our source chunk into each peer's destination buffer.
-  auto put_all = [&](GpuCommunicator* c) -> absl::Status {
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
+  auto put_all = [&]() -> absl::Status {
     for (size_t i = 0; i < device_buffers.size(); ++i) {
       const auto& buf = device_buffers[i];
       size_t chunk_size = buf.source_buffer.size();
@@ -293,15 +293,14 @@ static absl::Status RunOneSidedAllGather(
             << "OneSidedAllGather: Put " << chunk_size << " bytes to peer "
             << peer_rank << " at offset " << offset;
 
-        RETURN_IF_ERROR(c->LaunchPut(buf.source_buffer, sym_mem, offset,
-                                     chunk_size, peer_rank,
-                                     GpuCollectives::On(stream)));
+        RETURN_IF_ERROR(gpu_comm->LaunchPut(buf.source_buffer, sym_mem, offset,
+                                            chunk_size, peer_rank,
+                                            GpuCollectives::On(stream)));
       }
     }
     return absl::OkStatus();
   };
 
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
   RETURN_IF_ERROR(gpu_comm->GroupExecute(put_all).Await());
 
   // Copy our own source chunk into our destination buffer (local copy).

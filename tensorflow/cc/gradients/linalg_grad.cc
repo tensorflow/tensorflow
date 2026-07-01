@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -61,13 +62,13 @@ std::optional<int> EinsumGetAxisFromLabel(absl::string_view subscripts,
     return index;
   }
   if (splits.size() < 2) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   index = splits[1].find(label);
   if (index != splits[1].npos) {
     return index - splits[1].length();
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // Returns a tuple denoting the slice mapping to ellipsis.
@@ -94,7 +95,7 @@ std::tuple<int, std::optional<int>> EinsumGetBcastSubshape(
   if (remaining > 0) {
     end = -remaining;
   } else {
-    end = absl::nullopt;
+    end = std::nullopt;
   }
   return std::make_tuple(start, end);
 }

@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -36,6 +37,11 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
+
+namespace xla {
+class DeviceAssignment;
+class GpuTopology;
+}  // namespace xla
 
 namespace xla::gpu {
 
@@ -94,18 +100,24 @@ absl::Status IsAllReduceKernelSupported(
 // Returns absl::OkStatus() if supported, or an error status detailing why
 // it is not supported.
 absl::Status IsAllReduceKernelSupported(
-    bool is_collective_kernel_enabled, const se::DeviceDescription& device_info,
-    int32_t num_operands, std::optional<ReductionKind> reduction_kind,
-    int64_t num_devices, int64_t num_elements, PrimitiveType element_type,
-    bool is_local, bool is_multimem_enabled,
-    const std::vector<ReplicaGroup>& replica_groups);
+    bool is_collective_kernel_enabled,               //
+    const se::DeviceDescription& device_info,        //
+    int32_t num_operands,                            //
+    std::optional<ReductionKind> reduction_kind,     //
+    int64_t num_devices,                             //
+    int64_t num_elements,                            //
+    PrimitiveType element_type,                      //
+    bool is_local,                                   //
+    bool is_multimem_enabled,                        //
+    const std::vector<ReplicaGroup>& replica_groups  //
+);
 
 // Constructs an AllReduceInfo object for the given all-reduce instruction.
 // Returns an error status if the all-reduce kernel is not supported.
 absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
     bool is_collective_kernel_enabled, bool is_multimem_enabled,
-    const se::DeviceDescription& device_info,
-    const HloAllReduceInstruction* all_reduce);
+    const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
+    const DeviceAssignment* device_assignment);
 
 // Performs element-wise addition of all input buffers and stores the result in
 // the output buffer.

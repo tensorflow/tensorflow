@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/pjrt/cpu/raw_buffer.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/dump/dump.h"
 #include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/host_callback.h"
@@ -1079,11 +1080,14 @@ absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeHostBufferInto(
   if (device_shape.IsToken()) {
     return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
   }
-  return absl::down_cast<CpuRawBuffer*>(raw_buffer.get())
-      ->CopyFromHostBuffer(
-          data, type, dims, byte_strides, host_buffer_semantics,
-          std::move(on_done_with_host_buffer), device_shape,
-          async_work_runner(), eigen_intraop_pool(), max_transpose_threads_);
+  auto* cpp_buf = raw_buffer->down_cast<CpuRawBuffer>();
+  if (cpp_buf == nullptr) {
+    return absl::InvalidArgumentError("Not a CPU raw buffer");
+  }
+  return cpp_buf->CopyFromHostBuffer(
+      data, type, dims, byte_strides, host_buffer_semantics,
+      std::move(on_done_with_host_buffer), device_shape, async_work_runner(),
+      eigen_intraop_pool(), max_transpose_threads_);
 }
 
 absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeInto(
@@ -1097,8 +1101,12 @@ absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeInto(
   if (device_shape.IsToken()) {
     return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
   }
-  return absl::down_cast<CpuRawBuffer*>(raw_buffer.get())
-      ->CopyFromLiteral(literal, device_shape.layout(), async_work_runner());
+  auto* cpp_buf = raw_buffer->down_cast<CpuRawBuffer>();
+  if (cpp_buf == nullptr) {
+    return absl::InvalidArgumentError("Not a CPU raw buffer");
+  }
+  return cpp_buf->CopyFromLiteral(literal, device_shape.layout(),
+                                  async_work_runner());
 }
 
 absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
@@ -1123,21 +1131,17 @@ absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
   return memory_stats;
 }
 
-absl::StatusOr<
-    std::pair<tsl::RCReference<PjRtDeviceEventPromise>, PjRtDeviceEventRef>>
+absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
 PjRtCpuClient::CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                                         absl::string_view debug_info) {
   auto definition_event_promise = tsl::MakeIndirectAsyncValue();
   auto definition_event = PjRtDeviceEventRef(
       tsl::AsyncValueRef<CpuEvent>(definition_event_promise));
-  return std::make_pair(tsl::MakeRef<CpuTrackedDeviceEventPromise>(
-                            std::move(definition_event_promise)),
-                        std::move(definition_event));
-}
-
-std::unique_ptr<PjRtDeviceEventSet> PjRtCpuClient::CreateDeviceEventSet(
-    size_t preallocated_size) const {
-  return std::make_unique<CpuTrackedDeviceEventSet>(preallocated_size);
+  auto promise = tsl::MakeRef<CpuTrackedDeviceEventPromise>(
+      std::move(definition_event_promise));
+  return std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>(
+      PjRtDeviceEventPromiseRef(std::move(promise)),
+      std::move(definition_event));
 }
 
 absl::StatusOr<PjRtRawBufferRef> PjRtCpuClient::AllocateRawBuffer(
@@ -1182,9 +1186,13 @@ PjRtCpuClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
       buffer_promise->SetError(status);
       return status;
     }
-    buffer_promise->ForwardTo(absl::down_cast<CpuRawBuffer*>(raw_buffer->get())
-                                  ->buffer()
-                                  .CopyRCRef());
+    auto* cpp_buf = raw_buffer->get()->down_cast<CpuRawBuffer>();
+    if (cpp_buf == nullptr) {
+      auto status = absl::InvalidArgumentError("Not a CPU raw buffer");
+      buffer_promise->SetError(status);
+      return status;
+    }
+    buffer_promise->ForwardTo(cpp_buf->buffer().CopyRCRef());
     return absl::OkStatus();
   };
 
@@ -1429,7 +1437,7 @@ static absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> MemoryForAllocation(
     const PjRtRawBufferRef& allocated_output) {
   auto buffer_or_default = [&]() -> tsl::AsyncValueRef<CpuDeviceMemory> {
     if (allocated_output) {
-      return absl::down_cast<CpuRawBuffer*>(allocated_output.get())->buffer();
+      return allocated_output->down_cast<CpuRawBuffer>()->buffer();
     }
     return CpuDeviceMemory::CreateDelayedMemory();
   };
@@ -1440,8 +1448,8 @@ static absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> MemoryForAllocation(
         return tuple_index_table;
       }
       if (allocation.param_shape_index().size() == 1) {
-        arg = absl::down_cast<CpuRawBuffer*>(
-            input_buffers[allocation.param_shape_index()[0]].get());
+        arg = input_buffers[allocation.param_shape_index()[0]]
+                  ->down_cast<CpuRawBuffer>();
       } else {
         return absl::InvalidArgumentError(absl::StrCat(
             "Nested tuples are not supported for argument: ",
@@ -1454,19 +1462,18 @@ static absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> MemoryForAllocation(
           allocation.parameter_number(),
           " at shape index:", allocation.param_shape_index().ToString()));
     } else {
-      arg = absl::down_cast<CpuRawBuffer*>(
-          input_buffers[allocation.parameter_number()].get());
+      arg = input_buffers[allocation.parameter_number()]
+                ->down_cast<CpuRawBuffer>();
     }
     if (allocated_output) {
-      if (arg != allocated_output.get()) {
-        auto copy =
-            absl::down_cast<CpuRawBuffer*>(allocated_output.get())->buffer();
+      if (arg != allocated_output->down_cast<CpuRawBuffer>()) {
+        auto copy = allocated_output->down_cast<CpuRawBuffer>()->buffer();
         buffer_alloc_and_copy.src_buffers.push_back(arg->buffer());
         buffer_alloc_and_copy.dst_buffers.push_back(copy);
         buffer_alloc_and_copy.allocation_sizes.push_back(allocation.size());
         return copy;
       }
-      return absl::down_cast<CpuRawBuffer*>(allocated_output.get())->buffer();
+      return allocated_output->down_cast<CpuRawBuffer>()->buffer();
     }
     return arg->buffer();
   } else if (allocation.is_constant() &&
@@ -1560,8 +1567,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
     const ExecuteOptions& options,
     absl::Span<const PjRtRawBufferRef> input_buffers,
     absl::Span<const PjRtRawBufferRef> output_leaf_buffers,
-    std::unique_ptr<PjRtDeviceEventSet> extra_deps,
-    std::unique_ptr<PjRtDeviceEventSet> control_deps,
+    PjRtDeviceEventRefVector extra_deps, PjRtDeviceEventRefVector control_deps,
     bool is_predetermined_error, bool fill_future) && {
   PjRtRawLoadedExecutable::RawExecuteResult result;
   // `returned_future_can_be_set_event` indicates when `returned_future` can be
@@ -1574,14 +1580,13 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
   auto returned_future_can_be_set_event =
       tsl::MakeConstructedAsyncValueRef<CpuEvent>();
 
-  auto& input_deps =
-      *absl::down_cast<CpuTrackedDeviceEventSet*>(control_deps.get());
-  size_t num_control_deps = input_deps.events().size();
-  for (auto& event :
-       std::move(*absl::down_cast<CpuTrackedDeviceEventSet*>(extra_deps.get()))
-           .Consume()) {
-    input_deps.AddEvent(std::move(event));
-  }
+  PjRtDeviceEventRefVector input_deps = std::move(control_deps);
+  size_t num_control_deps = input_deps.size();
+  ConsumeEvents(std::move(extra_deps), [&](PjRtDeviceEventRef&& event) {
+    if (event) {
+      input_deps.push_back(std::move(event));
+    }
+  });
   auto execute_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
   MarkEventReadyOnExit ready_on_exit(execute_event);
   result.primary_execute_event = PjRtDeviceEventRef(execute_event);
@@ -1597,8 +1602,9 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
     absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> leaf_buffers;
     leaf_buffers.reserve(input_buffers.size());
     for (const auto& buffer : input_buffers) {
-      leaf_buffers.push_back(
-          absl::down_cast<CpuRawBuffer*>(buffer.get())->buffer());
+      auto* cpp_buf = buffer->down_cast<CpuRawBuffer>();
+      CHECK(cpp_buf != nullptr) << "Not a CPU raw buffer";
+      leaf_buffers.push_back(cpp_buf->buffer());
     }
     tuple_index_table = CpuDeviceMemory::CreateDelayedMemory();
     tsl::RunWhenReady(
@@ -1680,9 +1686,9 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
     // We only created enough threads for one collective to complete.
     // The next collective launch will not be scheduled onto threadpool until
     // this one completes.
-    input_deps.AddEvent(client_->GetCollectiveLaunchEvent(
+    input_deps.push_back(PjRtDeviceEventRef(client_->GetCollectiveLaunchEvent(
         run_id_, reinterpret_cast<uint64_t>(executable_),
-        num_addressable_devices_, execute_event));
+        num_addressable_devices_, execute_event)));
   } else {
     // This is a non-parallel computation. Add the last enqueue event as a
     // dependency with any error cleared.
@@ -1695,7 +1701,8 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
           [last_enqueue_done_event = last_enqueue_done_event.CopyRef()]() {
             last_enqueue_done_event.emplace();
           });
-      input_deps.AddEvent(std::move(last_enqueue_done_event));
+      input_deps.push_back(
+          PjRtDeviceEventRef(std::move(last_enqueue_done_event)));
     }
   }
   if (options.context != nullptr) {
@@ -1787,7 +1794,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
     return thunks_execute_event;
   };
 
-  if (input_deps.events().empty() && execute_inline) {
+  if (input_deps.empty() && execute_inline) {
     // Synchronously call generated function or thunk sequence.
     buffer_alloc.Allocate(*client->allocator());
     buffer_alloc_and_copy.AllocateAndCopy(*client->allocator());
@@ -1820,13 +1827,12 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
         stream_event_map->Clear(execution_stream_id, self);
       });
     }
-    absl::Span<const tsl::RCReference<tsl::AsyncValue>> events_avs_ref =
-        input_deps.events();
     CpuScopedAsyncExecution scoped_async_execution =
         device_->async_execution_tracker()->NewAsyncExecution(
             run_id_.ToInt(), std::move(ready_on_exit).Release());
-    client->async_work_runner()->ExecuteWhenReady(
-        events_avs_ref,
+    PjRtDeviceEventSpan events_ref(input_deps);
+    xla::ExecuteWhenReady(
+        events_ref, client->async_work_runner(),
         [cpu_executable, buffer_alloc = std::move(buffer_alloc),
          buffer_alloc_and_copy = std::move(buffer_alloc_and_copy),
          execute_thunks = std::move(execute_thunks),
@@ -1835,7 +1841,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
          compute_reservation = std::move(compute_reservation),
          tuple_index_table = std::move(tuple_index_table),
          scoped_async_execution = std::move(scoped_async_execution),
-         input_deps_avs = std::move(input_deps).Consume(), num_control_deps,
+         input_deps_avs = std::move(input_deps), num_control_deps,
          allocator = client->allocator(),
          returned_future_can_be_set_event =
              returned_future_can_be_set_event.CopyRef()]() mutable {
@@ -1846,17 +1852,16 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
           buffer_alloc.Allocate(*allocator);
           buffer_alloc_and_copy.AllocateAndCopy(*allocator);
 
-          size_t i = 0;
-          for (const auto& av : input_deps_avs) {
+          for (size_t i = 0; i < input_deps_avs.size(); ++i) {
+            const auto& event = input_deps_avs[i];
             if (i >= num_control_deps) {
-              if (auto* error = av->GetErrorIfPresent()) {
+              if (auto error = event.GetErrorIfPresent()) {
                 scoped_async_execution.SetError(Internal(
                     "Error dispatching computation: %s", error->message()));
                 returned_future_can_be_set_event.SetStateConcrete();
                 return;
               }
             }
-            ++i;
           }
           auto status = [&]() -> absl::Status {
             ASSIGN_OR_RETURN(auto thunks_execute_event, execute_thunks());

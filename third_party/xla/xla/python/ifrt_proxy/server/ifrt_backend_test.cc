@@ -1128,10 +1128,9 @@ TEST_P(IfrtBackendHandlerTest,
 
 TEST_P(IfrtBackendHandlerTest, DeleteArraySuccess) {
   auto mock_array1 = tsl::MakeRef<xla::ifrt::MockArray>();
-  EXPECT_CALL(*mock_array1, Delete())
-      .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
   auto mock_array2 = tsl::MakeRef<xla::ifrt::MockArray>();
-  EXPECT_CALL(*mock_array2, Delete())
+  EXPECT_CALL(*mock_client_,
+              DeleteValues(ElementsAre(mock_array1, mock_array2)))
       .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
 
   TF_ASSERT_OK_AND_ASSIGN(auto array_handle1,
@@ -1154,7 +1153,7 @@ TEST_P(IfrtBackendHandlerTest,
        DeleteArrayReturnsFutureWithNonExistentArrayHandle) {
   // Create one existing array.
   auto mock_array1 = tsl::MakeRef<xla::ifrt::MockArray>();
-  EXPECT_CALL(*mock_array1, Delete())
+  EXPECT_CALL(*mock_client_, DeleteValues(ElementsAre(mock_array1)))
       .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
   TF_ASSERT_OK_AND_ASSIGN(auto real_handle,
                           MakeTestArray(std::move(mock_array1)));

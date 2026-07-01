@@ -251,7 +251,19 @@ struct BlasLt {
     // optimizations (like preloading matmul kernels) once the algorithm is set.
     virtual absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) = 0;
 
+    // Same as above but combines GetAlgorithms and SetAlgorithm calls with
+    // a cached list of algorithms.
+    absl::Status SetCachedAlgorithm(size_t algorithm_idx,
+                                    size_t max_algorithm_count,
+                                    size_t max_workspace_size);
+
     virtual ~MatmulPlan() = default;
+
+   protected:
+    mutable size_t cached_algorithm_count_ = 0;
+    mutable size_t cached_workspace_size_ = 0;
+    mutable size_t cached_algorithm_idx_ = 0;
+    mutable std::vector<MatmulAlgorithm> cached_algorithms_;
   };  // class MatmulPlan
 
   using MatmulPlanPtr = std::unique_ptr<MatmulPlan>;
@@ -267,8 +279,9 @@ struct BlasLt {
 
   static absl::StatusOr<BlasLt*> Get(StreamExecutor* executor);
 
-  absl::StatusOr<MatmulPlan*> GetOrCreateMatmulPlan(const std::string& key,
-                                                    PlanCreateFunc create);
+  absl::StatusOr<MatmulPlan*> GetOrCreateMatmulPlanWithAlgorithm(
+      const std::string& key, PlanCreateFunc create, size_t algorithm_idx,
+      size_t num_algorithms, size_t max_workspace_size);
 
   void ClearMatmulPlanCache();
   size_t GetMatmulPlanCacheSize() const;

@@ -271,7 +271,7 @@ pytype_strict_library(
         ":dtensor_device",
         ":gen_dtensor_ops",
         ":layout",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",

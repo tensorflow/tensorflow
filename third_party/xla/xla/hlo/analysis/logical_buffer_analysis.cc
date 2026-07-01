@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -32,8 +33,7 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/lib/gtl/map_util.h"
 
 namespace xla {
 
@@ -55,9 +55,10 @@ void GatherFusionInstructions(
 }  // namespace
 
 /* static */ absl::StatusOr<std::unique_ptr<LogicalBufferAnalysis>>
-LogicalBufferAnalysis::Run(const HloModule* module) {
+LogicalBufferAnalysis::Run(const HloModule* module,
+                           bool alias_buffer_across_dataflow) {
   std::unique_ptr<LogicalBufferAnalysis> analysis(
-      new LogicalBufferAnalysis(module));
+      new LogicalBufferAnalysis(module, alias_buffer_across_dataflow));
   RETURN_IF_ERROR(analysis->Analyze());
   return analysis;
 }
@@ -89,13 +90,25 @@ absl::Status LogicalBufferAnalysis::Analyze() {
   return absl::OkStatus();
 }
 
-LogicalBuffer& LogicalBufferAnalysis::GetBuffer(LogicalBuffer::Id id) const {
-  return *logical_buffers_[id];
+absl::StatusOr<LogicalBuffer*> LogicalBufferAnalysis::GetBuffer(
+    LogicalBuffer::Id id) const {
+  if (id < 0 || id >= logical_buffers_.size()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid logical buffer ID: ", id));
+  }
+  return logical_buffers_[id].get();
 }
 
-LogicalBuffer& LogicalBufferAnalysis::GetBuffer(HloInstruction* instruction,
-                                                const ShapeIndex& index) const {
-  return *output_buffers_.at(std::make_pair(instruction, index));
+absl::StatusOr<LogicalBuffer*> LogicalBufferAnalysis::GetBuffer(
+    HloInstruction* instruction, const ShapeIndex& index) const {
+  LogicalBuffer* buffer = tsl::gtl::FindPtrOrNull(
+      output_buffers_, std::make_pair(instruction, index));
+  if (buffer == nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("No buffer defined by ", instruction->name(), " at index ",
+                     index.ToString()));
+  }
+  return buffer;
 }
 
 void LogicalBufferAnalysis::NewLogicalBuffer(HloInstruction* instruction,

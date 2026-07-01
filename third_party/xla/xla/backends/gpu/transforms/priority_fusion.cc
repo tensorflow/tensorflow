@@ -165,7 +165,8 @@ class PriorityFusionQueue {
       tsl::thread::ThreadPool* thread_pool, mlir::MLIRContext* mlir_context,
       HloFusionAnalysisCache& fusion_analysis_cache,
       FusionDeduplicationCache& fusion_deduplication_cache,
-      bool triton_heroless_fusion_enabled, const AliasInfo* alias_info) {
+      bool triton_heroless_fusion_enabled, const AliasInfo* alias_info,
+      bool use_experimental_tiling) {
     auto cost_analysis = std::make_unique<GpuHloCostAnalysis>(
         cost_analysis_options, *device_info);
     VLOG(2) << "Running full HLO cost analysis for " << computation->name();
@@ -175,7 +176,7 @@ class PriorityFusionQueue {
         computation, std::move(cost_analysis), cost_analysis_options,
         device_info, fusion_process_dump, thread_pool, mlir_context,
         fusion_analysis_cache, fusion_deduplication_cache,
-        triton_heroless_fusion_enabled, alias_info);
+        triton_heroless_fusion_enabled, alias_info, use_experimental_tiling);
 
     std::vector<HloInstruction*> instructions;
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
@@ -204,13 +205,13 @@ class PriorityFusionQueue {
                       HloFusionAnalysisCache& fusion_analysis_cache,
                       FusionDeduplicationCache& fusion_deduplication_cache,
                       bool triton_heroless_fusion_enabled,
-                      const AliasInfo* alias_info)
+                      const AliasInfo* alias_info, bool use_experimental_tiling)
       : computation_(computation),
         device_info_(device_info),
         cost_analysis_(std::move(cost_analysis)),
-        combined_gpu_performance_model_(*device_info, fusion_analysis_cache,
-                                        *mlir_context,
-                                        cost_analysis_options.shape_size),
+        combined_gpu_performance_model_(
+            *device_info, fusion_analysis_cache, *mlir_context,
+            cost_analysis_options.shape_size, use_experimental_tiling),
         fusion_process_dump_(fusion_process_dump),
         thread_pool_(thread_pool),
         fusion_analysis_cache_(fusion_analysis_cache),
@@ -248,6 +249,14 @@ class PriorityFusionQueue {
       // If the priority is negative, it's not helpful to perform fusion on this
       // instruction.
       if (priority < absl::ZeroDuration()) {
+        if (dump_fusion_visualization_ &&
+            priority != -absl::InfiniteDuration()) {
+          RegisterFusionState(*computation_,
+                              absl::StrCat("Rejected |", instruction->name(),
+                                           "|: Negative benefit (",
+                                           absl::FormatDuration(priority), ")"),
+                              *instruction);
+        }
         continue;
       }
 
@@ -616,6 +625,12 @@ class PriorityFusionQueue {
         step->set_producer_name(producer->name());
         step->set_reason(fusion_decision.Explain());
       }
+      if (dump_fusion_visualization_) {
+        RegisterFusionState(*computation_,
+                            absl::StrCat("Ineligible |", producer->name(),
+                                         "|: ", fusion_decision.Explain()),
+                            *producer);
+      }
       return -absl::InfiniteDuration();
     }
 
@@ -820,6 +835,16 @@ class PriorityFusionQueue {
       return can_fuse_triton;
     }
 
+    if (dump_fusion_visualization_) {
+      RegisterFusionState(
+          *computation_,
+          absl::StrCat("Cannot fuse producer |", producer->name(),
+                       "| with consumer |", consumer->name(),
+                       "| using Triton (will try fallback): ",
+                       can_fuse_triton.Explain()),
+          *consumer, producer);
+    }
+
     if (IsFusibleBitcast(*consumer)) {
       return FusionDecision::Forbid(
           "not fusing into a single bitcast as consumer");
@@ -998,6 +1023,14 @@ class PriorityFusionQueue {
           !fusion_decision) {
         VLOG(10) << "Cannot fuse " << producer->name() << " with "
                  << user->name() << ", because: " << fusion_decision.Explain();
+        if (dump_fusion_visualization_) {
+          RegisterFusionState(
+              *computation_,
+              absl::StrCat("Cannot fuse producer |", producer->name(),
+                           "| with consumer |", user->name(),
+                           "|: ", fusion_decision.Explain()),
+              *user, producer);
+        }
         return fusion_decision;
       }
     }
@@ -1171,6 +1204,11 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
           .debug_options()
           .xla_gpu_experimental_enable_triton_heroless_priority_fusion();
 
+  bool use_experimental_tiling =
+      module->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_tiling_propagation();
+
   FusionDeduplicationCache fusion_deduplication_cache =
       FusionDeduplicationCache::Create(*module, IsFusible);
 
@@ -1184,7 +1222,8 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
             computation, cost_analysis_options_, &device_info_,
             fusion_process_dump_.get(), thread_pool_, mlir_context_,
             fusion_analysis_cache_, fusion_deduplication_cache,
-            triton_heroless_fusion_enabled, alias_info_));
+            triton_heroless_fusion_enabled, alias_info_,
+            use_experimental_tiling));
 
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();
@@ -1303,7 +1342,6 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
   // analysis.
   const auto& analysis = fusion_analysis_cache_.Get(*producer, *consumer);
   switch (analysis.emitter_fusion_kind()) {
-    case HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy:
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
       return HloInstruction::FusionKind::kLoop;
     case HloFusionAnalysis::EmitterFusionKind::kTriton:

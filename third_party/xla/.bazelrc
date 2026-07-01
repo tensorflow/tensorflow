@@ -1,5 +1,13 @@
 # Disable Bzlmod for now
-common --noenable_bzlmod
+common --noenable_bzlmod --enable_workspace
+
+# Turn off empty glob check (flipped in Bazel 8).
+common --incompatible_disallow_empty_glob=false
+
+# Enable legacy external runfiles
+# This is false in Bazel 8, but broke some tests.
+common --legacy_external_runfiles=true
+
 common:bzlmod --enable_bzlmod --noenable_workspace
 
 common --incompatible_enable_cc_toolchain_resolution
@@ -25,7 +33,7 @@ import %workspace%/tensorflow.bazelrc
 import %workspace%/warnings.bazelrc
 
 # Treat warnings as errors
-build --config=warnings 
+build --config=warnings
 
 # Enable layering check for CI builds
 common:rbe_linux_cpu --features=layering_check

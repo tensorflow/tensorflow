@@ -75,6 +75,7 @@ cc_library(
     deps = [
         ":compatibility",
         ":runtime_shape",
+        "//tensorflow/lite/types:half",
     ],
 )
 
@@ -497,13 +498,17 @@ cc_library(
 
 cc_library(
     name = "reference_comparisons",
-    srcs = ["reference/comparisons.cc"],
-    hdrs = ["reference/comparisons.h"],
+    srcs = [],
+    hdrs = [
+        "reference/broadcast_loop.h",
+        "reference/comparisons.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
         ":compatibility",
+        ":runtime_shape",
         ":types",
         "//tensorflow/lite:macros",
         "//tensorflow/lite/core/c:common",
@@ -618,6 +623,7 @@ cc_library(
         ":cppmath",
         ":quantization_util",
         ":reference_comparisons",
+        ":runtime_shape",
         ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",

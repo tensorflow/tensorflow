@@ -161,6 +161,7 @@ cc_library(
     srcs = ["custom_call_thunk_serdes.cc"],
     hdrs = ["custom_call_thunk_serdes.h"],
     deps = [
+        "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/runtime:custom_call_thunk",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_proto_cc",

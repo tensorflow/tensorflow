@@ -45,7 +45,7 @@ namespace xla {
 namespace {
 
 class ConvertTest : public ClientLibraryTestRunnerMixin<
-                        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                        HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   explicit ConvertTest() {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");

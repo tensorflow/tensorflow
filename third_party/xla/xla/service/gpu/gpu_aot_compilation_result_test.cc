@@ -135,7 +135,6 @@ class GpuAotCompilationResultTest : public ::testing::Test {
 
     GpuExecutable::Params params;
     params.debug_module = std::move(hlo_module);
-    params.asm_text = "test_asm_text";
     params.binary = {1, 2, 3};
     params.dnn_compiled_graphs = {{"test_dnn_compiled_graph", "test_json"}};
 
@@ -161,6 +160,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
             events { kind: FREE }
           }
         )pb");
+    params.buffer_allocations_debug_summary = "dummy_summary";
 
     ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
                      GpuExecutable::Create(std::move(params)));

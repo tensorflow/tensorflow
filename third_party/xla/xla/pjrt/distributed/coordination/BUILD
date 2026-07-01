@@ -67,7 +67,7 @@ cc_library(
         ":coordination_service_error_util",
         ":coordination_service_proto_cc",
         ":key_value_store",
-        "//xla/service:global_device_id",
+        "//xla/runtime:device_id",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",

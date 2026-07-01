@@ -5,7 +5,7 @@ tf_class {
   is_instance: "<class \'abc.ABC\'>"
   member {
     name: "description"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

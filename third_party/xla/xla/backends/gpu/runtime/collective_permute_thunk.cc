@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -60,7 +61,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 namespace {
@@ -225,7 +225,6 @@ CollectiveOpGroupMode CollectivePermuteThunk::GetGroupMode(
       .value();
 }
 
-
 absl::StatusOr<std::unique_ptr<CollectivePermuteThunk>>
 CollectivePermuteThunk::FromProto(
     ThunkInfo thunk_info, const CollectivePermuteThunkProto& thunk_proto,
@@ -376,21 +375,18 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetRanks source_target,
       RETURN_IF_ERROR(future.Await());
     }
   } else {
-    auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
-    auto future = gpu_comm->GroupExecute(
-        [&source_target, &buffers, &src_addrs, &dest_addrs, &target_ranks,
-         &stream](GpuCommunicator* comm) -> absl::Status {
-          for (uint64_t idx = 0; idx < buffers.size(); ++idx) {
-            se::DeviceAddressBase src = src_addrs.at(idx);
-            se::DeviceAddressBase dst = dest_addrs.at(idx);
-            const DeviceBufferPair& buf = buffers.at(idx);
-            RETURN_IF_ERROR(comm->LaunchCollectivePermute(
-                src, dst, buf.element_type, buf.element_count,
-                source_target.source, target_ranks,
-                GpuCollectives::On(stream)));
-          }
-          return absl::OkStatus();
-        });
+    auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
+    auto future = gpu_comm->GroupExecute([&]() -> absl::Status {
+      for (uint64_t idx = 0; idx < buffers.size(); ++idx) {
+        se::DeviceAddressBase src = src_addrs.at(idx);
+        se::DeviceAddressBase dst = dest_addrs.at(idx);
+        const DeviceBufferPair& buf = buffers.at(idx);
+        RETURN_IF_ERROR(gpu_comm->LaunchCollectivePermute(
+            src, dst, buf.element_type, buf.element_count, source_target.source,
+            target_ranks, GpuCollectives::On(stream)));
+      }
+      return absl::OkStatus();
+    });
     RETURN_IF_ERROR(future.Await());
   }
 
@@ -541,7 +537,8 @@ static absl::Status RunOneSidedPermute(
 
     // Fuse multiple Puts into a single NCCL group to avoid per-buffer
     // kernel launch overhead.
-    auto put_all = [&](GpuCommunicator* c) -> absl::Status {
+    auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
+    auto put_all = [&]() -> absl::Status {
       for (size_t i = 0; i < device_buffers.size(); ++i) {
         const auto& buf = device_buffers[i];
         auto [sym_mem, offset] = params.collective_memory->FindSymmetricMemory(
@@ -549,8 +546,8 @@ static absl::Status RunOneSidedPermute(
 
         if (sym_mem == nullptr) {
           return Internal(
-              "Symmetric memory not found for destination "
-              "buffer[%d] (address=%p, size=%d) in clique %v",
+              "Symmetric memory not found for destination buffer[%d] "
+              "(address=%p, size=%d) in clique %v",
               i, buf.destination_buffer.opaque(), buf.destination_buffer.size(),
               clique_key);
         }
@@ -559,14 +556,13 @@ static absl::Status RunOneSidedPermute(
             << "OneSidedPermute: Put " << buf.source_buffer.size()
             << " bytes to peer " << target << " at offset " << offset;
 
-        RETURN_IF_ERROR(c->LaunchPut(buf.source_buffer, sym_mem, offset,
-                                     buf.source_buffer.size(), target,
-                                     GpuCollectives::On(stream)));
+        RETURN_IF_ERROR(gpu_comm->LaunchPut(buf.source_buffer, sym_mem, offset,
+                                            buf.source_buffer.size(), target,
+                                            GpuCollectives::On(stream)));
       }
       return absl::OkStatus();
     };
 
-    auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
     RETURN_IF_ERROR(gpu_comm->GroupExecute(put_all).Await());
   }
 

@@ -2070,7 +2070,7 @@ ENTRY main {
                   1);
         ++num_inner_whiles;
       });
-  // Outter loop should not be unrolled, the inner while count should be still
+  // Outer loop should not be unrolled, the inner while count should be still
   // be 1.
   EXPECT_EQ(num_inner_whiles, 1);
 }
@@ -2131,7 +2131,7 @@ ENTRY main {
                   5);
         ++num_inner_whiles;
       });
-  // Outter loop should not be unrolled, the inner while count should be still
+  // Outer loop should not be unrolled, the inner while count should be still
   // be 1.
   EXPECT_EQ(num_inner_whiles, 1);
 }

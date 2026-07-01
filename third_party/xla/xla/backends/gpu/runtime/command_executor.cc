@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla::gpu {
@@ -566,6 +568,10 @@ absl::Status CommandExecutor::RecordUpdate(
 
     Command* command = commands_[id];
 
+    if (command->requires_update_on_execute()) {
+      return false;
+    }
+
     // For CAPTURE_CMD_NEVER_UPDATE mode, always skip updates for commands
     // implemented via tracing. This includes CollectiveThunk command/thunk
     // hybrids: their buffer allocations are VA-remapped to fixed offsets within
@@ -573,10 +579,10 @@ absl::Status CommandExecutor::RecordUpdate(
     // executions and no update is needed.
     //
     // Note: CollectiveThunk satisfies both IsTracedCommand() and
-    // requires_initialization(), but the requires_initialization() check below
-    // is intentionally unreachable for traced commands in this mode. Because
-    // their buffer addresses are stable (VA-mapped), re-initialization is
-    // unnecessary.
+    // requires_update_on_initialize(), but the
+    // requires_update_on_initialize() check below is intentionally unreachable
+    // for traced commands in this mode. Because their buffer addresses are
+    // stable (VA-mapped), re-initialization is unnecessary.
     if (record_params.command_buffer_update_mode ==
             DebugOptions::CAPTURE_CMD_NEVER_UPDATE &&
         command->IsTracedCommand()) {
@@ -585,9 +591,10 @@ absl::Status CommandExecutor::RecordUpdate(
       return true;
     }
 
-    // We always update commands that require initialization, even if buffer
-    // allocations didn't change.
-    if (command->requires_initialization() && record_params.is_initialization) {
+    // We always update commands that require updates on initialization, even if
+    // buffer allocations didn't change.
+    if (command->requires_update_on_initialize() &&
+        record_params.is_initialization) {
       return false;
     }
 

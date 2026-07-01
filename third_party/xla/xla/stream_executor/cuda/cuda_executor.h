@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/cuda/cuda_host_allocator.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
-#include "xla/stream_executor/cuda/cuda_vmm_allocator.h"
 #include "xla/stream_executor/cuda/host_callback_registry.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
@@ -67,6 +66,9 @@ limitations under the License.
 #include "xla/stream_executor/tensor_map.h"
 
 namespace stream_executor::gpu {
+
+class CudaStream;
+enum class CudaStreamType;
 
 // This class implements GpuExecutor for NVIDIA GPUs that use CUDA libraries.
 class CudaExecutor : public GpuExecutor {
@@ -124,6 +126,9 @@ class CudaExecutor : public GpuExecutor {
       const override {
     return CudaExecutor::CreateDeviceDescription(device_ordinal());
   }
+
+  absl::StatusOr<std::string> GetInterconnectStatus() const override;
+
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
 
@@ -142,6 +147,10 @@ class CudaExecutor : public GpuExecutor {
     }
     return it->second;
   }
+
+  absl::StatusOr<std::unique_ptr<CudaStream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority,
+      CudaStreamType type);
 
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
@@ -221,7 +230,9 @@ class CudaExecutor : public GpuExecutor {
     return is_multicast_supported_;
   }
 
-  bool is_fabric_supported() const { return vmm_options_.enable_fabric_handle; }
+  bool is_fabric_supported() const {
+    return device_allocator_options_.enable_fabric_handle;
+  }
 
  private:
   // Allocates memory using the given allocator and tracks the resulting
@@ -246,9 +257,10 @@ class CudaExecutor : public GpuExecutor {
   // Whether multicast objects are supported by this device.
   bool is_multicast_supported_ = false;
 
-  // VMM allocator options, probed during Init() with fallback. The handle-type
-  // flags may differ from device-reported caps (e.g. in MIG or containers).
-  CudaVmmAllocator::Options vmm_options_;
+  // Device allocator options, probed during Init() with fallback. The
+  // handle-type flags may differ from device-reported caps (e.g. in MIG or
+  // containers).
+  CudaDeviceAllocator::Options device_allocator_options_;
 
   // Guards the in-memory-module mapping.
   absl::Mutex in_memory_modules_mu_;
@@ -305,9 +317,8 @@ class CudaExecutor : public GpuExecutor {
       ABSL_GUARDED_BY(alive_gpu_streams_mu_);
 
   // Memory allocators for supported memory spaces.
-  std::unique_ptr<CudaVmmAllocator> device_allocator_;
+  std::unique_ptr<CudaDeviceAllocator> device_allocator_;
   std::unique_ptr<CudaHostAllocator> host_allocator_;
-  std::unique_ptr<CudaVmmAllocator> vmm_allocator_;
 
   // Tracks allocations made through the memory allocators, bridging the RAII
   // MemoryAllocation API to the raw-pointer Allocate/Deallocate interface.

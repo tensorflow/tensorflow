@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <numeric>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -39,14 +38,16 @@ limitations under the License.
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/hlo/builder/lib/slicing.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/literal_util.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 // Parallel two-sided Jacobi symmetric eigendecomposition.
 //
@@ -367,7 +368,7 @@ absl::Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
   auto dimensions = v_shape.dimensions();
 
   std::vector<int64_t> broadcast_dims(num_dims - 1);
-  std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
+  absl::c_iota(broadcast_dims, 0);
   broadcast_dims[num_dims - 2] = num_dims - 1;
   w = BroadcastInDim(w, dimensions, broadcast_dims);
 

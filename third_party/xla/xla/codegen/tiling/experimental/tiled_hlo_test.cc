@@ -75,8 +75,10 @@ TEST_F(TiledHloTest, TestPrinting) {
       ROOT broadcast = f32[10,20,30] broadcast(p0), dimensions={0,2}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      auto tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
       Tiles tiled_operands,
       PropagateTileToInput(
@@ -115,6 +117,12 @@ class TileAnalysisTest : public HloHardwareIndependentTestBase {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
     CHECK_OK(module_or);
     module_ = std::move(module_or.value());
+    // TODO: b/502910372 - multi output fusions are not supported yet but to
+    // exercise some of the code paths that deal with multiple roots we allow
+    // them in the test.
+    module_->mutable_config()
+        .mutable_debug_options()
+        .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
     return module_->entry_computation()->root_instruction();
   }
 
@@ -122,7 +130,8 @@ class TileAnalysisTest : public HloHardwareIndependentTestBase {
       absl::string_view hlo_string, absl::Span<const int64_t> tile_sizes) {
     HloInstruction* root = ParseAndGetRoot(hlo_string);
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-    auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    ASSIGN_OR_RETURN(auto tiling_space,
+                     TilingSpace::Create(*fusion_adaptor, &mlir_context_));
     RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
     return TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space));
   }
@@ -260,6 +269,32 @@ Tiled HLO:
               Contains(IsHloWithOperands(
                   HloOpcode::kConcatenate,
                   std::vector<HloOpcode>(3, HloOpcode::kParameter))));
+}
+
+TEST_F(TileAnalysisTest, DuplicateRegionRoots) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
+    ENTRY e {
+      p0 = f32[128,128] parameter(0)
+      ROOT dot = f32[128,128] dot(p0, p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })hlo",
+                                    {16, 16, 16}));
+
+  EXPECT_THAT(tiled_computation, MatchString(R"(
+     Dimensions:
+       0 type: parallel size: 128 tile size: 16 dim ID:0 hlo: %dot = f32[128,128]{1,0} dot(%p0, %p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+       1 type: parallel size: 128 tile size: 16 dim ID:1 hlo: %dot = f32[128,128]{1,0} dot(%p0, %p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+       2 type: sequential size: 128 tile size: 16 dim ID:2 hlo: %dot = f32[128,128]{1,0} dot(%p0, %p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+       Root tiles:
+       0 root tile:  offsets [tid_0 * 16, tid_1 * 16] sizes [16, 16] strides [1, 1] upper bounds [128, 128]
+
+     Tiled HLO:
+       dot.tile_0 = dot(p0.tile_0, p0.tile_1)  offsets [tid_0 * 16, tid_1 * 16] sizes [16, 16] strides [1, 1] upper bounds [128, 128]
+       region #0 {
+         p0.tile_0 = parameter(0)  offsets [tid_0 * 16, tid_2 * 16] sizes [16, 16] strides [1, 1] upper bounds [128, 128]
+         p0.tile_1 = parameter(0)  offsets [tid_2 * 16, tid_1 * 16] sizes [16, 16] strides [1, 1] upper bounds [128, 128]
+       }
+  )"));
 }
 
 TEST_F(TileAnalysisTest, Dot) {
@@ -510,6 +545,27 @@ TEST_F(TileAnalysisTest, CollectiveDotBasic) {
         p1.1.tile_0 = parameter(1)  offsets [tid_2 * 32, tid_1 * 32] sizes [32, 32] strides [1, 1] upper bounds [256, 512]
       }
   )"));
+}
+
+// TODO: b/502910372 - there is a bug (likely use after free) in multi-output
+// fusions processing (only without -c opt).
+TEST_F(TileAnalysisTest, DISABLED_DuplicateFusionRoots) {
+  EXPECT_DEATH(
+      {
+        auto result = ParseAndTile(R"hlo(
+    fusion {
+      p0 = f32[128] parameter(0)
+      add0 = f32[128] add(p0, p0)
+      ROOT tuple = (f32[128], f32[128]) tuple(add0, add0)
+    }
+
+    ENTRY e {
+      p0 = f32[128] parameter(0)
+      ROOT call = (f32[128], f32[128]) fusion(p0), kind=kLoop, calls=fusion
+    })hlo",
+                                   {128, 128});
+      },
+      "xla::gpu::experimental::SortTiledHloInstructionsInPostOrder()");
 }
 
 // TODO(b/422676780): Port the remaining tests.

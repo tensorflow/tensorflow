@@ -17,7 +17,7 @@ build:rocm_rbe --spawn_strategy=remote,local
 build:rocm_rbe --grpc_keepalive_time=30s
 build:rocm_rbe --remote_cache_compression
 
-test:rocm_rbe --jobs=200
+test:rocm_rbe --jobs=30
 test:rocm_rbe --remote_executor=grpcs://wardite.cluster.engflow.com
 test:rocm_rbe --remote_timeout=3600
 test:rocm_rbe --strategy=TestRunner=remote,local
@@ -51,7 +51,7 @@ build:asan --run_under=//build_tools/rocm:sanitizer_wrapper
 build:ci_single_gpu --run_under=//build_tools/rocm:parallel_gpu_execute
 build:ci_single_gpu --flaky_test_attempts=3
 
-build:ci_multi_gpu --action_env=XLA_FLAGS="--xla_gpu_force_compilation_parallelism=16 --xla_gpu_enable_llvm_module_compilation_parallelism=true"
+build:ci_multi_gpu --action_env=XLA_FLAGS="--xla_gpu_force_compilation_parallelism=16"
 build:ci_multi_gpu --action_env=NCCL_MAX_NCHANNELS=1
 build:ci_multi_gpu --run_under=//build_tools/rocm:sanitizer_wrapper
 build:ci_multi_gpu --test_sharding_strategy=disabled

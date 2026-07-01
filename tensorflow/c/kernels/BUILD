@@ -191,11 +191,25 @@ tf_cc_test(
 filegroup(
     name = "portable_all_op_kernels",
     srcs = [
+        ":portable_all_op_kernel_hdrs",
+        ":portable_all_op_kernel_srcs",
+    ],
+)
+
+filegroup(
+    name = "portable_all_op_kernel_srcs",
+    srcs = [
         "bitcast_op.cc",
         "histogram_summary_op.cc",
         "merge_summary_op.cc",
         "summary_op.cc",
         "tensor_shape_utils.cc",
+    ],
+)
+
+filegroup(
+    name = "portable_all_op_kernel_hdrs",
+    srcs = [
         "tensor_shape_utils.h",
     ],
 )

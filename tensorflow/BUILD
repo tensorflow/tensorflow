@@ -191,7 +191,10 @@ package(
 #         "notsan",
 #         "noubsan",
 #     ],
-#     deps = [":copybara_config"],
+#     deps = [
+#         ":copybara_config",
+#         "//third_party/xla:leakr_badwords.dic",
+#     ],
 # )
 #
 # action_config_test(
@@ -1036,9 +1039,6 @@ package_group(
         "//learning/pathways/...",
         "//learning/serving/contrib/tfrt/mlir/canonical_ops/...",
         "//learning/serving/experimental/remote_predict/...",
-        "//perftools/accelerators/xprof/convert/...",
-        "//perftools/accelerators/xprof/integration_tests/...",
-        "//smartass/brain/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
@@ -1053,9 +1053,6 @@ package_group(
         "//third_party/py/keras/...",
         "//third_party/py/tf_keras/...",
         "//third_party/yggdrasil_decision_forests/...",
-        "//waymo/accelerator/...",
-        "//waymo/ml/cn/...",
-        "//waymo/ml/models/...",
     ],
 )
 

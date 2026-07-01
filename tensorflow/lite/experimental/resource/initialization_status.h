@@ -44,6 +44,10 @@ class InitializationStatus : public ResourceBase {
 
   ~InitializationStatus() override {}
 
+  ResourceType GetResourceType() const override {
+    return ResourceType::kInitializationStatus;
+  }
+
   // Mark initialization is done.
   void MarkInitializationIsDone();
 

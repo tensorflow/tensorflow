@@ -233,8 +233,7 @@ DeviceAddressAllocator::Allocate(int device_ordinal, uint64_t size) {
 inline absl::StatusOr<ScopedDeviceAddress<uint8_t>>
 DeviceAddressAllocator::Allocate(int device_ordinal, uint64_t size,
                                  bool retry_on_failure) {
-  return Allocate(device_ordinal, size, retry_on_failure,
-                  /*memory_space=*/0);
+  return Allocate(device_ordinal, size, retry_on_failure, /*memory_space=*/0);
 }
 
 template <typename T>

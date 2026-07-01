@@ -67,7 +67,8 @@ TEST_F(TilingSpaceTest, SingleOutputParallelDim) {
       }
   )");
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
         0 type: parallel size: 1000 dim ID:0
@@ -93,7 +94,8 @@ TEST_F(TilingSpaceTest, SingleOutputContractionDim) {
     }
   )");
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
       0 type: parallel size: 16 dim ID:0
@@ -132,7 +134,8 @@ TEST_F(TilingSpaceTest, SingleOutputReductionDim) {
     }
   )");
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
       0 type: parallel size: 150 dim ID:0
@@ -151,6 +154,42 @@ TEST_F(TilingSpaceTest, SingleOutputReductionDim) {
       0 root tile:
            offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
            strides [1, 1] upper bounds [150, 10]
+  )"));
+}
+
+TEST_F(TilingSpaceTest, SingleOutputScanDim) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add = f32[] add(p0, p1)
+      ROOT tuple = (f32[], f32[]) tuple(add, add)
+    }
+    fused_computation {
+      p0 = f32[150] parameter(0)
+      p1 = f32[] constant(0.0)
+      scan = (f32[150], f32[]) scan(p0, p1), dimensions={0}, num_carries=1, is_associative=false, to_apply=add
+      ROOT get-tuple-element = f32[150] get-tuple-element(scan), index=0
+    }
+    ENTRY e {
+      p0 = f32[150] parameter(0)
+      ROOT fusion = f32[150] fusion(p0), kind=kLoop, calls=fused_computation
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_THAT(*tiling_space, MatchString(R"(
+    Dimensions:
+      0 type: parallel size: 150 dim ID:0
+        hlo: %get-tuple-element = f32[150]{0} get-tuple-element(%scan), index=0
+    Root tiles:
+      0 root tile:
+           offsets [tid_0 * ts_0] sizes [ts_0]
+           strides [1] upper bounds [150]
+    Constraints:
+      -v0 + 150 in [0, 0]
   )"));
 }
 
@@ -179,7 +218,8 @@ TEST_F(TilingSpaceTest, VariadicReduce) {
   )");
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
 
-  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
       0 type: parallel size: 10 dim ID:0 hlo:
@@ -211,7 +251,8 @@ TEST_F(TilingSpaceTest, DynamicSlice) {
   )");
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
 
-  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
         0 type: parallel size: 1 dim ID:0
@@ -235,7 +276,7 @@ TEST_F(TilingSpaceTest, DynamicSlice) {
 }
 
 TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
-  auto root = ParseAndGetRoot(R"(
+  HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     f {
       p0 = f32[10,8] parameter(0)
@@ -256,8 +297,13 @@ TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
         kind=kLoop, calls=f
     }
   )");
+  root->GetModule()
+      ->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
         0 type: parallel size: 10 dim ID:0
@@ -291,7 +337,8 @@ class TilingSpaceSimplifyExpressionTest : public TilingSpaceTest {
     )");
 
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-    tiling_space_ = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    ASSERT_OK_AND_ASSIGN(tiling_space_,
+                         TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
     // Assign concrete tile sizes of [16, 2].
     // Dimension 0 (100) / 16 = 7 blocks (tid_0 in [0, 6]).

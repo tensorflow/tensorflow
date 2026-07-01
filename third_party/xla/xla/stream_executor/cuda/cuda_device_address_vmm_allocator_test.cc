@@ -24,22 +24,21 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "xla/service/computation_placer.h"
 #include "xla/stream_executor/cuda/cuda_memory_reservation.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_vmm_allocator.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/vmm_device_address_allocator.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace {
 
 using ::absl_testing::IsOk;
-using ::absl_testing::IsOkAndHolds;
-using ::testing::Ne;
 
 class DeviceAddressVmmAllocatorTest : public ::testing::Test {
  protected:
@@ -277,6 +276,316 @@ TEST_F(DeviceAddressVmmAllocatorTest, MapAndUnMapReservationAlias) {
   EXPECT_THAT(allocator->Deallocate(ordinal, source.cref()),
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 
+  ASSERT_THAT(allocator->UnMap(ordinal, reservation.get(),
+                               /*reservation_offset=*/0, granularity),
+              IsOk());
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+}
+
+TEST_F(DeviceAddressVmmAllocatorTest,
+       MapRejectsPartialOverlapWithActiveReservationMapping) {
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
+
+  const int ordinal = executor_->device_ordinal();
+  const uint64_t granularity = allocator->GetAllocationGranularity(executor_);
+  ASSERT_GT(granularity, 0);
+  const uint64_t mapping_size = 2 * granularity;
+
+  ASSERT_OK_AND_ASSIGN(auto reservation, gpu::CudaMemoryReservation::Create(
+                                             executor_, mapping_size));
+  ASSERT_OK_AND_ASSIGN(
+      auto full_range_source,
+      allocator->Allocate(ordinal, mapping_size, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective)));
+  ASSERT_OK_AND_ASSIGN(
+      auto partial_range_source,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective)));
+
+  ASSERT_THAT(
+      allocator->Map(ordinal, full_range_source.cref(), reservation.get(),
+                     /*reservation_offset=*/0, mapping_size),
+      IsOk());
+
+  EXPECT_THAT(
+      allocator->Map(ordinal, partial_range_source.cref(), reservation.get(),
+                     /*reservation_offset=*/granularity, granularity),
+      absl_testing::StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          ::testing::HasSubstr("partially overlaps active reservation")));
+
+  ASSERT_THAT(allocator->UnMap(ordinal, reservation.get(),
+                               /*reservation_offset=*/0, mapping_size),
+              IsOk());
+  ASSERT_THAT(allocator->Deallocate(ordinal, full_range_source.Release()),
+              IsOk());
+  ASSERT_THAT(allocator->Deallocate(ordinal, partial_range_source.Release()),
+              IsOk());
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+}
+
+TEST_F(DeviceAddressVmmAllocatorTest,
+       MapReactivatesPendingUnMapForSameRawAndRange) {
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
+
+  const int ordinal = executor_->device_ordinal();
+  const uint64_t granularity = allocator->GetAllocationGranularity(executor_);
+  ASSERT_GT(granularity, 0);
+
+  ASSERT_OK_AND_ASSIGN(auto reservation, gpu::CudaMemoryReservation::Create(
+                                             executor_, granularity));
+  ASSERT_OK_AND_ASSIGN(
+      auto source,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective)));
+  auto* raw_allocation = allocator->GetRawAllocation(ordinal, source.cref());
+  ASSERT_NE(raw_allocation, nullptr);
+  DeviceAddressBase reservation_address = reservation->address().GetByteSlice(
+      /*offset_bytes=*/0, granularity);
+
+  ASSERT_THAT(allocator->Map(ordinal, source.cref(), reservation.get(),
+                             /*reservation_offset=*/0, granularity),
+              IsOk());
+  ASSERT_THAT(allocator->UnMap(ordinal, reservation.get(),
+                               /*reservation_offset=*/0, granularity),
+              IsOk());
+  EXPECT_EQ(allocator->GetRawAllocation(ordinal, reservation_address), nullptr);
+
+  ASSERT_THAT(allocator->Map(ordinal, source.cref(), reservation.get(),
+                             /*reservation_offset=*/0, granularity),
+              IsOk());
+  EXPECT_EQ(allocator->GetRawAllocation(ordinal, reservation_address),
+            raw_allocation);
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+  EXPECT_EQ(allocator->GetRawAllocation(ordinal, reservation_address),
+            raw_allocation);
+
+  ASSERT_THAT(allocator->UnMap(ordinal, reservation.get(),
+                               /*reservation_offset=*/0, granularity),
+              IsOk());
+  ASSERT_THAT(allocator->Deallocate(ordinal, source.Release()), IsOk());
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+}
+
+TEST_F(DeviceAddressVmmAllocatorTest,
+       MapRejectsPartialOverlapWithStaleReservationMapping) {
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
+
+  const int ordinal = executor_->device_ordinal();
+  const uint64_t granularity = allocator->GetAllocationGranularity(executor_);
+  ASSERT_GT(granularity, 0);
+  const uint64_t mapping_size = 2 * granularity;
+
+  ASSERT_OK_AND_ASSIGN(auto reservation, gpu::CudaMemoryReservation::Create(
+                                             executor_, mapping_size));
+  ASSERT_OK_AND_ASSIGN(
+      auto full_range_source,
+      allocator->Allocate(ordinal, mapping_size, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective)));
+  ASSERT_OK_AND_ASSIGN(
+      auto partial_range_source,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective)));
+
+  ASSERT_THAT(
+      allocator->Map(ordinal, full_range_source.cref(), reservation.get(),
+                     /*reservation_offset=*/0, mapping_size),
+      IsOk());
+  ASSERT_THAT(allocator->UnMap(ordinal, reservation.get(),
+                               /*reservation_offset=*/0, mapping_size),
+              IsOk());
+
+  EXPECT_THAT(
+      allocator->Map(ordinal, partial_range_source.cref(), reservation.get(),
+                     /*reservation_offset=*/granularity, granularity),
+      absl_testing::StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          ::testing::HasSubstr("partially overlaps stale reservation")));
+
+  ASSERT_THAT(allocator->Deallocate(ordinal, full_range_source.Release()),
+              IsOk());
+  ASSERT_THAT(allocator->Deallocate(ordinal, partial_range_source.Release()),
+              IsOk());
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+}
+
+TEST_F(DeviceAddressVmmAllocatorTest,
+       MapRemapsPendingUnMapForDifferentRawAllocation) {
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
+
+  const int ordinal = executor_->device_ordinal();
+  const uint64_t granularity = allocator->GetAllocationGranularity(executor_);
+  ASSERT_GT(granularity, 0);
+
+  ASSERT_OK_AND_ASSIGN(auto reservation, gpu::CudaMemoryReservation::Create(
+                                             executor_, granularity));
+  ASSERT_OK_AND_ASSIGN(
+      auto old_source,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective)));
+  ASSERT_OK_AND_ASSIGN(
+      auto new_source,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective)));
+  auto* old_raw_allocation =
+      allocator->GetRawAllocation(ordinal, old_source.cref());
+  auto* new_raw_allocation =
+      allocator->GetRawAllocation(ordinal, new_source.cref());
+  ASSERT_NE(old_raw_allocation, nullptr);
+  ASSERT_NE(new_raw_allocation, nullptr);
+  ASSERT_NE(old_raw_allocation, new_raw_allocation);
+  DeviceAddressBase reservation_address = reservation->address().GetByteSlice(
+      /*offset_bytes=*/0, granularity);
+
+  ASSERT_THAT(allocator->Map(ordinal, old_source.cref(), reservation.get(),
+                             /*reservation_offset=*/0, granularity),
+              IsOk());
+  constexpr uint64_t kPattern = 0x123456789ABCDEF0ULL;
+  DeviceAddressBase device_address = reservation_address;
+  ASSERT_THAT(stream_->Memcpy(&device_address, &kPattern, sizeof(kPattern)),
+              IsOk());
+  ASSERT_THAT(allocator->UnMap(ordinal, reservation.get(),
+                               /*reservation_offset=*/0, granularity),
+              IsOk());
+  EXPECT_EQ(allocator->GetRawAllocation(ordinal, reservation_address), nullptr);
+
+  ASSERT_THAT(allocator->Map(ordinal, new_source.cref(), reservation.get(),
+                             /*reservation_offset=*/0, granularity),
+              IsOk());
+  EXPECT_EQ(allocator->GetRawAllocation(ordinal, reservation_address),
+            new_raw_allocation);
+
+  ASSERT_THAT(allocator->UnMap(ordinal, reservation.get(),
+                               /*reservation_offset=*/0, granularity),
+              IsOk());
+  ASSERT_THAT(allocator->Deallocate(ordinal, old_source.Release()), IsOk());
+  ASSERT_THAT(allocator->Deallocate(ordinal, new_source.Release()), IsOk());
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+}
+
+TEST_F(DeviceAddressVmmAllocatorTest,
+       MapConflictPreservesUnrelatedPendingUnMap) {
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
+
+  const int ordinal = executor_->device_ordinal();
+  const uint64_t granularity = allocator->GetAllocationGranularity(executor_);
+  ASSERT_GT(granularity, 0);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto unrelated_reservation,
+      gpu::CudaMemoryReservation::Create(executor_, granularity));
+  ASSERT_OK_AND_ASSIGN(
+      auto conflict_reservation,
+      gpu::CudaMemoryReservation::Create(executor_, granularity));
+  ASSERT_OK_AND_ASSIGN(
+      auto unrelated_source,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective)));
+  ASSERT_OK_AND_ASSIGN(
+      auto old_source,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective)));
+  ASSERT_OK_AND_ASSIGN(
+      auto new_source,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective)));
+
+  ASSERT_THAT(allocator->Map(ordinal, unrelated_source.cref(),
+                             unrelated_reservation.get(),
+                             /*reservation_offset=*/0, granularity),
+              IsOk());
+  ASSERT_THAT(allocator->UnMap(ordinal, unrelated_reservation.get(),
+                               /*reservation_offset=*/0, granularity),
+              IsOk());
+
+  ASSERT_THAT(
+      allocator->Map(ordinal, old_source.cref(), conflict_reservation.get(),
+                     /*reservation_offset=*/0, granularity),
+      IsOk());
+  ASSERT_THAT(allocator->UnMap(ordinal, conflict_reservation.get(),
+                               /*reservation_offset=*/0, granularity),
+              IsOk());
+
+  ASSERT_THAT(
+      allocator->Map(ordinal, new_source.cref(), conflict_reservation.get(),
+                     /*reservation_offset=*/0, granularity),
+      IsOk());
+  EXPECT_THAT(
+      allocator->UnMap(ordinal, unrelated_reservation.get(),
+                       /*reservation_offset=*/0, granularity),
+      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                             ::testing::HasSubstr("already pending UnMap()")));
+
+  ASSERT_THAT(allocator->UnMap(ordinal, conflict_reservation.get(),
+                               /*reservation_offset=*/0, granularity),
+              IsOk());
+  ASSERT_THAT(allocator->Deallocate(ordinal, unrelated_source.Release()),
+              IsOk());
+  ASSERT_THAT(allocator->Deallocate(ordinal, old_source.Release()), IsOk());
+  ASSERT_THAT(allocator->Deallocate(ordinal, new_source.Release()), IsOk());
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+}
+
+TEST_F(DeviceAddressVmmAllocatorTest,
+       AllocateIntoReservationReturnsReservationAddress) {
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
+
+  const int ordinal = executor_->device_ordinal();
+  uint64_t granularity = allocator->GetAllocationGranularity(executor_);
+  ASSERT_GT(granularity, 0);
+
+  ASSERT_OK_AND_ASSIGN(auto reservation, gpu::CudaMemoryReservation::Create(
+                                             executor_, granularity));
+  ASSERT_OK_AND_ASSIGN(
+      auto address,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective),
+                          reservation.get(), /*reservation_offset=*/0,
+                          granularity,
+                          /*return_reservation_address=*/true));
+
+  EXPECT_EQ(address->opaque(), reservation->address().opaque());
+  EXPECT_NE(allocator->GetRawAllocation(ordinal, address.cref()), nullptr);
+
+  ASSERT_THAT(allocator->Deallocate(ordinal, address.Release()), IsOk());
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+}
+
+TEST_F(DeviceAddressVmmAllocatorTest,
+       AllocateIntoReservationReturnsAllocatorAddress) {
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
+
+  const int ordinal = executor_->device_ordinal();
+  uint64_t granularity = allocator->GetAllocationGranularity(executor_);
+  ASSERT_GT(granularity, 0);
+
+  ASSERT_OK_AND_ASSIGN(auto reservation, gpu::CudaMemoryReservation::Create(
+                                             executor_, granularity));
+  ASSERT_OK_AND_ASSIGN(
+      auto address,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective),
+                          reservation.get(), /*reservation_offset=*/0,
+                          granularity,
+                          /*return_reservation_address=*/false));
+
+  EXPECT_NE(address->opaque(), reservation->address().opaque());
+  EXPECT_THAT(allocator->Deallocate(ordinal, address.cref()),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
   ASSERT_THAT(allocator->UnMap(ordinal, reservation.get(),
                                /*reservation_offset=*/0, granularity),
               IsOk());
@@ -552,6 +861,44 @@ TEST_F(MultiDeviceVmmAllocatorTest, AllocationOnOneDeviceDoesNotAffectOther) {
   EXPECT_EQ(
       allocator->GetRawAllocation(executors_[1]->device_ordinal(), *addr0),
       nullptr);
+}
+
+TEST_F(DeviceAddressVmmAllocatorTest, MultiDeviceTagIsolatesReuse) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
+  const int ordinal = executor_->device_ordinal();
+  constexpr uint64_t kSize = 1024;
+
+  xla::DeviceAssignment multi_device_assignment(/*replica_count=*/2,
+                                                /*computation_count=*/1);
+  multi_device_assignment(0, 0) = 0;
+  multi_device_assignment(1, 0) = 1;
+
+  void* multi_device_ptr = nullptr;
+  {
+    DeviceAddressVmmAllocator::DeviceAssignmentScope scope(
+        &multi_device_assignment);
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto addr1,
+        allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
+                            /*memory_space=*/0));
+    multi_device_ptr = addr1->opaque();
+    ASSERT_THAT(allocator->Deallocate(ordinal, addr1.Release()), IsOk());
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto addr2,
+        allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
+                            /*memory_space=*/0));
+    EXPECT_EQ(addr2->opaque(), multi_device_ptr);
+    ASSERT_THAT(allocator->Deallocate(ordinal, addr2.Release()), IsOk());
+  }
+
+  // Outside scope: single-device alloc must not reuse multi-device entry.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto addr3, allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
+                                      /*memory_space=*/0));
+  EXPECT_NE(addr3->opaque(), multi_device_ptr);
 }
 
 }  // namespace

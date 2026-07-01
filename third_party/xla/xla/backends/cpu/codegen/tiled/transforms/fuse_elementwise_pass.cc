@@ -69,9 +69,4 @@ class FuseElementwisePass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateFuseElementwisePass() {
-  return std::make_unique<FuseElementwisePass>();
-}
-
 }  // namespace xla::cpu

@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
@@ -84,7 +85,6 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/map_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tuple_tree.h"
 #include "xla/types.h"
@@ -683,9 +683,6 @@ class HloParserImpl : public HloParser {
   bool AddComputation(const std::string& name, HloComputation* computation,
                       LocTy name_loc);
 
-  static constexpr int kMaxShapeDepth = 32768;
-  int64_t shape_depth_ = 0;
-
   HloLexer lexer_;
 
   // A stack for the instruction names. The top of the stack stores the
@@ -732,6 +729,9 @@ class HloParserImpl : public HloParser {
   NameUniquer name_uniquer_{/*separator=*/"."};
 
   const HloParserOptions options_;
+
+  // Tracks recursion depth to prevent stack overflow from deeply nested input.
+  int current_recursion_depth_ = 0;
   StackFrameIndexProto stack_frame_index_proto_;
 };
 
@@ -1493,6 +1493,12 @@ bool HloParserImpl::ParseInstruction(HloComputation::Builder* builder,
 bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                         std::string name, LocTy name_loc,
                                         bool allow_attributes) {
+  ++current_recursion_depth_;
+  auto depth_guard = absl::MakeCleanup([this] { --current_recursion_depth_; });
+  if (current_recursion_depth_ > options_.max_recursion_depth()) {
+    return Error(lexer_.GetLoc(), "maximum recursion depth exceeded");
+  }
+
   Shape shape;
   HloOpcode opcode;
   std::optional<HloOpcode> async_wrapped_opcode;
@@ -1753,6 +1759,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       attrs["k"] = {/*required=*/true, AttrTy::kInt64, &k};
       optional<bool> largest;
       attrs["largest"] = {/*required=*/false, AttrTy::kBool, &largest};
+      optional<bool> is_stable;
+      attrs["is_stable"] = {/*required=*/false, AttrTy::kBool, &is_stable};
       if ((!preset_operands && !ParseOperands(&operands, builder,
                                               /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
@@ -1764,7 +1772,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateTopK(
-          *shape, operands[0], *k, (largest.has_value() ? *largest : true)));
+          *shape, operands[0], *k, (largest.has_value() ? *largest : true),
+          (is_stable.has_value() ? *is_stable : true)));
     }
     // Unary ops with result accuracy.
     case HloOpcode::kAcos:
@@ -2109,6 +2118,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if (!preset_operands && !ParseOperands(&operands, builder)) {
         return nullptr;
       }
+
+      if (!shape.has_value()) {
+        TokenError(StrFormat("Async op %s must have an explicit shape.",
+                             HloOpcodeString(opcode)));
+        return nullptr;
+      }
+
       if (opcode == HloOpcode::kAsyncStart) {
         if (!shape->IsTuple() || shape->tuple_shapes().size() < 2 ||
             !shape->tuple_shapes(0).IsTuple()) {
@@ -2122,11 +2138,22 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       // previous async op.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
-        if (operands.size() != 1 || !operands[0]->IsAsynchronous() ||
-            operands[0]->opcode() == HloOpcode::kAsyncDone) {
+        if (operands.size() != 1) {
           TokenError(
               "AsyncUpdate and AsyncDone expect a single async op as their "
               "operand.");
+          return nullptr;
+        }
+        if (!operands[0]->IsAsynchronous()) {
+          TokenError(
+              "AsyncUpdate and AsyncDone expect an asynchronous "
+              "operation as their first operand.");
+          return nullptr;
+        }
+        if (operands[0]->opcode() == HloOpcode::kAsyncDone) {
+          TokenError(
+              "AsyncDone cannot be the first operand of an AsyncUpdate "
+              "or AsyncDone.");
           return nullptr;
         }
       }
@@ -5131,6 +5158,11 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, std::complex<double> value,
 // Similar to ParseLiteral(Literal* literal, const Shape& shape), but parse the
 // shape instead of accepting one as argument.
 bool HloParserImpl::ParseLiteral(Literal* literal) {
+  ++current_recursion_depth_;
+  auto depth_guard = absl::MakeCleanup([this] { --current_recursion_depth_; });
+  if (current_recursion_depth_ > options_.max_recursion_depth()) {
+    return Error(lexer_.GetLoc(), "maximum recursion depth exceeded");
+  }
   if (lexer_.GetKind() == TokKind::kLparen) {
     // Consume Lparen
     lexer_.Lex();
@@ -5171,6 +5203,11 @@ bool HloParserImpl::ParseLiteral(Literal* literal, const Shape& shape) {
 //  ::= /*empty*/
 //  ::= literal (',' literal)*
 bool HloParserImpl::ParseTupleLiteral(Literal* literal, const Shape& shape) {
+  ++current_recursion_depth_;
+  auto depth_guard = absl::MakeCleanup([this] { --current_recursion_depth_; });
+  if (current_recursion_depth_ > options_.max_recursion_depth()) {
+    return Error(lexer_.GetLoc(), "maximum recursion depth exceeded");
+  }
   if (!ParseToken(TokKind::kLparen, "expects '(' in front of tuple elements")) {
     return false;
   }
@@ -5402,11 +5439,17 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
 // operands1
 //   ::= /*empty*/
 //   ::= operand (, operand)*
-// operand ::= (shape)? name
+// operand ::= (shape)? name ('#' integer)*
 //         ::= (shape)? opcode operands
 bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
                                   HloComputation::Builder* builder) {
   CHECK(operands != nullptr);
+  ++current_recursion_depth_;
+  auto depth_guard = absl::MakeCleanup([this] { --current_recursion_depth_; });
+  if (current_recursion_depth_ > options_.max_recursion_depth()) {
+    return Error(lexer_.GetLoc(), "maximum recursion depth exceeded");
+  }
+
   if (!ParseToken(TokKind::kLparen,
                   "expects '(' at the beginning of operands")) {
     return false;
@@ -5452,10 +5495,70 @@ bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
             return false;
           }
         }
-        std::pair<HloInstruction*, LocTy>* instruction =
-            FindInstruction(name, shape);
-        if (instruction == nullptr) {
+
+        // Parse optional compact GTE suffix (e.g., "%operand#index1#index2").
+        // We collect all indices first, then resolve/create the GTE
+        // instructions.
+        std::vector<int64_t> gte_indices;
+        while (lexer_.GetKind() == TokKind::kOctothorp) {
+          lexer_.Lex();  // consume '#'
+          int64_t index;
+          if (!ParseInt64(&index)) {
+            return false;
+          }
+          gte_indices.push_back(index);
+        }
+
+        std::pair<HloInstruction*, LocTy>* base_instruction =
+            FindInstruction(name, gte_indices.empty() ? shape : std::nullopt);
+        if (base_instruction == nullptr) {
           return Error(loc, StrCat("instruction does not exist: ", name));
+        }
+
+        HloInstruction* current_instruction = base_instruction->first;
+        std::string current_name = name;
+        for (int64_t index : gte_indices) {
+          if (!current_instruction->shape().IsTuple()) {
+            return Error(
+                loc,
+                StrCat("GTE operand must be tuple, but has shape: ",
+                       ShapeUtil::HumanString(current_instruction->shape())));
+          }
+          if (index < 0 ||
+              index >= current_instruction->shape().tuple_shapes().size()) {
+            return Error(
+                loc,
+                StrCat("GTE index ", index, " out of bounds for shape: ",
+                       ShapeUtil::HumanString(current_instruction->shape())));
+          }
+
+          absl::StrAppend(&current_name, "#", index);
+          auto [it, inserted] =
+              current_name_table().try_emplace(current_name, nullptr, loc);
+
+          if (!inserted) {
+            current_instruction = it->second.first;
+          } else {
+            Shape gte_shape = current_instruction->shape().tuple_shapes(index);
+            HloInstruction* gte =
+                builder->AddInstruction(HloInstruction::CreateGetTupleElement(
+                    gte_shape, current_instruction, index));
+            // Registering with '#' in the name table is safe for lookups. The
+            // instruction name will be sanitized (replacing '#' with '_') and
+            // uniqued by HloModule.
+            gte->SetAndSanitizeName(current_name);
+            it->second.first = gte;
+            current_instruction = gte;
+          }
+        }
+
+        if (!gte_indices.empty() && shape.has_value() &&
+            !ShapeUtil::Compatible(current_instruction->shape(), *shape)) {
+          return Error(
+              loc,
+              StrCat("operand shape ", ShapeUtil::HumanString(*shape),
+                     " does not match instruction shape ",
+                     ShapeUtil::HumanString(current_instruction->shape())));
         }
 
         // If this is a regular named operand, it must be followed by a comma or
@@ -5467,7 +5570,7 @@ bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
           return false;
         }
 
-        operands->push_back(instruction->first);
+        operands->push_back(current_instruction);
         return true;
       }();
 
@@ -6503,6 +6606,11 @@ bool HloParserImpl::ParsePrecisionList(
 }
 
 bool HloParserImpl::ParseHloComputation(HloComputation** result) {
+  ++current_recursion_depth_;
+  auto depth_guard = absl::MakeCleanup([this] { --current_recursion_depth_; });
+  if (current_recursion_depth_ > options_.max_recursion_depth()) {
+    return Error(lexer_.GetLoc(), "maximum recursion depth exceeded");
+  }
   if (lexer_.GetKind() == TokKind::kLbrace) {
     // This means it is a nested computation.
     return ParseInstructionList(result, /*computation_name=*/"_");
@@ -7023,16 +7131,11 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
 //   ::= shape (',' shape)*
 bool HloParserImpl::ParseShape(Shape* result,
                                bool allow_fallback_to_default_layout) {
-  if (shape_depth_ >= kMaxShapeDepth) {
-    return Error(lexer_.GetLoc(),
-                 "Shape depth exceeds maximum supported depth.");
+  ++current_recursion_depth_;
+  auto depth_guard = absl::MakeCleanup([this] { --current_recursion_depth_; });
+  if (current_recursion_depth_ > options_.max_recursion_depth()) {
+    return Error(lexer_.GetLoc(), "maximum recursion depth exceeded");
   }
-  struct DepthGuard {
-    int64_t* d;
-    explicit DepthGuard(int64_t* d) : d(d) { (*d)++; }
-    ~DepthGuard() { (*d)--; }
-  } guard(&shape_depth_);
-
   if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "b" &&
       lexer_.LookAhead() == TokKind::kLparen) {  // Buffer shape
     lexer_.Lex();

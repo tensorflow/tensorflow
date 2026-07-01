@@ -722,7 +722,8 @@ tsl::Future<> Array::CopyToStringHostBuffer(
   auto on_ready = [promise = std::move(promise),
                    host_buffer_store = rpc_helper_->host_buffer_store(),
                    host_buffer_handle,
-                   dst_buffer = static_cast<absl::Cord*>(data)](
+                   dst_buffer = static_cast<absl::Cord*>(data),
+                   num_elements = shape_.num_elements()](
                       absl::StatusOr<std::shared_ptr<CopyToHostBufferResponse>>
                           resp) mutable {
     if (!resp.ok()) {
@@ -731,7 +732,7 @@ tsl::Future<> Array::CopyToStringHostBuffer(
     }
     host_buffer_store->Lookup(host_buffer_handle)
         .OnReady([promise = std::move(promise), dst_buffer, host_buffer_store,
-                  host_buffer_handle](
+                  host_buffer_handle, num_elements](
                      absl::StatusOr<absl::Cord> array_contents) mutable {
           absl::Cleanup cleanup = [&]() {
             host_buffer_store->Delete(host_buffer_handle)
@@ -751,7 +752,7 @@ tsl::Future<> Array::CopyToStringHostBuffer(
           }
           auto deserialization_status =
               DeserializeFromCordIntoPreallocatedStringHostBuffer(
-                  *array_contents, dst_buffer);
+                  *array_contents, num_elements, dst_buffer);
           promise.Set(deserialization_status);
         });
   };

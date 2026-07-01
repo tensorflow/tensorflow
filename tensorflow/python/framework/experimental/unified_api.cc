@@ -106,8 +106,8 @@ PYBIND11_MODULE(_unified_api, m) {
     return dyn_cast<TracingContext>(ctx);
   });
   m.def("EagerContextToImmediateExecutionContext", [](py::handle& obj) {
-    TFE_Context* ctx =
-        static_cast<TFE_Context*>(PyCapsule_GetPointer(obj.ptr(), nullptr));
+    TFE_Context* ctx = static_cast<TFE_Context*>(
+        PyCapsule_GetPointer(obj.ptr(), "TFE_Context"));
     if (!ctx) {
       MaybeRaiseRegisteredFromStatus(
           absl::InvalidArgumentError("TFE_Context is nullptr"));

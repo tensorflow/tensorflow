@@ -5,7 +5,7 @@ load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 # copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//xla:package_groups.bzl", "xla_package_groups")
 load("//xla:xla.default.bzl", "xla_bzl_library", "xla_cc_test", "xla_py_proto_library")
-load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//xla/tsl/platform:build_config.bzl",
@@ -208,6 +208,9 @@ cc_library(
     deps = [
         ":xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -808,6 +811,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
@@ -1273,14 +1277,12 @@ cc_library(
     hdrs = ["debug_options_flags.h"],
     copts = if_enable_acl([
         "-DXLA_CPU_USE_ACL=1",
-    ]) + if_oss([
-        "-DHAS_SUPPORT_FOR_LLD_AS_A_LIBRARY=1",
-        "-DHAS_SUPPORT_FOR_EMBEDDED_LIB_DEVICE=1",
     ]),
     visibility = internal_visibility([":friends"]),
     deps =
         [
             ":parse_flags_from_env",
+            ":xla_data_proto_cc",
             ":xla_proto_cc",
             "//xla/backends/autotuner:backends_proto_cc",
             "//xla/service:collective_utils",
@@ -1313,6 +1315,7 @@ xla_cc_test(
     deps = [
         ":debug_options_flags",
         ":parse_flags_from_env",
+        ":xla_data_proto_cc",
         ":xla_proto_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test_main",

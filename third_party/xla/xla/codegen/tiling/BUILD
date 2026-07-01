@@ -24,6 +24,7 @@ cc_library(
         "tiled_hlo_instruction.h",
     ],
     deps = [
+        "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
@@ -404,6 +405,7 @@ xla_cc_test(
         ":tiling_specification",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_proto_cc",
         "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
@@ -422,6 +424,7 @@ xla_cc_test(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",

@@ -136,11 +136,12 @@ class MockBundle : public llvm::RTTIExtends<MockBundle, Bundle> {
               (override));
   MOCK_METHOD(absl::StatusOr<BundleRef>, CopyArrays,
               (absl::Span<const int> slice_sizes,
-               absl::Span<const CopySpec> copy_specs),
+               absl::Span<const CopySpec> copy_specs,
+               ArrayCopySemantics semantics),
               (override));
   MOCK_METHOD(absl::StatusOr<BundleRef>, ReshardArrays,
-              (absl::Span<const int> slice_sizes,
-               absl::Span<const ReshardSpec> reshard_specs),
+              (absl::Span<const xla::ifrt::ArraySpec> array_specs,
+               ArrayCopySemantics semantics),
               (override));
 
   static char ID;  // NOLINT
@@ -201,6 +202,8 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (final));
   MOCK_METHOD(tsl::Future<>, GetReadyFuture,
               (absl::Span<const ValueRef> values), (final));
+  MOCK_METHOD(tsl::Future<>, DeleteValues, (absl::Span<ValueRef> arrays),
+              (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Tuple>>, MakeTuple,
               (absl::Span<ValueRef> values), (final));
 

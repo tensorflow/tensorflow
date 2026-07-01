@@ -167,6 +167,31 @@ LocalDeviceState::~LocalDeviceState() {
     LOG(ERROR) << "Error when closing device: " << status;
   }
 
+  // 1. Join scheduling threads first to prevent any new work from being
+  // enqueued.
+  execute_thread_.reset();
+  async_dispatch_thread_.reset();
+
+  // 2. Clear streams and stream pools to trigger all pending
+  // callbacks/finalizations.
+  // Drain the callback thread before touching compute_events_.
+  //
+  // After SynchronizeAllActivity() above, all GPU host-callbacks registered
+  // via hipLaunchHostFunc / ThenExecuteCallback have been *invoked*, which
+  // means every callback_thread_->Schedule() call they contain has already
+  // been issued.  Those closures (e.g. the AndThen that calls
+  // compute_events_.pop_front()) may still be sitting in the queue or
+  // actively executing.
+  //
+  // Because compute_events_ is declared *after* callback_thread_ in the
+  // class, C++ destroys it *before* callback_thread_'s destructor joins the
+  // worker thread — creating a window where pop_front() runs on an
+  // already-destroyed deque (undefined behaviour / use-after-free).
+  //
+  // Draining the thread here closes that window: every closure enqueued
+  // before this point completes before we touch compute_events_.
+  callback_thread_->Drain();
+
   // Explicitly delete all the streams and events to ensure that their callbacks
   // are executed before the destruction of the LocalDeviceState and its
   // callback threads.
@@ -174,8 +199,24 @@ LocalDeviceState::~LocalDeviceState() {
   fixed_size_pool_usage_streams_.clear();
   device_to_device_streams_.clear();
   device_to_host_streams_.clear();
+  {
+    absl::MutexLock lock(stream_pool_mu_);
+    usage_stream_pool_ = {};
+  }
+  {
+    absl::MutexLock lock(callback_stream_map_mu_);
+    if (callback_stream_map_.has_value()) {
+      callback_stream_map_.reset();
+    }
+  }
   host_to_device_stream_.reset();
   compute_stream_.reset();
+
+  // 3. Join callback/cleanup threads to execute all pending tasks.
+  callback_thread_.reset();
+  cleanup_thread_.reset();
+
+  // 4. Finally, clear compute events.
   compute_events_.clear();
 }
 
@@ -357,7 +398,8 @@ int LocalDeviceState::GetNewPrngSeed() {
 
 absl::Status LocalDeviceState::AllocateAndRecordEvent(
     AsyncWorkRunner* async_work_runner, BufferSequencingEventRef event,
-    se::Stream* stream, absl::string_view tag) {
+    se::Stream* stream, absl::string_view tag,
+    absl::AnyInvocable<void() &&> cleanup) {
   auto status = [&]() {
     ASSIGN_OR_RETURN(
         EventPool::Handle device_event,
@@ -365,7 +407,14 @@ absl::Status LocalDeviceState::AllocateAndRecordEvent(
     event_pool().ThenRecordEvent(stream, device_event);
     event->SetSequencingEvent(std::move(device_event), stream);
     return ThenExecuteCallback(
-        stream, [event]() { event.SetStateConcrete(); },
+        stream,
+        [event, cleanup = std::move(cleanup)]() mutable {
+          if (cleanup) {
+            std::move(cleanup)();
+            cleanup = nullptr;
+          }
+          event.SetStateConcrete();
+        },
         [event](absl::Status status) {
           event.SetError(event->AppendErrorContext(status));
         },

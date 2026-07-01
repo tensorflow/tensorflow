@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/tests/collective_ops_e2e_test_base.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -68,11 +68,53 @@ namespace op = ::xla::testing::opcode_matchers;
 namespace m = ::xla::match;
 using ::testing::NotNull;
 
-bool IsAsync(const HloInstruction* inst) {
+bool IsAsync(const HloInstruction* absl_nonnull inst) {
+  CHECK_NE(inst, nullptr);
   return !inst->backend_config<gpu::GpuBackendConfig>()
               .value()
               .collective_backend_config()
               .is_sync();
+}
+
+const HloInstruction* FindCollectiveStart(const HloModule* module,
+                                          HloOpcode collective_opcode) {
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instr : computation->instructions()) {
+      if (instr->opcode() == HloOpcode::kAsyncStart &&
+          instr->async_wrapped_instruction()->opcode() == collective_opcode) {
+        return instr;
+      }
+    }
+  }
+  return nullptr;
+}
+
+const HloInstruction* FindCollectiveDone(const HloModule* module,
+                                         HloOpcode collective_opcode) {
+  const HloInstruction* start = FindCollectiveStart(module, collective_opcode);
+  if (start == nullptr) {
+    return nullptr;
+  }
+  for (const HloInstruction* user : start->users()) {
+    if (user->opcode() == HloOpcode::kAsyncDone) {
+      return user;
+    }
+  }
+  return nullptr;
+}
+
+std::vector<const HloInstruction*> FindCollectiveStarts(
+    const HloModule* module, HloOpcode collective_opcode) {
+  std::vector<const HloInstruction*> result;
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instr : computation->instructions()) {
+      if (instr->opcode() == HloOpcode::kAsyncStart &&
+          instr->async_wrapped_instruction()->opcode() == collective_opcode) {
+        result.push_back(instr);
+      }
+    }
+  }
+  return result;
 }
 
 class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
@@ -300,10 +342,10 @@ TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
                           ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
-  HloInstruction* all_reduce_start =
-      FindInstruction(hlo_module, HloOpcode::kAllReduceStart);
-  HloInstruction* all_reduce_done =
-      FindInstruction(hlo_module, HloOpcode::kAllReduceDone);
+  const HloInstruction* all_reduce_start =
+      FindCollectiveStart(hlo_module, HloOpcode::kAllReduce);
+  const HloInstruction* all_reduce_done =
+      FindCollectiveDone(hlo_module, HloOpcode::kAllReduce);
   EXPECT_THAT(all_reduce_start, NotNull());
   EXPECT_THAT(all_reduce_done, NotNull());
   EXPECT_EQ(IsAsync(all_reduce_start), enable_async_all_reduce);
@@ -379,10 +421,10 @@ TEST_P(CollectivesModeOps, AllGather) {
                           ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
-  HloInstruction* all_gather_start =
-      FindInstruction(hlo_module, HloOpcode::kAllGatherStart);
-  HloInstruction* all_gather_done =
-      FindInstruction(hlo_module, HloOpcode::kAllGatherDone);
+  const HloInstruction* all_gather_start =
+      FindCollectiveStart(hlo_module, HloOpcode::kAllGather);
+  const HloInstruction* all_gather_done =
+      FindCollectiveDone(hlo_module, HloOpcode::kAllGather);
   EXPECT_THAT(all_gather_start, NotNull());
   EXPECT_THAT(all_gather_done, NotNull());
   EXPECT_EQ(IsAsync(all_gather_start), enable_async());
@@ -423,10 +465,10 @@ TEST_P(CollectivesModeOps, AllGatherMixedTypes) {
                           ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
-  HloInstruction* all_gather_start =
-      FindInstruction(hlo_module, HloOpcode::kAllGatherStart);
-  HloInstruction* all_gather_done =
-      FindInstruction(hlo_module, HloOpcode::kAllGatherDone);
+  const HloInstruction* all_gather_start =
+      FindCollectiveStart(hlo_module, HloOpcode::kAllGather);
+  const HloInstruction* all_gather_done =
+      FindCollectiveDone(hlo_module, HloOpcode::kAllGather);
   EXPECT_THAT(all_gather_start, NotNull());
   EXPECT_THAT(all_gather_done, NotNull());
   EXPECT_EQ(IsAsync(all_gather_start), enable_async());
@@ -466,12 +508,12 @@ TEST_P(CollectivesModeOps, CollectivePermute) {
                           ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
-  HloInstruction* cp_start =
-      FindInstruction(hlo_module, HloOpcode::kCollectivePermuteStart);
-  HloInstruction* cp_done =
-      FindInstruction(hlo_module, HloOpcode::kCollectivePermuteDone);
-  EXPECT_THAT(cp_start, NotNull());
-  EXPECT_THAT(cp_done, NotNull());
+  const HloInstruction* cp_start =
+      FindCollectiveStart(hlo_module, HloOpcode::kCollectivePermute);
+  const HloInstruction* cp_done =
+      FindCollectiveDone(hlo_module, HloOpcode::kCollectivePermute);
+  ASSERT_THAT(cp_start, NotNull());
+  ASSERT_THAT(cp_done, NotNull());
   EXPECT_EQ(IsAsync(cp_start), enable_async());
 
   const std::vector<Literal>& results = execution_result.results;
@@ -539,10 +581,10 @@ TEST_P(CollectivesModeOps, CombinedCollectivePermute) {
                           ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
-  HloInstruction* cp_start =
-      FindInstruction(hlo_module, HloOpcode::kCollectivePermuteStart);
-  HloInstruction* cp_done =
-      FindInstruction(hlo_module, HloOpcode::kCollectivePermuteDone);
+  const HloInstruction* cp_start =
+      FindCollectiveStart(hlo_module, HloOpcode::kCollectivePermute);
+  const HloInstruction* cp_done =
+      FindCollectiveDone(hlo_module, HloOpcode::kCollectivePermute);
   EXPECT_THAT(cp_start, NotNull());
   EXPECT_THAT(cp_done, NotNull());
   EXPECT_EQ(IsAsync(cp_start), enable_async());
@@ -581,21 +623,15 @@ TEST_P(CollectivesModeOps, CollectivePermuteCombiner) {
                           ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
-  HloInstruction* cp_start =
-      FindInstruction(hlo_module, HloOpcode::kCollectivePermuteStart);
-  HloInstruction* cp_done =
-      FindInstruction(hlo_module, HloOpcode::kCollectivePermuteDone);
+  const HloInstruction* cp_start =
+      FindCollectiveStart(hlo_module, HloOpcode::kCollectivePermute);
+  const HloInstruction* cp_done =
+      FindCollectiveDone(hlo_module, HloOpcode::kCollectivePermute);
 
   EXPECT_THAT(cp_start, NotNull());
   // Count the number of collective permute start instructions in the module
-  int cp_start_count = 0;
-  for (const auto& computation : hlo_module->computations()) {
-    for (const auto& instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kCollectivePermuteStart) {
-        cp_start_count++;
-      }
-    }
-  }
+  const int cp_start_count =
+      FindCollectiveStarts(hlo_module, HloOpcode::kCollectivePermute).size();
   EXPECT_EQ(cp_start_count, 1)
       << "Expected exactly one CollectivePermuteStart instruction";
 
@@ -610,6 +646,94 @@ TEST_P(CollectivesModeOps, CollectivePermuteCombiner) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 0, 0, 0, 10, 10}, results[1]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({1, 1, 2, 2, 11, 11}, results[2]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({2, 2, 4, 4, 12, 12}, results[3]);
+}
+
+TEST_F(CollectiveOpsTestE2E, CollectiveGroupAllReduceDifferentReplicaGroups) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+
+  grouped_all_reduce {
+    p0 = f32[4] parameter(0)
+    p1 = f32[4] parameter(1)
+    all-start = f32[4] all-reduce-start(p0),
+      replica_groups={{0,1,2,3}}, to_apply=add,
+      backend_config={"collective_backend_config":{"is_sync":true}}
+    pair01_23-start = f32[4] all-reduce-start(p1),
+      replica_groups={{0,1},{2,3}}, to_apply=add,
+      backend_config={"collective_backend_config":{"is_sync":true}}
+    all = f32[4] all-reduce-done(all-start)
+    pair01_23 = f32[4] all-reduce-done(pair01_23-start)
+    ROOT tuple = (f32[4], f32[4]) tuple(all, pair01_23)
+  }
+
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    p1 = f32[4] parameter(1)
+    start = ((f32[4], f32[4]), (f32[4], f32[4])) async-start(p0, p1),
+      calls=grouped_all_reduce, frontend_attributes={_collectives_group=""}
+    ROOT done = (f32[4], f32[4]) async-done(start)
+  }
+  )";
+  const int64_t kNumReplicas = 4;
+  if (device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << device_count() << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  std::vector<Literal> all_args;
+  std::vector<Literal> pair_args;
+  all_args.reserve(kNumReplicas);
+  pair_args.reserve(kNumReplicas);
+  for (int64_t replica = 0; replica < kNumReplicas; ++replica) {
+    all_args.push_back(LiteralUtil::CreateR1<float>(
+        {static_cast<float>(replica), static_cast<float>(replica),
+         static_cast<float>(replica), static_cast<float>(replica)}));
+    pair_args.push_back(LiteralUtil::CreateR1<float>(
+        {static_cast<float>(replica), static_cast<float>(replica),
+         static_cast<float>(replica), static_cast<float>(replica)}));
+  }
+
+  std::vector<std::vector<Literal*>> args(kNumReplicas);
+  for (int64_t replica = 0; replica < kNumReplicas; ++replica) {
+    args[replica] = {&all_args[replica], &pair_args[replica]};
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module), args));
+
+  std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+
+  std::vector<Literal> replica0 = results[0].DecomposeTuple();
+  ASSERT_EQ(replica0.size(), 2);
+  LiteralTestUtil::ExpectR1Equal<float>({6, 6, 6, 6}, replica0[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({1, 1, 1, 1}, replica0[1]);
+
+  std::vector<Literal> replica1 = results[1].DecomposeTuple();
+  ASSERT_EQ(replica1.size(), 2);
+  LiteralTestUtil::ExpectR1Equal<float>({6, 6, 6, 6}, replica1[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({1, 1, 1, 1}, replica1[1]);
+
+  std::vector<Literal> replica2 = results[2].DecomposeTuple();
+  ASSERT_EQ(replica2.size(), 2);
+  LiteralTestUtil::ExpectR1Equal<float>({6, 6, 6, 6}, replica2[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({5, 5, 5, 5}, replica2[1]);
+
+  std::vector<Literal> replica3 = results[3].DecomposeTuple();
+  ASSERT_EQ(replica3.size(), 2);
+  LiteralTestUtil::ExpectR1Equal<float>({6, 6, 6, 6}, replica3[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({5, 5, 5, 5}, replica3[1]);
 }
 
 TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
@@ -1481,12 +1605,12 @@ TEST_F(CollectiveOpsTestE2E, NoAsyncCollectives) {
 
   // Verify that the all-to-all is a sync collective.
   const HloInstruction* all_to_all =
-      FindInstruction(executable_module, HloOpcode::kAsyncStart);
+      FindCollectiveStart(executable_module, HloOpcode::kAllToAll);
   EXPECT_FALSE(IsAsync(all_to_all));
 
   // Verify that the all-reduce is a sync collective.
   const HloInstruction* all_reduce =
-      FindInstruction(executable_module, HloOpcode::kAllReduceStart);
+      FindCollectiveStart(executable_module, HloOpcode::kAllReduce);
 
   EXPECT_FALSE(IsAsync(all_reduce));
 }
@@ -2560,8 +2684,8 @@ ENTRY entry {
                                            /*run_hlo_passes=*/true));
   TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
                           test_runner().HloModuleFromWrapped(executable.get()));
-  HloInstruction* all_gather =
-      FindInstruction(hlo_module, HloOpcode::kAllGatherStart);
+  const HloInstruction* all_gather =
+      FindCollectiveStart(hlo_module, HloOpcode::kAllGather);
 
   EXPECT_THAT(all_gather, NotNull());
   EXPECT_EQ(all_gather->shape().tuple_shapes(0).element_type(), BF16);
@@ -2835,8 +2959,8 @@ ENTRY main {
                                            /*run_hlo_passes=*/false));
   TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
                           test_runner().HloModuleFromWrapped(executable.get()));
-  HloInstruction* ag_start =
-      FindInstructions(executable_module, HloOpcode::kAllGatherStart)[0];
+  const HloInstruction* ag_start =
+      FindCollectiveStarts(executable_module, HloOpcode::kAllGather)[0];
   // Both ag and its producer should have collective memory space 1
   EXPECT_EQ(ag_start->shape().tuple_shapes()[1].layout().memory_space(), 1);
   EXPECT_EQ(ag_start->operand(0)->shape().layout().memory_space(), 1);
@@ -2882,8 +3006,8 @@ ROOT tuple = (bf16[1024,1024]{1,0}, bf16[]) tuple(all-reduce-done, all-reduce-do
                                            /*run_hlo_passes=*/false));
   TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
                           test_runner().HloModuleFromWrapped(executable.get()));
-  std::vector<HloInstruction*> all_ar =
-      FindInstructions(executable_module, HloOpcode::kAllReduceStart);
+  std::vector<const HloInstruction*> all_ar =
+      FindCollectiveStarts(executable_module, HloOpcode::kAllReduce);
   // Both allreduces should have their operands copied to collective memory
   // space.
   for (auto ar : all_ar) {
@@ -2913,7 +3037,7 @@ TEST_F(CollectiveOpsTestE2E, OptimizedSubByteAllGatherOnDim0OutputIsCorrect) {
 
   const HloModule* module = execution_result.optimized_module;
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Bitcast(m::AllGatherDone().WithShape(S8, {4, 2}))));
+              GmockMatch(m::Bitcast(m::AsyncDone().WithShape(S8, {4, 2}))));
 
   const Literal expected_result =
       LiteralUtil::CreateR2<s4>({{s4(0), s4(1), s4(2), s4(3)},
@@ -2950,8 +3074,9 @@ TEST_F(CollectiveOpsTestE2E, OptimizedSubByteAllGatherOnDim1OutputIsCorrect) {
 
   const HloModule* module = execution_result.optimized_module;
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Fusion(
-                        m::Bitcast(m::AllGatherDone().WithShape(S8, {2, 4})))));
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Fusion(m::Bitcast(m::AsyncDone().WithShape(S8, {2, 4})))));
   EXPECT_THAT(root->fused_expression_root(),
               GmockMatch(m::Transpose(m::Parameter())));
 
@@ -2989,8 +3114,8 @@ TEST_F(CollectiveOpsTestE2E, AllGatherOnChangedDimensionIsCorrect) {
                           test_runner().HloModuleFromWrapped(executable.get()));
   const HloInstruction* root = module->entry_computation()->root_instruction();
 
-  EXPECT_THAT(root, GmockMatch(m::Fusion(m::AllGatherDone(
-                        m::AllGatherStart(m::Bitcast(m::Constant()))))));
+  EXPECT_THAT(root, GmockMatch(m::Fusion(m::AsyncDone(
+                        m::AsyncStart(m::Bitcast(m::Constant()))))));
   EXPECT_THAT(root->fused_expression_root(),
               GmockMatch(m::Transpose(m::Bitcast(m::Parameter()))));
 
@@ -3148,6 +3273,59 @@ TEST_F(CollectiveOpsTestE2E, CustomCollectiveCallShouldRun) {
   Literal expected = LiteralUtil::CreateR1<float>({2, 2, 2, 2});
   for (const Literal& result : execution_result_1.results) {
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  }
+}
+
+class SymmetricBufferCollectiveOpsTest : public CollectiveOpsTestE2E {
+ public:
+  SymmetricBufferCollectiveOpsTest()
+      : CollectiveOpsTestE2E(/*memory_size=*/128 * kMB,
+                             /*collectives_memory_size=*/64 * kMB) {}
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions options = CollectiveOpsTestE2E::GetDebugOptionsForTest();
+    options.set_xla_gpu_enable_nccl_user_buffers(true);
+    options.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(true);
+    return options;
+  }
+};
+
+TEST_F(SymmetricBufferCollectiveOpsTest, AllReduceWithSymmetricBuffers) {
+  absl::string_view hlo_string = R"(
+HloModule AllReduceSymmetric, entry_computation_layout={(f32[128]{0})->f32[128]{0}}, replica_count=2
+apply_op {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT apply_op = f32[] add(x, y)
+}
+ENTRY main {
+  input = f32[128]{0} parameter(0)
+  ROOT all-reduce-start = f32[128]{0} all-reduce(input), to_apply=apply_op, replica_groups={{0,1}}
+})";
+
+  const int64_t kNumReplicas = 2;
+  const int64_t kNumPartitions = 1;
+  if (device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires " << kNumReplicas * kNumPartitions
+                 << " devices (" << device_count() << " available)";
+  }
+
+  HloModuleConfig config = GetModuleConfigForTest(kNumReplicas, kNumPartitions);
+  config.set_debug_options(GetDebugOptionsForTest());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  auto input = LiteralUtil::CreateR1<float>(std::vector<float>(128, 1.0f));
+  std::vector<Literal*> args = {&input};
+  std::vector<std::vector<Literal*>> replica_args(kNumReplicas, args);
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                          ExecuteReplicated(std::move(module), replica_args));
+
+  for (const auto& literal : result.results) {
+    EXPECT_TRUE(LiteralTestUtil::Near(
+        LiteralUtil::CreateR1<float>(std::vector<float>(128, 2.0f)), literal,
+        ErrorSpec(1e-4)));
   }
 }
 

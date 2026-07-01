@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/printer.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -224,6 +225,15 @@ DecanonicalizationInfo FullyDecanonicalize(
     perm_span = absl::MakeSpan(canonicalized_perm.data(), 1);
   }
   return IotaTileAssignment(dims, dims_span, perm_span);
+}
+
+/*static*/ IotaTileAssignment IotaTileAssignment::Create(
+    absl::Span<const int64_t> dims, const MeshProto::IotaTransform& transform) {
+  // This is an extra copy, but the array will typically be quite small since
+  // it scales with the number of dimensions.
+  absl::InlinedVector<int, 6> int_perm(transform.transpose_perm().begin(),
+                                       transform.transpose_perm().end());
+  return Create(dims, transform.reshape_dims(), absl::MakeSpan(int_perm));
 }
 
 // Materializes array representation of IotaTileAssignment.

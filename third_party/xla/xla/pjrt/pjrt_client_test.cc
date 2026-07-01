@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -809,5 +810,74 @@ TEST(PjRtClientTest, ClearPeakMemory) {
     EXPECT_EQ(clear_stats.peak_bytes_in_use, dealloc_stats.bytes_in_use);
   }
 }
+struct LinearizePackTestParam {
+  PjRtClient::HostBufferSemantics host_buffer_semantics;
+  bool need_transpose;
+  std::string test_name;
+};
+
+inline std::string PrintLinearizePackTestParam(
+    const ::testing::TestParamInfo<LinearizePackTestParam>& info) {
+  return info.param.test_name;
+}
+
+class PjRtClientLinearizePackTest
+    : public ::testing::TestWithParam<LinearizePackTestParam> {};
+
+TEST_P(PjRtClientLinearizePackTest, PackSubbyteType) {
+  const LinearizePackTestParam& param = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+
+  std::vector<int8_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S4, {2, 2});
+
+  ASSERT_GE(client->addressable_devices().size(), 1);
+  auto device = client->addressable_devices()[0];
+  auto* memory_space = *device->default_memory_space();
+
+  std::optional<absl::Span<int64_t const>> byte_strides;
+  std::vector<int64_t> custom_strides;
+  if (param.need_transpose) {
+    custom_strides = {1, 2};
+    byte_strides = custom_strides;
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer, client->BufferFromHostBuffer(
+                       data.data(), shape.element_type(), shape.dimensions(),
+                       byte_strides, param.host_buffer_semantics, nullptr,
+                       memory_space, /*device_layout=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteral().Await());
+
+  std::vector<s4> expected;
+  if (param.need_transpose) {
+    expected = {s4(1), s4(3), s4(2), s4(4)};
+  } else {
+    expected = {s4(1), s4(2), s4(3), s4(4)};
+  }
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<s4>(
+          {{expected[0], expected[1]}, {expected[2], expected[3]}}),
+      *literal));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    PjRtClientLinearizePackTestSuite, PjRtClientLinearizePackTest,
+    ::testing::Values(
+        LinearizePackTestParam{
+            PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, false,
+            "ImmutableOnlyDuringCall_NoTranspose"},
+        LinearizePackTestParam{
+            PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, true,
+            "ImmutableOnlyDuringCall_Transpose"},
+        LinearizePackTestParam{
+            PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+            false, "ImmutableUntilTransferCompletes_NoTranspose"},
+        LinearizePackTestParam{
+            PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+            true, "ImmutableUntilTransferCompletes_Transpose"}),
+    PrintLinearizePackTestParam);
+
 }  // namespace
 }  // namespace xla

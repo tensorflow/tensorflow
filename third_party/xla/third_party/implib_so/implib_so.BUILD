@@ -2,6 +2,8 @@
 #   Implib.so is a simple equivalent of Windows DLL import libraries for POSIX
 #   shared libraries.
 
+load("@rules_python//python:defs.bzl", "py_library")
+
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # MIT

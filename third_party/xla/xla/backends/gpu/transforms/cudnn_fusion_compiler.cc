@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
@@ -65,7 +66,6 @@ limitations under the License.
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -544,13 +544,17 @@ class ConvDimensionAdapter {
 
 template <PrimitiveType XlaT, typename T>
 std::shared_ptr<graph::Tensor_attributes> LiteralToCudnnTensor(
-    const HloInstruction& hlo, graph::Graph& graph) {
+    const HloInstruction& hlo, graph::Graph& graph, int64_t rank) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<XlaT>::type;
-  return graph.tensor(T(hlo.literal().GetFirstElement<NativeT>()));
+  auto tensor = graph.tensor(T(hlo.literal().GetFirstElement<NativeT>()));
+  tensor->set_dim(std::vector<int64_t>(rank, 1))
+      .set_stride(std::vector<int64_t>(rank, 1));
+  return tensor;
 }
 
 std::optional<std::shared_ptr<graph::Tensor_attributes>>
-HandleConstantHloToCudnnGraph(const HloInstruction& hlo, graph::Graph& graph) {
+HandleConstantHloToCudnnGraph(const HloInstruction& hlo, graph::Graph& graph,
+                              int64_t rank = 3) {
   CHECK(hlo.IsConstant()) << "HLO is not a constant: " << hlo.ToShortString();
   if (!ShapeUtil::IsScalar(hlo.shape())) {
     VLOG(3) << "Currently only support fusing scalar in the graph";
@@ -559,13 +563,13 @@ HandleConstantHloToCudnnGraph(const HloInstruction& hlo, graph::Graph& graph) {
   PrimitiveType constant_type = hlo.shape().element_type();
   switch (constant_type) {
     case F16:
-      return LiteralToCudnnTensor<F16, __half>(hlo, graph);
+      return LiteralToCudnnTensor<F16, __half>(hlo, graph, rank);
     case BF16:
-      return LiteralToCudnnTensor<BF16, __nv_bfloat16>(hlo, graph);
+      return LiteralToCudnnTensor<BF16, __nv_bfloat16>(hlo, graph, rank);
     case F32:
-      return LiteralToCudnnTensor<F32, float>(hlo, graph);
+      return LiteralToCudnnTensor<F32, float>(hlo, graph, rank);
     case S32:
-      return LiteralToCudnnTensor<S32, int>(hlo, graph);
+      return LiteralToCudnnTensor<S32, int>(hlo, graph, rank);
     default:
       VLOG(3) << "Unsupported constant type: "
               << PrimitiveType_Name(constant_type);
@@ -783,10 +787,21 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       }
     } else if (HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kBitcast,
                                 HloOpcode::kTranspose, HloOpcode::kCopy,
-                                HloOpcode::kBroadcast, HloOpcode::kSlice>(
-                   hlo)) {
+                                HloOpcode::kSlice>(hlo)) {
       // All these are accounted for separately as transformations of strides.
       hlo_to_cudnn[hlo] = operand(0);
+    } else if (HloPredicateIsOp<HloOpcode::kBroadcast>(hlo)) {
+      if (hlo->operand(0)->opcode() == HloOpcode::kConstant) {
+        if (const auto const_tensor = HandleConstantHloToCudnnGraph(
+                *hlo->operand(0), graph, hlo->shape().dimensions().size());
+            const_tensor.has_value()) {
+          hlo_to_cudnn[hlo] = const_tensor.value();
+        } else {
+          return std::nullopt;
+        }
+      } else {
+        hlo_to_cudnn[hlo] = operand(0);
+      }
     } else if (hlo->IsElementwise()) {
       const auto compute_dtype =
           GetComputeDataType(hlo->shape().element_type());

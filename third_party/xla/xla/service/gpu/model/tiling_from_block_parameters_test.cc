@@ -71,6 +71,13 @@ class TilingFromBlockParametersTest : public HloHardwareIndependentTestBase {
     return std::nullopt;
   }
 
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(false);
+    return debug_options;
+  }
+
   mlir::MLIRContext mlir_context_;
 };
 
@@ -203,9 +210,16 @@ class GetTileTilingSpaceConcreteSizesTest
         BlockLevelParameters::FromBlockLevelFusionConfig(
             backend_config.fusion_backend_config().block_level_fusion_config());
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
-    auto tiling_space =
-        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    ASSIGN_OR_RETURN(auto tiling_space, experimental::TilingSpace::Create(
+                                            *fusion_adaptor, &mlir_context_));
     return GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters);
+  }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(false);
+    return debug_options;
   }
 
   mlir::MLIRContext mlir_context_;

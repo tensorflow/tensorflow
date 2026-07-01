@@ -63,6 +63,15 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
     CollectiveMemory* collective_memory,
     std::vector<se::Stream*> additional_compute_streams,
     ExecutionScopedState* execution_scoped_state) {
+  const gpu::GpuExecutableRunOptions* gpu_opts =
+      run_options.run_options().gpu_executable_run_options();
+
+  bool enable_mock_collectives =
+      gpu_opts ? gpu_opts->enable_mock_collectives() : false;
+
+  uint64_t rng_seed =
+      static_cast<uint64_t>(run_options.run_options().rng_seed());
+
   return ExecuteParams(&buffer_allocations, stream, command_buffer_trace_stream,
                        collective_params, collective_cliques, collective_memory,
                        run_options.run_options().device_to_host_stream(),
@@ -71,13 +80,8 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                        run_options.run_options().recv_device_memory_function(),
                        run_options.run_options().ffi_execution_context(),
                        additional_compute_streams, execution_scoped_state,
-                       run_options.run_options().gpu_executable_run_options()
-                           ? run_options.run_options()
-                                 .gpu_executable_run_options()
-                                 ->enable_mock_collectives()
-                           : false,
-                       run_options.run_options().rng_seed(),
-                       run_options.run_options().run_id().ToInt());
+                       enable_mock_collectives,
+                       run_options.run_options().run_id(), rng_seed);
 }
 
 Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
@@ -95,8 +99,8 @@ Thunk::ExecuteParams Thunk::ExecuteParams::WithComputeStream(
                        device_to_host_stream, host_to_device_stream,
                        send_device_memory_function, recv_device_memory_function,
                        ffi_execution_context, additional_compute_streams,
-                       execution_scoped_state, mock_collectives, execution_id,
-                       rng_seed);
+                       execution_scoped_state, mock_collectives,
+                       RunId(execution_id), rng_seed);
 }
 
 Thunk::ExecuteParams::ExecuteParams(
@@ -110,7 +114,7 @@ Thunk::ExecuteParams::ExecuteParams(
     const ffi::ExecutionContext* ffi_execution_context,
     std::vector<se::Stream*> additional_compute_streams,
     ExecutionScopedState* execution_scoped_state, bool mock_collectives,
-    int64_t execution_id, uint64_t rng_seed)
+    RunId execution_id, uint64_t rng_seed)
     : buffer_allocations(buffer_allocations),
       stream(stream),
       command_buffer_trace_stream(command_buffer_trace_stream),
@@ -125,7 +129,7 @@ Thunk::ExecuteParams::ExecuteParams(
       additional_compute_streams(additional_compute_streams),
       execution_scoped_state(execution_scoped_state),
       mock_collectives(mock_collectives),
-      execution_id(execution_id),
+      execution_id(execution_id.ToInt()),
       rng_seed(rng_seed) {}
 
 //===----------------------------------------------------------------------===//
@@ -499,6 +503,13 @@ static std::optional<int64_t> NextDep(
 
 absl::Status ThunkSequence::WalkNested(Thunk::Walker callback) {
   for (auto& thunk : *this) {
+    RETURN_IF_ERROR(thunk->Walk(callback));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ThunkSequence::WalkNested(Thunk::ConstWalker callback) const {
+  for (const auto& thunk : *this) {
     RETURN_IF_ERROR(thunk->Walk(callback));
   }
   return absl::OkStatus();

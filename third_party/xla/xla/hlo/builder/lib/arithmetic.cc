@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -112,7 +111,7 @@ XlaOp Any(XlaOp predicates) {
     ASSIGN_OR_RETURN(const Shape& predicates_shape,
                      builder->GetShape(predicates));
     std::vector<int64_t> all_dimensions(predicates_shape.dimensions().size());
-    std::iota(all_dimensions.begin(), all_dimensions.end(), 0);
+    absl::c_iota(all_dimensions, 0);
     return Reduce(predicates, f, logical_or, all_dimensions);
   });
 }

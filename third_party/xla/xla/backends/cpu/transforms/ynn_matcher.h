@@ -23,10 +23,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/backends/cpu/transforms/library_fusion_kinds.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
 #include "xla/backends/cpu/ynn_support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla::cpu {
@@ -46,7 +48,9 @@ class YnnMatcher : public LibraryMatcher {
               HloOpcode::kDot,          HloOpcode::kReduce,
               HloOpcode::kReduceWindow, HloOpcode::kConstant,
               HloOpcode::kConvolution,  HloOpcode::kReshape,
-              HloOpcode::kBitcast};
+              HloOpcode::kBitcast,      HloOpcode::kBroadcast,
+              HloOpcode::kTranspose,    HloOpcode::kPad,
+              HloOpcode::kIota};
           for (const auto& [op, _] : GetYnnUnaryOpMap()) {
             supported_ops.insert(op);
           }
@@ -60,32 +64,44 @@ class YnnMatcher : public LibraryMatcher {
 
   // Returns true if the HLO instruction is supported by the library.
   absl::StatusOr<bool> IsOpSupported(const HloInstruction* instr) override {
+    if (instr->IsConstant()) {
+      return IsConstantSupportedByYnn(instr);
+    }
+    if (instr->opcode() == HloOpcode::kIota) {
+      return IsIotaSupportedByYnn(instr);
+    }
+    if (instr->opcode() == HloOpcode::kReshape) {
+      return IsReshapeOpSupportedByYnn(instr);
+    }
+    if (instr->opcode() == HloOpcode::kBitcast) {
+      return IsBitcastOpSupportedByYnn(instr);
+    }
+    if (instr->opcode() == HloOpcode::kBroadcast) {
+      return IsBroadcastOpSupportedByYnn(instr);
+    }
+    if (instr->opcode() == HloOpcode::kTranspose) {
+      return IsTransposeOpSupportedByYnn(instr);
+    }
+    if (instr->opcode() == HloOpcode::kPad) {
+      return IsPadOpSupportedByYnn(instr);
+    }
+    if (!IsInstructionPreferredByYnn(instr)) {
+      // TODO: It might make sense sometimes that even though an instruction is
+      // not preferred by YNNPACK, that we should still fuse it, if it lies
+      // between two other fusions that are preferred. While it is currently
+      // sometimes an advantage, it is also sometimes a regression, so for now,
+      // we require every instruction to be preferred by YNNPACK.
+      return false;
+    }
     if (instr->opcode() == HloOpcode::kDot) {
       return IsDotSupportedByYnn(instr);
     }
     if (instr->opcode() == HloOpcode::kReduce ||
         instr->opcode() == HloOpcode::kReduceWindow) {
-      return IsReduceLikeOpOffloadedToYnn(instr);
+      return IsReduceLikeOpSupportedByYnn(instr);
     }
     if (instr->opcode() == HloOpcode::kConvolution) {
       return IsConvolutionOpSupportedByYnn(instr);
-    }
-    if (instr->IsConstant()) {
-      return IsConstantSupportedByYnn(instr);
-    }
-    // TODO(b/441837668): Need to get the reduction performance right before
-    // enabling fusions. Fusions make performance analysis quite challenging.
-    if (fuse_reduce_) {
-      if (instr->opcode() == HloOpcode::kReshape) {
-        return IsReshapeOpSupportedByYnn(instr);
-      }
-      if (instr->opcode() == HloOpcode::kBitcast) {
-        return IsBitcastOpSupportedByYnn(instr);
-      }
-      if (instr->opcode() == HloOpcode::kConvert) {
-        return IsElementwiseOpSupportedByYnn(instr);
-      }
-      return false;
     }
     if (instr->IsElementwise()) {
       return IsElementwiseOpSupportedByYnn(instr);
@@ -97,6 +113,9 @@ class YnnMatcher : public LibraryMatcher {
   // instruction. We control the instructions that can start a fusion with the
   // `--xla_cpu_experimental_ynn_fusion_type` flag.
   bool ShouldCreateFusion(const HloInstruction* instr) override {
+    if (!IsInstructionPreferredByYnn(instr)) {
+      return false;
+    }
     if (fuse_dot_ && instr->opcode() == HloOpcode::kDot) {
       return true;
     }

@@ -343,18 +343,29 @@ absl::StatusOr<bool> DotAlgorithmRewriter::RunImpl(
         continue;
       }
       auto algorithm = instruction->precision_config().algorithm();
+      auto need_to_simulate_tpu_precision = [&]() -> bool {
+        if (!default_to_bf16) {
+          return false;  // Default to BF16 is disabled by flag.
+        }
+        if (instruction->shape().element_type() != PrimitiveType::F32) {
+          return false;  // Accumulator type is not F32.
+        }
+        if (instruction->operand(0)->shape().element_type() !=
+                PrimitiveType::F32 ||
+            instruction->operand(1)->shape().element_type() !=
+                PrimitiveType::F32) {
+          return false;  // Operands are not F32.
+        }
+        for (int p : instruction->precision_config().operand_precision()) {
+          if (p != PrecisionConfig::DEFAULT) {
+            return false;  // Non-default precision is set.
+          }
+        }
+        return true;  // All conditions met, need to simulate TPU precision.
+      };
       switch (algorithm) {
         case PrecisionConfig::ALG_UNSET:
-          if (!default_to_bf16) {
-            break;
-          }
-          if (instruction->shape().element_type() != PrimitiveType::F32) {
-            break;
-          }
-          if (instruction->operand(0)->shape().element_type() !=
-                  PrimitiveType::F32 ||
-              instruction->operand(1)->shape().element_type() !=
-                  PrimitiveType::F32) {
+          if (!need_to_simulate_tpu_precision()) {
             break;
           }
           [[fallthrough]];

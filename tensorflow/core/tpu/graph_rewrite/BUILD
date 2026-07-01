@@ -232,11 +232,10 @@ cc_library(
         "@xla//xla:xla_proto_cc",
         "@xla//xla/hlo/builder:sharding_builder",
         "@xla//xla/service:computation_placer",
-        "@xla//xla/stream_executor/tpu:c_api_decl",
-        "@xla//xla/stream_executor/tpu:tpu_api",
-        "@xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
-        "@xla//xla/stream_executor/tpu:tpu_platform_interface",
-        "@xla//xla/stream_executor/tpu:tpu_topology_external",
+        "@xla//xla/tpu:c_api_decl",
+        "@xla//xla/tpu:tpu_api",
+        "@xla//xla/tpu:tpu_ops_c_api_hdrs",
+        "@xla//xla/tpu:tpu_topology_external",
         "@xla//xla/tsl/platform:logging",
     ] + if_static(
         [
@@ -361,7 +360,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@xla//xla:status_macros",
-        "@xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
+        "@xla//xla/tpu:tpu_ops_c_api_hdrs",
         "@xla//xla/tsl/platform:logging",
     ],
 )

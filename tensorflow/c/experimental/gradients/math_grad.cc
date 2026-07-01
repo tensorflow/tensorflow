@@ -14,11 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 
+#include <string>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
-#include "tensorflow/c/experimental/ops/nn_ops.h"
+#include "xla/tsl/platform/errors.h"
+#include "tensorflow/core/common_runtime/eager/attr_builder.h"
+#include "tensorflow/core/framework/types.h"
 
 using std::vector;
 using tensorflow::ops::AddV2;
@@ -64,7 +74,7 @@ class AddGradientFunction : public GradientFunction {
     grad_inputs[1]->Ref();
     return absl::OkStatus();
   }
-  ~AddGradientFunction() override {}
+  ~AddGradientFunction() override = default;
 };
 
 class ExpGradientFunction : public GradientFunction {
@@ -85,7 +95,7 @@ class ExpGradientFunction : public GradientFunction {
         Mul(ctx, conj_output, grad_outputs[0], &grad_inputs[0], name.c_str()));
     return absl::OkStatus();
   }
-  ~ExpGradientFunction() override {}
+  ~ExpGradientFunction() override = default;
 
  private:
   AbstractTensorHandlePtr exp_;
@@ -104,7 +114,7 @@ class SqrtGradientFunction : public GradientFunction {
                                 &grad_inputs[0], name.c_str()));
     return absl::OkStatus();
   }
-  ~SqrtGradientFunction() override {}
+  ~SqrtGradientFunction() override = default;
 
  private:
   AbstractTensorHandlePtr sqrt_;
@@ -163,36 +173,52 @@ class MatMulGradientFunction : public GradientFunction {
     if (!t_a && !t_b) {
       TF_RETURN_IF_ERROR(MatMul(ctx, upstream_grad, B.get(), &matmul_A_output,
                                 /*transpose_a = */ false,
-                                /*transpose_b = */ true, name_grad_A.c_str()));
+                                /*transpose_b = */ true,
+                                /*grad_a = */ false, /*grad_b = */ false,
+                                name_grad_A.c_str()));
 
       TF_RETURN_IF_ERROR(MatMul(ctx, A.get(), upstream_grad, &matmul_B_output,
                                 /*transpose_a = */ true,
-                                /*transpose_b = */ false, name_grad_B.c_str()));
+                                /*transpose_b = */ false,
+                                /*grad_a = */ false, /*grad_b = */ false,
+                                name_grad_B.c_str()));
     } else if (!t_a && t_b) {
       TF_RETURN_IF_ERROR(MatMul(ctx, upstream_grad, B.get(), &matmul_A_output,
                                 /*transpose_a = */ false,
-                                /*transpose_b = */ false, name_grad_A.c_str()));
+                                /*transpose_b = */ false,
+                                /*grad_a = */ false, /*grad_b = */ false,
+                                name_grad_A.c_str()));
 
       TF_RETURN_IF_ERROR(MatMul(ctx, upstream_grad, A.get(), &matmul_B_output,
                                 /*transpose_a = */ true,
-                                /*transpose_b = */ false, name_grad_B.c_str()));
+                                /*transpose_b = */ false,
+                                /*grad_a = */ false, /*grad_b = */ false,
+                                name_grad_B.c_str()));
 
     } else if (t_a && !t_b) {
       TF_RETURN_IF_ERROR(MatMul(ctx, B.get(), upstream_grad, &matmul_A_output,
                                 /*transpose_a = */ false,
-                                /*transpose_b = */ true, name_grad_A.c_str()));
+                                /*transpose_b = */ true,
+                                /*grad_a = */ false, /*grad_b = */ false,
+                                name_grad_A.c_str()));
 
       TF_RETURN_IF_ERROR(MatMul(ctx, A.get(), upstream_grad, &matmul_B_output,
                                 /*transpose_a = */ false,
-                                /*transpose_b = */ false, name_grad_B.c_str()));
+                                /*transpose_b = */ false,
+                                /*grad_a = */ false, /*grad_b = */ false,
+                                name_grad_B.c_str()));
     } else {  // t_a && t_b
       TF_RETURN_IF_ERROR(MatMul(ctx, B.get(), upstream_grad, &matmul_A_output,
                                 /*transpose_a = */ true,
-                                /*transpose_b = */ true, name_grad_A.c_str()));
+                                /*transpose_b = */ true,
+                                /*grad_a = */ false, /*grad_b = */ false,
+                                name_grad_A.c_str()));
 
       TF_RETURN_IF_ERROR(MatMul(ctx, upstream_grad, A.get(), &matmul_B_output,
                                 /*transpose_a = */ true,
-                                /*transpose_b = */ true, name_grad_B.c_str()));
+                                /*transpose_b = */ true,
+                                /*grad_a = */ false, /*grad_b = */ false,
+                                name_grad_B.c_str()));
     }
 
     // Gradient for A
@@ -232,7 +258,7 @@ class NegGradientFunction : public GradientFunction {
         ops::Neg(ctx, grad_outputs[0], &grad_inputs[0], name.c_str()));
     return absl::OkStatus();
   }
-  ~NegGradientFunction() override {}
+  ~NegGradientFunction() override = default;
 };
 
 class SubGradientFunction : public GradientFunction {
@@ -260,7 +286,7 @@ class SubGradientFunction : public GradientFunction {
 
     return absl::OkStatus();
   }
-  ~SubGradientFunction() override {}
+  ~SubGradientFunction() override = default;
 };
 
 class MulGradientFunction : public GradientFunction {
