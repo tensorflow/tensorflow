@@ -3438,6 +3438,7 @@ def tf_python_pybind_static_deps(testonly = False):
         "@local_config_tensorrt//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@nccl_archive//:__subpackages__",
+        "@onednn//:__subpackages__",
         "@onednn_async//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",

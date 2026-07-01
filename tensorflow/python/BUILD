@@ -753,6 +753,7 @@ pywrap_tensorflow_macro(
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@nccl_archive//:__subpackages__",
         "@nvtx_archive//:__subpackages__",
+        "@onednn//:__subpackages__",
         "@onednn_async//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
