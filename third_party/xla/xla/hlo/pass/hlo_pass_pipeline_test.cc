@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -36,17 +37,52 @@ limitations under the License.
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::IsEmpty;
+using ::testing::Not;
 using ::testing::SizeIs;
 using ::testing::StrEq;
 
 using HloPassPipelineTest = HloHardwareIndependentTestBase;
+
+// A module pass which returns true (saying it changed the module) without
+// actually modifying any instructions or changing the module fingerprint.
+class MockNoOpChangedPass : public HloModulePass {
+  absl::string_view name() const override { return "mock-no-op-changed"; }
+
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
+    return true;
+  }
+};
+
+// A module pass which actually modifies the computation graph, changing the
+// module fingerprint.
+class MockRealChangePass : public HloModulePass {
+  absl::string_view name() const override { return "mock-real-change"; }
+
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
+    HloComputation* comp = module->entry_computation();
+    HloInstruction* old_root = comp->root_instruction();
+    HloInstruction* new_root = comp->AddInstruction(HloInstruction::CreateUnary(
+        old_root->shape(), HloOpcode::kNegate, old_root));
+    comp->set_root_instruction(new_root);
+    return true;
+  }
+};
 
 // A module pass which renames instructions named 'foo' to 'bar'.
 class FooToBarModulePass : public HloModulePass {
@@ -516,6 +552,69 @@ ENTRY main {
 
     EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
               "foo_A2_B_C_D");
+  }
+}
+
+TEST_F(HloPassPipelineTest, DumpFiltering_SuppressesNoOpPassesUnderWildcard) {
+  tsl::Env* env = tsl::Env::Default();
+  std::string dump_dir;
+  ASSERT_TRUE(env->LocalTempFilename(&dump_dir));
+
+  auto create_module = [this]() {
+    const char* module_str = R"(
+      HloModule m
+      ENTRY test {
+        ROOT x = s32[] constant(0)
+      }
+    )";
+    return ParseAndReturnVerifiedModule(module_str);
+  };
+
+  // 1. TEST WILDCARD (.*): Verify that when re=.*, MockNoOpChangedPass is
+  // suppressed because the fingerprint did not change, while MockRealChangePass
+  // is dumped.
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> m, create_module());
+    DebugOptions opts = GetDebugOptionsFromFlags();
+    opts.set_xla_dump_to(dump_dir);
+    opts.set_xla_dump_hlo_pass_re(".*");
+    m->mutable_config().set_debug_options(opts);
+
+    HloPassPipeline pipeline(TestName());
+    pipeline.AddPass<MockNoOpChangedPass>();
+    pipeline.AddPass<MockRealChangePass>();
+    ASSERT_OK(pipeline.Run(m.get()).status());
+
+    std::vector<std::string> matches;
+    ASSERT_OK(env->GetMatchingPaths(
+        tsl::io::JoinPath(dump_dir, "*mock-no-op-changed*"), &matches));
+    EXPECT_THAT(matches, IsEmpty())
+        << "No-op pass should be suppressed when re=.*";
+
+    ASSERT_OK(env->GetMatchingPaths(
+        tsl::io::JoinPath(dump_dir, "*mock-real-change*"), &matches));
+    EXPECT_THAT(matches, Not(IsEmpty()))
+        << "Real changes must still dump when re=.*";
+  }
+
+  // 2. TEST EXPLICIT REGEX: Verify developers debugging MockNoOpChangedPass
+  // explicitly by name still get dumps!
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> m, create_module());
+    DebugOptions opts = GetDebugOptionsFromFlags();
+    opts.set_xla_dump_to(dump_dir);
+    opts.set_xla_dump_hlo_pass_re("mock-no-op-changed");
+    m->mutable_config().set_debug_options(opts);
+
+    HloPassPipeline pipeline(TestName());
+    pipeline.AddPass<MockNoOpChangedPass>();
+    ASSERT_OK(pipeline.Run(m.get()).status());
+
+    std::vector<std::string> matches;
+    ASSERT_OK(env->GetMatchingPaths(
+        tsl::io::JoinPath(dump_dir, "*mock-no-op-changed*"), &matches));
+    EXPECT_THAT(matches, Not(IsEmpty()))
+        << "No-op pass MUST dump when explicitly requested by name";
   }
 }
 
