@@ -466,13 +466,13 @@ class UnicodeDecodeTest(test_util.TensorFlowTestCase,
   def testDecodeWithOffsetsInt32Splits(self):
     """Verifies that Tsplits=dtypes.int32 processes correctly without type mismatch."""
     input_data = constant_op.constant([b"hello", b"world"], dtype=dtypes.string)
-    
+
     result = gen_string_ops.unicode_decode_with_offsets(
-      input=input_data,
-      input_encoding="UTF-8",
-      Tsplits=dtypes.int32
+        input=input_data,
+        input_encoding="UTF-8",
+        Tsplits=dtypes.int32
     )
-    
+
     self.assertEqual(result.row_splits.dtype, dtypes.int32)
     self.assertEqual(result.char_to_byte_starts.dtype, dtypes.int64)
     self.assertAllEqual(result.row_splits, [0, 5, 10])

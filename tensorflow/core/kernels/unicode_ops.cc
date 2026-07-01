@@ -372,7 +372,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
   }
 
   void Decode(OpKernelContext* ctx, std::vector<UChar32>* char_values,
-              std::vector<SPLITS_TYPE>* offset_values, int* current_offset,
+              std::vector<int64_t>* offset_values, int64_t* current_offset,
               SPLITS_TYPE* next_row_split, UChar32 char_value, int char_length,
               bool found_any_format_error) {
     if (error_options_.error_on_malformatting && found_any_format_error) {
@@ -416,7 +416,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
                     input_encoding_));
 
     std::vector<UChar32> char_values;
-    std::vector<SPLITS_TYPE> offset_values;
+    std::vector<int64_t> offset_values;
 
     Tensor* output_row_splits;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("row_splits",
@@ -433,7 +433,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
       // the fields needed to construct a RaggedTensor.
       out_row_splits(row_split_index) = next_row_split;
       row_split_index++;
-      int current_offset = 0;
+      int64_t current_offset = 0;
       IterateUnicodeString(
           input, input_encoder.converter_,
           std::bind(&UnicodeDecodeBaseOp::Decode, this, ctx, &char_values,
