@@ -4595,5 +4595,63 @@ class TruePositivesAtThresholdsTest(test.TestCase):
       self.assertAllEqual((111.0, 37.0, 0.0), tp)
 
 
+class MeanIoUUnknownRankTest(test.TestCase):
+  """Regression tests for MeanIoU with unknown-rank inputs inside tf.function.
+
+  MeanIoU.update_state compared shape.ndims directly to an integer.
+  When a tf.function is traced with input_signature using TensorSpec(shape=None),
+  ndims is None at trace time, causing a TypeError at graph construction.
+  """
+
+  def test_update_state_unknown_rank_does_not_crash(self):
+    """MeanIoU must not crash when traced with fully-dynamic (rank-unknown) inputs."""
+    from tensorflow.python.keras import metrics as keras_metrics  # pylint: disable=g-import-not-at-top
+    from tensorflow.python.eager import def_function  # pylint: disable=g-import-not-at-top
+    from tensorflow.python.framework import tensor_spec  # pylint: disable=g-import-not-at-top
+    from tensorflow.python.framework import dtypes  # pylint: disable=g-import-not-at-top
+
+    metric = keras_metrics.MeanIoU(num_classes=3)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
+    ])
+    def update(y_true, y_pred):
+      metric.update_state(y_true, y_pred)
+      return metric.result()
+
+    # All-correct predictions: IoU per class = 1.0, mean = 1.0.
+    result = update(
+        constant_op.constant([0.0, 1.0, 2.0]),
+        constant_op.constant([0.0, 1.0, 2.0]),
+    )
+    self.assertAllClose(result, 1.0)
+
+  def test_update_state_unknown_rank_with_sample_weight(self):
+    """sample_weight with unknown rank must not crash during tracing."""
+    from tensorflow.python.keras import metrics as keras_metrics  # pylint: disable=g-import-not-at-top
+    from tensorflow.python.eager import def_function  # pylint: disable=g-import-not-at-top
+    from tensorflow.python.framework import tensor_spec  # pylint: disable=g-import-not-at-top
+    from tensorflow.python.framework import dtypes  # pylint: disable=g-import-not-at-top
+
+    metric = keras_metrics.MeanIoU(num_classes=2)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
+    ])
+    def update(y_true, y_pred, weights):
+      metric.update_state(y_true, y_pred, sample_weight=weights)
+      return metric.result()
+
+    result = update(
+        constant_op.constant([0.0, 1.0, 0.0, 1.0]),
+        constant_op.constant([0.0, 1.0, 0.0, 1.0]),
+        constant_op.constant([1.0, 1.0, 1.0, 1.0]),
+    )
+    self.assertAllClose(result, 1.0)
+
+
 if __name__ == '__main__':
   test.main()
