@@ -45,7 +45,9 @@ const Metadata* GetSignatureDefMetadata(const Model* model) {
   }
   for (const Metadata* metadata : *model->metadata()) {
     if (metadata && metadata->name() != nullptr &&
-        metadata->name()->string_view() == kSignatureDefsMetadataName) {
+        absl::string_view(metadata->name()->c_str(),
+                          metadata->name()->size()) ==
+            kSignatureDefsMetadataName) {
       return metadata;
     }
   }
