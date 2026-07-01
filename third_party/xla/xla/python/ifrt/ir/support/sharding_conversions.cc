@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/array.h"
@@ -154,8 +155,8 @@ absl::StatusOr<ShardingInfo> GetShardingInfo(
   }
 
   // In this branch, there are both replicated and unreduced axes.
-  TF_ASSIGN_OR_RETURN(std::vector<SubDimInfo> sub_dim_info,
-                      GetOrderedSubDims(dims, reshape_dims, permutation));
+  ASSIGN_OR_RETURN(std::vector<SubDimInfo> sub_dim_info,
+                   GetOrderedSubDims(dims, reshape_dims, permutation));
 
   // Update the axis sizes, possibly re-expanding collapsed axes.
   std::vector<int64_t> new_reshape_dims;
@@ -246,8 +247,7 @@ absl::StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param) {
     }
   }
   op_sharding.set_type(OpSharding::OTHER);
-  TF_ASSIGN_OR_RETURN(ShardingInfo sharding_info,
-                      GetShardingInfo(sharding_param));
+  ASSIGN_OR_RETURN(ShardingInfo sharding_info, GetShardingInfo(sharding_param));
 
   // Populate tile_assignment_dimensions.
   auto* tile_assignment_dims = op_sharding.mutable_tile_assignment_dimensions();
@@ -288,8 +288,7 @@ absl::StatusOr<xla::HloSharding> ToHloSharding(
       return xla::HloSharding::Unreduced();
     }
   }
-  TF_ASSIGN_OR_RETURN(ShardingInfo sharding_info,
-                      GetShardingInfo(sharding_param));
+  ASSIGN_OR_RETURN(ShardingInfo sharding_info, GetShardingInfo(sharding_param));
 
   if (logical_device_ids.has_value() &&
       logical_device_ids->size() != sharding_param.NumDevices()) {
@@ -418,7 +417,7 @@ absl::StatusOr<ShardingParam> ToShardingParam(
       minor_to_major.permutation.push_back(num_axis - axis_id - 1);
     }
   } else {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::vector<SubDimInfo> subdim_info,
         GetOrderedSubDims(tile_assignment.iota()->dims(),
                           tile_assignment.iota()->reshape_dims(),

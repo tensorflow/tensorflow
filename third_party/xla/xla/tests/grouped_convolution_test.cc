@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
@@ -231,7 +232,7 @@ std::string BuildHloTextGroupedConvolution2D(
 }
 
 class GroupedConvolution2DTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<
           ::testing::tuple<GroupedConvolution2DSpec, bool>> {};
 
@@ -245,7 +246,7 @@ TEST_P(GroupedConvolution2DTest, DoIt) {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0.01, 0.01},
                             [](HloModule* module) -> absl::Status {
                               BFloat16MixedPrecisionRemoval remover;
-                              TF_RETURN_IF_ERROR(remover.Run(module).status());
+                              RETURN_IF_ERROR(remover.Run(module).status());
                               Despecializer despecializer;
                               return despecializer.Run(module).status();
                             }));
@@ -257,8 +258,7 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Bool()),
     GroupedConvolution2DTestDataToString);
 
-using GroupedConvolutionTest =
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using GroupedConvolutionTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(GroupedConvolutionTest, BackwardInputConvolution) {
   auto module = ParseAndReturnVerifiedModule(R"(

@@ -106,8 +106,8 @@ class GetMinibatchSplitsWithPhysicalReplicaOp : public OpKernel {
                                  int64_t max_ids_per_partition,
                                  int64_t max_unique_ids_per_partition,
                                  int32_t dropped_id_count) {}
-  virtual inline int32_t CalculateBucketIdWithHashing(int32_t col_id,
-                                                      int32_t num_buckets) {
+  virtual int32_t CalculateBucketIdWithHashing(int32_t col_id,
+                                               int32_t num_buckets) {
     // TODO(pineapplejuice233): Add a proper hashing function here.
     return col_id % num_buckets;
   }

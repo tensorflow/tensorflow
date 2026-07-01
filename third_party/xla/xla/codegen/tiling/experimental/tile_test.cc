@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tile.h"
 
 #include <cstdint>
+#include <memory>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -35,20 +36,21 @@ class TileTest : public HloHardwareIndependentTestBase {
   mlir::MLIRContext mlir_context_;
 };
 
-TilingSpace GetFakeTilingSpace(int64_t num_dims, int64_t num_rt_vars) {
-  TilingSpace tiling_space;
+std::unique_ptr<TilingSpace> GetFakeTilingSpace(int64_t num_dims,
+                                                int64_t num_rt_vars) {
+  auto tiling_space = std::make_unique<TilingSpace>();
   for (int64_t i = 0; i < num_dims; ++i) {
-    tiling_space.AppendDimension(nullptr, i, 1,
-                                 TilingSpace::DimensionSemantics::kParallel);
+    tiling_space->AppendDimension(nullptr, i, 1,
+                                  TilingSpace::DimensionSemantics::kParallel);
   }
   for (int64_t i = 0; i < num_rt_vars; ++i) {
-    tiling_space.AppendRTVar(nullptr, i, nullptr, 1);
+    tiling_space->AppendRTVar(nullptr, i, nullptr, 1);
   }
   return tiling_space;
 }
 
 TEST_F(TileTest, StringFormat) {
-  TilingSpace tiling_space =
+  std::unique_ptr<TilingSpace> tiling_space =
       GetFakeTilingSpace(/*num_dims=*/2, /*num_rt_vars=*/1);
 
   SymbolicExpr tid0 = CreateDimExpr(0, &mlir_context_);
@@ -60,7 +62,7 @@ TEST_F(TileTest, StringFormat) {
   auto c16 = CreateSymbolicConstant(16, &mlir_context_);
   auto c32 = CreateSymbolicConstant(32, &mlir_context_);
 
-  Tile tile{tiling_space,
+  Tile tile{*tiling_space,
             {DimTile{tid0 * ts0, ts0, c1, c16},
              DimTile{rt + tid1 * ts1, ts1, c1, c32}}};
 

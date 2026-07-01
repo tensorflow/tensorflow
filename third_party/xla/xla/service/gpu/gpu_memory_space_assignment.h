@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/xla.pb.h"
 
@@ -60,10 +61,15 @@ absl::StatusOr<MemorySpaceColor> AsMemorySpaceColor(int64_t memory_space);
 absl::StatusOr<std::vector<std::pair<int64_t, MemorySpaceColor>>>
 ParseIndexMemorySpacePairs(absl::string_view str);
 
+// Returns true if the instruction's collectives mode requires symmetric
+// (collective) memory. Device-initiated and one-sided collectives need all
+// buffers registered with the collective runtime ahead of time.
+bool RequiresCollectiveSymmetricMemorySpace(const HloInstruction* inst);
+
 // Creates a buffer colorer that assigns memory space colors to HLO values
 // during buffer assignment. It handles:
 //  - Collective operations (all-reduce, all-gather, etc.) → kCollective
-//  - Mosaic with NVSHMEM/multimem → kCollective
+//  - Mosaic with multimem → kCollective
 //  - Custom call `operands_memory_spaces` / `results_memory_spaces` frontend
 //    attributes → requested memory space
 //  - Everything else → kDefault

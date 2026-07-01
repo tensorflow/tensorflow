@@ -1,287 +1,303 @@
-diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
---- stablehlo/stablehlo/dialect/ChloOps.cpp
-+++ stablehlo/stablehlo/dialect/ChloOps.cpp
-@@ -805,6 +805,9 @@
-   // output dimension size will be dynamic as well.
-   int64_t dim = adaptor.getDimension();
-   int64_t dimSize = ShapedType::kDynamic;
-+  if (adaptor.getScanDimSize().has_value()) {
-+    dimSize = adaptor.getScanDimSize().value();
-+  }
-   for (auto [i, type] : llvm::enumerate(adaptor.getInputs().getTypes())) {
-     auto inputType = dyn_cast<RankedTensorType>(type);
-     if (!inputType) {
-@@ -814,9 +817,8 @@
-       return emitOptionalError(location, "scan dimension of operand ", i,
-                                " is out of bounds");
-     }
--    dimSize = inputType.getDimSize(dim);
-     if (dimSize == ShapedType::kDynamic) {
--      break;
-+      dimSize = inputType.getDimSize(dim);
-     }
-   }
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -349,6 +349,7 @@
+     deps = [
+         ":base",
+         ":interpreter_ops_inc_gen",
++        ":reference_configuration",
+         ":reference_numpy",
+         ":reference_ops",
+         ":reference_process",
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir b/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+@@ -815,7 +815,6 @@
+ // -----
  
-@@ -837,34 +839,6 @@
-   return success();
- }
+ func.func @pad_interior(%arg0: tensor<12x4xui32>, %arg1: tensor<ui32>) -> tensor<29x15xui32> {
+-  %0 = arith.constant dense<0> : tensor<ui32>
+   %1 = "stablehlo.pad"(%arg0, %arg1) {
+     edge_padding_high = array<i64: 2, 3>,
+     edge_padding_low = array<i64: 4, 5>,
+@@ -836,7 +835,6 @@
+ // -----
  
--LogicalResult ScanOp::reifyReturnTypeShapes(
--    OpBuilder& builder, ValueRange operands,
--    SmallVectorImpl<Value>& reifiedReturnShapes) {
--  ScanOp::Adaptor adaptor(operands, getOperation()->getAttrDictionary(),
--                          getOperation()->getPropertiesStorage());
--  auto inputs = adaptor.getInputs();
--  size_t k = adaptor.getInits().size();
--  size_t numResults = getOperation()->getNumResults();
--  size_t numOutputs = numResults - k;
--
--  for (size_t i = 0; i < numOutputs; ++i) {
--    size_t inputIdx = i;
--    Value inputVal = (inputIdx < inputs.size()) ? inputs[inputIdx] : inputs[0];
--    if (failed(hlo::deriveShapeFromOperand(&builder, getOperation(), inputVal,
--                                           &reifiedReturnShapes))) {
--      return failure();
--    }
--  }
--
--  for (auto init : adaptor.getInits()) {
--    if (failed(hlo::deriveShapeFromOperand(&builder, getOperation(), init,
--                                           &reifiedReturnShapes))) {
--      return failure();
--    }
--  }
--  return success();
--}
--
- LogicalResult ScanOp::verify() {
-   if (getInputs().empty() && getOutputs().empty()) {
-     return emitOpError() << "at least one of inputs or outputs must be present";
-@@ -873,7 +847,7 @@
-   // Check that the scan dimension is in bounds for all operands. Also check
-   // that all operands have the same scan dimension size.
-   int64_t dim = getDimension();
--  int64_t dimSize = ShapedType::kDynamic;
-+  std::optional<uint64_t> dimSize = getScanDimSize();
-   for (auto [i, type] : llvm::enumerate(getInputs().getTypes())) {
-     auto inputType = dyn_cast<RankedTensorType>(type);
-     if (!inputType) {
-@@ -886,13 +860,11 @@
-     if (inputType.isDynamicDim(dim)) {
-       continue;
-     }
--    dimSize = inputType.getDimSize(dim);
--    if (dimSize != ShapedType::kDynamic &&
--        dimSize != inputType.getDimSize(dim)) {
--      return emitOpError() << "scan dimension size of operand " << i
--                           << " does not match previous operands";
--    }
--    dimSize = inputType.getDimSize(dim);
-+    uint64_t currentDimSize = inputType.getDimSize(dim);
-+    if (dimSize.has_value() && dimSize.value() != currentDimSize) {
-+      return emitOpError() << "invalid scan dimension size of operand " << i;
-+    }
-+    dimSize = currentDimSize;
-   }
- 
-   Block& bodyBlock = getBody().front();
-@@ -936,20 +908,21 @@
-       parser.parseKeyword("inits") ||
-       parser.parseOperandList(inits, OpAsmParser::Delimiter::Paren) ||
-       parser.parseKeyword("dimension") || parser.parseEqual() ||
--      parser.parseInteger(dimension) || parser.parseRegion(*body) ||
--      parser.parseOptionalAttrDict(result.attributes) ||
--      parser.parseColonType(funcType)) {
-+      parser.parseInteger(dimension) ||
-+      parser.parseOptionalAttrDictWithKeyword(result.attributes) ||
-+      parser.parseRegion(*body) || parser.parseColonType(funcType)) {
-     return failure();
-   }
- 
--  size_t numInputs = inputs.size();
--  size_t numCarries = inits.size();
-+  int32_t numInputs = inputs.size();
-+  int32_t numCarries = inits.size();
-+  int32_t numOutputs = funcType.getNumResults() - numCarries;
-   if (funcType.getInputs().size() != numInputs + numCarries) {
-     return parser.emitError(
-         parser.getNameLoc(),
-         "operand types must match the number of inputs and inits");
-   }
--  if (funcType.getResults().size() < numCarries) {
-+  if (numOutputs < 0) {
-     return parser.emitError(
-         parser.getNameLoc(),
-         "not enough result types to cover the required carries");
-@@ -968,13 +941,10 @@
-   Builder& builder = parser.getBuilder();
-   result.addAttribute(ScanOp::getDimensionAttrName(result.name),
-                       builder.getI64IntegerAttr(dimension));
--  result.addAttribute(
--      ScanOp::getOperandSegmentSizeAttr(),
--      builder.getDenseI32ArrayAttr({(int32_t)numInputs, (int32_t)numCarries}));
--  size_t numOutputs = funcType.getNumResults() - numCarries;
--  result.addAttribute(
--      ScanOp::getResultSegmentSizeAttr(),
--      builder.getDenseI32ArrayAttr({(int32_t)numOutputs, (int32_t)numCarries}));
-+  result.addAttribute(ScanOp::getOperandSegmentSizeAttr(),
-+                      builder.getDenseI32ArrayAttr({numInputs, numCarries}));
-+  result.addAttribute(ScanOp::getResultSegmentSizeAttr(),
-+                      builder.getDenseI32ArrayAttr({numOutputs, numCarries}));
- 
-   return success();
- }
-@@ -985,10 +955,12 @@
-   p << ") inits (";
-   p.printOperands(getInits());
-   p << ") dimension=" << getDimension() << " ";
-+  p.printOptionalAttrDictWithKeyword(
-+      getOperation()->getAttrs(),
-+      /*elidedAttrs=*/{"dimension", "operandSegmentSizes",
-+                       "resultSegmentSizes"});
-+  p << " ";
-   p.printRegion(getBody(), /*printEntryBlockArgs=*/true);
--  p.printOptionalAttrDict(getOperation()->getAttrs(),
--                          /*elidedAttrs=*/{"dimension", "operandSegmentSizes",
--                                           "resultSegmentSizes"});
-   p << " : ";
-   p.printFunctionalType(*this);
- }
+ func.func @pad_interior_negative(%arg0: tensor<12x4xui32>, %arg1: tensor<ui32>) -> tensor<25x9xui32> {
+-  %0 = arith.constant dense<0> : tensor<ui32>
+   %1 = "stablehlo.pad"(%arg0, %arg1) {
+     edge_padding_high = array<i64: -2, 3>,
+     edge_padding_low = array<i64: 4, -1>,
 diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
 --- stablehlo/stablehlo/dialect/ChloOps.td
 +++ stablehlo/stablehlo/dialect/ChloOps.td
-@@ -938,7 +938,7 @@
- def CHLO_ScanOp : CHLO_Op<"scan", [
-       AttrSizedOperandSegments,
-       AttrSizedResultSegments,
--      InferTensorTypeWithReify,
-+      InferTensorType,
-       IsolatedFromAbove,
-       OpAsmOpInterface,
-       RecursiveMemoryEffects,
-@@ -961,6 +961,7 @@
-     Variadic<HLO_AnyTensor>:$inputs,
-     Variadic<HLO_AnyTensor>:$inits,
-     ConfinedAttr<I64Attr, [IntNonNegative]>:$dimension,
-+    OptionalAttr<ConfinedAttr<I64Attr, [IntNonNegative]>>:$scan_dim_size,
-     DefaultValuedOptionalAttr<BoolAttr, "false">:$is_reverse,
-     OptionalAttr<BoolAttr>:$is_associative
+@@ -917,13 +917,16 @@
+     values.shape = indices.shape = input.shape[:-1] + [k]
+     ```
+ 
+-    If two elements are equal, the lower-index element appears first.
++    If `is_stable` is true, the sort is stable: if two elements are equal, the
++    lower-index element appears first. If false, the relative order of equal
++    elements is implementation-defined.
+   }];
+ 
+   let arguments = (ins
+     Arg<HLO_AnyTensor, [{1-D or higher with last dimension at least `k`.}]>:$operand,
+     Arg<I64Attr, [{0-D.  Number of top elements to look for along the last dimension (along each
+-row for matrices).}]>:$k
++row for matrices).}]>:$k,
++    DefaultValuedOptionalAttr<BoolAttr, "true">:$is_stable
    );
-diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
---- stablehlo/stablehlo/tests/ops_chlo.mlir
-+++ stablehlo/stablehlo/tests/ops_chlo.mlir
-@@ -423,7 +423,49 @@
- // CHECK-LABEL: func @scan
- func.func @scan(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
-   // CHECK: chlo.scan
--  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 {
-+  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 attributes {} {
-+  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
-+    %2 = stablehlo.add %input0, %carry0 : tensor<3xf32>
-+    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
-+  } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
-+  func.return %0 : tensor<2x3xf32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @scan_explicit_size
-+func.func @scan_explicit_size(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
-+  // CHECK: chlo.scan
-+  // CHECK: scan_dim_size = 2 : i64
-+  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 attributes { scan_dim_size = 2 : i64 } {
-+  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
-+    %2 = stablehlo.add %input0, %carry0 : tensor<3xf32>
-+    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
-+  } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
-+  func.return %0 : tensor<2x3xf32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @scan_is_reverse
-+func.func @scan_is_reverse(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
-+  // CHECK: chlo.scan
-+  // CHECK: is_reverse = true
-+  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 attributes { is_reverse = true } {
-+  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
-+    %2 = stablehlo.add %input0, %carry0 : tensor<3xf32>
-+    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
-+  } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
-+  func.return %0 : tensor<2x3xf32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @scan_is_associative
-+func.func @scan_is_associative(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
-+  // CHECK: chlo.scan
-+  // CHECK: is_associative = true
-+  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 attributes { is_associative = true } {
-   ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
-     %2 = stablehlo.add %input0, %carry0 : tensor<3xf32>
-     stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
-@@ -447,6 +489,18 @@
  
- // -----
+   let results = (outs
+@@ -931,7 +934,7 @@
+     HLO_AnyTensor:$indices);
  
-+func.func @scan_explicit_size_mismatch(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
-+  // expected-error @+1 {{'chlo.scan' op invalid scan dimension size of operand 0}}
-+  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 attributes { scan_dim_size = 3 : i64 } {
-+  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
-+    %2 = stablehlo.add %input0, %carry0 : tensor<3xf32>
-+    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
-+  } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
-+  func.return %0 : tensor<2x3xf32>
-+}
-+
-+// -----
-+
- func.func @scan_size_mismatch(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
-   // expected-error @+1 {{'chlo.scan' op expects 1 arguments in the body, but got 2}}
-   %0 = chlo.scan(%arg0) inits () dimension = 0 {
-diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
---- stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
-+++ stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
-@@ -25,6 +25,7 @@
- #include "llvm/Support/Debug.h"
- #include "llvm/Support/ErrorHandling.h"
- #include "mlir/Dialect/Func/IR/FuncOps.h"
-+#include "mlir/IR/AttrTypeSubElements.h"
- #include "mlir/IR/Attributes.h"
- #include "mlir/IR/BuiltinAttributes.h"
- #include "mlir/IR/BuiltinOps.h"
-@@ -1158,10 +1159,28 @@
+   let assemblyFormat = [{
+-    `(`$operand `,` `k` `=` $k`)` attr-dict `:`
++    `(`$operand `,` `k` `=` $k (`,` `is_stable` `=` $is_stable^)? `)` attr-dict `:`
+     type($operand) `->` `(`type($values)`,` type($indices)`)`
+   }];
+ }
+@@ -1011,4 +1014,3 @@
+ }
+ 
+ #endif  // STABLEHLO_DIALECT_CHLO_OPS
+-
+diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/dialect/Version.cpp
+--- stablehlo/stablehlo/dialect/Version.cpp
++++ stablehlo/stablehlo/dialect/Version.cpp
+@@ -85,7 +85,7 @@
+     case CompatibilityRequirement::WEEK_4:
+       return Version(1, 16, 1);  // WEEK_4 ANCHOR: DO NOT MODIFY
+     case CompatibilityRequirement::WEEK_12:
+-      return Version(1, 13, 8);  // WEEK_12 ANCHOR: DO NOT MODIFY
++      return Version(1, 14, 0);  // WEEK_12 ANCHOR: DO NOT MODIFY
+     case CompatibilityRequirement::MAX:
+       return Version::getMinimumVersion();
    }
+diff --ruN a/stablehlo/stablehlo/reference/Api.cpp b/stablehlo/stablehlo/reference/Api.cpp
+--- stablehlo/stablehlo/reference/Api.cpp
++++ stablehlo/stablehlo/reference/Api.cpp
+@@ -14,6 +14,7 @@
+ ==============================================================================*/
+ #include "stablehlo/reference/Api.h"
  
-   void runOnOperation() override {
--    // Upgraded VHLO should always be convertible to StableHLO.
--    // Arbitrary VHLO might not be convertible if it uses deprecated features
--    // which are no longer available in StableHLO.
--    if (failed(applyPartialConversion(getOperation(), *target, patterns))) {
-+    // Upgraded VHLO types should always be convertible to StableHLO.
-+    mlir::AttrTypeReplacer replacer;
-+    replacer.addReplacement([&](Type type) -> std::optional<Type> {
-+      Type newType = converter.convertType(type);
-+      if (newType && newType != type) return newType;
-+      return std::nullopt;
-+    });
-+    // Only types are updated here, as attribute creation with StableHLO types
-+    // would trigger VHLO assertion. This is used to avoid need for signature
-+    // conversion which results in invalidating the blocks and triggering
-+    // recomputing the order of operations, as well as inserting many
-+    // unrealized conversion casts.
-+    replacer.recursivelyReplaceElementsIn(getOperation(),
-+                                          /*replaceAttrs=*/false,
-+                                          /*replaceLocs=*/false,
-+                                          /*replaceTypes=*/true);
++#include <atomic>
+ #include <cstdint>
+ #include <iterator>
+ #include <queue>
+@@ -123,7 +124,7 @@
+ 
+       SymbolTable symbolTable{op.getParentOfType<ModuleOp>()};
+       auto results = stablehlo::interpreter::evalRunParallelOp(
+-          runtimeOperands, infeed, programs, symbolTable);
++          runtimeOperands, infeed, programs, symbolTable, this);
+       scope.add(runParallelOp.getResults(), results);
+       return wrapFallbackStatus(llvm::Error::success(), funcName,
+                                 "interpreter.run_parallel");
+@@ -138,7 +139,7 @@
+ 
+   /// Probe instrumentation counter for uniquely identifying instrumented tensor
+   /// filenames.
+-  int64_t serializedProbeFileId = 0;
++  std::atomic<int64_t> serializedProbeFileId{0};
+ };
+ 
+ LogicalResult validateEntrySignature(func::FuncOp func,
+diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stablehlo/reference/InterpreterOps.cpp
+--- stablehlo/stablehlo/reference/InterpreterOps.cpp
++++ stablehlo/stablehlo/reference/InterpreterOps.cpp
+@@ -19,6 +19,7 @@
+ #include <cstdint>
+ #include <functional>
+ #include <future>
++#include <mutex>
+ #include <queue>
+ #include <string>
+ 
+@@ -171,7 +172,8 @@
+ 
+ SmallVector<InterpreterValue> evalRunParallelOp(
+     ArrayRef<InterpreterValue> inputs, std::queue<StringAttr>& infeed,
+-    SmallVector<SmallVector<StringAttr>> programs, SymbolTable& symbolTable) {
++    SmallVector<SmallVector<StringAttr>> programs, SymbolTable& symbolTable,
++    InterpreterFallback* fallback) {
+   llvm::DefaultThreadPool threadPool;
+   SmallVector<std::shared_future<SmallVector<InterpreterValue>>> futures;
+ 
+@@ -188,7 +190,7 @@
+       auto evalWrapper = [&](Region& region, ArrayRef<InterpreterValue> args,
+                              ProcessId processId) {
+         Process process{processId, &processGrid};
+-        return eval(region, args, /*config=*/nullptr, &process,
++        return eval(region, args, fallback, &process,
+                     /*parent=*/nullptr);
+       };
+ 
+@@ -208,6 +210,9 @@
+ }
+ 
+ llvm::Error evalPrintOp(PrintOp& op, InterpreterValue operand) {
++  static std::mutex printing_lock;
++  std::lock_guard<std::mutex> lock(printing_lock);
 +
-+    ConversionConfig config;
-+    // TODO(jpienaar): Set to false once mhlo.broadcast folder is updated.
-+    config.allowPatternRollback = true;
-+    if (failed(applyPartialConversion(getOperation(), *target, patterns,
-+                                      config))) {
-       return signalPassFailure();
-     }
+   std::string ssaValueStr;
+   llvm::raw_string_ostream stream(ssaValueStr);
+   stream << op.getOperand();
+diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.h b/stablehlo/stablehlo/reference/InterpreterOps.h
+--- stablehlo/stablehlo/reference/InterpreterOps.h
++++ stablehlo/stablehlo/reference/InterpreterOps.h
+@@ -23,6 +23,7 @@
+ #include "mlir/IR/Dialect.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/Support/LLVM.h"
++#include "stablehlo/reference/Configuration.h"
+ #include "stablehlo/reference/Value.h"
  
+ #define GET_OP_CLASSES
+@@ -39,8 +40,9 @@
+ };
+ 
+ SmallVector<InterpreterValue> evalRunParallelOp(
+-    ArrayRef<InterpreterValue> inputs, std::queue<StringAttr> &infeed,
+-    SmallVector<SmallVector<StringAttr>> programs, SymbolTable &symbolTable);
++    ArrayRef<InterpreterValue> inputs, std::queue<StringAttr>& infeed,
++    SmallVector<SmallVector<StringAttr>> programs, SymbolTable& symbolTable,
++    InterpreterFallback* fallback);
+ 
+ // Print the SSA name followed by its type and value like:
+ // >>> %0 = tensor<i1> {
+diff --ruN a/stablehlo/stablehlo/tests/interpret/printing.mlir b/stablehlo/stablehlo/tests/interpret/printing.mlir
+--- stablehlo/stablehlo/tests/interpret/printing.mlir
++++ stablehlo/stablehlo/tests/interpret/printing.mlir
+@@ -123,3 +123,35 @@
+   %complex_f64 = stablehlo.constant dense<(3.140000e+00, 1.0)> : tensor<4xcomplex<f64>>
+   func.return %complex_f32, %complex_f64 : tensor<4xcomplex<f32>>, tensor<4xcomplex<f64>>
+ }
++
++// -----
++
++// This test checks that printing works correctly when called from multiple
++// threads in parallel using the `interpreter.run_parallel` op.
++//
++// By "correctly", we mean the following:-
++// 1. `interpreter.print` is recognised as a valid op within the
++//    `interpreter.run_parallel` context (no "Unsupported op" errors).
++// 2. The outputs of different threads are not interleaved, i.e., each output of
++//    an `interpreter.print` is completed before the other thread's output is
++//    printed.
++
++func.func @iota_printing_called_inside_run_parallel() -> tensor<2xi32> {
++  %0 = stablehlo.iota dim = 0 : tensor<2xi32>
++  interpreter.print %0 : tensor<2xi32>
++  return %0 : tensor<2xi32>
++}
++
++func.func @main() {
++  // CHECK:      %0 = tensor<2xi32> {
++  // CHECK-NEXT:   [0, 1]
++  // CHECK-NEXT: }
++  // CHECK:      %0 = tensor<2xi32> {
++  // CHECK-NEXT:   [0, 1]
++  // CHECK-NEXT: }
++
++  %results:2 = "interpreter.run_parallel"() {
++    programs = [[@iota_printing_called_inside_run_parallel, @iota_printing_called_inside_run_parallel]]
++  } : () -> (tensor<2xi32>, tensor<2xi32>)
++  func.return
++}
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
+@@ -1,9 +1,10 @@
++// REQUIRES: asserts
+ // RUN: stablehlo-opt %s | stablehlo-opt
+ // RUN: stablehlo-opt %s > %t.0
+ // RUN: stablehlo-opt -emit-bytecode %s | stablehlo-opt > %t.1
+ // RUN: diff %t.0 %t.1
+-// RUN: stablehlo-opt --help-hidden | grep -q "debug-only" && stablehlo-opt -emit-bytecode -debug-only=stablehlo-bytecode %s 2>&1 | FileCheck --check-prefix=CHECK-WARN %s || echo "Skip in release mode"
+-// RUN: stablehlo-opt --help-hidden | grep -q "debug-only" && stablehlo-opt -emit-bytecode %s | stablehlo-opt -debug-only=stablehlo-bytecode 2>&1 | FileCheck --check-prefix=CHECK-WARN %s || echo "Skip in release mode"
++// RUN: stablehlo-opt -emit-bytecode -debug-only=stablehlo-bytecode %s 2>&1 | FileCheck --check-prefix=CHECK-WARN %s
++// RUN: stablehlo-opt -emit-bytecode %s | stablehlo-opt -debug-only=stablehlo-bytecode 2>&1 | FileCheck --check-prefix=CHECK-WARN %s
+ 
+ // CHECK-WARN-NOT: Not Implemented
+ 
+@@ -182,7 +183,7 @@
+   %cst_3 = arith.constant dense<[1, 2, 3, 4]> : tensor<4xi32>
+   %cst_4 = arith.constant dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>
+   %cst_5 = arith.constant dense<[[3, 2], [1, 4]]> : tensor<2x2xi32>
+-  %cst_6 = arith.constant dense<[[1, 2], [4, 8]]> : tensor<2x2xui32>
++  %cst_6 = stablehlo.constant dense<[[1, 2], [4, 8]]> : tensor<2x2xui32>
+   %cst_18 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf4E2M1FN>
+   %cst_19 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf6E2M3FN>
+   %cst_20 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf6E3M2FN>
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+@@ -1021,6 +1021,16 @@
+   %0 = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1", foo = "0"}} : tensor<f32>
+   %1 = stablehlo.multiply %0, %cst {mhlo.frontend_attributes = {foo = "1"}} : tensor<f32>
+   // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1", foo = "1"}} : tensor<f32>
++  // CHECK: return %[[ADD]] : tensor<f32>
++  return %1 : tensor<f32>
++}
++
++// CHECK-LABEL: @multiply_by_one_merge_attrs_conflict_xla_metadata_payload
++func.func @multiply_by_one_merge_attrs_conflict_xla_metadata_payload(%arg0: tensor<f32>) -> tensor<f32> {
++  %cst = stablehlo.constant dense<1.0> : tensor<f32>
++  %0 = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {foo = "1", xla_metadata_payload = "0"}} : tensor<f32>
++  %1 = stablehlo.multiply %0, %cst {mhlo.frontend_attributes = {xla_metadata_payload = "1"}} : tensor<f32>
++  // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {foo = "1", xla_metadata_payload = "0"}} : tensor<f32>
+   // CHECK: return %[[ADD]] : tensor<f32>
+   return %1 : tensor<f32>
+ }
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
+@@ -20,7 +20,8 @@
+   // CHECK: %[[CST:.*]] = arith.constant dense<[0, 1, -1]> : tensor<3xi8>
+   // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %[[CST]] : tensor<3xi8>
+   // CHECK: return %[[ADD]] : tensor<3xi8>
+-  %cst = arith.constant dense<[0, 1, 255]> : tensor<3xui8>
++  %cst_signless = arith.constant dense<[0, 1, 255]> : tensor<3xi8>
++  %cst = builtin.unrealized_conversion_cast %cst_signless : tensor<3xi8> to tensor<3xui8>
+   %0 = stablehlo.add %arg0, %cst : tensor<3xui8>
+   return %0 : tensor<3xui8>
+ }
+diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+@@ -3260,8 +3260,7 @@
+     Type elementType = operandType.getElementType();
+     mlir::stablehlo::SortOp sortOp =
+         createSortOp(&rewriter, op.getLoc(), {op.getOperand(), iotaOp},
+-                     {elementType, i32Type}, lastDimIndex,
+-                     /*isStable=*/true,
++                     {elementType, i32Type}, lastDimIndex, op.getIsStable(),
+                      /*direction=*/mlir::stablehlo::ComparisonDirection::GT);
+ 
+     // Get the sorted input and index tuple element.
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+@@ -87,12 +87,17 @@
+   for (auto attr : sourceAttrs.getValue()) {
+     if (attr.getName() == "mhlo.frontend_attributes" &&
+         mergedAttrs.get("mhlo.frontend_attributes")) {
+-      // Merge frontend attributes, prioritizing source attributes.
++      // Merge frontend attributes, prioritizing source attributes except for
++      // `xla_metadata_payload`, which is set by the surviving op.
+       auto destFrontendAttrs =
+           cast<DictionaryAttr>(mergedAttrs.get("mhlo.frontend_attributes"));
+       auto sourceFrontendAttrs = cast<DictionaryAttr>(attr.getValue());
+       NamedAttrList frontendAttrs(destFrontendAttrs);
+       for (auto sourceAttr : sourceFrontendAttrs) {
++        if (sourceAttr.getName() == "xla_metadata_payload" &&
++            frontendAttrs.get("xla_metadata_payload")) {
++          continue;  // keep the surviving op's own identity
++        }
+         frontendAttrs.set(sourceAttr.getName(), sourceAttr.getValue());
+       }
+       mergedAttrs.set("mhlo.frontend_attributes",
 

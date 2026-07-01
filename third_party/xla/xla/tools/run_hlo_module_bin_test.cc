@@ -149,7 +149,7 @@ TEST_F(RunHloModuleTest, MustAliasWithSharding) {
   EXPECT_TRUE(exited_normally_);
   EXPECT_EQ(exit_status_, 255);
   EXPECT_THAT(stderr_output_,
-              testing::HasSubstr("Failed to execute on HloRunnerPjRt"));
+              testing::HasSubstr("Failed to execute on HloRunner"));
   EXPECT_THAT(stderr_output_,
               testing::Not(testing::HasSubstr("memory allocation bug")));
 }
@@ -199,7 +199,7 @@ ENTRY f {
       testing::HasSubstr("Results on Host and Interpreter are close enough."));
   // Test that the arguments in the HloSnapshot are used by checking output.
   ASSERT_THAT(stdout_output_, testing::HasSubstr(R"(
-** Result with test runner HloRunnerPjRt **
+** Result with test runner HloRunner **
 f32[2,2] {
   { 2, 2 },
   { 2, 2 }

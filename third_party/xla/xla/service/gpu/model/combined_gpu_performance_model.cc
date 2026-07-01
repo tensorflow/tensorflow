@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -47,13 +48,12 @@ CombinedGpuPerformanceModel::CombinedGpuPerformanceModel(
     const se::DeviceDescription& device_info,
     HloFusionAnalysisCache& fusion_analysis_cache,
     mlir::MLIRContext& mlir_context,
-    HloCostAnalysis::ShapeSizeFunction shape_size)
+    HloCostAnalysis::ShapeSizeFunction shape_size, bool use_experimental_tiling)
     : device_info_(device_info),
       fusion_analysis_cache_(fusion_analysis_cache),
-      mlir_context_(mlir_context),
       indexing_model_(&device_info, &fusion_analysis_cache, shape_size,
-                      &mlir_context),
-      model_(device_info, fusion_analysis_cache, cache_, &mlir_context) {}
+                      &mlir_context, use_experimental_tiling),
+      model_(device_info, fusion_analysis_cache, cache_) {}
 
 absl::StatusOr<EstimateRunTimeData>
 CombinedGpuPerformanceModel::EstimateRunTimeForInstruction(
@@ -168,7 +168,7 @@ absl::Duration CombinedGpuPerformanceModel::EstimateRunTimeForFusionUncached(
       fusion_analysis_cache_.Get(*producer, *consumer);
 
   LaunchDimensions launch_dimensions =
-      EstimateFusionLaunchDimensions(fusion_analysis, &mlir_context_);
+      EstimateFusionLaunchDimensions(fusion_analysis);
 
   int64_t flops = producer_runtime.flops * utilization_by_this_consumer +
                   consumer_runtime.flops;

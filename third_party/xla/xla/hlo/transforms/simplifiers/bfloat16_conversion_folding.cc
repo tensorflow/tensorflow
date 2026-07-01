@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -92,7 +93,7 @@ absl::Status BFloat16ConversionFoldingVisitor::FoldOutputConversions(
   bfloat16_conversion_folding_->UpdateLayout(hlo->mutable_shape());
   for (auto user : materialized_users) {
     CHECK_EQ(user->opcode(), HloOpcode::kConvert);
-    TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(hlo));
+    RETURN_IF_ERROR(user->ReplaceAllUsesWith(hlo));
     changed_ = true;
   }
   return absl::OkStatus();
@@ -103,7 +104,7 @@ absl::Status BFloat16ConversionFoldingVisitor::FoldOperandConversion(
   // The operand is a convert from BF16 to F32.
   auto operand = hlo->mutable_operand(operand_index);
   CHECK_EQ(operand->opcode(), HloOpcode::kConvert);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       hlo->ReplaceOperandWith(operand_index, operand->mutable_operand(0)));
   changed_ = true;
   return absl::OkStatus();
@@ -162,11 +163,11 @@ absl::Status BFloat16ConversionFoldingVisitor::TryFoldBF16Conversions(
   }
 
   if (fold_output_conversion) {
-    TF_RETURN_IF_ERROR(FoldOutputConversions(hlo));
+    RETURN_IF_ERROR(FoldOutputConversions(hlo));
   }
 
   for (int64_t i : bf16_to_f32_operands) {
-    TF_RETURN_IF_ERROR(FoldOperandConversion(hlo, i));
+    RETURN_IF_ERROR(FoldOperandConversion(hlo, i));
   }
   return absl::OkStatus();
 }
@@ -213,7 +214,7 @@ absl::Status BFloat16ConversionFoldingVisitor::HandleAllReduce(
   }
   // First use DefaultAction() to handle the operands. It can't handle
   // tuple-shaped output.
-  TF_RETURN_IF_ERROR(DefaultAction(crs));
+  RETURN_IF_ERROR(DefaultAction(crs));
 
   if (!bfloat16_support_->SupportsMixedPrecisions(*crs)) {
     return absl::OkStatus();
@@ -265,7 +266,7 @@ absl::Status BFloat16ConversionFoldingVisitor::HandleAllReduce(
     bfloat16_conversion_folding_->UpdateLayout(
         ShapeUtil::GetMutableSubshape(crs->mutable_shape(), {i}));
     for (auto gte : per_tuple_element_gtes[i]) {
-      TF_RETURN_IF_ERROR(FoldOutputConversions(gte));
+      RETURN_IF_ERROR(FoldOutputConversions(gte));
     }
   }
 

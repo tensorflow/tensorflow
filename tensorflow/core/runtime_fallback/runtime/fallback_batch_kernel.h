@@ -91,6 +91,7 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   std::string batch_padding_policy_;
   bool enable_priority_aware_batch_scheduler_ = false;
   bool enable_priority_aware_batch_scheduler_resplit_ = false;
+  bool enable_batching_task_lazy_cancellation_ = false;
   int32_t num_warmup_batch_threads_ = 0;
 
   // Parameters for adaptive batch scheduler only.
@@ -143,7 +144,7 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
                     BatchResourceType::GetClientGraphResourceContext(c));
   OP_REQUIRES_ASYNC(
       c, client_graph_resource_context != nullptr,
-      errors::FailedPrecondition("client graph resource context not found"),
+      absl::FailedPreconditionError("client graph resource context not found"),
       done);
   std::function<
       absl::StatusOr<tensorflow::core::RefCountPtr<BatchResourceType>>()>
@@ -236,6 +237,8 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
           enable_priority_aware_batch_scheduler_;
       batch_resource_options.enable_priority_aware_batch_scheduler_resplit =
           enable_priority_aware_batch_scheduler_resplit_;
+      batch_resource_options.enable_batching_task_lazy_cancellation =
+          enable_batching_task_lazy_cancellation_;
       batch_resource_options.num_warmup_batch_threads =
           num_warmup_batch_threads_;
 

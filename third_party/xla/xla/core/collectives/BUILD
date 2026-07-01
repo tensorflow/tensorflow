@@ -23,6 +23,7 @@ cc_library(
         ":communicator",
         ":rank_id",
         "//xla:util",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
@@ -52,6 +53,7 @@ cc_library(
         ":collectives",
         "//xla:util",
         "//xla/service:platform_util",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:btree",
@@ -136,11 +138,23 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "registered_memory",
+    hdrs = ["registered_memory.h"],
+    deps = [
+        "//xla/stream_executor:device_address",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
     name = "symmetric_memory",
     hdrs = ["symmetric_memory.h"],
     deps = [
+        ":rank_id",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel_args",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
     ],
 )

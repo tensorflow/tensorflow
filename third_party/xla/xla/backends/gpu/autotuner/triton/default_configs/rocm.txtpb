@@ -12,5 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-config { block_m: 32 block_n: 32 block_k: 256 split_k: 1 num_stages: 1 num_warps: 4 num_ctas: 1 }
-config { block_m: 16 block_n: 16 block_k: 256 split_k: 1 num_stages: 1 num_warps: 4 num_ctas: 1 }
+config { block_m: 32 block_n: 32 block_k: 256 num_stages: 1 num_warps: 4 num_ctas: 1 }
+config { block_m: 16 block_n: 16 block_k: 256 num_stages: 1 num_warps: 4 num_ctas: 1 }

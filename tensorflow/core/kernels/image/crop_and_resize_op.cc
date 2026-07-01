@@ -61,20 +61,20 @@ static inline absl::Status ParseAndCheckBoxSizes(const Tensor& boxes,
   }
   // The shape of 'boxes' is [num_boxes, 4].
   if (boxes.dims() != 2) {
-    return errors::InvalidArgument("boxes must be 2-D",
-                                   boxes.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("boxes must be 2-D", boxes.shape().DebugString()));
   }
   *num_boxes = boxes.dim_size(0);
   if (boxes.dim_size(1) != 4) {
-    return errors::InvalidArgument("boxes must have 4 columns");
+    return absl::InvalidArgumentError("boxes must have 4 columns");
   }
   // The shape of 'box_index' is [num_boxes].
   if (box_index.dims() != 1) {
-    return errors::InvalidArgument("box_index must be 1-D",
-                                   box_index.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("box_index must be 1-D", box_index.shape().DebugString()));
   }
   if (box_index.dim_size(0) != *num_boxes) {
-    return errors::InvalidArgument("box_index has incompatible shape");
+    return absl::InvalidArgumentError("box_index has incompatible shape");
   }
   return absl::OkStatus();
 }
@@ -97,7 +97,7 @@ inline void RunIfBoxIndexIsValid<CPUDevice>(
   for (int b = 0; b < num_boxes; ++b) {
     OP_REQUIRES_ASYNC(
         context, FastBoundsCheck(box_index(b), batch_size),
-        errors::OutOfRange("box_index has values outside [0, batch_size)"),
+        absl::OutOfRangeError("box_index has values outside [0, batch_size)"),
         done);
   }
   if (compute) {
@@ -117,8 +117,8 @@ class CropAndResizeOp : public AsyncOpKernel {
       : AsyncOpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("method", &method_));
     OP_REQUIRES(context, method_ == "bilinear" || method_ == "nearest",
-                errors::InvalidArgument(
-                    "method must be 'bilinear' or 'nearest'", method_));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "method must be 'bilinear' or 'nearest'", method_)));
     OP_REQUIRES_OK(context, context->GetAttr("extrapolation_value",
                                              &extrapolation_value_));
   }
@@ -135,40 +135,42 @@ class CropAndResizeOp : public AsyncOpKernel {
     const Tensor& crop_size = context->input(3);
 
     // Validate inputs dimensions.
-    OP_REQUIRES_ASYNC(context, image.dims() == 4,
-                      errors::InvalidArgument("input image must be 4-D",
-                                              image.shape().DebugString()),
-                      done);
+    OP_REQUIRES_ASYNC(
+        context, image.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat("input image must be 4-D",
+                                                image.shape().DebugString())),
+        done);
     const int batch_size = image.dim_size(0);
     const int image_height = image.dim_size(1);
     const int image_width = image.dim_size(2);
     const int depth = image.dim_size(3);
     OP_REQUIRES_ASYNC(
         context, image_height > 0 && image_width > 0,
-        errors::InvalidArgument("image dimensions must be positive"), done);
+        absl::InvalidArgumentError("image dimensions must be positive"), done);
     OP_REQUIRES_ASYNC(
         context, boxes.dims() == 2,
         absl::InvalidArgumentError(absl::StrCat("boxes must be 2-D, got: ",
                                                 boxes.shape().DebugString())),
         done);
-    OP_REQUIRES_ASYNC(
-        context, TensorShapeUtils::IsVector(box_index.shape()),
-        errors::InvalidArgument("box_indices must be rank 1 but is shape ",
-                                box_index.shape().DebugString()),
-        done);
+    OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(box_index.shape()),
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "box_indices must be rank 1 but is shape ",
+                          box_index.shape().DebugString())),
+                      done);
     int num_boxes = 0;
     OP_REQUIRES_OK_ASYNC(
         context, ParseAndCheckBoxSizes(boxes, box_index, &num_boxes), done);
 
-    OP_REQUIRES_ASYNC(context, crop_size.dims() == 1,
-                      errors::InvalidArgument("crop_size must be 1-D",
-                                              crop_size.shape().DebugString()),
-                      done);
     OP_REQUIRES_ASYNC(
-        context, crop_size.dim_size(0) == 2,
-        errors::InvalidArgument("crop_size must have two elements",
-                                crop_size.shape().DebugString()),
+        context, crop_size.dims() == 1,
+        absl::InvalidArgumentError(absl::StrCat(
+            "crop_size must be 1-D", crop_size.shape().DebugString())),
         done);
+    OP_REQUIRES_ASYNC(context, crop_size.dim_size(0) == 2,
+                      absl::InvalidArgumentError(
+                          absl::StrCat("crop_size must have two elements",
+                                       crop_size.shape().DebugString())),
+                      done);
 
     // Copy and validate crop sizes.
     auto crop_size_vec = crop_size.vec<int32_t>();
@@ -176,7 +178,7 @@ class CropAndResizeOp : public AsyncOpKernel {
     const int crop_width = internal::SubtleMustCopy(crop_size_vec(1));
     OP_REQUIRES_ASYNC(
         context, crop_height > 0 && crop_width > 0,
-        errors::InvalidArgument("crop dimensions must be positive"), done);
+        absl::InvalidArgumentError("crop dimensions must be positive"), done);
 
     TensorShape shape;
     OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(num_boxes), done);
@@ -199,7 +201,7 @@ class CropAndResizeOp : public AsyncOpKernel {
 
       if (!status) {
         context->SetStatus(
-            errors::Internal("Failed to launch CropAndResizeKernel."));
+            absl::InternalError("Failed to launch CropAndResizeKernel."));
       }
     };
 
@@ -238,7 +240,7 @@ struct CropAndResize<CPUDevice, T> {
     const Eigen::Tensor<bool, 0, Eigen::RowMajor> only_finite_elements =
         boxes.isfinite().all();
     if (!only_finite_elements()) {
-      context->SetStatus(errors::InvalidArgument(
+      context->SetStatus(absl::InvalidArgumentError(
           "Boxes contains at least one element that is not finite"));
       return false;
     }
@@ -365,8 +367,8 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
       : AsyncOpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("method", &method_));
     OP_REQUIRES(context, method_ == "bilinear" || method_ == "nearest",
-                errors::InvalidArgument(
-                    "method must be 'bilinear' or 'nearest'", method_));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "method must be 'bilinear' or 'nearest'", method_)));
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
@@ -380,30 +382,33 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
     const Tensor& image_size = context->input(3);
 
     // Validate input shapes.
-    OP_REQUIRES_ASYNC(context, grads.dims() == 4,
-                      errors::InvalidArgument("grads image must be 4-D",
-                                              grads.shape().DebugString()),
-                      done);
+    OP_REQUIRES_ASYNC(
+        context, grads.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat("grads image must be 4-D",
+                                                grads.shape().DebugString())),
+        done);
     const int crop_height = grads.dim_size(1);
     const int crop_width = grads.dim_size(2);
     OP_REQUIRES_ASYNC(
         context, crop_height > 0 && crop_width > 0,
-        errors::InvalidArgument("grads dimensions must be positive"), done);
+        absl::InvalidArgumentError("grads dimensions must be positive"), done);
     int num_boxes = 0;
     OP_REQUIRES_OK_ASYNC(
         context, ParseAndCheckBoxSizes(boxes, box_index, &num_boxes), done);
     OP_REQUIRES_ASYNC(
         context, grads.dim_size(0) == num_boxes,
-        errors::InvalidArgument("boxes and grads have incompatible shape"),
+        absl::InvalidArgumentError("boxes and grads have incompatible shape"),
         done);
 
-    OP_REQUIRES_ASYNC(context, image_size.dims() == 1,
-                      errors::InvalidArgument("image_size must be 1-D",
-                                              image_size.shape().DebugString()),
-                      done);
+    OP_REQUIRES_ASYNC(
+        context, image_size.dims() == 1,
+        absl::InvalidArgumentError(absl::StrCat(
+            "image_size must be 1-D", image_size.shape().DebugString())),
+        done);
     OP_REQUIRES_ASYNC(context, image_size.dim_size(0) == 4,
-                      errors::InvalidArgument("image_size must have 4 elements",
-                                              image_size.shape().DebugString()),
+                      absl::InvalidArgumentError(
+                          absl::StrCat("image_size must have 4 elements",
+                                       image_size.shape().DebugString())),
                       done);
     auto image_size_vec = image_size.vec<int32_t>();
     const int batch_size = internal::SubtleMustCopy(image_size_vec(0));
@@ -412,15 +417,16 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
     const int depth = internal::SubtleMustCopy(image_size_vec(3));
     OP_REQUIRES_ASYNC(
         context, image_height > 0 && image_width > 0,
-        errors::InvalidArgument("image dimensions must be positive"), done);
+        absl::InvalidArgumentError("image dimensions must be positive"), done);
     OP_REQUIRES_ASYNC(
         context, grads.dim_size(3) == depth,
-        errors::InvalidArgument("image_size and grads are incompatible"), done);
+        absl::InvalidArgumentError("image_size and grads are incompatible"),
+        done);
 
     if (std::is_same<Device, GPUDevice>::value) {
       OP_REQUIRES_ASYNC(
           context, !OpDeterminismRequired(),
-          errors::Unimplemented(
+          absl::UnimplementedError(
               "Deterministic GPU implementation of CropAndResizeBackpropImage"
               " not available."),
           done);
@@ -445,7 +451,7 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
           box_index.tensor<int32_t, 1>(), output->tensor<T, 4>(), method_);
 
       if (!status) {
-        context->SetStatus(errors::Internal(
+        context->SetStatus(absl::InternalError(
             "Failed to launch CropAndResizeBackpropImage kernel."));
       }
     };
@@ -588,7 +594,8 @@ class CropAndResizeGradBoxesOp : public AsyncOpKernel {
     std::string method;
     OP_REQUIRES_OK(context, context->GetAttr("method", &method));
     OP_REQUIRES(context, method == "bilinear",
-                errors::InvalidArgument("method must be 'bilinear'", method));
+                absl::InvalidArgumentError(
+                    absl::StrCat("method must be 'bilinear'", method)));
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
@@ -602,29 +609,31 @@ class CropAndResizeGradBoxesOp : public AsyncOpKernel {
     const Tensor& image = context->input(1);
 
     // Validate input shapes.
-    OP_REQUIRES_ASYNC(context, grads.dims() == 4,
-                      errors::InvalidArgument("grads image must be 4-D",
-                                              grads.shape().DebugString()),
-                      done);
+    OP_REQUIRES_ASYNC(
+        context, grads.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat("grads image must be 4-D",
+                                                grads.shape().DebugString())),
+        done);
     const int crop_height = grads.dim_size(1);
     const int crop_width = grads.dim_size(2);
     const int depth = grads.dim_size(3);
     OP_REQUIRES_ASYNC(
         context, crop_height > 0 && crop_width > 0,
-        errors::InvalidArgument("grads dimensions must be positive"), done);
+        absl::InvalidArgumentError("grads dimensions must be positive"), done);
 
-    OP_REQUIRES_ASYNC(context, image.dims() == 4,
-                      errors::InvalidArgument("input image must be 4-D",
-                                              image.shape().DebugString()),
-                      done);
+    OP_REQUIRES_ASYNC(
+        context, image.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat("input image must be 4-D",
+                                                image.shape().DebugString())),
+        done);
     const int batch_size = image.dim_size(0);
     const int image_height = image.dim_size(1);
     const int image_width = image.dim_size(2);
     OP_REQUIRES_ASYNC(
         context, image_height > 0 && image_width > 0,
-        errors::InvalidArgument("image dimensions must be positive"), done);
+        absl::InvalidArgumentError("image dimensions must be positive"), done);
     OP_REQUIRES_ASYNC(context, image.dim_size(3) == depth,
-                      errors::InvalidArgument("image, grads depth differ"),
+                      absl::InvalidArgumentError("image, grads depth differ"),
                       done);
 
     int num_boxes = 0;
@@ -633,13 +642,13 @@ class CropAndResizeGradBoxesOp : public AsyncOpKernel {
 
     OP_REQUIRES_ASYNC(
         context, grads.dim_size(0) == num_boxes,
-        errors::InvalidArgument("boxes and grads have incompatible shape"),
+        absl::InvalidArgumentError("boxes and grads have incompatible shape"),
         done);
 
     if (std::is_same<Device, GPUDevice>::value) {
       OP_REQUIRES_ASYNC(
           context, !OpDeterminismRequired(),
-          errors::Unimplemented(
+          absl::UnimplementedError(
               "Deterministic GPU implementation of CropAndResizeBackpropBoxes"
               " not available."),
           done);
@@ -662,7 +671,7 @@ class CropAndResizeGradBoxesOp : public AsyncOpKernel {
           image.tensor<T, 4>(), boxes.tensor<float, 2>(),
           box_index.tensor<int32_t, 1>(), output->tensor<float, 2>());
       if (!status) {
-        context->SetStatus(errors::Internal(
+        context->SetStatus(absl::InternalError(
             "Failed to launch CropAndResizeBackpropBoxes kernel."));
       }
     };
@@ -857,7 +866,7 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
   // Copy the result back to the host.
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES_ASYNC(context, stream,
-                    errors::Internal("No GPU stream available."), done);
+                    absl::InternalError("No GPU stream available."), done);
   Tensor isvalid_host_tensor;
   // Use pinned host memory on the host to avoid unnecessary
   // synchronization.
@@ -877,7 +886,8 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
           .ok();
   OP_REQUIRES_ASYNC(
       context, status,
-      errors::Internal("Failed to launch copy of isvalid from device to host."),
+      absl::InternalError(
+          "Failed to launch copy of isvalid from device to host."),
       done);
 
   // We capture both temporary tensors to prevent them from being deallocated
@@ -893,7 +903,7 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
       isvalid_dev_ref.Unref();
       OP_REQUIRES_ASYNC(
           context, isvalid,
-          errors::OutOfRange("box_index has values outside [0, batch_size)"),
+          absl::OutOfRangeError("box_index has values outside [0, batch_size)"),
           done);
       compute();
     }  // Release ActivateContext to prevent deadlock when done

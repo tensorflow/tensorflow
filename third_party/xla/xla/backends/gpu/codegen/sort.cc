@@ -18,13 +18,9 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/log/check.h"
-#include "absl/log/log.h"
-#include "absl/status/statusor.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
@@ -48,9 +44,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<FusionEmissionResult> SortFusion::Emit(
-    IrEmitterContext& ir_emitter_context,
-    const HloFusionInstruction& fusion) const {
+AsyncThunkSequence SortFusion::Emit(IrEmitterContext& ir_emitter_context,
+                                    const HloFusionInstruction& fusion) const {
   std::vector<BufferAllocation::Slice> src_buffers;
   std::vector<BufferAllocation::Slice> dst_buffers;
   std::vector<Shape> src_shapes;
@@ -100,14 +95,14 @@ absl::StatusOr<FusionEmissionResult> SortFusion::Emit(
           /*mem_size=*/src_buffers[i].size()));
     }
   }
-  return FusionEmissionResult{
-      EmitBitonicSortLLVMIR(sort, &ir_emitter_context)
-          .Map([thunks = std::move(thunks)](ThunkSequence sort_thunks) mutable {
+  return EmitBitonicSortLLVMIR(sort, &ir_emitter_context)
+      .Map(
+          [thunks = std::move(thunks)](ThunkSequence sort_thunks) mutable {
             thunks.insert(thunks.end(),
                           std::make_move_iterator(sort_thunks.begin()),
                           std::make_move_iterator(sort_thunks.end()));
             return std::move(thunks);
-          })};
+          });
 }
 
 }  // namespace gpu

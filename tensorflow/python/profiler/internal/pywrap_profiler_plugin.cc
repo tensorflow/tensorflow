@@ -39,22 +39,37 @@ using ::tensorflow::profiler::ToolOptions;
 // will increase its reference count.
 ToolOptions ToolOptionsFromPythonDict(const py::dict& dictionary) {
   ToolOptions map;
+  // Copy keys to avoid iterator invalidation if the dict is mutated
+  // during implicit casts of values which can run Python user code.
+  std::vector<py::object> keys;
+  keys.reserve(dictionary.size());
   for (const auto& item : dictionary) {
+    keys.push_back(py::reinterpret_borrow<py::object>(item.first));
+  }
+
+  for (const auto& key : keys) {
+    if (!dictionary.contains(key)) continue;
+
+    py::object py_value = dictionary[key];
     std::variant<bool, int, std::string> value;
     try {
-      value = item.second.cast<bool>();
+      value = py_value.cast<bool>();
     } catch (...) {
       try {
-        value = item.second.cast<int>();
+        value = py_value.cast<int>();
       } catch (...) {
         try {
-          value = item.second.cast<std::string>();
+          value = py_value.cast<std::string>();
         } catch (...) {
           continue;
         }
       }
     }
-    map.emplace(item.first.cast<std::string>(), value);
+    try {
+      map.emplace(key.cast<std::string>(), value);
+    } catch (...) {
+      // Ignore keys that can't be cast to string
+    }
   }
   return map;
 }

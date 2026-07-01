@@ -113,8 +113,11 @@ class InterpreterMemorySpace final : public PjRtMemorySpace {
     return "InterpreterMemorySpace(id=0)";
   }
 
+  PJRT_Memory* ToCApiPtr() override { return capi_delegator_.ToCApiPtr(); }
+
  private:
   PjRtClient* client_ = nullptr;
+  PjRtMemorySpaceCApiDelegator capi_delegator_{this};
 };
 
 class InterpreterDevice final : public PjRtDevice {
@@ -389,7 +392,8 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
  private:
   absl::StatusOr<Literal> Evaluate(
       const HloComputation& computation,
-      absl::Span<const Literal* const> arg_literals) const
+      absl::Span<const Literal* const> arg_literals,
+      const ExecuteOptions& options) const
       ABSL_LOCKS_EXCLUDED(hlo_evaluator_lock_);
 
   PjRtClient* client_ = nullptr;

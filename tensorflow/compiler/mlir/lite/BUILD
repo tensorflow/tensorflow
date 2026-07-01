@@ -1157,6 +1157,7 @@ cc_library(
         "transforms/generated_lower_static_tensor_list.inc",
         "transforms/generated_prepare_tf.inc",
         "transforms/get_arithmetic_count.cc",
+        "transforms/gpu_compatibility.cc",
         "transforms/if_outline.cc",
         "transforms/insert_call_once_op.cc",
         "transforms/legalize_hashtables.cc",
@@ -1171,6 +1172,7 @@ cc_library(
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
         "transforms/raise_custom_ops.cc",
+        "transforms/rank_reduction.cc",
         "transforms/reduce_type_precision.cc",
         "transforms/reduce_while_operands.cc",
         "transforms/runtime_verify.cc",
@@ -1987,6 +1989,7 @@ tf_cc_binary(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -2015,7 +2018,6 @@ cc_library(
         ":converter_flags_proto_cc",
         ":converter_pass_options_setter",
         ":downcast_x64",
-        ":elements_attr_roundtrip_pass",
         ":fake_quant_utils",
         ":optimize_broadcast_like_pass",
         ":pass",
@@ -2188,7 +2190,10 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/compiler/mlir/lite/core/api:error_reporter"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+        "//tensorflow/lite:util",
+    ],
 )
 
 exports_files(srcs = ["utils/control_edges.h"])

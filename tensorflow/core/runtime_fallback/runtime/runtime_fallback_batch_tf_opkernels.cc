@@ -114,7 +114,20 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
       OpKernelContext* context) {
     const tfrt::ExecutionContext* exec_ctx = nullptr;
     TF_RETURN_IF_ERROR(GetTfrtExecutionContext(context, &exec_ctx));
-    return {std::make_unique<FallbackBatchTask>(*exec_ctx)};
+    auto task = std::make_unique<FallbackBatchTask>(*exec_ctx);
+
+    // Configure the batch task with params from the fallback request state.
+    const auto* fallback_request_state =
+        exec_ctx->request_ctx()
+            ->GetDataIfExists<tfd::KernelFallbackCompatRequestState>();
+    if (fallback_request_state) {
+      task->rpc_deadline =
+          fallback_request_state->rpc_deadline_for_batching_task_cancellation();
+      task->is_rpc_cancelled =
+          fallback_request_state->is_rpc_cancelled_callback();
+    }
+
+    return task;
   }
 
   static absl::string_view GetBatchFunctionName(
@@ -150,7 +163,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
         exec_ctx->request_ctx()
             ->GetDataIfExists<tfd::KernelFallbackCompatRequestState>();
     if (!fallback_request_state) {
-      return tensorflow::errors::Internal(
+      return absl::InternalError(
           "KernelFallbackCompatRequestState not found in RequestContext.");
     }
 
@@ -168,7 +181,8 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
             options.low_priority_allowed_batch_sizes,
             options.mixed_priority_batching_policy,
             options.enable_priority_aware_batch_scheduler,
-            options.enable_priority_aware_batch_scheduler_resplit),
+            options.enable_priority_aware_batch_scheduler_resplit,
+            options.enable_batching_task_lazy_cancellation),
         options.allowed_batch_sizes));
     return absl::OkStatus();
   }
@@ -191,7 +205,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
         exec_ctx->request_ctx()
             ->GetDataIfExists<tfd::KernelFallbackCompatRequestState>();
     if (!fallback_request_state) {
-      return tensorflow::errors::Internal(
+      return absl::InternalError(
           "KernelFallbackCompatRequestState not found in RequestContext.");
     }
 
@@ -282,7 +296,7 @@ absl::Status SetUpKernelFallbackCompatRequestContextForBatch(
   const auto* src_fallback_request_state =
       src_req_ctx.GetDataIfExists<tfd::KernelFallbackCompatRequestState>();
   if (!src_fallback_request_state) {
-    return tensorflow::errors::Internal(
+    return absl::InternalError(
         "KernelFallbackCompatRequestState not found in RequestContext.");
   }
 
@@ -321,8 +335,7 @@ absl::StatusOr<RCReference<tfrt::RequestContext>> SetUpRequestContext(
 
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {
-    return tensorflow::errors::Internal(
-        tfrt::StrCat(expected_req_ctx.takeError()));
+    return absl::InternalError(tfrt::StrCat(expected_req_ctx.takeError()));
   }
 
   return std::move(expected_req_ctx.get());
@@ -409,7 +422,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
       for (auto* error : errors) {
         os << error->message() << ";\n";
       }
-      final_status = errors::Internal(std::move(os.str()));
+      final_status = absl::InternalError(os.str());
     }
   }
   done(final_status);
@@ -480,6 +493,7 @@ REGISTER_OP("_BatchFunctionFallback")
     .Attr("disable_padding: bool = false")
     .Attr("enable_priority_aware_batch_scheduler: bool = false")
     .Attr("enable_priority_aware_batch_scheduler_resplit: bool = false")
+    .Attr("enable_batching_task_lazy_cancellation: bool = false")
     .Attr("num_warmup_batch_threads: int = 0")
     // An opaque function handle for the batch function.
     .Attr("opaque_function_handle: int")

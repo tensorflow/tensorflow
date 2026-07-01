@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -145,6 +147,7 @@ void UpdateForwardIdentityNodeDtype(utils::MutableNodeView* forward_node,
 }
 
 absl::Status UpdateNodeDef(utils::MutableNodeView* node_view,
+                           const std::string& attr_name,
                            const std::string& funcName,
                            const FunctionApiInfo& apiInfo) {
   NodeDef* node_def = node_view->node();
@@ -152,21 +155,30 @@ absl::Status UpdateNodeDef(utils::MutableNodeView* node_view,
   VLOG(3) << "Node def before swap is: " << node_def->DebugString();
 
   // For step 1 above.
-  node_def->mutable_attr()->find("f")->second.mutable_func()->set_name(
-      funcName);
+  auto f_attr = node_def->mutable_attr()->find(attr_name);
+  if (f_attr != node_def->mutable_attr()->end()) {
+    f_attr->second.mutable_func()->set_name(funcName);
+  } else {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Missing attribute '", attr_name, "' in node ", node_def->name()));
+  }
 
   // For step 2 above.
   auto tin = node_def->mutable_attr()->find("Tin");
-  tin->second.mutable_list()->clear_type();
-  for (const auto& tin_dtype : apiInfo.input_arg_dtypes()) {
-    tin->second.mutable_list()->add_type(tin_dtype);
+  if (tin != node_def->mutable_attr()->end()) {
+    tin->second.mutable_list()->clear_type();
+    for (const auto& tin_dtype : apiInfo.input_arg_dtypes()) {
+      tin->second.mutable_list()->add_type(tin_dtype);
+    }
   }
 
   // For step 3 above.
   auto tout = node_def->mutable_attr()->find("Tout");
-  tout->second.mutable_list()->clear_type();
-  for (const auto& tout_dtype : apiInfo.output_arg_dtypes()) {
-    tout->second.mutable_list()->add_type(tout_dtype);
+  if (tout != node_def->mutable_attr()->end()) {
+    tout->second.mutable_list()->clear_type();
+    for (const auto& tout_dtype : apiInfo.output_arg_dtypes()) {
+      tout->second.mutable_list()->add_type(tout_dtype);
+    }
   }
 
   if (apiInfo.function_type() == FunctionApiInfo::BACKWARD) {
@@ -201,16 +213,16 @@ absl::Status UpdateNodeDef(utils::MutableNodeView* node_view,
       const std::vector<std::string> name_index =
           ::absl::StrSplit(last_input, ':');
       if (name_index.size() != 2) {
-        return errors::InvalidArgument(
-            "Invalid format of input node name: ", last_input,
-            " Expected: {forward_node_name}:{index}");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid format of input node name: ", last_input,
+                         " Expected: {forward_node_name}:{index}"));
       }
       const absl::string_view node_name = name_index[0];
       int last_index;
       if (!::absl::SimpleAtoi(name_index[1], &last_index)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "The index of input node is expected to be number, got: ",
-            name_index[1]);
+            name_index[1]));
       }
       for (int i = 1; i <= -diff; ++i)
         node_def->add_input(absl::StrCat(node_name, ":", i + last_index));
@@ -265,7 +277,8 @@ absl::Status ImplementationSelector::MaybeOptimizeFunctionCall(
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(node_def->device(), &parsed_name) ||
       !parsed_name.has_type) {
-    return errors::Internal("Could not parse device name:", node_def->device());
+    return absl::InternalError(
+        absl::StrCat("Could not parse device name:", node_def->device()));
   }
   VLOG(2) << "Op " << node_def->name() << " runs on " << node_def->device()
           << " = (" << parsed_name.type << ")";
@@ -281,7 +294,8 @@ absl::Status ImplementationSelector::MaybeOptimizeFunctionCall(
       const auto& func_api_info = lib_info_->GetApiInfo(func_name);
       if (func_api_info->preferred_device() == parsed_name.type) {
         VLOG(2) << "Swapping: " << function_name << " TO: " << func_name;
-        TF_RETURN_IF_ERROR(UpdateNodeDef(node_view, func_name, *func_api_info));
+        TF_RETURN_IF_ERROR(
+            UpdateNodeDef(node_view, attr_name, func_name, *func_api_info));
         break;
       }
     }
@@ -309,7 +323,8 @@ absl::Status FindDeviceIndex(const utils::MutableNodeView* device_index_node,
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(device, &parsed_name) ||
       !parsed_name.has_type) {
-    return errors::Internal("Could not parse device name:", device);
+    return absl::InternalError(
+        absl::StrCat("Could not parse device name:", device));
   }
   const auto& device_list =
       device_index_node->GetAttr("device_names")->list().s();
@@ -407,7 +422,7 @@ absl::Status ImplementationSelector::Optimize(Cluster* cluster,
   if (!status.ok()) {
     VLOG(2) << "Skipping optimization due to error while loading function "
             << "libraries: " << status;
-    return errors::Aborted("Skipped Optimization");
+    return absl::AbortedError("Skipped Optimization");
   }
 
   *optimized_graph = item.graph;

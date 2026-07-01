@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/log/log.h"
 
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
 #if defined(__GNUC__) || defined(__clang__)
@@ -1013,7 +1014,6 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
 
   // Temporary buffers used by MakeFreeChunks to avoid reallocating memory.
   mutable std::vector<Chunk> used_chunks_;
-  mutable std::vector<Chunk> disjoint_used_chunks_;
   mutable std::vector<std::pair<int64_t, int64_t>> free_chunks_list_;
 
  protected:
@@ -1125,6 +1125,93 @@ class ChooseBestHeapAlgorithm : public HeapAlgorithm<BufferType> {
 
  private:
   std::vector<std::unique_ptr<HeapAlgorithm<BufferType>>> algorithms_;
+};
+
+// A heap algorithm that runs a primary algorithm, and if it results in OOM or
+// exceeds a provided memory limit, safely runs a fallback algorithm instead
+// using lazy replay.
+template <typename BufferType>
+class HeapAlgorithmWithFallback : public HeapAlgorithm<BufferType> {
+ public:
+  using Result = HeapSimulator::Result<BufferType>;
+
+  HeapAlgorithmWithFallback(
+      std::unique_ptr<HeapAlgorithm<BufferType>> primary_algorithm,
+      std::function<std::unique_ptr<HeapAlgorithm<BufferType>>()>
+          fallback_factory,
+      int64_t memory_limit)
+      : primary_algorithm_(std::move(primary_algorithm)),
+        fallback_factory_(std::move(fallback_factory)),
+        memory_limit_(memory_limit) {}
+  ~HeapAlgorithmWithFallback() override = default;
+
+  void Alloc(const BufferType* buffer, int64_t size) override {
+    primary_algorithm_->Alloc(buffer, size);
+    calls_.push_back({CallType::kAlloc, buffer, nullptr, size});
+  }
+
+  void ShareWith(const BufferType* buffer, const BufferType* share_with,
+                 int64_t size) override {
+    primary_algorithm_->ShareWith(buffer, share_with, size);
+    calls_.push_back({CallType::kShareWith, buffer, share_with, size});
+  }
+
+  void Free(const BufferType* buffer, int64_t size) override {
+    primary_algorithm_->Free(buffer, size);
+    calls_.push_back({CallType::kFree, buffer, nullptr, size});
+  }
+
+  absl::StatusOr<Result> Finish() override {
+    absl::StatusOr<Result> primary_result = primary_algorithm_->Finish();
+    if (absl::IsResourceExhausted(primary_result.status()) ||
+        (primary_result.ok() && memory_limit_ > 0 &&
+         primary_result->heap_size > memory_limit_)) {
+      LOG(INFO) << "Primary algorithm failed or exceeded limit ("
+                << (primary_result.ok() ? primary_result->heap_size : -1)
+                << " vs " << memory_limit_
+                << "). Running fallback algorithm via lazy replay.";
+      auto fallback_algorithm = fallback_factory_();
+      for (const auto& call : calls_) {
+        switch (call.type) {
+          case CallType::kAlloc:
+            fallback_algorithm->Alloc(call.buffer, call.size);
+            break;
+          case CallType::kShareWith:
+            fallback_algorithm->ShareWith(call.buffer, call.share_with,
+                                          call.size);
+            break;
+          case CallType::kFree:
+            fallback_algorithm->Free(call.buffer, call.size);
+            break;
+        }
+      }
+      auto fallback_result = fallback_algorithm->Finish();
+      if (fallback_result.ok()) {
+        LOG(INFO) << "Fallback algorithm finished with size: "
+                  << fallback_result->heap_size;
+      }
+      return fallback_result;
+    }
+    if (primary_result.ok()) {
+      LOG(INFO) << "Primary algorithm finished with size: "
+                << primary_result->heap_size;
+    }
+    return primary_result;
+  }
+
+ private:
+  enum class CallType { kAlloc, kShareWith, kFree };
+  struct RecordedCall {
+    CallType type;
+    const BufferType* buffer;
+    const BufferType* share_with;
+    int64_t size;
+  };
+
+  std::unique_ptr<HeapAlgorithm<BufferType>> primary_algorithm_;
+  std::function<std::unique_ptr<HeapAlgorithm<BufferType>>()> fallback_factory_;
+  int64_t memory_limit_;
+  std::vector<RecordedCall> calls_;
 };
 
 // An iterator that produces every integer in [start, end], starting with the

@@ -252,11 +252,9 @@ class HloAliasible {
 };
 
 class HloAsyncInstruction : public HloInstruction {
- public:
-  // Constructs async-{update,done}.
-  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
-                      HloInstruction* operand);
+  friend class HloInstruction;
 
+ public:
   HloComputation* async_wrapped_computation() const;
   HloInstruction* async_wrapped_instruction() const;
   HloOpcode async_wrapped_opcode() const;
@@ -297,15 +295,19 @@ class HloAsyncInstruction : public HloInstruction {
 
   void UpdateAsyncChain();
 
+  // Updates all future instructions in the async chain to match the shape of
+  // the current instruction.
+  void UpdateChainShapes();
+
  protected:
   // Helper to constructs async-{start,update,done}.
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
                       absl::Span<HloInstruction* const> operands,
                       HloOpcode async_wrapped_opcode);
 
-  // Updates all future instructions in the async chain to match the shape of
-  // the current instruction.
-  void UpdateChainShapes();
+  // Constructs async-{update,done}.
+  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
+                      HloInstruction* operand);
 
  private:
   // async-{update,done} inherit all their attributes from async-start,
@@ -548,7 +550,7 @@ class HloChannelInstruction : public HloInstruction {
 class HloTopKInstruction : public HloInstruction {
  public:
   HloTopKInstruction(const Shape& shape, HloInstruction* input, int64_t k,
-                     bool largest);
+                     bool largest, bool is_stable);
 
   void ToProto(HloInstructionProto* proto) const override;
 
@@ -561,6 +563,8 @@ class HloTopKInstruction : public HloInstruction {
 
   // Returns whether the largest or smallest K values should be computed.
   bool largest() const { return largest_; }
+
+  bool is_stable() const { return is_stable_; }
 
   void PrintExtraAttributesImpl(AttributePrinter& printer,
                                 const HloPrintOptions& options) const override;
@@ -576,6 +580,7 @@ class HloTopKInstruction : public HloInstruction {
 
   int64_t k_;
   bool largest_;
+  bool is_stable_;
 };
 
 class HloSendRecvInstruction : public HloChannelInstruction {
@@ -1222,6 +1227,7 @@ class HloSortInstruction : public HloDimensionsInstruction {
   // Returns the number of value operands.
   int64_t values_count() const { return operand_count() - 1; }
   bool is_stable() const { return is_stable_; }
+  void set_is_stable(bool is_stable) { is_stable_ = is_stable; }
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kSort;
@@ -1594,15 +1600,23 @@ class HloFusionInstruction : public HloCallableInstruction {
   // fused instruction set of 'this', updating operands as necessary.
   //
   // Precondition: 'instruction_to_merge' must be an operand of 'this'.
-  void MergeFusionInstruction(HloFusionInstruction* instruction_to_merge);
+  //
+  // remove_computation: when false, allows to defer the call to
+  // RemoveEmbeddedComputation to a later time.
+  void MergeFusionInstruction(HloFusionInstruction* instruction_to_merge,
+                              bool remove_computation = true);
 
   // Merges the fused instructions from instruction_to_merge into the fused
   // instruction set of 'this' and generates multi-output fusion instructions.
   // All the users of instruction_to_merge will be redirected to 'this'
   // instruction. instruction_to_merge will be removed from its parent
   // computation.
+  //
+  // remove_computation: when false, allows to defer the call to
+  // RemoveEmbeddedComputation to a later time.
   void MergeFusionInstructionIntoMultiOutput(
-      HloFusionInstruction* instruction_to_merge);
+      HloFusionInstruction* instruction_to_merge,
+      bool remove_computation = true);
 
   // Fuses the given instruction in this fusion instruction. instruction_to_fuse
   // is cloned and the clone is placed in the fusion

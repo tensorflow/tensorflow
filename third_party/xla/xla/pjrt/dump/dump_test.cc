@@ -110,7 +110,7 @@ TEST(DumpTest, ResolveSpongeDumpPath) {
 TEST(DumpTest, GetDumpSubdirPath) {
   const std::string temp_dir = tsl::testing::TmpDir();
   TF_ASSERT_OK_AND_ASSIGN(std::string dump_subdir,
-                          pjrt::GetDumpSubdirPath(temp_dir, "my_module"));
+                          pjrt::GetDumpSubdirPath(temp_dir, "my_module", 0));
   EXPECT_THAT(dump_subdir, HasSubstr(temp_dir));
   EXPECT_THAT(dump_subdir, HasSubstr("my_module"));
   EXPECT_THAT(tsl::Env::Default()->IsDirectory(dump_subdir), IsOk());
@@ -118,7 +118,7 @@ TEST(DumpTest, GetDumpSubdirPath) {
 
 TEST(DumpTest, GetDumpSubdirPathEmptyPath) {
   TF_ASSERT_OK_AND_ASSIGN(std::string dump_subdir,
-                          pjrt::GetDumpSubdirPath("", "my_module"));
+                          pjrt::GetDumpSubdirPath("", "my_module", 0));
   EXPECT_EQ(dump_subdir, "");
 }
 
@@ -140,7 +140,45 @@ TEST(DumpTest, DumpCompileInputs) {
       ->set_xla_dump_to(temp_test_subdir);
 
   TF_ASSERT_OK(pjrt::DumpCompileInputs(temp_test_subdir, compile_options,
-                                       *module, *topology.get()));
+                                       *module, *topology.get(), 0));
+  std::vector<std::string> files;
+  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+      tsl::io::JoinPath(temp_test_subdir, "*"), &files));
+
+  ASSERT_EQ(files.size(), 1);
+  std::string dump_subdir = files[0];
+  EXPECT_THAT(tsl::Env::Default()->IsDirectory(dump_subdir), IsOk());
+
+  std::vector<std::string> dump_files;
+  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+      tsl::io::JoinPath(dump_subdir, "*"), &dump_files));
+  EXPECT_EQ(dump_files.size(), 3);
+  EXPECT_THAT(dump_files, testing::UnorderedElementsAre(
+                              HasSubstr("module.mlir"),
+                              HasSubstr("compile_options.textproto"),
+                              HasSubstr("topology.textproto")));
+}
+
+TEST(DumpTest, DumpCompileInputsAsProto) {
+  const std::string temp_test_dir = tsl::testing::TmpDir();
+  const std::string temp_test_subdir =
+      tsl::io::JoinPath(temp_test_dir, "compile_dump_as_proto_test",
+                        absl::StrCat(absl::ToUnixMillis(absl::Now())));
+  TF_ASSERT_OK(tsl::Env::Default()->RecursivelyCreateDir(temp_test_subdir));
+  xla::CompileOptions compile_options;
+  mlir::MLIRContext context;
+  mlir::OpBuilder builder(&context);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      xla::llvm_ir::CreateMlirModuleOp(builder.getUnknownLoc());
+  auto topology = std::make_unique<TestTopology>();
+
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_dump_to(temp_test_subdir);
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_dump_hlo_as_proto(true);
+
+  TF_ASSERT_OK(pjrt::DumpCompileInputs(temp_test_subdir, compile_options,
+                                       *module, *topology.get(), 0));
   std::vector<std::string> files;
   TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(temp_test_subdir, "*"), &files));
@@ -162,7 +200,7 @@ TEST(DumpTest, DumpCompileInputs) {
 TEST(MaybeDumpCompileInputsTest, XlaDumpToNotSet) {
   const std::string temp_test_dir = tsl::testing::TmpDir();
   const std::string temp_test_subdir =
-      tsl::io::JoinPath(temp_test_dir, "compile_maybe_dump_test",
+      tsl::io::JoinPath(temp_test_dir, "compile_maybe_dump_test_not_set",
                         absl::StrCat(absl::ToUnixMillis(absl::Now())));
   TF_ASSERT_OK(tsl::Env::Default()->RecursivelyCreateDir(temp_test_subdir));
   xla::CompileOptions compile_options;
@@ -173,8 +211,8 @@ TEST(MaybeDumpCompileInputsTest, XlaDumpToNotSet) {
   auto topology = std::make_unique<TestTopology>();
 
   // xla_dump_to not set
-  TF_ASSERT_OK(
-      pjrt::MaybeDumpCompileInputs(compile_options, *module, *topology.get()));
+  TF_ASSERT_OK(pjrt::MaybeDumpCompileInputs(compile_options, *module,
+                                            *topology.get(), 0));
 
   std::vector<std::string> no_files;
   TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
@@ -186,7 +224,7 @@ TEST(MaybeDumpCompileInputsTest, XlaDumpToNotSet) {
 TEST(MaybeDumpCompileInputsTest, XlaDumpToSet) {
   const std::string temp_test_dir = tsl::testing::TmpDir();
   const std::string temp_test_subdir =
-      tsl::io::JoinPath(temp_test_dir, "compile_maybe_dump_test",
+      tsl::io::JoinPath(temp_test_dir, "compile_maybe_dump_test_set",
                         absl::StrCat(absl::ToUnixMillis(absl::Now())));
   TF_ASSERT_OK(tsl::Env::Default()->RecursivelyCreateDir(temp_test_subdir));
   xla::CompileOptions compile_options;
@@ -200,8 +238,8 @@ TEST(MaybeDumpCompileInputsTest, XlaDumpToSet) {
   compile_options.executable_build_options.mutable_debug_options()
       ->set_xla_dump_to(temp_test_subdir);
 
-  TF_ASSERT_OK(
-      pjrt::MaybeDumpCompileInputs(compile_options, *module, *topology.get()));
+  TF_ASSERT_OK(pjrt::MaybeDumpCompileInputs(compile_options, *module,
+                                            *topology.get(), 0));
   std::vector<std::string> files;
   TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(temp_test_subdir, "*"), &files));
@@ -214,10 +252,10 @@ TEST(MaybeDumpCompileInputsTest, XlaDumpToSet) {
   TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(dump_subdir, "*"), &dump_files));
   EXPECT_EQ(dump_files.size(), 3);
-  EXPECT_THAT(dump_files,
-              testing::UnorderedElementsAre(HasSubstr("module.mlir"),
-                                            HasSubstr("compile_options.pb"),
-                                            HasSubstr("topology.pb")));
+  EXPECT_THAT(dump_files, testing::UnorderedElementsAre(
+                              HasSubstr("module.mlir"),
+                              HasSubstr("compile_options.textproto"),
+                              HasSubstr("topology.textproto")));
 }
 
 }  // namespace

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
@@ -228,7 +229,7 @@ void ShardingParam::PrintV2(mlir::AsmPrinter& ods_printer,
 }
 
 absl::Status ShardingParam::verify() const {
-  TF_RETURN_IF_ERROR(minor_to_major().verify());
+  RETURN_IF_ERROR(minor_to_major().verify());
   const int axis_size = minor_to_major().axis_sizes.size();
   absl::flat_hash_set<int> unreduced_set;
   for (const int unreduced : unreduced_axes()) {

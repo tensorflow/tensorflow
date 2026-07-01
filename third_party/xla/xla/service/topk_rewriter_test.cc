@@ -40,8 +40,8 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -53,8 +53,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class TopkRewriterTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
+class TopkRewriterTest : public HloInterpreterReferenceMixin<HloTestBase> {};
 
 std::string getComparator() {
   return R"(
@@ -750,6 +749,67 @@ ENTRY TopK {
   TF_ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
                           TopkDecomposer().Run(module.get()));
   EXPECT_TRUE(decomposer_changed);
+}
+
+TEST_F(TopkRewriterTest, TopKDecompositionUnstable) {
+  const std::string hlo_string = R"(
+HloModule topk
+
+ENTRY TopK {
+  x = bf16[8,2048]{0,1} parameter(0)
+  ROOT topk = (bf16[8,24]{0,1}, s32[8,24]{0,1}) topk(x), k=24, largest=true, is_stable=false
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                       TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+
+  auto IsUnstableSort = [](const HloInstruction* inst) {
+    auto* sort = DynCast<HloSortInstruction>(inst);
+    return sort != nullptr && !sort->is_stable();
+  };
+
+  auto sort_matcher =
+      m::Sort(m::Parameter(0), m::Iota()).WithPredicate(IsUnstableSort);
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Slice(m::GetTupleElement(sort_matcher, 0)),
+                          m::Slice(m::GetTupleElement(sort_matcher, 1)))));
+}
+
+TEST_F(TopkRewriterTest, TopKCustomCallUnstableConfig) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,2048] parameter(0)
+  %iota.4 = s32[8,2048] iota(), iota_dimension=1
+  %sort.27 = (f32[8,2048], s32[8,2048]) sort(%arg_tuple.1, %iota.4),
+    dimensions={1}, is_stable=false, to_apply=%compare
+  %get-tuple-element.28 = f32[8,2048] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[8,24] slice(%get-tuple-element.28), slice={[0:8], [0:24]}
+  %get-tuple-element.30 = s32[8,2048] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[8,24] slice(%get-tuple-element.30), slice={[0:8], [0:24]}
+  ROOT %tuple.32 = (f32[8,24], s32[8,24]) tuple(%slice.29, %slice.31)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* cc =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+
+  EXPECT_EQ(cc->custom_call_target(), "TopK");
+  EXPECT_EQ(cc->raw_backend_config_string(), "{is_stable = false}");
 }
 
 }  // namespace

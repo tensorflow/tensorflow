@@ -1503,6 +1503,9 @@ TEST_F(PriorityFusionWithTritonEnabledTest,
   PriorityFusion priority_fusion_with_thread_pool{/*thread_pool=*/&pool,
                                                   device_info_, &alias_info_,
                                                   options, &mlir_context_};
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
   EXPECT_THAT(priority_fusion_with_thread_pool.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
   HloInstruction* root = module->entry_computation()->root_instruction();

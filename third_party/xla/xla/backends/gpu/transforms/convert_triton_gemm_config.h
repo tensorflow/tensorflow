@@ -61,7 +61,7 @@ class ConvertTritonGemmConfig : public HloModulePass {
 // need to satisfy the constraints of the analysis and map to the given `config`
 // of the dot.
 absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
-    HloInstruction* dot, const TritonGemmConfig& config,
+    const HloInstruction* dot, const TritonGemmConfig& config,
     mlir::MLIRContext* mlir_context,
     const se::DeviceDescription& device_description);
 

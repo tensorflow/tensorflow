@@ -56,6 +56,11 @@ absl::StatusOr<std::string> GetBackendConfigString(
     const HloInstructionProto& instruction,
     const HloModuleProto* module = nullptr);
 
+// Returns a self-contained HloInstructionProto by inlining payloads that were
+// previously deduplicated and stored in the module's payloads list.
+HloInstructionProto ToProtoWithInlinedPayloads(HloInstructionProto proto,
+                                               const HloModuleProto* module);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_HLO_PROTO_UTIL_H_

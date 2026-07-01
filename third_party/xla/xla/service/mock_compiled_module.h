@@ -40,7 +40,8 @@ class MockCompiledModule : public CompiledModule {
               (ref(&&), override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Executable>>, LoadExecutable,
               (stream_executor::PlatformId platform_id,
-               const stream_executor::DeviceDescription& device_description),
+               const stream_executor::DeviceDescription& device_description,
+               const DebugOptions& debug_options),
               (ref(&&), override));
   MOCK_METHOD(absl::StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),
               (const, override));

@@ -120,7 +120,7 @@ func.func @type_mismatch_insert(%src: tensor<24xf64>, %dst: memref<1024xf32>) {
 // -----
 
 func.func @dot_scaled(%lhs: tensor<128x128xf32>, %lhs_scale: tensor<128x4xi8>, %rhs: tensor<128x256xf32>, %rhs_scale: tensor<256x4xi8>, %acc: tensor<128x256xf32>) -> tensor<128x256xf32> {
-  %0 = xtile.dot_scaled %lhs scale %lhs_scale, %rhs scale %rhs_scale {fastMath = true} : tensor<128x128xf32>, tensor<128x4xi8> * tensor<128x256xf32>, tensor<256x4xi8> -> tensor<128x256xf32>
+  %0 = xtile.dot_scaled %lhs scale %lhs_scale, %rhs scale %rhs_scale {fastMath = true, lhs_elem_type = f32, rhs_elem_type = f32} : tensor<128x128xf32>, tensor<128x4xi8> * tensor<128x256xf32>, tensor<256x4xi8> -> tensor<128x256xf32>
   return %0 : tensor<128x256xf32>
 }
 
@@ -147,6 +147,17 @@ func.func @illegal_mask_out_of_bounds(%src: tensor<32xf64>, %mask: f64) -> tenso
   // expected-error@+1 {{mask bound not less than or equal to the tensor size}}
   %masked = xtile.mask %src bounds [33], %mask : tensor<32xf64>
   return %masked : tensor<32xf64>
+}
+
+// -----
+
+func.func @scan_op(%input: tensor<10x20x30xf32>, %init: tensor<10x20xf32>) -> (tensor<10x20x30xf32>, tensor<10x20xf32>) {
+  %output, %carry = xtile.scan(%input) inits(%init) dimension = 2 {scan_dim_size = 30 : i64} : (tensor<10x20x30xf32>), (tensor<10x20xf32>) -> (tensor<10x20x30xf32>), (tensor<10x20xf32>) {
+  ^bb0(%arg0: tensor<10x20xf32>, %arg1: tensor<10x20xf32>):
+    %add = stablehlo.add %arg0, %arg1 : tensor<10x20xf32>
+    stablehlo.return %add : tensor<10x20xf32>
+  }
+  return %output, %carry : tensor<10x20x30xf32>, tensor<10x20xf32>
 }
 
 // -----

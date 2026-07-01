@@ -64,7 +64,7 @@ class ScatterFusion : public MlirKernelEmitter {
  public:
   explicit ScatterFusion(const HloFusionAnalysis& analysis,
                          const ScatterDescription& description,
-                         int64_t vector_size, mlir::MLIRContext* mlir_context);
+                         int64_t vector_size);
 
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
@@ -91,7 +91,7 @@ class ScatterFusion : public MlirKernelEmitter {
       mlir::ImplicitLocOpBuilder& b, const EmitterHelper& helper,
       const IndexingMap& updates_map, const IndexingMap& indices_map,
       mlir::ValueRange thread_and_block_ids,
-      mlir::Value output_tensor) const = 0;
+      mlir::ValueRange output_tensors) const = 0;
 
   virtual void ComputeIndexing(mlir::MLIRContext* ctx, IndexingMap* updates_map,
                                IndexingMap* indices_map) const = 0;
@@ -102,7 +102,6 @@ class ScatterFusion : public MlirKernelEmitter {
 
   const HloFusionAnalysis& analysis_;
   ScatterDescription description_;
-  mlir::MLIRContext* mlir_context_;
 
   // The grid is {num_warps_ * WarpSize(), 1, 1, num_blocks_, 1, 1}.
   int64_t warp_size_;
@@ -122,16 +121,14 @@ class ScatterWithDistributedUpdates : public ScatterFusion {
  public:
   explicit ScatterWithDistributedUpdates(const HloFusionAnalysis& analysis,
                                          const ScatterDescription& description,
-                                         int64_t vector_size,
-                                         mlir::MLIRContext* mlir_context);
+                                         int64_t vector_size);
 
  protected:
-  absl::Status EmitEntryFunctionImpl(mlir::ImplicitLocOpBuilder& b,
-                                     const EmitterHelper& helper,
-                                     const IndexingMap& updates_map,
-                                     const IndexingMap& indices_map,
-                                     mlir::ValueRange thread_and_block_ids,
-                                     mlir::Value output_tensor) const override;
+  absl::Status EmitEntryFunctionImpl(
+      mlir::ImplicitLocOpBuilder& b, const EmitterHelper& helper,
+      const IndexingMap& updates_map, const IndexingMap& indices_map,
+      mlir::ValueRange thread_and_block_ids,
+      mlir::ValueRange output_tensors) const override;
 
   void ComputeIndexing(mlir::MLIRContext* mlir_context,
                        IndexingMap* updates_map,
@@ -191,20 +188,18 @@ class ScatterWithDistributedIndices : public ScatterFusion {
                                          int64_t vector_size,
                                          int64_t num_warps_per_slice,
                                          int64_t num_indices_per_warp,
-                                         int64_t indices_vector_size,
-                                         mlir::MLIRContext* mlir_context);
+                                         int64_t indices_vector_size);
 
  protected:
   void ComputeIndexing(mlir::MLIRContext* mlir_context,
                        IndexingMap* updates_map,
                        IndexingMap* indices_map) const override;
 
-  absl::Status EmitEntryFunctionImpl(mlir::ImplicitLocOpBuilder& b,
-                                     const EmitterHelper& helper,
-                                     const IndexingMap& updates_map,
-                                     const IndexingMap& indices_map,
-                                     mlir::ValueRange thread_and_block_ids,
-                                     mlir::Value output_tensor) const override;
+  absl::Status EmitEntryFunctionImpl(
+      mlir::ImplicitLocOpBuilder& b, const EmitterHelper& helper,
+      const IndexingMap& updates_map, const IndexingMap& indices_map,
+      mlir::ValueRange thread_and_block_ids,
+      mlir::ValueRange output_tensors) const override;
 
  private:
   // Creates a 2D vector to store the accumulated updates in each thread.
@@ -220,7 +215,7 @@ class ScatterWithDistributedIndices : public ScatterFusion {
 };
 
 std::unique_ptr<ScatterFusion> CreateScatterFusion(
-    const HloFusionAnalysis& analysis, mlir::MLIRContext* mlir_context);
+    const HloFusionAnalysis& analysis);
 
 }  // namespace gpu
 }  // namespace xla

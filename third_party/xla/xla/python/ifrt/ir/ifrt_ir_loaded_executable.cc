@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/OperationSupport.h"
@@ -41,6 +42,8 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
+#include "xla/python/ifrt/client_impl_util.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
@@ -54,8 +57,6 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -102,8 +103,8 @@ CreateAtomExecutableVersion(
   absl::Span<Device* const> devices = (*device_list)->devices();
 
   IfrtIrExecutableVersion::AtomExecutableVersion atom_executable_version;
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<const ExecutableVersion> version,
-                      executable->executable_version());
+  ASSIGN_OR_RETURN(std::shared_ptr<const ExecutableVersion> version,
+                   executable->executable_version());
   atom_executable_version.runtime_abi_version = std::move(version);
   atom_executable_version.logical_device_ids.reserve(devices.size());
   for (Device* device : devices) {
@@ -132,16 +133,16 @@ IfrtIrLoadedExecutable::executable_version() const {
       std::vector<IfrtIrExecutableVersion::AtomExecutableVersion>
           runtime_abi_versions;
       runtime_abi_versions.reserve(program_->atom_program_executables->size());
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           DeviceIdToLogicalDeviceIdMap device_id_to_logical_device_id,
           CreateDeviceIdToLogicalDeviceIdMap(program_));
 
       for (const auto& [name, executable] :
            *program_->atom_program_executables) {
-        TF_ASSIGN_OR_RETURN(IfrtIrExecutableVersion::AtomExecutableVersion
-                                atom_executable_version,
-                            CreateAtomExecutableVersion(
-                                executable, device_id_to_logical_device_id));
+        ASSIGN_OR_RETURN(IfrtIrExecutableVersion::AtomExecutableVersion
+                             atom_executable_version,
+                         CreateAtomExecutableVersion(
+                             executable, device_id_to_logical_device_id));
         runtime_abi_versions.push_back(std::move(atom_executable_version));
       }
 
@@ -164,7 +165,7 @@ IfrtIrLoadedExecutable::GetHumanReadableProgramText() const {
       OperationToString(program_->program->mlir_module,
                         mlir::OpPrintingFlags().enableDebugInfo());
   for (const auto& [name, executable] : *program_->atom_program_executables) {
-    TF_ASSIGN_OR_RETURN(auto t, executable->GetHumanReadableProgramText());
+    ASSIGN_OR_RETURN(auto t, executable->GetHumanReadableProgramText());
     absl::StrAppend(&result, "\n\n", name, " -> ", t);
   }
   return result;
@@ -191,8 +192,8 @@ IfrtIrLoadedExecutable::GetMpmdCompiledMemoryStats() const {
   absl::flat_hash_map<std::string, xla::CompiledMemoryStats>
       mpmd_compiled_memory_stats;
   for (const auto& [name, executable] : *program_->atom_program_executables) {
-    TF_ASSIGN_OR_RETURN(auto compiled_memory_stats,
-                        executable->GetCompiledMemoryStats());
+    ASSIGN_OR_RETURN(auto compiled_memory_stats,
+                     executable->GetCompiledMemoryStats());
     mpmd_compiled_memory_stats.insert({name, std::move(compiled_memory_stats)});
   }
   return mpmd_compiled_memory_stats;
@@ -251,7 +252,7 @@ IfrtIrLoadedExecutable::GetParameterLayouts() const {
   DCHECK(this);
   TraceMe traceme(
       []() { return "IfrtIrLoadedExecutable::GetParameterLayouts"; });
-  TF_RETURN_IF_ERROR(program_->layout_status);
+  RETURN_IF_ERROR(program_->layout_status);
   std::vector<std::shared_ptr<const xla::PjRtLayout>> parameter_layouts;
   parameter_layouts.reserve(program_->in_specs.size());
   for (const auto& spec : program_->in_specs) {
@@ -264,7 +265,7 @@ absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
 IfrtIrLoadedExecutable::GetOutputLayouts() const {
   DCHECK(this);
   TraceMe traceme([]() { return "IfrtIrLoadedExecutable::GetOutputLayouts"; });
-  TF_RETURN_IF_ERROR(program_->layout_status);
+  RETURN_IF_ERROR(program_->layout_status);
   std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts;
   output_layouts.reserve(program_->out_specs.size());
   for (const auto& spec : program_->out_specs) {
@@ -285,9 +286,8 @@ IfrtIrLoadedExecutable::GetHloModules() const {
   // same as HloModule::name()
   std::vector<std::shared_ptr<xla::HloModule>> all_modules;
   for (const auto& [name, executable] : *program_->atom_program_executables) {
-    TF_ASSIGN_OR_RETURN(
-        std::vector<std::shared_ptr<xla::HloModule>> this_modules,
-        executable->GetHloModules());
+    ASSIGN_OR_RETURN(std::vector<std::shared_ptr<xla::HloModule>> this_modules,
+                     executable->GetHloModules());
     all_modules.insert(all_modules.end(), this_modules.begin(),
                        this_modules.end());
   }
@@ -300,7 +300,7 @@ IfrtIrLoadedExecutable::GetMpmdHloModules() const {
   absl::flat_hash_map<std::string, std::vector<std::shared_ptr<xla::HloModule>>>
       mpmd_hlo_modules;
   for (const auto& [name, executable] : *program_->atom_program_executables) {
-    TF_ASSIGN_OR_RETURN(auto hlo_modules, executable->GetHloModules());
+    ASSIGN_OR_RETURN(auto hlo_modules, executable->GetHloModules());
     mpmd_hlo_modules.insert({name, std::move(hlo_modules)});
   }
   return mpmd_hlo_modules;
@@ -339,8 +339,7 @@ absl::StatusOr<absl::flat_hash_map<std::string, AttributeMap>>
 IfrtIrLoadedExecutable::GetMpmdCostAnalysis() const {
   absl::flat_hash_map<std::string, AttributeMap> mpmd_cost_analysis;
   for (const auto& [name, executable] : *program_->atom_program_executables) {
-    TF_ASSIGN_OR_RETURN(auto atom_program_analysis,
-                        executable->GetCostAnalysis());
+    ASSIGN_OR_RETURN(auto atom_program_analysis, executable->GetCostAnalysis());
     mpmd_cost_analysis.insert({name, std::move(atom_program_analysis)});
   }
   return mpmd_cost_analysis;
@@ -370,11 +369,11 @@ absl::StatusOr<LoadedExecutableRef> IfrtIrLoadedExecutable::Create(
     Client* client, std::shared_ptr<CompiledIfrtIrProgram> program) {
   tsl::profiler::TraceMe traceme("IfrtIrLoadedExecutable::Create");
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       DeviceListRef device_list,
       LookUpDevices(client, program->compile_options->device_assignments));
-  TF_ASSIGN_OR_RETURN(auto memory_tracer, ProgramMemoryTracer::Create(
-                                              program, client, device_list));
+  ASSIGN_OR_RETURN(auto memory_tracer,
+                   ProgramMemoryTracer::Create(program, client, device_list));
   return std::unique_ptr<IfrtIrLoadedExecutable>(new IfrtIrLoadedExecutable(
       client, std::move(program), std::move(device_list),
       std::move(memory_tracer)));
@@ -393,6 +392,14 @@ absl::StatusOr<LoadedExecutable::ExecuteResult> IfrtIrLoadedExecutable::Execute(
     absl::Span<ArrayRef> args, const ExecuteOptions& options,
     std::optional<DeviceListRef> devices) {
   return program_->execute_fn(args, options, std::move(devices));
+}
+
+absl::StatusOr<LoadedExecutable::ExecuteBundleResult>
+IfrtIrLoadedExecutable::ExecuteBundle(absl::Span<BundleRef> args,
+                                      const ExecuteOptions& options) {
+  return xla::ifrt::LoadedExecutableExecuteBundle(
+      this, args, options,
+      program_->compile_options->outputs_bundle_slice_sizes);
 }
 
 absl::StatusOr<absl::Span<const int>>

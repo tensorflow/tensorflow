@@ -23,7 +23,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
-#include <complex>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -323,6 +322,16 @@ LogicalResult TypeExtensionsAttr::verifyEncoding(
       getBounds(), RankedTensorType::get(shape, elementType), emitError);
 }
 
+LogicalResult OriginalValueAttr::verify(
+    ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
+    bool is_synthetic_call,
+    ::llvm::ArrayRef<OriginalValueElementAttr> elements) {
+  if (is_synthetic_call && !elements.empty()) {
+    return emitError() << "expected empty elements for a synthetic call";
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ReduceScatterOp
 //===----------------------------------------------------------------------===//
@@ -383,6 +392,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogisticOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(MaxOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(MinOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(MulOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(MulhiOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NotOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(OrOp)
@@ -738,13 +748,13 @@ void CustomCallOp::build(
     ::mlir::StringAttr backendConfig,
     ::mlir::mhlo::CustomCallApiVersionAttr apiVersion,
     ::mlir::ArrayAttr calledComputations, ::mlir::ArrayAttr operandLayouts,
-    ::mlir::ArrayAttr resultLayouts) {
+    ::mlir::ArrayAttr resultLayouts, ::mlir::ArrayAttr resultTilings) {
   return CustomCallOp::build(
       odsBuilder, odsState, resultType, operands, callTargetName, hasSideEffect,
       backendConfig, apiVersion, calledComputations,
       CustomCallScheduleAttr::get(odsBuilder.getContext(),
                                   CustomCallSchedule::NONE),
-      operandLayouts, resultLayouts, nullptr);
+      operandLayouts, resultLayouts, nullptr, resultTilings);
 }
 
 LogicalResult CustomCallOp::verify() {
@@ -1933,8 +1943,7 @@ LogicalResult AbsOp::inferReturnTypes(
 
 void CollectiveBroadcastOp::build(OpBuilder& odsBuilder,
                                   OperationState& odsState, Type resultType,
-                                  Value operand,
-                                  DenseIntElementsAttr replicaGroups) {
+                                  Value operand, Attribute replicaGroups) {
   CollectiveBroadcastOp::build(odsBuilder, odsState, resultType, operand,
                                replicaGroups, /*channel_handle=*/nullptr);
 }
@@ -2435,8 +2444,7 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
 void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
                        Type resultType, Value operand,
                        IntegerAttr splitDimension, IntegerAttr concatDimension,
-                       IntegerAttr splitCount,
-                       DenseIntElementsAttr replicaGroups) {
+                       IntegerAttr splitCount, Attribute replicaGroups) {
   AllToAllOp::build(odsBuilder, odsState, resultType, operand, splitDimension,
                     concatDimension, splitCount, replicaGroups,
                     /*channel_handle=*/nullptr);
@@ -2445,8 +2453,7 @@ void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
 void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
                        ::mlir::TypeRange resultType, ::mlir::ValueRange operand,
                        IntegerAttr splitDimension, IntegerAttr concatDimension,
-                       IntegerAttr splitCount,
-                       DenseIntElementsAttr replicaGroups) {
+                       IntegerAttr splitCount, Attribute replicaGroups) {
   AllToAllOp::build(odsBuilder, odsState, resultType, operand, splitDimension,
                     concatDimension, splitCount, replicaGroups,
                     /*channel_handle=*/nullptr);
@@ -2480,8 +2487,7 @@ LogicalResult AllGatherOp::verify() {
 
 void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
                         Type resultType, Value operand,
-                        IntegerAttr allGatherDim,
-                        DenseIntElementsAttr replicaGroups,
+                        IntegerAttr allGatherDim, Attribute replicaGroups,
                         ChannelHandleAttr channelHandle) {
   AllGatherOp::build(odsBuilder, odsState, resultType, ValueRange(operand),
                      allGatherDim, replicaGroups, channelHandle,
@@ -2493,8 +2499,7 @@ void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
 //===----------------------------------------------------------------------===//
 
 void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                        Type resultType, Value operand,
-                        DenseIntElementsAttr replicaGroups,
+                        Type resultType, Value operand, Attribute replicaGroups,
                         ChannelHandleAttr channelHandle,
                         bool useGlobalDeviceIds) {
   AllReduceOp::build(odsBuilder, odsState, resultType, ValueRange(operand),
@@ -2502,7 +2507,7 @@ void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
 }
 
 void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                        Value operand, DenseIntElementsAttr replicaGroups,
+                        Value operand, Attribute replicaGroups,
                         ChannelHandleAttr channelHandle,
                         bool useGlobalDeviceIds) {
   AllReduceOp::build(odsBuilder, odsState, operand.getType(),
@@ -2661,11 +2666,11 @@ OpFoldResult BroadcastOp::fold(FoldAdaptor adaptor) {
     ComplexType complex = cast<ComplexType>(type.getElementType());
     if (isa<FloatType>(complex.getElementType())) {
       return DenseElementsAttr::get(
-          type, {splatOperandAttr.getSplatValue<std::complex<APFloat>>()});
+          type, {splatOperandAttr.getSplatValue<mlir::Complex<APFloat>>()});
     }
     if (isa<IntegerType>(complex.getElementType())) {
       return DenseElementsAttr::get(
-          type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
+          type, {splatOperandAttr.getSplatValue<mlir::Complex<APInt>>()});
     }
     return {};
   }
@@ -2762,11 +2767,11 @@ OpFoldResult BroadcastInDimOp::fold(FoldAdaptor adaptor) {
     ComplexType complex = cast<ComplexType>(type.getElementType());
     if (isa<FloatType>(complex.getElementType())) {
       return DenseElementsAttr::get(
-          type, {splatOperandAttr.getSplatValue<std::complex<APFloat>>()});
+          type, {splatOperandAttr.getSplatValue<mlir::Complex<APFloat>>()});
     }
     if (isa<IntegerType>(complex.getElementType())) {
       return DenseElementsAttr::get(
-          type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
+          type, {splatOperandAttr.getSplatValue<mlir::Complex<APInt>>()});
     }
     return {};
   }
@@ -4781,7 +4786,7 @@ OpFoldResult PadOp::fold(FoldAdaptor adaptor) {
           dyn_cast_or_null<ComplexType>(returnType.getElementType())) {
     // TODO(atondwal): Allow int types in HLO_complex
     if (isa<FloatType>(complex.getElementType()))
-      return padOpFoldHelper<std::complex<APFloat>>(
+      return padOpFoldHelper<mlir::Complex<APFloat>>(
           input, padding, returnType, getEdgePaddingLow(), getEdgePaddingHigh(),
           getInteriorPadding());
   }
@@ -6828,7 +6833,6 @@ using mlir::hlo::printVariadicSameOperandsAndResultType;
 
 using namespace mlir;  // NOLINT
 using mlir::mhlo::AsyncBundleType;
-using mlir::mhlo::TokenType;
 
 #define GET_OP_CLASSES
 #include "mhlo/IR/hlo_ops.cc.inc"
@@ -6865,10 +6869,12 @@ struct MhloHloDialectInterface : public hlo::HloDialectInterface {
   using HloDialectInterface::HloDialectInterface;
 
   Type createTokenType() const override {
-    return TokenType::get(getDialect()->getContext());
+    return mlir::mhlo::TokenType::get(getDialect()->getContext());
   }
 
-  bool isTokenType(Type type) const override { return isa<TokenType>(type); }
+  bool isTokenType(Type type) const override {
+    return isa<mlir::mhlo::TokenType>(type);
+  }
 
   Attribute createTypeExtensions(ArrayRef<int64_t> bounds) const override {
     return TypeExtensionsAttr::get(getDialect()->getContext(), bounds);
@@ -6889,7 +6895,7 @@ MhloDialect::MhloDialect(MLIRContext* context)
   addInterfaces<MhloHloDialectInterface>();
   addInterfaces<MhloDialectInlinerInterface>();
   addBytecodeInterface(this);
-  addTypes<TokenType, AsyncBundleType>();
+  addTypes<mlir::mhlo::TokenType, AsyncBundleType>();
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "mhlo/IR/hlo_ops_attrs.cc.inc"
@@ -6901,13 +6907,13 @@ Type MhloDialect::parseType(DialectAsmParser& parser) const {
   Type parsedType;
   auto parseResult = generatedTypeParser(parser, &mnemonic, parsedType);
   if (parseResult.has_value()) return parsedType;
-  if (mnemonic == "token") return TokenType::get(getContext());
+  if (mnemonic == "token") return mlir::mhlo::TokenType::get(getContext());
   parser.emitError(parser.getNameLoc()) << "unknown mhlo type: " << mnemonic;
   return nullptr;
 }
 
 void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
-  if (isa<TokenType>(type)) {
+  if (isa<mlir::mhlo::TokenType>(type)) {
     os << "token";
     return;
   }
@@ -7212,14 +7218,6 @@ enum NonSpatialDim : int64_t {
 };
 
 struct DenseMapInfoNonSpatialDim {
-  static inline NonSpatialDim getEmptyKey() {
-    return NonSpatialDim(DenseMapInfo<int64_t>::getEmptyKey());
-  }
-
-  static inline NonSpatialDim getTombstoneKey() {
-    return NonSpatialDim(DenseMapInfo<int64_t>::getTombstoneKey());
-  }
-
   static unsigned getHashValue(const NonSpatialDim& key) {
     return DenseMapInfo<int64_t>::getHashValue(key);
   }
@@ -7903,6 +7901,120 @@ LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
              << arrayAttr.size();
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// OriginalArrayAttr
+//===----------------------------------------------------------------------===//
+
+void OriginalArrayAttr::print(AsmPrinter& printer) const {
+  printer << "<" << getInstructionName() << ", ";
+  mlir::hlo::printDimSizes(printer, getShapeIndex());
+  printer << ">";
+}
+
+Attribute OriginalArrayAttr::parse(AsmParser& parser, Type /*type*/) {
+  if (failed(parser.parseLess())) return {};
+  StringAttr instructionName;
+  if (failed(parser.parseAttribute(instructionName))) return {};
+  if (failed(parser.parseComma())) return {};
+  auto shapeIndex = mlir::hlo::parseDimSizes(parser);
+  if (failed(shapeIndex)) return {};
+  if (failed(parser.parseGreater())) return {};
+  return OriginalArrayAttr::get(parser.getContext(), instructionName,
+                                *shapeIndex);
+}
+
+//===========================================================================//
+// OriginalValueElementAttr
+//===========================================================================//
+
+void OriginalValueElementAttr::print(AsmPrinter& printer) const {
+  printer << "<";
+  mlir::hlo::printDimSizes(printer, getShapeIndex());
+  printer << ", ";
+  if (getOriginalArray().has_value()) {
+    (*getOriginalArray()).print(printer);
+  } else {
+    printer << "none";
+  }
+  printer << ">";
+}
+
+Attribute OriginalValueElementAttr::parse(AsmParser& parser, Type type) {
+  if (failed(parser.parseLess())) return {};
+  auto shapeIndex = mlir::hlo::parseDimSizes(parser);
+  if (failed(shapeIndex)) return {};
+  if (failed(parser.parseComma())) return {};
+
+  std::optional<OriginalArrayAttr> originalArray;
+  if (succeeded(parser.parseOptionalKeyword("none"))) {
+    originalArray = std::nullopt;
+  } else {
+    auto arrayAttr = OriginalArrayAttr::parse(parser, type);
+    if (!arrayAttr) return {};
+    originalArray = llvm::cast<OriginalArrayAttr>(arrayAttr);
+  }
+
+  if (failed(parser.parseGreater())) return {};
+  return OriginalValueElementAttr::get(parser.getContext(), *shapeIndex,
+                                       originalArray);
+}
+
+//===========================================================================//
+// OriginalValueAttr
+//===========================================================================//
+
+// Define a custom printer for OriginalValue so we do not print names of nested
+// attributes when using let assemblyFormat declarations.
+//
+// For example, with let assemblyFormat declarations we could get:
+//
+// %0 = stablehlo.constant {mhlo.original_value = #mhlo.original_value<false,
+// [#mhlo.original_value_element<[], #mhlo.original_array<"constant.5", []>>]>}
+// dense<0> : tensor<i32>
+//
+// With custom assembly format it becomes:
+//
+// %0 = stablehlo.constant {mhlo.original_value = #mhlo.original_value<false,
+//[<[], <"constant.5", []>>]>} dense<0> : tensor<i32>
+void OriginalValueAttr::print(AsmPrinter& printer) const {
+  printer << "<" << (getIsSyntheticCall() ? "true" : "false") << ", [";
+  llvm::interleaveComma(
+      getElements(), printer,
+      [&](const OriginalValueElementAttr& el) { el.print(printer); });
+  printer << "]>";
+}
+
+Attribute OriginalValueAttr::parse(AsmParser& parser, Type type) {
+  if (failed(parser.parseLess())) return {};
+  bool isSyntheticCall = false;
+  if (succeeded(parser.parseOptionalKeyword("true"))) {
+    isSyntheticCall = true;
+  } else if (failed(parser.parseKeyword("false"))) {
+    return {};
+  }
+
+  if (failed(parser.parseComma())) return {};
+  if (failed(parser.parseLSquare())) return {};
+
+  SmallVector<OriginalValueElementAttr> elements;
+  auto parseElement = [&]() -> ParseResult {
+    auto el = OriginalValueElementAttr::parse(parser, type);
+    if (!el) return failure();
+    elements.push_back(llvm::cast<OriginalValueElementAttr>(el));
+    return success();
+  };
+
+  if (failed(parser.parseOptionalRSquare())) {
+    if (failed(parser.parseCommaSeparatedList(parseElement)) ||
+        failed(parser.parseRSquare())) {
+      return {};
+    }
+  }
+
+  if (failed(parser.parseGreater())) return {};
+  return OriginalValueAttr::get(parser.getContext(), isSyntheticCall, elements);
 }
 
 }  // namespace mlir::mhlo

@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
@@ -1186,7 +1187,7 @@ absl::Status CoordinationService::InitializeBarrier(
   barrier->result = absl::UnknownError("Invalid barrier result.");
   barrier->initiating_task = task;
   barrier->done_callbacks.clear();
-  TF_RETURN_IF_ERROR(InitializeTasksAtBarrier(barrier, participating_tasks));
+  RETURN_IF_ERROR(InitializeTasksAtBarrier(barrier, participating_tasks));
 
   barrier->num_pending_tasks = barrier->tasks_at_barrier.size();
 

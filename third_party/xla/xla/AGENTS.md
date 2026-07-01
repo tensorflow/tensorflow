@@ -35,29 +35,65 @@ suggesting, or modifying code within the
               return absl::OkStatus();
             }
             ```
+3.  **Decision making**:
+    *   **Avoid `bool`** for returning a decision to do or not to do something.
+    *   **Prefer `Decision`**:
+        *   Located in `third_party/tensorflow/compiler/xla/service/decision.h`
+        *   Example:
+            ```cpp
+            #include "third_party/tensorflow/compiler/xla/service/decision.h"
 
-3.  **Performance Sensitivity**:
+            using AutotunerDecision = Decision;
+
+            AutotunerDecision ShouldAutotuneCublasCall(HloInstruction* instr) {
+                // ...
+                return AutotunerDecision::Forbid("Cublas autotuning was explicitly disabled");
+            }
+
+            voud AutotuneCublas(const AutotunerDecision& decision) {
+                if (decision.IsForbidden()) {
+                    return;
+                }
+                ...
+            ```
+
+4.  **Performance Sensitivity**:
     *   OpenXLA is a compiler; patterns should be efficient.
     *   Avoid unnecessary string copies or expensive allocations in hot paths (e.g., HLO passes).
 
-4.  **Testing**:
+5.  **Testing**:
     *   Write unit tests using `EXPECT_EQ`, `EXPECT_TRUE`, etc.
+    *   Use macros in `tsl/platform/status_matchers.h` instead of their TF_*
+        counterparts. For example:
+        *   Use `ASSERT_OK_AND_ASSIGN`, `ASSERT_OK`, and `EXPECT_OK`.
+        *   DO NOT USE `TF_ASSERT_OK_AND_ASSIGN`, `TF_ASSERT_OK`, and
+            `TF_EXPECT_OK`.
+        *   When you refactor code that uses the TF_* macros., replace them, but
+            do not touch unrelated code.
+    *   Put tests into an anonymous namespace
     *   Use `HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>` or
         `HloHardwareIndependentTestBase` for compiler pass tests locally where
         possible.
     *   Ensure tests are deterministic and do not flake.
 
-5.  **BUILD targets**:
+6.  **BUILD targets**:
     * When defining BUILD targets prefer these XLA specific rules:
         *   Instead of `proto_library` use `tf_proto_library`. There is no need
             to define language specific targets with `tf_proto_library`.
         *   Instead of `cc_test` use `xla_cc_test`.
 
-6.  **Explicit Typing**:
+7.  **Explicit Typing**:
     *   **Avoid `auto`** in public headers or complex logic chains.
 
-7.  **Compiler Phases & Invariants**:
+8.  **Compiler Phases & Invariants**:
     *   **Phase Ordering**: Understand where your pass or change sits in the pipeline (e.g., Optimizations, Layout Assignment, Fusion).
     *   **Invariants**: Respect the invariants of the current phase.
         *   *Example*: Do not generate `kCustomCall` instructions before the relevant expansion pass if they are not supported by the HLO verifier at that stage.
         *   *Example*: Do not rely on layout information before Layout Assignment.
+
+9.  **Namespaces**:
+    *   Prefer xla::gpu over nested namespaces.
+
+10. **MLIR Operation Creation**:
+    *   **Always** use the static `OpTy::create(rewriter, ...)` method when creating MLIR operations.
+    *   **Avoid** using `rewriter.create<OpTy>(...)`. This syntax is deprecated.

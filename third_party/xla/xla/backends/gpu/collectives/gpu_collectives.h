@@ -24,11 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -69,7 +72,8 @@ class GpuCollectives : public Collectives {
   // Initializes the collectives backend with the provided topology information
   // and returns a callback that will generate unique ids for the cliques if
   // topology spans multiple processes and clique id generation requires
-  // multi-process coordination. For local toplogies returns a nullptr callback.
+  // multi-process coordination. For local topologies returns a nullptr
+  // callback.
   virtual absl::StatusOr<CliqueIdCallback> InitializeTopology(
       const Topology& topology) = 0;
 
@@ -149,13 +153,13 @@ class GpuCollectives : public Collectives {
   // Returns true if GPU collectives are implemented.
   virtual bool IsImplemented() const = 0;
 
-  // Returns true if GPU collectives support device-initiated communication.
-  virtual bool SupportsDeviceComm() const { return false; }
-
-  // Returns true iff the one-sided RMA API (PutSignal, Signal, WaitSignal) is
-  // available. This is a compile-time check; it does not guarantee that the
-  // communicator topology supports host RMA at runtime.
-  virtual bool SupportsOneSidedComm() const { return false; }
+  // Executes a group of collective launches. All communicators used by the
+  // `group` must be listed in `comms`, otherwise behavior is undefined.
+  virtual absl::Status GroupLaunch(
+      absl::Span<const GpuCommunicator* const> comms,
+      absl::FunctionRef<absl::Status()> group) {
+    return group();
+  }
 
   // Returns minimum alignment requirement for symmetric memory.
   virtual size_t SymmetricMemoryAlignment() const { return 1; }
@@ -167,9 +171,13 @@ class GpuCollectives : public Collectives {
       size_t offset, size_t count);
 
   // TODO(b/410686553): Use smart wrapper instead of void*.
-  virtual absl::StatusOr<void*> Allocate(uint64_t bytes) = 0;
+  virtual absl::StatusOr<void*> Allocate(uint64_t bytes) {
+    return Unimplemented("Allocate is not implemented");
+  }
 
-  virtual absl::Status Deallocate(void* buffer) = 0;
+  virtual absl::Status Deallocate(void* buffer) {
+    return Unimplemented("Deallocate is not implemented");
+  }
 
   // Creates a single communicator.
   virtual absl::StatusOr<std::unique_ptr<Communicator>>

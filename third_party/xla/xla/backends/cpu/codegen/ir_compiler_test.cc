@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/MC/TargetRegistry.h"
@@ -142,8 +143,7 @@ TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
   auto add_module_with_options =
       [&](absl::string_view ir, absl::string_view name,
           const LlvmKernelOptions& options) -> absl::Status {
-    TF_ASSIGN_OR_RETURN(modules.emplace_back(),
-                        ParseModule(*context, ir, name));
+    ASSIGN_OR_RETURN(modules.emplace_back(), ParseModule(*context, ir, name));
 
     auto llvm_module = modules.back().get();
     SetXlaCpuBackendOptions(*llvm_module, options);

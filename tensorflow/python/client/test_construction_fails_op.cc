@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -25,7 +26,7 @@ class ConstructionFailsOp : public OpKernel {
  public:
   explicit ConstructionFailsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES(ctx, false,
-                errors::InvalidArgument("Failure during construction."));
+                absl::InvalidArgumentError("Failure during construction."));
   }
 
   void Compute(OpKernelContext* ctx) override {}

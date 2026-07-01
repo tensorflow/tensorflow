@@ -720,7 +720,7 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannel16x8NoBiasInt32) {
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /*bias_type=*/TensorType_INT32);
   model.SetInput({
       // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
@@ -787,7 +787,7 @@ TEST_P(TransposeConvOpTest,
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_RELU, GetTestType());
+      /*fused_activation=*/ActivationFunctionType_RELU, GetTestType());
   model.SetInput({
       // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
       3, 2,    // batch = 0, y = 0, x = 0
@@ -848,7 +848,7 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannel16x8NoBiasInt64) {
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /*version=*/1,
       /*bias_type=*/TensorType_INT64);
   model.SetInput({
@@ -1008,7 +1008,7 @@ TEST_P(TransposeConvOpTest, MultiChannelBiasTest) {
       /*input=*/{TensorType_FLOAT32, {1, 2, 2, 1}},
       /*output=*/{TensorType_FLOAT32, {}}, Padding_VALID,
       /*stride_w=*/2, /*stride_h=*/2,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /* version */ 3);
   model.SetInput({1, 2, 3, 4});
   model.SetBias({3, 4});
@@ -1049,7 +1049,7 @@ TEST_P(TransposeConvOpTest, MultiChannelBiasWithFusedActivationTest) {
       /*input=*/{TensorType_FLOAT32, {1, 2, 2, 1}},
       /*output=*/{TensorType_FLOAT32, {}}, Padding_VALID,
       /*stride_w=*/2, /*stride_h=*/2,
-      /*fused_activation_function=*/ActivationFunctionType_RELU, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_RELU, GetTestType(),
       /* version */ 3);
   model.SetInput({1, 2, -3, 4});
   model.SetBias({3, 4});
@@ -1231,7 +1231,7 @@ TEST_P(TransposeConvOpTest, SimpleBiasTestQuantizedPerChannel16x8Bias32) {
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /*bias_type=*/TensorType_INT32);
   model.SetInput({
       // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
@@ -1295,7 +1295,7 @@ TEST_P(TransposeConvOpTest, SimpleBiasTestQuantizedPerChannel16x8Bias64) {
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /*bias_type=*/TensorType_INT64);
   model.SetInput({
       // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]

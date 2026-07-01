@@ -83,11 +83,15 @@ struct IsFuture<Future<T>> : std::true_type {};
 
 // Returns a `Future` that will be successful if all `futures` complete
 // successfully, or return a first encountered error.
+//
+// If any of the futures is invalid, the returned future will be invalid.
 Future<> JoinFutures(absl::Span<const Future<>> futures);
 
 // Returns a `Future` that will be successful if all `futures` complete
 // successfully, or return a first encountered error. Copies values from
 // completed futures into the result vector.
+//
+// If any of the futures is invalid, the returned future will be invalid.
 template <typename T, std::enable_if_t<!std::is_void_v<T>>* = nullptr>
 Future<std::vector<T>> JoinFutures(absl::Span<const Future<T>> futures);
 
@@ -96,6 +100,8 @@ Future<std::vector<T>> JoinFutures(absl::Span<const Future<T>> futures);
 // completed futures into the result vector and leaves `futures` in move-from
 // state (for copyable `T` it still incurs a copy overhead, see `OnReady`
 // documentation for details).
+//
+// If any of the futures is invalid, the returned future will be invalid.
 template <typename T, std::enable_if_t<!std::is_void_v<T>>* = nullptr>
 Future<std::vector<T>> JoinFutures(absl::Span<Future<T>> futures);
 
@@ -124,6 +130,8 @@ Future<std::vector<T>> JoinFutures(absl::Span<Future<T>> futures);
 // If custom result type for `JoinFutures` is not defined (is void by default),
 // then the result type will be inferred as `std::tuple`. Otherwise the result
 // value of type `R` will be constructed from expanded tuple values.
+//
+// If any of the futures is invalid, the returned future will be invalid.
 template <typename R = void, typename... Futures,
           std::enable_if_t<std::conjunction_v<
               internal::IsFuture<std::decay_t<Futures>>...>>* = nullptr>
@@ -553,10 +561,21 @@ template <>
 struct IsMappable<void, absl::Status> : public std::true_type {};
 template <typename R, typename U>
 struct IsMappable<R, absl::StatusOr<U>> : public std::is_constructible<R, U> {};
+template <typename R>
+struct IsMappable<R, Future<>> : public IsMappable<R, absl::Status> {};
+template <typename R, typename U>
+struct IsMappable<R, Future<U>> : public IsMappable<R, absl::StatusOr<U>> {};
 
 // A pre C++20 "concept" that checks if `R` and `U` are mappable types.
 template <typename R, typename U>
 using Mappable = std::enable_if_t<IsMappable<R, U>::value>;
+
+// True when the functor returns a Future (U is a Future type) but the Map
+// result type R is the unwrapped inner type (not a Future). In this case
+// SetPromise subscribes to the inner future and forwards its result.
+template <typename R, typename U>
+struct IsFlattened
+    : std::bool_constant<IsFuture<U>::value && !IsFuture<R>::value> {};
 
 // Automatic type inference for the result type of `Future<T>::Map(...)` is
 // based on the result type of `f` functor:
@@ -564,6 +583,7 @@ using Mappable = std::enable_if_t<IsMappable<R, U>::value>;
 // - `void`              to `Future<>`
 // - `absl::Status`      to `Future<>`
 // - `absl::StatusOr<T>` to `Future<T>`
+// - `Future<T>`         to `Future<T>` (flattened)
 // - `R`                 to `Future<R>` (default)
 //
 // clang-format off
@@ -571,6 +591,8 @@ template <typename R> struct MapResult                    { using T = R; };
 template <>           struct MapResult<void>              { using T = void; };
 template <>           struct MapResult<absl::Status>      { using T = void; };
 template <typename R> struct MapResult<absl::StatusOr<R>> { using T = R; };
+template <>           struct MapResult<Future<>>          { using T = void; };
+template <typename R> struct MapResult<Future<R>>         { using T = R; };
 // clang-format on
 
 template <typename R>
@@ -649,6 +671,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   // - `Future<>`  from `(const T&) -> void`
   // - `Future<>`  from `(const T&) -> absl::Status`
   // - `Future<R>` from `(const T&) -> absl::StatusOr<U>`
+  // - `Future<R>` from `(const T&) -> Future<R>` (flattened)
   // - `Future<R>` from `(const T&) -> U`
   //
   // See `Map` functor type inference defined below for more details.
@@ -682,6 +705,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   // - `Future<>`  from `(T) -> void`
   // - `Future<>`  from `(T) -> absl::Status`
   // - `Future<R>` from `(T) -> absl::StatusOr<U>`
+  // - `Future<R>` from `(T) -> Future<R>` (flattened)
   // - `Future<R>` from `(T) -> U`
   //
   // See `Map` functor type inference defined below for more details.
@@ -704,6 +728,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   //
   // - `R` is `absl::Status`      -> Future<>
   // - `R` is `absl::StatusOr<T>` -> Future<T>
+  // - `R` is `Future<T>`         -> Future<T> (flattened)
   // - `R` is any other type      -> Future<R>
   //
   template <int&... ExplicitParameterBarrier, typename F,
@@ -723,6 +748,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   //
   // - `R` is `absl::Status`      -> Future<>
   // - `R` is `absl::StatusOr<T>` -> Future<T>
+  // - `R` is `Future<T>`         -> Future<T> (flattened)
   // - `R` is any other type      -> Future<R>
   //
   template <int&... ExplicitParameterBarrier, typename F,
@@ -871,6 +897,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   // - `Future<>`  from `() -> void`
   // - `Future<>`  from `() -> absl::Status`
   // - `Future<R>` from `() -> absl::StatusOr<U>`
+  // - `Future<R>` from `() -> Future<R>` (flattened)
   // - `Future<R>` from `() -> U`
   //
   // See `Map` functor type inference defined below for more details.
@@ -889,6 +916,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   //
   // - `R` is `absl::Status`      -> Future<>
   // - `R` is `absl::StatusOr<T>` -> Future<T>
+  // - `R` is `Future<T>`         -> Future<T> (flattened)
   // - `R` is any other type      -> Future<R>
   //
   // Functor `f` will be invoked on a thread that sets the promise value,
@@ -1167,8 +1195,8 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
     }
   }
 
-  // If `*this` is not ready yet, we need to create a new promise and fulfill
-  // it with a result of `f` when `*this` becomes ready.
+  // If `*this` is not ready yet, create a new promise and fulfill it with a
+  // result of `f` when `*this` becomes ready.
   auto [promise, future] = ::tsl::MakePromise<R>();
   OnReady(SetPromise<R, U>(std::move(promise), std::forward<F>(f)));
   return std::move(future);
@@ -1224,8 +1252,8 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
     }
   }
 
-  // If `*this` is not ready yet, we need to create a new promise and fulfill
-  // it with a result of `f` when `*this` becomes ready.
+  // If `*this` is not ready yet, create a new promise and fulfill it with a
+  // result of `f` when `*this` becomes ready.
   auto [promise, future] = ::tsl::MakePromise<R>();
   std::move(*this).OnReady(SetPromise<R, U, /*rvalue=*/true>(
       std::move(promise), std::forward<F>(f)));
@@ -1282,7 +1310,7 @@ Future<internal::future_type_t<typename U::value_type>> Future<T>::Flatten()
 
   // For const& API call we always get nested futures and values by reference.
   using NestedFuture = const absl::StatusOr<Future<R>>&;
-  using Value = const absl::StatusOr<R>&;
+  using Value = const typename Future<R>::value_type&;
 
   OnReady([promise = std::move(promise)](NestedFuture nested_future) mutable {
     // Immediately forward error to flatten future.
@@ -1313,8 +1341,8 @@ Future<T>::Flatten() && {
   using NestedFuture =
       std::conditional_t<is_move_only, absl::StatusOr<Future<R>>,
                          const absl::StatusOr<Future<R>>&>;
-  using Value = std::conditional_t<is_move_only, absl::StatusOr<R>,
-                                   const absl::StatusOr<R>&>;
+  using Value = std::conditional_t<is_move_only, typename Future<R>::value_type,
+                                   const typename Future<R>::value_type&>;
 
   std::move(*this).OnReady(
       [promise = std::move(promise)](NestedFuture nested_future) mutable {
@@ -1359,6 +1387,14 @@ auto Future<T>::SetPromise(Promise<R> promise, F&& f) {
     // Set the result future available with a result of invoking `f`.
     if constexpr (std::is_void_v<U>) {
       promise.Set((f(std::move(*value)), absl::OkStatus()));
+    } else if constexpr (internal::IsFlattened<R, U>::value) {
+      // If the functor returns a Future, subscribe to it and forward the
+      // result to the promise when it becomes ready.
+      f(std::move(*value))
+          .OnReady([promise = std::move(promise)](
+                       typename U::value_type result) mutable {
+            promise.Set(std::move(result));
+          });
     } else {
       promise.Set(f(std::move(*value)));
     }
@@ -1388,8 +1424,8 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
     }
   }
 
-  // If `*this` is not ready yet, we need to create a new promise and fulfill
-  // it with a result of `f` when `*this` becomes ready.
+  // If `*this` is not ready yet, create a new promise and fulfill it with a
+  // result of `f` when `*this` becomes ready.
   auto [promise, future] = ::tsl::MakePromise<R>();
   OnReady(SetPromise<R, U>(std::move(promise), std::forward<F>(f)));
   return std::move(future);
@@ -1410,8 +1446,8 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
 
     // Pass `status` by value because it's cheap to copy, instead of extending
     // the lifetime of the underlying async value storage.
-    executor.Execute(
-        std::bind(SetPromise<R, U>(std::move(promise), std::move(f)), status));
+    executor.Execute(absl::bind_front(
+        SetPromise<R, U>(std::move(promise), std::move(f)), status));
   });
 
   return std::move(future);
@@ -1436,6 +1472,13 @@ auto Future<void>::SetPromise(Promise<R> promise, F&& f) {
     // Set the result future available with a result of invoking `f`.
     if constexpr (std::is_void_v<U>) {
       promise.Set((f(), absl::OkStatus()));
+    } else if constexpr (internal::IsFlattened<R, U>::value) {
+      // If the functor returns a Future, subscribe to it and forward the
+      // result to the promise when it becomes ready.
+      f().OnReady([promise = std::move(promise)](
+                      typename U::value_type result) mutable {
+        promise.Set(std::move(result));
+      });
     } else {
       promise.Set(f());
     }
@@ -1546,6 +1589,9 @@ Future<std::vector<T>> JoinFutures(absl::Span<const Future<T>> futures) {
                                                           std::move(promise));
 
   for (size_t index = 0; index < futures.size(); ++index) {
+    if (!futures[index].IsValid()) [[unlikely]] {
+      return {};
+    }
     futures[index].OnReady([index, join](absl::StatusOr<T> value) {
       join->OnReady(index, std::move(value));
     });
@@ -1567,6 +1613,9 @@ Future<std::vector<T>> JoinFutures(absl::Span<Future<T>> futures) {
                                                           std::move(promise));
 
   for (size_t index = 0; index < futures.size(); ++index) {
+    if (!futures[index].IsValid()) [[unlikely]] {
+      return {};
+    }
     std::move(futures[index]).OnReady([index, join](absl::StatusOr<T> value) {
       join->OnReady(index, std::move(value));
     });
@@ -1693,6 +1742,10 @@ auto JoinFutures(Futures&&... futures) {
     auto [promise, future] = MakePromise<PromiseResult>();
     auto join = std::make_shared<internal::JoinStatic<PromiseResult, State>>(
         sizeof...(futures), std::move(promise));
+
+    if (((!futures.IsValid()) || ...)) [[unlikely]] {
+      return tsl::Future<PromiseResult>();
+    }
 
     using Is = std::make_index_sequence<sizeof...(Futures)>;
     join->OnReady(std::move(join), Is{}, std::forward<Futures>(futures)...);

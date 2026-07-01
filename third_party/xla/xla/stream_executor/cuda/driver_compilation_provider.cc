@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -184,8 +185,8 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
   }
 
   VLOG(3) << "Driver compilation info log output: " << info_log_buffer;
-  TF_RETURN_IF_ERROR(CreateErrorFromPTXASLog(info_log_buffer, architecture,
-                                             options.cancel_if_reg_spill));
+  RETURN_IF_ERROR(CreateErrorFromPTXASLog(info_log_buffer, architecture,
+                                          options.cancel_if_reg_spill));
 
   std::vector<uint8_t> cubin(static_cast<uint8_t*>(cubin_out),
                              static_cast<uint8_t*>(cubin_out) + cubin_size);

@@ -18,3 +18,11 @@ filegroup(
     srcs = [".clang-tidy"],
     visibility = ["//visibility:public"],
 )
+
+genrule(
+    name = "clang_tidy_config_noerrors",
+    srcs = ["//:.clang-tidy"],
+    outs = [".clang-tidy.noerrors"],
+    cmd = "grep -v 'WarningsAsErrors' $< > $@",
+    visibility = ["//visibility:public"],
+)

@@ -16,10 +16,15 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/reshape_analysis.h"
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -39,6 +44,24 @@ llvm::SmallVector<int64_t> GetNonOneDimensions(const Shape& shape,
     }
   }
   return non_one_dims;
+}
+
+// Returns a string representation of the MinimalReshapeCategory.
+absl::string_view ReshapeCategoryToString(MinimalReshapeCategory category) {
+  switch (category) {
+    case MinimalReshapeCategory::kIdentity:
+      return "kIdentity";
+    case MinimalReshapeCategory::kIncreaseRank:
+      return "kIncreaseRank";
+    case MinimalReshapeCategory::kDecreaseRank:
+      return "kDecreaseRank";
+    case MinimalReshapeCategory::kExpandShape:
+      return "kExpandShape";
+    case MinimalReshapeCategory::kCollapseShape:
+      return "kCollapseShape";
+    case MinimalReshapeCategory::kGeneric:
+      return "kGeneric";
+  }
 }
 
 }  // namespace
@@ -131,6 +154,23 @@ std::vector<MinimalReshape> GetMinimalReshapes(const Shape& input_shape,
   }
 
   return reshapes;
+}
+
+std::string MinimalReshape::ToString() const {
+  return absl::StrFormat("%v -> %v (%s)", input_dim_ids, output_dim_ids,
+                         ReshapeCategoryToString(category));
+}
+
+llvm::SmallVector<int64_t> PositionsOfNonTrivialDims(
+    absl::Span<const int64_t> dimensions) {
+  llvm::SmallVector<int64_t> positions;
+  for (const auto& [i, dim] : llvm::enumerate(dimensions)) {
+    if (dim != 1) {
+      positions.push_back(i);
+    }
+  }
+
+  return positions;
 }
 
 }  // namespace xla::gpu::experimental

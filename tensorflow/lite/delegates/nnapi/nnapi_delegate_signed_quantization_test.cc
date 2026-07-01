@@ -98,10 +98,10 @@ class HybridFullyConnectedOpModel : public SingleOpModelWithNNAPI {
                  BuiltinOptions_FullyConnectedOptions, options);
     resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED,
-        ops::builtin::Register_FULLY_CONNECTED_PIE());
+        ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT());
     BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
                      /*num_threads=*/-1,
-                     /* allow_fp32_relax_to_fp16 */ false,
+                     /*allow_fp32_relax_to_fp16=*/false,
                      /*apply_delegate=*/false);
     compilation_status_ = ApplyDelegate();
   }

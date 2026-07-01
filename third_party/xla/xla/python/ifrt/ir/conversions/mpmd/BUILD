@@ -48,7 +48,6 @@ cc_library(
         "//xla/client:executable_build_options",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt/ir",
-        "//xla/python/ifrt/ir/transforms:built_in_spmd_expansions",
         "//xla/python/ifrt/ir/transforms:debug",
         "//xla/python/ifrt/ir/transforms:passes",
         "//xla/python/ifrt/ir/transforms:utils",

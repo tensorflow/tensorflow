@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -144,6 +145,20 @@ TEST(XPlaneUtilsTest, RemoveLine) {
   ASSERT_EQ(plane.lines_size(), 2);
   EXPECT_EQ(&plane.lines(0), line1);
   EXPECT_EQ(&plane.lines(1), line3);
+}
+
+TEST(XPlaneUtilsTest, FindMutableLineWithName) {
+  XPlane plane;
+  XLine* line1 = plane.add_lines();
+  line1->set_name("line1");
+  XLine* line2 = plane.add_lines();
+  line2->set_name("line2");
+
+  XLine* found = FindMutableLineWithName(plane, "line2");
+  EXPECT_EQ(found, line2);
+
+  XLine* not_found = FindMutableLineWithName(plane, "non_existent");
+  EXPECT_EQ(not_found, nullptr);
 }
 
 TEST(XPlaneUtilsTest, RemoveEvents) {
@@ -802,6 +817,9 @@ TEST(XplaneutilsTest, TestIsHostPlane) {
   EXPECT_FALSE(IsHostPlane(*xplane_custom_prefix));
   EXPECT_FALSE(IsHostPlane(*xplane_legacy_custom));
   EXPECT_TRUE(IsHostPlane(*xplane_cupti));
+  auto xplane_host_thread_subprocess =
+      FindOrAddMutablePlaneWithName(&xspace, "/host:CPU [123456]");
+  EXPECT_TRUE(IsHostPlane(*xplane_host_thread_subprocess));
 }
 
 TEST(XplaneutilsTest, TestIsDevicePlane) {
@@ -992,6 +1010,50 @@ TEST(XplaneUtilsTest, MergeSubprocessXSpace_WithoutProcessId) {
   EXPECT_EQ(dst_space.planes(0).name(), "plane2 [456]");
 }
 
+TEST(XplaneUtilsTest, MergeXSpaceTest) {
+  auto to = std::make_unique<XSpace>();
+  auto from = std::make_unique<XSpace>();
+
+  to->add_hostnames("host1");
+  from->add_hostnames("host2");
+
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    auto l1 = p1.GetOrCreateLine(1);
+    auto e1 = l1.AddEvent(*p1.GetOrCreateEventMetadata("e1"));
+    e1.SetOffsetNs(10);
+    e1.SetDurationNs(10);
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");  // Same plane name to trigger merge
+    auto l2 = p2.GetOrCreateLine(2);
+    auto e2 = l2.AddEvent(*p2.GetOrCreateEventMetadata("e2"));
+    e2.SetOffsetNs(20);
+    e2.SetDurationNs(20);
+  }
+
+  MergeXSpace(std::move(from), to.get());
+
+  EXPECT_THAT(to->hostnames(), UnorderedElementsAre("host1", "host2"));
+  ASSERT_EQ(to->planes_size(), 1);  // Planes with same name are merged
+  EXPECT_EQ(to->planes(0).name(), "p1");
+  EXPECT_EQ(to->planes(0).lines_size(), 2);  // Both lines should be present
+}
+
+TEST(XPlaneUtilsTest, RemoveNonExistentLine) {
+  XPlane plane;
+  const XLine* line1 = plane.add_lines();
+  const XLine* line2 = plane.add_lines();
+  XLine line3;
+  RemoveLine(&plane, &line3);
+  ASSERT_EQ(plane.lines_size(), 2);
+  EXPECT_EQ(&plane.lines(0), line1);
+  EXPECT_EQ(&plane.lines(1), line2);
+}
+
 }  // namespace
+
 }  // namespace profiler
 }  // namespace tsl

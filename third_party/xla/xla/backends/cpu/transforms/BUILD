@@ -35,6 +35,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -50,8 +51,8 @@ cc_library(
 xla_cc_test(
     name = "library_rewriter_test",
     srcs = ["library_rewriter_test.cc"],
-    local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
     deps = [
+        ":library_fusion_kinds",
         ":library_rewriter",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
@@ -65,7 +66,16 @@ xla_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "library_fusion_kinds",
+    hdrs = ["library_fusion_kinds.h"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -73,6 +83,7 @@ cc_library(
     name = "library_matcher",
     hdrs = ["library_matcher.h"],
     deps = [
+        ":library_fusion_kinds",
         "//xla:xla_proto_cc",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
@@ -89,10 +100,12 @@ onednn_graph_cc_library(
     hdrs = ["onednn_matcher.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
+        ":library_fusion_kinds",
         ":library_matcher",
         "//xla/backends/cpu:onednn_support",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -105,8 +118,10 @@ cc_library(
     hdrs = ["ynn_matcher.h"],
     deps = [
         ":library_matcher",
+        "//xla:shape_util",
         "//xla/backends/cpu:ynn_support",
         "//xla/backends/cpu/codegen:target_machine_features",
+        "//xla/backends/cpu/transforms:library_fusion_kinds",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_set",

@@ -75,6 +75,7 @@ cc_library(
     deps = [
         ":compatibility",
         ":runtime_shape",
+        "//tensorflow/lite/types:half",
     ],
 )
 
@@ -318,7 +319,8 @@ cc_library(
         ],
         ":arm32_any": [
             "optimized/4bit/neon_fully_connected.cc",
-            "optimized/4bit/neon_fully_connected_arm32.cc",
+            "optimized/4bit/neon_fully_connected_arm32_nosdot.cc",
+            "optimized/4bit/neon_fully_connected_arm32_sdot.cc",
             "optimized/4bit/neon_fully_connected_impl.h",
         ],
         "//conditions:default": [],
@@ -496,13 +498,17 @@ cc_library(
 
 cc_library(
     name = "reference_comparisons",
-    srcs = ["reference/comparisons.cc"],
-    hdrs = ["reference/comparisons.h"],
+    srcs = [],
+    hdrs = [
+        "reference/broadcast_loop.h",
+        "reference/comparisons.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
         ":compatibility",
+        ":runtime_shape",
         ":types",
         "//tensorflow/lite:macros",
         "//tensorflow/lite/core/c:common",
@@ -521,6 +527,7 @@ cc_library(
         "reference/batch_to_space_nd.h",
         "reference/binary_function.h",
         "reference/broadcast_args.h",
+        "reference/broadcast_loop.h",
         "reference/broadcast_to.h",
         "reference/cast.h",
         "reference/ceil.h",
@@ -616,6 +623,7 @@ cc_library(
         ":cppmath",
         ":quantization_util",
         ":reference_comparisons",
+        ":runtime_shape",
         ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",
@@ -643,6 +651,7 @@ cc_library(
         "reference/batch_matmul.h",
         "reference/batch_to_space_nd.h",
         "reference/binary_function.h",
+        "reference/broadcast_loop.h",
         "reference/cast.h",
         "reference/ceil.h",
         "reference/comparisons.h",

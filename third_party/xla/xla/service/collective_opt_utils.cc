@@ -208,7 +208,14 @@ std::optional<std::pair<int64_t, int64_t>> GetKnownRange(
 
 // Backtracks through no-ops to find the "base" instruction responsible for
 // some instruction's value.
-const HloInstruction* BacktrackToBase(const HloInstruction* instruction) {
+const HloInstruction* BacktrackToBase(
+    const HloInstruction* instruction,
+    absl::flat_hash_map<const HloInstruction*, const HloInstruction*>* cache =
+        nullptr) {
+  if (cache) {
+    auto it = cache->find(instruction);
+    if (it != cache->end()) return it->second;
+  }
   const HloInstruction* cur = instruction;
 
   while (true) {
@@ -246,7 +253,111 @@ const HloInstruction* BacktrackToBase(const HloInstruction* instruction) {
     break;
   }
 
+  if (cache) {
+    cache->emplace(instruction, cur);
+  }
   return cur;
+}
+
+// Evaluates an offset expression for a given device ID, returning the computed
+// offset value. Handles multiply, clamp, subtract, table lookup, and direct ID
+// patterns. Returns nullopt if the expression cannot be resolved.
+std::optional<int64_t> EvaluateOffset(
+    const HloInstruction* expr, int64_t id, const MapIdToTableOffset& map_id,
+    absl::flat_hash_map<const HloInstruction*, const HloInstruction*>* cache =
+        nullptr) {
+  if (expr->opcode() == HloOpcode::kMultiply) {
+    if (!ShapeUtil::IsEffectiveScalar(expr->shape())) {
+      return std::nullopt;
+    }
+    int64_t const_operand = -1;
+    if (expr->operand(0)->IsConstant()) {
+      const_operand = 0;
+    } else if (expr->operand(1)->IsConstant()) {
+      const_operand = 1;
+    } else {
+      return std::nullopt;
+    }
+    auto multiplier = GetScalarInt64Value(expr->operand(const_operand));
+    if (!multiplier || *multiplier == 0) {
+      return std::nullopt;
+    }
+    auto inner =
+        EvaluateOffset(BacktrackToBase(expr->operand(1 - const_operand), cache),
+                       id, map_id, cache);
+    if (!inner) {
+      return std::nullopt;
+    }
+    return *inner * *multiplier;
+  }
+
+  if (expr->opcode() == HloOpcode::kClamp) {
+    auto inner = EvaluateOffset(BacktrackToBase(expr->operand(1), cache), id,
+                                map_id, cache);
+    if (!inner) {
+      return std::nullopt;
+    }
+    auto lower = GetScalarInt64Value(expr->operand(0));
+    auto upper = GetScalarInt64Value(expr->operand(2));
+    if (!lower || !upper) {
+      return std::nullopt;
+    }
+    return std::max(*lower, std::min(*inner, *upper));
+  }
+
+  if (expr->opcode() == HloOpcode::kSubtract) {
+    // Structural guard matching old IsPerIdOffset: when the subtract is
+    // multiply(id, const) - table_lookup(id), require both operands to
+    // derive from the same id_base instruction. This prevents accepting
+    // patterns where a non-provable clamp wraps one branch but not the other.
+    // TODO(maggioni): Make sure this is actually needed. Its to pass existing
+    // GPU tests
+    const HloInstruction* lhs_base = BacktrackToBase(expr->operand(0), cache);
+    const HloInstruction* rhs_base = BacktrackToBase(expr->operand(1), cache);
+    if (lhs_base->opcode() == HloOpcode::kMultiply && IsTableLookup(rhs_base)) {
+      const HloInstruction* id_operand = nullptr;
+      if (lhs_base->operand(0)->IsConstant()) {
+        id_operand = lhs_base->operand(1);
+      } else if (lhs_base->operand(1)->IsConstant()) {
+        id_operand = lhs_base->operand(0);
+      }
+      if (id_operand) {
+        const HloInstruction* id_base = BacktrackToBase(id_operand, cache);
+        const HloInstruction* table_idx_base =
+            BacktrackToBase(rhs_base->operand(1), cache);
+        if (id_base != table_idx_base) {
+          VLOG(2) << "Subtract pattern rejected: id_base mismatch between "
+                     "multiply and table lookup";
+          return std::nullopt;
+        }
+      }
+    }
+    auto lhs = EvaluateOffset(lhs_base, id, map_id, cache);
+    auto rhs = EvaluateOffset(rhs_base, id, map_id, cache);
+    if (!lhs || !rhs) {
+      return std::nullopt;
+    }
+    return *lhs - *rhs;
+  }
+
+  if (IsTableLookup(expr)) {
+    int64_t table_index = GetIndexForId(expr->operand(1), id, map_id);
+    if (table_index < 0) {
+      return std::nullopt;
+    }
+    if (expr->operand(0)->opcode() == HloOpcode::kIota) {
+      return table_index;
+    }
+    return expr->operand(0)->literal().GetIntegralAsS64({table_index});
+  }
+
+  // Direct ID: the offset is the mapped id itself.
+  int64_t mapped = map_id(expr, id);
+  if (mapped >= 0) {
+    return mapped;
+  }
+
+  return std::nullopt;
 }
 
 // Checks that `offset` used in dynamic-slice matches the sequential sharding
@@ -261,211 +372,25 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
                    bool use_global_device_ids) {
   const bool iota_group = instruction->replica_groups().empty() ||
                           (is_cross_module && !use_global_device_ids);
-
-  offset = BacktrackToBase(offset);
-
-  if (offset->opcode() == HloOpcode::kMultiply) {
-    // Check if it's constant * IsPerIdOffset(..., shard_size / constant, ...)
-    if (!ShapeUtil::IsEffectiveScalar(offset->shape())) {
-      VLOG(2) << "Offset is not a scalar " << offset->ToString();
-      return false;
-    }
-    int64_t const_operand = -1;
-    if (offset->operand(0)->IsConstant()) {
-      const_operand = 0;
-    } else if (offset->operand(1)->IsConstant()) {
-      const_operand = 1;
-    } else {
-      VLOG(2) << "Offset is not multiple(const, ...) " << offset->ToString();
-      return false;
-    }
-    auto multiplier = GetScalarInt64Value(offset->operand(const_operand));
-    if (!multiplier || shard_size % *multiplier != 0) {
-      VLOG(2) << "Multiplier is unknown or cannot evenly divide shard size "
-              << offset->operand(const_operand);
-      return false;
-    }
-    return IsPerIdOffset(offset->operand(1 - const_operand),
-                         shard_size / *multiplier, map_id, group_size,
-                         instruction, is_cross_module, use_global_device_ids);
-  }
-  if (shard_size == 1 && iota_group) {
-    bool id_mapping_is_identity = true;
-    for (int64_t id = 0; id < group_size; ++id) {
-      int64_t mapped_id = map_id(offset, id);
-      if (mapped_id != id) {
-        id_mapping_is_identity = false;
-        break;
-      }
-    }
-    if (id_mapping_is_identity) {
-      return true;
-    }
-  }
-
-  if (offset->opcode() == HloOpcode::kClamp) {
-    auto lower_bound = GetScalarInt64Value(offset->operand(0));
-    auto upper_bound = GetScalarInt64Value(offset->operand(2));
-    if (!lower_bound || !upper_bound || lower_bound != 0 ||
-        *upper_bound < (group_size - 1) * shard_size) {
-      VLOG(2) << "Boundaries of the clamp are not legal: "
-              << offset->ToString();
-      return false;
-    }
-    return IsPerIdOffset(offset->operand(1), shard_size, map_id, group_size,
-                         instruction, is_cross_module, use_global_device_ids);
-  }
-
-  if (offset->opcode() == HloOpcode::kSubtract) {
-    // Handle subtraction pattern: (id * slice_size) - table_lookup[id]
-    VLOG(2) << "Checking subtraction pattern: " << offset->ToString();
-
-    // Check if the first operand is a multiplication with partition-id
-    if (offset->operand(0)->opcode() == HloOpcode::kMultiply) {
-      auto* mult = offset->operand(0);
-      const HloInstruction* id_operand = nullptr;
-      int64_t slice_size = -1;
-
-      // Find which operand is the ID and which is the slice size
-      if (mult->operand(0)->IsConstant()) {
-        slice_size = *GetScalarInt64Value(mult->operand(0));
-        id_operand = mult->operand(1);
-      } else if (mult->operand(1)->IsConstant()) {
-        slice_size = *GetScalarInt64Value(mult->operand(1));
-        id_operand = mult->operand(0);
-      }
-
-      if (slice_size > 0 && id_operand) {
-        // Check if the second operand is a table lookup
-        if (IsTableLookup(offset->operand(1))) {
-          VLOG(2) << "Found subtraction pattern with table lookup";
-
-          // Verify that the table lookup uses the same ID as the multiplication
-          const HloInstruction* id_base = BacktrackToBase(id_operand);
-          const HloInstruction* table_lookup =
-              BacktrackToBase(offset->operand(1));
-          if (table_lookup->opcode() != HloOpcode::kDynamicSlice) {
-            VLOG(2) << "Table lookup is not dynamic slice: "
-                    << table_lookup->ToString();
-            return false;
-          }
-          const HloInstruction* table_base =
-              BacktrackToBase(table_lookup->operand(0));
-          const HloInstruction* table_idx_base =
-              BacktrackToBase(table_lookup->operand(1));
-          const bool index_matches = id_base == table_idx_base;
-
-          if (index_matches) {
-            const int64_t num_groups =
-                iota_group ? 1 : instruction->replica_groups().size();
-
-            // For each partition ID, verify the offset calculation
-            for (int64_t i = 0; i < num_groups; ++i) {
-              for (int64_t j = 0; j < group_size; ++j) {
-                int64_t id =
-                    iota_group
-                        ? j
-                        : instruction->replica_groups()[i].replica_ids(j);
-
-                // Get table lookup value - use the original ID operand for
-                // mapping
-                int64_t table_index = GetIndexForId(table_idx_base, id, map_id);
-                if (table_index < 0) {
-                  VLOG(2) << "Failed to get table index for ID " << id;
-                  return false;
-                }
-                int64_t table_value;
-                if (table_base->opcode() == HloOpcode::kIota) {
-                  table_value = table_index;
-                } else {
-                  std::optional<int64_t> table_value_opt =
-                      table_base->literal().GetIntegralAsS64({table_index});
-                  if (!table_value_opt.has_value()) {
-                    VLOG(2) << "Failed to get table value for index "
-                            << table_index;
-                    return false;
-                  }
-                  table_value = *table_value_opt;
-                }
-
-                int64_t mult_id = GetIndexForId(id_base, id, map_id);
-                if (mult_id < 0) {
-                  VLOG(2) << "Failed to get multiply ID for global ID " << id;
-                  return false;
-                }
-                int64_t expected_offset = (mult_id * slice_size) - table_value;
-
-                // Check if this matches the expected pattern for reduce-scatter
-                if (expected_offset != shard_size * j) {
-                  VLOG(2) << "Subtraction pattern offset " << expected_offset
-                          << " doesn't match expected " << (shard_size * j)
-                          << " for ID " << id << ", slice size " << slice_size
-                          << ", table value " << table_value;
-                  return false;
-                }
-              }
-            }
-
-            VLOG(2) << "Subtraction pattern validation successful";
-            return true;
-          }
-        }
-      }
-    }
-
-    VLOG(2) << "Subtraction pattern not recognized: " << offset->ToString();
-    return false;
-  }
-
   const int64_t num_groups =
       iota_group ? 1 : instruction->replica_groups().size();
-  if (IsTableLookup(offset)) {
-    // Check the values of the offset table, and see if they are shard_index *
-    // shard_size.
-    for (int64_t i = 0; i < num_groups; ++i) {
-      for (int64_t j = 0; j < group_size; ++j) {
-        int64_t id =
-            iota_group ? j : instruction->replica_groups()[i].replica_ids(j);
-        int64_t table_index = GetIndexForId(offset->operand(1), id, map_id);
-        if (table_index < 0) {
-          VLOG(2) << "Failed to infer table index from "
-                  << offset->operand(1)->ToString();
-          return false;
-        }
 
-        int64_t table_entry;
-        if (offset->operand(0)->opcode() == HloOpcode::kIota) {
-          table_entry = table_index;
-        } else {
-          table_entry =
-              *offset->operand(0)->literal().GetIntegralAsS64({table_index});
-        }
-        if (table_entry != shard_size * j) {
-          VLOG(2) << "Unexpected offset from table.";
-          return false;
-        }
-      }
-    }
-
-    // All table entries are good.
-    return true;
-  }
-
-  // Check if the offset is the id itself and it has the right values.
+  absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
+      backtrack_cache;
+  offset = BacktrackToBase(offset, &backtrack_cache);
   for (int64_t i = 0; i < num_groups; ++i) {
     for (int64_t j = 0; j < group_size; ++j) {
       int64_t id =
           iota_group ? j : instruction->replica_groups()[i].replica_ids(j);
-      int mapped_id = map_id(offset, id);
-      if (mapped_id != shard_size * j) {
-        VLOG(2) << "Mapping of " << id << " to " << mapped_id
-                << " not matching expected value " << shard_size * j << ": "
-                << offset->ToString();
+      auto val = EvaluateOffset(offset, id, map_id, &backtrack_cache);
+      if (!val || *val != shard_size * j) {
+        VLOG(2) << "Offset mismatch for device " << id << ": got "
+                << (val ? absl::StrCat(*val) : "nullopt") << ", expected "
+                << shard_size * j;
         return false;
       }
     }
   }
-
   return true;
 }
 
@@ -627,6 +552,123 @@ std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
   return spec;
 }
 
+std::optional<std::pair<std::vector<ReplicaGroup>, std::vector<ReplicaGroup>>>
+BuildDSSplitReplicaGroups(const HloChannelInstruction* instruction,
+                          const HloInstruction* dynamic_slice,
+                          int64_t split_dim, int64_t ds_factor,
+                          const std::vector<ReplicaGroup>& ici_replica_groups,
+                          int64_t num_partitions, int64_t num_replicas,
+                          bool is_cross_module, bool use_global_device_ids,
+                          HloPredicate match_partition_id,
+                          HloPredicate match_replica_id) {
+  // Step 1: Build device-to-shard map from the DS offset expression.
+  MapIdToTableOffset map_id = CreateMapIdFn(
+      is_cross_module, use_global_device_ids, num_partitions, num_replicas,
+      instruction, match_partition_id, match_replica_id);
+
+  int64_t shard_size = dynamic_slice->dynamic_slice_sizes()[split_dim];
+  if (shard_size == 0) {
+    return std::nullopt;
+  }
+
+  const HloInstruction* offset = dynamic_slice->operand(split_dim + 1);
+
+  const bool iota_group = instruction->replica_groups().empty() ||
+                          (is_cross_module && !use_global_device_ids);
+  const int64_t num_groups =
+      iota_group ? 1 : instruction->replica_groups().size();
+
+  absl::flat_hash_map<int64_t, int64_t> shard_map;
+
+  absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
+      backtrack_cache;
+  offset = BacktrackToBase(offset, &backtrack_cache);
+  for (int64_t i = 0; i < num_groups; ++i) {
+    int64_t group_size =
+        iota_group
+            ? (is_cross_module ? num_partitions * num_replicas : num_replicas)
+            : instruction->replica_groups()[i].replica_ids_size();
+    for (int64_t j = 0; j < group_size; ++j) {
+      int64_t id =
+          iota_group ? j : instruction->replica_groups()[i].replica_ids(j);
+      if (shard_map.contains(id)) {
+        continue;
+      }
+
+      auto offset_val = EvaluateOffset(offset, id, map_id, &backtrack_cache);
+      if (!offset_val) {
+        VLOG(2) << "Failed to evaluate offset for device " << id;
+        return std::nullopt;
+      }
+
+      if (*offset_val < 0 || *offset_val % shard_size != 0) {
+        VLOG(2) << "Offset " << *offset_val
+                << " is not a clean multiple of shard_size " << shard_size
+                << " for device " << id;
+        return std::nullopt;
+      }
+      shard_map[id] = *offset_val / shard_size;
+    }
+  }
+
+  // Step 2: Build outer/inner replica groups from the shard map.
+  // Outer groups (size=ds_factor): one device from each shard bucket.
+  // These are used for the first RS, which scatters across shards.
+  std::vector<ReplicaGroup> outer_groups;
+  // Inner groups (size=local_group_size/ds_factor): all devices wanting
+  // the same shard. Used for the second RS within each shard bucket.
+  std::vector<ReplicaGroup> inner_groups;
+
+  for (const auto& group : ici_replica_groups) {
+    int64_t local_group_size = group.replica_ids_size();
+    if (local_group_size % ds_factor != 0) {
+      VLOG(2) << "local_group_size " << local_group_size
+              << " not divisible by ds_factor " << ds_factor;
+      return std::nullopt;
+    }
+    int64_t inner_group_size = local_group_size / ds_factor;
+
+    // Bucket devices by their shard index.
+    std::vector<std::vector<int64_t>> buckets(ds_factor);
+    for (int64_t j = 0; j < group.replica_ids_size(); ++j) {
+      int64_t dev = group.replica_ids(j);
+      auto it = shard_map.find(dev);
+      if (it == shard_map.end() || it->second < 0 || it->second >= ds_factor) {
+        VLOG(2) << "Device " << dev << " has invalid shard index";
+        return std::nullopt;
+      }
+      buckets[it->second].push_back(dev);
+    }
+
+    // Validate: every bucket has exactly inner_group_size devices.
+    for (int64_t s = 0; s < ds_factor; ++s) {
+      if (static_cast<int64_t>(buckets[s].size()) != inner_group_size) {
+        VLOG(2) << "Non-uniform bucket sizes in shard assignment";
+        return std::nullopt;
+      }
+    }
+
+    // Outer groups (size=ds_factor): one device from each bucket.
+    for (int64_t k = 0; k < inner_group_size; ++k) {
+      ReplicaGroup& outer = outer_groups.emplace_back();
+      for (int64_t s = 0; s < ds_factor; ++s) {
+        outer.add_replica_ids(buckets[s][k]);
+      }
+    }
+
+    // Inner groups (size=inner_group_size): all devices wanting same shard.
+    if (inner_group_size > 1) {
+      for (int64_t s = 0; s < ds_factor; ++s) {
+        ReplicaGroup& inner = inner_groups.emplace_back();
+        for (auto dev : buckets[s]) {
+          inner.add_replica_ids(dev);
+        }
+      }
+    }
+  }
+
+  return std::make_pair(std::move(outer_groups), std::move(inner_groups));
+}
 bool IsDynamicSlicingLocalDeviceFromAllGather(
     HloInstruction* ds, HloAllGatherInstruction* all_gather,
     int64_t num_partitions, int64_t num_replicas, bool is_cross_module,
@@ -922,7 +964,7 @@ MatchPermutedSliceAndPartitionOffset(const HloAllGatherInstruction* ag,
     return HloPredicateIsOp<HloOpcode::kPartitionId>(hlo) ? id : -1;
   };
 
-  VLOG(0) << "dynamic slice: " << dynamic_slice->ToString()
+  VLOG(2) << "dynamic slice: " << dynamic_slice->ToString()
           << " split dim: " << split_dim_spec->split_dim;
   // Section 3: extract the offset spec from dynamic slice and ag.
   std::optional<PartitionOffsetSpec> ds_offset_spec =
@@ -1224,9 +1266,9 @@ std::optional<PartitionOffsetSpec> GetIndicesSpecForDynamicSlice(
       }
       int64_t table_index =
           GetIndexForId(offset_hlo->operand(1), partition_id, map_id);
-      VLOG(0) << "offset_hlo: " << offset_hlo->ToString();
-      VLOG(0) << "table_index: " << table_index;
-      VLOG(0) << offset_hlo->operand(0)->literal().ToString();
+      VLOG(2) << "offset_hlo: " << offset_hlo->ToString();
+      VLOG(2) << "table_index: " << table_index;
+      VLOG(2) << offset_hlo->operand(0)->literal().ToString();
       if (table_index < 0) {
         VLOG(2) << "Failed to infer table index from "
                 << offset_hlo->operand(1);
@@ -1240,7 +1282,7 @@ std::optional<PartitionOffsetSpec> GetIndicesSpecForDynamicSlice(
         slice_offset =
             *offset_hlo->operand(0)->literal().GetIntegralAsS64({table_index});
       }
-      VLOG(0) << "slice_offset: " << slice_offset;
+      VLOG(2) << "slice_offset: " << slice_offset;
       if (!indices_spec.per_replica_group_offsets[group_idx]
                .try_emplace(slice_offset, partition_id)
                .second) {

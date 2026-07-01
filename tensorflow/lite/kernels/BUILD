@@ -157,6 +157,7 @@ cc_library(
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/nnapi:acceleration_test_util",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/kernels/internal:runtime_shape",
         "//tensorflow/lite/kernels/internal:tensor_ctypes",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
@@ -199,6 +200,7 @@ cc_library(
         "//tensorflow/lite/tools/delegates:hexagon_delegate_provider",
         "//tensorflow/lite/tools/delegates:nnapi_delegate_provider",
         "//tensorflow/lite/tools/delegates:xnnpack_delegate_provider",
+        "//tensorflow/lite/tools/delegates:ynnpack_delegate_provider",
         "//tensorflow/lite/tools/delegates/experimental/stable_delegate:delegate_provider",
     ] + select({
         # Metal GPU delegate for iOS has its own setups for kernel tests, so
@@ -1256,6 +1258,7 @@ cc_test(
         "//tensorflow/lite/kernels/internal:tensor_utils_no_eigen",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -1345,6 +1348,7 @@ cc_test(
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/random:bit_gen_ref",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -1356,7 +1360,9 @@ cc_library(
     name = "stablehlo_reduce_window_test_util",
     hdrs = ["stablehlo_reduce_window_test_util.h"],
     deps = [
+        "//tensorflow/lite:util",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:absl_check",
     ],
 )
 
@@ -1762,6 +1768,7 @@ cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:tensor_utils_no_eigen",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -2091,6 +2098,8 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/schema:schema_fbs",
@@ -2637,6 +2646,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -3222,13 +3232,14 @@ cc_test(
     srcs = ["stablehlo_add_test.cc"],
     deps = [
         ":subgraph_test_util",
+        ":test_main",
         ":test_util",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -3238,13 +3249,14 @@ cc_test(
     srcs = ["stablehlo_multiply_test.cc"],
     deps = [
         ":subgraph_test_util",
+        ":test_main",
         ":test_util",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -3268,6 +3280,7 @@ cc_test(
     size = "small",
     srcs = ["stablehlo_min_max_test.cc"],
     deps = [
+        ":test_main",
         ":test_util",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
@@ -3275,7 +3288,7 @@ cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/log:absl_log",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -3483,6 +3496,18 @@ tflite_combine_cc_tests(
     args = ["--use_xnnpack=true"],
     deps_conditions = [":test_main"],
     shard_count = 50,
+)
+
+# Test the YNNPACK delegate
+tflite_combine_cc_tests(
+    name = "combined_all_kernel_with_ynnpack_tests",
+    args = ["--use_ynnpack=true"],
+    deps_conditions = [":test_main"],
+    shard_count = 50,
+    tags = ["nochromiumos_arm"],  # b/436979680
+    deps = [
+        "//tensorflow/lite/delegates/ynnpack:ynnpack_delegate",
+    ],
 )
 
 tflite_self_contained_libs_test_suite(name = "self_contained_libs_tests")

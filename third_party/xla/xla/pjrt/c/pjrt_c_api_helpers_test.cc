@@ -135,7 +135,6 @@ TEST(PjRtCApiHelperTest, Callback) {
   EXPECT_TRUE(absl::IsUnimplemented(future.Await().status()));
 }
 
-
 TEST(PjRtCApiHelperTest, ConvertToCLayoutFromStrides) {
   std::vector<int64_t> strides = {4, 8};
   absl::StatusOr<BufferMemoryLayoutData> layout_data =
@@ -225,24 +224,33 @@ TEST(PjRtCApiHelperTest, ConvertFromCLayoutToLayoutNoTile) {
 
 TEST(PjRtCApiHelperTest, GetXlaPluginCAttributes) {
   auto result = GetXlaPluginCAttributes();
-  std::unordered_map<std::string, PJRT_NamedValue *> map;
-  for (PJRT_NamedValue &nv : result) {
+  std::unordered_map<std::string, PJRT_NamedValue*> map;
+  for (PJRT_NamedValue& nv : result) {
     auto [_, did_not_exist_yet] = map.insert({nv.name, &nv});
     EXPECT_TRUE(did_not_exist_yet);
   }
   EXPECT_TRUE(map.find("xla_version") != map.end());
-  PJRT_NamedValue *current = map["stablehlo_current_version"];
+  PJRT_NamedValue* current = map["stablehlo_current_version"];
   mlir::vhlo::Version current_version =
       mlir::vhlo::Version::getCurrentVersion();
   EXPECT_TRUE(current->int64_array_value[0] == current_version.getMajor());
   EXPECT_TRUE(current->int64_array_value[1] == current_version.getMinor());
   EXPECT_TRUE(current->int64_array_value[2] == current_version.getPatch());
-  PJRT_NamedValue *minimum = map["stablehlo_minimum_version"];
+  PJRT_NamedValue* minimum = map["stablehlo_minimum_version"];
   mlir::vhlo::Version minimum_version =
       mlir::vhlo::Version::getMinimumVersion();
   EXPECT_TRUE(minimum->int64_array_value[0] == minimum_version.getMajor());
   EXPECT_TRUE(minimum->int64_array_value[1] == minimum_version.getMinor());
   EXPECT_TRUE(minimum->int64_array_value[2] == minimum_version.getPatch());
+}
+
+TEST(PjRtCApiHelperTest, BuildXlaShapeFromCWithNullptrLayout) {
+  int64_t dims[] = {2, 3};
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::Shape shape,
+      BuildXlaShapeFromC(PJRT_Buffer_Type::PJRT_Buffer_Type_F32, dims, 2,
+                         nullptr));
+  EXPECT_FALSE(shape.has_layout());
 }
 
 }  // namespace

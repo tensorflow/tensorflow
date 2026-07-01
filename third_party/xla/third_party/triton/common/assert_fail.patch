@@ -1,6 +1,6 @@
 --- a/python/triton/experimental/gsan/src/GSanLibrary.cu
 +++ b/python/triton/experimental/gsan/src/GSanLibrary.cu
-@@ -6,11 +6,12 @@
+@@ -6,11 +6,12 @@ extern "C" GSAN_DEVICE void __assertfail(const char *assertion,
                                           const char *function,
                                           __SIZE_TYPE__ charSize);
  
@@ -18,3 +18,4 @@
  
  namespace gsan {
  
+

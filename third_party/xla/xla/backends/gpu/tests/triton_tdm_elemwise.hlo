@@ -1,0 +1,46 @@
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb | FileCheck %s --check-prefixes=CHECK-%{GPU},CHECK-%{PTX} --allow-unused-prefixes
+
+// Verify that element-wise Triton fusions targeting gfx1250 use TDM
+// (Tensor Descriptor Memory) intrinsics instead of pointer arithmetic.
+// On non-TDM ROCm targets (e.g. mi200), buffer load/store ops are used.
+// On CUDA targets, the AMD-specific TDM intrinsics must not appear.
+
+// CHECK-gfx1250: @llvm.amdgcn.tensor.load.to.lds
+// CHECK-gfx1250: @llvm.amdgcn.s.wait.tensorcnt
+// CHECK-gfx1250: @llvm.amdgcn.tensor.store.from.lds
+
+// CHECK-mi200-NOT: @llvm.amdgcn.{{(tensor\.|s\.wait\.tensorcnt)}}
+// CHECK-mi200: @llvm.amdgcn.raw.ptr.buffer.load
+// CHECK-mi200-NOT: @llvm.amdgcn.{{(tensor\.|s\.wait\.tensorcnt)}}
+
+// CHECK-PTX: define
+// CHECK-PTX-NOT: @llvm.amdgcn
+
+HloModule triton_tdm_elemwise
+
+triton_computation {
+  a = f16[256,256]{1,0} parameter(0)
+  b = f16[256,256]{1,0} parameter(1)
+  c = f16[256,256]{1,0} parameter(2)
+  sum = f16[256,256]{1,0} add(a, b)
+  ROOT out = f16[256,256]{1,0} multiply(sum, c)
+}
+
+ENTRY main {
+  a = f16[256,256]{1,0} parameter(0)
+  b = f16[256,256]{1,0} parameter(1)
+  c = f16[256,256]{1,0} parameter(2)
+  ROOT result = f16[256,256]{1,0} fusion(a, b, c), kind=kCustom,
+    calls=triton_computation,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["64","64"]}],
+          "num_warps":"4",
+          "num_ctas":"1",
+          "num_stages":"1"
+        }
+      }
+    }
+}

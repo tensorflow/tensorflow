@@ -143,6 +143,11 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
                               &enable_priority_aware_batch_scheduler_resplit_));
   }
 
+  if (c->HasAttr("enable_batching_task_lazy_cancellation")) {
+    OP_REQUIRES_OK(c, c->GetAttr("enable_batching_task_lazy_cancellation",
+                                 &enable_batching_task_lazy_cancellation_));
+  }
+
   if (c->HasAttr("num_warmup_batch_threads")) {
     OP_REQUIRES_OK(
         c, c->GetAttr("num_warmup_batch_threads", &num_warmup_batch_threads_));
@@ -177,13 +182,13 @@ absl::Status BatchFunctionFallbackKernelBase::ValidateAllowedBatchSizes()
   for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
     const int32_t size = allowed_batch_sizes_.at(i);
     if (i > 0 && size <= last_size) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "allowed_batch_sizes entries must be monotonically increasing");
     }
 
     if ((!enable_large_batch_splitting_) &&
         (i == allowed_batch_sizes_.size() - 1) && (size != max_batch_size_)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "final entry in allowed_batch_sizes must equal max_batch_size when "
           "enable_large_batch_splitting is False");
     }
@@ -241,7 +246,7 @@ void BatchFunctionFallbackKernelBase::SetAdaptiveBatchSchedulerOptions(
   thread::ThreadPool* thread_pool = GetOrCreateBatchThreadsPool();
   OP_REQUIRES(
       c, thread_pool != nullptr,
-      errors::FailedPrecondition("Failed to create batch threads pool"));
+      absl::FailedPreconditionError("Failed to create batch threads pool"));
 
   adaptive_batch_scheduler_options_ = options;
 }

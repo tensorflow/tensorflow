@@ -15,10 +15,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -54,6 +54,26 @@ int64_t CountCopies(const HloModule& module) {
   return count;
 }
 
+void ExpectFusionOperandIsCopyOf(const HloModule& module,
+                                 absl::string_view fusion_name,
+                                 absl::string_view copied_instruction_name) {
+  const HloInstruction* fusion =
+      HloHardwareIndependentTestBase::FindInstruction(&module, fusion_name);
+  ASSERT_NE(fusion, nullptr);
+  ASSERT_GT(fusion->operand_count(), 0);
+  const HloInstruction* copy = fusion->operand(0);
+  ASSERT_EQ(copy->opcode(), HloOpcode::kCopy);
+  const HloInstruction* copy_source = copy->operand(0);
+  while (copy_source->opcode() == HloOpcode::kCopy) {
+    copy_source = copy_source->operand(0);
+  }
+  const HloInstruction* copied_instruction =
+      HloHardwareIndependentTestBase::FindInstruction(&module,
+                                                      copied_instruction_name);
+  ASSERT_NE(copied_instruction, nullptr);
+  EXPECT_EQ(copy_source, copied_instruction) << module.ToString();
+}
+
 class GpuCopyInsertionTest : public HloHardwareIndependentTestBase {
  public:
   CopyInsertion CreateCopyInsertion() const {
@@ -69,7 +89,7 @@ class GpuCopyInsertionTest : public HloHardwareIndependentTestBase {
 
 // This is some kind of end-to-end test for FusionCanShareBufferHint.
 TEST_F(GpuCopyInsertionTest, DUSBitcastNoCopy) {
-  const char* const kModuleString = R"(
+  constexpr absl::string_view kModuleString = R"(
 HloModule bitcast_fusion
 
 fused_computation.549 {
@@ -127,10 +147,105 @@ ENTRY main {
   EXPECT_EQ(CountCopies(*module), 2);
 }
 
+TEST_F(GpuCopyInsertionTest, BitcastedFusedDynamicUpdateSliceCopy) {
+  constexpr absl::string_view kModuleString = R"(
+HloModule Module
+
+fused_computation {
+  param0 = f32[4,4] parameter(0)
+  update = f32[1,4] constant({{1, 2, 3, 4}})
+  constant.0 = s32[] constant(0)
+  dus = f32[4,4] dynamic-update-slice(param0, update, constant.0, constant.0)
+  ROOT bitcast = f32[16] bitcast(dus)
+}
+
+ENTRY main {
+  param = f32[4,4] parameter(0)
+  negate = f32[4,4] negate(param)
+  add = f32[4,4] add(negate, negate)
+  fusion = f32[16] fusion(negate), kind=kLoop, calls=fused_computation
+  bitcast = f32[4,4] bitcast(fusion)
+  ROOT tuple = (f32[4,4], f32[4,4]) tuple(add, bitcast)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion = CreateCopyInsertion();
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  EXPECT_EQ(CountCopies(*module), 1);
+  ExpectFusionOperandIsCopyOf(*module, "fusion", "negate");
+}
+
+TEST_F(GpuCopyInsertionTest, ReshapedFusedDynamicUpdateSliceCopy) {
+  constexpr absl::string_view kModuleString = R"(
+HloModule Module
+
+fused_computation {
+  param0 = f32[4,4] parameter(0)
+  update = f32[1,4] constant({{1, 2, 3, 4}})
+  constant.0 = s32[] constant(0)
+  dus = f32[4,4] dynamic-update-slice(param0, update, constant.0, constant.0)
+  ROOT reshape = f32[16] reshape(dus)
+}
+
+ENTRY main {
+  param = f32[4,4] parameter(0)
+  negate = f32[4,4] negate(param)
+  add = f32[4,4] add(negate, negate)
+  fusion = f32[16] fusion(negate), kind=kLoop, calls=fused_computation
+  reshape = f32[4,4] reshape(fusion)
+  ROOT tuple = (f32[4,4], f32[4,4]) tuple(add, reshape)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion = CreateCopyInsertion();
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  ExpectFusionOperandIsCopyOf(*module, "fusion", "negate");
+}
+
+TEST_F(GpuCopyInsertionTest, F8DotCopyReproducer) {
+  constexpr absl::string_view kModuleString = R"(
+HloModule Module
+
+%bitcast_fusion (bitcast_input: bf16[256,256]) -> bf16[256,256] {
+  %bitcast_input = bf16[256,256]{1,0} parameter(0)
+  ROOT %bitcast = bf16[256,256]{1,0} bitcast(%bitcast_input)
+}
+
+%copy_fusion (input: f8e4m3fn[256,256]) -> f8e4m3fn[256,256] {
+  %input = f8e4m3fn[256,256]{1,0} parameter(0)
+  ROOT %copy = f8e4m3fn[256,256]{1,0} copy(%input)
+}
+
+%bitcast_fusion.1 (bitcast_input.1: f8e4m3fn[256,256]) -> f8e4m3fn[256,256] {
+  %bitcast_input.1 = f8e4m3fn[256,256]{1,0} parameter(0)
+  %fusion.3 = f8e4m3fn[256,256]{1,0} fusion(%bitcast_input.1), kind=kLoop, output_to_operand_aliasing={{}: (0, {})}, calls=%copy_fusion
+  ROOT %bitcast.1 = f8e4m3fn[256,256]{1,0} bitcast(%fusion.3)
+}
+
+ENTRY %main (param_0: bf16[256,256], param_1: f8e4m3fn[256,256]) -> f32[256,256] {
+  %param_0 = bf16[256,256]{1,0} parameter(0)
+  %fusion.1 = bf16[256,256]{1,0} fusion(%param_0), kind=kLoop, calls=%bitcast_fusion
+  %param_1 = f8e4m3fn[256,256]{1,0} parameter(1)
+  %fusion.2 = f8e4m3fn[256,256]{1,0} fusion(%param_1), kind=kLoop, calls=%bitcast_fusion.1
+  ROOT %convolution.1 = f32[256,256]{1,0} convolution(%fusion.1, %fusion.2), dim_labels=bf_io->bf
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion = CreateCopyInsertion();
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  EXPECT_EQ(CountCopies(*module), 1);
+}
+
 // For loops unrolled with double buffering,
 // copyInsertion should not insert any copy.
 TEST_F(GpuCopyInsertionTest, UnrolledLoopShouldNotHaveCopy) {
-  const char* const kModuleString = R"(
+  constexpr absl::string_view kModuleString = R"(
 HloModule all_gather_overlapping, entry_computation_layout={(f32[1,128]{1,0}, f32[2,128]{1,0})->(f32[1,128]{1,0}, f32[1,128]{1,0}, f32[2,128]{1,0}, s32[])}
 
 body {

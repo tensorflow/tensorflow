@@ -1,6 +1,9 @@
 # Description:
 #   curl is a tool for talking to web servers.
 
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 licenses(["notice"])  # MIT/X derivative license
 
 exports_files(["COPYING"])

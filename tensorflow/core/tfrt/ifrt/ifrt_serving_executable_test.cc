@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -75,8 +76,24 @@ using ::tensorflow::test::AsTensor;
 using ::tensorflow::test::TensorEq;
 using ::testing::_;
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 using ::testing::NiceMock;
 using ::testing::Return;
+
+// Helper to set up a mock expectation for `ReserveDevice`.
+// It returns device reservations in a round-robin fashion, cycling through
+// available cores.
+void SetUpMockDeviceReservation(
+    tsl::test_util::MockServingDeviceSelector& selector, int64_t program_id,
+    int num_cores) {
+  auto device_index = std::make_shared<int>(0);
+  int num_cores_const = std::max(1, num_cores);
+  EXPECT_CALL(selector, ReserveDevice(absl::StrCat(program_id)))
+      .WillRepeatedly([device_index, num_cores_const](::testing::Unused) {
+        return tsl::DeviceReservation((*device_index)++ % num_cores_const,
+                                      /*selector=*/nullptr);
+      });
+}
 
 // Mock class for TpuH2DTransferExecutor.
 // By default, `ScheduledH2DTransfers` pads input tensors to their static shapes
@@ -178,9 +195,7 @@ INSTANTIATE_TEST_SUITE_P(IfrtServingExecutableTests, IfrtServingExecutableTest,
 
 TEST_P(IfrtServingExecutableTest, Basic) {
   int64_t program_id = 123456;
-  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
-      .Times(1)
-      .WillOnce(Return(tsl::DeviceReservation(0, /*selector=*/nullptr)));
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
   auto executable =
       helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
 
@@ -203,10 +218,7 @@ TEST_P(IfrtServingExecutableTest, Basic) {
 
 TEST_P(IfrtServingExecutableTest, MultipleShapes) {
   int64_t program_id = 123456;
-  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
-      .Times(6)
-      .WillRepeatedly(
-          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
   auto executable =
       helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
 
@@ -245,10 +257,7 @@ TEST_P(IfrtServingExecutableTest, MultipleShapes) {
 
 TEST_P(IfrtServingExecutableTest, ReturnFailOnUncompiledShapeAfterFrozen) {
   int64_t program_id = 123456;
-  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
-      .Times(3)
-      .WillRepeatedly(
-          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
   auto executable =
       helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
 
@@ -284,6 +293,51 @@ TEST_P(IfrtServingExecutableTest, ReturnFailOnUncompiledShapeAfterFrozen) {
 
   EXPECT_THAT(status,
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST_P(IfrtServingExecutableTest,
+       FrozenErrorMessageContainsRequestedAndCachedShapes) {
+  int64_t program_id = 123456;
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
+  auto executable =
+      helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
+
+  // Warm up with shape {1, 3} x {3, 1}.
+  auto x1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
+  auto y1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
+  std::vector<tensorflow::Tensor> inputs1{x1, y1};
+  for (int i = 0; i < helper_->num_cores(); i++) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto result, Execute(executable.get(), absl::MakeSpan(inputs1), {}));
+  }
+
+  // Freeze the model.
+  executable->Freeze();
+
+  // Try to execute with a new, uncompiled shape {1, 4} x {4, 1}.
+  auto x2 = AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({1, 4}));
+  auto y2 = AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({4, 1}));
+  std::vector<tensorflow::Tensor> inputs2{x2, y2};
+
+  auto status = Execute(executable.get(), absl::MakeSpan(inputs2), {});
+
+  ASSERT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  // Verify the error message contains the requested (offending) input shapes.
+  std::string error_message(status.status().message());
+  EXPECT_THAT(error_message, HasSubstr("Requested input shapes:"));
+  EXPECT_THAT(error_message, HasSubstr("[1,4]"));
+  EXPECT_THAT(error_message, HasSubstr("[4,1]"));
+
+  // Verify the error message contains the count of cached shape sets.
+  EXPECT_THAT(error_message,
+              HasSubstr("Number of already compiled shape sets: 1"));
+
+  // Verify the error message contains the already compiled shapes.
+  EXPECT_THAT(error_message, HasSubstr("Already compiled:"));
+  EXPECT_THAT(error_message, HasSubstr("[1,3]"));
+  EXPECT_THAT(error_message, HasSubstr("[3,1]"));
 }
 
 TEST_P(IfrtServingExecutableTest, Spmd) {
@@ -407,10 +461,7 @@ TEST_F(IfrtServingExecutableTest, EncodeLayout) {
 
 TEST_P(IfrtServingExecutableTest, NoReturn) {
   int64_t program_id = 111111;
-  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
-      .Times(1)
-      .WillRepeatedly(
-          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
   auto executable = helper_->MakeExecutable(
       program_id, GetMlirModulePath("executable_no_return.mlir"));
 
@@ -432,9 +483,7 @@ TEST_P(IfrtServingExecutableTest, NoReturn) {
 TEST_P(IfrtServingExecutableTest, StaticShape) {
   absl::SetVLogLevel("tpu_h2d_transfer_executor", 2);
   int64_t program_id = 789012;
-  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
-      .WillRepeatedly(
-          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
 
   auto mock_h2d_factory =
       std::make_unique<NiceMock<MockH2DTransferExecutorFactory>>();
@@ -530,10 +579,7 @@ TEST_P(VariableInputTest, InterleaveVariable) {
   tsl::test_util::MockServingDeviceSelector device_selector;
   test_utils::IfrtServingExecutableTestHelper helper(&device_selector);
   int64_t program_id = 111111;
-  EXPECT_CALL(device_selector, ReserveDevice(absl::StrCat(program_id)))
-      .Times(1)
-      .WillRepeatedly(
-          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  SetUpMockDeviceReservation(device_selector, program_id, helper.num_cores());
   auto executable = helper.MakeExecutable(
       program_id, GetMlirModulePath("executable_long_inputs.mlir"));
   IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry =

@@ -23,6 +23,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/backends/cpu/target_machine_options.h"
+#include "xla/service/cpu/executable.pb.h"
+#include "xla/service/gpu_topology.pb.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.pb.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla {
@@ -74,7 +77,28 @@ TEST(GpuTopologyTest, FromProto) {
   EXPECT_EQ(topology->num_devices_per_host(), 3);
   EXPECT_TRUE(topology->has_gpu_target_config());
   EXPECT_TRUE(topology->host_target_machine_options().has_value());
+  // Default value for num_devices_per_process is num_devices_per_host.
+  EXPECT_EQ(topology->num_devices_per_process(), 3);
+  // But original value is not set.
+  EXPECT_EQ(topology->num_devices_per_process_opt(), std::nullopt);
   EXPECT_THAT(topology->ToProto(), EqualsProto(gpu_topology_proto));
+}
+
+TEST(GpuTopologyTest, FromProtoWithNumDevicesPerProcess) {
+  GpuTopologyProto gpu_topology_proto;
+  gpu_topology_proto.set_platform_version("some_platform_version");
+  gpu_topology_proto.set_num_partitions(1);
+  gpu_topology_proto.set_num_hosts_per_partition(2);
+  gpu_topology_proto.set_num_devices_per_host(4);
+  gpu_topology_proto.set_num_devices_per_process(2);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const GpuTopology> topology,
+                       GpuTopology::FromProto(gpu_topology_proto));
+  EXPECT_EQ(topology->platform_version(), "some_platform_version");
+  EXPECT_EQ(topology->num_partitions(), 1);
+  EXPECT_EQ(topology->num_hosts_per_partition(), 2);
+  EXPECT_EQ(topology->num_devices_per_host(), 4);
+  EXPECT_THAT(topology->ToProto(), EqualsProto(gpu_topology_proto));
+  EXPECT_EQ(topology->num_devices_per_process(), 2);
 }
 
 TEST(GpuTopologyTest, GetGpuTopologyForPlatformTeslaA100) {
@@ -93,6 +117,17 @@ TEST(GpuTopologyTest, GetGpuTopologyForPlatformNvidiaH100) {
   ASSERT_OK(topology_or);
   const auto& topology = *topology_or;
   EXPECT_EQ(topology.platform_version(), "nvidia_h100");
+  EXPECT_EQ(topology.num_partitions(), 2);
+  EXPECT_EQ(topology.num_hosts_per_partition(), 1);
+  EXPECT_EQ(topology.num_devices_per_host(), 4);
+  EXPECT_TRUE(topology.has_gpu_target_config());
+}
+
+TEST(GpuTopologyTest, GetGpuTopologyForPlatformTeslaH200) {
+  auto topology_or = GetGpuTopologyForPlatform("tesla_h200", 2, 1, 4);
+  ASSERT_OK(topology_or);
+  const auto& topology = *topology_or;
+  EXPECT_EQ(topology.platform_version(), "tesla_h200");
   EXPECT_EQ(topology.num_partitions(), 2);
   EXPECT_EQ(topology.num_hosts_per_partition(), 1);
   EXPECT_EQ(topology.num_devices_per_host(), 4);
@@ -118,6 +153,20 @@ TEST(GpuTopologyTest, GetGpuTopologyForPlatformOberonB200) {
   ASSERT_OK(topology_or);
   const auto& topology = *topology_or;
   EXPECT_EQ(topology.platform_version(), "oberon_b200");
+  EXPECT_EQ(topology.num_partitions(), 1);
+  EXPECT_EQ(topology.num_hosts_per_partition(), 2);
+  EXPECT_EQ(topology.num_devices_per_host(), 4);
+  EXPECT_TRUE(topology.has_gpu_target_config());
+  EXPECT_THAT(topology.host_target_machine_options(),
+              Optional(Property(&cpu::TargetMachineOptions::triple,
+                                "aarch64-linux-gnu")));
+}
+
+TEST(GpuTopologyTest, GetGpuTopologyForPlatformOberonB300) {
+  auto topology_or = GetGpuTopologyForPlatform("oberon_b300", 1, 2, 4);
+  ASSERT_OK(topology_or);
+  const auto& topology = *topology_or;
+  EXPECT_EQ(topology.platform_version(), "oberon_b300");
   EXPECT_EQ(topology.num_partitions(), 1);
   EXPECT_EQ(topology.num_hosts_per_partition(), 2);
   EXPECT_EQ(topology.num_devices_per_host(), 4);

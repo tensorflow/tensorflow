@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
 
@@ -182,6 +183,10 @@ StreamExecutorGpuTopologyDescription::
 
 absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) const {
+  if (!primitive_util::IsArrayType(element_type)) {
+    return InvalidArgument("Element type %s does not support layout",
+                           PrimitiveType_Name(element_type));
+  }
   Shape shape = ShapeUtil::MakeShape(element_type, dims);
   Layout layout = LayoutUtil::GetWithDefaultLayout(shape).layout();
   // `GetWithDefaultLayout` returns a padded layout for sub-byte types since the
@@ -192,6 +197,71 @@ absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
     layout.set_element_size_in_bits(primitive_util::BitWidth(element_type));
   }
   return layout;
+}
+
+absl::StatusOr<xla::Shape>
+StreamExecutorGpuTopologyDescription::MakeCanonicalShapeForMemorySpace(
+    int memory_space_kind_id, xla::Shape shape,
+    const xla::Layout* layout) const {
+  if (shape.IsToken()) {
+    return shape;
+  }
+
+  if (layout != nullptr) {
+    *shape.mutable_layout() = *layout;
+    if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+      ASSIGN_OR_RETURN(
+          Layout default_layout,
+          GetDefaultLayout(shape.element_type(), shape.dimensions()));
+      if (default_layout.element_size_in_bits() !=
+          shape.layout().element_size_in_bits()) {
+        return InvalidArgument(
+            "Device buffers require %d bits per element for an element type "
+            "%s, but got layout %s for shape %s",
+            default_layout.element_size_in_bits(),
+            PrimitiveType_Name(shape.element_type()), layout->ToString(),
+            shape.ToString());
+      }
+    }
+  } else {
+    ASSIGN_OR_RETURN(
+        *shape.mutable_layout(),
+        GetDefaultLayout(shape.element_type(), shape.dimensions()));
+  }
+
+  shape = ShapeUtil::DeviceShapeToHostShape(shape);
+  if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+    shape.mutable_layout()->set_element_size_in_bits(
+        primitive_util::BitWidth(shape.element_type()));
+  }
+
+  static const int kPinnedHostMemorySpaceKindId =
+      static_cast<int>(tsl::Fingerprint32("pinned_host"));
+  static const int kDeviceMemorySpaceKindId =
+      static_cast<int>(tsl::Fingerprint32("device"));
+
+  // Only allow pinned host memory or device memory.
+  if (memory_space_kind_id == kPinnedHostMemorySpaceKindId) {
+    shape.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
+  } else if (memory_space_kind_id == kDeviceMemorySpaceKindId) {
+    if (shape.has_layout()) {
+      shape.mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
+    }
+  } else {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "MakeCanonicalShapeForMemorySpace: invalid memory space kind ID: ",
+        memory_space_kind_id));
+  }
+
+  return shape;
+}
+
+absl::Span<const int>
+StreamExecutorGpuTopologyDescription::GetMemorySpaceKindIds() const {
+  static const int kGpuMemorySpaceKindIds[] = {
+      static_cast<int>(tsl::Fingerprint32("device")),
+      static_cast<int>(tsl::Fingerprint32("pinned_host"))};
+  return absl::MakeConstSpan(kGpuMemorySpaceKindIds);
 }
 
 absl::StatusOr<PjRtDeviceDimensions>

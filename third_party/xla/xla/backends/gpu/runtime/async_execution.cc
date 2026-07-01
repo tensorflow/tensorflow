@@ -63,8 +63,8 @@ struct ExecutionState {
 
 }  // namespace
 
-AsyncExecution::AsyncExecution(const Thunk* start_thunk)
-    : start_thunk_(start_thunk) {}
+AsyncExecution::AsyncExecution(Thunk::ThunkInfo start_thunk_info)
+    : start_thunk_info_(std::move(start_thunk_info)) {}
 
 AsyncExecution::ExecutionGuard::ExecutionGuard(se::Event* event,
                                                se::Stream* async_stream)
@@ -91,13 +91,13 @@ absl::Status AsyncExecution::Initialize(Thunk::ExecutionScopedState* state,
                                         se::StreamExecutor* executor) {
   XLA_VLOG_DEVICE(1, executor->device_ordinal())
       << absl::StreamFormat("Initialize async execution for `%s`",
-                            start_thunk_->profile_annotation());
+                            start_thunk_info_.profile_annotation);
   EventPool& pool = GetOrCreatePool(executor);
   ASSIGN_OR_RETURN(auto borrowed, pool.GetOrCreate());
-  state->try_emplace(start_thunk_->thunk_info().thunk_id,
+  state->try_emplace(start_thunk_info_.thunk_id,
                      std::in_place_type<ExecutionState>, std::move(borrowed));
   // For shared async executions (e.g. pipelined send/recv), multiple
-  // AsyncStartThunks share the same AsyncExecution and start_thunk_, so
+  // AsyncStartThunks share the same AsyncExecution and start_thunk_info_, so
   // Initialize may be called more than once with the same key. The first
   // call wins; subsequent calls are no-ops (borrowed event returns to pool).
   return absl::OkStatus();
@@ -122,16 +122,15 @@ absl::StatusOr<AsyncExecution::ExecutionGuard> AsyncExecution::Start(
     se::Stream* async_stream) {
   XLA_VLOG_DEVICE(1, stream->parent()->device_ordinal()) << absl::StreamFormat(
       "Start async execution for `%s`: stream=%p, async_stream=%p",
-      start_thunk_->profile_annotation(), stream, async_stream);
-  ASSIGN_OR_RETURN(
-      ExecutionState * es,
-      GetExecutionState(state, start_thunk_->thunk_info().thunk_id));
+      start_thunk_info_.profile_annotation, stream, async_stream);
+  ASSIGN_OR_RETURN(ExecutionState * es,
+                   GetExecutionState(state, start_thunk_info_.thunk_id));
 
   if (++es->counter > 1) {
     return Internal(
         "Async execution for `%s` already started (counter=%d). Async "
         "execution must be completed by Done before it can be started again.",
-        start_thunk_->profile_annotation(), es->counter - 1);
+        start_thunk_info_.profile_annotation, es->counter - 1);
   }
 
   se::Event* event = es->event->get();
@@ -151,14 +150,13 @@ absl::Status AsyncExecution::Done(Thunk::ExecutionScopedState* state,
                                   se::Stream* stream) {
   XLA_VLOG_DEVICE(1, stream->parent()->device_ordinal())
       << absl::StreamFormat("Done async execution for `%s`: stream=%p",
-                            start_thunk_->profile_annotation(), stream);
-  ASSIGN_OR_RETURN(
-      ExecutionState * es,
-      GetExecutionState(state, start_thunk_->thunk_info().thunk_id));
+                            start_thunk_info_.profile_annotation, stream);
+  ASSIGN_OR_RETURN(ExecutionState * es,
+                   GetExecutionState(state, start_thunk_info_.thunk_id));
 
   if (--es->counter < 0) {
     return Internal("Async execution for `%s` not started (counter=%d)",
-                    start_thunk_->profile_annotation(), es->counter + 1);
+                    start_thunk_info_.profile_annotation, es->counter + 1);
   }
 
   // Wait for the async operation to complete by waiting for the event that was

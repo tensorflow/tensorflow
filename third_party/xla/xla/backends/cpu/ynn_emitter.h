@@ -28,7 +28,8 @@ namespace xla::cpu {
 
 absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
     absl::Span<const se::DeviceAddressBase> arguments_buffers)>>
-EmitYnnFusionBuilder(const HloComputation* computation);
+EmitYnnFusionBuilder(const HloComputation* computation,
+                     std::vector<int64_t> captured_parameters);
 
 }  // namespace xla::cpu
 

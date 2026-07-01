@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/async_work_runner.h"
@@ -114,8 +115,9 @@ class LocalDeviceState {
   // physical device ordinal if they share the same physical device.
   LocalDeviceState(se::StreamExecutor* executor, LocalClient* client,
                    AllocationModel allocation_model,
-                   int max_inflight_computations, bool allow_event_reuse,
-                   bool use_callback_stream, int device_ordinal = -1,
+                   std::optional<int> max_inflight_computations,
+                   bool allow_event_reuse, bool use_callback_stream,
+                   int device_ordinal = -1,
                    std::optional<StreamOptions> stream_options = std::nullopt,
                    bool schedule_async = false);
   virtual ~LocalDeviceState();
@@ -195,7 +197,8 @@ class LocalDeviceState {
   // b) ThenDoHostCallback waits for the callback to complete.
   absl::Status ThenExecuteCallback(
       se::Stream* stream, absl::AnyInvocable<void() &&> callback,
-      absl::AnyInvocable<void(absl::Status) &&> error_cb = nullptr);
+      absl::AnyInvocable<void(absl::Status) &&> error_cb = nullptr,
+      absl::string_view tag = "");
 
   // Helpers for releasing values on a worker thread at the tail of a stream on
   // a worker thread. Copies `object`, and destroys the copy when the tail of
@@ -206,10 +209,11 @@ class LocalDeviceState {
   template <typename T>
   absl::Status ThenRelease(se::Stream* stream, T&& object) {
     return ThenExecuteCallback(
-        stream, [object = std::forward<T>(object)]() { /* releases object */ });
+        stream, [object = std::forward<T>(object)]() { /* releases object */ },
+        nullptr, "ThenRelease");
   }
 
-  Semaphore& compute_semaphore() { return compute_semaphore_; }
+  std::optional<Semaphore>& compute_semaphore() { return compute_semaphore_; }
 
   // Returns a fresh, PRNG-generated random seed for an XLA computation.
   int GetNewPrngSeed();
@@ -220,9 +224,10 @@ class LocalDeviceState {
     return allow_delete_before_fulfill_;
   }
 
-  absl::Status AllocateAndRecordEvent(AsyncWorkRunner* async_work_runner,
-                                      BufferSequencingEventRef event,
-                                      se::Stream* stream);
+  absl::Status AllocateAndRecordEvent(
+      AsyncWorkRunner* async_work_runner, BufferSequencingEventRef event,
+      se::Stream* stream, absl::string_view tag = "AllocateAndRecordEvent",
+      absl::AnyInvocable<void() &&> cleanup = {});
 
   size_t GetNextComputeStreamSyncPoint() {
     return next_compute_stream_sync_point_.load();
@@ -244,7 +249,7 @@ class LocalDeviceState {
 
   // Semaphore used to limit how many programs can be enqueued on the compute
   // stream by the host ahead of the device.
-  Semaphore compute_semaphore_;
+  std::optional<Semaphore> compute_semaphore_;
 
   LocalDeviceId local_device_id_;
   LocalChipId local_hardware_id_;

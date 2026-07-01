@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
-#include "xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
 #include "xla/python/ifrt/ir/vifrt_dialect.h"
 
 namespace xla {
@@ -46,7 +45,6 @@ void InitializeMlirDialectRegistry(mlir::DialectRegistry& registry) {
   mlir::mhlo::registerAllMhloDialects(registry);
   mlir::sdy::registerAllDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
-  xla::ifrt::AttachBuiltInSpmdExpansions(registry);
 }
 
 void RegisterMlirDialects(mlir::MLIRContext& context) {

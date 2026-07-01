@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -102,11 +103,9 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
 
   // Adds a key-value pair to add additional information on error.
   // Error contexts should be added before the events are started to avoid race
-  // conditions. The key must be a compile time constant string. If the same key
-  // is used multiple times, the last call will overwrite the previous context.
-  void AddErrorContext(absl::string_view key, std::string error_context) {
-    error_context_[key] = std::move(error_context);
-  }
+  // conditions. The key must be a compile time constant string. Multiple error
+  // contexts with the same key will be concatenated with semicolons.
+  void AddErrorContext(absl::string_view key, std::string error_context);
 
   // Appends the error context to the error status if a context is set.
   // This should only be called when the underlying event is already complete.
@@ -164,9 +163,9 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
 
   const tsl::AsyncValueRef<EventState>& event() { return event_; }
 
- private:
   uint64_t sequence_number() const;
 
+ private:
   mutable absl::Mutex mu_;
   // A list of all streams for which the buffer's content is known to be defined
   // at the tail of the queue, i.e., for any newly enqueued command.
@@ -177,10 +176,17 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
   // Indicates if the buffer is in an error status. And error status is used to
   // propagate the error to the buffer consumers.
   tsl::AsyncValueRef<EventState> event_;
-  absl::flat_hash_map<absl::string_view, std::string> error_context_;
+  absl::InlinedVector<std::pair<absl::string_view, std::string>, 4>
+      error_context_ ABSL_GUARDED_BY(mu_);
 };
 
 using BufferSequencingEventRef = tsl::AsyncValueRef<BufferSequencingEvent>;
+
+namespace internal {
+template <>
+const PJRT_DeviceEvent_FunctionTable*
+GetBuiltinDeviceEventCApiFunctionTable<BufferSequencingEvent>();
+}  // namespace internal
 
 }  // namespace xla
 

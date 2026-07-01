@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cudnn_sdpa_score_mod.h"
 
-#include <iostream>
 #include <optional>
 #include <string>
 #include <vector>
@@ -27,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -41,6 +41,25 @@ namespace gpu {
 ScoreModFunc::ScoreModFunc(const xla::HloComputation* fwd_comp,
                            const xla::HloComputation* bwd_comp)
     : fwd_comp_(fwd_comp), bwd_comp_(bwd_comp) {}
+
+std::optional<cudnn_frontend::PointwiseMode_t>
+GetElementwiseModeIfOperandSwapped(cudnn_frontend::PointwiseMode_t pm) {
+  using m = cudnn_frontend::PointwiseMode_t;
+  switch (pm) {
+    case m::SUB:
+      return m::SUB;
+    case m::CMP_GE:
+      return m::CMP_LE;
+    case m::CMP_GT:
+      return m::CMP_LT;
+    case m::CMP_LE:
+      return m::CMP_GE;
+    case m::CMP_LT:
+      return m::CMP_GT;
+    default:
+      return std::nullopt;
+  }
+}
 
 std::optional<cudnn_frontend::PointwiseMode_t> GetElementwiseMode(
     const xla::HloInstruction& instruction) {
@@ -167,12 +186,12 @@ Tensor LiteralToCudnnTensor(const xla::HloInstruction* hlo,
 
 absl::Status ScoreModFunc::UpdateCudnnMap(cudnn_frontend::graph::Graph& graph,
                                           UidGenerator next_uid) {
-  TF_RETURN_IF_ERROR(UpdateHloParameterToCudnnMap(graph, fwd_hlo_to_cudnn_,
-                                                  fwd_comp_, next_uid));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(UpdateHloParameterToCudnnMap(graph, fwd_hlo_to_cudnn_,
+                                               fwd_comp_, next_uid));
+  RETURN_IF_ERROR(
       UpdateHloConstantToCudnnMap(graph, fwd_hlo_to_cudnn_, fwd_comp_));
   if (bwd_comp_) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         UpdateHloConstantToCudnnMap(graph, bwd_hlo_to_cudnn_, bwd_comp_));
   }
   return absl::OkStatus();
@@ -184,9 +203,9 @@ absl::Status ScoreModFunc::UpdateHloParameterToCudnnMap(
     const xla::HloComputation* computation, UidGenerator next_uid) {
   for (int i = 1; i < computation->num_parameters(); i++) {
     auto parameter = computation->parameter_instruction(i);
-    TF_ASSIGN_OR_RETURN(const dnn::DataType type,
-                        xla::gpu::GetDNNDataTypeFromPrimitiveType(
-                            parameter->shape().element_type()));
+    ASSIGN_OR_RETURN(const dnn::DataType type,
+                     xla::gpu::GetDNNDataTypeFromPrimitiveType(
+                         parameter->shape().element_type()));
     auto desc = dnn::TensorDescriptor::For(
         type, parameter->shape().dimensions(),
         parameter->shape().layout().minor_to_major());
@@ -305,7 +324,7 @@ Tensor ScoreModFunc::Compile(
     } else if (hlo->IsElementwise()) {
       const auto compute_dtype =
           GetComputeDataType(hlo->shape().element_type());
-      const auto mode = GetElementwiseMode(*hlo);
+      auto mode = GetElementwiseMode(*hlo);
       if (!mode.has_value()) {
         LOG(FATAL) << "Unsupported elementwise operation: " << hlo->ToString()
                    << "\n";
@@ -325,9 +344,14 @@ Tensor ScoreModFunc::Compile(
         // make sure first operand is virtual
         // remove this once cuDNN supports this
         if (!is_virtual(0) && !HloOpcodeIsBinaryCommutative(hlo->opcode())) {
-          std::cerr << hlo->ToString() << "\n";
-          LOG(FATAL) << "first operand of cuDNN pointwise op is not virtual "
-                        "and op is not commutative.";
+          auto new_mode = GetElementwiseModeIfOperandSwapped(*mode);
+          if (new_mode) {
+            // We can swap the operands to WAR
+            mode = new_mode;
+          } else {
+            LOG(FATAL) << "first operand of cuDNN pointwise op is not "
+                          "virtual and op is not commutative.";
+          }
         }
         auto o0 = is_virtual(0) ? operand(0) : operand(1);
         auto o1 = is_virtual(0) ? operand(1) : operand(0);
@@ -349,6 +373,13 @@ Tensor ScoreModFunc::Compile(
           }
         }
         hlo_to_cudnn[hlo] = graph->pointwise(o0, o1, attrs);
+        if (hlo->opcode() == xla::HloOpcode::kSubtract && !is_virtual(0)) {
+          // insert negate here to get right result since we swaped operands
+          auto negate = cudnn_frontend::graph::Pointwise_attributes()
+                            .set_mode(cudnn_frontend::PointwiseMode_t::NEG)
+                            .set_compute_data_type(compute_dtype);
+          hlo_to_cudnn[hlo] = graph->pointwise(hlo_to_cudnn[hlo], negate);
+        }
       } else if (hlo->operand_count() == 3) {
         if (xla::HloPredicateIsNotOp<xla::HloOpcode::kSelect>(hlo)) {
           LOG(FATAL) << "Unimplemented elementwise operation:"

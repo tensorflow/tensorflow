@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -28,11 +31,15 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
@@ -48,15 +55,14 @@ namespace {
 using ::xla::primitive_util::BitWidth;
 
 int64_t CalculateNumThreadblocks(const DotProblemInfo& dot,
-                                 const OutputTileSize& out_tile) {
-  int64_t tile_k = dot.k;
+                                 const DotTileSize& dot_tile) {
   // TODO(maniananth): Add special handling for grouped matmuls here.
-  int64_t num_tiles_along_m_dimension = CeilOfRatio<int64_t>(dot.m, out_tile.m);
-  int64_t num_tiles_along_n_dimension = CeilOfRatio<int64_t>(dot.n, out_tile.n);
-  int64_t num_tiles_along_k_dimension = CeilOfRatio<int64_t>(dot.k, tile_k);
-  int64_t num_threadblocks = dot.b * num_tiles_along_m_dimension *
-                             num_tiles_along_n_dimension *
-                             num_tiles_along_k_dimension;
+  int64_t num_tiles_along_b_dimension = CeilOfRatio<int64_t>(dot.b, dot_tile.b);
+  int64_t num_tiles_along_m_dimension = CeilOfRatio<int64_t>(dot.m, dot_tile.m);
+  int64_t num_tiles_along_n_dimension = CeilOfRatio<int64_t>(dot.n, dot_tile.n);
+  int64_t num_threadblocks = num_tiles_along_b_dimension *
+                             num_tiles_along_m_dimension *
+                             num_tiles_along_n_dimension;
 
   return num_threadblocks;
 }
@@ -67,8 +73,9 @@ int64_t CalculateNumWaves(int64_t threadblock_count,
   return CeilOfRatio<int64_t>(threadblock_count, core_count);
 }
 
-int64_t CalculateTileFlops(int64_t tile_m, int64_t tile_n, int64_t problem_k) {
-  return /*flops per MAC*/ 2 * tile_m * tile_n * problem_k;
+int64_t CalculateTileFlops(const DotTileSize& dot_tile, int64_t problem_k) {
+  return /*2 FLOPs per MAC*/ 2 * dot_tile.b * dot_tile.m * dot_tile.n *
+         problem_k;
 }
 
 // Calculates the effective flops for a GPU DOT operation as a function of the
@@ -116,16 +123,20 @@ double GetEffectiveFlopsPerNsForTileSize(
   return peak_flops_per_ns * flops_derate;
 }
 
-int64_t CalculateL2Bytes(const OutputTileSize& out_tile, int64_t problem_k,
+int64_t CalculateL2Bytes(const DotProblemInfo& dot, const DotTileSize& out_tile,
                          int64_t threadblock_count) {
   // When tiling the GEMM problem on the outputs and mapping one tile per SM,
   // the problem of data replication (or extra loads of the same data) between
   // multiple SMs occurs. This leads to more data loads than what’s expected
   // algorithmically, and increases bandwidth needs on the L2 → SM paths.
 
-  // Input data loaded by each tile is equal to (Tile_M + Tile_N) * Tile_K
-  // bytes.
-  int64_t l2_data_per_tile = (out_tile.m + out_tile.n) * problem_k;
+  // Input data loaded by each tile is equal to (Tile_M + Tile_N) * problem_k
+  // bytes (The threadblock iterates over the entire problem_k dimension).
+  int64_t lhs_bytes = CeilOfRatio<int64_t>(
+      out_tile.b * out_tile.m * dot.k * BitWidth(dot.lhs_element_type), 8);
+  int64_t rhs_bytes = CeilOfRatio<int64_t>(
+      out_tile.b * out_tile.n * dot.k * BitWidth(dot.rhs_element_type), 8);
+  int64_t l2_data_per_tile = lhs_bytes + rhs_bytes;
 
   // Across all the tiles, data loads will be equal to: (l2_data_per_tile *
   // threadblock_count).
@@ -159,9 +170,13 @@ DotProblemInfo::DotProblemInfo(const HloDotInstruction& dot) {
       rhs_shape.dimensions().size(), dim_numbers.rhs_contracting_dimensions(),
       dim_numbers.rhs_batch_dimensions());
 
-  b = dim_numbers.lhs_batch_dimensions_size() > 0
-          ? dim_numbers.lhs_batch_dimensions(0)
-          : 1;
+  // We support 4D and higher rank GEMMs to handle multi-dimensional batching
+  // (such as having independent head and batch dimensions in multi-head
+  // attention workloads) without requiring explicit reshape or flattening ops.
+  b = 1;
+  for (int64_t batch_dim_idx : dim_numbers.lhs_batch_dimensions()) {
+    b *= lhs_shape.dimensions(batch_dim_idx);
+  }
   m = lhs_shape.dimensions(lhs_non_contracting_dims[0]);
   n = rhs_shape.dimensions(rhs_non_contracting_dims[0]);
   k = lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions()[0]);
@@ -172,11 +187,11 @@ DotProblemInfo::DotProblemInfo(const HloDotInstruction& dot) {
 }
 
 absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
-    const DotProblemInfo& dot, const OutputTileSize& out_tile,
+    const DotProblemInfo& dot, const DotTileSize& dot_tile,
     const se::DeviceDescription& device_info) {
-  int64_t threadblock_count = CalculateNumThreadblocks(dot, out_tile);
+  int64_t threadblock_count = CalculateNumThreadblocks(dot, dot_tile);
   int64_t wave_count = CalculateNumWaves(threadblock_count, device_info);
-  int64_t flops_per_tile = CalculateTileFlops(out_tile.m, out_tile.n, dot.k);
+  int64_t flops_per_tile = CalculateTileFlops(dot_tile, dot.k);
   // The following is not the actual number of threadblocks launched, but due to
   // how wave quantization works, we get the effect of running extra
   // threadblocks when adding to roofline projections.
@@ -184,7 +199,7 @@ absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
   int64_t total_flops_with_wave_quant =
       flops_per_tile * cta_count_with_wave_quant;
   double effective_flops_rate = GetEffectiveFlopsPerNsForTileSize(
-      out_tile.m, device_info, dot.lhs_element_type);
+      dot_tile.m, device_info, dot.lhs_element_type);
 
   ComputeAndFlops result;
   result.flops_with_wave_quant = total_flops_with_wave_quant;
@@ -196,18 +211,28 @@ absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
 }
 
 absl::StatusOr<absl::Duration> CalculateL2Time(
-    const DotProblemInfo& dot, const OutputTileSize& out_tile,
-    const se::DeviceDescription& device_info) {
+    int64_t dot_k, int64_t tile_k, const se::DeviceDescription& device_info,
+    int64_t l2_bytes_read, bool is_tma_allowed) {
   // TODO(maniananth): L2 bandwidth has been hardcoded for H100 based on
   // microbenchmarking L2 bandwidth within a partition, but we should add this
   // to the device info and extend for more GPUs.
 
-  int64_t threadblock_count = CalculateNumThreadblocks(dot, out_tile);
   double device_l2_bandwidth = 6.65 * 1e12;  // Measured H100 L2 bandwidth.
+  int64_t num_k_iters = CeilOfRatio<int64_t>(dot_k, tile_k);
 
-  return absl::Seconds(1.0f *
-                       CalculateL2Bytes(out_tile, dot.k, threadblock_count) /
-                       device_l2_bandwidth);
+  // Empirical overheads per K-dimension iteration.
+  // The overhead is dictated by the memory instruction pathway rather than
+  // strictly the hardware generation.
+  // Tuned via grid search to minimize MAPE.
+  constexpr double kTmaLoopOverheadSeconds =
+      150 * 1e-9;  // Fast path (cp.async.bulk)
+  constexpr double kLegacyLoopOverheadSeconds =
+      400 * 1e-9;  // Slow path (cp.async)
+  double k_loop_overhead =
+      is_tma_allowed ? kTmaLoopOverheadSeconds : kLegacyLoopOverheadSeconds;
+
+  double base_time_seconds = 1.0f * l2_bytes_read / device_l2_bandwidth;
+  return absl::Seconds(base_time_seconds + num_k_iters * k_loop_overhead);
 }
 
 // Returns the effective HBM bandwidth in bytes per second for a given dma_size.
@@ -295,6 +320,15 @@ HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
   return result;
 }
 
+int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
+                               const DotTileSize& dot_tile) {
+  int64_t lhs_iter_bytes = CeilOfRatio<int64_t>(
+      dot_tile.b * dot_tile.m * dot_tile.k * BitWidth(dot.lhs_element_type), 8);
+  int64_t rhs_iter_bytes = CeilOfRatio<int64_t>(
+      dot_tile.b * dot_tile.k * dot_tile.n * BitWidth(dot.rhs_element_type), 8);
+  return lhs_iter_bytes + rhs_iter_bytes;
+}
+
 }  // namespace detail
 
 absl::Status IsSupported(const HloDotInstruction* dot) {
@@ -303,11 +337,11 @@ absl::Status IsSupported(const HloDotInstruction* dot) {
   const DotDimensionNumbers& dim_numbers = dot->dot_dimension_numbers();
 
   DimensionVector lhs_non_contracting_dims = GetNonContractingDims(
-      lhs_shape.dimensions().size(), dim_numbers.lhs_batch_dimensions(),
-      dim_numbers.lhs_contracting_dimensions());
+      lhs_shape.dimensions().size(), dim_numbers.lhs_contracting_dimensions(),
+      dim_numbers.lhs_batch_dimensions());
   DimensionVector rhs_non_contracting_dims = GetNonContractingDims(
-      rhs_shape.dimensions().size(), dim_numbers.rhs_batch_dimensions(),
-      dim_numbers.rhs_contracting_dimensions());
+      rhs_shape.dimensions().size(), dim_numbers.rhs_contracting_dimensions(),
+      dim_numbers.rhs_batch_dimensions());
 
   if (lhs_non_contracting_dims.size() > 1 ||
       rhs_non_contracting_dims.size() > 1) {
@@ -315,13 +349,6 @@ absl::Status IsSupported(const HloDotInstruction* dot) {
         "Multiple non-contracting dimensions are not supported, got LHS: [",
         absl::StrJoin(lhs_non_contracting_dims, ","), "], RHS: [",
         absl::StrJoin(rhs_non_contracting_dims, ","), "]"));
-  }
-  // Only checking one side of batch and contracting dimensions, since they must
-  // be the same for left and right.
-  if (dim_numbers.lhs_batch_dimensions_size() > 1) {
-    return absl::UnimplementedError(
-        absl::StrCat("Batch dimension > 1 is not supported, got ",
-                     absl::StrJoin(dim_numbers.lhs_batch_dimensions(), ",")));
   }
   if (dim_numbers.lhs_contracting_dimensions_size() != 1 ||
       dim_numbers.rhs_contracting_dimensions_size() != 1) {
@@ -332,35 +359,81 @@ absl::Status IsSupported(const HloDotInstruction* dot) {
         absl::StrJoin(dim_numbers.rhs_contracting_dimensions(), ","), "]"));
   }
 
+  // TODO: b/501002656 - Support downstream transposes by fixing dimension
+  // mapping.
+  std::vector<const HloInstruction*> stack;
+  absl::flat_hash_set<const HloInstruction*> visited;
+  stack.push_back(dot);
+  visited.insert(dot);
+  while (!stack.empty()) {
+    const HloInstruction* current = stack.back();
+    stack.pop_back();
+    if (current != dot && current->opcode() == HloOpcode::kTranspose) {
+      return absl::UnimplementedError(
+          "Dot with a downstream transpose is not supported.");
+    }
+    for (const HloInstruction* user : current->users()) {
+      if (visited.insert(user).second) {
+        stack.push_back(user);
+      }
+    }
+  }
+
   return absl::OkStatus();
+}
+
+absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
+  if (!dot->has_backend_config()) {
+    return absl::FailedPreconditionError(
+        "Dot instruction must have a backend config with tiling sizes.");
+  }
+  ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::gpu::Tile>());
+  TF_RET_CHECK(tile_config.sizes_size() > 0)
+      << "Tile backend config must have sizes.";
+  return tile_config.sizes(0);
 }
 
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
-    const se::DeviceDescription& device_info) {
-  TF_RETURN_IF_ERROR(IsSupported(dot));
+    const se::DeviceDescription& device_info, std::optional<int64_t> block_k) {
+  RETURN_IF_ERROR(IsSupported(dot));
   if (block_params.output_tile_sizes.size() != 1) {
     return absl::UnimplementedError(
         absl::StrCat("Only single tile size is supported, got ",
                      block_params.output_tile_sizes.size()));
   }
 
+  int64_t block_k_val;
+  if (block_k.has_value()) {
+    block_k_val = *block_k;
+  } else {
+    ASSIGN_OR_RETURN(block_k_val, ExtractBlockK(dot));
+  }
+
   detail::DotProblemInfo dot_info(*dot);
 
   const std::vector<int64_t>& tile_shape = block_params.output_tile_sizes[0];
-  if (tile_shape.size() != 2) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Tile shape must be of size 2, got ", tile_shape.size()));
+  if (tile_shape.size() < 2) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Tile shape must be of size at least 2, got ", tile_shape.size()));
   }
-  detail::OutputTileSize output_tile{/*m=*/tile_shape[0],
-                                     /*n=*/tile_shape[1]};
+  int64_t tile_b = 1;
+  for (size_t i = 0; i < tile_shape.size() - 2; ++i) {
+    tile_b *= tile_shape[i];
+  }
+  int64_t tile_m = tile_shape[tile_shape.size() - 2];
+  int64_t tile_n = tile_shape[tile_shape.size() - 1];
+  detail::DotTileSize dot_tile{/*m=*/tile_m,
+                               /*n=*/tile_n,
+                               /*k=*/block_k_val,
+                               /*b=*/tile_b};
 
   EstimateRunTimeData estimates;
 
   // Calculate compute roofline with tile and wave quantization.
-  TF_ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
-                      detail::CalculateComputeTimeWithTileAndWaveQuantization(
-                          dot_info, output_tile, device_info));
+  ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
+                   detail::CalculateComputeTimeWithTileAndWaveQuantization(
+                       dot_info, dot_tile, device_info));
   estimates.compute_time = compute_and_flops.compute_time;
   estimates.flops = compute_and_flops.flops_with_wave_quant;
 
@@ -373,10 +446,16 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   estimates.bytes_read = hbm_timing.bytes_read;
   estimates.bytes_written = hbm_timing.bytes_written;
 
+  int64_t threadblock_count =
+      detail::CalculateNumThreadblocks(dot_info, dot_tile);
+  estimates.l2_bytes_read =
+      detail::CalculateL2Bytes(dot_info, dot_tile, threadblock_count);
+
   // Calculate L2 time.
-  TF_ASSIGN_OR_RETURN(
-      absl::Duration l2_time,
-      detail::CalculateL2Time(dot_info, output_tile, device_info));
+  ASSIGN_OR_RETURN(absl::Duration l2_time,
+                   detail::CalculateL2Time(dot_info.k, dot_tile.k, device_info,
+                                           estimates.l2_bytes_read,
+                                           block_params.is_tma_allowed));
 
   // Assuming perfect overlap between compute and memory.
   estimates.exec_time = std::max(

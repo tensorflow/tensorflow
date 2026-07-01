@@ -69,6 +69,9 @@ limitations under the License.
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+
 namespace xla {
 
 class PjRtBuffer;
@@ -81,9 +84,15 @@ struct CompileOptions;
 typedef absl::AnyInvocable<absl::Status(absl::StatusOr<PjRtBuffer*>)>
     PjRtFulfillAliasBufferCallback;
 
+class PjRtMemorySpaceCApiDelegator;
+
 class PjRtMemorySpace {
  public:
   virtual ~PjRtMemorySpace() = default;
+
+  static PjRtMemorySpace* FromC(PJRT_Memory* c_space);
+
+  virtual PJRT_Memory* ToCApiPtr() = 0;
 
   // The owner of this memory space.
   virtual PjRtClient* client() const = 0;
@@ -109,6 +118,31 @@ class PjRtMemorySpace {
 
   // Debug string suitable for reading by end users, should be reasonably terse.
   virtual absl::string_view ToString() const = 0;
+};
+
+// Helper for building a PJRT_Memory from a PjRtMemorySpace.
+class PjRtMemorySpaceCApiDelegator {
+ public:
+  explicit PjRtMemorySpaceCApiDelegator(PjRtMemorySpace* owner);
+  ~PjRtMemorySpaceCApiDelegator();
+
+  PJRT_Memory* ToCApiPtr() { return &c_memory_; }
+
+ private:
+  using CApiDtor = void (*)(void*);
+
+  static void* GetUserDataImpl(PJRT_Memory* memory, const void* key);
+  static void SetUserDataImpl(PJRT_Memory* memory, const void* key, void* data,
+                              CApiDtor dtor);
+  static const PJRT_Memory_FunctionTable kDelegatorVtable;
+  PJRT_Memory c_memory_;
+  PjRtMemorySpace* owner_;
+
+  struct UserData {
+    void* data;
+    CApiDtor dtor;
+  };
+  absl::flat_hash_map<const void*, UserData> user_data_;
 };
 
 class PjRtDevice {
@@ -261,6 +295,10 @@ class PjRtDevice {
   virtual absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
                                                absl::Status error) {
     return absl::UnimplementedError("PoisonExecution is not supported");
+  }
+
+  virtual absl::Status ClearMemoryStats() {
+    return absl::UnimplementedError("ClearMemoryStats is not supported");
   }
 };
 
@@ -880,9 +918,11 @@ class PjRtClient {
     absl::InlinedVector<PjRtClient::ShapeSpec, 4> shape_specs;
     shape_specs.reserve(shapes.size());
     for (const auto& shape : shapes) {
-      shape_specs.emplace_back(ShapeSpec{
-          shape.element_type(), DimensionVector(shape.dimensions().begin(),
-                                                shape.dimensions().end())});
+      ShapeSpec& spec = shape_specs.emplace_back();
+      spec.element_type = shape.element_type();
+      if (shape.IsArray()) {
+        spec.dims.assign(shape.dimensions().begin(), shape.dimensions().end());
+      }
     }
     return CreateBuffersForAsyncHostToDevice(
         shape_specs, /*device_layouts=*/std::nullopt, memory_space);
@@ -1125,7 +1165,7 @@ class PjRtBuffer {
   // Since this method actually acquires locks and communicate with the device,
   // it does not have the const qualifier, similar to what ToLiteral does.
   virtual absl::StatusOr<std::vector<int64_t>> logical_dimensions() {
-    TF_ASSIGN_OR_RETURN(Shape logical_shape, logical_on_device_shape());
+    ASSIGN_OR_RETURN(Shape logical_shape, logical_on_device_shape());
     absl::Span<const int64_t> dims = logical_shape.dimensions();
     return std::vector<int64_t>(dims.begin(), dims.end());
   }

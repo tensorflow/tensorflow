@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/shape_tracker.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
@@ -106,23 +107,48 @@ class DotOperandDims {
   // Returns the dimension sizes of the category.
   std::vector<int64_t> Sizes(Category category) const;
 
+  // Returns the total size (product of dimensions) of the category.
+  int64_t TotalSize(Category category) const;
+
   // Collapses the dimensions of the category. Returns error if the dimensions
-  // are not consecutive (but can be permuted).
+  // are not sorted and consecutive.
   // If the dimensions are empty (i.e. the product of sizes is 1), then all
   // dimensions are removed if remove_if_empty; otherwise one dimension is kept
   // (if there was any).
-  absl::Status Collapse(Category category, bool remove_if_empty);
+  absl::Status CollapseCategory(Category category, bool remove_if_empty);
+
+  // Returns true if the dimensions of the given category are sorted and
+  // consecutive.
+  bool IsConsecutive(Category category) const;
+
+  // Permutes the dimensions of the category to make them consecutive at the
+  // end, unless they are already consecutive anywhere in the shape.
+  // Returns the permutation applied, or std::nullopt if dimensions were already
+  // in the desired order.
+  std::optional<std::vector<int64_t>> PermuteToConsecutive(Category category);
 
   // --- Global dimension functions ---
+
+  // Returns the category for each dimension of the operand.
+  std::vector<Category> Categories() const;
 
   // Permute the dimensions of the category.
   // The permutation is in the same format as you'd pass to the transpose
   // instruction. The corresponding dimension numbers are updated.
   void ApplyPermutation(absl::Span<const int64_t> permutation);
 
+  // Functional version of ApplyPermutation. Returns a new DotOperandDims.
+  DotOperandDims GetPermuted(absl::Span<const int64_t> permutation) const;
+
   // Converts the shape dimension index to the category dimension index.
   absl::StatusOr<int64_t> IndexWithinCategory(Category category,
                                               int64_t global_dim_idx) const;
+
+  // Removes all degenerate (size=1) dimensions.
+  absl::Status RemoveDegenerateDimensions();
+
+  // Merges consecutive dimensions of the same category.
+  absl::Status MergeAdjacentDimensions();
 
   // Removes the dimensions in the range [start, end).
   absl::Status EraseDimensions(int64_t start, int64_t end);
@@ -137,8 +163,30 @@ class DotOperandDims {
   // Returns the shape of the operand.
   const Shape& shape() const { return shape_; }
 
-  // Updates the shape of the operand.
-  absl::Status UpdateShape(const Shape& new_shape);
+  // Overwrites the operand's shape with `new_shape` without touching the
+  // dimension categories. The rank of `new_shape` must match the current shape.
+  // This is typically used to update layout, element type, or bounds of
+  // existing dimensions without logical restructuring.
+  absl::Status SetShape(const Shape& new_shape);
+
+  // Reshapes the operand and updates the dimensions so that the underlying
+  // element order per category is preserved. Returns std::nullopt if the
+  // reshape would require merging dimensions of different categories or it's
+  // not possible to preserve the element order (e.g. permuted dimensions).
+  absl::StatusOr<std::optional<DotOperandDims>> Reshape(
+      const Shape& target_shape) const;
+
+  // Maps the current DotOperandDims (assumed to be the output of the
+  // instruction) to the operand of the instruction. Supports kTranspose and
+  // kReshape. Returns std::nullopt if that's not possible.
+  absl::StatusOr<std::optional<DotOperandDims>> MapBackward(
+      const HloInstruction* inst) const;
+
+  // Maps the current DotOperandDims (assumed to be the input of the
+  // instruction) to the output of the instruction. Supports kTranspose and
+  // kReshape. Returns std::nullopt if that's not possible.
+  absl::StatusOr<std::optional<DotOperandDims>> MapForward(
+      const HloInstruction* inst) const;
 
   // Returns a debug string representation of the DotOperandDims.
   std::string ToString() const;

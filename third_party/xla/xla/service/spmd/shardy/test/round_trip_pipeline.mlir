@@ -347,6 +347,19 @@ func.func @main(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
   return %1 : tensor<8x2xi32>
 }
 
+// -----
+
+// CHECK: sdy.mesh @empty_mesh = <[]>
+sdy.mesh @empty_mesh = <[]>
+
+// CHECK-LABEL: func @main
+func.func @main(%arg0: !stablehlo.token) -> tensor<8x4xf32> {
+  // CHECK-NEXT: %[[RECV:.*]]:2 = "stablehlo.recv"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 7, type = 3>, is_host_transfer = true}> {sdy.sharding = #sdy.sharding_per_value<[<@empty_mesh, [{}, {}]>, <@empty_mesh, []>]>} : (!stablehlo.token) -> (tensor<8x4xf32>, !stablehlo.token)
+  // CHECK-NEXT: return %[[RECV]]#0 : tensor<8x4xf32>
+  %0:2 = "stablehlo.recv"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 7, type = 3>, is_host_transfer = true}> {sdy.sharding = #sdy.sharding_per_value<[<@empty_mesh, [{}, {}]>, <@empty_mesh, []>]>} : (!stablehlo.token) -> (tensor<8x4xf32>, !stablehlo.token)
+  return %0#0 : tensor<8x4xf32>
+}
+
 
 // TODO(b/335481977): Add more tests for StableHLO ops. So far tested all SDY
 // compiler APIs other than shard as/like (doesn't exist yet). See

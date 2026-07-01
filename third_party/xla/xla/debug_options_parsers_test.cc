@@ -58,11 +58,11 @@ void SetXlaFlagsEnvVar(const std::string& value) {
   tsl::setenv("XLA_FLAGS", value.c_str(), true /*overwrite*/);
 }
 
-// Test that the xla_backend_extra_options flag is parsed correctly.
-TEST(DebugOptionsFlags, ParseXlaBackendExtraOptions) {
+// Test that the comma-separated flags can be parsed correctly.
+TEST(DebugOptionsFlags, ParseCommaSeparatedValues) {
   absl::flat_hash_map<std::string, std::string> test_map;
   std::string test_string = "aa=bb,cc,dd=,ee=ff=gg";
-  parse_xla_backend_extra_options(&test_map, test_string);
+  parse_comma_separated_values(&test_map, test_string);
   EXPECT_EQ(test_map.size(), 4);
   EXPECT_EQ(test_map.at("aa"), "bb");
   EXPECT_EQ(test_map.at("cc"), "");
@@ -394,12 +394,13 @@ TEST(ParseRepeatedEnumFlagsTest, CommandBufferCmdType) {
 
   // Check that the default setting has 6 types.
   const auto& enabled_types = debug_options.xla_gpu_enable_command_buffer();
-  ASSERT_EQ(enabled_types.size(), 6);
+  ASSERT_EQ(enabled_types.size(), 7);
   ASSERT_THAT(
       enabled_types,
-      ElementsAre(DebugOptions::FUSION, DebugOptions::CUBLAS,
-                  DebugOptions::CUBLASLT, DebugOptions::CUSTOM_CALL,
-                  DebugOptions::CUDNN, DebugOptions::DYNAMIC_SLICE_FUSION));
+      ElementsAre(DebugOptions::CONDITIONAL, DebugOptions::CUBLAS,
+                  DebugOptions::CUBLASLT, DebugOptions::CUDNN,
+                  DebugOptions::CUSTOM_CALL, DebugOptions::DYNAMIC_SLICE_FUSION,
+                  DebugOptions::FUSION));
 
   // Initialize the flag objects.
   std::vector<tsl::Flag> flag_objects;
@@ -408,30 +409,30 @@ TEST(ParseRepeatedEnumFlagsTest, CommandBufferCmdType) {
   // Removing options from the existing setting.
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=-fusion,-cublas");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_types.size(), 4);
-  EXPECT_THAT(
-      enabled_types,
-      ElementsAre(DebugOptions::CUBLASLT, DebugOptions::CUSTOM_CALL,
-                  DebugOptions::CUDNN, DebugOptions::DYNAMIC_SLICE_FUSION));
+  EXPECT_EQ(enabled_types.size(), 5);
+  EXPECT_THAT(enabled_types,
+              ElementsAre(DebugOptions::CONDITIONAL, DebugOptions::CUBLASLT,
+                          DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL,
+                          DebugOptions::DYNAMIC_SLICE_FUSION));
 
   // Removing an option that isn't there and adding a duplicate.
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=+cublaslt,-fusion");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_types.size(), 4);
-  EXPECT_THAT(
-      enabled_types,
-      ElementsAre(DebugOptions::CUBLASLT, DebugOptions::CUSTOM_CALL,
-                  DebugOptions::CUDNN, DebugOptions::DYNAMIC_SLICE_FUSION));
+  EXPECT_EQ(enabled_types.size(), 5);
+  EXPECT_THAT(enabled_types,
+              ElementsAre(DebugOptions::CONDITIONAL, DebugOptions::CUBLASLT,
+                          DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL,
+                          DebugOptions::DYNAMIC_SLICE_FUSION));
 
   // Adding an option.
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=+cublas");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_types.size(), 5);
+  EXPECT_EQ(enabled_types.size(), 6);
   EXPECT_THAT(
       enabled_types,
-      ElementsAre(DebugOptions::CUBLASLT, DebugOptions::CUSTOM_CALL,
-                  DebugOptions::CUDNN, DebugOptions::DYNAMIC_SLICE_FUSION,
-                  DebugOptions::CUBLAS));
+      ElementsAre(DebugOptions::CONDITIONAL, DebugOptions::CUBLASLT,
+                  DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL,
+                  DebugOptions::DYNAMIC_SLICE_FUSION, DebugOptions::CUBLAS));
 
   // Overwriting the default setting.
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=custom_call,fusion");
@@ -444,6 +445,37 @@ TEST(ParseRepeatedEnumFlagsTest, CommandBufferCmdType) {
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=''");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
   EXPECT_THAT(enabled_types, IsEmpty());
+}
+
+TEST(ParseRepeatedEnumFlagsTest, CollectivesCommandBufferFilter) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+
+  const auto& filter =
+      debug_options.xla_gpu_enable_collectives_command_buffer_filter();
+  ASSERT_EQ(filter.size(), 1);
+  ASSERT_THAT(filter, ElementsAre(DebugOptions::ALLCOLLECTIVES));
+
+  std::vector<tsl::Flag> flag_objects;
+  MakeDebugOptionsFlags(&flag_objects, &debug_options);
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_enable_collectives_command_buffer_filter=-allcollectives");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_THAT(filter, IsEmpty());
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_enable_collectives_command_buffer_filter=+allreduce,+"
+      "allgather");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(filter.size(), 2);
+  EXPECT_THAT(filter,
+              ElementsAre(DebugOptions::ALLREDUCE, DebugOptions::ALLGATHER));
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_enable_collectives_command_buffer_filter=reducescatter");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(filter.size(), 1);
+  EXPECT_THAT(filter, ElementsAre(DebugOptions::REDUCESCATTER));
 }
 
 // Common function to test oneDNN and XNN fusion type.
@@ -523,11 +555,12 @@ TEST(ParseRepeatedEnumFlagsTest, AutotuneBackend) {
                                             autotuner::Backend::TRITON));
 
   // Adding / removing options from the existing setting.
-  SetXlaFlagsEnvVar("--xla_gpu_experimental_autotune_backends=+cublas,-triton");
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_experimental_autotune_backends=+cublaslt,-triton");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
   EXPECT_EQ(enabled_backends.size(), 2);
   EXPECT_THAT(enabled_backends, ElementsAre(autotuner::Backend::CUDNN,
-                                            autotuner::Backend::CUBLAS));
+                                            autotuner::Backend::CUBLASLT));
 }
 
 TEST(CollectivesModeParsingTest, CaseInsensitive) {

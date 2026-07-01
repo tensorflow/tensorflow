@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_RAGGED_ALL_TO_ALL_H_
 #define XLA_BACKENDS_GPU_RUNTIME_RAGGED_ALL_TO_ALL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <variant>
 
@@ -33,6 +34,10 @@ namespace xla::gpu {
 // element type.
 bool IsRaggedAllToAllKernelSupported(int64_t num_outputs,
                                      PrimitiveType element_type);
+
+// Returns true if the kernel is supported for the given element type.
+bool IsRaggedAllToAllWithSymmetricMemoryKernelSupported(
+    PrimitiveType element_type);
 
 // Input:
 //  - input_buffer: dtype[num_input_rows, num_row_elements]
@@ -52,14 +57,23 @@ bool IsRaggedAllToAllKernelSupported(int64_t num_outputs,
 absl::Status RunRaggedAllToAllKernel(
     se::Stream* stream, PrimitiveType element_type,
     se::DeviceAddressBase input_buffer,
-    std::variant<stream_executor::gpu::RaggedAllToAllOutputPtrs,
-                 se::DeviceAddressBase, xla::SymmetricMemory*>
-        output_ptrs,
+    stream_executor::gpu::RaggedAllToAllOutputPtrs output_ptrs,
     se::DeviceAddressBase input_offsets_buffer,
     se::DeviceAddressBase send_sizes_buffer,
     se::DeviceAddressBase output_offsets_buffer, int64_t num_outputs,
     int64_t num_updates_per_output, int64_t num_input_rows,
     int64_t num_row_elements);
+
+absl::Status RunRaggedAllToAllWithSymmetricMemoryKernel(
+    se::Stream* stream, PrimitiveType element_type,
+    se::DeviceAddressBase input_buffer,
+    xla::SymmetricMemory* output_ptrs_symmetric_memory,
+    size_t output_sym_offset, se::DeviceAddressBase input_offsets_buffer,
+    se::DeviceAddressBase send_sizes_buffer,
+    se::DeviceAddressBase output_offsets_buffer, int64_t num_outputs,
+    int64_t num_updates_per_output, int64_t num_input_rows,
+    int64_t num_row_elements);
+
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_RAGGED_ALL_TO_ALL_H_

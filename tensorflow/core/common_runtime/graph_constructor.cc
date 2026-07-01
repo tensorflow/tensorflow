@@ -617,15 +617,15 @@ absl::Status GraphConstructor::EnsureNoNameCollisions() {
     bool already_exists = !existing_nodes_.insert({n->name(), n}).second;
     if (already_exists) {
       if (NodeNameInValues(opts_.input_map, n->name())) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "cannot resolve input_map because multiple nodes exist with name '",
-            n->name(), "'");
+            n->name(), "'"));
       }
       if (NodeNameInValues(opts_.control_dependencies, n->name())) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "cannot resolve control_dependencies because multiple nodes exist "
             "with name '",
-            n->name(), "'");
+            n->name(), "'"));
       }
     }
     AddPrefixes(n->name(), &existing_prefixes_);
@@ -634,16 +634,17 @@ absl::Status GraphConstructor::EnsureNoNameCollisions() {
     for (size_t i = 0; i < node_def_count(); ++i) {
       const std::string& name = get_node_def(i).name();
       if (NameExistsInGraph(name)) {
-        return errors::InvalidArgument("Node name '", name,
-                                       "' already exists in the Graph");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Node name '", name, "' already exists in the Graph"));
       }
     }
   } else if (!prefix_.empty()) {
     absl::string_view prefix_no_slash(prefix_);
     prefix_no_slash.remove_suffix(1);
     if (!IsValidNodeName(prefix_no_slash, false)) {
-      return errors::InvalidArgument("Imported node name prefix '", prefix_,
-                                     "' would lead to invalid node names");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Imported node name prefix '", prefix_,
+                       "' would lead to invalid node names"));
     }
     if (NameExistsInGraph(prefix_no_slash) && opts_.uniquify_prefix) {
       prefix_ = absl::StrCat(FindUniqueName(prefix_no_slash), "/");
@@ -657,23 +658,23 @@ absl::Status GraphConstructor::ValidateInputMapAndControlDependencies() {
     TensorId src = mapping.first;
     TensorId dst = mapping.second;
     if (existing_nodes_.count(dst.first) == 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "node '", dst.first, "' in input_map does not exist in graph ",
-          "(input_map entry: ", src.ToString(), "->", dst.ToString(), ")");
+          "(input_map entry: ", src.ToString(), "->", dst.ToString(), ")"));
     }
     if ((src.second == Graph::kControlSlot) !=
         (dst.second == Graph::kControlSlot)) {
-      return errors::InvalidArgument("input_map entry ", src.ToString(), "->",
-                                     dst.ToString(), " between ",
-                                     "control edge and non-control edge");
+      return absl::InvalidArgumentError(
+          absl::StrCat("input_map entry ", src.ToString(), "->", dst.ToString(),
+                       " between ", "control edge and non-control edge"));
     }
   }
   for (const std::string& node : opts_.control_dependencies) {
     if (existing_nodes_.count(node) == 0) {
-      return errors::InvalidArgument(
-          "node '", node,
-          "' in control_dependencies does not exist in "
-          "graph");
+      return absl::InvalidArgumentError(
+          absl::StrCat("node '", node,
+                       "' in control_dependencies does not exist in "
+                       "graph"));
     }
   }
   return absl::OkStatus();
@@ -684,23 +685,23 @@ absl::Status GraphConstructor::BuildNodeIndex() {
   for (int n = 0; n < node_def_count(); ++n) {
     const NodeDef& node_def = get_node_def(n);
     if (!IsValidNodeName(node_def.name(), opts_.allow_internal_ops)) {
-      return errors::InvalidArgument(
-          "Node '", node_def.name(),
-          "': Node name contains invalid characters");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Node '", node_def.name(),
+                       "': Node name contains invalid characters"));
     }
     if (!gdef_nodes_.insert(std::make_pair(node_def.name(), NodeInfo(n)))
              .second) {
-      return errors::InvalidArgument("Node '", node_def.name(),
-                                     "' is not unique");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Node '", node_def.name(), "' is not unique"));
     }
     // Validate the operation's type.
     if (node_def.op().empty()) {
-      return errors::InvalidArgument("Node '", node_def.name(),
-                                     "' does not specify an operation");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Node '", node_def.name(), "' does not specify an operation"));
     }
     if (opts_.expect_device_spec && node_def.device().empty()) {
-      return errors::InvalidArgument("Node '", node_def.name(),
-                                     "' is missing a device specification");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Node '", node_def.name(), "' is missing a device specification"));
     }
     if (IsMerge(node_def)) {
       merge_node_indices_.insert(n);
@@ -712,9 +713,9 @@ absl::Status GraphConstructor::BuildNodeIndex() {
       if (!input_name.empty() && absl::StartsWith(input_name, "^")) {
         in_control_dependence = true;
       } else if (in_control_dependence) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Node '", node_def.name(),
-            "': Control dependencies must come after regular dependencies");
+            "': Control dependencies must come after regular dependencies"));
       }
     }
     // Update gdef_prefixes_.
@@ -770,9 +771,9 @@ absl::Status GraphConstructor::InitFromEdges() {
         // being imported.
         auto iter = gdef_nodes_.find(id.first);
         if (iter == gdef_nodes_.end()) {
-          return errors::InvalidArgument("Node '", node_def.name(),
-                                         "': Unknown input node '",
-                                         node_def.input(i), "'");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Node '", node_def.name(), "': Unknown input node '",
+                           node_def.input(i), "'"));
         }
         outputs_[iter->second.gdef_index].push_back(n);
       } else {
@@ -800,9 +801,9 @@ absl::Status GraphConstructor::ValidateColocationConstraints(
     absl::string_view s(c);
     if (absl::ConsumePrefix(&s, kColocationGroupPrefix) &&
         gdef_nodes_.find(s) == gdef_nodes_.end()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Node '", node_def.name(),
-          "' expects to be colocated with unknown node '", s, "'");
+          "' expects to be colocated with unknown node '", s, "'"));
     }
   }
   return absl::OkStatus();
@@ -834,10 +835,10 @@ absl::Status GraphConstructor::ValidateShape(Node* node) {
   DCHECK(ic != nullptr)
       << "ShapeRefiner::AddNode() should have created the InferenceContext";
   if (shape_attrs.size() < node->num_outputs()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Node '", node->name(), "' has ", node->num_outputs(),
         " outputs but the ", kAttrName, " attribute specifies shapes for ",
-        shape_attrs.size(), " outputs");
+        shape_attrs.size(), " outputs"));
   }
   // NOTE(skyewm): we don't raise an error here because some users depend on
   // this behavior, even though it's unsafe.
@@ -853,16 +854,16 @@ absl::Status GraphConstructor::ValidateShape(Node* node) {
     shape_inference::ShapeHandle h;
     absl::Status s = ic->MakeShapeFromShapeProto(p, &h);
     if (!s.ok()) {
-      return errors::InvalidArgument("Node '", node->name(), " has an invalid ",
-                                     kAttrName, " attribute (shape #", i,
-                                     " error:'", s.message(), "'");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Node '", node->name(), " has an invalid ", kAttrName,
+                       " attribute (shape #", i, " error:'", s.message(), "'"));
     }
     s = refiner_->SetShape(node, i, h);
     if (!s.ok()) {
-      return errors::InvalidArgument(
-          "Node '", node->name(), "' has an ", kAttrName,
-          " attribute inconsistent with the GraphDef for output #", i, ": ",
-          s.message());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Node '", node->name(), "' has an ", kAttrName,
+                       " attribute inconsistent with the GraphDef for output #",
+                       i, ": ", s.message()));
     }
   }
   node->ClearAttr(kAttrName);
@@ -1279,16 +1280,16 @@ absl::Status GraphConstructor::Convert() {
           out << " Try using "
               << "tf.compat.v1.experimental.output_all_intermediates(True).";
         }
-        return errors::InvalidArgument(out.str());
+        return absl::InvalidArgumentError(out.str());
       }
 
       inputs.emplace_back(std::string(tensor_id.node()), src_node, src_index);
     }
 
     if (has_data_back_edge && !IsMerge(node_def)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Node '", node_def.name(),
-          "' had a back edge, but only Merge nodes can have back edges.");
+          "' had a back edge, but only Merge nodes can have back edges."));
     }
 
     Node* node;
@@ -1365,8 +1366,8 @@ absl::Status GraphConstructor::Convert() {
       }
     }
     PrintCycles();
-    return errors::InvalidArgument(node_def_count() - processed,
-                                   " nodes in a cycle");
+    return absl::InvalidArgumentError(
+        absl::StrCat(node_def_count() - processed, " nodes in a cycle"));
   }
 
   return absl::OkStatus();
@@ -1423,16 +1424,16 @@ absl::Status GraphConstructor::PopulateReturnTensors() {
       // Locate id in imported nodes
       auto iter = gdef_nodes_.find(id.first);
       if (iter == gdef_nodes_.end()) {
-        return errors::InvalidArgument("Requested return tensor '",
-                                       id.ToString(),
-                                       "' not found in graph def");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Requested return tensor '", id.ToString(),
+                         "' not found in graph def"));
       }
       int num_outputs = iter->second.node->num_outputs();
       if ((id.second < 0 || id.second >= num_outputs) &&
           id.second != Graph::kControlSlot) {
-        return errors::InvalidArgument("Invalid return output ", id.second,
-                                       " of node '", id.first, "', which has ",
-                                       num_outputs, " output(s)");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid return output ", id.second, " of node '",
+                         id.first, "', which has ", num_outputs, " output(s)"));
       }
       return_tensors_->push_back({iter->second.node, id.second});
     } else {
@@ -1451,8 +1452,8 @@ absl::Status GraphConstructor::PopulateReturnNodes() {
   for (absl::string_view name : opts_.return_nodes) {
     auto iter = gdef_nodes_.find(name);
     if (iter == gdef_nodes_.end()) {
-      return errors::InvalidArgument("Requested return node '", name,
-                                     "' not found in graph def");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Requested return node '", name, "' not found in graph def"));
     }
     return_nodes_->push_back(iter->second.node);
   }
@@ -1500,14 +1501,14 @@ void GraphConstructor::Undo() {
 absl::Status GraphConstructor::MakeEdge(Node* src, int output_index, Node* dst,
                                         int input_index) {
   if (output_index >= src->num_outputs()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Output ", output_index, " of node ", src->name(),
-        " does not exist. Node only has ", src->num_outputs(), " outputs.");
+        " does not exist. Node only has ", src->num_outputs(), " outputs."));
   }
   if (input_index >= dst->num_inputs()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Input ", input_index, " of node ", dst->name(),
-        " does not exist. Node only has ", dst->num_inputs(), " inputs.");
+        " does not exist. Node only has ", dst->num_inputs(), " inputs."));
   }
 
   DataType src_out = src->output_type(output_index);
@@ -1657,7 +1658,7 @@ absl::Status ImportGraphDef(const ImportGraphDefOptions& opts,
                             ImportGraphDefResults* results) {
   if (!opts.return_tensors.empty()) {
     if (results == nullptr) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "results argument to ImportGraphDef() must be non-null if "
           "opts.return_tensors is non-empty");
     }
@@ -1665,12 +1666,12 @@ absl::Status ImportGraphDef(const ImportGraphDefOptions& opts,
 
   if (!opts.return_nodes.empty()) {
     if (opts.skip_mapped_nodes) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Requesting return_nodes with skip_mapped_nodes set is not currently "
           "supported");
     }
     if (results == nullptr) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "results argument to ImportGraphDef() must be non-null if "
           "opts.return_nodes is non-empty");
     }
@@ -1679,7 +1680,7 @@ absl::Status ImportGraphDef(const ImportGraphDefOptions& opts,
   if (results != nullptr) {
     if (!results->return_tensors.empty() || !results->return_nodes.empty() ||
         !results->missing_unused_input_map_keys.empty()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "All fields in results argument to ImportGraphDef() must be empty.");
     }
   }

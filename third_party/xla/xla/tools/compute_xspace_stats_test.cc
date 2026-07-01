@@ -87,9 +87,10 @@ class ComputeGpuDeviceStatsTest : public testing::Test {
   }
 
   tensorflow::profiler::XEvent* AddEventToLine(
-      tensorflow::profiler::XLine* line, int64_t duration_ps,
+      tensorflow::profiler::XLine* line, int64_t offset_ps, int64_t duration_ps,
       int64_t metadata_id) {
     tensorflow::profiler::XEvent* event = line->add_events();
+    event->set_offset_ps(offset_ps);
     event->set_duration_ps(duration_ps);
     event->add_stats()->set_metadata_id(metadata_id);
     return event;
@@ -146,49 +147,97 @@ TEST_F(ComputeGpuDeviceStatsTest, IsMemcpyTest) {
 
 TEST_F(ComputeGpuDeviceStatsTest, ProcessLineEventsTest) {
   tsl::profiler::XLine line;
-  AddEventToLine(&line, 1000, kMemcpyDetailsMetadataId);
-  AddEventToLine(&line, 2000, kOtherDetailsMetadataId);
-  AddEventToLine(&line, 3000, kMemcpyDetailsMetadataId);
+  AddEventToLine(&line, 100, 1000, kMemcpyDetailsMetadataId);
+  AddEventToLine(&line, 1500, 2000, kOtherDetailsMetadataId);
+  AddEventToLine(&line, 4000, 3000, kMemcpyDetailsMetadataId);
 
   TF_ASSERT_OK_AND_ASSIGN(LineStats stats,
                           ProcessLineEvents(line, kMemcpyDetailsMetadataId));
-  EXPECT_EQ(stats.total_time_ps, 6000);
+  EXPECT_EQ(stats.device_time_ps, 6000);
   EXPECT_EQ(stats.memcpy_time_ps, 4000);
+  EXPECT_EQ(stats.min_start_ps, 100);
+  EXPECT_EQ(stats.max_end_ps, 7000);  // 4000 + 3000
 }
 
 TEST_F(ComputeGpuDeviceStatsTest, CalculateDeviceTimeAndMemcpyTest) {
   tsl::profiler::XLine* line = AddLineToDevicePlane();
+  line->set_name("Stream #1");
   tsl::profiler::XEvent* event =
-      AddEventToLine(line, 1000, kMemcpyDetailsMetadataId);
-  AddEventToLine(line, 2000, kOtherDetailsMetadataId);
-  AddEventToLine(line, 3000, kMemcpyDetailsMetadataId);
+      AddEventToLine(line, 1000, 1000, kMemcpyDetailsMetadataId);
+  AddEventToLine(line, 2500, 2000, kOtherDetailsMetadataId);
+  AddEventToLine(line, 5000, 3000, kMemcpyDetailsMetadataId);
+
+  // Add profiling task environment to check wall time logic too
+  tensorflow::profiler::XPlane* task_env = xspace_.add_planes();
+  task_env->set_name("Task Environment");
+  auto& metadata = *task_env->mutable_stat_metadata();
+  metadata[1].set_id(1);
+  metadata[1].set_name("profile_start_time");
+  metadata[2].set_id(2);
+  metadata[2].set_name("profile_stop_time");
+  task_env->add_stats()->set_metadata_id(1);
+  task_env->mutable_stats(0)->set_uint64_value(0);
+  task_env->add_stats()->set_metadata_id(2);
+  task_env->mutable_stats(1)->set_uint64_value(10000000);  // 10ms in ns
 
   AddMemoryAllocationEvent(40000);
   AddMemoryDeallocationEvent(50000);
 
   // Device properties setup
-  constexpr int kClockRateKHz = 1530000;
-  constexpr int kCoreCount = 80;
-  constexpr int64_t kMemoryBandwidthBytesPerSecond = 900000000000;
-  constexpr int kComputeCapMajor = 7;
-  constexpr int kComputeCapMinor = 0;
-
   AddDeviceStat(GetStatTypeStr(StatType::kDevVendor),
                 tsl::profiler::kDeviceVendorNvidia);
-  AddDeviceStat("clock_rate", kClockRateKHz);
-  AddDeviceStat("core_count", kCoreCount);
-  AddDeviceStat("memory_bandwidth", kMemoryBandwidthBytesPerSecond);
-  AddDeviceStat("compute_cap_major", kComputeCapMajor);
-  AddDeviceStat("compute_cap_minor", kComputeCapMinor);
 
   tsl::profiler::GroupTfEvents(&xspace_);
   TF_ASSERT_OK_AND_ASSIGN(GpuDeviceStats stats,
                           CalculateGpuDeviceStats(xspace_));
   EXPECT_EQ(stats.device_time_us, 0.006);
   EXPECT_EQ(stats.device_memcpy_time_us, 0.004);
+  EXPECT_EQ(stats.gpu_wall_time_us,
+            0.007);                      // 8000 - 1000 = 7000 ps -> 0.007 us
+  EXPECT_EQ(stats.wall_time_us, 10000);  // 10ms
   EXPECT_TRUE(IsMemcpy(*event, kMemcpyDetailsMetadataId));
-  EXPECT_FALSE(IsMemcpy(*event, kOtherDetailsMetadataId));
   EXPECT_EQ(stats.peak_memory_usage_bytes, 8500);
+}
+
+TEST_F(ComputeGpuDeviceStatsTest, CalculateMultiGpuAveragingTest) {
+  // Setup GPU 0
+  device_plane_->set_name("/device:GPU:0");
+  auto* line0 = device_plane_->add_lines();
+  line0->set_name("Stream #1");
+  AddEventToLine(line0, 1000, 5000,
+                 kOtherDetailsMetadataId);  // active span 5000ps
+
+  // Setup GPU 1
+  auto* plane1 = xspace_.add_planes();
+  plane1->set_name("/device:GPU:1");
+  auto* line1 = plane1->add_lines();
+  line1->set_name("Stream #1");
+  AddEventToLine(line1, 2000, 3000,
+                 kOtherDetailsMetadataId);  // active span 3000ps
+
+  // Setup GPU 2 (Idle)
+  auto* plane2 = xspace_.add_planes();
+  plane2->set_name("/device:GPU:2");
+  auto* line2 = plane2->add_lines();
+  line2->set_name("Stream #1");  // No events
+
+  AddMemoryAllocationEvent(40000);
+
+  // Add task environment for wall time
+  tensorflow::profiler::XPlane* task_env = xspace_.add_planes();
+  task_env->set_name("Task Environment");
+
+  TF_ASSERT_OK_AND_ASSIGN(GpuDeviceStats stats,
+                          CalculateGpuDeviceStats(xspace_));
+
+  // Averaging logic: Sum of device times / active devices (2)
+  // Total device time: 5000 + 3000 = 8000 ps
+  // Average device time: 4000 ps -> 0.004 us
+  EXPECT_EQ(stats.device_time_us, 0.004);
+
+  // Total span sum: 5000 + 3000 = 8000 ps
+  // Average GPU Wall Time: 4000 ps -> 0.004 us
+  EXPECT_EQ(stats.gpu_wall_time_us, 0.004);
 }
 
 TEST(ComputeXSpaceStatsTest, CalculateCpuTimeTest) {

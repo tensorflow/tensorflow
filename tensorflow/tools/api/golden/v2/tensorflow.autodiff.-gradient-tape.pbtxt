@@ -1,7 +1,7 @@
 path: "tensorflow.autodiff.GradientTape"
 tf_class {
   is_instance: "<class \'tensorflow.python.eager.backprop.GradientTape\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'persistent\', \'watch_accessed_variables\'], varargs=None, keywords=None, defaults=[\'False\', \'True\'], "

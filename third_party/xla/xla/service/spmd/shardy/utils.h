@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SHARDY_UTILS_H_
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -54,6 +55,11 @@ mlir::DictionaryAttr getFrontendAttrs(mlir::Operation* op);
 mlir::DictionaryAttr getFuncArgFrontendAttrs(mlir::func::FuncOp funcOp,
                                              unsigned int index);
 
+// Returns a vector of attributes from `frontendAttributes` dict excluding
+// `excludedAttribute` one.
+llvm::SmallVector<mlir::NamedAttribute> getExistingFrontendAttributes(
+    mlir::DictionaryAttr frontendAttributes, mlir::StringRef excludedAttribute);
+
 // Adds `name` into the frontend attributes of `op` with value `value`. If
 // `name` already exists, it will be overwritten. Note that `value` will be
 // turned into a `StringAttr`.
@@ -65,6 +71,17 @@ void setFrontendAttribute(mlir::Operation* op, mlir::StringRef name,
 // that `value` will be turned into a `StringAttr`.
 void setFrontendAttribute(mlir::func::FuncOp funcOp, mlir::StringRef name,
                           mlir::Attribute value, int64_t argNum);
+
+// Sets `funcOp` argument at `index` w/ frontend attributes to `frontendAttrs`.
+void setFuncArgFrontendAttrs(
+    mlir::func::FuncOp funcOp, unsigned int index,
+    llvm::ArrayRef<mlir::NamedAttribute> frontendAttrs);
+
+// Remove `attributeName` from `frontendAttributes`.
+void removeFrontendAttribute(
+    mlir::DictionaryAttr frontendAttributes, mlir::StringRef attributeName,
+    std::function<void(llvm::ArrayRef<mlir::NamedAttribute>)> setAttr,
+    std::function<void()> removeAttr);
 
 // Remove `attributeName` from the frontend attributes of `op`.
 void removeFrontendAttribute(mlir::Operation* op,
@@ -106,7 +123,8 @@ AttrTy parseStringAttr(llvm::StringRef escapedValue,
       absl::string_view(escapedValue.data(), escapedValue.size()),
       &unescapedValue, &error))
       << error;
-  return mlir::cast<AttrTy>(mlir::parseAttribute(unescapedValue, context));
+  return mlir::dyn_cast_or_null<AttrTy>(
+      mlir::parseAttribute(unescapedValue, context));
 }
 
 // Parses `attrName` from `dictAttr` to an attribute of type `AttrTy`.
@@ -114,9 +132,10 @@ template <typename AttrTy>
 AttrTy parseStringAttr(mlir::DictionaryAttr dictAttr,
                        llvm::StringRef attrName) {
   if (mlir::Attribute stringAttr = dictAttr.get(attrName)) {
-    return parseStringAttr<AttrTy>(
-        mlir::cast<mlir::StringAttr>(stringAttr).getValue(),
-        stringAttr.getContext());
+    if (auto stringAttrCasted = mlir::dyn_cast<mlir::StringAttr>(stringAttr)) {
+      return parseStringAttr<AttrTy>(stringAttrCasted.getValue(),
+                                     stringAttr.getContext());
+    }
   }
   return nullptr;
 }
@@ -145,7 +164,7 @@ bool isPythonCallbackCustomCall(mlir::stablehlo::CustomCallOp op);
 
 // Parses `shardingsFrontendAttr` as a `TensorShardingPerValueAttr`, duplicates
 // the shardings at the specified indices, and returns the result as a string.
-std::string duplicateShardingsAtIndices(
+absl::StatusOr<std::string> duplicateShardingsAtIndices(
     mlir::StringRef shardingsFrontendAttr,
     const llvm::BitVector& indicesToDuplicate);
 
@@ -154,19 +173,18 @@ std::string duplicateShardingsAtIndices(
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
 
+// Returns true if the module has frontend_attributes containing mhlo.sharding.
+bool hasFrontendMhloShardings(mlir::ModuleOp module);
+
+// Returns true if the module has frontend_attributes containing xla.sdy.meshes.
+bool hasFrontendMeshes(mlir::ModuleOp module);
+
 // Check if the module has any sort of Shardy mesh:
 // - `mesh`
 // - `maximal_mesh_{X}`
 // - `empty_mesh`
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 bool hasShardyMesh(mlir::ModuleOp module);
-
-// Returns `TensorShardingPerValueAttr` that is fully closed at each tensor
-// sharding and like the given `shardings`. Assumes `shardings` is non-empty. A
-// `TensorShardingAttr` is fully closed when all dim shardings being empty and
-// closed that is, cannot be further replicated/sharded.
-mlir::sdy::TensorShardingPerValueAttr getFullyClosedLike(
-    mlir::sdy::TensorShardingPerValueAttr shardings);
 
 // Converts an XLA Mesh to an SDY MeshAttr.
 mlir::sdy::MeshAttr toSdyMeshAttr(const Mesh& mesh, mlir::MLIRContext* context);
@@ -184,37 +202,13 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
 mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
     const HloSharding& hloSharding, mlir::MLIRContext* context);
 
-// TODO(enver): Add a parameter on how to handle 'inlineable' manual
-// computations func names, that is, either hard-fail, or accept as a manual
-// computation.
-// Returns whether the call is on a manual computation. Returns false for
-// an 'inlineable' manual computation.
+// Returns whether the call is on a manual computation.
 bool isManualComputation(mlir::func::CallOp callOp);
-// Returns whether the func is a manual computation. Returns false for
-// an 'inlineable' manual computation.
-bool isManualComputation(mlir::func::FuncOp funcOp);
-
-
-// Adds reshard/copy operations to resolve conflicts between call argument
-// sharding and func input sharding. The copy operations inserted also have
-// manual axes if `callOp` and `funcOp` do have one. Assumes `callOp` and
-// `funcOp` has identical manual axes or the lack thereof.
-void insertReshardsOnFuncArguments(mlir::func::FuncOp funcOp,
-                                   mlir::func::CallOp callOp,
-                                   const mlir::SymbolTable& symbolTable,
-                                   mlir::IRRewriter& rewriter);
-
-// Adds reshard/copy operations to resolve conflicts between call result
-// sharding and func result sharding. Sets the call result sharding to the func
-// result shardings. The copy operations inserted also have manual axes if
-// `callOp` and `funcOp` do have one. Assumes `callOp` and `funcOp` has
-// identical manual axes or the lack thereof. Assumes `callOp` has non-empty
-// `TensorShardingPerValueAttr` result-sharding if `funcOp` has non-empty result
-// shardings.
-void insertReshardsOnFuncResults(mlir::func::FuncOp funcOp,
-                                 mlir::func::CallOp callOp,
-                                 const mlir::SymbolTable& symbolTable,
-                                 mlir::IRRewriter& rewriter);
+// Returns whether the `funcName` is a manual computation. Returns false for an
+// 'inlineable' manual computation if `isInlineable` is false. Returns whether
+// the func is an 'inlineable' manual computation if `isInlineable` is true.
+bool isManualComputationOnName(mlir::StringRef funcName,
+                               bool isInlineable = false);
 
 }  // namespace sdy
 }  // namespace xla

@@ -33,15 +33,29 @@ limitations under the License.
 
 namespace xla {
 
-// Returns in-place input/output pairs for the given fusion instruction,
-// according to the aliasing rules for the corresponding fusion computation.
-//
-// `instruction` must be a fusion instruction.
+std::vector<std::pair<HloOperandIndex, ShapeIndex>>
+AliasInfo::GetOutputSourceInPlaceInputOutputPairs(
+    const HloInstruction* instruction) const {
+  if (const auto* fusion = DynCast<HloFusionInstruction>(instruction)) {
+    return GetFusionInstructionInPlaceInputOutputPairs(fusion);
+  }
+  return GetInPlaceInputOutputPairs(instruction);
+}
+
+// Returns in-place input/output pairs discovered from the fusion computation
+// body. This does not include output_to_operand_aliasing annotations on
+// `fusion` itself; GetInPlaceInputOutputPairs adds them for the public API.
 std::vector<std::pair<HloOperandIndex, ShapeIndex>>
 AliasInfo::GetFusionInstructionInPlaceInputOutputPairs(
     const HloFusionInstruction* fusion) const {
   std::vector<std::pair<HloOperandIndex, ShapeIndex>>
       in_place_input_output_pairs;
+  // Follow HLO use-def chains through tuple and no-op indirections.
+  auto follow_indirections = [&](const HloInstruction* instruction,
+                                 ShapeIndex index) {
+    std::tie(instruction, index) = FollowTupleIndirection(instruction, index);
+    return FollowNoOpIndirection(instruction, index);
+  };
 
   // Each of these leaves represents one array output of the fusion that might
   // be aliased with one of the fusion computation's array inputs (both could be
@@ -49,22 +63,23 @@ AliasInfo::GetFusionInstructionInPlaceInputOutputPairs(
   ShapeUtil::ForEachLeafShape(fusion->shape(), [&](const Shape& sub_shape,
                                                    const ShapeIndex& index) {
     // Start from the root instruction of the fusion computation and follow
-    // tuple indirection backwards to find the "output source", i.e. the
-    // instruction that is the original source of the array output in
-    // question. If there is no such indirection the "output source" will
-    // just be the fusion root instruction itself.
+    // indirections backwards to find the "output source", i.e. the instruction
+    // that is the original source of the array output in question. If there is
+    // no such indirection the "output source" will just be the fusion root
+    // instruction itself.
     const HloInstruction* output_source_instruction =
         fusion->fused_expression_root();
     ShapeIndex output_source_index = index;
     std::tie(output_source_instruction, output_source_index) =
-        FollowTupleIndirection(output_source_instruction, output_source_index);
+        follow_indirections(output_source_instruction, output_source_index);
 
     // The aliasing rules of the "output source" instruction determine the
     // aliasing rules for the entire fusion. If we can connect (following
-    // tuple indirection) the input of an "in-place" pair to one of the
-    // fusion's inputs, and the output of this "in-place" pair to the fusion
-    // output in question, then this fusion input and output must alias.
-    auto in_place_pairs = GetInPlaceInputOutputPairs(output_source_instruction);
+    // indirections) the input of an "in-place" pair to one of the fusion's
+    // inputs, and the output of this "in-place" pair to the fusion output in
+    // question, then this fusion input and output must alias.
+    auto in_place_pairs =
+        GetOutputSourceInPlaceInputOutputPairs(output_source_instruction);
     ShapeIndex in_place_input_index;
     const HloInstruction* in_place_input_source = nullptr;
 
@@ -77,11 +92,11 @@ AliasInfo::GetFusionInstructionInPlaceInputOutputPairs(
         in_place_input_source =
             output_source_instruction->operand(input.operand_number);
         in_place_input_index = input.operand_index;
-        // Follow tuple indirection backwards from the instruction input to
-        // try to find a fusion parameter. If found, that parameter aliases
-        // the current output. If not, the current output aliases no input.
+        // Follow indirections backwards from the instruction input to try to
+        // find a fusion parameter. If found, that parameter aliases the current
+        // output. If not, the current output aliases no input.
         std::tie(in_place_input_source, in_place_input_index) =
-            FollowTupleIndirection(in_place_input_source, in_place_input_index);
+            follow_indirections(in_place_input_source, in_place_input_index);
         if (in_place_input_source->opcode() == HloOpcode::kFusion) {
           // Nested fusions can have aliasing that allows us to peephole
           // through to their producer.
@@ -95,17 +110,12 @@ AliasInfo::GetFusionInstructionInPlaceInputOutputPairs(
                   in_place_input_source->operand(pair.first.operand_number);
               in_place_input_index = pair.first.operand_index;
               std::tie(in_place_input_source, in_place_input_index) =
-                  FollowTupleIndirection(in_place_input_source,
-                                         in_place_input_index);
+                  follow_indirections(in_place_input_source,
+                                      in_place_input_index);
             }
           }
         }
       }
-    }
-    // Skip bitcast
-    if (in_place_input_source != nullptr &&
-        in_place_input_source->opcode() == HloOpcode::kBitcast) {
-      in_place_input_source = in_place_input_source->operand(0);
     }
     if (in_place_input_source != nullptr &&
         in_place_input_source->opcode() == HloOpcode::kParameter) {
@@ -140,14 +150,6 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
     return *hint;
   }
 
-  // TODO tixxx: nvshmem default one-shot allreduce algo requires
-  // separate buffers for IO, remove this once nvshmem is upgraded to 3.3
-  if (user->opcode() == HloOpcode::kAllReduceStart) {
-    if (absl::StrContainsIgnoreCase(user->raw_backend_config_string(),
-                                    "nvshmem")) {
-      return {};
-    }
-  }
   if (IsDefaultInPlaceOperation(user)) {
     int64_t num_in_place_operands = user->operand_count();
     const HloScatterInstruction* scatter = DynCast<HloScatterInstruction>(user);
@@ -172,6 +174,10 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
   // Ops that require special handling.
   if (user->opcode() == HloOpcode::kCollectivePermute &&
       user->operands().size() == 4) {
+    auto cp = Cast<HloCollectivePermuteInstruction>(user);
+    if (!cp->inplace()) {
+      return {};
+    }
     if (user->operand(1)->shape().IsTuple()) {
       std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs(
           {{HloOperandIndex{1, {}}, {}}});
@@ -269,6 +275,14 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
     return {{HloOperandIndex{1, {}}, {}}};
   }
   return {};
+}
+
+std::pair<const HloInstruction*, ShapeIndex> AliasInfo::FollowNoOpIndirection(
+    const HloInstruction* instruction, ShapeIndex operand_index) const {
+  while (operand_index.empty() && IsNoOpForAliasAnalysis(instruction)) {
+    instruction = instruction->operand(0);
+  }
+  return {instruction, operand_index};
 }
 
 std::pair<const HloInstruction*, ShapeIndex> FollowTupleIndirection(

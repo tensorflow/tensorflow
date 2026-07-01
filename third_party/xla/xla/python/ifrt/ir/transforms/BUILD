@@ -34,6 +34,7 @@ cc_library(
         "ifrt_compile_atom_program_pass.cc",
         "ifrt_dump_atom_programs_pass.cc",
         "ifrt_duplicated_callee_elimination_pass.cc",
+        "ifrt_insert_copy_arrays_for_returned_many_times_pass.cc",
         "ifrt_legalize_to_vifrt_pass.cc",
         "ifrt_lower_atom_program_metadata_to_xla_pass.cc",
         "ifrt_lower_mpmd_reshard_to_call_pass.cc",
@@ -49,17 +50,13 @@ cc_library(
         "ifrt_verify_device_type_consistency_pass.cc",
         "ifrt_verify_donation_pass.cc",
         "ifrt_verify_sharding_specified_pass.cc",
-        "multi_threaded_atom_program_compiler.cc",
         "passes.cc",
-        "spmd_expandable_interface_verification_pass.cc",
-        "spmd_expansion_pass.cc",
         "vifrt_legalize_to_ifrt_pass.cc",
         "vifrt_to_version_pass.cc",
         # go/keep-sorted end
     ],
     hdrs = [
         "map_ifrt_to_vifrt.h",
-        "multi_threaded_atom_program_compiler.h",
         "passes.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -67,7 +64,6 @@ cc_library(
         ":debug",
         ":passes_inc_gen",
         ":utils",
-        "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
@@ -89,9 +85,8 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
-        "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
@@ -105,7 +100,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
         "@com_google_protobuf//:protobuf_lite",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
@@ -131,18 +125,6 @@ cc_library(
 )
 
 cc_library(
-    name = "built_in_spmd_expansions",
-    srcs = ["built_in_spmd_expansions.cc"],
-    hdrs = ["built_in_spmd_expansions.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//xla/python/ifrt/ir/transforms/spmd_expanders:spmd_expander",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
@@ -164,6 +146,7 @@ cc_library(
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:computation_placer_hdr",
         "//xla/service/spmd/shardy:utils",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
@@ -213,6 +196,7 @@ xla_cc_test(
         "//xla/python/ifrt/ir/support:module_parsing",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

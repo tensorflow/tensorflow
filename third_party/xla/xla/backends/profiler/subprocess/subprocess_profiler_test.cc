@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -95,9 +96,10 @@ class SubprocessProfilingSessionTest : public ::testing::Test {
       subprocess_runtime.port = port;
       subprocess_runtime.subprocess = CreateSubProcess(args);
       ASSERT_TRUE(subprocess_runtime.subprocess->Start());
-      ASSERT_THAT(
-          RegisterSubprocess(subprocess_runtime.port, subprocess_runtime.port),
-          IsOk());
+      ASSERT_OK_AND_ASSIGN(
+          subprocess_runtime.unregister_fn,
+          RegisterSubprocess(subprocess_runtime.port, subprocess_runtime.port,
+                             std::nullopt));
     }
   }
 
@@ -105,13 +107,14 @@ class SubprocessProfilingSessionTest : public ::testing::Test {
     for (auto& subprocess_runtime : subprocesses_) {
       ASSERT_NE(subprocess_runtime.subprocess, nullptr);
       ASSERT_TRUE(subprocess_runtime.subprocess->Kill(/*sig=SIGKILL*/ 9));
-      ASSERT_THAT(UnregisterSubprocess(subprocess_runtime.port), IsOk());
+      subprocess_runtime.unregister_fn.Invoke();
     }
   }
 
   struct SubProcessRuntime {
     std::unique_ptr<tsl::SubProcess> subprocess;
     int port;
+    SubprocessCleanup unregister_fn;
   };
   std::vector<SubProcessRuntime> subprocesses_;
 };

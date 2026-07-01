@@ -61,7 +61,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/conversions/mpmd/utils.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
 #include "xla/python/ifrt/ir/transforms/debug.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
@@ -286,7 +285,6 @@ class LowerToIfrtPass
  private:
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
     registry.insert<IfrtDialect>();
-    AttachBuiltInSpmdExpansions(registry);
   }
 
   void runOnOperation() final {

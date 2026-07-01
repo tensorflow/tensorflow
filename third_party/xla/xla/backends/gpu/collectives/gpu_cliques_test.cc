@@ -153,6 +153,49 @@ TEST(GpuCliquesTest, AcquireCliques) {
   }
 }
 
+TEST(GpuCliquesTest, OnGpuCliqueCreatedCallback) {
+  auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
+
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "collectives", 2);
+  tsl::Executor& exec = *pool.AsExecutor();
+
+  GpuCliqueKey key01({kD0, kD1}, 2);
+  DeviceGroups group01 = {{kD0, kD1}};
+
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
+
+  // Keep callback state on the heap so the process-wide callback does not
+  // reference a destroyed stack object in later tests.
+  struct CallbackState {
+    std::vector<GpuCliqueKey> created_keys;
+  };
+
+  auto state = std::make_shared<CallbackState>();
+  std::weak_ptr<CallbackState> weak_state = state;
+
+  RegisterOnGpuCliqueCreatedCallback([weak_state](GpuClique& clique) {
+    if (std::shared_ptr<CallbackState> state = weak_state.lock()) {
+      state->created_keys.push_back(clique.key());
+    }
+  });
+
+  std::vector<AcquiredCliquesMap> acquired_cliques(2);
+  auto futures =
+      AcquireCliques(exec, executors, key01, group01, acquired_cliques);
+  ASSERT_OK_AND_ASSIGN(auto cliques, WaitCliques(std::move(futures)));
+
+  ASSERT_EQ(state->created_keys.size(), 1);
+  EXPECT_EQ(state->created_keys.front(), key01);
+}
+
 TEST(GpuCliquesTest, SplitCliques) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
@@ -466,7 +509,7 @@ TEST(GpuCliquesTest, DifferentCollectivesProduceDifferentCliques) {
   // Acquire clique with loopback collectives for the same key.
   ASSERT_OK_AND_ASSIGN(Collectives * loopback_base,
                        CollectivesRegistry::Get("GPU", "loopback"));
-  auto* loopback = tsl::down_cast<GpuCollectives*>(loopback_base);
+  auto* loopback = absl::down_cast<GpuCollectives*>(loopback_base);
 
   std::vector<std::shared_ptr<LockableGpuClique::Lock>> loopback_cliques;
   {

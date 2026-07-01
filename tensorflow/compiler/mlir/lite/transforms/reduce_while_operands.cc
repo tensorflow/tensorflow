@@ -149,7 +149,12 @@ bool AllOperationSafe(Block &block) {
     // Fact: if every op's operands are defined in the same block as op,
     //       then no operation has implicit arugments (constant doesn't count).
     for (auto operand : op->getOperands()) {
-      if (mlir::dyn_cast_or_null<BlockArgument>(operand)) continue;
+      if (auto arg = mlir::dyn_cast_or_null<BlockArgument>(operand)) {
+        if (arg.getOwner() == &block) {
+          continue;
+        }
+        return WalkResult::interrupt();
+      }
       auto operand_op = operand.getDefiningOp();
       if (IsConstant(operand_op)) continue;
       if (operand_op->getBlock() != op->getBlock()) {

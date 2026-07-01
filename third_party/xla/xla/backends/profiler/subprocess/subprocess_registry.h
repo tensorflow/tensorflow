@@ -18,11 +18,14 @@ limitations under the License.
 
 #include <sys/types.h>
 
-#include <memory>
-#include <string>
+#include <cstdint>
+#include <functional>
+#include <optional>
+#include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 
@@ -32,7 +35,7 @@ namespace subprocess {
 
 // Information about a registered subprocess.
 struct SubprocessInfo {
-  uint32_t pid;
+  int32_t pid;
   std::string address;
   std::shared_ptr<tensorflow::grpc::ProfilerService::Stub> profiler_stub;
 
@@ -52,6 +55,41 @@ struct SubprocessInfo {
   std::string DebugString() const;
 };
 
+// TODO(b/507517171): replace with open-source equivalent once available.
+// A simple RAII class that executes a function upon destruction.
+class SubprocessCleanup {
+ public:
+  SubprocessCleanup() = default;
+  explicit SubprocessCleanup(std::function<void()> cleanup)
+      : cleanup_(std::move(cleanup)) {}
+  ~SubprocessCleanup() { Invoke(); }
+  SubprocessCleanup(const SubprocessCleanup&) = delete;
+  SubprocessCleanup& operator=(const SubprocessCleanup&) = delete;
+  SubprocessCleanup(SubprocessCleanup&& other) noexcept
+      : cleanup_(std::exchange(other.cleanup_, nullptr)) {}
+
+  SubprocessCleanup& operator=(SubprocessCleanup&& other) noexcept {
+    SubprocessCleanup(std::move(other)).swap(*this);
+    return *this;
+  }
+  // Cancel the execution of the underlying callable.
+  void Cancel() { cleanup_ = {}; }
+
+  void Invoke() {
+    if (!empty()) {
+      std::exchange(cleanup_, nullptr)();
+    }
+  }
+
+  bool empty() const { return cleanup_ == nullptr; }
+
+ private:
+  void swap(SubprocessCleanup& other) noexcept {
+    cleanup_.swap(other.cleanup_);
+  }
+  absl::AnyInvocable<void() &&> cleanup_;
+};
+
 // Registers a subprocess that has a running HTTP server listening on the given
 // port or Unix domain socket, so that it can be profiled using the
 // subprocess profiler.
@@ -60,13 +98,9 @@ struct SubprocessInfo {
 // may block for a while until the stub is ready or connection times out.
 // RETURNS: an error if the subprocess is already registered or if the
 // subprocess stub cannot be created.
-absl::Status RegisterSubprocess(uint32_t pid, int port);
-absl::Status RegisterSubprocess(uint32_t pid,
-                                absl::string_view unix_domain_socket);
-
-// Unregisters a subprocess by just erasing it from the registry. If there are
-// in-flight profiling sessions, they will NOT be cancelled.
-absl::Status UnregisterSubprocess(uint32_t pid);
+absl::StatusOr<SubprocessCleanup> RegisterSubprocess(
+    int32_t pid, std::optional<int> port,
+    std::optional<absl::string_view> unix_domain_socket);
 
 // Returns all currently registered subprocesses.
 std::vector<SubprocessInfo> GetRegisteredSubprocesses();

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -25,7 +24,6 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -43,7 +41,6 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tile_propagation.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
@@ -54,7 +51,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/instruction_fusion.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/util.h"
 
@@ -62,7 +58,6 @@ namespace xla::gpu::experimental {
 
 using ::llvm::ArrayRef;
 using ::llvm::SmallVector;
-using ::mlir::MLIRContext;
 
 std::string TiledHloInstruction::ToString(
     absl::string_view field_separator) const {
@@ -83,8 +78,11 @@ llvm::SmallVector<const TiledHloInstruction*, 2>
 TiledHloInstruction::runtime_variables() const {
   llvm::SmallVector<const TiledHloInstruction*, 2> runtime_variables;
   if (auto dyn_slice = DynCast<HloDynamicSliceInstruction>(hlo_)) {
-    for (int i = dyn_slice->first_index_operand_number();
-         i < hlo_->operand_count(); ++i) {
+    // `operands_` might be empty and inconsistent with `hlo_->operand_count()`
+    // if the instruction lies outside the fusion boundary (we skip populating
+    // its operands during traversal).
+    for (int i = dyn_slice->first_index_operand_number(); i < operands_.size();
+         ++i) {
       runtime_variables.push_back(operands_[i]);
     }
   }
@@ -284,7 +282,7 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
 // * Otherwise, returns a region including tiled_root and all dependencies.
 /*static*/ absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
     std::unique_ptr<TiledHloInstruction> tiled_root,
-    const HloFusionAdaptor& fusion, const TilingSpace& tiling_space,
+    const HloFusionAdaptor& fusion, TilingSpace& tiling_space,
     absl::flat_hash_map<int64_t,
                         std::pair<const TiledHloInstruction*, Interval>>&
         rt_symbol_to_tiled_hlo) {
@@ -334,8 +332,9 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
           CHECK(region.size() == 1)
               << "CreateHloRegion: expected exactly 1 region for "
               << operand_hlo->ToString() << " but got " << region.size();
-          tiled_hlo->AddOperand(region.back().get());
-          tiled_hlo_instructions_set.Insert(std::move(region.back()));
+          auto [operand_tiled_hlo, inserted] =
+              tiled_hlo_instructions_set.Insert(std::move(region.back()));
+          tiled_hlo->AddOperand(operand_tiled_hlo);
         }
 
       } else {
@@ -400,6 +399,21 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
   // Order instructions in def-before-use order.
   SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions,
                                       roots_with_no_users);
+
+  std::function<void(TiledHloInstruction*)> simplify_instruction;
+  simplify_instruction = [&](TiledHloInstruction* instruction) {
+    class Tile tile = instruction->tile();
+    tile.Simplify();
+    instruction->set_tile(std::move(tile));
+    for (const auto& region : instruction->hlo_regions()) {
+      for (const auto& nested : region) {
+        simplify_instruction(nested.get());
+      }
+    }
+  };
+  for (auto& instr : tiled_hlo_instructions) {
+    simplify_instruction(instr.get());
+  }
 
   return TiledHloComputation(std::move(tiling_space),
                              TiledHloRegion{std::move(tiled_hlo_instructions)},

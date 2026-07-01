@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -26,18 +27,23 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/replica_group.h"
+#include "xla/runtime/device_id.h"
+#include "xla/service/collective_ops_utils.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/side_effect_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -196,6 +202,27 @@ std::optional<CollectivePermuteProperty> GetCollectivePermuteProperty(
   return property;
 }
 
+template <typename DeviceRangeT>
+bool IsLocalReplicaGroup(int64_t num_devices_per_host,
+                         const DeviceRangeT& devices) {
+  static constexpr auto get_id = [](const auto& device) {
+    using T = std::decay_t<decltype(device)>;
+    if constexpr (std::is_same_v<T, GlobalDeviceId>) {
+      return device.value();
+    } else {
+      return device;
+    }
+  };
+  if (devices.empty()) {
+    LOG(WARNING) << "Device list was empty to when verifying locality.";
+    return false;
+  }
+  const int64_t target_host = get_id(devices[0]) / num_devices_per_host;
+  return absl::c_all_of(devices, [&](const auto& device) {
+    return get_id(device) / num_devices_per_host == target_host;
+  });
+}
+
 }  // namespace
 
 CollectivePermuteCostModelType GetCollectivePermuteCostModelType(
@@ -242,7 +269,7 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
   }
 
   if (const auto* collective = DynCast<HloCollectiveInstruction>(&instr)) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         CollectiveMetadata comm,
         CommunicationContext(*collective, num_devices_per_partition));
     if (IsSingleHost(comm)) {
@@ -284,6 +311,57 @@ bool IsIntraNVLinkDomain(const HloModuleConfig& config, int64_t slice_size) {
   VLOG(1) << "IsIntraNVLinkDomain: device_count=" << device_count
           << " slice_size=" << slice_size << " is_intra=" << is_intra;
   return is_intra;
+}
+
+bool IsSpmdGenerated(const HloInstruction& instr) {
+  auto attr = instr.get_frontend_attribute(kSpmdGeneratedAttr);
+  if (attr.has_value() && attr.value() == "true") {
+    return true;
+  }
+  auto backend_config = instr.backend_config<GpuBackendConfig>();
+  if (!backend_config.ok()) {
+    return false;
+  }
+  return backend_config->collective_backend_config().is_spmd_generated();
+}
+
+bool IsAllReplicasLocal(int64_t gpus_per_host,
+                        absl::Span<const ReplicaGroup> replica_groups,
+                        CollectiveOpGroupMode group_mode,
+                        const DeviceAssignment* device_assignment) {
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "IsAllReplicasLocal: gpus_per_host=" << gpus_per_host
+            << ", replica_groups=" << ReplicaGroupsToString(replica_groups)
+            << ", device_assignment="
+            << (device_assignment != nullptr ? device_assignment->ToString()
+                                             : "nullptr");
+  }
+  // functional_hlo_runner assigns 0 for device assigments for multi-host
+  // cases. In this case we ignore the assignment.
+  // See LoadAndCompile in functional_hlo_runner.cc for more details.
+  const bool has_device_assignment =
+      [](const DeviceAssignment* device_assignment) {
+        if (device_assignment == nullptr) {
+          return false;
+        }
+        return !absl::c_all_of(*device_assignment,
+                               [](int64_t v) { return v == 0; });
+      }(device_assignment);
+  if (has_device_assignment) {
+    auto status_or_groups = GetParticipatingDevicesGroups(
+        *device_assignment, replica_groups, group_mode);
+    if (!status_or_groups.ok()) {
+      LOG(WARNING) << "Failed to get participating devices groups: "
+                   << status_or_groups.status();
+      return false;
+    }
+    return absl::c_all_of(*status_or_groups, [&](const auto& group) {
+      return IsLocalReplicaGroup(gpus_per_host, group);
+    });
+  }
+  return absl::c_all_of(replica_groups, [&](const auto& group) {
+    return IsLocalReplicaGroup(gpus_per_host, group.replica_ids());
+  });
 }
 
 }  // namespace gpu

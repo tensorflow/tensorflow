@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tsl/profiler/lib/profiler_collection.h"
 
+#include <any>
+#include <cstddef>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -52,6 +56,49 @@ absl::Status ProfilerCollection::CollectData(
     status.Update(profiler->CollectData(space));
   }
   profilers_.clear();  // data has been collected
+  return status;
+}
+
+absl::StatusOr<ConsumeResult> ProfilerCollection::Consume() {
+  std::vector<std::any> data_vector;
+  data_vector.reserve(profilers_.size());
+  size_t total_estimated_size_bytes = 0;
+
+  for (auto& profiler : profilers_) {
+    auto result = profiler->Consume();
+    if (result.ok()) {
+      data_vector.push_back(std::move(result->data));
+      total_estimated_size_bytes += result->estimated_size_bytes;
+    } else {
+      LOG(ERROR) << "Profiler consume failed: " << result.status();
+      data_vector.push_back(std::any());
+    }
+  }
+
+  return ConsumeResult{std::any(std::move(data_vector)),
+                       total_estimated_size_bytes};
+}
+
+absl::Status ProfilerCollection::Serialize(
+    std::any data, tensorflow::profiler::XSpace* space) {
+  auto* data_vector_ptr = std::any_cast<std::vector<std::any>>(&data);
+  if (data_vector_ptr == nullptr) {
+    return absl::InvalidArgumentError(
+        "Invalid data type for ProfilerCollection::Serialize");
+  }
+
+  if (data_vector_ptr->size() != profilers_.size()) {
+    return absl::InternalError(
+        "Data vector size mismatch in ProfilerCollection::Serialize");
+  }
+
+  absl::Status status;
+  for (size_t i = 0; i < profilers_.size(); ++i) {
+    if ((*data_vector_ptr)[i].has_value()) {
+      status.Update(
+          profilers_[i]->Serialize(std::move((*data_vector_ptr)[i]), space));
+    }
+  }
   return status;
 }
 

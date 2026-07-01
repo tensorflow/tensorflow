@@ -39,6 +39,9 @@ absl::StatusOr<gpu::GpuModel> GetGpuModel(absl::string_view platform_type) {
   if (platform_type == "nvidia_h100") {
     return gpu::GpuModel::H100_SXM;
   }
+  if (platform_type == "tesla_h200") {
+    return gpu::GpuModel::H200;
+  }
   if (platform_type == "umbriel_b200") {
     return gpu::GpuModel::B200;
   }
@@ -76,7 +79,7 @@ GetHostTargetMachineOptions(absl::string_view platform_version) {
         "push2pop2,-raoint,-rdpru,-sgx,-sha512,-shstk,-sm3,-sm4,-sse4a,-tbm,-"
         "uintr,-usermsr,-waitpkg,-widekl,-xop,-zu"};
   }
-  if (platform_version == "oberon_b200") {
+  if (platform_version == "oberon_b200" || platform_version == "oberon_b300") {
     return cpu::TargetMachineOptions{
         "aarch64-linux-gnu", "neoverse-n1",
         "+aes,+crc,+fp-armv8,+lse,+neon,+sha2,+sha3,+sm4,+sve-aes,+sve-sha3,+"
@@ -102,12 +105,16 @@ absl::StatusOr<std::unique_ptr<const GpuTopology>> GpuTopology::FromProto(
                      cpu::TargetMachineOptions::FromProto(
                          gpu_topology_proto.host_target_machine_options()));
   }
+  std::optional<int32_t> num_devices_per_process = std::nullopt;
+  if (gpu_topology_proto.has_num_devices_per_process()) {
+    num_devices_per_process = gpu_topology_proto.num_devices_per_process();
+  }
   return std::make_unique<GpuTopology>(
       gpu_topology_proto.platform_version(),
       gpu_topology_proto.num_partitions(),
       gpu_topology_proto.num_hosts_per_partition(),
       gpu_topology_proto.num_devices_per_host(), std::move(gpu_target_config),
-      std::move(host_target_machine_options));
+      std::move(host_target_machine_options), num_devices_per_process);
 }
 
 GpuTopologyProto GpuTopology::ToProto() const {
@@ -122,6 +129,9 @@ GpuTopologyProto GpuTopology::ToProto() const {
   if (host_target_machine_options_.has_value()) {
     *proto.mutable_host_target_machine_options() =
         host_target_machine_options()->ToProto();
+  }
+  if (num_devices_per_process_.has_value()) {
+    proto.set_num_devices_per_process(num_devices_per_process());
   }
   return proto;
 }

@@ -50,6 +50,10 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
+
+#define GEN_PASS_DEF_SIMPLIFYAFFINEPASS
+#include "xla/codegen/emitters/transforms/passes.h.inc"
+
 namespace {
 
 using mlir::AffineMap;
@@ -65,9 +69,6 @@ using mlir::ValueRange;
 using mlir::affine::AffineApplyOp;
 
 namespace arith = mlir::arith;
-
-#define GEN_PASS_DEF_SIMPLIFYAFFINEPASS
-#include "xla/codegen/emitters/transforms/passes.h.inc"
 
 int Distance(ImplicitLocOpBuilder& builder, Value a) {
   auto* block = builder.getInsertionBlock();
@@ -164,14 +165,9 @@ Value ExpressionEvaluator::EvaluateExpression(SymbolicExpr expr) {
     case SymbolicExprType::kFloorDiv:
       return builder.create<arith::DivUIOp>(EvaluateExpression(expr.GetLHS()),
                                             EvaluateExpression(expr.GetRHS()));
-    case SymbolicExprType::kCeilDiv: {
-      Value lhs = EvaluateExpression(expr.GetLHS());
-      Value rhs = EvaluateExpression(expr.GetRHS());
-      Value one = builder.create<arith::ConstantIndexOp>(1);
-      Value sum = builder.create<arith::AddIOp>(lhs, rhs);
-      Value sum_minus_one = builder.create<arith::SubIOp>(sum, one);
-      return builder.create<arith::DivUIOp>(sum_minus_one, rhs);
-    }
+    case SymbolicExprType::kCeilDiv:
+      return builder.create<arith::CeilDivUIOp>(
+          EvaluateExpression(expr.GetLHS()), EvaluateExpression(expr.GetRHS()));
     case SymbolicExprType::kMax:
       return builder.create<arith::MaxUIOp>(EvaluateExpression(expr.GetLHS()),
                                             EvaluateExpression(expr.GetRHS()));
@@ -192,19 +188,25 @@ bool IsLoweringSupported(SymbolicExpr expr, RangeEvaluator& range_evaluator) {
     return true;
   }
   // Mod and div can be lowered if their LHS is >= 0 and their RHS is a
-  // constant.
+  // constant positive number.
   if (expr.GetType() == SymbolicExprType::kMod ||
-      expr.GetType() == SymbolicExprType::kFloorDiv) {
-    if (!range_evaluator.IsAlwaysPositiveOrZero(expr.GetLHS()) ||
-        !range_evaluator.ComputeExpressionRange(expr.GetRHS()).IsPoint()) {
+      expr.GetType() == SymbolicExprType::kFloorDiv ||
+      expr.GetType() == SymbolicExprType::kCeilDiv) {
+    if (!range_evaluator.IsAlwaysPositiveOrZero(expr.GetLHS())) {
+      return false;
+    }
+    auto rhs_range = range_evaluator.ComputeExpressionRange(expr.GetRHS());
+    if (!rhs_range.IsPoint() || rhs_range.lower <= 0) {
       return false;
     }
   }
-  // TODO: b/459357586 - Support ceil division, max, and min.
-  if (expr.GetType() == SymbolicExprType::kCeilDiv ||
-      expr.GetType() == SymbolicExprType::kMax ||
+  // Max and min can be lowered if both operands are >= 0.
+  if (expr.GetType() == SymbolicExprType::kMax ||
       expr.GetType() == SymbolicExprType::kMin) {
-    return false;
+    if (!range_evaluator.IsAlwaysPositiveOrZero(expr.GetLHS()) ||
+        !range_evaluator.IsAlwaysPositiveOrZero(expr.GetRHS())) {
+      return false;
+    }
   }
   return IsLoweringSupported(expr.GetLHS(), range_evaluator) &&
          IsLoweringSupported(expr.GetRHS(), range_evaluator);
@@ -282,6 +284,10 @@ struct RewriteApplyIndexingOp : OpRewritePattern<ApplyIndexingOp> {
         // TODO: b/446856305 - Create a SymbolicApplyOp. For now, we convert the
         // SymbolicMap back to AffineMap and fall back to AffineApplyOp.
         AffineMap sub_map = SymbolicMapToAffineMap(symbolic_map.GetSubMap({i}));
+        if (!sub_map) {
+          return rewriter.notifyMatchFailure(op,
+                                             "cannot fallback to affine.apply");
+        }
         results.push_back(b.create<AffineApplyOp>(
             sub_map, operands.take_front(symbolic_map.GetNumDims() +
                                          symbolic_map.GetNumSymbols())));
@@ -297,7 +303,6 @@ struct SimplifyAffinePass
  public:
   void runOnOperation() override {
     MLIRContext* ctx = &getContext();
-    RegisterSymbolicExprStorage(ctx);
     mlir::RewritePatternSet patterns(ctx);
     patterns.add<RewriteAffineApply, RewriteApplyIndexingOp>(ctx);
     mlir::GreedyRewriteConfig config;
@@ -311,10 +316,6 @@ struct SimplifyAffinePass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass() {
-  return std::make_unique<SimplifyAffinePass>();
-}
 
 }  // namespace emitters
 }  // namespace xla

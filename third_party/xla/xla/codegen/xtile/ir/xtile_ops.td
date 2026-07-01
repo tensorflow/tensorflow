@@ -165,6 +165,26 @@ def EntryFuncReturnOp : XTile_Op<"return", [Pure, HasParent<"EntryFuncOp">,
   let assemblyFormat = "attr-dict";
 }
 
+def SelectBufferOp : XTile_Op<"select_buffer", [Pure]> {
+  let summary = "Selects a specific buffer from an array of buffers.";
+  let description = [{
+    Takes a source buffer (which is an array of pointers to disjoint buffers)
+    and an index (replica_id), and returns a new buffer handle representing
+    the selected disjoint buffer.
+
+    This is useful when the input to a kernel is a collection of disjoint
+    buffers and we want to select one of them based on the replica_id.
+  }];
+  let arguments = (ins
+    AnyMemRef:$source,
+    Index:$replica_id
+  );
+  let results = (outs AnyMemRef:$result);
+  let assemblyFormat = [{
+    $source `[` $replica_id `]` `:` type($source) `->` type($result) attr-dict
+  }];
+}
+
 def ExtractTileOp : XTile_Op<"extract", [TiledBufferInterface]> {
   let summary = "Extract a tile from a memref.";
   let description = [{
@@ -258,6 +278,37 @@ def MaskOp : XTile_Op<"mask",
 }
 
 
+def ScanOp : XTile_Op<"scan", [Pure, AttrSizedOperandSegments, AttrSizedResultSegments]> {
+  let summary = "scan operation";
+  let description = [{
+    Mirrors HLO's kScan operation.
+  }];
+
+  let arguments = (
+    ins
+    Variadic<AnyRankedTensor>:$inputs,
+    Variadic<AnyRankedTensor>:$inits,
+    I64Attr:$dimension,
+    I64Attr:$scan_dim_size,
+    DefaultValuedAttr<BoolAttr, "false">:$is_reverse
+  );
+
+  let results = (outs
+    Variadic<AnyRankedTensor>:$outputs,
+    Variadic<AnyRankedTensor>:$carries
+  );
+
+  let regions = (region SizedRegion<1>:$body);
+
+  let assemblyFormat = [{
+    `(` $inputs `)` `inits` `(` $inits `)`
+    `dimension` `=` $dimension
+    attr-dict
+    `:` `(` type($inputs) `)` `,` `(` type($inits) `)` `->` `(` type($outputs) `)` `,` `(` type($carries) `)`
+    $body
+  }];
+}
+
 //
 // DotScaled Op
 //
@@ -274,15 +325,18 @@ def DotScaledOp : XTile_Op<"dot_scaled", [Pure, AttrSizedOperandSegments]> {
 
     let arguments = (
       ins
-      // inputs are floats if we have a type for them, otherwise (fp4),
-      // they are packed in pairs in an I8Tensor
+      // Data operands carry logical element types separately from their tensor
+      // element types because packed operands use i8 storage.
       RankedTensorOf<[AnyFloat,I8]>:$lhs,
       RankedTensorOf<[AnyFloat,I8]>:$rhs,
       Optional<RankedTensorOf<[AnyFloat,I8]>>:$lhs_scale,
       Optional<RankedTensorOf<[AnyFloat,I8]>>:$rhs_scale,
       BoolAttr:$fastMath,
       DefaultValuedAttr<BoolAttr, "true">:$lhs_k_pack,
-      DefaultValuedAttr<BoolAttr, "true">:$rhs_k_pack
+      DefaultValuedAttr<BoolAttr, "true">:$rhs_k_pack,
+      TypeAttr:$lhs_elem_type,
+      TypeAttr:$rhs_elem_type,
+      OptionalAttr<AnyAttr>:$dot_dimension_numbers
     );
 
     let results = (outs RankedTensorOf<[AnyFloat]>:$result);
@@ -294,4 +348,3 @@ def DotScaledOp : XTile_Op<"dot_scaled", [Pure, AttrSizedOperandSegments]> {
 }
 
 #endif // XLA_CODEGEN_XTILE_IR_XTILE_OPS
-

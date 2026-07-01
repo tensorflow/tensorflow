@@ -180,8 +180,4 @@ class TritonXLALowerRemoteAccessPass
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateTritonXLALowerRemoteAccessPass() {
-  return std::make_unique<TritonXLALowerRemoteAccessPass>();
-}
-
 }  // namespace mlir::triton::xla

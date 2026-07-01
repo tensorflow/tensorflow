@@ -2,7 +2,7 @@ path: "tensorflow.train.VocabInfo"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.warm_starting_util.VocabInfo\'>"
   is_instance: "<class \'tensorflow.python.training.warm_starting_util.VocabInfo\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "axis"
     mtype: "<class \'collections._tuplegetter\'>"
@@ -33,6 +33,10 @@ tf_class {
   }
   member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'new_vocab\', \'new_vocab_size\', \'num_oov_buckets\', \'old_vocab\', \'old_vocab_size\', \'backup_initializer\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\', \'0\'], "
   }
   member_method {
     name: "count"

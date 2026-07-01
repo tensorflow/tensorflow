@@ -105,4 +105,27 @@ absl::StatusOr<std::string> GetBackendConfigString(
   return instruction.backend_config();
 }
 
+static void InlinePayloadIfReferenced(Payload* payload,
+                                      const HloModuleProto* module) {
+  if (payload == nullptr || !payload->has_id() || module == nullptr) {
+    return;
+  }
+  const auto& payloads = module->payloads();
+  if (payload->id() >= 0 && payload->id() < payloads.size()) {
+    payload->set_value(payloads.at(payload->id()));
+  }
+}
+
+HloInstructionProto ToProtoWithInlinedPayloads(HloInstructionProto proto,
+                                               const HloModuleProto* module) {
+  if (proto.has_backend_config_payload()) {
+    InlinePayloadIfReferenced(proto.mutable_backend_config_payload(), module);
+  }
+  if (proto.has_metadata() && proto.metadata().has_metadata_payload()) {
+    InlinePayloadIfReferenced(
+        proto.mutable_metadata()->mutable_metadata_payload(), module);
+  }
+  return proto;
+}
+
 }  // namespace xla

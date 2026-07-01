@@ -18,21 +18,26 @@ limitations under the License.
 #include <cstdlib>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
-#include <utility>
+#include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/status/status.h"
-#include "xla/tsl/platform/types.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/model.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/framework/types.h"
 #include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -324,7 +329,12 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
     absl::Status SaveInternal(SerializationContext* ctx,
                               IteratorStateWriter* writer) override {
-      if (split_provider_) {
+      if (split_provider_ == nullptr && counter_ == nullptr) {
+        return absl::FailedPreconditionError(
+            "`Initialize` should be called before saving/restoring from "
+            "tf.data checkpoints.");
+      }
+      if (split_provider_ != nullptr) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(prefix(), kHasSplitProvider, true));
         TF_RETURN_IF_ERROR(split_provider_->Save(
@@ -342,6 +352,11 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
     absl::Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) override {
+      if (split_provider_ == nullptr && counter_ == nullptr) {
+        return absl::FailedPreconditionError(
+            "`Initialize` should be called before saving/restoring from "
+            "tf.data checkpoints.");
+      }
       if (ctx->restored_element_count().has_value()) {
         return global_shuffle_iterator_.Restore(prefix(), ctx, reader);
       }

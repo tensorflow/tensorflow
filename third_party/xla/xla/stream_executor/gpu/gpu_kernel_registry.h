@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"  // IWYU pragma: keep
@@ -60,8 +61,8 @@ class GpuKernelRegistry {
   template <typename KernelTrait>
   absl::StatusOr<typename KernelTrait::KernelType> LoadKernel(
       StreamExecutor* executor) {
-    TF_ASSIGN_OR_RETURN(const KernelLoaderSpec& spec,
-                        FindKernel<KernelTrait>(executor->GetPlatform()->id()));
+    ASSIGN_OR_RETURN(const KernelLoaderSpec& spec,
+                     FindKernel<KernelTrait>(executor->GetPlatform()->id()));
 
     return KernelTrait::KernelType::FactoryType::Create(executor, spec);
   }

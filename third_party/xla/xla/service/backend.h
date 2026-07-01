@@ -37,9 +37,9 @@ limitations under the License.
 #include "xla/service/transfer_manager.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -127,7 +127,7 @@ class Backend {
   }
 
   // Borrows a stream for use by the caller with a given priority, either by
-  // grabbing it from an internal pool, or by constructing/initializating it,
+  // grabbing it from an internal pool, or by constructing/initializing it,
   // and returns the result to the caller.
   absl::StatusOr<StreamPool::Ptr> BorrowStream(
       int device_ordinal,
@@ -200,12 +200,15 @@ class Backend {
   absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamPool>>
       stream_pools_ ABSL_GUARDED_BY(mu_);
 
+  // Streams used by the memory allocator (e.g. for TfAllocatorAdapter).
+  // Must outlive memory_allocator_.
+  std::vector<std::unique_ptr<se::Stream>> allocator_streams_;
+
   // The default memory allocator to use.
   // This must be a shared_ptr, as this is passed all the way down to the
   // cluster compilation. This allows asynchronous compilation to hold a
-  // referecence until the compilation is finished.
-  std::shared_ptr<stream_executor::StreamExecutorAddressAllocator>
-      memory_allocator_;
+  // reference until the compilation is finished.
+  std::shared_ptr<se::DeviceAddressAllocator> memory_allocator_;
 
   // For the CPU backend, an Eigen threadpool device for use by Eigen code.
   struct IntraOpThreadPool;

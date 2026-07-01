@@ -24,7 +24,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/Module.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 #include "xla/backends/gpu/transforms/conv_padding_legalization.h"
@@ -169,7 +171,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
   pipeline.AddPass<HloConstantFolding>();
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       pipeline
           .Run(hlo_module,
                /*execution_threads=*/{HloInstruction::kMainExecutionThread})
@@ -178,33 +180,39 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   return absl::OkStatus();
 }
 
+void AMDGPUCompiler::AddPaddingForGpublasGemms(
+    HloPassPipeline& pipeline, const DebugOptions& debug_options,
+    const se::GpuComputeCapability& gpu_version) {
+  if (!debug_options.xla_gpu_experimental_disable_binary_libraries()) {
+    for (const auto& req : HipblasPaddingRequirements) {
+      pipeline.AddPass<CublasPadForGemms>(gpu_version, req.data_type,
+                                          req.multiple_of);
+    }
+    // Padding a gemm operand that's a constant results in pad(constant).  Run
+    // constant-folding to simplify this into a new constant.
+    pipeline.AddPass<HloConstantFolding>();
+  }
+}
+
 absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
-    CompilationStats* compilation_stats) {
+    CompilationStats* compilation_stats, mlir::MLIRContext* mlir_context) {
   HloPassPipeline pre_pipeline("AMDGPU post-layout_assignment part 1",
                                compilation_stats);
 
   pre_pipeline.AddPass<DotDimensionMerger>();
 
-  for (const auto& req : HipblasPaddingRequirements) {
-    pre_pipeline.AddPass<CublasPadForGemms>(
-        gpu_target_config.device_description.gpu_compute_capability(),
-        req.data_type, req.multiple_of);
-  }
-  // Padding a gemm operand that's a constant results in pad(constant).  Run
-  // constant-folding to simplify this into a new constant.
-  pre_pipeline.AddPass<HloConstantFolding>();
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       pre_pipeline
           .Run(hlo_module,
                /*execution_threads=*/{HloInstruction::kMainExecutionThread})
           .status());
 
-  TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
+  RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config, alias_info,
-      thread_pool, compilation_stats));
+      thread_pool, compilation_stats, mlir_context));
 
   HloPassPipeline post_pipeline("AMDGPU post-layout_assignment part 2",
                                 compilation_stats);
@@ -213,7 +221,7 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   // memory.
   post_pipeline.AddPass<TriangularSolveRewriter>();
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       post_pipeline
           .Run(hlo_module,
                /*execution_threads=*/{HloInstruction::kMainExecutionThread})
@@ -245,7 +253,7 @@ AMDGPUCompiler::CompileTargetBinary(
     // NODE: module_config.compilation_cache_key() is not used in the current
     // implementation of CompileToHsaco since it invalidates the persistent
     // file cache.
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         hsaco_result,
         amdgpu::CompileToHsaco(llvm_module,
                                device_description.gpu_compute_capability(),
@@ -254,7 +262,6 @@ AMDGPUCompiler::CompileTargetBinary(
   }
 
   return BackendCompileResult{"", std::move(hsaco_result.hsaco),
-                              /*dnn_compiled_graphs=*/{},
                               std::move(hsaco_result.module_stats)};
 }
 

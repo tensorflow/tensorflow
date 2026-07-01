@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -71,8 +72,8 @@ namespace triton_fusion {
 
 /*static*/ absl::StatusOr<FusionContext> FusionContext::FromDotOperand(
     const HloInstruction& dot, const int operand_number) {
-  TF_ASSIGN_OR_RETURN(int non_contracting_dimension_index,
-                      NonContractingDimensionIndex(dot, operand_number));
+  ASSIGN_OR_RETURN(int non_contracting_dimension_index,
+                   NonContractingDimensionIndex(dot, operand_number));
   int splittable_dimension_index = kNoDimensionIndex;
   // LHS non-contracting dimension can be split if batch is absent.
   if (operand_number == 0 &&
@@ -199,8 +200,8 @@ absl::StatusOr<std::optional<int64_t>> GetBlockSize(
   const Shape& scale = dot.operand(operand_number + 2)->shape();
 
   if (!ShapeUtil::IsScalar(scale)) {
-    TF_ASSIGN_OR_RETURN(int dim_idx,
-                        ContractingDimensionIndex(dot, operand_number));
+    ASSIGN_OR_RETURN(int dim_idx,
+                     ContractingDimensionIndex(dot, operand_number));
     return input.dimensions(dim_idx) / scale.dimensions(dim_idx);
   }
   return std::nullopt;
@@ -238,14 +239,14 @@ absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
                                                    HloOpcode::kScaledDot);
   }
   TF_RET_CHECK(dot != nullptr);
-  TF_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(*dot));
+  RETURN_IF_ERROR(analysis.ExecuteForDotFusion(*dot));
   return analysis;
 }
 
 absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
     const HloInstruction& dot) {
   TritonFusionAnalysis analysis;
-  TF_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(dot));
+  RETURN_IF_ERROR(analysis.ExecuteForDotFusion(dot));
   return analysis;
 }
 
@@ -278,10 +279,10 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
     const HloInstruction& dot) {
   is_scaled_dot_ = dot.opcode() == HloOpcode::kScaledDot;
   if (is_scaled_dot_) {
-    TF_ASSIGN_OR_RETURN(lhs_scale_block_size_,
-                        triton_fusion::GetBlockSize(dot, Scope::LHS));
-    TF_ASSIGN_OR_RETURN(rhs_scale_block_size_,
-                        triton_fusion::GetBlockSize(dot, Scope::RHS));
+    ASSIGN_OR_RETURN(lhs_scale_block_size_,
+                     triton_fusion::GetBlockSize(dot, Scope::LHS));
+    ASSIGN_OR_RETURN(rhs_scale_block_size_,
+                     triton_fusion::GetBlockSize(dot, Scope::RHS));
   }
 
   DotRequirements lhs_requirements(kNoSplitRequirement);
@@ -300,9 +301,9 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
         continue;
       }
     }
-    TF_ASSIGN_OR_RETURN(auto context,
-                        FusionContext::FromDotOperand(dot, operand_number));
-    TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
+    ASSIGN_OR_RETURN(auto context,
+                     FusionContext::FromDotOperand(dot, operand_number));
+    RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
         *dot.operand(operand_number), parameters_[scope], iter_specs_[scope]));
     if (scope == Scope::LHS) {
       lhs_requirements = context.requirements();
@@ -353,7 +354,7 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
   parameters_[Scope::OUTPUT] = {};
   if (output != &dot) {
     // Propagate back to parameters of the output fusion.
-    TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
+    RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
         *output, parameters_[Scope::OUTPUT], iter_specs_[Scope::OUTPUT]));
   }
   return absl::OkStatus();

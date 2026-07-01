@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/backends/gpu/transforms/gemm_fusion.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -172,19 +173,14 @@ absl::StatusOr<std::vector<HloDotInstruction*>> GetRelevantDots(
   std::vector<HloDotInstruction*> gemms;
 
   for (HloInstruction* instr : comp->instructions()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bool is_matmul,
         IsCublasSupportedMatMul(*instr,
                                 /*allow_matrix_vector_multiplication=*/false));
     if (is_matmul) {
       HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
       if (instr->operand(0)->shape().element_type() == datatype &&
-          CheckCanonical(dot) &&
-          !(instr->GetModule()
-                ->config()
-                .debug_options()
-                .xla_gpu_enable_triton_gemm() &&
-            ShouldTritonHandleGEMM(*dot, gpu_compute_capability))) {
+          CheckCanonical(dot)) {
         gemms.push_back(dot);
       }
     }
@@ -200,12 +196,11 @@ absl::StatusOr<bool> CublasPadForGemms::RunImpl(
   bool changed = false;
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(
-        std::vector<HloDotInstruction*> dots,
-        GetRelevantDots(gpu_compute_capability_, comp, datatype_));
+    ASSIGN_OR_RETURN(std::vector<HloDotInstruction*> dots,
+                     GetRelevantDots(gpu_compute_capability_, comp, datatype_));
     for (HloDotInstruction* dot : dots) {
-      TF_ASSIGN_OR_RETURN(bool result,
-                          PadForGemm(dot, datatype_, pad_to_multiple_of_));
+      ASSIGN_OR_RETURN(bool result,
+                       PadForGemm(dot, datatype_, pad_to_multiple_of_));
       changed |= result;
     }
   }

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
@@ -48,7 +49,7 @@ namespace {
 using ::testing::IsEmpty;
 using ::testing::Not;
 
-class XlaCompileLibTest : public HloPjRtTestBase {
+class XlaCompileLibTest : public HloTestBase {
  protected:
   void SetUp() override {
     const std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
@@ -110,10 +111,15 @@ TEST_F(XlaCompileLibTest, DoesNotOverridePartitionsAndReplicas) {
 }
 
 TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
-  const std::string spec_file =
-      test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)
-          ? "mi200.txtpb"
-          : "h100_sxm.txtpb";
+  const std::string spec_file = [&] {
+    if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
+      return "mi200.txtpb";
+    } else if (test_runner().HasProperty(
+                   HloRunnerPropertyTag::kUsingGpuOneAPI)) {
+      return "bmg_g21.txtpb";
+    }
+    return "h100_sxm.txtpb";
+  }();
   const std::string target_config_path =
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                         "backends/gpu/target_config/specs", spec_file);
@@ -130,6 +136,36 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
                                 /*num_replicas=*/1, result),
               absl_testing::IsOkAndHolds(Not(IsEmpty())));
   EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
+}
+
+TEST_F(XlaCompileLibTest, ErrorForIncorrectPlatformAOTCompile) {
+  // Incorrect spec file assignment to trigger an AOT compilation failure.
+  const std::string incorrect_spec_file = [&] {
+    if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
+      return "h100_sxm.txtpb";
+    } else if (test_runner().HasProperty(
+                   HloRunnerPropertyTag::kUsingGpuOneAPI)) {
+      return "mi200.txtpb";
+    }
+    return "bmg_g21.txtpb";
+  }();
+  const std::string target_config_path = tsl::io::JoinPath(
+      tsl::testing::XlaSrcRoot(), "backends/gpu/target_config/specs",
+      incorrect_spec_file);
+  stream_executor::GpuTargetConfigProto target_config_proto;
+  ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
+                               &target_config_proto));
+  CompilationResult result;
+  ASSERT_OK_AND_ASSIGN(auto target_config, Compiler::GpuTargetConfig::FromProto(
+                                               target_config_proto));
+  EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kGpu,
+                                std::move(target_config),
+                                /*cpu_target_config=*/std::nullopt,
+                                /*num_partitions=*/1,
+                                /*num_replicas=*/1, result),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kFailedPrecondition,
+                  ::testing::HasSubstr("Attempting to AOT compile for")));
 }
 
 TEST_F(XlaCompileLibTest, MainForGpu) {

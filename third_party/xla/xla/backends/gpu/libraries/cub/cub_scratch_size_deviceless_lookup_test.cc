@@ -126,6 +126,28 @@ TEST(CubScratchSizeDevicelessLookupTest, LookupNoEntryForParams) {
       lookup.Lookup(kCubVersion1_15_0, "sm_80", 8, 4, 100).has_value());
 }
 
+TEST(CubScratchSizeDevicelessLookupTest, LookupMIGDeviceName) {
+  ASSERT_OK_AND_ASSIGN(auto lookup,
+                       CubScratchSizeDevicelessLookup::CreateFromProto(
+                           ParseTextProtoOrDie<CubScratchSizeLookupTable>(R"pb(
+                             entries {
+                               cub_version: "1.15.0"
+                               device_name: "NVIDIA GB200"
+                               key_type_size: 4
+                               value_type_size: 4
+                               scratch_size_recordings {
+                                 num_items: 100
+                                 scratch_space_bytes: 1024
+                               }
+                             }
+                           )pb")));
+
+  EXPECT_THAT(lookup.Lookup(kCubVersion1_15_0, "NVIDIA GB200 MIG 1g.23gb",
+                            /*key_type_size=*/4, /*value_type_size=*/4,
+                            /*num_items=*/100),
+              Optional(1024));
+}
+
 TEST(CubScratchSizeDevicelessLookupTest, LookupItemsExceedRecordings) {
   ASSERT_OK_AND_ASSIGN(auto lookup,
                        CubScratchSizeDevicelessLookup::CreateFromProto(
@@ -283,9 +305,9 @@ TEST(CubScratchSizeDevicelessLookupTest, CreateFailsIfRecordingsNotSorted) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST(CubScratchSizeDevicelessLookupTest, CreateFromBundledDataWorks) {
-  absl::StatusOr<CubScratchSizeDevicelessLookup> lookup =
-      CubScratchSizeDevicelessLookup::CreateFromBundledData();
+TEST(CubScratchSizeDevicelessLookupTest, CanBeLoadedFromBundledData) {
+  absl::StatusOr<const CubScratchSizeDevicelessLookup&> lookup =
+      CubScratchSizeDevicelessLookup::GetInstance();
   ASSERT_OK(lookup) << lookup.status().message();
 }
 

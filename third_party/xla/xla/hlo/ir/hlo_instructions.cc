@@ -20,7 +20,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -31,11 +30,13 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -285,9 +285,19 @@ HloAsyncInstruction::HloAsyncInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands, HloOpcode async_wrapped_opcode)
     : HloInstruction(opcode, shape) {
-  CHECK(opcode == HloOpcode::kAsyncStart || operands.size() == 1);
+  CHECK(opcode == HloOpcode::kAsyncStart || opcode == HloOpcode::kAsyncUpdate ||
+        opcode == HloOpcode::kAsyncDone);
+  // AsyncDone has only one operand.
+  CHECK(opcode != HloOpcode::kAsyncDone || operands.size() == 1);
+  CHECK(opcode == HloOpcode::kAsyncStart || !operands.empty());
+
   for (auto operand : operands) {
     AppendOperand(operand);
+  }
+
+  if (opcode == HloOpcode::kAsyncUpdate || opcode == HloOpcode::kAsyncDone) {
+    HloAsyncInstruction* prev = Cast<HloAsyncInstruction>(operands[0]);
+    prev->async_chain_next_ = this;
   }
 
   // Drop 'async' from async-{start/update/done} to get the suffix.
@@ -363,7 +373,7 @@ void HloAsyncInstruction::UpdateAsyncChain() {
     }
   };
   auto update_operand_chain = [this]() {
-    CHECK_EQ(this->operand_count(), 1);
+    CHECK_GE(this->operand_count(), 1);
     CHECK(this->operand(0)->opcode() == HloOpcode::kAsyncStart ||
           this->operand(0)->opcode() == HloOpcode::kAsyncUpdate);
     Cast<HloAsyncInstruction>(this->mutable_operand(0))->async_chain_next_ =
@@ -425,8 +435,8 @@ bool HloAsyncInstruction::IdenticalSlowPath(
 std::unique_ptr<HloInstruction> HloAsyncInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  return std::make_unique<HloAsyncInstruction>(opcode(), shape,
-                                               new_operands[0]);
+  return absl::WrapUnique(new HloAsyncInstruction(opcode(), shape, new_operands,
+                                                  async_wrapped_opcode()));
 }
 
 HloAsyncStartInstruction::HloAsyncStartInstruction(
@@ -443,8 +453,8 @@ HloAsyncStartInstruction::HloAsyncStartInstruction(
 
 HloInstruction* HloAsyncStartInstruction::AddCallOperand(
     HloInstruction* new_operand) {
-  CHECK_EQ(operand_count(),
-           async_wrapped_computation()->parameter_instructions().size());
+  CHECK_EQ(async_wrapped_computation()->parameter_instructions().size(),
+           operand_count());
   const int64_t param_no = operand_count();
   std::string param_name = StrCat("param_", param_no);
   HloInstruction* called_computation_parameter =
@@ -453,7 +463,6 @@ HloInstruction* HloAsyncStartInstruction::AddCallOperand(
   AppendOperand(new_operand);
   mutable_shape()->mutable_tuple_shapes(0)->mutable_tuple_shapes()->push_back(
       new_operand->shape());
-  UpdateChainShapes();
   return called_computation_parameter;
 }
 
@@ -538,8 +547,10 @@ HloAsyncStartInstruction::CloneWithNewOperandsImpl(
           context->FindComputation(async_wrapped_computation());
     }
     if (new_wrapped_computation == nullptr) {
+      const std::string& suffix =
+          context != nullptr ? context->suffix() : "clone";
       new_wrapped_computation = module->AddEmbeddedComputation(
-          async_wrapped_computation()->Clone("clone", context));
+          async_wrapped_computation()->Clone(suffix, context));
       // Give the trampoline a trivial schedule if it already had one.
       if (module->has_schedule() && module->schedule().is_computation_scheduled(
                                         async_wrapped_computation())) {
@@ -832,8 +843,11 @@ bool HloChannelInstruction::IdenticalSlowPath(
 
 HloTopKInstruction::HloTopKInstruction(const Shape& shape,
                                        HloInstruction* input, int64_t k,
-                                       bool largest)
-    : HloInstruction(HloOpcode::kTopK, shape), k_(k), largest_(largest) {
+                                       bool largest, bool is_stable)
+    : HloInstruction(HloOpcode::kTopK, shape),
+      k_(k),
+      largest_(largest),
+      is_stable_(is_stable) {
   AppendOperand(input);
 }
 
@@ -841,6 +855,7 @@ void HloTopKInstruction::ToProto(HloInstructionProto* proto) const {
   HloInstruction::ToProto(proto);
   proto->set_k(k_);
   proto->set_largest(largest_);
+  proto->set_is_stable(is_stable_);
 }
 
 void HloTopKInstruction::PrintExtraAttributesImpl(
@@ -849,13 +864,16 @@ void HloTopKInstruction::PrintExtraAttributesImpl(
   printer.Next([this](Printer* p) {
     AppendCat(p, "largest=", (largest_ ? "true" : "false"));
   });
+  printer.Next([this](Printer* p) {
+    AppendCat(p, "is_stable=", (is_stable_ ? "true" : "false"));
+  });
 }
 
 std::unique_ptr<HloInstruction> HloTopKInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   return std::make_unique<HloTopKInstruction>(shape, new_operands[0], k(),
-                                              largest());
+                                              largest(), is_stable());
 }
 
 bool HloTopKInstruction::IdenticalSlowPath(
@@ -863,7 +881,8 @@ bool HloTopKInstruction::IdenticalSlowPath(
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloTopKInstruction&>(other);
-  return k() == casted_other.k() && largest() == casted_other.largest();
+  return k() == casted_other.k() && largest() == casted_other.largest() &&
+         is_stable() == casted_other.is_stable();
 }
 
 HloSendRecvInstruction::HloSendRecvInstruction(
@@ -1830,7 +1849,7 @@ HloMapInstruction::HloMapInstruction(const Shape& shape,
   // TODO(b/65689298) Remove code below once Map is generalized to accept
   // arbitrary map dimensions.
   dimensions_.resize(shape.dimensions().size());
-  std::iota(dimensions_.begin(), dimensions_.end(), 0);
+  absl::c_iota(dimensions_, 0);
 }
 
 void HloMapInstruction::ToProto(HloInstructionProto* proto) const {
@@ -2376,6 +2395,7 @@ HloCallableInstruction::GetOrCloneCalledComputations(
     HloCloneContext* context) const {
   HloModule* module = context != nullptr ? context->module() : GetModule();
   absl::InlinedVector<HloComputation*, 1> new_called_computations;
+  const std::string& suffix = context != nullptr ? context->suffix() : "clone";
   for (auto* comp : called_computations()) {
     HloComputation* new_custom_call_computation = nullptr;
     if (context != nullptr) {
@@ -2383,7 +2403,7 @@ HloCallableInstruction::GetOrCloneCalledComputations(
     }
     if (new_custom_call_computation == nullptr) {
       new_custom_call_computation =
-          module->AddEmbeddedComputation(comp->Clone("clone", context));
+          module->AddEmbeddedComputation(comp->Clone(suffix, context));
     }
     new_called_computations.push_back(new_custom_call_computation);
   }
@@ -2501,7 +2521,7 @@ HloInstruction* HloFusionInstruction::AddFusionOperand(
 }
 
 void HloFusionInstruction::MergeFusionInstruction(
-    HloFusionInstruction* instruction_to_merge) {
+    HloFusionInstruction* instruction_to_merge, bool remove_computation) {
   CHECK(absl::c_linear_search(operands(), instruction_to_merge));
   // Clone the instruction from which to merge fused instructions.
   std::unique_ptr<HloInstruction> cloned = instruction_to_merge->Clone();
@@ -2561,12 +2581,14 @@ void HloFusionInstruction::MergeFusionInstruction(
     CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
   CHECK_EQ(0, cloned_fusion->user_count());
-  CHECK_OK(GetModule()->RemoveEmbeddedComputation(
-      cloned_fusion->fused_instructions_computation()));
+  if (remove_computation) {
+    CHECK_OK(GetModule()->RemoveEmbeddedComputation(
+        cloned_fusion->fused_instructions_computation()));
+  }
 }
 
 void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
-    HloFusionInstruction* instruction_to_merge) {
+    HloFusionInstruction* instruction_to_merge, bool remove_computation) {
   // Add all non-parameter fused instructions to 'unfused_instructions' to be
   // merged into 'this'. `old_to_new' maps the instructions in the fused node
   // to the disassembled fusion instructions.
@@ -2656,7 +2678,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
   }
   CHECK_OK(
       instruction_to_merge->parent()->RemoveInstruction(instruction_to_merge));
-  if (GetModule()) {
+  if (GetModule() && remove_computation) {
     CHECK_OK(GetModule()->RemoveEmbeddedComputation(computation_to_merge));
   }
   for (int64_t i = unfused_instructions.size() - 1; i >= 0; --i) {
@@ -2759,7 +2781,7 @@ absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   for (int i = 0; i < count; ++i) {
     auto emplace_result = operand_indices.emplace(operand(i), i);
     if (!emplace_result.second) {
-      TF_RETURN_IF_ERROR(fused_parameter(i)->ReplaceAllUsesWith(
+      RETURN_IF_ERROR(fused_parameter(i)->ReplaceAllUsesWith(
           fused_parameter(emplace_result.first->second)));
       operands_to_remove.push_back(i);
     }
@@ -2767,8 +2789,8 @@ absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   if (operands_to_remove.empty()) {
     return absl::OkStatus();
   }
-  TF_RETURN_IF_ERROR(fused_instructions_computation()
-                         ->RemoveUnusedParametersFromFusedComputation());
+  RETURN_IF_ERROR(fused_instructions_computation()
+                      ->RemoveUnusedParametersFromFusedComputation());
   RemoveOperandsAtAscendingIndices(operands_to_remove);
   return absl::OkStatus();
 }
@@ -2789,7 +2811,7 @@ absl::Status HloFusionInstruction::PermuteFusionOperands(
     seen[permutation[i]] = true;
   }
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       fused_instructions_computation()->PermuteParameters(permutation));
   InstructionVector new_operands(operand_count());
   for (int64_t i = 0; i < operand_count(); ++i) {

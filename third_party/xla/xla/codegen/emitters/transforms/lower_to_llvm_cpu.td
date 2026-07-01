@@ -29,7 +29,6 @@ def LowerToLLVMCPUPass :
   let dependentDialects = [
     "mlir::func::FuncDialect",
   ];
-  let constructor = "CreateLowerToLLVMCPUPass()";
 }
 
 #endif  // XLA_CODEGEN_EMITTERS_TRANSFORMS_LOWER_TO_LLVM_CPU_TD_

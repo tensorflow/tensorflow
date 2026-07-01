@@ -14,18 +14,15 @@ reshape outcomes.
  #include "mlir/IR/BuiltinTypes.h"
  #include "mlir/IR/Diagnostics.h"
  #include "mlir/Support/DebugStringHelper.h"
-@@ -9,9 +11,8 @@
+@@ -9,6 +11,7 @@
  #include "triton/Dialect/TritonGPU/IR/Types.h"
  #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
  #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 +#include "triton/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.h"
  #include "triton/Tools/LayoutUtils.h"
--#include "llvm/Support/Casting.h"
--#include "llvm/Support/LogicalResult.h"
- 
- // Provide custom directive handlers for declarative assemblyFormat.
- // They must be visible before including the generated op classes.
-@@ -584,7 +585,45 @@ LogicalResult MemDescReshapeOp::verify() {
+ #include "llvm/Support/Casting.h"
+ #include "llvm/Support/LogicalResult.h"
+@@ -571,7 +574,45 @@ LogicalResult MemDescReshapeOp::verify() {
    return OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstType);
  }
  
@@ -72,7 +69,7 @@ reshape outcomes.
                                                     Attribute srcEnc,
                                                     ArrayRef<int64_t> dstShape,
                                                     Attribute &dstEnc) {
-@@ -605,6 +644,11 @@ static LogicalResult inferMemDescReshapeOpEncoding(ArrayRef<int64_t> srcShape,
+@@ -592,6 +633,11 @@ static LogicalResult inferMemDescReshapeOpEncoding(ArrayRef<int64_t> srcShape,
              ctx, mmaEncoding.getSwizzlingByteWidth(),
              mmaEncoding.getTransposed(), mmaEncoding.getElementBitWidth(),
              mmaEncoding.getFp4Padded(), CGALayout);
@@ -84,7 +81,7 @@ reshape outcomes.
          auto srcLL = toLinearLayout(srcShape, srcEnc);
          auto dstLL = toLinearLayout(dstShape, candidateEncoding);
          if (reshapeLayout(ctx, srcLL, dstShape) == dstLL) {
-@@ -644,8 +688,8 @@ LogicalResult MemDescReshapeOp::inferReturnTypes(
+@@ -631,8 +677,8 @@ LogicalResult MemDescReshapeOp::inferReturnTypes(
  
    Attribute dstEncoding;
    if (Attribute srcEnc = srcTy.getEncoding()) {
@@ -95,3 +92,4 @@ reshape outcomes.
        return failure();
    }
  
+

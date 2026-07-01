@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 
 #include "absl/log/log.h"
+#include "xla/tsl/platform/status_macros.h"
 #define _USE_MATH_DEFINES
 
 #include <complex>
@@ -236,11 +237,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     trace_mac_handler_ = std::move(handler);
   }
 
-  using EvalLiteralHandler = std::function<void(const HloInstruction* hlo,
-                                                const LiteralSlice& literal)>;
   // Sets a handler that is called during evaluation for each literal, e.g., in
   // case we want them dumped to a file.
-  void set_eval_literal_handler(EvalLiteralHandler handler) {
+  void set_eval_literal_handler(EvalLiteralHandler handler) override {
     eval_literal_handler_ = std::move(handler);
   }
 
@@ -387,6 +386,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   absl::Status HandleReduce(const HloInstruction* hlo) override;
   absl::Status HandleReduceWindow(const HloInstruction* hlo) override;
   absl::Status HandleMap(const HloInstruction* map) override;
+  absl::Status HandleScan(const HloInstruction* hlo) override;
   absl::Status HandleCustomCall(const HloInstruction* custom_call) override;
   absl::Status HandleOptimizationBarrier(
       const HloInstruction* optimization_barrier) override;
@@ -588,12 +588,12 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     bool same_layout =
         LayoutUtil::Equal(operand->shape().layout(), shape.layout());
     if (same_layout) {
-      TF_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
+      RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
           [&](int64_t linear_index, int /*thread_id*/) {
             return unary_op(operand_literal.GetLinear<NativeT>(linear_index));
           }));
     } else {
-      TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+      RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
           [&](absl::Span<const int64_t> multi_index, int /*thread_id*/) {
             return unary_op(operand_literal.Get<NativeT>(multi_index));
           }));

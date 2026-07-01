@@ -70,10 +70,10 @@ namespace {
 
 absl::Status ValidateTensorId(const tf2xla::TensorId& id) {
   if (id.node_name().empty()) {
-    return errors::InvalidArgument("TensorId node_name must be non-empty");
+    return absl::InvalidArgumentError("TensorId node_name must be non-empty");
   }
   if (id.output_index() < 0) {
-    return errors::InvalidArgument("TensorId output_index must be positive");
+    return absl::InvalidArgumentError("TensorId output_index must be positive");
   }
   return absl::OkStatus();
 }
@@ -83,7 +83,8 @@ absl::Status CheckNameDuplicates(const std::string& kind,
                                  std::set<std::string>* names) {
   if (!name.empty()) {
     if (!names->insert(name).second) {
-      return errors::InvalidArgument("duplicate ", kind, " name: ", name);
+      return absl::InvalidArgumentError(
+          absl::StrCat("duplicate ", kind, " name: ", name));
     }
   }
   return absl::OkStatus();
@@ -96,8 +97,8 @@ absl::Status CheckFeedFetchNameConflicts(const std::string& kind,
   for (const std::string& name : names) {
     const std::string name_data(name + "_data");
     if (names.find(name_data) != names.end()) {
-      return errors::InvalidArgument("conflicting ", kind, " name: ", name,
-                                     " and ", name_data);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "conflicting ", kind, " name: ", name, " and ", name_data));
     }
   }
   return absl::OkStatus();
@@ -116,9 +117,9 @@ absl::Status CopyAssociatedFunctions(
           const FunctionDef* fdef =
               lookup_fld->Find(associated_function.func_name());
           if (!fdef) {
-            return errors::Internal(
+            return absl::InternalError(absl::StrCat(
                 "Cannot find function ", associated_function.func_name(),
-                " for function call node ", n->DebugString());
+                " for function call node ", n->DebugString()));
           }
           TF_RETURN_IF_ERROR(fld->AddFunctionDef(*fdef));
           break;
@@ -258,8 +259,8 @@ absl::Status PropagateConstIntoFuncAttr(
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), attr_name, &func_attr));
   const FunctionDef* fdef = lookup_fld->Find(func_attr.name());
   if (!fdef) {
-    return errors::Internal("Cannot find function ", func_attr.name(),
-                            " for node ", n->name());
+    return absl::InternalError(absl::StrCat(
+        "Cannot find function ", func_attr.name(), " for node ", n->name()));
   }
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
@@ -345,7 +346,8 @@ absl::StatusOr<FunctionBody*> FindOrInsert(
       body_func = fallback_fld->Find(name);
     }
     if (!body_func) {
-      return errors::Internal("Traverse: Cannot find body function ", name);
+      return absl::InternalError(
+          absl::StrCat("Traverse: Cannot find body function ", name));
     }
     std::unique_ptr<FunctionBody> fbody;
     absl::Status s = FunctionDefToBodyHelper(
@@ -438,8 +440,9 @@ absl::Status PropagateConstIntoAndAroundWhileNode(
   const std::string fn_name = body_attr.name();
   const FunctionDef* body_func = lookup_fld->Find(fn_name);
   if (!body_func) {
-    return errors::Internal("Propagate: Cannot find body function ", fn_name,
-                            " for While node ", while_node->name());
+    return absl::InternalError(
+        absl::StrCat("Propagate: Cannot find body function ", fn_name,
+                     " for While node ", while_node->name()));
   }
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
@@ -523,7 +526,7 @@ absl::Status ValidateConfig(const tf2xla::Config& config) {
   }
   TF_RETURN_IF_ERROR(CheckFeedFetchNameConflicts("fetch", names));
   if (config.fetch().empty()) {
-    return errors::InvalidArgument("fetches must be specified");
+    return absl::InvalidArgumentError("fetches must be specified");
   }
   return absl::OkStatus();
 }
@@ -563,8 +566,8 @@ absl::Status AddPlaceholdersForFeeds(
     // Find the existing node and determine data type.
     auto node_it = name_to_node.find(feed_id.node_name());
     if (node_it == name_to_node.end()) {
-      return errors::NotFound("Can't find feed node: ",
-                              TensorIdToString(feed_id));
+      return absl::NotFoundError(
+          absl::StrCat("Can't find feed node: ", TensorIdToString(feed_id)));
     }
     const NodeDef* existing = node_it->second;
 
@@ -590,9 +593,9 @@ absl::Status AddPlaceholdersForFeeds(
         info.data_type =
             BaseType(feed_node->output_type(info.feed->id().output_index()));
       } else {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Invalid output_index ", info.feed->id().output_index(),
-            " for feed node ", info.feed->id().node_name());
+            " for feed node ", info.feed->id().node_name()));
       }
     }
   }
@@ -655,8 +658,9 @@ absl::Status PruneGraphDefInto(const tf2xla::Config& config, const GraphDef& in,
 
     auto find_it = node_by_name.find(name);
     if (find_it == node_by_name.end()) {
-      return errors::InvalidArgument("While pruning graph, node ", name,
-                                     " needed but not found in the graph.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("While pruning graph, node ", name,
+                       " needed but not found in the graph."));
     }
     auto& map_entry = find_it->second;
     if (map_entry.first) {
@@ -1048,9 +1052,9 @@ absl::Status RewriteTensorListWithConstElement(Graph* g,
     CHECK_OK(GetNodeAttr(fwd_while->def(), "body", &fwd_body_attr));
     const FunctionDef* fwd_body = fld->Find(fwd_body_attr.name());
     if (!fwd_body) {
-      return errors::InvalidArgument("Cannot find function ",
-                                     fwd_body_attr.name(), " for While node ",
-                                     fwd_while->DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot find function ", fwd_body_attr.name(),
+                       " for While node ", fwd_while->DebugString()));
     }
     std::unique_ptr<FunctionBody> fwd_fbody;
     CHECK_OK(FunctionDefToBodyHelper(
@@ -1085,9 +1089,9 @@ absl::Status RewriteTensorListWithConstElement(Graph* g,
     CHECK_OK(GetNodeAttr(bwd_while->def(), "body", &bwd_body_attr));
     const FunctionDef* bwd_body = fld->Find(bwd_body_attr.name());
     if (!bwd_body) {
-      return errors::InvalidArgument("Cannot find function ",
-                                     bwd_body_attr.name(), " for While node ",
-                                     bwd_while->DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot find function ", bwd_body_attr.name(),
+                       " for While node ", bwd_while->DebugString()));
     }
     std::unique_ptr<FunctionBody> bwd_fbody;
     CHECK_OK(FunctionDefToBodyHelper(

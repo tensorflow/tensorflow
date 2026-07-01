@@ -103,6 +103,37 @@ TEST_F(IfrtCallOpTest, Basic) {
   EXPECT_THAT(*GetOutput(0), TensorEq(expected_out));
 }
 
+TEST_F(IfrtCallOpTest, WrongNumOutputs) {
+  int64_t program_id = 1234;
+  TF_ASSERT_OK(Init(
+      /*program_id=*/program_id,
+      /*num_inputs=*/2,
+      /*input_type=*/DT_INT32,
+      /*variable_arg_indices=*/{},
+      /*output_type_list=*/{DT_INT32, DT_INT32}));
+
+  tsl::test_util::MockServingDeviceSelector selector;
+  IfrtServingExecutableTestHelper helper(&selector);
+  EXPECT_CALL(selector, ReserveDevice(absl::StrCat(program_id)))
+      .Times(1)
+      .WillOnce(Return(tsl::DeviceReservation(0, /*selector=*/nullptr)));
+  auto executable =
+      helper.MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ServingExecutableRegistry::Handle handle,
+      ServingExecutableRegistry::Register(program_id, std::move(executable)));
+  auto handle_cleaner = gtl::MakeCleanup([&handle] { handle.Release(); });
+
+  AddInputFromArray<int32_t>(TensorShape({1, 3}), {1, 2, 3});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {1, 2, 3});
+  // Run warmup execution plus one for core selection.
+  for (int i = 0; i < helper.num_cores() + 1; ++i) {
+    EXPECT_THAT(RunOpKernel(),
+                ::testing::status::StatusIs(absl::StatusCode::kInternal));
+  }
+}
+
 }  // namespace
 }  // namespace tfrt_stub
 }  // namespace tensorflow

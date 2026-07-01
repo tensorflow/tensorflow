@@ -77,6 +77,7 @@ typedef enum {
   PJRT_Extension_Type_Collectives,
   PJRT_Extension_Type_MultiSlice,
   PJRT_Extension_Type_HostMemoryAllocator,
+  PJRT_Extension_Type_XlaTransform,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
@@ -111,7 +112,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 104
+#define PJRT_API_MINOR 113
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -178,6 +179,28 @@ typedef enum {
   PJRT_Error_Code_UNAUTHENTICATED = 16
 } PJRT_Error_Code;
 
+typedef void (*PJRT_Error_PayloadVisitor)(const char* key, size_t key_size,
+                                          const char* value, size_t value_size,
+                                          void* user_arg);
+
+typedef struct PJRT_Error_FunctionTable {
+  size_t struct_size;
+  size_t instance_size;
+  PJRT_Extension_Base* extension_start;
+  void (*destroy)(PJRT_Error* error);
+  void (*message)(const PJRT_Error* error, const char** message,
+                  size_t* message_size);
+  PJRT_Error_Code (*get_code)(const PJRT_Error* error);
+  void (*for_each_payload)(const PJRT_Error* error,
+                           PJRT_Error_PayloadVisitor visitor, void* user_arg);
+} PJRT_Error_FunctionTable;
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Error_FunctionTable, for_each_payload);
+
+struct PJRT_Error {
+  const struct PJRT_Error_FunctionTable* vtable;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Error, vtable);
+
 struct PJRT_Error_GetCode_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -187,10 +210,6 @@ struct PJRT_Error_GetCode_Args {
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Error_GetCode_Args, code);
 
 typedef PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
-
-typedef void (*PJRT_Error_PayloadVisitor)(const char* key, size_t key_size,
-                                          const char* value, size_t value_size,
-                                          void* user_arg);
 
 struct PJRT_Error_ForEachPayload_Args {
   size_t struct_size;
@@ -383,6 +402,24 @@ typedef PJRT_Error* PJRT_Event_Set(PJRT_Event_Set_Args* args);
 typedef struct PJRT_Client PJRT_Client;
 typedef struct PJRT_Device PJRT_Device;
 typedef struct PJRT_Memory PJRT_Memory;
+typedef struct PJRT_Memory_FunctionTable PJRT_Memory_FunctionTable;
+
+struct PJRT_Memory_FunctionTable {
+  size_t struct_size;
+  struct PJRT_Extension_Base* extension_start;
+  size_t instance_struct_size; /* = PJRT_Memory_STRUCT_SIZE; */
+  // fetches user data from the PJRT_Memory implementation.
+  void* (*get_user_data)(struct PJRT_Memory* memory, const void* key);
+  // Attaches user data to the PJRT_Memory implementation.
+  void (*set_user_data)(struct PJRT_Memory* memory, const void* key, void* data,
+                        void (*dtor)(void*));
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_FunctionTable, set_user_data);
+
+struct PJRT_Memory {
+  const struct PJRT_Memory_FunctionTable* vtable;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory, vtable);
 typedef struct PJRT_ShapeSpec PJRT_ShapeSpec;
 typedef struct PJRT_DeviceDescription PJRT_DeviceDescription;
 typedef struct PJRT_TopologyDescription PJRT_TopologyDescription;
@@ -1483,13 +1520,27 @@ struct PJRT_Device_MemoryStats_Args {
   bool pool_bytes_is_set;       // out
   int64_t peak_pool_bytes;      // out
   bool peak_pool_bytes_is_set;  // out
+
+  int64_t peak_allocated_bytes;      // out
+  bool peak_allocated_bytes_is_set;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_MemoryStats_Args, peak_pool_bytes_is_set);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_MemoryStats_Args,
+                          peak_allocated_bytes_is_set);
 
 // Device memory/allocator statistics. All returned stats except `bytes_in_use`
 // are optional and may not be returned by all platforms. Implementations may
 // also return PJRT_Error_Code_UNIMPLEMENTED. Intended for diagnostic purposes.
 typedef PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args);
+
+struct PJRT_Device_ClearMemoryStats_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Device* device;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_ClearMemoryStats_Args, device);
+
+typedef PJRT_Error* PJRT_Device_ClearMemoryStats(
+    PJRT_Device_ClearMemoryStats_Args* args);
 
 struct PJRT_Device_PoisonExecution_Args {
   size_t struct_size;
@@ -1880,8 +1931,6 @@ typedef struct PJRT_Chunk {
 // `xla::CopyToDeviceStream`.
 typedef struct PJRT_CopyToDeviceStream PJRT_CopyToDeviceStream;
 
-struct PJRT_TransferMetadata;
-
 // Returns PJRT_Error* created by PJRT_CallbackError in case of error.
 // Otherwise, returns nullptr. The callback must call
 // `chunk->deleter(chunk->data, chunk->deleter_arg)` when it's finished with
@@ -1912,6 +1961,21 @@ struct PJRT_RecvCallbackInfo {
   PJRT_RecvCallback recv_callback;
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_RecvCallbackInfo, recv_callback);
+
+typedef void (*PJRT_HloOutputCallback)(int64_t replica_id, int64_t partition_id,
+                                       const void* data,
+                                       const int64_t* shape_dims,
+                                       size_t shape_num_dims,
+                                       PJRT_Buffer_Type shape_element_type,
+                                       int64_t operand_index, void* user_arg);
+
+typedef struct PJRT_HloOutputCallbackInfo {
+  void* user_arg;
+  PJRT_HloOutputCallback callback;
+  int64_t callback_id;
+  size_t num_operands;
+} PJRT_HloOutputCallbackInfo;
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_HloOutputCallbackInfo, num_operands);
 
 typedef struct PJRT_MultiSlice_Config PJRT_MultiSlice_Config;
 
@@ -1964,8 +2028,15 @@ struct PJRT_ExecuteOptions {
   int* task_ids;
   int64_t* incarnation_ids;
   PJRT_MultiSlice_Config* multi_slice_config;
+  // If true, transpose the array from the device native format into major to
+  // minor format.
+  bool use_major_to_minor_data_layout_for_callbacks;
+  // The HLO output callbacks. A single callback handles invocations across all
+  // replicas and partitions, so this is a flat span. Must outlive execution.
+  PJRT_HloOutputCallbackInfo* hlo_output_callbacks;
+  size_t num_hlo_output_callbacks;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, multi_slice_config);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, num_hlo_output_callbacks);
 
 struct PJRT_LoadedExecutable_Execute_Args {
   size_t struct_size;
@@ -2220,6 +2291,14 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_GetCompileOptions_Args,
 typedef PJRT_Error* PJRT_Executable_GetCompileOptions(
     PJRT_Executable_GetCompileOptions_Args* args);
 
+struct PJRT_LoadOptions {
+  size_t struct_size;
+  const int32_t* computation_origin;
+  size_t computation_origin_size;
+  PJRT_MultiSlice_Config* multi_slice_config;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadOptions, multi_slice_config);
+
 struct PJRT_Executable_DeserializeAndLoad_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -2231,9 +2310,11 @@ struct PJRT_Executable_DeserializeAndLoad_Args {
   // from the serialized executable).
   const char* overridden_serialized_compile_options;
   size_t overridden_serialized_compile_options_size;
+
+  PJRT_LoadOptions* load_options;
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_DeserializeAndLoad_Args,
-                          overridden_serialized_compile_options_size);
+                          load_options);
 
 // Deserializes an executable serialized by `PJRT_Executable_Serialize`.
 // `serialized_executable` must have been produced by the same platform and
@@ -2872,6 +2953,43 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Fingerprint_Args,
 typedef PJRT_Error* PJRT_TopologyDescription_Fingerprint(
     PJRT_TopologyDescription_Fingerprint_Args* args);
 
+struct PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int memory_space_kind_id;
+  // Input shape
+  const int64_t* dims;
+  size_t num_dims;
+  PJRT_Buffer_Type element_type;
+  // Optional input layout
+  const PJRT_Buffer_MemoryLayout* layout;  // optional
+
+  // Output shape (serialized ShapeProto)
+  const char* serialized_shape;                   // out
+  size_t serialized_shape_size;                   // out
+  void (*serialized_shape_deleter)(const char*);  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace_Args,
+    serialized_shape_deleter);
+
+typedef PJRT_Error* PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace(
+    PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace_Args* args);
+
+struct PJRT_TopologyDescription_GetMemorySpaceKindIds_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  const int* memory_space_kind_ids;  // out
+  size_t num_memory_space_kind_ids;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_GetMemorySpaceKindIds_Args,
+                          num_memory_space_kind_ids);
+
+typedef PJRT_Error* PJRT_TopologyDescription_GetMemorySpaceKindIds(
+    PJRT_TopologyDescription_GetMemorySpaceKindIds_Args* args);
+
 struct PJRT_Compile_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -3065,11 +3183,15 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Error_ForEachPayload);
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Fingerprint);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_ParameterMemoryKinds);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_ClearMemoryStats);
+  _PJRT_API_STRUCT_FIELD(
+      PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_GetMemorySpaceKindIds);
 } PJRT_Api;
 
 enum {
   PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Executable_ParameterMemoryKinds)
+      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_TopologyDescription_GetMemorySpaceKindIds)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

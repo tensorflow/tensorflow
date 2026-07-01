@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -404,11 +405,10 @@ absl::StatusOr<HloInstruction*> PartitionGatherIndexPassthroughDimensions(
   PartitionedHlo per_group_indices =
       PerGroupPartitionedHlo(indices, indices_grouped, b, clean_ups);
   const Shape pshape = GetPerGroupBaseShape(output_grouped, output_shape);
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * pgather,
-      PartitionGather(gather, per_group_operand, per_group_indices, pshape,
-                      output_grouped.sharding, batch_dims, slice_sizes, visitor,
-                      allow_recursive));
+  ASSIGN_OR_RETURN(HloInstruction * pgather,
+                   PartitionGather(gather, per_group_operand, per_group_indices,
+                                   pshape, output_grouped.sharding, batch_dims,
+                                   slice_sizes, visitor, allow_recursive));
   pgather->set_sharding(passthrough_sharding);
   if (allow_recursive) {
     VLOG(5) << "[Gather partitioning]: Partitioned as index only";
@@ -484,7 +484,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherOperandPassthroughDimensions(
     PartitionedHlo per_group_indices =
         PerGroupPartitionedHlo(indices, indices_grouped, b, clean_ups);
     const Shape pshape = GetPerGroupBaseShape(output_grouped, output_shape);
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         HloInstruction * pgather,
         PartitionGather(gather, per_group_operand, per_group_indices, pshape,
                         output_grouped.sharding, batch_dims, pslice_sizes,
@@ -600,7 +600,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
         PerGroupPartitionedHlo(new_indices, indices_grouped, b, clean_ups);
     const Shape pshape = GetPerGroupBaseShape(output_grouped, output_shape);
     // Gather on adjusted indices.
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         HloInstruction * pgather,
         PartitionGather(gather, per_group_operand, per_group_new_indices,
                         pshape, output_grouped.sharding, batch_dims,
@@ -786,7 +786,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherParallelDimensions(
   PartitionedHlo per_group_new_indices =
       PerGroupPartitionedHlo(new_indices, new_indices_grouped, b, clean_ups);
   const Shape pshape = GetPerGroupBaseShape(output_grouped, output_shape);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * pgather,
       PartitionGather(gather, per_group_operand, per_group_new_indices, pshape,
                       output_grouped.sharding, batch_dims, slice_sizes, visitor,
@@ -960,11 +960,10 @@ absl::StatusOr<HloInstruction*> PartitionGather(
     for (auto partition_method : GatherPartitionMethodsOrderedByCost(
              gather, operand, indices, output_shape, output_sharding,
              batch_dims, slice_sizes, visitor)) {
-      TF_ASSIGN_OR_RETURN(
-          partitioned_gather,
-          partition_method(gather, operand, indices, output_shape,
-                           output_sharding, batch_dims, slice_sizes, visitor,
-                           allow_recursive));
+      ASSIGN_OR_RETURN(partitioned_gather,
+                       partition_method(gather, operand, indices, output_shape,
+                                        output_sharding, batch_dims,
+                                        slice_sizes, visitor, allow_recursive));
       if (partitioned_gather) {
         return partitioned_gather;
       }
@@ -1115,7 +1114,7 @@ absl::Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
       batch_dims.push_back(i);
     }
   }
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * pgather,
       PartitionGather(gather, operand, indices, gather->shape(),
                       gather->sharding(), absl::MakeConstSpan(batch_dims),
@@ -1367,7 +1366,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
   PartitionedHlo per_group_new_indices =
       PerGroupPartitionedHlo(new_indices, new_indices_grouped, b, clean_ups);
   auto pshape = MaybeGetTuplePerGroupBaseShape(output_grouped, output_shape);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * pscatter,
       PartitionScatter(
           scatter, per_group_operands, per_group_new_indices, per_group_updates,
@@ -1504,7 +1503,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
     PartitionedHlo per_group_indices =
         PerGroupPartitionedHlo(indices, indices_grouped, b, clean_ups);
     auto pshape = MaybeGetTuplePerGroupBaseShape(output_grouped, output_shape);
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         HloInstruction * pscatter,
         PartitionScatter(
             scatter, per_group_operands, per_group_indices, per_group_updates,
@@ -1544,8 +1543,12 @@ HloInstruction* SelectOperandForScatterIndexPassthroughDimensions(
   // Update partition_id for partial replicate.
   auto partition_id = indices.state().partition_id;
   if (indices.sharding().HasPartialReplication()) {
+    HloSharding tiled_sharding =
+        indices.sharding().UseNamedShardingLeaf()
+            ? HloSharding::V3ToV2Sharding(indices.sharding().named_sharding())
+            : indices.sharding();
     auto sharding_grouped = hlo_sharding_util::GroupShardingOnDims(
-        indices.sharding(), {indices.sharding().SubgroupReplicationDim()});
+        tiled_sharding, {tiled_sharding.SubgroupReplicationDim()});
     partition_id =
         GetInGroupPartitionId(partition_id, sharding_grouped.device_groups, b);
   }
@@ -1640,7 +1643,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   PartitionedHlo per_group_indices =
       PerGroupPartitionedHlo(indices, indices_grouped, b, clean_ups);
   auto pshape = MaybeGetTuplePerGroupBaseShape(output_grouped, output_shape);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * pscatter,
       PartitionScatter(
           scatter, per_group_new_operands, per_group_indices, per_group_updates,
@@ -1758,7 +1761,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
     PartitionedHlo per_group_new_indices =
         PerGroupPartitionedHlo(new_indices, indices_grouped, b, clean_ups);
     auto pshape = MaybeGetTuplePerGroupBaseShape(output_grouped, output_shape);
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         HloInstruction * pscatter,
         PartitionScatter(
             scatter, per_group_operands, per_group_new_indices,
@@ -1893,11 +1896,10 @@ absl::StatusOr<HloInstruction*> PartitionScatter(
     for (auto partition_method : ScatterPartitionMethodsOrderedByCost(
              scatter, operands, indices, updates, output_shape, output_sharding,
              slice_sizes, visitor)) {
-      TF_ASSIGN_OR_RETURN(
-          partitioned_scatter,
-          partition_method(scatter, operands, indices, updates, output_shape,
-                           output_sharding, slice_sizes, visitor,
-                           allow_recursive));
+      ASSIGN_OR_RETURN(partitioned_scatter,
+                       partition_method(scatter, operands, indices, updates,
+                                        output_shape, output_sharding,
+                                        slice_sizes, visitor, allow_recursive));
       if (partitioned_scatter) {
         return partitioned_scatter;
       }
@@ -2003,7 +2005,8 @@ absl::Status SpmdPartitioningVisitor::HandleScatterWithoutConflicts(
                                                               call_graph());
 
   HloInstruction* select_operand = nullptr;
-  if (indices.sharding().NumTiles(index_passthrough_dims.indices_dims) != 1) {
+  if (indices.sharding().NumTiles(index_passthrough_dims.indices_dims) != 1 ||
+      updates[0].sharding().NumTiles(index_passthrough_dims.output_dims) != 1) {
     select_operand = SelectOperandForScatterIndexPassthroughDimensions(
         scatter, indices, operands[0], b);
     if (!select_operand) {
@@ -2142,7 +2145,7 @@ absl::Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       operands[0].base_shape(), updates[0].base_shape(),
       scatter->scatter_dimension_numbers());
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * pscatter,
       PartitionScatter(scatter, operands, indices, updates, scatter->shape(),
                        scatter->sharding(), slice_sizes, this));

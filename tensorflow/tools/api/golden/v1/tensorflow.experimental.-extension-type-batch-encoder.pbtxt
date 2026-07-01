@@ -2,7 +2,7 @@ path: "tensorflow.experimental.ExtensionTypeBatchEncoder"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeBatchEncoder\'>"
   is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpecBatchEncoder\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
   }

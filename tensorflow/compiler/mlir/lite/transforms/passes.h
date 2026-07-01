@@ -305,7 +305,14 @@ inline std::unique_ptr<mlir::Pass> CreateCleanupOptimizationBarrierPass() {
   return Create<CleanupOptimizationBarrierPass>();
 }
 
+// Creates a pass that reduces the rank of tensors.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRankReductionPass();
+
+// Creates a pass that makes TFLite model compatible with ML Drift delegate.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateGpuCompatibilityPass();
+
 #define GEN_PASS_DECL_DEFAULTQUANTPARAMSPASS
+#define GEN_PASS_DECL_GPUCOMPATIBILITYPASS
 #define GEN_PASS_DECL_LEGALIZETFPASS
 #define GEN_PASS_DECL_LOWERSTATICTENSORLISTPASS
 #define GEN_PASS_DECL_MODIFYIONODESPASS
@@ -316,6 +323,7 @@ inline std::unique_ptr<mlir::Pass> CreateCleanupOptimizationBarrierPass() {
 #define GEN_PASS_DECL_PREPARETFPASS
 #define GEN_PASS_DECL_QUANTIZEPASS
 #define GEN_PASS_DECL_RAISECUSTOMOPSPASS
+#define GEN_PASS_DECL_RANKREDUCTIONPASS
 #define GEN_PASS_DECL_TRIMFUNCTIONSPASS
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/test.h"
 
 namespace tsl {
@@ -24,7 +25,8 @@ namespace tsl {
 TEST(NonAlphaNumArgs, Char) {
   auto status_1 = errors::Aborted("Aborted Error Message with char: ", 'a');
   EXPECT_EQ(status_1.message(), "Aborted Error Message with char: a");
-  auto status_2 = errors::Aborted("Aborted Error Message with string: ", "a");
+  auto status_2 = absl::AbortedError(
+      absl::StrCat("Aborted Error Message with string: ", "a"));
   EXPECT_EQ(status_2.message(), "Aborted Error Message with string: a");
   EXPECT_NE(status_1.GetSourceLocations()[0].line(),
             status_2.GetSourceLocations()[0].line());
@@ -95,12 +97,12 @@ absl::Status GetError() {
 }
 
 absl::Status PropagateError() {
-  TF_RETURN_IF_ERROR(GetError());
+  RETURN_IF_ERROR(GetError());
   return absl::OkStatus();
 }
 
 absl::Status PropagateError2() {
-  TF_RETURN_IF_ERROR(PropagateError());
+  RETURN_IF_ERROR(PropagateError());
   return absl::OkStatus();
 }
 

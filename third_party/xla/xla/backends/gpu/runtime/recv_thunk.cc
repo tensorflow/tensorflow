@@ -41,11 +41,8 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -67,7 +64,7 @@ RecvThunk::RecvThunk(ThunkInfo thunk_info, const P2PConfig& config,
       hlo_name_(instr_name) {}
 
 absl::Status RecvThunk::Initialize(const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
+  RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   return absl::OkStatus();
 }
 
@@ -101,20 +98,11 @@ absl::StatusOr<ThunkProto> RecvThunk::ToProto() const {
   RecvThunkProto* thunk_proto = proto.mutable_recv_thunk();
 
   *thunk_proto->mutable_collective_config() = config_.config.ToProto();
-  std::vector<SourceTarget> source_target_pairs;
-  source_target_pairs.reserve(config_.id_to_source_target.size() / 2);
-  for (const auto& [key_id, map_entry] : config_.id_to_source_target) {
-    if (!map_entry.source.has_value()) {
-      // Same pair is in the map with target/source switched.
-      continue;
-    }
-    SourceTarget pair;
-    pair.set_source(*map_entry.source);
-    pair.set_target(key_id);
-    source_target_pairs.push_back(pair);
-  }
-  thunk_proto->mutable_source_target_pairs()->Assign(
-      source_target_pairs.begin(), source_target_pairs.end());
+  ASSIGN_OR_RETURN(*thunk_proto->mutable_buffer(), buffer().ToProto());
+  std::vector<SourceTarget> sorted_pairs =
+      GetSortedSourceTargetPairs(config_.id_to_source_target);
+  thunk_proto->mutable_source_target_pairs()->Assign(sorted_pairs.begin(),
+                                                     sorted_pairs.end());
 
   thunk_proto->set_instruction_name(hlo_name_);
   return proto;
@@ -140,13 +128,13 @@ absl::Status RunRecv(DeviceBufferPair& buffer, se::Stream& stream,
     auto future =
         comm.Recv(dest_addr, buffer.element_type, buffer.element_count,
                   RankId(*source_id), GpuCollectives::On(stream));
-    TF_RETURN_IF_ERROR(future.Await());
+    RETURN_IF_ERROR(future.Await());
   } else {
     // If there is no source peer, i.e. no sender to this instance, zero out
     // the destination buffer.
     XLA_VLOG_DEVICE(3, device_ordinal)
         << absl::StreamFormat("%s : Recv: Issuing MemZero", device_string);
-    TF_RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
+    RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
   }
 
   return absl::OkStatus();
@@ -168,9 +156,9 @@ absl::Status RecvThunk::RunCollective(const ExecuteParams& params,
 
   GlobalDeviceId global_device_id = params.collective_params->global_device_id;
 
-  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
-                      params.collective_params->device_assn->LogicalIdForDevice(
-                          global_device_id));
+  ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
+                   params.collective_params->device_assn->LogicalIdForDevice(
+                       global_device_id));
   const int64_t current_id =
       config_.config.group_mode ==
               CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA

@@ -20,9 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/custom_call_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
@@ -33,13 +35,15 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
 namespace xla::cpu {
 namespace {
 
 absl::Status CustomCallThunkToProto(const Thunk& thunk, ThunkProto& proto) {
-  const auto& custom_call_thunk = tsl::down_cast<const CustomCallThunk&>(thunk);
+  const auto& custom_call_thunk =
+      absl::down_cast<const CustomCallThunk&>(thunk);
   CustomCallThunkProto* custom_call_proto = proto.mutable_custom_call_thunk();
 
   custom_call_proto->set_target_name(custom_call_thunk.target_name());
@@ -48,7 +52,7 @@ absl::Status CustomCallThunkToProto(const Thunk& thunk, ThunkProto& proto) {
 
   for (size_t i = 0;
        i < custom_call_thunk.op_buffers().arguments_buffers.size(); ++i) {
-    TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+    RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
         custom_call_thunk.op_buffers().arguments_buffers[i],
         custom_call_thunk.op_buffers().arguments_shapes[i],
         custom_call_proto->mutable_op_buffers()->add_arguments_shapes()));
@@ -56,11 +60,14 @@ absl::Status CustomCallThunkToProto(const Thunk& thunk, ThunkProto& proto) {
 
   for (size_t i = 0; i < custom_call_thunk.op_buffers().results_buffers.size();
        ++i) {
-    TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+    RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
         custom_call_thunk.op_buffers().results_buffers[i],
         custom_call_thunk.op_buffers().results_shapes[i],
         custom_call_proto->mutable_op_buffers()->add_results_shapes()));
   }
+
+  custom_call_proto->mutable_op_buffers()->set_is_tuple_result(
+      custom_call_thunk.op_buffers().is_tuple_result);
 
   return absl::OkStatus();
 }
@@ -70,12 +77,12 @@ absl::StatusOr<std::unique_ptr<Thunk>> CustomCallThunkFromProto(
     const std::vector<BufferAllocation>& buffer_allocations,
     const HloModule* hlo_module,
     const std::vector<std::shared_ptr<Resource>>* resources) {
-  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
   CustomCallThunk::OpBuffers op_buffers;
   for (const ShapeBufferAllocationSliceProto& arg_buff_shape :
        proto.custom_call_thunk().op_buffers().arguments_shapes()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto args_slice_shape,
         DeserializeSliceShapeFromProto(arg_buff_shape, buffer_allocations));
 
@@ -86,13 +93,33 @@ absl::StatusOr<std::unique_ptr<Thunk>> CustomCallThunkFromProto(
 
   for (const ShapeBufferAllocationSliceProto& res_buff_shape :
        proto.custom_call_thunk().op_buffers().results_shapes()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto res_slice_shape,
         DeserializeSliceShapeFromProto(res_buff_shape, buffer_allocations));
 
     const auto& [res_buffer, res_shape] = res_slice_shape;
     op_buffers.results_buffers.push_back(res_buffer);
     op_buffers.results_shapes.push_back(res_shape);
+  }
+
+  op_buffers.is_tuple_result =
+      proto.custom_call_thunk().op_buffers().is_tuple_result();
+
+  // The check below is for backward-compatibility: if `is_tuple_result` is
+  // false (e.g. reading an old proto where it defaults to false) but
+  // results_shapes_size() != 1, we know it must be a tuple and set
+  // `is_tuple_result` to true. If results_shapes_size() == 1, we have to
+  // inspect the element type of the single result shape to determine if it's
+  // a tuple.
+  if (!op_buffers.is_tuple_result) {
+    const auto& results_shapes =
+        proto.custom_call_thunk().op_buffers().results_shapes();
+    if (results_shapes.size() != 1) {
+      op_buffers.is_tuple_result = true;
+    } else if (results_shapes.size() == 1 &&
+               results_shapes[0].shape().element_type() == TUPLE) {
+      op_buffers.is_tuple_result = true;
+    }
   }
 
   return CustomCallThunk::Create(

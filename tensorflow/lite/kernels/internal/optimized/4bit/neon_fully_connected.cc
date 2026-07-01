@@ -39,8 +39,9 @@ inline int8x16_t vqmovn_high_s16(int8x8_t a_s8x8, int16x8_t b_s16x8) {
 }
 
 inline int32x4_t vpaddq_s32(int32x4_t a, int32x4_t b) {
-  int32x4x2_t deinterleaved = vuzpq_s32(a, b);
-  return vqaddq_s32(deinterleaved.val[0], deinterleaved.val[1]);
+  int32x2_t a0 = vpadd_s32(vget_low_s32(a), vget_high_s32(a));
+  int32x2_t b0 = vpadd_s32(vget_low_s32(b), vget_high_s32(b));
+  return vcombine_s32(a0, b0);
 }
 
 inline float vmaxvq_f32(float32x4_t max_f32x4) {
@@ -540,21 +541,26 @@ void NeonUnpack(float* output_ptr, const int32_t* dst, int batch_size,
   }
 }
 
-inline bool HasSDot() { return cpuinfo_has_arm_neon_dot(); }
+inline bool HasSDot() {
+  // CPUInfo already guards against double init
+  if (!cpuinfo_initialize()) {
+    // If we failed to init CPUInfo, assume ARM v8.2a-dotprod is not supported.
+    return false;
+  };
+  return cpuinfo_has_arm_neon_dot();
+}
 
 template <int RowsLeft, int RowsRight, int Cols>
 void NeonRunKernel(const uint8_t* lhs, const int8_t* rhs, int32_t* dst,
                    int lhs_layout_rows, int lhs_layout_cols,
                    int rhs_layout_rows, int rhs_layout_cols,
                    int dst_layout_rows, int dst_layout_cols) {
-#ifdef __aarch64__
   if (HasSDot()) {
     NeonRunKernelSDot<RowsLeft, RowsRight, Cols>(
         lhs, rhs, dst, lhs_layout_rows, lhs_layout_cols, rhs_layout_rows,
         rhs_layout_cols, dst_layout_rows, dst_layout_cols);
     return;
   }
-#endif
   NeonRunKernelNoSDot<RowsLeft, RowsRight, Cols>(
       lhs, rhs, dst, lhs_layout_rows, lhs_layout_cols, rhs_layout_rows,
       rhs_layout_cols, dst_layout_rows, dst_layout_cols);

@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -664,20 +663,18 @@ void CreateStore(llvm::Value* data, llvm::Value* address, int alignment_bytes,
 const uint64_t kBitonicSortUnrollFactor = 4;
 
 absl::StatusOr<LlvmKernelSource> EmitModuleForBitonicSortStage(
-    const HloSortInstruction* sort, IrEmitterContext* parent_context,
+    const HloSortInstruction* sort, IrEmitterContext* ir_emitter_context,
     const std::string& sanitized_kernel_name,
     const emitters::KernelArguments& kernel_arguments,
     const LaunchDimensions& launch_dimensions,
     absl::Span<const int64_t> xor_masks, bool emit_iota_operands,
     uint64_t tile_size, uint64_t num_iterations_in_sort_dim) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
-  std::unique_ptr<IrEmitterContext> ir_emitter_context =
-      parent_context->SubContext(llvm_context.get());
 
   std::string op_name(sort->name());
   std::unique_ptr<llvm::Module> llvm_module =
-      ir_emitter_context->CreateLLVMModule(op_name);
-  IrEmitter ir_emitter(ir_emitter_context.get(), llvm_module.get(),
+      ir_emitter_context->CreateLLVMModule(op_name, *llvm_context);
+  IrEmitter ir_emitter(ir_emitter_context, llvm_module.get(),
                        /*is_nested=*/false);
 
   bool is_fusion = sort->parent()->IsFusionComputation();
@@ -944,16 +941,14 @@ AsyncThunkSequence EmitBitonicSortLLVMIR(const HloSortInstruction* sort,
 // Input = {dynamic array(with dynamic dimension meta data at the
 // end)} Output = {static array, dynamic_dim0, dynamic_dim1}
 absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitPadToStaticLLVMIR(
-    const HloCustomCallInstruction* hlo, IrEmitterContext* parent_context,
+    const HloCustomCallInstruction* hlo, IrEmitterContext* ir_emitter_context,
     const emitters::KernelArguments& kernel_arguments) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
-  std::unique_ptr<IrEmitterContext> ir_emitter_context =
-      parent_context->SubContext(llvm_context.get());
   std::string op_name = std::string(hlo->name());
 
   std::unique_ptr<llvm::Module> llvm_module =
-      ir_emitter_context->CreateLLVMModule(op_name);
-  IrEmitter ir_emitter(ir_emitter_context.get(), llvm_module.get(),
+      ir_emitter_context->CreateLLVMModule(op_name, *llvm_context);
+  IrEmitter ir_emitter(ir_emitter_context, llvm_module.get(),
                        /*is_nested=*/false);
 
   constexpr int kUnrollFactor = 1;
@@ -1106,16 +1101,14 @@ absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitPadToStaticLLVMIR(
 // Input = {dynamic array(with dynamic dimension meta data at the
 // end)} Output = {static array, dynamic_dim0, dynamic_dim1}
 absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitSliceToDynamicLLVMIR(
-    const HloCustomCallInstruction* hlo, IrEmitterContext* parent_context,
+    const HloCustomCallInstruction* hlo, IrEmitterContext* ir_emitter_context,
     const emitters::KernelArguments& kernel_arguments) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
-  std::unique_ptr<IrEmitterContext> ir_emitter_context =
-      parent_context->SubContext(llvm_context.get());
   std::string op_name = std::string(hlo->name());
 
   std::unique_ptr<llvm::Module> llvm_module =
-      ir_emitter_context->CreateLLVMModule(op_name);
-  IrEmitter ir_emitter(ir_emitter_context.get(), llvm_module.get(),
+      ir_emitter_context->CreateLLVMModule(op_name, *llvm_context);
+  IrEmitter ir_emitter(ir_emitter_context, llvm_module.get(),
                        /*is_nested=*/false);
 
   constexpr int kUnrollFactor = 1;
@@ -1259,16 +1252,14 @@ absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitSliceToDynamicLLVMIR(
 absl::StatusOr<KernelDefinition<LlvmKernelSource>>
 EmitRngGetAndUpdateStateLLVMIR(
     const HloRngGetAndUpdateStateInstruction* hlo,
-    IrEmitterContext* parent_context,
+    IrEmitterContext* ir_emitter_context,
     const emitters::KernelArguments& kernel_arguments) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
-  std::unique_ptr<IrEmitterContext> ir_emitter_context =
-      parent_context->SubContext(llvm_context.get());
 
   std::string op_name(hlo->name());
   std::unique_ptr<llvm::Module> llvm_module =
-      ir_emitter_context->CreateLLVMModule(op_name);
-  IrEmitter ir_emitter(ir_emitter_context.get(), llvm_module.get(),
+      ir_emitter_context->CreateLLVMModule(op_name, *llvm_context);
+  IrEmitter ir_emitter(ir_emitter_context, llvm_module.get(),
                        /*is_nested=*/false);
 
   llvm::IRBuilderBase& b = *ir_emitter.builder();

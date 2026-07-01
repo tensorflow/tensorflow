@@ -31,9 +31,9 @@ absl::Status ErrorIfNotVector(const Tensor& input,
                               int expected_width) {
   if ((input.shape().dims() != 1) ||
       (input.shape().dim_size(0) != expected_width)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         input_name,
-        " input to batch norm has bad shape: ", input.shape().DebugString());
+        " input to batch norm has bad shape: ", input.shape().DebugString()));
   }
   return absl::OkStatus();
 }

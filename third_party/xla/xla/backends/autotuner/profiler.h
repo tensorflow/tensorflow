@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/executable.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/tsl/platform/statusor.h"
@@ -58,8 +59,8 @@ class Profiler {
   // Profiles a single executable.
   virtual absl::StatusOr<ProfileResult> Profile(
       std::unique_ptr<Executable> executable) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
-                        CreateInputBuffers(executable.get()));
+    ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
+                     CreateInputBuffers(executable.get()));
     return Profile(executable.get(), *buffers);
   }
 

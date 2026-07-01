@@ -2,8 +2,10 @@
 
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/xla_data.pb.h"
 /* Copyright 2024 The OpenXLA Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,8 +62,7 @@ class CollectiveBroadcastThunk : public CollectiveThunk {
                            std::vector<Buffer> buffers);
 
   static absl::StatusOr<std::unique_ptr<CollectiveBroadcastThunk>> FromProto(
-      ThunkInfo thunk_info,
-      const CollectiveBroadcastStartThunkProto& thunk_proto,
+      ThunkInfo thunk_info, const CollectiveBroadcastThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;

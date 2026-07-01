@@ -794,7 +794,8 @@ void SegmentReductionFunctor<
   // non-deterministic kernels.
   if (!use_deterministic_kernels) {
     // Set 'output' to initial value.
-    StatusOr<GpuLaunchConfig64> config = GetGpuLaunchConfig64(output.size(), d);
+    absl::StatusOr<GpuLaunchConfig64> config =
+        GetGpuLaunchConfig64(output.size(), d);
     OP_REQUIRES_OK(ctx, config.status());
     const T initial_value = InitialValueF()();
     TF_CHECK_OK(GpuLaunchKernel(SetToValue<T>, config->block_count,
@@ -904,7 +905,7 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     if (!use_deterministic_kernels) {
       // Set 'output' to initial value.
       GPUDevice d = ctx->template eigen_device<GPUDevice>();
-      StatusOr<GpuLaunchConfig64> config =
+      absl::StatusOr<GpuLaunchConfig64> config =
           GetGpuLaunchConfig64(output.size(), d);
       OP_REQUIRES_OK(ctx, config.status());
       TF_CHECK_OK(GpuLaunchKernel(

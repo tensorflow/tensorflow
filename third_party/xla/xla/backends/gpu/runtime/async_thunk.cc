@@ -20,8 +20,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 
-#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -50,7 +50,7 @@ AsyncStartThunk::AsyncStartThunk(ThunkInfo thunk_info,
     : Thunk(Thunk::kAsyncStart, std::move(thunk_info)),
       execution_stream_id_(execution_stream_id),
       executor_(std::move(thunks)),
-      async_execution_(std::make_shared<AsyncExecution>(this)) {}
+      async_execution_(std::make_shared<AsyncExecution>(this->thunk_info())) {}
 
 AsyncStartThunk::AsyncStartThunk(
     ThunkInfo thunk_info, ExecutionStreamId execution_stream_id,
@@ -118,7 +118,7 @@ absl::Status AsyncStartThunk::TransformNested(Transformer callback) {
 }
 
 AsyncExecutionId AsyncStartThunk::async_execution_id() const {
-  return absl::bit_cast<AsyncExecutionId>(async_execution_.get());
+  return AsyncExecutionId(thunk_info().thunk_id.value());
 }
 
 std::shared_ptr<AsyncExecution> AsyncStartThunk::async_execution() const {
@@ -131,7 +131,7 @@ std::shared_ptr<AsyncExecution> AsyncStartThunk::async_execution() const {
 
 AsyncDoneThunk::AsyncDoneThunk(ThunkInfo thunk_info,
                                std::shared_ptr<AsyncExecution> async_execution)
-    : Command(CommandType::kAsyncDone, Kind::kAsyncDone, std::move(thunk_info)),
+    : Command(Kind::kAsyncDone, std::move(thunk_info)),
       async_execution_(std::move(async_execution)) {}
 
 std::string AsyncDoneThunk::ToString(int indent) const {
@@ -157,7 +157,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AsyncDoneThunk::Record(
 }
 
 AsyncExecutionId AsyncDoneThunk::async_execution_id() const {
-  return absl::bit_cast<AsyncExecutionId>(async_execution_.get());
+  return AsyncExecutionId(async_execution_->start_thunk_id().value());
 }
 
 std::shared_ptr<AsyncExecution> AsyncDoneThunk::async_execution() const {

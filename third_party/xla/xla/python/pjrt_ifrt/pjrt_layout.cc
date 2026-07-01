@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -55,7 +56,7 @@ absl::StatusOr<std::optional<int64_t>> ComputeByteSize(
   if (!bit_size.has_value()) {
     return std::nullopt;
   }
-  TF_ASSIGN_OR_RETURN(auto xla_primitive_type, ToPrimitiveType(dtype));
+  ASSIGN_OR_RETURN(auto xla_primitive_type, ToPrimitiveType(dtype));
   auto xla_shape =
       xla::ShapeUtil::MakeShape(xla_primitive_type, shard_shape.dims());
   *xla_shape.mutable_layout() = pjrt_layout->xla_layout();
@@ -90,7 +91,7 @@ absl::StatusOr<std::optional<int64_t>> PjRtLayout::ByteSize(
   }
   if (pjrt_layout == nullptr) {
     Device* device = sharding->devices()->devices().front();
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         const std::shared_ptr<const xla::PjRtLayout>
             concrete_default_pjrt_layout,
         device->client()->GetDefaultPjRtLayout(

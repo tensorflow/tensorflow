@@ -16,6 +16,8 @@ limitations under the License.
 // XLA-specific ensure_shape Op.
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -41,10 +43,10 @@ class EnsureShapeOp : public XlaOpKernel {
     // valiate shape
     OP_REQUIRES(
         ctx, expected_shape_.IsCompatibleWith(shape),
-        errors::InvalidArgument("Shape of tensor ", this->def().input(0), " ",
-                                shape.DebugString(),
-                                " is not compatible with expected shape ",
-                                expected_shape_.DebugString(), "."));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Shape of tensor ", this->def().input(0), " ", shape.DebugString(),
+            " is not compatible with expected shape ",
+            expected_shape_.DebugString(), ".")));
 
     // If the shape dimension in `expected_shape_` is already static, we would
     // remove the dynamic dimensions in XLA dynamic padder. Here we don't check

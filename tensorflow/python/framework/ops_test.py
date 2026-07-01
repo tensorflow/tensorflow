@@ -46,6 +46,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_ops
@@ -3748,6 +3749,49 @@ class TensorTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(NotImplementedError,
                                 "Cannot convert a symbolic tf.Tensor"):
       g()
+
+  def testSymbolicTensorIndexStaticShapeDimension(self):
+
+    @def_function.function(autograph=False)
+    def f(x):
+      features = array_ops.shape(x)[1]
+      total = 0
+      for i in range(features):
+        total += i
+      return constant_op.constant(total)
+
+    x = array_ops.zeros([4, 10])
+    self.assertEqual(self.evaluate(f(x)), 45)
+
+  def testSymbolicTensorIndexDynamicShapeDimension(self):
+
+    @def_function.function(autograph=False)
+    def f(x):
+      features = array_ops.shape(x)[1]
+      total = 0
+      for i in range(features):
+        total += i
+      return constant_op.constant(total)
+
+    with self.assertRaisesRegex(
+        TypeError, "cannot be interpreted as an integer"
+    ):
+      f.get_concrete_function(
+          tensor_spec.TensorSpec([4, None], dtype=dtypes.float32)
+      )
+
+  def testSymbolicTensorIndexNegativeStaticShapeDimension(self):
+
+    @def_function.function(autograph=False)
+    def f(x):
+      features = array_ops.shape(x)[-1]
+      total = 0
+      for i in range(features):
+        total += i
+      return constant_op.constant(total)
+
+    x = array_ops.zeros([4, 10])
+    self.assertEqual(self.evaluate(f(x)), 45)
 
 
 if __name__ == "__main__":

@@ -40,7 +40,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(
       context, GetInputSafe(context, node, kElementShapeInput, &element_shape));
 
-  TF_LITE_ENSURE(context, element_shape->type == kTfLiteInt32);
+  TF_LITE_ENSURE_TYPES_EQ(context, element_shape->type, kTfLiteInt32);
 
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, kListOut, &output));
@@ -65,8 +65,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const int list_len = tensor_input->dims->data[0];
   IntArrayUniquePtr element_shape_for_tensors =
       BuildTfLiteArray(rank - 1, tensor_input->dims->data + 1);
+  TF_LITE_ENSURE(context, element_shape_for_tensors != nullptr);
 
-  // `element_shape_tensor` is an auxillary input shape signature which
+  // `element_shape_tensor` is an auxiliary input shape signature which
   // is to be used as the `ElementShape()` attribute of the resulting
   // `TensorArray`.
   const TfLiteTensor* element_shape_tensor;
@@ -76,8 +77,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            element_shape_tensor->dims->data[0] == rank - 1) ||
                               element_shape_tensor->dims->size == 0);
 
-  IntArrayUniquePtr element_shape_for_list =
-      TensorAsShape(*element_shape_tensor);
+  IntArrayUniquePtr element_shape_for_list;
+  TF_LITE_ENSURE_OK(context, TensorAsShape(context, *element_shape_tensor,
+                                           element_shape_for_list));
+  TF_LITE_ENSURE(context, element_shape_for_list != nullptr);
   // Check given element shape is compatible with the suffix of input tensor's
   // shape. TODO(b/257472333) consider wrapping this in `#ifndef NDEBUG`.
   if (element_shape_for_list->size > 0) {
@@ -94,23 +97,34 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, kListOut, &output));
 
   // Build and retrieve output list.
+  IntArrayUniquePtr copied_element_shape =
+      BuildTfLiteArray(*element_shape_for_list);
+  TF_LITE_ENSURE(context, copied_element_shape != nullptr);
   TF_LITE_ENSURE_OK(context, TfLiteTensorVariantRealloc<TensorArray>(
                                  output, tensor_input->type,
-                                 BuildTfLiteArray(*element_shape_for_list)));
+                                 std::move(copied_element_shape)));
   TensorArray* arr =
       static_cast<TensorArray*>(static_cast<VariantData*>(output->data.data));
 
-  arr->Resize(list_len);
+  TF_LITE_ENSURE(context, arr->Resize(list_len));
 
   // Copy each row of input into the elements of the new list.
   size_t data_offset = 0;
   for (int i = 0; i < list_len; ++i) {
+    IntArrayUniquePtr cur_shape = BuildTfLiteArray(*element_shape_for_tensors);
+    TF_LITE_ENSURE(context, cur_shape != nullptr);
     TensorUniquePtr tensor_to_set = BuildTfLiteTensor(
-        tensor_input->type, BuildTfLiteArray(*element_shape_for_tensors),
-        kTfLiteDynamic);
+        tensor_input->type, std::move(cur_shape), kTfLiteDynamic);
+    TF_LITE_ENSURE(context, tensor_to_set != nullptr);
 
-    memcpy(tensor_to_set->data.raw, tensor_input->data.raw + data_offset,
-           tensor_to_set->bytes);
+    if (tensor_to_set->bytes > 0) {
+      TF_LITE_ENSURE(context, tensor_to_set->data.raw != nullptr);
+      TF_LITE_ENSURE(context, tensor_input->data.raw != nullptr);
+      TF_LITE_ENSURE(context,
+                     tensor_to_set->bytes <= tensor_input->bytes - data_offset);
+      memcpy(tensor_to_set->data.raw, tensor_input->data.raw + data_offset,
+             tensor_to_set->bytes);
+    }
     data_offset += tensor_to_set->bytes;
 
     TF_LITE_ENSURE(context, arr->Set(i, std::move(tensor_to_set)));

@@ -53,6 +53,9 @@ absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
 PJRT_Error_Code GetErrorCode(const PJRT_Error* error, const PJRT_Api* api);
 
 absl::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
+absl::Status PjrtErrorToStatus(PJRT_Error* error);
+PJRT_Error* StatusToPjRtError(absl::Status s);
+void DestroyPjRtError(PJRT_Error* error);
 
 absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
                                        const PJRT_Api* api);

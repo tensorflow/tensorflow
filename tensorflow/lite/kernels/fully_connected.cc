@@ -535,6 +535,9 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
            filter->type == kTfLiteInt2 || filter->type == kTfLiteInt16));
       TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
                         per_channel_quantization_size);
+      // In Fully Connected layers, per-channel quantization is applied along
+      // the output channel dimension. so the quantized_dimension must be 0.
+      TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension, 0);
       TF_LITE_ENSURE_EQ(
           context, per_channel_quantization_size,
           filter->dims->data[affine_quantization->quantized_dimension]);

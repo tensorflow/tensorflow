@@ -3010,7 +3010,7 @@ TEST(GcsFileSystemTest, RenameFile_Object_DeletionRetried) {
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n"
            "Delete: yes\n",
-           "", errors::Unavailable("503"), 503),
+           "", absl::UnavailableError("503"), 503),
        // Deleting the original file again - the deletion returns NOT_FOUND.
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
@@ -3586,7 +3586,7 @@ TEST(GcsFileSystemTest, CreateDir_Folder) {
               "Auth Token: fake_token\n"
               "Post: yes\n"
               "Timeouts: 5 1 10\n",
-              "", errors::FailedPrecondition("412"), 412),
+              "", absl::FailedPreconditionError("412"), 412),
       });
   GcsFileSystem fs(
       std::unique_ptr<AuthProvider>(new FakeAuthProvider),
@@ -3672,7 +3672,7 @@ TEST(GcsFileSystemTest, DeleteRecursively_Ok) {
                            "Auth Token: fake_token\n"
                            "Timeouts: 5 1 10\n"
                            "Delete: yes\n",
-                           "", errors::Unavailable("500"), 500),
+                           "", absl::UnavailableError("500"), 500),
        // Delete the object again.
        new FakeHttpRequest("Uri: https://www.googleapis.com/storage/v1/b"
                            "/bucket/o/path%2Ffile1.txt\n"

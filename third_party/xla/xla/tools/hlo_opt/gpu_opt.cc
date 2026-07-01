@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -21,10 +22,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/LLVMContext.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/backends/gpu/transforms/collectives/all_gather_optimizer.h"
@@ -35,7 +38,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/dot_operand_converter.h"
 #include "xla/backends/gpu/transforms/gemm_broadcast_folding_rewriter.h"
 #include "xla/backends/gpu/transforms/gemm_fusion.h"
-#include "xla/backends/gpu/transforms/gemv_rewriter.h"
 #include "xla/backends/gpu/transforms/reduce_scatter_creator.h"
 #include "xla/backends/gpu/transforms/reduction_degenerate_dim_remover.h"
 #include "xla/backends/gpu/transforms/reduction_dimension_grouper.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/tools/hlo_opt/opt_lib.h"
 #include "xla/hlo/transforms/host_offloader.h"
+#include "xla/hlo/transforms/simplifiers/gemv_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/layout.h"
 #include "xla/service/buffer_value.h"
@@ -56,6 +59,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
+#include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/llvm_compiler.h"
@@ -69,11 +73,21 @@ limitations under the License.
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/tools/hlo_opt/compiled_opt_lib.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
-
 namespace {
+std::string GetAlphaSmallestFunctionName(const llvm::Module& module) {
+  std::string name;
+  for (const llvm::Function& func : module.functions()) {
+    if (!func.isDeclaration() &&
+        func.getLinkage() == llvm::GlobalValue::LinkageTypes::ExternalLinkage) {
+      if (name.empty() || name > func.getName().str()) {
+        name = func.getName().str();
+      }
+    }
+  }
+  return name;
+}
 
 class GpuOptProvider : public CompiledOptProvider {
  public:
@@ -83,30 +97,27 @@ class GpuOptProvider : public CompiledOptProvider {
       std::unique_ptr<HloModule> module, absl::string_view s) override {
     if (s == "llvm-before-optimizations") {
       ASSIGN_OR_RETURN(std::string llvm_ir,
-                       LlvmIrBeforeOptimizations(std::move(module)));
+                       LlvmIrFor(std::move(module), false));
       return llvm_ir;
     }
     if (s == "llvm" || s == "llvm-after-optimizations") {
-      ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                       GetExecutable(std::move(module)));
-      return static_cast<gpu::GpuExecutable*>(executable.get())
-          ->ir_module_string();
+      ASSIGN_OR_RETURN(std::string llvm_ir, LlvmIrFor(std::move(module), true));
+      return llvm_ir;
     }
     if (s == "ptx") {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                          GetExecutable(std::move(module)));
-      return static_cast<gpu::GpuExecutable*>(executable.get())->text();
+      ASSIGN_OR_RETURN(std::string ptx, PtxFor(std::move(module)));
+      return ptx;
     }
     if (s == "buffer-assignment") {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                          GetExecutable(std::move(module)));
+      ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                       GetExecutable(std::move(module)));
       auto gpu_executable = static_cast<gpu::GpuExecutable*>(executable.get());
       return gpu_executable->buffer_assignment()->ToVerboseString(
           gpu_executable->alias_info(), 9999);
     }
     {
       // Delegate to base class.
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           std::optional<std::string> out,
           CompiledOptProvider::GenerateStage(std::move(module), s));
       return out;
@@ -158,6 +169,7 @@ class GpuOptProvider : public CompiledOptProvider {
         });
     // go/keep-sorted start
     RegisterPass<CopyInsertion>(alias_info_.get());
+    RegisterPass<GemvRewriter>();
     RegisterPass<HloMemoryScheduler>(alias_info_.get(), kSizeFunction);
     RegisterPass<HostOffloader>(alias_info_.get());
     RegisterPass<gpu::AllGatherOptimizer>();
@@ -168,7 +180,6 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<gpu::DotOperandConverter>();
     RegisterPass<gpu::GemmBroadcastFoldingRewriter>();
     RegisterPass<gpu::GemmFusion>(gpu_compute_capability);
-    RegisterPass<gpu::GemvRewriter>();
     RegisterPass<gpu::ReduceScatterCreator>();
     RegisterPass<gpu::ReductionDegenerateDimRemover>();
     RegisterPass<gpu::ReductionDimensionGrouper>();
@@ -189,15 +200,15 @@ class GpuOptProvider : public CompiledOptProvider {
  private:
   absl::StatusOr<se::DeviceDescription> GetDeviceDescription(
       const HloModule* module) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         gpu::GpuTargetConfig target_config,
         gpu::GetTargetConfigFromFile(
             module->config().debug_options().xla_gpu_target_config_filename()));
     return target_config.device_description;
   }
 
-  absl::StatusOr<std::string> LlvmIrBeforeOptimizations(
-      std::unique_ptr<HloModule> input_module) {
+  absl::StatusOr<std::string> LlvmIrFor(std::unique_ptr<HloModule> input_module,
+                                        bool optimized) {
     Compiler::CompileOptions opts;
     ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
                      GetOptimizedHlo(std::move(input_module)));
@@ -209,17 +220,50 @@ class GpuOptProvider : public CompiledOptProvider {
 
     llvm::LLVMContext context;
     std::vector<std::unique_ptr<llvm::Module>> modules;
-    llvm_compiler->SetPreOptimizationHook([&](const llvm::Module& module) {
-      modules.push_back(gpu::CopyToContext(module, context));
-    });
+    if (optimized) {
+      llvm_compiler->SetPostOptimizationHook([&](const llvm::Module& module) {
+        modules.push_back(gpu::CopyToContext(module, context));
+      });
+    } else {
+      llvm_compiler->SetPreOptimizationHook([&](const llvm::Module& module) {
+        modules.push_back(gpu::CopyToContext(module, context));
+      });
+    }
 
     ASSIGN_OR_RETURN(
         std::unique_ptr<Executable> executable,
         compiler->RunBackend(std::move(optimized_module), executor, opts));
 
+    std::sort(modules.begin(), modules.end(),
+              [](const std::unique_ptr<llvm::Module>& m1,
+                 const std::unique_ptr<llvm::Module>& m2) {
+                return GetAlphaSmallestFunctionName(*m1) >
+                       GetAlphaSmallestFunctionName(*m2);
+              });
+
     gpu::LinkLlvmModulesInPlace(modules);
 
     return llvm_ir::DumpToString(modules[0].get());
+  }
+
+  absl::StatusOr<std::string> PtxFor(std::unique_ptr<HloModule> input_module) {
+    Compiler::CompileOptions opts;
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
+                     GetOptimizedHlo(std::move(input_module)));
+    ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
+    ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
+
+    gpu::GpuCompiler* gpu_compiler =
+        absl::down_cast<gpu::GpuCompiler*>(compiler.get());
+
+    std::string ptx_str = "// GPU Executable\n";
+    gpu_compiler->SetAsmHook([&](absl::string_view ptx) { ptx_str += ptx; });
+
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<Executable> executable,
+        compiler->RunBackend(std::move(optimized_module), executor, opts));
+
+    return ptx_str;
   }
 };
 

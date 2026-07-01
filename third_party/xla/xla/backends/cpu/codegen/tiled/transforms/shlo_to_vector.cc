@@ -344,9 +344,4 @@ class ShloToVectorPass : public impl::ShloToVectorPassBase<ShloToVectorPass> {
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateShloToVectorPass() {
-  return std::make_unique<ShloToVectorPass>();
-}
-
 }  // namespace xla::cpu

@@ -76,6 +76,7 @@ xla_cc_binary(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:TranslateLib",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:register",
         "@stablehlo//:version",
     ],

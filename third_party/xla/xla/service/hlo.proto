@@ -125,17 +125,6 @@ enum CustomCallApiVersion {
   API_VERSION_TYPED_FFI = 4;
 }
 
-// Represents a string payload that can be either stored inline (small)
-// or interned in the module's payloads list (large).
-message Payload {
-  oneof payload_source {
-    // Inlined value.
-    bytes value = 1;
-    // Reference to HloModuleProto.payloads.
-    int64 id = 2;
-  }
-}
-
 // Serialization of HloInstruction.
 // Next ID: 100
 message HloInstructionProto {
@@ -596,7 +585,7 @@ message StackFrameIndexProto {
 }
 
 // Serialization of HloModule.
-// Next ID: 23
+// Next ID: 24
 message HloModuleProto {
   string name = 1;
   string entry_computation_name = 2;
@@ -610,7 +599,14 @@ message HloModuleProto {
   xla.ProgramShapeProto host_program_shape = 4;
 
   // The id of this module.
+  // During replays, this field is ignored and a new unique ID is assigned to
+  // the `HloModule` object.
   int64 id = 5;
+  // If provided, `pjrt_id` is assigned as the `id` of the `HloModule` object
+  // upon creation from an `HloModuleProto`. Do not populate this field in
+  // `HloModule` text or proto dumps to avoid reusing potentially non-unique IDs
+  // during replays.
+  optional int64 pjrt_id = 23;
 
   // The schedule for this module.
   HloScheduleProto schedule = 7;

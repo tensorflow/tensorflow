@@ -24,6 +24,8 @@ limitations under the License.
 #include <cub/version.cuh>  // NOLINT(build/include_order)
 #include <iostream>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
@@ -281,8 +283,7 @@ absl::Status GenerateCubScratchSizeData() {
   // I.e. keys of size 8, 16, 32, 64 bits, and values of size 8, 16, 32, 64
 
   // 8 bit keys
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int8_t, int8_t>(
-      lookup_table, device_name, prop)));
+  // Skipping int8_t value sort since it isn't supported in XLA
   RETURN_IF_ERROR((GenerateDataForKeyValueSort<int8_t, int16_t>(
       lookup_table, device_name, prop)));
   RETURN_IF_ERROR((GenerateDataForKeyValueSort<int8_t, int32_t>(
@@ -291,8 +292,7 @@ absl::Status GenerateCubScratchSizeData() {
       lookup_table, device_name, prop)));
 
   // 16 bit keys
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int16_t, int8_t>(
-      lookup_table, device_name, prop)));
+  // Skipping int8_t value sort since it isn't supported in XLA
   RETURN_IF_ERROR((GenerateDataForKeyValueSort<int16_t, int16_t>(
       lookup_table, device_name, prop)));
   RETURN_IF_ERROR((GenerateDataForKeyValueSort<int16_t, int32_t>(
@@ -301,8 +301,7 @@ absl::Status GenerateCubScratchSizeData() {
       lookup_table, device_name, prop)));
 
   // 32 bit keys
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int32_t, int8_t>(
-      lookup_table, device_name, prop)));
+  // Skipping int8_t value sort since it isn't supported in XLA
   RETURN_IF_ERROR((GenerateDataForKeyValueSort<int32_t, int16_t>(
       lookup_table, device_name, prop)));
   RETURN_IF_ERROR((GenerateDataForKeyValueSort<int32_t, int32_t>(
@@ -311,8 +310,7 @@ absl::Status GenerateCubScratchSizeData() {
       lookup_table, device_name, prop)));
 
   // 64 bit keys
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int64_t, int8_t>(
-      lookup_table, device_name, prop)));
+  // Skipping int8_t value sort since it isn't supported in XLA
   RETURN_IF_ERROR((GenerateDataForKeyValueSort<int64_t, int16_t>(
       lookup_table, device_name, prop)));
   RETURN_IF_ERROR((GenerateDataForKeyValueSort<int64_t, int32_t>(

@@ -40,12 +40,16 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class CombinedGpuPerformanceModelTest : public HloHardwareIndependentTestBase {
+class CombinedGpuPerformanceModelTest
+    : public HloHardwareIndependentTestBase,
+      public ::testing::WithParamInterface</*use_experimental_tiling=*/bool> {
  public:
   CombinedGpuPerformanceModelTest() : analysis_(options_, device_info_) {
     options_.count_multiple_input_accesses = true;
     RegisterSymbolicExprStorage(&mlir_context_);
   }
+
+  bool use_experimental_tiling() const { return GetParam(); }
 
   mlir::MLIRContext mlir_context_;
   GpuHloCostAnalysis::Options options_;
@@ -54,10 +58,11 @@ class CombinedGpuPerformanceModelTest : public HloHardwareIndependentTestBase {
   GpuHloCostAnalysis analysis_;
   CombinedGpuPerformanceModel model_{
       device_info_, fusion_analysis_cache_, mlir_context_,
-      [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); }};
+      [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); },
+      use_experimental_tiling()};
 };
 
-TEST_F(CombinedGpuPerformanceModelTest,
+TEST_P(CombinedGpuPerformanceModelTest,
        ReturnsGpuPerformanceModelResultForNonTritonFusion) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
@@ -72,7 +77,7 @@ TEST_F(CombinedGpuPerformanceModelTest,
   ASSERT_OK(add->Accept(&analysis_));
   GpuPerformanceModelCache reference_cache;
   GpuPerformanceModel reference_model(device_info_, fusion_analysis_cache_,
-                                      reference_cache, &mlir_context_);
+                                      reference_cache);
   const EstimateRunTimeData expected_result =
       reference_model.EstimateRunTimeForInstruction(add, &analysis_);
 
@@ -87,54 +92,8 @@ TEST_F(CombinedGpuPerformanceModelTest,
   EXPECT_EQ(result->exec_time, expected_result.exec_time);
 }
 
-TEST_F(CombinedGpuPerformanceModelTest,
-       ReturnsIndexingModelResultForTritonFusion) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule test_module
-    triton_fusion {
-      p0 = f32[1024] parameter(0)
-      p1 = f32[1024] parameter(1)
-      ROOT add = f32[1024] add(p0, p1)
-    }
-    ENTRY entry_computation {
-      p0 = f32[1024] parameter(0)
-      p1 = f32[1024] parameter(1)
-      ROOT fusion = f32[1024] fusion(p0, p1), kind=kCustom, calls=triton_fusion,
-        backend_config={
-          "fusion_backend_config": {
-            kind: "__triton",
-            block_level_fusion_config: {
-              output_tiles: [{sizes: ["1024"]}],
-              num_warps: "1"
-            }
-          }
-        }
-    }
-  )")
-                    .value();
-  HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ASSERT_OK(fusion->Accept(&analysis_));
-  GpuPerformanceModelWithIndexingAnalysis reference_model(
-      &device_info_, &fusion_analysis_cache_,
-      [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); },
-      &mlir_context_);
-  const EstimateRunTimeData expected_result =
-      reference_model.EstimateRunTimeForInstruction(fusion);
-
-  auto result = model_.EstimateRunTimeForInstruction(fusion, &analysis_);
-
-  ASSERT_OK(result.status());
-  EXPECT_EQ(result->flops, expected_result.flops);
-  EXPECT_EQ(result->bytes_read, expected_result.bytes_read);
-  EXPECT_EQ(result->bytes_written, expected_result.bytes_written);
-  EXPECT_EQ(result->read_time, expected_result.read_time);
-  EXPECT_EQ(result->write_time, expected_result.write_time);
-  EXPECT_EQ(result->compute_time, expected_result.compute_time);
-  EXPECT_EQ(result->exec_time, expected_result.exec_time);
-}
-
 // TODO: b/493907020 Remove this after removing from GpuPerformanceModel.
-TEST_F(CombinedGpuPerformanceModelTest,
+TEST_P(CombinedGpuPerformanceModelTest,
        EstimateRunTimesMatchesGpuPerformanceModel) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
@@ -152,7 +111,7 @@ TEST_F(CombinedGpuPerformanceModelTest,
   ASSERT_OK(module->entry_computation()->Accept(&analysis_));
   GpuPerformanceModelCache cache;
   GpuPerformanceModel standalone_model(device_info_, fusion_analysis_cache_,
-                                       cache, &mlir_context_);
+                                       cache);
   standalone_model.EstimateRunTimeForInstruction(add, &analysis_);
   standalone_model.EstimateRunTimeForInstruction(exp, &analysis_);
   auto expected = standalone_model.EstimateRunTimes(add, &analysis_, {exp});
@@ -165,7 +124,7 @@ TEST_F(CombinedGpuPerformanceModelTest,
 }
 
 // TODO: b/493907020 Remove this after removing from GpuPerformanceModel.
-TEST_F(CombinedGpuPerformanceModelTest,
+TEST_P(CombinedGpuPerformanceModelTest,
        EstimateRunTimesForMultiOutputMatchesGpuPerformanceModel) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
@@ -185,7 +144,7 @@ TEST_F(CombinedGpuPerformanceModelTest,
   ASSERT_OK(module->entry_computation()->Accept(&analysis_));
   GpuPerformanceModelCache cache;
   GpuPerformanceModel standalone_model(device_info_, fusion_analysis_cache_,
-                                       cache, &mlir_context_);
+                                       cache);
   auto expected = standalone_model.EstimateRunTimesForMultiOutputFusion(
       add, exp, &analysis_);
 
@@ -196,7 +155,7 @@ TEST_F(CombinedGpuPerformanceModelTest,
   EXPECT_EQ(result->time_fused, expected.time_fused);
 }
 
-TEST_F(CombinedGpuPerformanceModelTest, CachesResults) {
+TEST_P(CombinedGpuPerformanceModelTest, CachesResults) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
     ENTRY entry_computation {
@@ -217,7 +176,7 @@ TEST_F(CombinedGpuPerformanceModelTest, CachesResults) {
   EXPECT_EQ(model_.GetCache().Get(*add)->exec_time, result->exec_time);
 }
 
-TEST_F(CombinedGpuPerformanceModelTest, InvalidatesCache) {
+TEST_P(CombinedGpuPerformanceModelTest, InvalidatesCache) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
     ENTRY entry_computation {
@@ -236,6 +195,13 @@ TEST_F(CombinedGpuPerformanceModelTest, InvalidatesCache) {
 
   EXPECT_FALSE(model_.GetCache().Get(*add).has_value());
 }
+
+INSTANTIATE_TEST_SUITE_P(CombinedGpuPerformanceModelTestSuite,
+                         CombinedGpuPerformanceModelTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "ExperimentalTiling"
+                                             : "SymbolicTiling";
+                         });
 
 }  // namespace
 }  // namespace gpu

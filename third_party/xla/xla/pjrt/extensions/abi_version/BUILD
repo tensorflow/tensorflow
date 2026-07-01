@@ -18,6 +18,7 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_abi_version_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_helpers",
+        "//xla/pjrt/c:pjrt_c_api_status_utils",
         "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
         "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
         "@com_google_absl//absl/functional:function_ref",

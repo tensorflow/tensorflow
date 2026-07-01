@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iomanip>
 #include <iostream>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/evaluator/hlo_evaluator_interface.h"
@@ -154,7 +156,7 @@ absl::StatusOr<Literal> ExecuteWithRunner(
     std::unique_ptr<HloModule> module,
     const BufferAssignmentProto* buffer_assignment_proto,
     absl::Span<const Literal> args, HloRunnerInterface* runner,
-    bool run_hlo_passes) {
+    bool run_hlo_passes, int64_t execution_seed = 0) {
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       VerifyHloModule(module.get(), /*layout_sensitive=*/false,
                       /*allow_mixed_precision=*/true),
@@ -163,12 +165,38 @@ absl::StatusOr<Literal> ExecuteWithRunner(
   std::cerr << "Running HLO module with runner " << runner->Name() << "...\n";
   XLA_VLOG_LINES(1, module->ToString());
   const auto start = std::chrono::high_resolution_clock::now();
-  auto result_status =
-      (buffer_assignment_proto == nullptr)
-          ? runner->Execute(std::move(module), args, run_hlo_passes)
-          : runner->ExecuteWithBufferAssignment(std::move(module),
-                                                buffer_assignment_proto, args,
-                                                run_hlo_passes);
+  absl::StatusOr<Literal> result_status;
+  if (execution_seed != 0) {
+    HloRunnerInterface::ReplicatedExecuteOptions rep_opts;
+    rep_opts.seed = execution_seed;
+    rep_opts.run_hlo_passes = run_hlo_passes;
+    for (const auto& arg : args) {
+      rep_opts.arguments.push_back(&arg);
+    }
+    rep_opts.num_devices = module->config().replica_count();
+
+    auto rep_result = runner->ExecuteReplicated(std::move(module), rep_opts);
+    if (!rep_result.ok()) {
+      result_status = rep_result.status();
+    } else if (rep_result->empty()) {
+      result_status =
+          absl::InternalError("ExecuteReplicated returned no results");
+    } else {
+      // For the purpose of run_hlo_module, returning a single Literal is
+      // expected. Taking the result of the first replica is sufficient for
+      // data-parallel replication (all replicas produce same result). For
+      // partitioned modules, this returns a partial result, but this tool
+      // does not support combining partitioned results in this path anyway.
+      result_status = std::move((*rep_result)[0]);
+    }
+  } else {
+    result_status =
+        (buffer_assignment_proto == nullptr)
+            ? runner->Execute(std::move(module), args, run_hlo_passes)
+            : runner->ExecuteWithBufferAssignment(std::move(module),
+                                                  buffer_assignment_proto, args,
+                                                  run_hlo_passes);
+  }
   const auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> diff = end - start;
   std::cerr << "... compiled and ran in " << diff.count() << "s.\n";
@@ -208,18 +236,18 @@ absl::Status RunAndCompareInternal(
   if (options.flatten_control_flow) {
     HloControlFlowFlattening control_flow_flattening(
         HloControlFlowFlattening::Options{/*while_execution_count=*/1});
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         copy_result_on_failure(control_flow_flattening.Run(test_module.get()),
                                ModuleResult::kCompilationError, test_run_result)
             .status());
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto args, copy_result_on_failure(
-                     MakeFakeArguments(test_module.get(), engine,
-                                       options.use_large_float_range,
-                                       options.treat_gte_as_data_formatting),
-                     ModuleResult::kOtherError, test_run_result));
+  ASSIGN_OR_RETURN(auto args,
+                   copy_result_on_failure(
+                       MakeFakeArguments(test_module.get(), engine,
+                                         options.use_large_float_range,
+                                         options.treat_gte_as_data_formatting),
+                       ModuleResult::kOtherError, test_run_result));
   // Use provided input literals as arguments, if any.
   if (iteration_literals_proto != nullptr &&
       iteration_literals_proto->arguments_size() != 0) {
@@ -232,10 +260,9 @@ absl::Status RunAndCompareInternal(
           "number of expected arguments.");
     } else {
       for (int i = 0; i < args.size(); ++i) {
-        TF_ASSIGN_OR_RETURN(
-            auto expected_shape,
-            xla::Shape::FromProto(
-                iteration_literals_proto->arguments(i).shape()));
+        ASSIGN_OR_RETURN(auto expected_shape,
+                         xla::Shape::FromProto(
+                             iteration_literals_proto->arguments(i).shape()));
         if (!literal_comparison::EqualShapes(xla::Shape(args[i].shape()),
                                              expected_shape)
                  .ok()) {
@@ -247,7 +274,7 @@ absl::Status RunAndCompareInternal(
               "because of a shape mismatch.",
               i);
         }
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             args[i],
             copy_result_on_failure(xla::Literal::CreateFromProto(
                                        iteration_literals_proto->arguments(i)),
@@ -276,7 +303,7 @@ absl::Status RunAndCompareInternal(
 
     // PrepareReferenceModule needs to know the *test* runner, in order to
     // properly match the test runner's numerics.
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         reference_module,
         copy_result_on_failure(
             PrepareReferenceModule(
@@ -285,11 +312,12 @@ absl::Status RunAndCompareInternal(
             ModuleResult::kCompilationError, reference_run_result));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto test_result,
       copy_result_on_failure(
           ExecuteWithRunner(std::move(test_module), buffer_assignment_proto,
-                            args, test_runner, options.run_test_hlo_passes),
+                            args, test_runner, options.run_test_hlo_passes,
+                            options.execution_seed),
           ModuleResult::kRuntimeError, test_run_result));
   if (test_run_result != nullptr) {
     *test_run_result = ModuleResult::kRan;
@@ -320,12 +348,13 @@ absl::Status RunAndCompareInternal(
     return absl::OkStatus();
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto reference_result,
       copy_result_on_failure(
           ExecuteWithRunner(std::move(reference_module),
                             /*buffer_assignment_proto=*/nullptr, args,
-                            reference_runner, options.run_reference_hlo_passes),
+                            reference_runner, options.run_reference_hlo_passes,
+                            options.execution_seed),
           ModuleResult::kRuntimeError, reference_run_result));
   if (reference_run_result != nullptr) {
     *reference_run_result = ModuleResult::kRan;
@@ -455,7 +484,7 @@ absl::Status RunIsolatedAndCompare(
 
   std::vector<ChunkResult> chunk_results;
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<HloModule>> modules,
       DecomposeHloModule(*test_module, /*deduplicate_modules=*/true));
 
@@ -519,17 +548,17 @@ absl::Status RunAndCompare(
     input_format = std::string(tsl::io::Extension(hlo_filename));
   }
   BufferAssignmentProto buffer_assignment_proto;
-  TF_ASSIGN_OR_RETURN(
-      auto test_module,
-      LoadModuleFromFile(
-          hlo_filename, input_format, hlo_module_loader_details::Config(),
-          config_modifier_hook,
-          options.use_buffer_assignment_from_proto ? &buffer_assignment_proto
-                                                   : nullptr));
+  ASSIGN_OR_RETURN(auto test_module,
+                   LoadModuleFromFile(hlo_filename, input_format,
+                                      hlo_module_loader_details::Config(),
+                                      config_modifier_hook,
+                                      options.use_buffer_assignment_from_proto
+                                          ? &buffer_assignment_proto
+                                          : nullptr));
   HloVerifier verifier(
       HloVerifierOpts{}.WithLayoutSensitive(false).WithAllowMixedPrecision(
           true));
-  TF_RETURN_IF_ERROR(verifier.Run(test_module.get()).status());
+  RETURN_IF_ERROR(verifier.Run(test_module.get()).status());
   if (compilation_env_modifier_hook) {
     CHECK_OK(compilation_env_modifier_hook(options, *test_module))
         << "Could not adjust the compilation environment for user provided "
@@ -547,8 +576,8 @@ absl::Status RunAndCompare(
         (input_format == "pb" || input_format == "pbtxt")) {
       // User is giving a snapshot (which contains inputs)
       LOG(INFO) << "Using input data from the user-provided snapshot.";
-      TF_ASSIGN_OR_RETURN(iteration_literals_proto_local,
-                          LoadInputFromFile(hlo_filename, input_format));
+      ASSIGN_OR_RETURN(iteration_literals_proto_local,
+                       LoadInputFromFile(hlo_filename, input_format));
       iteration_literals_proto = iteration_literals_proto_local.get();
     } else if (input_format == "pb" || input_format == "pbtxt") {
       LOG(INFO)

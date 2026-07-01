@@ -41,6 +41,10 @@ class DummyThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
   }
+  BufferUses buffer_uses() const override { return {}; }
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    return absl::UnimplementedError("DummyThunk::ToProto is not implemented");
+  }
 };
 
 using ::testing::IsEmpty;

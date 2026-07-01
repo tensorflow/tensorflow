@@ -28,7 +28,7 @@ tt.func @block_barrier_kernel(
   // CHECK-NEXT:   %[[ADD_PTR_4:.+]] = tt.addptr %[[INT_TO_PTR_2]], %[[MULI]]
   // CHECK-NEXT:   %[[SPLAT_ADD_PTR_4:.+]] = tt.splat %[[ADD_PTR_4]]
   // CHECK-NEXT:   %[[ADD_PTR_5:.+]] = tt.addptr %[[SPLAT_ADD_PTR_4]], %[[RANGE]]
-  // CHECK-NEXT:   triton_xla.atomic_spin_wait sys, acquire, %[[ADD_PTR_5]], less_than, %[[SIGNAL_VALUE]]
+  // CHECK-NEXT:   triton_xla.atomic_spin_wait sys, acquire, %[[ADD_PTR_5]], greater_than_or_equal_to, %[[SIGNAL_VALUE]]
   // CHECK-NEXT: }
   // CHECK-NEXT: ttg.barrier local
   // CHECK-NEXT: tt.return

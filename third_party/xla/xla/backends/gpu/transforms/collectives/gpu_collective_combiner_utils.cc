@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -42,8 +43,7 @@ absl::Status AppendPipelinedInstruction(HloInstruction* instr,
   if (!IsCollective(instr)) {
     return absl::OkStatus();
   }
-  TF_ASSIGN_OR_RETURN(auto config,
-                      instr->backend_config<gpu::GpuBackendConfig>());
+  ASSIGN_OR_RETURN(auto config, instr->backend_config<gpu::GpuBackendConfig>());
   config.mutable_collective_backend_config()->set_is_pipelined(true);
   return instr->set_backend_config(config);
 }
@@ -97,20 +97,25 @@ bool EnableHeuristicCollectiveCombining(
 
 absl::Status MergeCollectiveBackendConfig(
     absl::Span<HloInstruction* const> to_combine, HloInstruction* combined) {
-  TF_ASSIGN_OR_RETURN(auto config,
-                      combined->backend_config<gpu::GpuBackendConfig>());
+  ASSIGN_OR_RETURN(auto config,
+                   combined->backend_config<gpu::GpuBackendConfig>());
   bool any_pipelined = false;
+  bool any_spmd_generated = false;
+
   for (const HloInstruction* inst : to_combine) {
     auto src_config = inst->backend_config<GpuBackendConfig>();
-    if (src_config.ok() &&
-        src_config->collective_backend_config().is_pipelined()) {
-      any_pipelined = true;
-      break;
+    if (src_config.ok()) {
+      any_pipelined |= src_config->collective_backend_config().is_pipelined();
     }
+    // IsSpmdGenerated checks both the frontend attribute (set by the SPMD
+    // partitioner) and the backend config field (set on earlier combines).
+    any_spmd_generated |= IsSpmdGenerated(*inst);
   }
-  if (any_pipelined) {
-    config.mutable_collective_backend_config()->set_is_pipelined(true);
-  }
+
+  config.mutable_collective_backend_config()->set_is_pipelined(any_pipelined);
+  config.mutable_collective_backend_config()->set_is_spmd_generated(
+      any_spmd_generated);
+
   return combined->set_backend_config(config);
 }
 

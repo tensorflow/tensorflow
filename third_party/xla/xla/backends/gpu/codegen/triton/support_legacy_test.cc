@@ -79,7 +79,7 @@ bool CombinationCrashesTriton(PrimitiveType lhs_type, PrimitiveType rhs_type,
 class DotTest : public SupportTestBase,
                 public ::testing::WithParamInterface<
                     std::tuple<PrimitiveType, HloOpcode>>,
-                public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+                public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   DotTest()
       : SupportTestBase(
@@ -156,7 +156,7 @@ ENTRY e {
       EXPECT_THAT(
           TritonWrapper("test_fn", ti.TritonFusion(), GetComputeCapability(),
                         dev_info, block_level_parameters, target_triple_,
-                        data_layout_, llvm_ctx_, mlir_context_),
+                        data_layout_, mlir_context_),
           absl_testing::StatusIs(
               absl::StatusCode::kInternal,
               ::testing::HasSubstr("Failed to compile Triton kernel")));
@@ -221,7 +221,7 @@ std::string DynamicSliceTestParamToString(
 class DynamicSliceTest
     : public SupportTestBase,
       public ::testing::WithParamInterface<DynamicSliceTestParam::TupleType>,
-      public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+      public HloInterpreterReferenceMixin<HloTestBase> {
  public:
   DynamicSliceTest()
       : SupportTestBase(
@@ -292,11 +292,11 @@ ENTRY e {
   const bool is_supported_instruction =
       legacy_triton::IsTritonSupportedInstruction(*dynamic_slice,
                                                   GetComputeCapability())
-          .CanFuse();
+          .IsAllowed();
   const bool is_supported_dynamic_slice =
       legacy_triton::IsTritonSupportedDynamicSlice(
           *Cast<HloDynamicSliceInstruction>(dynamic_slice))
-          .CanFuse();
+          .IsAllowed();
   EXPECT_EQ(is_supported_instruction, is_supported_dynamic_slice);
 
   if (is_supported_instruction) {
@@ -456,10 +456,9 @@ ENTRY e {
               .backend_config<GpuBackendConfig>()
               ->fusion_backend_config()
               .block_level_fusion_config());
-  TF_EXPECT_OK(TritonWrapper("test_fn", ti.TritonFusion(),
-                             GetComputeCapability(), dev_info,
-                             block_level_parameters, target_triple_,
-                             data_layout_, llvm_ctx_, mlir_context_));
+  TF_EXPECT_OK(TritonWrapper(
+      "test_fn", ti.TritonFusion(), GetComputeCapability(), dev_info,
+      block_level_parameters, target_triple_, data_layout_, mlir_context_));
 }
 
 TEST_F(SupportLegacyTest,

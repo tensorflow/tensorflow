@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -58,6 +59,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -517,6 +519,78 @@ TEST(PjRtCApiClientTpuTest, GetHostMemoryAllocator) {
   HostMemoryAllocator::OwnedPtr ptr = allocator->Allocate(size);
   ASSERT_NE(ptr, nullptr);
   std::memset(ptr.get(), 0, size);
+}
+
+TEST(PjRtCApiClientTpuTest, PeakMemoryStats) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetXlaPjrtTpuClient());
+  PjRtDevice* device = client->addressable_devices()[0];
+
+  TF_ASSERT_OK_AND_ASSIGN(auto initial_stats, device->GetAllocatorStats());
+
+  const int64_t kAllocSize = 1024 * 1024;  // 1MB
+  Shape shape = ShapeUtil::MakeShape(S32, {kAllocSize / sizeof(int32_t)});
+  TF_ASSERT_OK_AND_ASSIGN(
+      *shape.mutable_layout(),
+      client->GetDefaultLayout(shape.element_type(), shape.dimensions()));
+
+  TF_ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * memory_space,
+                          device->default_memory_space());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->CreateUninitializedBuffer(shape, memory_space));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stats_after_alloc, device->GetAllocatorStats());
+  ASSERT_EQ(stats_after_alloc.bytes_in_use,
+            initial_stats.bytes_in_use + kAllocSize);
+  ASSERT_EQ(stats_after_alloc.peak_bytes_in_use,
+            initial_stats.peak_bytes_in_use + kAllocSize);
+  ASSERT_EQ(stats_after_alloc.peak_allocated_bytes,
+            initial_stats.peak_allocated_bytes + kAllocSize);
+
+  buffer.reset();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stats_after_reset, device->GetAllocatorStats());
+  ASSERT_EQ(stats_after_reset.bytes_in_use, initial_stats.bytes_in_use);
+  ASSERT_EQ(stats_after_reset.peak_bytes_in_use,
+            stats_after_alloc.peak_bytes_in_use);
+  ASSERT_EQ(stats_after_reset.peak_allocated_bytes,
+            stats_after_alloc.peak_allocated_bytes);
+
+  ASSERT_OK(device->ClearMemoryStats());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stats_after_clear, device->GetAllocatorStats());
+  EXPECT_EQ(stats_after_clear.bytes_in_use, initial_stats.bytes_in_use);
+  EXPECT_EQ(stats_after_clear.peak_bytes_in_use,
+            stats_after_clear.bytes_in_use);
+  EXPECT_EQ(stats_after_clear.peak_allocated_bytes,
+            stats_after_clear.bytes_in_use + stats_after_clear.bytes_reserved);
+}
+
+TEST(PjRtCApiClientTpuTest, LoadSerializedExecutableWithComputationOrigin) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetXlaPjrtTpuClient());
+
+  constexpr char kProgram[] = "func.func @main() {return}";
+  auto context = std::make_unique<mlir::MLIRContext>();
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, *context));
+  CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      client->Compile(
+          xla::MaybeOwningMlirModule(std::move(context), std::move(module)),
+          options));
+  ASSERT_NE(executable.get(), nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
+                          executable->SerializeExecutable());
+
+  LoadOptions load_options;
+  load_options.computation_origin = PjRtDeviceDimensions({0, 0, 0});
+
+  EXPECT_OK(client->LoadSerializedExecutable(serialized_executable, {},
+                                             load_options));
 }
 
 }  // namespace

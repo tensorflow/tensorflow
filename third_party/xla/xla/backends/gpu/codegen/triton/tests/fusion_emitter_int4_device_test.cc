@@ -39,15 +39,12 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class TritonTest : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+class TritonTest : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
     // Do not fall back to cuBLAS, we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
-    // Do not autotune split-k by default, since this prevents deterministically
-    // matching the optimized HLO.
-    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
     debug_options.add_xla_disable_hlo_passes("splitk-rewriter");
     // Always rewrite Gemms with Triton regardless of size.
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);

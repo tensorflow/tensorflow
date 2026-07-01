@@ -38,6 +38,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -133,6 +134,10 @@ class BufferBase : public TensorBuffer {
   // Returns the type of the underlying memory.
   AllocatorMemoryType GetMemoryType() const override {
     return alloc_->GetMemoryType();
+  }
+
+  bool AllocatesOpaqueHandle() const override {
+    return alloc_->AllocatesOpaqueHandle();
   }
 
  protected:
@@ -630,9 +635,49 @@ Buffer<T>::~Buffer() {
 // (tensor_content). This is used when we expect the TensorProto is
 // used by a client program which may not know how to encode a tensor
 // in the compact binary representation.
+// Maximum allocation (in bytes) allowed when the proto's typed fields contain
+// no data at all (in_n <= 0).  A proto with an empty value list but a huge
+// shape is the hallmark of an amplification attack: a tiny serialized message
+// triggers an arbitrarily large zero-filled allocation.  Legitimate protos
+// that broadcast a single value to a large shape always have in_n >= 1, so
+// this guard does not restrict normal usage.
+//
+// 2 GB is chosen because:
+//   - It matches the 2 GB ceiling on a single serialized protobuf message, the
+//     natural upper bound for any tensor that could be parsed from a proto.
+//   - It still bounds amplification: a tiny no-data message triggers at most a
+//     2 GB zero-filled allocation, not the unbounded allocation possible with
+//     no guard (CWE-770).
+//   - It accommodates legitimately default-initialized large tensors, e.g. a
+//     [2,1024,1024,1024] bool variable set to False serializes with an empty
+//     value list (in_n == 0) and must still deserialize.
+static constexpr int64_t kMaxBytesFromProtoNoData = int64_t{2} << 30;  // 2 GB
+
+// Returns false only when the proto carries no typed values (in_n <= 0, a
+// fabricated zero-fill) AND the requested allocation exceeds
+// kMaxBytesFromProtoNoData. Broadcasting one or more real values to a larger
+// shape (in_n > 0) is legitimate TF behavior (e.g. large constant variable
+// initializers), so it is always allowed. The size check uses division to
+// avoid int64 overflow on `n * element_size`.
+inline bool IsSafeProtoAllocation(int64_t in_n, int64_t n,
+                                  size_t element_size) {
+  if (in_n > 0) return true;  // Allow broadcast for legitimate initialization.
+  return n <= kMaxBytesFromProtoNoData / static_cast<int64_t>(element_size);
+}
+
 template <typename T>
 TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = ProtoHelper<T>::NumElements(in);
+  // Block amplification: broadcasting or zero-filling a tiny proto into a huge
+  // allocation. Covers both the no-data (in_n <= 0) and the few-value
+  // broadcast (0 < in_n < n) cases, and is overflow-safe.
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(T))) {
+    LOG(ERROR) << "FromProtoField rejected: proto requests " << n
+               << " elements from " << in_n << " input value(s) "
+               << "(amplification guard).";
+    return nullptr;
+  }
   Buffer<T>* buf = new Buffer<T>(a, n);
   T* data = buf->template base<T>();
   if (data == nullptr) {
@@ -640,7 +685,6 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
     return nullptr;
   }
 
-  const int64_t in_n = ProtoHelper<T>::NumElements(in);
   if (in_n <= 0) {
     std::fill_n(data, n, T());
   } else {
@@ -666,13 +710,18 @@ template <typename T>
 TensorBuffer* Int4OrInt2FromProtoField(Allocator* a, const TensorProto& in,
                                        int64_t n) {
   n = std::max<int64_t>(n, 0);
+  const int64_t in_n = in.int_val().size();
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(T))) {
+    LOG(ERROR) << "Int4OrInt2FromProtoField rejected: proto requests " << n
+               << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<T>* buf = new Buffer<T>(a, n);
   int8_t* data = buf->template base<int8_t>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = in.int_val().size();
   auto begin = in.int_val().begin();
   if (n <= in_n) {
 // swapping bits of the data pointer for big endian systems
@@ -723,13 +772,18 @@ template <>
 TensorBuffer* FromProtoField<ResourceHandle>(Allocator* a,
                                              const TensorProto& in, int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = ProtoHelper<ResourceHandle>::NumElements(in);
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(ResourceHandle))) {
+    LOG(ERROR) << "FromProtoField<ResourceHandle> rejected: proto requests "
+               << n << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<ResourceHandle>* buf = new Buffer<ResourceHandle>(a, n);
   ResourceHandle* data = buf->template base<ResourceHandle>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = ProtoHelper<ResourceHandle>::NumElements(in);
   if (in_n <= 0) {
     std::fill_n(data, n, ResourceHandle());
   } else {
@@ -760,13 +814,18 @@ template <>
 TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
                                       int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = ProtoHelper<Variant>::NumElements(in);
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(Variant))) {
+    LOG(ERROR) << "FromProtoField<Variant> rejected: proto requests " << n
+               << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<Variant>* buf = new Buffer<Variant>(a, n);
   Variant* data = buf->template base<Variant>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = ProtoHelper<Variant>::NumElements(in);
   if (in_n <= 0) {
     std::fill_n(data, n, Variant());
   } else {
@@ -800,13 +859,18 @@ template <>
 TensorBuffer* FromProtoField<Eigen::half>(Allocator* a, const TensorProto& in,
                                           int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = in.half_val().size();
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(Eigen::half))) {
+    LOG(ERROR) << "FromProtoField<Eigen::half> rejected: proto requests " << n
+               << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<Eigen::half>* buf = new Buffer<Eigen::half>(a, n);
   uint16_t* data = buf->template base<uint16_t>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = in.half_val().size();
   auto begin = in.half_val().begin();
   if (n <= in_n) {
     std::copy_n(begin, n, data);
@@ -824,13 +888,18 @@ template <>
 TensorBuffer* FromProtoField<bfloat16>(Allocator* a, const TensorProto& in,
                                        int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = in.half_val().size();
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(bfloat16))) {
+    LOG(ERROR) << "FromProtoField<bfloat16> rejected: proto requests " << n
+               << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<bfloat16>* buf = new Buffer<bfloat16>(a, n);
   uint16_t* data = buf->template base<uint16_t>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = in.half_val().size();
   auto begin = in.half_val().begin();
   if (n <= in_n) {
     std::copy_n(begin, n, data);
@@ -920,14 +989,14 @@ absl::Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
   int in_size = DataTypeSize(other.dtype());
   int out_size = DataTypeSize(dtype);
   if (in_size == 0) {
-    return errors::InvalidArgument("other tensor has zero-sized data type");
+    return absl::InvalidArgumentError("other tensor has zero-sized data type");
   }
   if (out_size == 0) {
-    return errors::InvalidArgument("specified output type is zero-sized");
+    return absl::InvalidArgumentError("specified output type is zero-sized");
   }
   if (shape.num_elements() * out_size !=
       other.shape().num_elements() * in_size) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "input and output shapes/data type sizes are not compatible");
   }
   shape_ = shape;
@@ -1039,9 +1108,10 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
 absl::Status Tensor::BuildTensor(DataType type, const TensorShape& shape,
                                  Tensor* out_tensor) {
   // Avoid crashes due to invalid or unsupported types.
-  CASES_WITH_DEFAULT(
-      type, {}, return errors::InvalidArgument("Type not set"),
-      return errors::InvalidArgument("Unexpected type: ", DataType_Name(type)));
+  CASES_WITH_DEFAULT(type, {},
+                     return absl::InvalidArgumentError("Type not set"),
+                     return absl::InvalidArgumentError(absl::StrCat(
+                         "Unexpected type: ", DataType_Name(type))));
   *out_tensor = Tensor(type, shape);
   return absl::OkStatus();
 }
@@ -1102,6 +1172,9 @@ class SubBuffer : public TensorBuffer {
   }
   void FillAllocationDescription(AllocationDescription* proto) const override {
     root_->FillAllocationDescription(proto);
+  }
+  bool AllocatesOpaqueHandle() const override {
+    return root_->AllocatesOpaqueHandle();
   }
 
  private:
@@ -1594,6 +1667,12 @@ absl::string_view Tensor::tensor_data() const {
   if (buf_ == nullptr) return absl::string_view();
   CHECK(DataTypeCanUseMemcpy(dtype()));  // Crash OK
   return tensor_data_internal();
+}
+
+absl::Cord Tensor::tensor_data_cord() const {
+  if (buf_ == nullptr) return absl::Cord();
+  return absl::MakeCordFromExternal(tensor_data(),
+                                    [t = *this](absl::string_view) {});
 }
 
 void* Tensor::data() const {

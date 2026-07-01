@@ -90,11 +90,11 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
   //     parameter iteration space (i.e. the map may only reorder how the
   //     results are generated, but may not change the results themselves);
   EXPECT_EQ(scheduled_indexing, *ParseIndexingMap(R"(
-    (pid_0) -> (pid_0 floordiv 21, pid_0 mod 7), domain: pid_0 in [0, 104]
+    (pid_0) -> (pid_0 / 21, pid_0 mod 7), domain: pid_0 in [0, 104]
   )",
                                                   &mlir_context_));
 
-  // `pid_0 floordiv 21` has the same upper bound as `d2`.
+  // `pid_0 / 21` has the same upper bound as `d2`.
   EXPECT_EQ(iteration_space_size / 21, bound(2));
   // `pid_0 mod 7` has the same upper bound as `d3`.
   EXPECT_EQ(7, bound(3));

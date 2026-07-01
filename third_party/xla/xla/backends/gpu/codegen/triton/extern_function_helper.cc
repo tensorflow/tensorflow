@@ -15,18 +15,19 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/extern_function_helper.h"
 
+#include <optional>
 #include <string>
 #include <variant>
-#include <vector>
 
 #include "absl/functional/overload.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Builders.h"
@@ -44,8 +45,12 @@ namespace {
 using ::mlir::triton::MemSemantic;
 using ::mlir::triton::MemSyncScope;
 
+static constexpr llvm::StringRef kMask = "mask";
+static constexpr llvm::StringRef kNoMask = "nomask";
+static constexpr llvm::StringRef kXlaPrefix = "xla";
+
 // Helper to parse MemSemantic from string
-absl::StatusOr<MemSemantic> ParseMemSemantic(absl::string_view semantic_str) {
+absl::StatusOr<MemSemantic> ParseMemSemantic(llvm::StringRef semantic_str) {
   if (semantic_str == "relaxed") {
     return MemSemantic::RELAXED;
   }
@@ -58,12 +63,13 @@ absl::StatusOr<MemSemantic> ParseMemSemantic(absl::string_view semantic_str) {
   if (semantic_str == "acqrel") {
     return MemSemantic::ACQUIRE_RELEASE;
   }
-  return absl::InvalidArgumentError(
-      absl::StrFormat("Unknown memory semantic: %s", semantic_str));
+  return absl::InvalidArgumentError(absl::StrFormat(
+      "Unknown memory semantic: %s",
+      absl::string_view(semantic_str.data(), semantic_str.size())));
 }
 
 // Helper to parse MemSyncScope from string
-absl::StatusOr<MemSyncScope> ParseMemSyncScope(absl::string_view scope_str) {
+absl::StatusOr<MemSyncScope> ParseMemSyncScope(llvm::StringRef scope_str) {
   if (scope_str == "system") {
     return MemSyncScope::SYSTEM;
   }
@@ -74,19 +80,42 @@ absl::StatusOr<MemSyncScope> ParseMemSyncScope(absl::string_view scope_str) {
     return MemSyncScope::CTA;
   }
   return absl::InvalidArgumentError(
-      absl::StrFormat("Unknown memory sync scope: %s", scope_str));
+      absl::StrFormat("Unknown memory sync scope: %s",
+                      absl::string_view(scope_str.data(), scope_str.size())));
 }
 
 // Helper to parse Comparator from string
-absl::StatusOr<Comparator> ParseComparator(absl::string_view comparator_str) {
+absl::StatusOr<Comparator> ParseComparator(llvm::StringRef comparator_str) {
   if (comparator_str == "eq") {
     return Comparator::EQ;
   }
   if (comparator_str == "lt") {
     return Comparator::LT;
   }
-  return absl::InvalidArgumentError(
-      absl::StrFormat("Unknown comparator: %s", comparator_str));
+  if (comparator_str == "le") {
+    return Comparator::LE;
+  }
+  if (comparator_str == "gt") {
+    return Comparator::GT;
+  }
+  if (comparator_str == "ge") {
+    return Comparator::GE;
+  }
+  return absl::InvalidArgumentError(absl::StrFormat(
+      "Unknown comparator: %s",
+      absl::string_view(comparator_str.data(), comparator_str.size())));
+}
+
+// Helper to parse mask from string
+absl::StatusOr<bool> ParseMask(llvm::StringRef mask_str) {
+  if (mask_str == kMask) {
+    return true;
+  }
+  if (mask_str == kNoMask) {
+    return false;
+  }
+  return absl::InvalidArgumentError(absl::StrFormat(
+      "Unknown mask: %s", absl::string_view(mask_str.data(), mask_str.size())));
 }
 
 // Helper to convert MemSemantic to string
@@ -124,80 +153,286 @@ absl::string_view ComparatorToString(Comparator comparator) {
       return "eq";
     case Comparator::LT:
       return "lt";
+    case Comparator::LE:
+      return "le";
+    case Comparator::GT:
+      return "gt";
+    case Comparator::GE:
+      return "ge";
   }
   LOG(FATAL) << "Unknown Comparator value";
 }
 
-// Helper to convert MemSyncScope to PTX scope string
-absl::string_view MemSyncScopeToPTXScope(MemSyncScope scope) {
-  switch (scope) {
-    case MemSyncScope::SYSTEM:
-      return "sys";
-    case MemSyncScope::GPU:
-      return "gpu";
-    case MemSyncScope::CTA:
-      return "cta";
+// Helper to convert mask boolean to string
+absl::string_view MaskToString(bool has_mask) {
+  return has_mask ? kMask : kNoMask;
+}
+
+// Helper to convert MemSemantic to LLVM AtomicOrdering
+LLVM::AtomicOrdering MemSemanticToAtomicOrdering(triton::MemSemantic semantic) {
+  switch (semantic) {
+    case triton::MemSemantic::RELAXED:
+      return LLVM::AtomicOrdering::monotonic;
+    case triton::MemSemantic::ACQUIRE:
+      return LLVM::AtomicOrdering::acquire;
+    case triton::MemSemantic::RELEASE:
+      return LLVM::AtomicOrdering::release;
+    case triton::MemSemantic::ACQUIRE_RELEASE:
+      return LLVM::AtomicOrdering::acq_rel;
+  }
+  LOG(FATAL) << "Unknown MemSemantic value";
+}
+
+LLVM::ICmpPredicate ComparatorToICmpPredicate(Comparator comparator) {
+  switch (comparator) {
+    case Comparator::EQ:
+      return LLVM::ICmpPredicate::eq;
+    case Comparator::LT:
+      return LLVM::ICmpPredicate::ult;
+    case Comparator::LE:
+      return LLVM::ICmpPredicate::ule;
+    case Comparator::GT:
+      return LLVM::ICmpPredicate::ugt;
+    case Comparator::GE:
+      return LLVM::ICmpPredicate::uge;
+  }
+  LOG(FATAL) << "Unknown Comparator value";
+}
+
+// Helper to convert MemSyncScope to LLVM syncscope string for target backend
+llvm::StringRef MemSyncScopeToSyncScope(triton::MemSyncScope scope,
+                                        TargetBackend target) {
+  if (target == TargetBackend::CUDA) {
+    // NVPTX memory model (LLVM standard syncscope names)
+    switch (scope) {
+      case triton::MemSyncScope::SYSTEM:
+        return "";  // System scope for cross-GPU visibility
+      case triton::MemSyncScope::GPU:
+        return "device";
+      case triton::MemSyncScope::CTA:
+        return "block";
+    }
+  } else {  // ROCM
+    // AMDGPU memory model
+    switch (scope) {
+      case triton::MemSyncScope::SYSTEM:
+        return "";  // System scope for cross-GPU visibility
+      case triton::MemSyncScope::GPU:
+        return "agent";
+      case triton::MemSyncScope::CTA:
+        return "workgroup";
+    }
   }
   LOG(FATAL) << "Unknown MemSyncScope value";
+}
+
+// Create LLVM ops for GetThreadIdInstruction
+mlir::Value CreateGetThreadIdOps(const LLVMOpCreationParams& params) {
+  mlir::OpBuilder& builder = params.builder;
+  mlir::Type i32_type = builder.getI32Type();
+
+  // Create intrinsic call (backend-specific)
+  mlir::StringAttr intrinsic_name = builder.getStringAttr(
+      params.target == TargetBackend::CUDA ? "llvm.nvvm.read.ptx.sreg.tid.x"
+                                           : "llvm.amdgcn.workitem.id.x");
+
+  LLVM::CallIntrinsicOp intrinsic_call = LLVM::CallIntrinsicOp::create(
+      builder, params.loc, i32_type, intrinsic_name, mlir::ValueRange{});
+
+  return intrinsic_call->getResult(0);
+}
+
+// Create LLVM ops for AtomicWriteInstruction
+mlir::Value CreateAtomicWriteOps(const AtomicWriteInstruction& instruction,
+                                 const LLVMOpCreationParams& params) {
+  mlir::OpBuilder& builder = params.builder;
+  mlir::ValueRange operands = params.operands;
+  mlir::Type i32_type = builder.getI32Type();
+
+  // Expected operand layout: [ptr, value, mask?]
+  mlir::Value addr = operands[0];
+  mlir::Value value = operands[1];
+  mlir::Value mask = instruction.has_mask ? operands[2] : mlir::Value{};
+
+  llvm::StringRef syncscope =
+      MemSyncScopeToSyncScope(instruction.scope, params.target);
+  LLVM::AtomicOrdering ordering =
+      MemSemanticToAtomicOrdering(instruction.semantic);
+
+  // Prepare atomic store location
+  mlir::Block* exit_block = nullptr;
+  if (mask) {
+    // Masked atomic: if (mask != 0) { atomic_store } else { nop }
+    mlir::Block* current_block = builder.getBlock();
+    mlir::Block* atomic_block =
+        current_block->splitBlock(builder.getInsertionPoint());
+    exit_block = atomic_block->splitBlock(builder.getInsertionPoint());
+
+    // Check mask and branch
+    builder.setInsertionPointToEnd(current_block);
+    LLVM::ConstantOp zero = LLVM::ConstantOp::create(
+        builder, params.loc, i32_type, builder.getI32IntegerAttr(0));
+    LLVM::ICmpOp mask_nonzero = LLVM::ICmpOp::create(
+        builder, params.loc, LLVM::ICmpPredicate::ne, mask, zero);
+    LLVM::CondBrOp::create(builder, params.loc, mask_nonzero, atomic_block,
+                           exit_block);
+
+    // Set insertion point for atomic store
+    builder.setInsertionPointToStart(atomic_block);
+  }
+
+  // Perform atomic store
+  LLVM::StoreOp::create(builder, params.loc, value, addr, /*alignment=*/4,
+                        /*isVolatile=*/false,
+                        /*isNonTemporal=*/false, /*isInvariantGroup=*/false,
+                        ordering, builder.getStringAttr(syncscope));
+
+  if (mask) {
+    // Complete masked path: branch to exit
+    LLVM::BrOp::create(builder, params.loc, exit_block);
+    builder.setInsertionPointToStart(exit_block);
+  }
+
+  // Return poison value (result not expected to be used)
+  return LLVM::PoisonOp::create(builder, params.loc, i32_type);
+}
+
+// Create LLVM ops for AtomicSpinWaitInstruction
+mlir::Value CreateAtomicSpinWaitOps(
+    const AtomicSpinWaitInstruction& instruction,
+    const LLVMOpCreationParams& params) {
+  mlir::OpBuilder& builder = params.builder;
+  mlir::ValueRange operands = params.operands;
+  mlir::Type i32_type = builder.getI32Type();
+
+  // Expected operand layout: [ptr, expected, mask?]
+  mlir::Value addr = operands[0];
+  mlir::Value expected = operands[1];
+  mlir::Value mask = instruction.has_mask ? operands[2] : mlir::Value{};
+
+  llvm::StringRef syncscope =
+      MemSyncScopeToSyncScope(instruction.scope, params.target);
+  LLVM::AtomicOrdering ordering =
+      MemSemanticToAtomicOrdering(instruction.semantic);
+
+  // acq_rel is not valid for loads (only for RMW operations)
+  // This is guaranteed through parsing and validation
+  CHECK_NE(ordering, LLVM::AtomicOrdering::acq_rel)
+      << "acq_rel ordering is not supported for atomic loads";
+
+  // Create block structure (common for both masked and unmasked)
+  mlir::Block* current_block = builder.getBlock();
+  mlir::Block* loop_block =
+      current_block->splitBlock(builder.getInsertionPoint());
+  // Need to set insertion point to loop_block before splitting it
+  builder.setInsertionPointToStart(loop_block);
+  mlir::Block* exit_block = loop_block->splitBlock(builder.getInsertionPoint());
+  exit_block->addArgument(i32_type, params.loc);
+
+  builder.setInsertionPointToEnd(current_block);
+
+  if (mask) {
+    // Masked: conditional branch based on mask (if mask==0, skip loop)
+    LLVM::ConstantOp zero = LLVM::ConstantOp::create(
+        builder, params.loc, i32_type, builder.getI32IntegerAttr(0));
+    LLVM::ICmpOp mask_nonzero = LLVM::ICmpOp::create(
+        builder, params.loc, LLVM::ICmpPredicate::ne, mask, zero);
+    LLVM::CondBrOp::create(builder, params.loc, mask_nonzero, loop_block,
+                           mlir::ValueRange{}, exit_block,
+                           mlir::ValueRange{zero}, std::nullopt);
+  } else {
+    // Unmasked: unconditional branch to loop (required terminator)
+    LLVM::BrOp::create(builder, params.loc, mlir::ValueRange{}, loop_block);
+  }
+
+  // Loop: atomic load + compare + conditional branch
+  builder.setInsertionPointToStart(loop_block);
+  LLVM::LoadOp loaded = LLVM::LoadOp::create(
+      builder, params.loc, i32_type, addr, /*alignment=*/4,
+      /*isVolatile=*/false,
+      /*isNonTemporal=*/false, /*isInvariant=*/false,
+      /*isInvariantGroup=*/false, ordering, builder.getStringAttr(syncscope));
+  LLVM::ICmpPredicate predicate =
+      ComparatorToICmpPredicate(instruction.comparator);
+  LLVM::ICmpOp condition =
+      LLVM::ICmpOp::create(builder, params.loc, predicate, loaded, expected);
+  LLVM::CondBrOp::create(
+      /*builder=*/builder,
+      /*location=*/params.loc,
+      /*condition=*/condition,
+      /*trueDest=*/exit_block,  // When condition becomes true, exit loop
+      /*trueDestOperands=*/mlir::ValueRange{loaded},
+      /*falseDest=*/loop_block,  // When condition is false, loop again
+      /*falseDestOperands=*/mlir::ValueRange{},
+      /*branchWeights=*/std::nullopt);
+  // Return exit block argument
+  builder.setInsertionPointToStart(exit_block);
+  return exit_block->getArgument(0);
 }
 
 }  // namespace
 
 absl::StatusOr<ExternFunctionInstruction> ParseExternFunctionName(
-    absl::string_view func_name) {
+    llvm::StringRef func_name) {
   // Function name format: xla_<functionname>_<arg1>_<arg2>_...
   // Split by underscore to get tokens
-  std::vector<absl::string_view> tokens = absl::StrSplit(func_name, '_');
+  llvm::SmallVector<llvm::StringRef, 6> tokens;
+  func_name.split(tokens, '_');
 
-  // Must have at least 2 tokens: "xla" and function name
-  if (tokens.size() < 2 || tokens[0] != "xla") {
+  // Must have at least 2 tokens: kXlaPrefix and function name
+  if (tokens.size() < 2 || tokens[0] != kXlaPrefix) {
     return absl::InvalidArgumentError(
-        absl::StrFormat("Invalid extern function name: %s", func_name));
+        absl::StrFormat("Invalid extern function name: %s",
+                        absl::string_view(func_name.data(), func_name.size())));
   }
 
-  absl::string_view fn_name = tokens[1];
+  llvm::StringRef fn_name = tokens[1];
+  const int num_args = tokens.size() - 2;
 
   // xla_getthreadid (2 tokens total)
-  if (fn_name == "getthreadid") {
-    if (tokens.size() != 2) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "getthreadid expects no arguments, got %d", tokens.size() - 2));
+  if (fn_name == GetThreadIdInstruction::kName) {
+    using Instruction = GetThreadIdInstruction;
+    if (num_args != Instruction::kNumArgs) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("%s expects %d arguments, got %d", Instruction::kName,
+                          Instruction::kNumArgs, num_args));
     }
-    return GetThreadIdInstruction{};
+    return Instruction{};
   }
 
-  // xla_atomicwrite_<semantic>_<scope> (4 tokens total)
-  if (fn_name == "atomicwrite") {
-    if (tokens.size() != 4) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "atomicwrite expects 2 arguments (semantic, scope), got %d",
-          tokens.size() - 2));
+  // xla_atomicwrite_<semantic>_<scope>_<mask|nomask> (5 tokens total)
+  if (fn_name == AtomicWriteInstruction::kName) {
+    using Instruction = AtomicWriteInstruction;
+    if (num_args != Instruction::kNumArgs) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("%s expects %d arguments, got %d", Instruction::kName,
+                          Instruction::kNumArgs, num_args));
     }
-
-    TF_ASSIGN_OR_RETURN(auto semantic, ParseMemSemantic(tokens[2]));
-    TF_ASSIGN_OR_RETURN(auto scope, ParseMemSyncScope(tokens[3]));
-
-    return AtomicWriteInstruction{semantic, scope};
+    ASSIGN_OR_RETURN(MemSemantic semantic, ParseMemSemantic(tokens[2]));
+    ASSIGN_OR_RETURN(MemSyncScope scope, ParseMemSyncScope(tokens[3]));
+    ASSIGN_OR_RETURN(bool has_mask, ParseMask(tokens[4]));
+    return Instruction{semantic, scope, has_mask};
   }
 
-  // xla_atomicspinwait_<semantic>_<scope>_<comparator> (5 tokens total)
-  if (fn_name == "atomicspinwait") {
-    if (tokens.size() != 5) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "atomicspinwait expects 3 arguments (semantic, scope, comparator), "
-          "got %d",
-          tokens.size() - 2));
+  // xla_atomicspinwait_<semantic>_<scope>_<comparator> (6 tokens total)
+  if (fn_name == AtomicSpinWaitInstruction::kName) {
+    using Instruction = AtomicSpinWaitInstruction;
+    if (num_args != Instruction::kNumArgs) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("%s expects %d arguments, got %d", Instruction::kName,
+                          Instruction::kNumArgs, num_args));
     }
 
-    TF_ASSIGN_OR_RETURN(auto semantic, ParseMemSemantic(tokens[2]));
-    TF_ASSIGN_OR_RETURN(auto scope, ParseMemSyncScope(tokens[3]));
-    TF_ASSIGN_OR_RETURN(auto comparator, ParseComparator(tokens[4]));
-
-    return AtomicSpinWaitInstruction{semantic, scope, comparator};
+    ASSIGN_OR_RETURN(MemSemantic semantic, ParseMemSemantic(tokens[2]));
+    ASSIGN_OR_RETURN(MemSyncScope scope, ParseMemSyncScope(tokens[3]));
+    ASSIGN_OR_RETURN(Comparator comparator, ParseComparator(tokens[4]));
+    ASSIGN_OR_RETURN(bool has_mask, ParseMask(tokens[5]));
+    return Instruction{semantic, scope, comparator, has_mask};
   }
 
   return absl::InvalidArgumentError(
-      absl::StrFormat("Unknown extern function name: %s", func_name));
+      absl::StrFormat("Unknown extern function name: %s",
+                      absl::string_view(func_name.data(), func_name.size())));
 }
 
 std::string SerializeExternFunctionName(
@@ -205,20 +440,27 @@ std::string SerializeExternFunctionName(
   return std::visit(
       absl::Overload{
           [](const GetThreadIdInstruction&) -> std::string {
-            return "xla_getthreadid";
+            return absl::StrJoin({kXlaPrefix, GetThreadIdInstruction::kName},
+                                 "_");
           },
           [](const AtomicWriteInstruction& arg) -> std::string {
             return absl::StrJoin(
-                {"xla", "atomicwrite", MemSemanticToString(arg.semantic),
-                 MemSyncScopeToString(arg.scope)},
+                {
+                    kXlaPrefix,
+                    AtomicWriteInstruction::kName,
+                    MemSemanticToString(arg.semantic),
+                    MemSyncScopeToString(arg.scope),
+                    MaskToString(arg.has_mask),
+                },
                 "_");
           },
           [](const AtomicSpinWaitInstruction& arg) -> std::string {
-            return absl::StrJoin(
-                {"xla", "atomicspinwait", MemSemanticToString(arg.semantic),
-                 MemSyncScopeToString(arg.scope),
-                 ComparatorToString(arg.comparator)},
-                "_");
+            return absl::StrJoin({kXlaPrefix, AtomicSpinWaitInstruction::kName,
+                                  MemSemanticToString(arg.semantic),
+                                  MemSyncScopeToString(arg.scope),
+                                  ComparatorToString(arg.comparator),
+                                  MaskToString(arg.has_mask)},
+                                 "_");
           },
       },
       instruction);
@@ -255,154 +497,6 @@ absl::Status ValidateMemorySemantic(
       },
       instruction);
 }
-
-namespace {
-
-// Create LLVM ops for GetThreadIdInstruction
-mlir::Value CreateGetThreadIdOps(const LLVMOpCreationParams& params) {
-  auto& builder = params.builder;
-  auto i32_type = builder.getI32Type();
-
-  // Use inline PTX assembly for CUDA
-  const absl::string_view get_tid_asm = R"(
-    mov.u32 $0, %tid.x;
-  )";
-  auto asm_op = LLVM::InlineAsmOp::create(
-      builder, params.loc, i32_type, mlir::ValueRange{},
-      builder.getStringAttr(get_tid_asm), builder.getStringAttr("=r"),
-      /*has_side_effects=*/mlir::UnitAttr(),
-      /*is_align_stack=*/mlir::UnitAttr(),
-      LLVM::TailCallKindAttr::get(builder.getContext(),
-                                  LLVM::TailCallKind::None),
-      /*asm_dialect=*/LLVM::AsmDialectAttr(),
-      /*operand_attrs=*/mlir::ArrayAttr());
-  return asm_op.getResult(0);
-}
-
-// Create LLVM ops for AtomicWriteInstruction
-mlir::Value CreateAtomicWriteOps(const AtomicWriteInstruction& instruction,
-                                 const LLVMOpCreationParams& params) {
-  auto& builder = params.builder;
-  auto operands = params.operands;
-  auto i32_type = builder.getI32Type();
-
-  // Expected operand layout: [ptr, value, mask?]
-  auto addr = operands[0];
-  auto value = operands[1];
-  mlir::Value mask = operands.size() > 2 ? operands[2] : mlir::Value{};
-
-  absl::string_view memory_semantic = MemSemanticToString(instruction.semantic);
-  absl::string_view scope = MemSyncScopeToPTXScope(instruction.scope);
-
-  // Build PTX inline assembly based on whether mask is present
-  if (mask) {
-    constexpr absl::string_view kAtomicWriteAsmWithMaskTemplate = R"(
-    {
-    .reg .pred %%p<>;
-    setp.ne.u32 %%p<>, $2, 0;
-    @%%p<> st.global.%s.%s.u32 [$0], $1;
-    }
-  )";
-    std::string atomic_write_asm = absl::StrFormat(
-        kAtomicWriteAsmWithMaskTemplate, scope, memory_semantic);
-    auto asm_op = LLVM::InlineAsmOp::create(
-        builder, params.loc, i32_type, mlir::ValueRange{addr, value, mask},
-        builder.getStringAttr(atomic_write_asm), builder.getStringAttr("l,r,r"),
-        /*has_side_effects=*/builder.getUnitAttr(),
-        /*is_align_stack=*/nullptr,
-        LLVM::TailCallKindAttr::get(builder.getContext(),
-                                    LLVM::TailCallKind::None),
-        /*asm_dialect=*/nullptr,
-        /*operand_attrs=*/nullptr);
-    return asm_op.getResult(0);
-  }
-  constexpr absl::string_view kAtomicWriteAsmTemplate = R"(
-    st.global.%s.%s.u32 [$0], $1;
-  )";
-  std::string atomic_write_asm =
-      absl::StrFormat(kAtomicWriteAsmTemplate, scope, memory_semantic);
-  auto asm_op = LLVM::InlineAsmOp::create(
-      builder, params.loc, i32_type, mlir::ValueRange{addr, value},
-      builder.getStringAttr(atomic_write_asm), builder.getStringAttr("l,r"),
-      /*has_side_effects=*/builder.getUnitAttr(),
-      /*is_align_stack=*/nullptr,
-      LLVM::TailCallKindAttr::get(builder.getContext(),
-                                  LLVM::TailCallKind::None),
-      /*asm_dialect=*/nullptr,
-      /*operand_attrs=*/nullptr);
-  return asm_op.getResult(0);
-}
-
-// Create LLVM ops for AtomicSpinWaitInstruction
-mlir::Value CreateAtomicSpinWaitOps(
-    const AtomicSpinWaitInstruction& instruction,
-    const LLVMOpCreationParams& params) {
-  auto& builder = params.builder;
-  auto operands = params.operands;
-  auto i32_type = builder.getI32Type();
-
-  // Expected operand layout: [ptr, expected, mask?]
-  auto addr = operands[0];
-  auto expected = operands[1];
-  mlir::Value mask = operands.size() > 2 ? operands[2] : mlir::Value{};
-
-  absl::string_view memory_semantic = MemSemanticToString(instruction.semantic);
-  absl::string_view scope = MemSyncScopeToPTXScope(instruction.scope);
-  absl::string_view comparator = ComparatorToString(instruction.comparator);
-
-  // Build PTX inline assembly based on whether mask is present
-  if (mask) {
-    constexpr absl::string_view kAtomicSpinWaitAsmWithMaskTemplate = R"(
-    {
-    .reg .pred %%p<2>;
-    .reg .b32 %%r<1>;
-    setp.ne.u32 %%p0, $2, 0;
-    @%%!p0 bra done;
-    wait:
-      ld.global.%s.%s.u32 %%r0, [$0];
-      setp.%s.u32 %%p1, %%r0, $1;
-      @%%p1 bra wait;
-    done:
-    }
-  )";
-    std::string atomic_wait_asm = absl::StrFormat(
-        kAtomicSpinWaitAsmWithMaskTemplate, scope, memory_semantic, comparator);
-    auto asm_op = LLVM::InlineAsmOp::create(
-        builder, params.loc, i32_type, mlir::ValueRange{addr, expected, mask},
-        builder.getStringAttr(atomic_wait_asm), builder.getStringAttr("l,r,r"),
-        /*has_side_effects=*/builder.getUnitAttr(),
-        /*is_align_stack=*/nullptr,
-        LLVM::TailCallKindAttr::get(builder.getContext(),
-                                    LLVM::TailCallKind::None),
-        /*asm_dialect=*/nullptr,
-        /*operand_attrs=*/nullptr);
-    return asm_op.getResult(0);
-  }
-  constexpr absl::string_view kAtomicSpinWaitAsmTemplate = R"(
-    {
-    .reg .pred %%p<1>;
-    .reg .b32 %%r<1>;
-    wait:
-      ld.global.%s.%s.u32 %%r0, [$0];
-      setp.%s.u32 %%p0, %%r0, $1;
-      @%%p0 bra wait;
-    }
-  )";
-  std::string atomic_wait_asm = absl::StrFormat(
-      kAtomicSpinWaitAsmTemplate, scope, memory_semantic, comparator);
-  auto asm_op = LLVM::InlineAsmOp::create(
-      builder, params.loc, i32_type, mlir::ValueRange{addr, expected},
-      builder.getStringAttr(atomic_wait_asm), builder.getStringAttr("l,r"),
-      /*has_side_effects=*/builder.getUnitAttr(),
-      /*is_align_stack=*/nullptr,
-      LLVM::TailCallKindAttr::get(builder.getContext(),
-                                  LLVM::TailCallKind::None),
-      /*asm_dialect=*/nullptr,
-      /*operand_attrs=*/nullptr);
-  return asm_op.getResult(0);
-}
-
-}  // namespace
 
 mlir::Value CreateLLVMOpsForInstruction(
     const ExternFunctionInstruction& instruction,

@@ -32,16 +32,18 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class Gb200CrossCompilationTest : public HloPjRtTestBase {
+class Gb200CrossCompilationTest : public HloTestBase {
  public:
   absl::StatusOr<std::unique_ptr<CompiledModule>> CrossCompileTo(
       GpuModel gpu_model) {
@@ -86,7 +88,6 @@ class Gb200CrossCompilationTest : public HloPjRtTestBase {
 
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(4);
-    debug_options.set_xla_gpu_experimental_aot_compiled_thunks(true);
     module->mutable_config().set_debug_options(debug_options);
 
     ASSIGN_OR_RETURN(

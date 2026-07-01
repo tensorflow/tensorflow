@@ -19,18 +19,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -42,47 +43,12 @@ namespace {
 using DimensionSemantics =
     ::xla::gpu::experimental::TilingSpace::DimensionSemantics;
 
-absl::StatusOr<FlatTiling> DotTilingParameters(
-    const HloInstruction* hlo,
-    const SymbolicTileAnalysis& symbolic_tile_analysis) {
-  if (absl::c_all_of(hlo->operands(), [](const HloInstruction* operand) {
-        return operand->opcode() != HloOpcode::kFusion;
-      })) {
-    TF_ASSIGN_OR_RETURN(Tile tile_config, hlo->backend_config<Tile>());
-    return FlatTiling(tile_config.sizes().begin(), tile_config.sizes().end());
-  }
-  const HloInstruction* lhs = hlo->operand(0);
-  // When encountering a `dot`, we always expect its operands to be nests.
-  auto backend_config = lhs->backend_config<GpuBackendConfig>();
-  if (!backend_config.ok() || !backend_config->fusion_backend_config()
-                                   .has_block_level_fusion_config()) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("No block_level_fusion_config in ", lhs->ToString()));
-  }
-  std::vector<int64_t> lhs_output_tile_sizes =
-      BlockLevelParameters::FromBlockLevelFusionConfig(
-          backend_config->fusion_backend_config().block_level_fusion_config())
-          .output_tile_sizes.front();
-
-  FlatTiling dot_tiling_parameters;
-  dot_tiling_parameters.reserve(
-      hlo->dot_dimension_numbers().lhs_contracting_dimensions().size());
-  for (int64_t contracting_dim_id :
-       hlo->dot_dimension_numbers().lhs_contracting_dimensions()) {
-    if (contracting_dim_id >= lhs_output_tile_sizes.size()) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("Output tile sizes index ", contracting_dim_id,
-                       " is out of bounds for ", lhs->ToString()));
-    }
-    dot_tiling_parameters.push_back(lhs_output_tile_sizes[contracting_dim_id]);
-  }
-  return dot_tiling_parameters;
-}
 }  // namespace
 
 absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     const SymbolicTileAnalysis& symbolic_tile_analysis,
-    const BlockLevelParameters& block_level_parameters) {
+    const BlockLevelParameters& block_level_parameters,
+    const Tile* dot_tiling_config_override) {
   Tiling::TileMapping tile_mapping;
   int64_t real_root_index = symbolic_tile_analysis.real_root_index();
   const HloInstruction* real_root =
@@ -93,8 +59,25 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     // TODO(b/419026602): handle reductions.
     if (hlo->opcode() == HloOpcode::kDot ||
         hlo->opcode() == HloOpcode::kScaledDot) {
-      TF_ASSIGN_OR_RETURN(tile_mapping[hlo],
-                          DotTilingParameters(hlo, symbolic_tile_analysis));
+      if (dot_tiling_config_override) {
+        tile_mapping[hlo] =
+            FlatTiling(dot_tiling_config_override->sizes().begin(),
+                       dot_tiling_config_override->sizes().end());
+      } else {
+        if (!hlo->has_backend_config()) {
+          return absl::FailedPreconditionError(absl::StrCat(
+              "Dot instruction ", hlo->name(),
+              " does not have a backend config for tile sizes set."));
+        }
+        ASSIGN_OR_RETURN(Tile tile_config, hlo->backend_config<Tile>());
+        if (tile_config.sizes().empty()) {
+          return absl::FailedPreconditionError(
+              absl::StrCat("Dot instruction ", hlo->name(),
+                           " has an empty tile config in the backend config."));
+        }
+        tile_mapping[hlo] =
+            FlatTiling(tile_config.sizes().begin(), tile_config.sizes().end());
+      }
     }
 
     // TODO(b/390559452): this should change for generalized multi-output
@@ -127,7 +110,7 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
         block_level_parameters.output_tile_sizes.size());
   }
   const auto& parallel_tile_sizes = block_level_parameters.output_tile_sizes[0];
-  if (int64_t num_parallel_dims = tiling_space.num_parallel_dimsensions();
+  if (int64_t num_parallel_dims = tiling_space.num_parallel_dimensions();
       num_parallel_dims != parallel_tile_sizes.size()) {
     return Internal(
         "Number of parallel dimensions in the tiling space (%d) does not match "
@@ -147,7 +130,7 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
         break;
       case DimensionSemantics::kSequential: {
         if (dim.hlo->has_backend_config()) {
-          TF_ASSIGN_OR_RETURN(Tile config, dim.hlo->backend_config<Tile>());
+          ASSIGN_OR_RETURN(Tile config, dim.hlo->backend_config<Tile>());
           if (config.sizes_size() != 1) {
             return Internal(
                 "Only single-reduction operations are supported "

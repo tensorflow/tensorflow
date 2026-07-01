@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Value.h"
@@ -36,28 +36,37 @@ namespace mlir::triton::xla {
 
 // Represents an atomic write operation
 struct AtomicWriteInstruction {
+  static constexpr llvm::StringRef kName = "atomicwrite";
+  static constexpr int kNumArgs = 3;
   triton::MemSemantic semantic;
   triton::MemSyncScope scope;
+  bool has_mask;
 
   bool operator==(const AtomicWriteInstruction& other) const {
-    return semantic == other.semantic && scope == other.scope;
+    return semantic == other.semantic && scope == other.scope &&
+           has_mask == other.has_mask;
   }
 };
 
 // Represents an atomic spin-wait operation
 struct AtomicSpinWaitInstruction {
+  static constexpr llvm::StringRef kName = "atomicspinwait";
+  static constexpr int kNumArgs = 4;
   triton::MemSemantic semantic;
   triton::MemSyncScope scope;
   Comparator comparator;
+  bool has_mask;
 
   bool operator==(const AtomicSpinWaitInstruction& other) const {
     return semantic == other.semantic && scope == other.scope &&
-           comparator == other.comparator;
+           comparator == other.comparator && has_mask == other.has_mask;
   }
 };
 
 // Represents a get thread ID operation
 struct GetThreadIdInstruction {
+  static constexpr llvm::StringRef kName = "getthreadid";
+  static constexpr int kNumArgs = 0;
   bool operator==(const GetThreadIdInstruction&) const { return true; }
 };
 
@@ -77,15 +86,17 @@ using ExternFunctionInstruction =
 //
 // Supported patterns:
 // - "xla_getthreadid" (2 tokens: no arguments)
-// - "xla_atomicwrite_<semantic>_<scope>" (4 tokens)
-// - "xla_atomicspinwait_<semantic>_<scope>_<comparator>" (5 tokens)
+// - "xla_atomicwrite_<semantic>_<scope>_<mask|nomask>" (5 tokens)
+// - "xla_atomicspinwait_<semantic>_<scope>_<comparator>_<mask|nomask>" (6
+//   tokens)
 //
 // Where:
 // - <semantic>: relaxed, acquire, release, acqrel
 // - <scope>: system, gpu, cta
 // - <comparator>: eq, lt
+// - <mask|nomask>: whether the operation has a mask as an operand
 absl::StatusOr<ExternFunctionInstruction> ParseExternFunctionName(
-    absl::string_view func_name);
+    llvm::StringRef func_name);
 
 // Serializes an ExternFunctionInstruction back to its string representation.
 // This is the inverse of ParseExternFunctionName.

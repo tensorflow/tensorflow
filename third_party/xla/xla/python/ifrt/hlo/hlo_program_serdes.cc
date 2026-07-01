@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -48,12 +49,12 @@ namespace {
 //
 // Serialization:
 // ```
-// TF_ASSIGN_OR_RETURN(Serialized serialized, Serialize(xla_program));
+// ASSIGN_OR_RETURN(Serialized serialized, Serialize(xla_program));
 // ```
 //
 // Deserialization:
 // ```
-// TF_ASSIGN_OR_RETURN(auto deserialized, Deserialize(serialized));
+// ASSIGN_OR_RETURN(auto deserialized, Deserialize(serialized));
 // auto xla_program = llvm::dyn_cast<HloProgram>(deserialized);
 // ```
 
@@ -93,11 +94,14 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     // Allow mixed serialization for stablehlo dialects.
     if (version.version_number() >= SerDesVersionNumber(3)) {
       return xla::SerializeUsingVersionedStablehlo(
-          *module, xla::GetDefaultStablehloVersion(), /*inplace=*/false,
+          *module, xla::GetDefaultStablehloVersion(),
+          xla::GetDefaultSdyVersion(),
+          /*inplace=*/false,
           /*allow_mixed_serialization=*/true);
     }
     return xla::SerializeUsingVersionedStablehlo(
-        *module, xla::GetDefaultStablehloVersion());
+        *module, xla::GetDefaultStablehloVersion(),
+        xla::GetDefaultSdyVersion());
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(

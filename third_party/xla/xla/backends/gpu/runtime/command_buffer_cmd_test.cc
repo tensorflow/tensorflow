@@ -13,13 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/command_buffer_cmd.h"
-
-#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -30,6 +26,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
@@ -76,24 +73,6 @@ static se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-// Some of the tests rely on CUDA 12.9+ features.
-bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
-  const auto& device_description = stream_executor->GetDeviceDescription();
-  const auto* cuda_cc =
-      device_description.gpu_compute_capability().cuda_compute_capability();
-  if (cuda_cc != nullptr) {
-    // We need a recent driver to support the feature at runtime and we need a
-    // recent version of the toolkit at compile time, so that we have access to
-    // the driver's headers.
-    if (std::min(device_description.driver_version(),
-                 device_description.compile_time_toolkit_version()) >=
-        stream_executor::SemanticVersion(12, 9, 0)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
     CommandExecutor::SynchronizationMode::kSerialize;
@@ -103,7 +82,7 @@ static constexpr auto serialize =
 // buffer usage vector to the command buffer cmd commands.
 struct TestOnlyCommandBufferCmd : public Command {
   explicit TestOnlyCommandBufferCmd(Command::BufferUses buffers)
-      : Command(CommandType::kUnknownCmd, {}), buffers(buffers) {}
+      : Command(Thunk::Kind::kCommand), buffers(buffers) {}
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams&, const RecordParams&, RecordAction,
@@ -118,7 +97,7 @@ struct TestOnlyCommandBufferCmd : public Command {
 
 class FakeCmd : public Command {
  public:
-  explicit FakeCmd() : Command(CommandType::kUnknownCmd, {}) {}
+  explicit FakeCmd() : Command(Thunk::Kind::kCommand) {}
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams&, const RecordParams&, RecordAction,
@@ -184,9 +163,8 @@ TEST(CommandBufferCmdTest, SerializeExecution) {
   CommandSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(Command::BufferUses{use0});
   commands.Emplace<TestOnlyCommandBufferCmd>(Command::BufferUses{use1});
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor executor,
-      CommandExecutor::Create(std::move(commands), serialize));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
+                       CommandExecutor::Create(std::move(commands), serialize));
 
   // TODO(ezhulenev): Check that executor correctly infer dependencies.
 }
@@ -205,9 +183,8 @@ TEST(CommandBufferCmdTest, NoReadBarrier) {
   CommandSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(Command::BufferUses{use0});
   commands.Emplace<TestOnlyCommandBufferCmd>(Command::BufferUses{use1});
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor executor,
-      CommandExecutor::Create(std::move(commands), serialize));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
+                       CommandExecutor::Create(std::move(commands), serialize));
 
   // TODO(ezhulenev): Check that executor correctly infer dependencies.
 }
@@ -226,9 +203,8 @@ TEST(CommandBufferCmdTest, NoWriteBarrier) {
   CommandSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(Command::BufferUses{use0});
   commands.Emplace<TestOnlyCommandBufferCmd>(Command::BufferUses{use1});
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor executor,
-      CommandExecutor::Create(std::move(commands), serialize));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
+                       CommandExecutor::Create(std::move(commands), serialize));
 
   // TODO(ezhulenev): Check that executor correctly infer dependencies.
 }
@@ -250,9 +226,8 @@ TEST(CommandBufferCmdTest, WriteConflictBarrier) {
   commands.Emplace<TestOnlyCommandBufferCmd>(Command::BufferUses{use0});
   commands.Emplace<TestOnlyCommandBufferCmd>(Command::BufferUses{use1});
   commands.Emplace<TestOnlyCommandBufferCmd>(Command::BufferUses{use2});
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor executor,
-      CommandExecutor::Create(std::move(commands), serialize));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
+                       CommandExecutor::Create(std::move(commands), serialize));
 
   // TODO(ezhulenev): Check that executor correctly infer dependencies.
 }
@@ -272,8 +247,8 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   se::DeviceAddress<int32_t> b =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
-  TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
+  ASSERT_OK(stream->Memset32(&a, 42, byte_length));
+  ASSERT_OK(stream->MemZero(&b, byte_length));
 
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
@@ -293,18 +268,17 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   commands.Append(KernelThunk::MakeKernelThunk(
       "AddI32", absl::MakeConstSpan(args), args_access, LaunchDimensions(1, 4),
       /*shmem_bytes=*/0));
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor executor,
-      CommandExecutor::Create(std::move(commands), serialize));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
+                       CommandExecutor::Create(std::move(commands), serialize));
 
   // Initialize command commands and load device kernels.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<uint8_t> fatbin,
       se::gpu::GetGpuTestKernelsFatbin(stream_executor->GetPlatform()->Name()));
   Thunk::ExecutableSource source = {/*text=*/{},
                                     /*binary=*/fatbin};
 
-  TF_ASSERT_OK(executor.Initialize({stream_executor, source}));
+  ASSERT_OK(executor.Initialize({stream_executor, source}));
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
@@ -317,17 +291,17 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   CommandStateManager state;
   Command::RecordParams record_params = {state};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto command_buffer,
       stream_executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
-  TF_ASSERT_OK(executor.Record(params, record_params, command_buffer.get()));
+  ASSERT_OK(executor.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(command_buffer->Submit(stream.get()));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
-  TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
+  ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
 
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
 }
@@ -346,8 +320,8 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
   se::DeviceAddress<int32_t> b =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
-  TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
+  ASSERT_OK(stream->Memset32(&a, 42, byte_length));
+  ASSERT_OK(stream->MemZero(&b, byte_length));
 
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
@@ -369,18 +343,17 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
       /*shmem_bytes=*/0));
   commands.back()->set_priority(se::StreamPriority::Highest);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor executor,
-      CommandExecutor::Create(std::move(commands), serialize));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
+                       CommandExecutor::Create(std::move(commands), serialize));
 
   // Initialize command commands and load device kernels.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<uint8_t> fatbin,
       se::gpu::GetGpuTestKernelsFatbin(stream_executor->GetPlatform()->Name()));
   Thunk::ExecutableSource source = {/*text=*/{},
                                     /*binary=*/fatbin};
 
-  TF_ASSERT_OK(executor.Initialize({stream_executor, source}));
+  ASSERT_OK(executor.Initialize({stream_executor, source}));
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
@@ -393,17 +366,17 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
   CommandStateManager state;
   Command::RecordParams record_params = {state};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto command_buffer,
       stream_executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
-  TF_ASSERT_OK(executor.Record(params, record_params, command_buffer.get()));
+  ASSERT_OK(executor.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(command_buffer->Submit(stream.get()));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
-  TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
+  ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
 
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
 }
@@ -438,18 +411,18 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     // buffer empty.
     int64_t num_calls = 0;
     auto trace = [&](se::Stream* stream) -> absl::Status {
-      TF_RETURN_IF_ERROR(stream->Memset32(&mem, 42, 16));
+      RETURN_IF_ERROR(stream->Memset32(&mem, 42, 16));
       num_calls++;
       return absl::OkStatus();
     };
 
-    TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer0,
-                            traced_cmd_buffer.GetOrTraceCommandBuffer(
-                                &allocations, executor, stream.get(), trace));
+    ASSERT_OK_AND_ASSIGN(auto* command_buffer0,
+                         traced_cmd_buffer.GetOrTraceCommandBuffer(
+                             &allocations, executor, stream.get(), trace));
 
-    TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer1,
-                            traced_cmd_buffer.GetOrTraceCommandBuffer(
-                                &allocations, executor, stream.get(), trace));
+    ASSERT_OK_AND_ASSIGN(auto* command_buffer1,
+                         traced_cmd_buffer.GetOrTraceCommandBuffer(
+                             &allocations, executor, stream.get(), trace));
 
     // Check that command buffer was reused as buffer allocations didn't change.
     ASSERT_EQ(command_buffer0, command_buffer1);
@@ -460,9 +433,9 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     se::DeviceAddressBase mem2(reinterpret_cast<void*>(0x23456701));
     allocations = BufferAllocations({mem0, mem2}, 0, &allocator);
 
-    TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer2,
-                            traced_cmd_buffer.GetOrTraceCommandBuffer(
-                                &allocations, executor, stream.get(), trace));
+    ASSERT_OK_AND_ASSIGN(auto* command_buffer2,
+                         traced_cmd_buffer.GetOrTraceCommandBuffer(
+                             &allocations, executor, stream.get(), trace));
 
     ASSERT_NE(command_buffer0, command_buffer2);
     EXPECT_EQ(num_calls, 2);
@@ -470,9 +443,9 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     // Check that we keep first command buffer in cache.
     allocations = BufferAllocations({mem0, mem1}, 0, &allocator);
 
-    TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer3,
-                            traced_cmd_buffer.GetOrTraceCommandBuffer(
-                                &allocations, executor, stream.get(), trace));
+    ASSERT_OK_AND_ASSIGN(auto* command_buffer3,
+                         traced_cmd_buffer.GetOrTraceCommandBuffer(
+                             &allocations, executor, stream.get(), trace));
     ASSERT_EQ(command_buffer0, command_buffer3);
     EXPECT_EQ(num_calls, 2);
 
@@ -480,9 +453,9 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     // new.
     allocations = BufferAllocations({mem0, mem0}, 0, &allocator);
 
-    TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer4,
-                            traced_cmd_buffer.GetOrTraceCommandBuffer(
-                                &allocations, executor, stream.get(), trace));
+    ASSERT_OK_AND_ASSIGN(auto* command_buffer4,
+                         traced_cmd_buffer.GetOrTraceCommandBuffer(
+                             &allocations, executor, stream.get(), trace));
     ASSERT_NE(command_buffer4, command_buffer3);
     ASSERT_NE(command_buffer4, command_buffer2);
     EXPECT_EQ(num_calls, 3);
@@ -490,9 +463,9 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     // Check that we still keep the previous graph in cache.
     allocations = BufferAllocations({mem0, mem1}, 0, &allocator);
 
-    TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer5,
-                            traced_cmd_buffer.GetOrTraceCommandBuffer(
-                                &allocations, executor, stream.get(), trace));
+    ASSERT_OK_AND_ASSIGN(auto* command_buffer5,
+                         traced_cmd_buffer.GetOrTraceCommandBuffer(
+                             &allocations, executor, stream.get(), trace));
     ASSERT_EQ(command_buffer0, command_buffer5);
     EXPECT_EQ(num_calls, 3);
   };
@@ -517,9 +490,9 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   // Initialize to zero.
-  TF_ASSERT_OK(stream->MemZero(&a, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
+  ASSERT_OK(stream->MemZero(&a, byte_length));
+  ASSERT_OK(stream->MemZero(&b, byte_length));
+  ASSERT_OK(stream->MemZero(&c, byte_length));
 
   // Buffer allocations for recording.
   BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
@@ -535,8 +508,8 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
                                        slice_a);
   CommandSequence seq_a;
   seq_a.Append(&memset_a_thunk);
-  TF_ASSERT_OK_AND_ASSIGN(CommandExecutor exec_a,
-                          CommandExecutor::Create(std::move(seq_a), serialize));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor exec_a,
+                       CommandExecutor::Create(std::move(seq_a), serialize));
 
   // Executor B: b = a + a (launch kernel AddI32)
   CommandSequence seq_b;
@@ -551,27 +524,27 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
                                      args_access, LaunchDimensions(1, 4),
                                      /*shmem_bytes=*/0));
   }
-  TF_ASSERT_OK_AND_ASSIGN(CommandExecutor exec_b,
-                          CommandExecutor::Create(std::move(seq_b), serialize));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor exec_b,
+                       CommandExecutor::Create(std::move(seq_b), serialize));
 
   // Executor C: c = b (memcpy)
   CommandSequence seq_c;
   seq_c.Emplace<DeviceToDeviceCopyThunk>(
       Thunk::ThunkInfo(), ShapedSlice{slice_b, shape},
       ShapedSlice{slice_c, shape}, byte_length);
-  TF_ASSERT_OK_AND_ASSIGN(CommandExecutor exec_c,
-                          CommandExecutor::Create(std::move(seq_c), serialize));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor exec_c,
+                       CommandExecutor::Create(std::move(seq_c), serialize));
 
   // Initialize executors (B needs kernel fatbin).
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<uint8_t> fatbin,
       se::gpu::GetGpuTestKernelsFatbin(stream_executor->GetPlatform()->Name()));
   Thunk::ExecutableSource source_empty = {/*text=*/{}, /*binary=*/{}};
   Thunk::ExecutableSource source_fatbin = {/*text=*/{}, /*binary=*/fatbin};
 
-  TF_ASSERT_OK(exec_a.Initialize({stream_executor, source_empty}));
-  TF_ASSERT_OK(exec_b.Initialize({stream_executor, source_fatbin}));
-  TF_ASSERT_OK(exec_c.Initialize({stream_executor, source_empty}));
+  ASSERT_OK(exec_a.Initialize({stream_executor, source_empty}));
+  ASSERT_OK(exec_b.Initialize({stream_executor, source_fatbin}));
+  ASSERT_OK(exec_c.Initialize({stream_executor, source_empty}));
 
   // Execute params and allocations mapping indices 0=a,1=b,2=c
   ServiceExecutableRunOptions run_options;
@@ -586,279 +559,33 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
   Command::RecordParams record_params = {state};
 
   // Create a primary command buffer and record A -> B -> C with dependencies.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto command_buffer,
       stream_executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
 
   // Record A (no deps)
   // Record A, B, C with dependencies using the Record API; finalize on B.
-  TF_ASSERT_OK_AND_ASSIGN(auto a_sinks,
-                          exec_a.RecordCreate(exec_params, record_params,
-                                              command_buffer.get(), {}));
+  ASSERT_OK_AND_ASSIGN(auto a_sinks,
+                       exec_a.RecordCreate(exec_params, record_params,
+                                           command_buffer.get(), {}));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto b_sinks,
-                          exec_b.RecordCreate(exec_params, record_params,
-                                              command_buffer.get(), a_sinks));
+  ASSERT_OK_AND_ASSIGN(auto b_sinks,
+                       exec_b.RecordCreate(exec_params, record_params,
+                                           command_buffer.get(), a_sinks));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto c_sinks,
-                          exec_c.RecordCreate(exec_params, record_params,
-                                              command_buffer.get(), b_sinks))
+  ASSERT_OK_AND_ASSIGN(auto c_sinks,
+                       exec_c.RecordCreate(exec_params, record_params,
+                                           command_buffer.get(), b_sinks));
 
   // Finalize command buffer after recording multiple iterations.
-  TF_ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Finalize());
 
   // Submit and verify c == 2 for all elements.
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(command_buffer->Submit(stream.get()));
 
   std::vector<int32_t> dst(length, 0);
-  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+  ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
   ASSERT_EQ(dst, std::vector<int32_t>(length, 2));
-}
-
-TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
-  se::StreamExecutor* stream_executor = GpuExecutor();
-  if (!IsAtLeastCuda12900(stream_executor)) {
-    GTEST_SKIP() << "Child command is not supported for CUDA < 12.9";
-  }
-
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
-
-  // Prepare device memory for three buffers.
-  int64_t length = 4;
-  int64_t byte_length = sizeof(int32_t) * length;
-  Shape shape = ShapeUtil::MakeShape(S32, {length});
-
-  se::DeviceAddress<int32_t> a =
-      stream_executor->AllocateArray<int32_t>(length);
-  se::DeviceAddress<int32_t> b =
-      stream_executor->AllocateArray<int32_t>(length);
-  se::DeviceAddress<int32_t> c =
-      stream_executor->AllocateArray<int32_t>(length);
-
-  // Initialize a = 1s, b = 0s, c = 0s.
-  TF_ASSERT_OK(stream->Memset32(&a, /*pattern=*/1, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
-
-  // Buffer allocations.
-  BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
-  BufferAllocation alloc_b(/*index=*/1, byte_length, /*color=*/0);
-  BufferAllocation alloc_c(/*index=*/2, byte_length, /*color=*/0);
-
-  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
-  BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
-  BufferAllocation::Slice slice_c(&alloc_c, 0, byte_length);
-
-  // Inner child: c = a (device-to-device memcpy)
-  CommandSequence inner_seq;
-  inner_seq.Emplace<DeviceToDeviceCopyThunk>(
-      Thunk::ThunkInfo(), ShapedSlice{slice_a, shape},
-      ShapedSlice{slice_c, shape}, byte_length);
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor inner_executor,
-      CommandExecutor::Create(std::move(inner_seq), serialize));
-
-  // Middle child wraps inner.
-  Memset32BitValueThunk memset_b3_thunk(Thunk::ThunkInfo(), /*value=*/3,
-                                        slice_b);
-  Memset32BitValueThunk memset_b5_thunk(Thunk::ThunkInfo(), /*value=*/5,
-                                        slice_b);
-  CommandSequence middle_seq;
-  middle_seq.Emplace<ChildCmd>(std::move(inner_executor));
-  // Add a couple of extra commands that don't affect `c`.
-  middle_seq.Append(&memset_b3_thunk);
-  middle_seq.Append(&memset_b5_thunk);
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor middle_executor,
-      CommandExecutor::Create(std::move(middle_seq), serialize));
-
-  // Outer child wraps middle.
-  CommandSequence outer_seq;
-  outer_seq.Emplace<ChildCmd>(std::move(middle_executor));
-  // Add another command at the outer level that still doesn't affect `c`.
-  outer_seq.Emplace<MemzeroThunk>(Thunk::ThunkInfo(),
-                                  ShapedSlice{slice_b, shape});
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor outer_executor,
-      CommandExecutor::Create(std::move(outer_seq), serialize));
-
-  // Prepare state and params; ChildCmd requires initialization to create a
-  // nested buffer.
-  Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  se::StreamExecutorAddressAllocator allocator(stream_executor);
-  BufferAllocations allocations({a, b, c}, 0, &allocator);
-  TF_ASSERT_OK(outer_executor.Initialize(
-      {stream_executor, source, &allocations, stream.get(), stream.get()}));
-
-  // allocations already created above
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams exec_params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
-
-  CommandStateManager state;
-  Command::RecordParams record_params = {state};
-
-  // Create a command buffer and record the nested ChildCmd (Create).
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto command_buffer,
-      stream_executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
-  TF_ASSERT_OK(
-      outer_executor.Record(exec_params, record_params, command_buffer.get()));
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-
-  // Verify the generated CUDA graph structure matches the expected
-  // dependencies:
-  //
-  // Outer graph (graph_1):
-  //   Node 0: ChildCmd (graph_2)  -> depends on nothing
-  //   Node 1: MemzeroThunk (MEMSET) -> depends on Node 0
-  //
-  // Middle graph (graph_2, nested in ChildCmd):
-  //   Node 0: ChildCmd (graph_3)                           -> depends on
-  //   nothing Node 1: Memset32BitValueThunk (MEMSET, value=3)      -> depends
-  //   on Node 0 Node 2: Memset32BitValueThunk (MEMSET, value=5)      -> depends
-  //   on Node 1
-  //
-  // Inner graph (graph_3, nested in ChildCmd):
-  //   Node 0: MemcpyDeviceToDeviceCmd (MEMCPY a->c) -> no dependencies
-  {
-    auto* gpu_cmd_buffer =
-        dynamic_cast<se::gpu::GpuCommandBuffer*>(command_buffer.get());
-    ASSERT_NE(gpu_cmd_buffer, nullptr)
-        << "Expected command buffer to be a GpuCommandBuffer";
-
-    // Verify outer level: 2 commands (ChildCmd, MemzeroThunk)
-    auto outer_commands = gpu_cmd_buffer->commands();
-    ASSERT_EQ(outer_commands.size(), 2)
-        << "Outer level should have 2 commands: ChildCmd, MemzeroThunk";
-
-    // First command: GpuChildCommand (wrapping middle graph)
-    auto* outer_child_cmd =
-        dynamic_cast<const se::gpu::GpuCommandBuffer::GpuChildCommand*>(
-            outer_commands[0].get());
-    ASSERT_NE(outer_child_cmd, nullptr)
-        << "First outer command should be GpuChildCommand";
-    ASSERT_NE(outer_child_cmd->command_buffer, nullptr)
-        << "GpuChildCommand should have a nested command buffer";
-
-    // Second command: GpuCommand (MemzeroThunk)
-    auto* outer_memzero_cmd =
-        dynamic_cast<const se::gpu::GpuCommandBuffer::GpuCommand*>(
-            outer_commands[1].get());
-    ASSERT_NE(outer_memzero_cmd, nullptr)
-        << "Second outer command should be GpuCommand (MemzeroThunk)";
-    ASSERT_NE(outer_memzero_cmd->handle, nullptr)
-        << "MemzeroThunk should have a valid graph node handle";
-
-    // Verify middle level (inside first ChildCmd): 3 commands
-    auto* middle_gpu_buffer = dynamic_cast<se::gpu::GpuCommandBuffer*>(
-        outer_child_cmd->command_buffer.get());
-    ASSERT_NE(middle_gpu_buffer, nullptr)
-        << "Nested command buffer should be a GpuCommandBuffer";
-
-    auto middle_commands = middle_gpu_buffer->commands();
-    ASSERT_EQ(middle_commands.size(), 3)
-        << "Middle level should have 3 commands: ChildCmd, "
-           "Memset32BitValueThunk (value=3), Memset32BitValueThunk (value=5)";
-
-    // First command: GpuChildCommand (wrapping inner graph)
-    auto* middle_child_cmd =
-        dynamic_cast<const se::gpu::GpuCommandBuffer::GpuChildCommand*>(
-            middle_commands[0].get());
-    ASSERT_NE(middle_child_cmd, nullptr)
-        << "First middle command should be GpuChildCommand";
-    ASSERT_NE(middle_child_cmd->command_buffer, nullptr)
-        << "Middle GpuChildCommand should have a nested command buffer";
-
-    // Second command: GpuCommand (Memset32BitValueThunk, value=3)
-    auto* middle_memset_cmd =
-        dynamic_cast<const se::gpu::GpuCommandBuffer::GpuCommand*>(
-            middle_commands[1].get());
-    ASSERT_NE(middle_memset_cmd, nullptr)
-        << "Second middle command should be GpuCommand "
-           "(Memset32BitValueThunk, value=3)";
-
-    // Third command: GpuCommand (Memset32BitValueThunk, value=5)
-    auto* middle_memset5_cmd =
-        dynamic_cast<const se::gpu::GpuCommandBuffer::GpuCommand*>(
-            middle_commands[2].get());
-    ASSERT_NE(middle_memset5_cmd, nullptr)
-        << "Third middle command should be GpuCommand "
-           "(Memset32BitValueThunk, value=5)";
-
-    // Verify inner level (inside middle ChildCmd): 1 command
-    auto* inner_gpu_buffer = dynamic_cast<se::gpu::GpuCommandBuffer*>(
-        middle_child_cmd->command_buffer.get());
-    ASSERT_NE(inner_gpu_buffer, nullptr)
-        << "Inner nested command buffer should be a GpuCommandBuffer";
-
-    auto inner_commands = inner_gpu_buffer->commands();
-    ASSERT_EQ(inner_commands.size(), 1)
-        << "Inner level should have 1 command: MemcpyDeviceToDeviceCmd";
-
-    // First (and only) command: GpuCommand (MemcpyDeviceToDeviceCmd a->c)
-    auto* inner_memcpy_cmd =
-        dynamic_cast<const se::gpu::GpuCommandBuffer::GpuCommand*>(
-            inner_commands[0].get());
-    ASSERT_NE(inner_memcpy_cmd, nullptr)
-        << "Inner command should be GpuCommand (MemcpyDeviceToDeviceCmd)";
-    ASSERT_NE(inner_memcpy_cmd->handle, nullptr)
-        << "Inner MemcpyDeviceToDeviceCmd should have a valid graph node "
-           "handle";
-  }
-
-  // Verify c == a (all ones).
-  std::vector<int32_t> dst(length, 0);
-  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
-  ASSERT_EQ(dst, std::vector<int32_t>(length, 1));
-
-  // Also verify a == 1s and b == 0s.
-  {
-    std::vector<int32_t> a_host(length, 0);
-    std::vector<int32_t> b_host(length, 0);
-    TF_ASSERT_OK(stream->Memcpy(a_host.data(), a, byte_length));
-    TF_ASSERT_OK(stream->Memcpy(b_host.data(), b, byte_length));
-    ASSERT_EQ(a_host, std::vector<int32_t>(length, 1));
-    ASSERT_EQ(b_host, std::vector<int32_t>(length, 0));
-  }
-
-  // Now update: change a and c buffers and record an update on the same command
-  // buffer.
-  se::DeviceAddress<int32_t> a2 =
-      stream_executor->AllocateArray<int32_t>(length);
-  se::DeviceAddress<int32_t> c2 =
-      stream_executor->AllocateArray<int32_t>(length);
-  TF_ASSERT_OK(stream->Memset32(&a2, /*pattern=*/7, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&c2, byte_length));
-
-  BufferAllocations allocations2({a2, b, c2}, 0, &allocator);
-  Thunk::ExecuteParams exec_params2 =
-      Thunk::ExecuteParams::Create(run_options, allocations2, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
-
-  // Indicate which allocations changed to ensure update is not skipped.
-  std::vector<BufferAllocation::Index> updated_allocs = {0, 2};
-  Command::RecordParams record_params2 = {state, std::move(updated_allocs)};
-
-  TF_ASSERT_OK(outer_executor.Record(exec_params2, record_params2,
-                                     command_buffer.get()));
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-
-  // Verify c2 == a2 (all sevens).
-  std::vector<int32_t> dst2(length, 0);
-  TF_ASSERT_OK(stream->Memcpy(dst2.data(), c2, byte_length));
-  ASSERT_EQ(dst2, std::vector<int32_t>(length, 7));
-
-  // Also verify a2 == 7s and b == 0s.
-  {
-    std::vector<int32_t> a2_host(length, 0);
-    std::vector<int32_t> b_host(length, 0);
-    TF_ASSERT_OK(stream->Memcpy(a2_host.data(), a2, byte_length));
-    TF_ASSERT_OK(stream->Memcpy(b_host.data(), b, byte_length));
-    ASSERT_EQ(a2_host, std::vector<int32_t>(length, 7));
-    ASSERT_EQ(b_host, std::vector<int32_t>(length, 0));
-  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -868,7 +595,7 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
 static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);

@@ -18,13 +18,17 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <memory>
+#include <optional>
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/layout.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/layout_assignment.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 
@@ -80,6 +84,14 @@ class GpuLayoutAssignment : public LayoutAssignment {
 
   bool InstructionCanChangeLayoutInstance(
       const HloInstruction* instruction) override;
+
+  std::unique_ptr<Layout> ChooseOperandLayoutFromOutputLayout(
+      const Layout& output_layout, const HloInstruction* instruction,
+      int64_t operand_no) override;
+
+  std::unique_ptr<Layout> ChooseOutputLayoutFromOperandLayout(
+      const Layout& operand_layout, const HloInstruction* user,
+      int64_t operand_no) override;
 
   absl::Status AddDotBackendConstraints(LayoutConstraints* constraints,
                                         HloDotInstruction* instruction);

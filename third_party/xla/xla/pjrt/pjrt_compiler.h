@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -41,7 +42,10 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/runtime/chip_id.h"
+#include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
 
@@ -59,10 +63,14 @@ inline const char* RocmName() {
   static constexpr char kRocmName[] = "rocm";
   return kRocmName;
 }
-inline const char* SyclName() {
-  static constexpr char kSyclName[] = "sycl";
-  return kSyclName;
+inline const char* OneapiName() {
+  static constexpr char kOneapiName[] = "oneapi";
+  return kOneapiName;
 }
+// Temporarily keep SyclName() as there are references to it in Tensorflow.
+// TODO(intel-tf): Remove this function once Tensorflow is updated to use
+// OneapiName() instead of SyclName()
+inline const char* SyclName() { return OneapiName(); }
 inline const char* TpuName() {
   static constexpr char kTpuName[] = "tpu";
   return kTpuName;
@@ -79,10 +87,15 @@ inline PjRtPlatformId RocmId() {
   static const PjRtPlatformId kRocmId = tsl::Fingerprint64(RocmName());
   return kRocmId;
 }
-inline PjRtPlatformId SyclId() {
-  static const PjRtPlatformId kSyclId = tsl::Fingerprint64(SyclName());
-  return kSyclId;
+inline PjRtPlatformId OneapiId() {
+  static const PjRtPlatformId kOneapiId = tsl::Fingerprint64(OneapiName());
+  return kOneapiId;
 }
+
+// Temporarily keep SyclId() as there are references to it in Jaxlib.
+// TODO(intel-tf): Remove this function once Jaxlib is updated to use
+// OneapId() instead of SyclId()
+inline PjRtPlatformId SyclId() { return OneapiId(); }
 inline PjRtPlatformId TpuId() {
   static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());
   return kTpuId;
@@ -95,6 +108,25 @@ class PjRtCompiler;
 // global init).
 using PjRtCompilerFactory =
     std::function<absl::StatusOr<std::unique_ptr<PjRtCompiler>>()>;
+
+// A key type for the compiler registry.
+struct PjRtCompilerType {
+  std::string platform_name;
+  std::string variant_name;
+
+  PjRtCompilerType(absl::string_view platform, absl::string_view variant)
+      : platform_name(platform), variant_name(variant) {}
+
+  template <typename H>
+  friend H AbslHashValue(H h, const PjRtCompilerType& c) {
+    return H::combine(std::move(h), c.platform_name, c.variant_name);
+  }
+
+  bool operator==(const PjRtCompilerType& other) const {
+    return platform_name == other.platform_name &&
+           variant_name == other.variant_name;
+  }
+};
 
 // PjRtCompilerRegistry manages the registration and lifecycle of PjRtCompilers.
 // It supports both direct registration of compiler instances and registration
@@ -142,12 +174,11 @@ class PjRtCompilerRegistry {
 
   absl::Mutex factory_mutex_;
 
-  absl::flat_hash_map<std::pair<std::string, std::string>,
-                      std::unique_ptr<PjRtCompiler>>
+  absl::flat_hash_map<PjRtCompilerType, std::unique_ptr<PjRtCompiler>>
       compilers_ ABSL_GUARDED_BY(compiler_mutex_);
 
-  absl::flat_hash_map<std::pair<std::string, std::string>, PjRtCompilerFactory>
-      factories_ ABSL_GUARDED_BY(factory_mutex_);
+  absl::flat_hash_map<PjRtCompilerType, PjRtCompilerFactory> factories_
+      ABSL_GUARDED_BY(factory_mutex_);
 };
 
 // Thread-safe. Returns a pointer to the registered compiler for the given
@@ -220,33 +251,32 @@ class PjRtTopologyDescription {
 
   // Returns the number of chips.
   virtual absl::StatusOr<int> ChipCount() const {
-    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
-    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
     return process_count * chips_per_process;
   }
 
   // Returns the total number of cores of the default type.
   virtual absl::StatusOr<int> CoreCountOfDefaultType() const {
-    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
-    TF_ASSIGN_OR_RETURN(int cores_per_process,
-                        CoreCountOfDefaultTypePerProcess());
+    ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    ASSIGN_OR_RETURN(int cores_per_process, CoreCountOfDefaultTypePerProcess());
     return process_count * cores_per_process;
   }
 
   // As above, but returns the number of logical devices per host.
   virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerProcess()
       const {
-    TF_ASSIGN_OR_RETURN(int logical_devices_per_chip,
-                        LogicalDeviceCountOfDefaultTypePerChip());
-    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    ASSIGN_OR_RETURN(int logical_devices_per_chip,
+                     LogicalDeviceCountOfDefaultTypePerChip());
+    ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
     return chips_per_process * logical_devices_per_chip;
   }
 
   // Returns the total number of logical devices of the default type.
   virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const {
-    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
-    TF_ASSIGN_OR_RETURN(int logical_devices_per_process,
-                        LogicalDeviceCountOfDefaultTypePerProcess());
+    ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    ASSIGN_OR_RETURN(int logical_devices_per_process,
+                     LogicalDeviceCountOfDefaultTypePerProcess());
     return process_count * logical_devices_per_process;
   }
 
@@ -258,8 +288,8 @@ class PjRtTopologyDescription {
 
   // Returns the number of cores of the default type per process.
   virtual absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const {
-    TF_ASSIGN_OR_RETURN(int cores_per_chip, CoreCountOfDefaultTypePerChip());
-    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    ASSIGN_OR_RETURN(int cores_per_chip, CoreCountOfDefaultTypePerChip());
+    ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
     return cores_per_chip * chips_per_process;
   }
 
@@ -366,6 +396,22 @@ class PjRtTopologyDescription {
   virtual absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) const = 0;
 
+  // Returns the canonical shape for a memory_space with an optionally provided
+  // layout. This is useful for predicting the full shape + layout of a buffer
+  // after it is transferred to a particular memory space.
+  virtual absl::StatusOr<xla::Shape> MakeCanonicalShapeForMemorySpace(
+      int memory_space_kind_id, xla::Shape shape,
+      const xla::Layout* layout) const {
+    return absl::UnimplementedError(
+        "MakeCanonicalShapeForMemorySpace is unsupported.");
+  }
+
+  // A list of all memory spaces kind_ids supported by this topology.
+  virtual absl::Span<const int> GetMemorySpaceKindIds() const;
+
+  // GetMemorySpaceKindIds()[0] should be the default memory space id.
+  int GetDefaultMemorySpaceKindId() const { return GetMemorySpaceKindIds()[0]; }
+
   virtual absl::StatusOr<PjRtTopologyDescriptionProto> ToProto() const {
     return absl::UnimplementedError("ToProto is unsupported.");
   }
@@ -439,15 +485,6 @@ class PjRtCompiler {
 void PjRtRegisterDefaultCompiler(absl::string_view platform_name,
                                  std::unique_ptr<PjRtCompiler> compiler);
 
-// Registers a compiler to compile programs for 'platform_name' with
-// 'compiler_variant'. Takes ownership of 'compiler'.
-//
-// REQUIRES: No compiler has been registered for the platform and compiler
-// variant yet.
-void PjRtRegisterCompiler(absl::string_view platform_name,
-                          absl::string_view compiler_variant,
-                          std::unique_ptr<PjRtCompiler> compiler);
-
 // Compiles a 'computation' and generates a 'PjRtExecutable' using the compiler
 // registered for the platform using PjRtRegisterCompiler. The returned
 // PjRtExecutable must be loaded by a compatible client before execution.
@@ -484,11 +521,13 @@ struct CompilationPhaseFunctions {
       compiler;
 
   // `validator`: A function that performs plugin-specific validation of the
-  // input programs for a given compilation phase. It takes a `std::vector` of
-  // `PjRtPartialProgramProto` as input and returns `absl::OkStatus()` if
-  // validation is successful; otherwise, it returns an `absl::Status`
-  // indicating the reason for failure (e.g., incompatible `program_format`).
-  std::function<absl::Status(const std::vector<PjRtPartialProgramProto>&)>
+  // input programs for a given compilation phase. It takes a `CompileOptions`
+  // instance and a `std::vector` of `PjRtPartialProgramProto` as input and
+  // returns `absl::OkStatus()` if validation is successful; otherwise, it
+  // returns an `absl::Status` indicating the reason for failure (e.g.,
+  // incompatible `program_format`).
+  std::function<absl::Status(CompileOptions options,
+                             const std::vector<PjRtPartialProgramProto>&)>
       validator;
 };
 

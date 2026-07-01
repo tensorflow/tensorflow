@@ -24,12 +24,18 @@ on:
         description: 'TFCI environment variable'
         required: true
         type: string
+      job_name:
+        description: 'Name of the job'
+        required: false
+        type: string
+        default: 'build-and-test'
 
 permissions:
   contents: read
 
 jobs:
   build-and-test:
+    name: ${{ inputs.job_name }}
     runs-on: ${{ inputs.runner }}
     env:
       PIP_NO_CACHE_DIR: 1

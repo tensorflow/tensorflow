@@ -84,8 +84,8 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
   absl::StatusOr<std::unique_ptr<xla::ProgramShape>> pshape_or =
       client->GetComputationShape(computation);
   if (!pshape_or.ok()) {
-    return errors::Unknown("Couldn't get XLA program shape: ",
-                           pshape_or.status().message());
+    return absl::UnknownError(absl::StrCat("Couldn't get XLA program shape: ",
+                                           pshape_or.status().message()));
   }
   compile_result->program_shape = pshape_or.value()->ToProto();
   xla::ProgramShapeProto* pshape = &compile_result->program_shape;
@@ -109,8 +109,8 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
   absl::StatusOr<std::vector<std::unique_ptr<xla::CompiledModule>>> aot_or =
       client->CompileAheadOfTime(instance, aot_opts);
   if (!aot_or.ok()) {
-    return errors::Unknown("XLA compilation failed: ",
-                           aot_or.status().message());
+    return absl::UnknownError(
+        absl::StrCat("XLA compilation failed: ", aot_or.status().message()));
   }
   compile_result->aot =
       xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResult>(
@@ -164,7 +164,8 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
       if (component == "Bridge") {
         use_mlir_bridge = true;
       } else {
-        return errors::Unknown("Unknown mlir_component ", component);
+        return absl::UnknownError(
+            absl::StrCat("Unknown mlir_component ", component));
       }
     }
   }
@@ -292,7 +293,7 @@ absl::Status Main(const MainFlags& flags) {
   // Process config.
   tf2xla::Config config;
   if (flags.config.empty()) {
-    return errors::InvalidArgument("Must specify --config");
+    return absl::InvalidArgumentError("Must specify --config");
   }
   TF_RETURN_IF_ERROR(ReadProtoFile(flags.config, &config));
   TF_RETURN_IF_ERROR(ValidateConfig(config));
@@ -307,7 +308,7 @@ absl::Status Main(const MainFlags& flags) {
 
   // Read and initialize the graph.
   if (flags.graph.empty()) {
-    return errors::InvalidArgument("Must specify --graph");
+    return absl::InvalidArgumentError("Must specify --graph");
   }
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(ReadProtoFile(flags.graph, &graph_def));
@@ -344,7 +345,7 @@ absl::Status Main(const MainFlags& flags) {
   }
 
   if (flags.cpp_class.empty()) {
-    return errors::InvalidArgument("Must specify --cpp_class");
+    return absl::InvalidArgumentError("Must specify --cpp_class");
   }
   codegen_opts.gen_hlo_profile_printer_data =
       xla::GetDebugOptionsFromFlags().xla_hlo_profile();

@@ -39,7 +39,7 @@ struct EmitterData {
   std::unique_ptr<MlirKernelFusion> emitter;
 };
 absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
-    const HloModule& module, mlir::MLIRContext& mlir_context);
+    const HloModule& module);
 
 // Returns an MLIR context with all the dialects needed for testing.
 mlir::MLIRContext GetMlirContextForTest();

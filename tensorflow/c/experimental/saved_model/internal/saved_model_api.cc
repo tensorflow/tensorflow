@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
@@ -49,9 +50,8 @@ TF_SavedModel* TF_LoadSavedModel(const char* dirname, TFE_Context* ctx,
   } else {
     std::unique_ptr<tensorflow::TFSavedModelAPI> saved_model;
     status->status = tensorflow::TFSavedModelAPI::Load(
-        dirname, absl::nullopt,
-        tensorflow::down_cast<tensorflow::EagerContext*>(
-            tensorflow::unwrap(ctx)),
+        dirname, std::nullopt,
+        absl::down_cast<tensorflow::EagerContext*>(tensorflow::unwrap(ctx)),
         &saved_model);
     result = std::move(saved_model);
   }
@@ -80,8 +80,7 @@ TF_SavedModel* TF_LoadSavedModelWithTags(const char* dirname, TFE_Context* ctx,
     std::unique_ptr<tensorflow::TFSavedModelAPI> saved_model;
     status->status = tensorflow::TFSavedModelAPI::Load(
         dirname, tagset,
-        tensorflow::down_cast<tensorflow::EagerContext*>(
-            tensorflow::unwrap(ctx)),
+        absl::down_cast<tensorflow::EagerContext*>(tensorflow::unwrap(ctx)),
         &saved_model);
     result = std::move(saved_model);
   }

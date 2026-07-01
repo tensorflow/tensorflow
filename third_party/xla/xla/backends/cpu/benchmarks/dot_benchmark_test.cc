@@ -35,8 +35,10 @@ limitations under the License.
 #include "xla/backends/cpu/benchmarks/aot_benchmark_helper.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
+#include "xla/backends/cpu/ynn_support.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
@@ -69,6 +71,11 @@ ABSL_FLAG(bool, aot_compiled_execution, false,
           "If true, when running the benchmark, the HLO will be compiled AOT.");
 
 ABSL_FLAG(std::string, xla_flags, "", "Flags to append to XLA_FLAGS");
+
+ABSL_FLAG(bool, constant_rhs, false,
+          "If true, the RHS of the dot product is annotated as a constant. "
+          "This allows testing optimizations like YNNPACK constant weights "
+          "capturing.");
 
 namespace xla::cpu {
 namespace {
@@ -125,7 +132,7 @@ static void BM_BatchedDot(benchmark::State& state, BatchedDot info) {
 
     ENTRY e {
       p0 = $dtype[$d0,$d1,$d1] parameter(0)
-      p1 = $dtype[$d0,$d1,$d1] parameter(1)
+      p1 = $dtype[$d0,$d1,$d1] parameter(1)$rhs_attrs
       ROOT dot = $out_dtype[$d0,$d1,$d1] dot(p0, p1),
         lhs_batch_dims={0}, rhs_batch_dims={0},
         lhs_contracting_dims={2}, rhs_contracting_dims={1}
@@ -143,7 +150,10 @@ static void BM_BatchedDot(benchmark::State& state, BatchedDot info) {
        {"$out_dtype",
         primitive_util::LowercasePrimitiveTypeName(info.out_dtype)},
        {"$d0", absl::StrCat(info.d0)},
-       {"$d1", absl::StrCat(info.d1)}},
+       {"$d1", absl::StrCat(info.d1)},
+       {"$rhs_attrs", absl::GetFlag(FLAGS_constant_rhs)
+                          ? ", frontend_attributes={is_constant=\"true\"}"
+                          : ""}},
       GetBenchmarkOptions()));
 }
 
@@ -172,6 +182,10 @@ void BM_GenericDot(benchmark::State& state, GenericDot info) {
       HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
   HloInstruction* rhs = builder.AddInstruction(
       HloInstruction::CreateParameter(1, rhs_shape, "rhs"));
+
+  if (absl::GetFlag(FLAGS_constant_rhs)) {
+    SetConstant(rhs);
+  }
 
   DotDimensionNumbers dot_dnums;
   for (int64_t dim : info.lhs_batch_dims) {
@@ -225,6 +239,17 @@ std::vector<GenericDot> GetGenericDotList() {
     GenericDot{name, BF16, {1,1,6912}, BF16, {6912,1152}, BF16, {1,1,1152}, {}, {}, {2}, {0}},
     GenericDot{name, BF16, {2,1,1152,256}, BF16, {1,1,1152}, BF16, {2,1,256,1,1}, {}, {}, {2}, {2}}
   });
+  name = "BF16_Shapes01";
+  list.insert(list.end(), {
+    GenericDot{name, BF16, {128,32,1,64}, BF16, {128,1,8,32,32}, BF16, {128,1,64,8,32}, {0,2}, {0,1}, {1}, {4}},
+    GenericDot{name, BF16, {128,32,1,64}, BF16, {128,32,1,8,64}, BF16, {128,1,32,32,8}, {0,2}, {0,2}, {3}, {4}},
+    GenericDot{name, BF16, {128,32,1024}, BF16, {1024,512}, BF16, {128,32,512}, {}, {}, {2}, {0}},
+    GenericDot{name, BF16, {128,32,512}, BF16, {2,1024,512}, BF16, {128,32,2,1024}, {}, {}, {2}, {2}},
+    GenericDot{name, BF16, {128,32,512}, BF16, {512,2}, BF16, {128,32,2}, {}, {}, {2}, {0}},
+    GenericDot{name, BF16, {128,32,512}, BF16, {8,512,64}, BF16, {128,32,8,64}, {}, {}, {2}, {1}},
+    GenericDot{name, BF16, {128,32,8,64}, BF16, {8,64,512}, BF16, {128,32,512}, {}, {}, {3,2}, {1,0}},
+    GenericDot{name, BF16, {2,1,512,64}, BF16, {128,32,512}, BF16, {2,1,64,128,32}, {}, {}, {2}, {2}},
+  });
   // NOLINTEND
   // clang-format on
   return list;
@@ -260,7 +285,7 @@ void BM_Dot(benchmark::State& state, const Shape& shape) {
     HloModule benchmark
     ENTRY main {
       p0 = $a_type[$m,$k] parameter(0)
-      p1 = $b_type[$k,$n] parameter(1)
+      p1 = $b_type[$k,$n] parameter(1)$rhs_attrs
       ROOT %result = $c_type[$m,$n] dot(p0, p1), lhs_contracting_dims={1},
           rhs_contracting_dims={0}
     }
@@ -270,12 +295,16 @@ void BM_Dot(benchmark::State& state, const Shape& shape) {
   PrimitiveType output_type = GetAccumulatorType(input_type);
 
   std::string hlo_data = absl::StrReplaceAll(
-      hlo_template, {{"$m", absl::StrCat(shape.dimensions(0))},
-                     {"$k", absl::StrCat(shape.dimensions(1))},
-                     {"$n", absl::StrCat(shape.dimensions(2))},
-                     {"$a_type", LowercasePrimitiveTypeName(input_type)},
-                     {"$b_type", LowercasePrimitiveTypeName(input_type)},
-                     {"$c_type", LowercasePrimitiveTypeName(output_type)}});
+      hlo_template,
+      {{"$m", absl::StrCat(shape.dimensions(0))},
+       {"$k", absl::StrCat(shape.dimensions(1))},
+       {"$n", absl::StrCat(shape.dimensions(2))},
+       {"$a_type", LowercasePrimitiveTypeName(input_type)},
+       {"$b_type", LowercasePrimitiveTypeName(input_type)},
+       {"$c_type", LowercasePrimitiveTypeName(output_type)},
+       {"$rhs_attrs", absl::GetFlag(FLAGS_constant_rhs)
+                          ? ", frontend_attributes={is_constant=\"true\"}"
+                          : ""}});
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto module_and_iteration_literals,
@@ -309,7 +338,7 @@ void RegisterBenchmarks() {
     //===------------------------------------------------------------------===//
     // Pairs of input-output data types.
     std::vector<std::pair<PrimitiveType, PrimitiveType>> dtype_pairs = {
-        {F32, F32}, {BF16, F32}, {S8, S32}, {S32, S32}};
+        {F32, F32}, {BF16, F32}, {BF16, BF16}, {S8, S32}, {S32, S32}};
     for (auto [in_dtype, out_dtype] : dtype_pairs) {
       std::string in_dtype_str = PrimitiveType_Name(in_dtype);
       std::string out_dtype_str = PrimitiveType_Name(out_dtype);

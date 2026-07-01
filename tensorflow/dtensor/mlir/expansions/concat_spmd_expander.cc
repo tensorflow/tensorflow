@@ -46,7 +46,7 @@ absl::Status VerifyConcatLayout(mlir::Value concat_dim_operand,
        llvm::enumerate(concat_layout.num_shards())) {
     if (shard_and_dimension.index() == concat_dim_value &&
         shard_and_dimension.value() > 1) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Concat op SPMD with concat dimension in sharded dimension is "
           "not supported.");
     }
@@ -68,7 +68,7 @@ StatusOr<Layout> ReduceForConcatOutputLayout(mlir::Value concat_dim_operand,
 
 StatusOr<mlir::Operation*> ConcatSPMDExpander::ExpandOp(mlir::Operation* op) {
   if (!llvm::isa<mlir::TF::ConcatOp, mlir::TF::ConcatV2Op>(op))
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Requested SPMD Expansion for op that is not Concat or ConcatV2.");
 
   // Extract the concat dim. ConcatOp and ConcatV2Op define the dim at

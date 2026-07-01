@@ -207,6 +207,10 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     return tflite::TensorType_BFLOAT16;
   } else if (type.isF64()) {
     return tflite::TensorType_FLOAT64;
+  } else if (mlir::isa<mlir::Float8E4M3FNType>(type)) {
+    return tflite::TensorType_FLOAT8_E4M3FN;
+  } else if (mlir::isa<mlir::Float8E5M2Type>(type)) {
+    return tflite::TensorType_FLOAT8_E5M2;
   } else if (mlir::isa<mlir::TF::StringType>(type)) {
     return tflite::TensorType_STRING;
   } else if (mlir::isa<mlir::TF::Quint8Type>(type)) {
@@ -1126,7 +1130,7 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     attr = mlir::DenseIntOrFPElementsAttr::getFromRawBuffer(
         mlir::cast<mlir::ShapedType>(
             vhlo_type_converter.convertType(tensor_v1_attr.getType())),
-        tensor_v1_attr.getData());
+        tensor_v1_attr.getData().getRawData());
   } else if (auto cst = dyn_cast<tfl::SparseConstOp>(inst)) {
     attr = cst.getCompressedData();
   } else if (auto cst = dyn_cast<tfl::SparseQConstOp>(inst)) {
@@ -2085,7 +2089,7 @@ Translator::BuildVhloCompositeV1Op(mlir::vhlo::CompositeOpV1 composite_op,
       auto dense = mlir::DenseIntOrFPElementsAttr::getFromRawBuffer(
           mlir::cast<mlir::ShapedType>(
               vhlo_type_converter.convertType(tensor_v1_attr.getType())),
-          tensor_v1_attr.getData());
+          tensor_v1_attr.getData().getRawData());
       auto type = mlir::cast<TensorType>(dense.getType());
       tflite::TensorType tflite_element_type =
           GetTFLiteType(type.getElementType()).value();

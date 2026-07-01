@@ -81,13 +81,13 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
     const ConstMatrixMap& matrix = inputs[0];
     const ConstMatrixMap& rhs = inputs[1];
     const auto& l2_regularizer_in = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(l2_regularizer_in.shape()),
-        errors::InvalidArgument("l2_regularizer must be scalar, got shape ",
-                                l2_regularizer_in.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(l2_regularizer_in.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("l2_regularizer must be scalar, got shape ",
+                                 l2_regularizer_in.shape().DebugString())));
     const double l2_regularizer = l2_regularizer_in.scalar<double>()();
     OP_REQUIRES(context, l2_regularizer >= 0,
-                errors::InvalidArgument("l2_regularizer must be >= 0."));
+                absl::InvalidArgumentError("l2_regularizer must be >= 0."));
 
     const int64_t rows = matrix.rows();
     const int64_t cols = matrix.cols();
@@ -117,11 +117,11 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
               (Scalar(l2_regularizer) * Matrix::Ones(cols, 1)).asDiagonal();
         }
         const Eigen::LLT<Eigen::Ref<Matrix>, Eigen::Lower> llt(gramian);
-        OP_REQUIRES(
-            context, llt.info() == Eigen::Success,
-            errors::InvalidArgument("Input matrix was rank deficient or "
-                                    "ill-conditioned. Try setting fast=False "
-                                    "or provide a larger l2_regularizer > 0."));
+        OP_REQUIRES(context, llt.info() == Eigen::Success,
+                    absl::InvalidArgumentError(
+                        "Input matrix was rank deficient or "
+                        "ill-conditioned. Try setting fast=False "
+                        "or provide a larger l2_regularizer > 0."));
         outputs->at(0).noalias() = matrix.adjoint() * rhs;
         llt.solveInPlace(outputs->at(0));
       } else {
@@ -138,11 +138,11 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
               (Scalar(l2_regularizer) * Matrix::Ones(rows, 1)).asDiagonal();
         }
         const Eigen::LLT<Eigen::Ref<Matrix>, Eigen::Lower> llt(gramian);
-        OP_REQUIRES(
-            context, llt.info() == Eigen::Success,
-            errors::InvalidArgument("Input matrix was rank deficient or "
-                                    "ill-conditioned. Try setting fast=False "
-                                    "or provide an l2_regularizer > 0."));
+        OP_REQUIRES(context, llt.info() == Eigen::Success,
+                    absl::InvalidArgumentError(
+                        "Input matrix was rank deficient or "
+                        "ill-conditioned. Try setting fast=False "
+                        "or provide an l2_regularizer > 0."));
         outputs->at(0).noalias() = matrix.adjoint() * llt.solve(rhs);
       }
     } else {
