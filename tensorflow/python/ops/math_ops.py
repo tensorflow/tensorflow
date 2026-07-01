@@ -3638,8 +3638,7 @@ def matmul(
       raise ValueError(
           "Argument `a` passed to `tf.linalg.matmul` must be at least rank 2."
           f" Received `a` with shape {a_shape} (rank {len(a_shape)})."
-          " For matrix-vector multiplication, use `tf.linalg.matvec`."
-          " Alternatively, consider using `tf.expand_dims(a, axis=0)` to add a"
+          " To fix this, consider using `tf.expand_dims(a, axis=0)` to add a"
           " batch dimension, or `tf.reshape(a, [...])` to reshape it into a"
           " 2-D (or higher-rank) matrix before calling `tf.linalg.matmul`."
       )

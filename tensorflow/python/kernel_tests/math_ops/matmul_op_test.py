@@ -255,8 +255,7 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
       )
       self.assertIn("rank 1", msg, "Error message should mention 'rank 1'")
 
-    # The message should suggest tf.expand_dims, tf.reshape, and
-    # tf.linalg.matvec for `a`.
+    # The message should suggest tf.expand_dims and tf.reshape for `a`.
     try:
       math_ops.matmul(
           ops.convert_to_tensor([1.0, 2.0]),
@@ -271,11 +270,6 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
       )
       self.assertIn(
           "tf.reshape", msg, "Error should suggest tf.reshape as a remediation"
-      )
-      self.assertIn(
-          "tf.linalg.matvec",
-          msg,
-          "Error should suggest tf.linalg.matvec as a remediation",
       )
 
     # --- `b` is rank-1 ---
