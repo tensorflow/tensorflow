@@ -290,6 +290,16 @@ class MatrixDiagOp : public XlaOpKernel {
     const int64_t diag_rank = diag_shape.dims();
     const int64_t max_diag_len = diag_shape.dim_size(diag_rank - 1);
     const int64_t num_diags = upper_diag_index - lower_diag_index + 1;
+    // A band range k=(low, high) with low != high needs a diagonal-count
+    // dimension, so the diagonal must be at least 2-dim. Guard here before
+    // `diag_shape.dim_size(diag_rank - 2)` below indexes with a negative rank
+    // and CHECK-crashes during XLA compilation. See GitHub issue #110796.
+    OP_REQUIRES(
+        context, num_diags == 1 || diag_rank >= 2,
+        errors::InvalidArgument(
+            "diagonal must be at least 2-dim when a band range k=(low, high) "
+            "with low != high is given, but received shape: ",
+            diag_shape.DebugString()));
     OP_REQUIRES(
         context,
         num_diags == 1 || num_diags == diag_shape.dim_size(diag_rank - 2),
