@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -149,6 +150,30 @@ class ExtractImagePatches(test.TestCase):
             rates=[1, 1],
             padding=padding,
             patches=patches)
+
+  def testExtractPatchesSamePaddingNaNXla(self):
+    """Regression for #119356: eager and jit_compile agree on finite patch sum."""
+    def kernel(x):
+      patches = array_ops.extract_image_patches(
+          images=x,
+          sizes=[1, 2, 2, 1],
+          strides=[1, 1, 1, 1],
+          rates=[1, 1, 1, 1],
+          padding="SAME",
+      )
+      return math_ops.reduce_sum(
+          array_ops.where(
+              math_ops.is_nan(patches), array_ops.zeros_like(patches), patches))
+
+    x = constant_op.constant(
+        [[[[0.0], [-0.0], [float("nan")]],
+          [[1.0], [-1.0], [2.0]],
+          [[3.0], [4.0], [-5.0]]]],
+        dtype=dtypes.float32)
+    eager_sum = kernel(x).numpy()
+    xla_sum = def_function.function(kernel, jit_compile=True)(x).numpy()
+    self.assertAllClose(8.0, eager_sum)
+    self.assertAllClose(eager_sum, xla_sum)
 
   def testInvalidAttributes(self):
     """Test for passing weird things into ksizes."""
