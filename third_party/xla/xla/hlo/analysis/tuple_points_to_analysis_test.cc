@@ -927,5 +927,55 @@ ENTRY %FusedDynamicUpdateSlice (tuple: (f32[8], f32[8])) -> (f32[8], f32[8]) {
   EXPECT_FALSE(
       points_to_analysis_->DoesNotUseOperandBuffer(tuple, {1}, fusion));
 }
+
+TEST_F(TuplePointsToAnalysisTest, CallMarkerBeforePointsToOutputs) {
+  std::string hlo_str = R"(
+HloModule CallMarkerBeforePointsToOutputs
+
+ENTRY main {
+  p0 = f32[2,2] parameter(0)
+  p1 = f32[4,4] parameter(1)
+  ROOT cc = (f32[2,2], f32[4,4]) custom-call(p0, p1),
+    custom_call_target="__xla_internal_call_marker_before"
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* p0 = FindInstruction(module_.get(), "p0");
+  auto* p1 = FindInstruction(module_.get(), "p1");
+  auto* cc = FindInstruction(module_.get(), "cc");
+
+  // The custom call output element {0} should point to p0's buffer.
+  ExpectHasTopLevelBuffers(points_to_analysis_->GetPointsToSet(cc).element({0}),
+                           {p0});
+  // The custom call output element {1} should point to p1's buffer.
+  ExpectHasTopLevelBuffers(points_to_analysis_->GetPointsToSet(cc).element({1}),
+                           {p1});
+}
+
+TEST_F(TuplePointsToAnalysisTest, CallMarkerAfterPointsToOutput) {
+  std::string hlo_str = R"(
+HloModule CallMarkerAfterPointsToOutput
+
+ENTRY main {
+  p0 = f32[2,2] parameter(0)
+  ROOT cc = f32[2,2] custom-call(p0),
+    custom_call_target="__xla_internal_call_marker_after"
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* p0 = FindInstruction(module_.get(), "p0");
+  auto* cc = FindInstruction(module_.get(), "cc");
+
+  // The custom call output should point to p0's buffer.
+  ExpectHasTopLevelBuffers(points_to_analysis_->GetPointsToSet(cc).element({}),
+                           {p0});
+}
+
 }  // namespace
 }  // namespace xla

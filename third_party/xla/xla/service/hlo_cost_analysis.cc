@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/call_marker.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -1356,18 +1357,31 @@ absl::Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
 
 absl::Status HloCostAnalysis::HandleCustomCall(
     const HloInstruction* custom_call) {
+  auto set_properties = [this, custom_call](float value) {
+    current_properties_[kOptimalSecondsKey] = value;
+    current_properties_[kBytesAccessedKey] = value;
+    current_properties_.set_output_bytes_accessed(value);
+    for (int i = 0; i < custom_call->operand_count(); ++i) {
+      current_properties_.set_operand_bytes_accessed(i, value);
+    }
+    current_properties_[kFlopsKey] = value;
+    current_should_compute_bottleneck_time_ = false;
+  };
+
+  // Call markers are transient metadata instructions used by the compiler
+  // (e.g., to defer inlining during layout assignment). They have no runtime
+  // cost, memory footprint, or execution time.
+  if (custom_call->custom_call_target() == kCallMarkerBeforeTarget ||
+      custom_call->custom_call_target() == kCallMarkerAfterTarget) {
+    set_properties(0.0f);
+    return absl::OkStatus();
+  }
+
   // Mark applicable fields as "unknown", since we don't know what this
   // CustomCall does.  This is better than returning an error, which would stop
   // iteration, and therefore would prevent us from getting *any* stats for a
   // computation which contains a CustomCall.
-  current_properties_[kOptimalSecondsKey] = -1;
-  current_properties_[kBytesAccessedKey] = -1;
-  current_properties_.set_output_bytes_accessed(-1);
-  for (int i = 0; i < custom_call->operand_count(); ++i) {
-    current_properties_.set_operand_bytes_accessed(i, -1);
-  }
-  current_properties_[kFlopsKey] = -1;
-  current_should_compute_bottleneck_time_ = false;
+  set_properties(-1.0f);
   return absl::OkStatus();
 }
 

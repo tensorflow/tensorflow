@@ -60,10 +60,15 @@ HloInstruction* InsertCallMarkerBefore(HloInstruction* instruction) {
 }
 
 HloInstruction* InsertCallMarkerAfter(HloInstruction* instruction) {
+  HloModule* module = instruction->GetModule();
+  Shape shape = instruction->shape();
+  if (instruction->parent() == module->entry_computation() &&
+      instruction->parent()->root_instruction() == instruction) {
+    shape = module->entry_computation_layout().result_layout().shape();
+  }
   std::unique_ptr<HloInstruction> call_after_ptr =
       HloInstruction::CreateCustomCall(
-          instruction->to_apply()->root_instruction()->shape(), {instruction},
-          kCallMarkerAfterTarget, "",
+          shape, {instruction}, kCallMarkerAfterTarget, "",
           CustomCallApiVersion::API_VERSION_ORIGINAL);
   Cast<HloCustomCallInstruction>(call_after_ptr.get())
       ->set_custom_call_has_side_effect(true);
@@ -97,6 +102,7 @@ absl::Status PopulateMetadataAndDependencies(HloInstruction* call,
   FrontendAttributes before_attributes;
   (*before_attributes.mutable_map())[kCallMarkedComputationAttribute.data()] =
       call->to_apply()->name();
+  // Call markers declare output-to-operand aliasing to pass values through.
   call_before->set_frontend_attributes(before_attributes);
 
   // Set frontend attributes on the 'after' marker (merge original call's
@@ -104,6 +110,9 @@ absl::Status PopulateMetadataAndDependencies(HloInstruction* call,
   FrontendAttributes after_attributes = call->frontend_attributes();
   (*after_attributes.mutable_map())[kCallMarkedComputationAttribute.data()] =
       call->to_apply()->name();
+  (*after_attributes
+        .mutable_map())[kCallMarkedInstructionNameAttribute.data()] =
+      call->name();
   call_after->set_frontend_attributes(after_attributes);
 
   // Move control predecessors of the call to the 'before' marker so they
