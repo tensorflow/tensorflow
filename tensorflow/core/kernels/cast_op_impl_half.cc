@@ -32,6 +32,14 @@ CastFunctorType GetCpuCastFromHalf(DataType dst_dtype) {
 CastFunctorType GetGpuCastFromHalf(DataType dst_dtype) {
 #if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
   CAST_CASE(GPUDevice, Eigen::half, bfloat16);
+  CAST_CASE(GPUDevice, Eigen::half, int8);
+  CAST_CASE(GPUDevice, Eigen::half, int16);
+  CAST_CASE(GPUDevice, Eigen::half, int32);
+  CAST_CASE(GPUDevice, Eigen::half, int64);
+  CAST_CASE(GPUDevice, Eigen::half, uint8);
+  CAST_CASE(GPUDevice, Eigen::half, uint16);
+  CAST_CASE(GPUDevice, Eigen::half, uint32);
+  CAST_CASE(GPUDevice, Eigen::half, uint64);
 #else
   CURRY_TYPES3(CAST_CASE, GPUDevice, Eigen::half);
 #endif

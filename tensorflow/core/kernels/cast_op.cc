@@ -276,6 +276,21 @@ REGISTER_CAST_GPU(float, bfloat16);
 REGISTER_CAST_GPU(double, bfloat16);
 REGISTER_CAST_GPU(std::complex<float>, bfloat16);
 REGISTER_CAST_GPU(std::complex<double>, bfloat16);
+
+#define REGISTER_CAST_GPU_FLOATING_TO_INTEGRAL(srctype) \
+  REGISTER_CAST_GPU(srctype, int8_t);                   \
+  REGISTER_CAST_GPU(srctype, int16_t);                  \
+  REGISTER_CAST_GPU(srctype, int32_t);                  \
+  REGISTER_CAST_GPU(srctype, int64_t);                  \
+  REGISTER_CAST_GPU(srctype, uint8_t);                  \
+  REGISTER_CAST_GPU(srctype, uint16_t);                 \
+  REGISTER_CAST_GPU(srctype, uint32_t);                 \
+  REGISTER_CAST_GPU(srctype, uint64_t);
+
+REGISTER_CAST_GPU_FLOATING_TO_INTEGRAL(Eigen::half);
+REGISTER_CAST_GPU_FLOATING_TO_INTEGRAL(float);
+REGISTER_CAST_GPU_FLOATING_TO_INTEGRAL(double);
+#undef REGISTER_CAST_GPU_FLOATING_TO_INTEGRAL
 #endif
 CURRY_TYPES2(REGISTER_CAST_GPU, bfloat16);
 

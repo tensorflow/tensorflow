@@ -34,6 +34,14 @@ CastFunctorType GetCpuCastFromFloat(DataType dst_dtype) {
 CastFunctorType GetGpuCastFromFloat(DataType dst_dtype) {
 #if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
   CAST_CASE(GPUDevice, float, bfloat16);
+  CAST_CASE(GPUDevice, float, int8);
+  CAST_CASE(GPUDevice, float, int16);
+  CAST_CASE(GPUDevice, float, int32);
+  CAST_CASE(GPUDevice, float, int64);
+  CAST_CASE(GPUDevice, float, uint8);
+  CAST_CASE(GPUDevice, float, uint16);
+  CAST_CASE(GPUDevice, float, uint32);
+  CAST_CASE(GPUDevice, float, uint64);
 #else
   CURRY_TYPES3(CAST_CASE, GPUDevice, float);
 #endif
