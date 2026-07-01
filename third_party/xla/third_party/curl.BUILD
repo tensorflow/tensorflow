@@ -132,8 +132,6 @@ cc_binary(
     ] + glob([
         "src/*.c",
         "src/*.h",
-        "src/toolx/*.c",
-        "src/toolx/*.h",
     ]),
     copts = select({
         "@xla//xla/tsl:windows": CURL_BIN_WIN_COPTS,
