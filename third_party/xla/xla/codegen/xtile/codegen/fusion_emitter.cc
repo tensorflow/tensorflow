@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
