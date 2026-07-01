@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -73,8 +74,7 @@ HloInstruction* Convert(HloInstruction* instr, PrimitiveType target_type) {
     return instr;
   }
   HloComputation* computation = instr->parent();
-  Shape shape = instr->shape();
-  shape.set_element_type(target_type);
+  Shape shape = ShapeUtil::ChangeElementType(instr->shape(), target_type);
   return computation->AddInstruction(
       HloInstruction::CreateConvert(shape, instr));
 }

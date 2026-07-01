@@ -215,7 +215,7 @@ def lit_test_suite_for_gpus(
     # If there are kwargs that need to be passed to only some of the generated
     # rules, they should be extracted into separate named arguments.
 
-    rocm_gpus = ["mi200", "gfx1250"]
+    rocm_gpus = ["mi200", "mi350", "gfx1250"]
 
     for gpu in gpus:
         is_rocm = gpu in rocm_gpus

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_executor.h"
 
-#include <unistd.h>
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -79,6 +77,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_context.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_kernel.h"
+#include "xla/stream_executor/rocm/rocm_memory_bandwidth.h"
 #include "xla/stream_executor/rocm/rocm_pcie_bandwidth.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
@@ -1134,11 +1133,13 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
     float clock_rate_ghz = static_cast<float>(prop.clockRate) / 1e6;
     desc.set_clock_rate_ghz(clock_rate_ghz);
 
-    // mem_bandwidth = 2 * mem_bus_width_in_bytes * mem_clock_rate_in_hz
-    int64_t memory_bandwidth =
-        2 * (static_cast<int64_t>(prop.memoryBusWidth) / 8) *
-        (static_cast<int64_t>(prop.memoryClockRate) * 1000);
-    desc.set_memory_bandwidth(memory_bandwidth);
+    // HIP reports the memory controller clock (UCLK), not the data-rate clock,
+    // so the legacy `2 * bus * clock` formula undercounts on HBM3+/GDDR6.
+    // GetRocmMemoryBandwidth uses a per-gfx peak for known architectures and
+    // falls back to that formula for unmodeled arches.
+    desc.set_memory_bandwidth(
+        gpu::GetRocmMemoryBandwidth(RocmComputeCapability(gcn_arch_name),
+                                    prop.memoryBusWidth, prop.memoryClockRate));
 
     desc.set_l2_cache_size(prop.l2CacheSize);
   }
