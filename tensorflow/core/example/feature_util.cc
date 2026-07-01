@@ -18,6 +18,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/repeated_field.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
+#include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/example/feature.pb.h"
 
 namespace tensorflow {
 
