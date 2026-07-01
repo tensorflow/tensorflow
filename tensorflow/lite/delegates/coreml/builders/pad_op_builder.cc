@@ -108,6 +108,11 @@ bool IsPadOpSupported(const TfLiteRegistration* registration,
                        padding->name);
     return false;
   }
+  if (padding->dims->size != 2) {
+    TF_LITE_KERNEL_LOG(context, "%s: PAD padding tensor must be 2D.",
+                       padding->name);
+    return false;
+  }
   if (padding->dims->data[0] != 4 || padding->dims->data[1] != 2) {
     TF_LITE_KERNEL_LOG(context, "%s: Only 4D inputs are supported for PAD.",
                        padding->name);
