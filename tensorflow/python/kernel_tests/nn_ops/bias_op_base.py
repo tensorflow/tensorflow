@@ -320,3 +320,21 @@ class BiasAddTestBase(test.TestCase):
         self._testGradient(
             np.random.randn(*shape), np.random.randn(shape[-1]), dtypes.float64,
             data_format, use_gpu)
+
+  def testBiasAddInt32Overflow(self):
+    # Verifies that we can build operations for large tensors, and if we run
+    # out of resource/memory on smaller test machines it skips gracefully.
+    # We test BiasAdd with dimensions whose product > 2**31.
+    # Total count = 2 * 1073741825 = 2,147,483,650 > 2**31 - 1.
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available to run GPU large tensor tests.")
+
+    with self.session(use_gpu=True):
+      try:
+        inp = array_ops.zeros(shape=(2, 1073741825), dtype=dtypes.float16)
+        bias = array_ops.zeros(shape=(1073741825,), dtype=dtypes.float16)
+        out = nn_ops.bias_add(inp, bias)
+        self.evaluate(out)
+      except (errors_impl.ResourceExhaustedError,
+              errors_impl.InternalError) as e:
+        self.skipTest("Skipped due to memory limits: %s" % str(e))

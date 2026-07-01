@@ -259,6 +259,16 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
     int32_t batch, height, width, depth, channel;
     GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth,
                      &channel);
+    // GetBiasValueDims truncates each dim to int32, so a dim above int32 max
+    // wraps to a negative value. Require all dims to be non-negative up front
+    // so a truncated shape is rejected before it reaches the GPU kernels.
+    OP_REQUIRES(
+        context,
+        batch >= 0 && height >= 0 && width >= 0 && depth >= 0 && channel >= 0,
+        errors::InvalidArgument(
+            "BiasAdd: dimension values must be non-negative. Got batch=", batch,
+            ", height=", height, ", width=", width, ", depth=", depth,
+            ", channel=", channel));
     OP_REQUIRES(
         context,
         static_cast<int64_t>(batch) * height * width * depth * channel ==
@@ -417,9 +427,10 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                             const Tensor& output_backprop, int32_t batch,
                             int32_t width, int32_t height, int32_t depth,
                             int32_t channel, Tensor* output) {
-    // Upper bound for FastBoundsCheck: value < kInt32Limit iff value <= INT32_MAX.
+    // Upper bound for FastBoundsCheck: value < kInt32Limit iff value <=
+    // INT32_MAX.
     constexpr int64_t kInt32Limit =
-        static_cast<int64_t>(std::numeric_limits<int32>::max()) + 1;
+        static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1;
     if (data_format_ == FORMAT_NCHW) {
       int64_t row_count = static_cast<int64_t>(batch) * channel;
       int64_t col_count = static_cast<int64_t>(height) * width * depth;
@@ -447,8 +458,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                                      channel);
     } else {
       // For 'NHWC', we simply apply reduction once on NHW.
-      int64_t row_count =
-          static_cast<int64_t>(batch) * height * width * depth;
+      int64_t row_count = static_cast<int64_t>(batch) * height * width * depth;
       OP_REQUIRES(
           context, FastBoundsCheck(row_count, kInt32Limit),
           errors::InvalidArgument(
@@ -473,6 +483,16 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     int32_t batch, height, width, depth, channel;
     GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width,
                      &depth, &channel);
+    // GetBiasValueDims truncates each dim to int32, so a dim above int32 max
+    // wraps to a negative value. Require all dims to be non-negative up front
+    // so a truncated shape is rejected before it reaches the GPU kernels.
+    OP_REQUIRES(
+        context,
+        batch >= 0 && height >= 0 && width >= 0 && depth >= 0 && channel >= 0,
+        errors::InvalidArgument(
+            "BiasAddGrad: dimension values must be non-negative. Got batch=",
+            batch, ", height=", height, ", width=", width, ", depth=", depth,
+            ", channel=", channel));
     OP_REQUIRES(
         context,
         static_cast<int64_t>(batch) * height * width * depth * channel ==
