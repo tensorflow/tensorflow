@@ -191,11 +191,8 @@ class FakeLibCurl : public LibCurl {
     }
     return CURLE_OK;
   }
-  CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                             double* value) override {
-    (void)curl;
-    (void)info;
-    (void)value;
+  CURLcode curl_easy_getinfo(CURL* /*curl*/, CURLINFO /*info*/,
+                             double* /*value*/) override {
     return CURLE_OK;
   }
   void curl_easy_cleanup(CURL* curl) override { is_cleaned_up_ = true; }
