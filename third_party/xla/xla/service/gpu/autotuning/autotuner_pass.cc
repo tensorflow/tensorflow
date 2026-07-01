@@ -315,11 +315,6 @@ AutotunerPass::GetGpuAutotunerBackends(
         autotuner::Backend::BLOCK_LEVEL_EMITTER);
   }
 
-  if (debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      debug_options.xla_gpu_deterministic_ops()) {
-    disabled_autotune_backends.push_back(autotuner::Backend::TRITON);
-  }
-
   autotune_backends.erase(
       std::remove_if(autotune_backends.begin(), autotune_backends.end(),
                      [&](autotuner::Backend backend) {

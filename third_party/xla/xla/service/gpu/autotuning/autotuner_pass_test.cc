@@ -523,29 +523,6 @@ TEST_F(AutotunerFlagsTest, DeterministicAutotuningSetsSelectFirstConfig) {
   EXPECT_EQ(GetConfigAssignerOptions(debug_options).select_first_config, true);
 }
 
-TEST_F(AutotunerFlagsTest, GetGpuAutotunerBackendsRespectsDeterminism) {
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
-
-  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
-  GpuAliasInfo alias_info(stream_executor_->GetDeviceDescription());
-  mlir::MLIRContext mlir_context;
-  RegisterSymbolicExprStorage(&mlir_context);
-
-  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<CodegenBackend>> backends,
-                       AutotunerPass::GetGpuAutotunerBackends(
-                           stream_executor_, allocator_.get(), &target_config,
-                           &alias_info, debug_options, &mlir_context,
-                           /*shape_size_fn=*/[](const Shape&) { return 0; },
-                           &compiler_, stream_executor_->GetPlatform()->id()));
-
-  for (const auto& backend : backends) {
-    EXPECT_NE(backend->backend(), autotuner::Backend::TRITON);
-    EXPECT_NE(backend->backend(), autotuner::Backend::NATIVE_EMITTER);
-    EXPECT_NE(backend->backend(), autotuner::Backend::BLOCK_LEVEL_EMITTER);
-  }
-}
-
 TEST_F(AutotunerPassTest, CublasLtSelectFirstConfig) {
   absl::SetVLogLevel("config_assigner*", 10);
   AutotunerCache::ClearAutotuneResults();
