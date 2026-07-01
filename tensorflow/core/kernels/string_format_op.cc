@@ -33,7 +33,7 @@ class StringFormatOp : public OpKernel {
     split_template_ = absl::StrSplit(template_, placeholder_);
     int64_t num_placeholders = split_template_.size() - 1;
     OP_REQUIRES(ctx, ctx->num_inputs() == num_placeholders,
-                errors::InvalidArgument(absl::StrCat(
+                absl::InvalidArgumentError(absl::StrCat(
                     "num placeholders in template and num inputs must match: ",
                     num_placeholders, " vs. ", ctx->num_inputs())));
   }
