@@ -34,6 +34,8 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/btree_set.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -429,7 +431,8 @@ class PriorityTaskQueue {
       bool enable_lazy_cancellation_filtering, size_t max_execution_batch_size,
       int64_t batch_timeout_micros, bool disable_padding,
       ModelBatchStats* model_batch_stats, Env* env)
-      : allowed_batch_sizes_(allowed_batch_sizes),
+      : start_times_(batch_timeout_micros),
+        allowed_batch_sizes_(allowed_batch_sizes),
         batch_padding_policy_(batch_padding_policy),
         max_queue_depth_(max_queue_depth),
         split_input_task_func_(split_input_task_func),
@@ -437,7 +440,6 @@ class PriorityTaskQueue {
         enable_task_resplit_(enable_task_resplit),
         enable_lazy_cancellation_filtering_(enable_lazy_cancellation_filtering),
         max_execution_batch_size_(max_execution_batch_size),
-        batch_timeout_micros_(batch_timeout_micros),
         disable_padding_(disable_padding),
         model_batch_stats_(model_batch_stats),
         env_(env) {}
@@ -582,12 +584,6 @@ class PriorityTaskQueue {
     return tasks_to_schedule;
   }
 
-  std::optional<uint64_t> EarliestTaskStartTime() const {
-    if (start_times_.empty()) {
-      return std::nullopt;
-    }
-    return *start_times_.begin();
-  }
 
   std::optional<uint64_t> EarliestHighPriorityTaskStartTime() const {
     if (tasks_.empty()) {
@@ -611,31 +607,32 @@ class PriorityTaskQueue {
     return tasks_.begin()->criticality;
   }
 
+  bool IsSchedulable() const {
+    if (empty()) return false;
+    return size() >= max_execution_batch_size_ ||
+           start_times_.HasTimedOutRequest(env_->NowMicros());
+  }
+
   // Returns a batch of tasks from the queue if the batch is ready to be
   // executed. Otherwise, returns nullptr.
   // BatchPaddingPolicy is applied to determine the optimal batch size.
   std::unique_ptr<Batch<TaskType>> ScheduleBatch() {
-    if (empty()) {
+    if (!IsSchedulable()) {
       return nullptr;
     }
-    if (size() >= max_execution_batch_size_ ||
-        env_->NowMicros() >=
-            EarliestTaskStartTime().value() + batch_timeout_micros_) {
-      size_t candidate_size =
-          std::min(static_cast<size_t>(size()), max_execution_batch_size_);
-      int32_t tasks_to_schedule = ApplyBatchPaddingPolicy(
-          candidate_size, allowed_batch_sizes_, disable_padding_,
-          batch_padding_policy_, model_batch_stats_);
-      auto batch = std::make_unique<Batch<TaskType>>();
-      std::vector<std::unique_ptr<TaskType>> tasks =
-          RemoveTask(tasks_to_schedule);
-      for (auto& t : tasks) {
-        batch->AddTask(std::move(t), env_->NowMicros());
-      }
-      batch->Close();
-      return batch;
+    size_t candidate_size =
+        std::min(static_cast<size_t>(size()), max_execution_batch_size_);
+    int32_t tasks_to_schedule = ApplyBatchPaddingPolicy(
+        candidate_size, allowed_batch_sizes_, disable_padding_,
+        batch_padding_policy_, model_batch_stats_);
+    auto batch = std::make_unique<Batch<TaskType>>();
+    std::vector<std::unique_ptr<TaskType>> tasks =
+        RemoveTask(tasks_to_schedule);
+    for (auto& t : tasks) {
+      batch->AddTask(std::move(t), env_->NowMicros());
     }
-    return nullptr;
+    batch->Close();
+    return batch;
   }
 
  private:
@@ -653,6 +650,47 @@ class PriorityTaskQueue {
     }
   };
 
+  // Tracks the start times of requests and computes whether any request has
+  // timed out.
+  // This class is not thread-safe. Callers must handle synchronization.
+  // Requires: all time arguments are provided in micros.
+  class StartTimes {
+   public:
+    explicit StartTimes(int64_t batch_timeout)
+        : batch_timeout_(batch_timeout) {}
+
+    void Insert(tsl::criticality::Criticality criticality,
+                uint64_t start_time) {
+      start_times_by_criticality_[criticality].insert(start_time);
+    }
+
+    void Erase(tsl::criticality::Criticality criticality, uint64_t start_time) {
+      auto& start_times = start_times_by_criticality_[criticality];
+      auto it = start_times.find(start_time);
+      if (it != start_times.end()) {
+        start_times.erase(it);
+      }
+    }
+
+    bool HasTimedOutRequest(uint64_t now) const {
+      for (const auto& [criticality, start_times] :
+           start_times_by_criticality_) {
+        if (start_times.empty()) continue;
+        uint64_t earliest_start_time = *start_times.begin();
+        if (now >= earliest_start_time + batch_timeout_) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+   private:
+    absl::flat_hash_map<tsl::criticality::Criticality,
+                        absl::btree_multiset<uint64_t>>
+        start_times_by_criticality_;
+    const int64_t batch_timeout_;
+  };
+
   tsl::criticality::Criticality GetCriticality(const TaskType& task) const {
     if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
       return task.criticality();
@@ -662,7 +700,7 @@ class PriorityTaskQueue {
 
   void AddEntryInternal(QueueEntry entry) {
     current_queue_size_ += entry.task->size();
-    start_times_.insert(entry.start_time_micros);
+    start_times_.Insert(entry.criticality, entry.start_time_micros);
     tasks_.insert(std::move(entry));
   }
 
@@ -671,10 +709,7 @@ class PriorityTaskQueue {
     auto node = tasks_.extract(it);
     QueueEntry& entry = node.value();
     current_queue_size_ -= entry.task->size();
-    auto st_it = start_times_.find(entry.start_time_micros);
-    if (st_it != start_times_.end()) {
-      start_times_.erase(st_it);
-    }
+    start_times_.Erase(entry.criticality, entry.start_time_micros);
     return std::move(entry);
   }
 
@@ -690,7 +725,7 @@ class PriorityTaskQueue {
   }
 
   std::multiset<QueueEntry> tasks_;
-  std::multiset<uint64_t> start_times_;
+  StartTimes start_times_;
   size_t current_queue_size_ = 0;
 
   const std::vector<int32_t> allowed_batch_sizes_;
@@ -705,7 +740,6 @@ class PriorityTaskQueue {
   const bool enable_task_resplit_ = false;
   const bool enable_lazy_cancellation_filtering_;
   const size_t max_execution_batch_size_;
-  const int64_t batch_timeout_micros_;
   const bool disable_padding_;
   ModelBatchStats* const model_batch_stats_;
   Env* const env_;
@@ -1931,15 +1965,7 @@ template <typename TaskType>
 std::optional<typename Queue<TaskType>::BatchPriorityKey>
 Queue<TaskType>::PeekBatchPriorityImpl() const {
   if (options_.enable_priority_aware_batch_scheduler) {
-    if (tasks_priority_queue_.empty()) {
-      return std::nullopt;
-    }
-    bool schedulable =
-        tasks_priority_queue_.size() >= max_execution_batch_size_ ||
-        env_->NowMicros() >=
-            tasks_priority_queue_.EarliestTaskStartTime().value() +
-                options_.batch_timeout_micros;
-    if (!schedulable) {
+    if (!tasks_priority_queue_.IsSchedulable()) {
       return std::nullopt;
     }
     std::optional<tsl::criticality::Criticality> highest_criticality =
