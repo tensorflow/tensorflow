@@ -21,6 +21,14 @@ config_setting(
     ],
 )
 
+config_setting(
+    name = "windows_arm64",
+    constraint_values = [
+        "@platforms//os:windows",
+        "@platforms//cpu:arm64",
+    ],
+)
+
 cc_library(
     name = "farmhash",
     srcs = ["src/farmhash.cc"],
@@ -28,6 +36,7 @@ cc_library(
     # Disable __builtin_expect support on Windows
     copts = select({
         ":windows_x86_64_clang": ["-DFARMHASH_OPTIONAL_BUILTIN_EXPECT"],
+        ":windows_arm64": ["/DFARMHASH_OPTIONAL_BUILTIN_EXPECT"],
         ":windows": ["/DFARMHASH_OPTIONAL_BUILTIN_EXPECT"],
         "//conditions:default": [],
     }),
