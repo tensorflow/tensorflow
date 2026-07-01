@@ -180,6 +180,12 @@ TEST(DetectionPostprocessOpTest, RejectsNegativeMaxDetections) {
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
+TEST(DetectionPostprocessOpTest, RejectsNegativeMaxClassesPerDetection) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
+                                           /*max_classes_per_detection=*/-1);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 TEST(DetectionPostprocessOpTest, FloatTest) {
   BaseDetectionPostprocessOpModel m(
       {TensorType_FLOAT32, {1, 6, 4}}, {TensorType_FLOAT32, {1, 6, 3}},
