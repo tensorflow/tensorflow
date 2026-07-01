@@ -28,8 +28,6 @@ absl::Status DoSetTpuOpsStructFns(void* library_handle) {
   static TfTpu_OpsApiFn ops_api_fn;
   TFTPU_SET_FN(&ops_api_fn, SetGlobalTPUArrayOp_DoWork);
   TFTPU_SET_FN(&ops_api_fn, TpuConfigurationApi_FreeCharArray);
-  TFTPU_SET_FN(&ops_api_fn, TpuConfigurationApi_TpusPerHost);
-  TFTPU_SET_FN(&ops_api_fn, TpuConfigurationApi_TpuMemoryLimit);
 
   TFTPU_SET_FN(&ops_api_fn, TpuMeshState_Create);
   TFTPU_SET_FN(&ops_api_fn, TpuMeshState_Free);
