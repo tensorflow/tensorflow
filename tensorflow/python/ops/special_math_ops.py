@@ -622,10 +622,10 @@ def _resolve_xla_einsum_ellipsis(equation, input0_shape, input1_shape):
     # No actual batch dims: simply strip the ellipsis.
     return '{},{}->{}'.format(left_explicit, right_explicit, output_explicit)
 
-  # Pick fresh single-char labels for the batch dims. Use lowercase letters
+  # Pick fresh single-char labels for the batch dims. Use letters
   # that do not already appear in the equation.
   used = set(left_explicit + right_explicit + output_explicit)
-  available = [c for c in 'abcdefghijklmnopqrstuvwxyz' if c not in used]
+  available = [c for c in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ' if c not in used]
   if len(available) < batch_ndims:
     # Not enough fresh labels; fall back to the original equation.
     return equation
