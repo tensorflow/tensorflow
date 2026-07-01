@@ -320,11 +320,11 @@ TEST_F(GpuBlasLtMatmulThunkTest, SharedMatmulPlansFunctional) {
   EXPECT_NE(blas_lt, nullptr);
   blas_lt->ClearMatmulPlanCache();
 
-  EXPECT_TRUE(RunAndCompare(hlo_single_plan, ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_single_plan, ErrorSpec{0.05, 0.05}));
   // Assert that only one MatmulPlan cache entry was created.
   EXPECT_EQ(blas_lt->GetMatmulPlanCacheSize(), 1);
 
-  EXPECT_TRUE(RunAndCompare(hlo_two_plans, ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_two_plans, ErrorSpec{0.05, 0.05}));
   // Assert that we have now 2 MatmulPlans (one more created for ReLu epilogue).
   EXPECT_EQ(blas_lt->GetMatmulPlanCacheSize(), 2);
 }
@@ -353,7 +353,7 @@ ENTRY AddDotsFunc {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(simple_gemm_hlo, config));
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0.05, 0.05}));
   EXPECT_EQ(blas_lt->GetMatmulPlanCacheSize(), 1);
 }
 

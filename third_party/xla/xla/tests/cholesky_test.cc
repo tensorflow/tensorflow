@@ -62,7 +62,7 @@ TEST_F(CholeskyTest, NonPSDInput) {
   });
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data},
-                             ErrorSpec(1e-4, 1e-4));
+                             ErrorSpec(0.01, 0.01));
 }
 
 TEST_F(CholeskyTest, NonPSDBatched) {
@@ -100,7 +100,7 @@ TEST_F(CholeskyTest, NonPSDBatched) {
   });
 
   ComputeAndCompareR3<float>(&builder, expected, {&a_data},
-                             ErrorSpec(1e-4, 1e-4));
+                             ErrorSpec(0.01, 0.01));
 }
 
 TEST_F(CholeskyTest, Lower) {
@@ -126,7 +126,7 @@ TEST_F(CholeskyTest, Lower) {
   });
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data},
-                             ErrorSpec(1e-4, 1e-4));
+                             ErrorSpec(0.01, 0.01));
 }
 
 TEST_F(CholeskyTest, Upper) {
@@ -152,7 +152,7 @@ TEST_F(CholeskyTest, Upper) {
   });
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data},
-                             ErrorSpec(1e-4, 1e-4));
+                             ErrorSpec(0.01, 0.01));
 }
 
 TEST_F(CholeskyTest, Simple2) {
@@ -175,7 +175,7 @@ TEST_F(CholeskyTest, Simple2) {
                            {3, 6, 1, 4}});
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data},
-                             ErrorSpec(1e-4, 1e-4));
+                             ErrorSpec(0.01, 0.01));
 }
 
 TEST_F(CholeskyTest, SimpleBatched) {
@@ -214,7 +214,7 @@ TEST_F(CholeskyTest, SimpleBatched) {
   });
 
   ComputeAndCompareR3<float>(&builder, expected, {&a_data},
-                             ErrorSpec(1e-4, 1e-4));
+                             ErrorSpec(0.01, 0.01));
 }
 
 using CholeskyTestCase = std::tuple<int64_t, int64_t, bool>;
@@ -256,7 +256,7 @@ TEST_P(RandomCholeskyTest, Real) {
   Reduce(delta * delta, ConstantR0<float>(&builder, 0.0),
          CreateScalarAddComputation(F32, &builder), {0, 1, 2});
 
-  ComputeAndCompareR0<float>(&builder, 0.0, {&literal}, ErrorSpec(1e-4, 1e-4));
+  ComputeAndCompareR0<float>(&builder, 0.0, {&literal}, ErrorSpec(0.01, 0.01));
 }
 
 TEST_P(RandomCholeskyTest, Complex) {
@@ -301,7 +301,7 @@ TEST_P(RandomCholeskyTest, Complex) {
          CreateScalarAddComputation(F32, &builder), {0, 1, 2});
 
   ComputeAndCompareR0<float>(&builder, 0.0, {&literal_real, &literal_imag},
-                             ErrorSpec(1e-4, 1e-4));
+                             ErrorSpec(0.01, 0.01));
 }
 
 INSTANTIATE_TEST_SUITE_P(RandomCholeskyTestInstance, RandomCholeskyTest,

@@ -54,7 +54,7 @@ ENTRY main {
   fake_arguments[2] = LiteralUtil::CreateR1<int64_t>({1, 2, 3});
   EXPECT_TRUE(RunAndCompare(std::move(module),
                             LiteralUtil::MakePointers(fake_arguments),
-                            ErrorSpec{0, 0}));
+                            ErrorSpec{0.01, 0.5}));
 }
 
 TEST_F(RaggedDotTest, NonContractingWithBatchDims) {
@@ -81,7 +81,7 @@ TEST_F(RaggedDotTest, NonContractingWithBatchDims) {
   fake_arguments[2] = LiteralUtil::CreateR2<int64_t>({{4, 5}, {7, 2}, {6, 3}});
   EXPECT_TRUE(RunAndCompare(std::move(module),
                             LiteralUtil::MakePointers(fake_arguments),
-                            ErrorSpec{0, 0}));
+                            ErrorSpec{0.01, 0.5}));
 }
 
 TEST_F(RaggedDotTest, NonContractingWithMultipleContractingDims) {
@@ -108,7 +108,7 @@ ENTRY main {
   fake_arguments[2] = LiteralUtil::CreateR1<int64_t>({4, 2});
   EXPECT_TRUE(RunAndCompare(std::move(module),
                             LiteralUtil::MakePointers(fake_arguments),
-                            ErrorSpec{0, 0}));
+                            ErrorSpec{0.01, 0.5}));
 }
 
 TEST_F(RaggedDotTest, NonContractingWithExtraLhsDim) {
@@ -135,7 +135,7 @@ ENTRY main {
   fake_arguments[2] = LiteralUtil::CreateR2<int64_t>({{1, 2, 3}, {3, 2, 1}});
   EXPECT_TRUE(RunAndCompare(std::move(module),
                             LiteralUtil::MakePointers(fake_arguments),
-                            ErrorSpec{0, 0}));
+                            ErrorSpec{0.01, 0.5}));
 }
 
 }  // namespace

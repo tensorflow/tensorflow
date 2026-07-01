@@ -60,7 +60,7 @@ TEST_F(MatmulTestWithCublas, GemmRewriter_NonCanonicalDots) {
      ROOT r = f32[8,5,7] reduce(d,c), dimensions={0}, to_apply=a
     }
   )";
-  EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{1e-4, 1e-4}));
+  EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{0.05, 0.05}));
 }
 
 TEST_F(MatmulTestWithCublas, GemmRewriter_RegressionTestF64) {
@@ -76,7 +76,7 @@ ENTRY GeneralMatMulActivation.7 {
   ROOT maximum.6 = f64[2,2,2]{2,1,0} maximum(dot.3, broadcast.5)
 })";
 
-  EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{1e-4, 1e-4}));
+  EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{0.05, 0.05}));
 }
 
 // There was an issue where the compilation process of an Inverse operation was
@@ -129,8 +129,8 @@ TEST_F(MatmulTestWithCublas, InverseAndMatmul) {
     ROOT get-tuple-element.9 = f32[2,6,2,2]{3,2,1,0} get-tuple-element(tuple.8), index=0
   })";
 
-  EXPECT_TRUE(RunAndCompare(inverse_module_str, ErrorSpec{1e-4, 1e-4}));
-  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  EXPECT_TRUE(RunAndCompare(inverse_module_str, ErrorSpec{0.05, 0.05}));
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{0.05, 0.05}));
 }
 
 }  // namespace

@@ -65,7 +65,14 @@ std::string TritonSupportTestTypeToString(
 }
 
 class MixedTypeTest : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase>,
-                      public ::testing::WithParamInterface<MixTypeParams> {};
+                      public ::testing::WithParamInterface<MixTypeParams> {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(false);
+    return debug_options;
+  }
+};
 
 // TODO(b/393299275): there is a significant amount of overlap between this test
 // and tests for ALG_UNSET in `fusion_emitter_device_test.cc`. We should

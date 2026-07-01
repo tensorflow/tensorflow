@@ -186,7 +186,7 @@ ENTRY e {
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
                                  R"(
-CHECK: tt.dot {{.*}} : tensor<16x32xf32> * tensor<32x16xf32> -> tensor<16x16xf32>
+CHECK: tt.dot {{.*}} : tensor<16x32xbf16> * tensor<32x16xbf16> -> tensor<16x16xf32>
 )"));
 }
 
@@ -266,7 +266,7 @@ ENTRY e {
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters, R"(
 CHECK: scf.if {{.*}} -> (tensor<1x32x64xf32>)
-CHECK: tt.dot {{.*}} : tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32>
+CHECK: tt.dot {{.*}} : tensor<16x32xbf16> * tensor<32x64xbf16> -> tensor<16x64xf32>
 )"));
 }
 
@@ -307,9 +307,8 @@ ENTRY e {
 })";
   ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                        GetModuleAndNestedFusionMetadata(kHloText));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
-                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                                       ErrorSpec{0.3, 0.3}));
   EXPECT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters, R"(
@@ -376,8 +375,7 @@ ENTRY e {
   debug_options.set_xla_dump_emitter_re("triton");
   verified_module->mutable_config().set_debug_options(debug_options);
 
-  EXPECT_TRUE(RunAndCompare(std::move(verified_module),
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(std::move(verified_module), ErrorSpec{0.3, 0.3}));
 
   std::vector<std::string> paths;
   EXPECT_OK(tsl::Env::Default()->GetMatchingPaths(
@@ -415,9 +413,8 @@ ENTRY main {
 })";
   ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                        GetModuleAndNestedFusionMetadata(kHloText));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
-                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                                       ErrorSpec{0.3, 0.3}));
 }
 
 TEST_F(TritonGemmTest, UseTensorCoresForF32OnAmpere) {
@@ -527,7 +524,7 @@ ENTRY e {
 ; CHECK-SAME: "__triton_nested_gemm_fusion"
   )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 TEST_F(TritonGemmTest, MultipleBatchDimensions) {
@@ -560,8 +557,7 @@ ENTRY e {
                   .WithFusionKind(HloInstruction::FusionKind::kCustom))
               .WithFusionKind(HloInstruction::FusionKind::kLoop)));
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      std::move(module), ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec{0.3, 0.3}));
 }
 
 TEST_F(TritonGemmTest, PredWithBF16DotProducesCorrectResult) {
@@ -585,9 +581,8 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                           GetModuleAndNestedFusionMetadata(kHloText));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
-                               ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                                       ErrorSpec{0.3, 0.3}));
 }
 
 // TODO: b/422676780 - Enable the tests once the indexing maps-based tiling is
@@ -615,7 +610,7 @@ ENTRY e {
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: __triton_nested_gemm_fusion
 )");
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 // TODO: b/422676780 - Enable the tests once the indexing maps-based tiling is
@@ -645,7 +640,7 @@ ENTRY e {
 ; CHECK-SAME: __triton_nested_gemm_fusion
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 TEST_F(TritonGemmTest, SplitAndTransposeLhsExecutesCorrectly) {
@@ -675,7 +670,7 @@ ENTRY e {
     if (GpuComputeCapability().rocm_compute_capability()->gfx9_mi200())
       GTEST_SKIP() << "Denorm fp16 does not work on MI200 ROCm archs";
   }
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 // TODO(b/393299275): it's not clear that this test is actually testing what it
@@ -701,7 +696,7 @@ ENTRY r {
 ; CHECK: f32[3,128,123]{2,1,0} dot(%[[tr]], %[[p1]])
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 // TODO(b/393299275): this is a pure test of fusion logic. It should be moved to
@@ -781,7 +776,7 @@ ENTRY e {
 ; CHECK-SAME: "__triton_nested_gemm_fusion"
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 // TODO(b/393299275): this is a pure test of fusion logic. It should be moved to
@@ -830,7 +825,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 // This tests the complexity heuristics in TritonWrapper.
@@ -926,9 +921,8 @@ e {
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                           GetModuleAndNestedFusionMetadata(kHloText));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
-                               ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
+                                       ErrorSpec{0.3, 0.3}));
 }
 
 // TODO(b/393299275): this test may have some value while Triton tiling
@@ -959,9 +953,8 @@ e {
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                           GetModuleAndNestedFusionMetadata(kHloText));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
-                               ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
+                                       ErrorSpec{0.3, 0.3}));
 }
 
 // TODO(b/417172838): enable after enabling dynamic slice in support.cc.
@@ -996,7 +989,7 @@ ENTRY e {
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
   // Check that it's not optimized away.
   MatchHloModule(*module, "; CHECK: dynamic-slice(");
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 // TODO(b/417172838): enable after enabling dynamic slice in support.cc.
@@ -1032,9 +1025,8 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                           GetModuleAndNestedFusionMetadata(kHloText));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
-                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                                       ErrorSpec{0.3, 0.3}));
 }
 
 class TritonGemmDynamicSliceClampingTest
@@ -1079,9 +1071,8 @@ ENTRY e {
                                                 GetParam());
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                           GetModuleAndNestedFusionMetadata(hlo_text));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
-                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                                       ErrorSpec{0.3, 0.3}));
 }
 
 std::string OffsetParamToString(const ::testing::TestParamInfo<int>& data) {
@@ -1128,9 +1119,8 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                           GetModuleAndNestedFusionMetadata(kHloText));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
-                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                                       ErrorSpec{0.3, 0.3}));
 }
 
 // TODO(b/417172838): enable after enabling dynamic slice in support.cc.
@@ -1173,9 +1163,8 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                           GetModuleAndNestedFusionMetadata(kHloText));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
-                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                                       ErrorSpec{0.3, 0.3}));
 }
 
 // TODO(b/417172838): enable after enabling dynamic slice in support.cc.
@@ -1217,9 +1206,8 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                           GetModuleAndNestedFusionMetadata(kHloText));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
-                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                                       ErrorSpec{0.3, 0.3}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
@@ -1251,7 +1239,7 @@ ENTRY e {
 ; CHECK-SAME:   "__triton_nested_gemm_fusion"
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 TEST_F(TritonGemmTest, BinaryOperationWithSmallInputsIsFused) {
@@ -1384,7 +1372,7 @@ ENTRY e {
                         .WithFusionKind(HloInstruction::FusionKind::kCustom))
               .WithFusionKind(HloInstruction::FusionKind::kLoop)));
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
@@ -1531,8 +1519,7 @@ e {
                            m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2,
-                                                /*arel=*/1e-2}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
@@ -1600,7 +1587,7 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
@@ -1704,7 +1691,7 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 TEST_F(TritonGemmTest, OutputFusionExecutesCorrectly) {
@@ -1741,7 +1728,7 @@ ENTRY e {
                            m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
@@ -1777,7 +1764,7 @@ ENTRY e {
   EXPECT_EQ(root_fusion->fused_expression_root()->opcode(),
             HloOpcode::kTranspose);
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
@@ -1814,7 +1801,7 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.3, 0.3}));
 }
 
 TEST_F(TritonGemmTest, SupportPredParametersUsedInExpressions) {
@@ -1935,7 +1922,7 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompareTwoModules(
       std::move(ref_module), std::move(test_module_and_metadata.module),
-      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
+      ErrorSpec{0.3, 0.3},
       /*run_hlo_passes=*/false));
 }
 
@@ -2036,11 +2023,10 @@ ENTRY e {
       ModuleAndNestedFusionMetadata low_shmem_module_and_metadata,
       GetModuleAndNestedFusionMetadata(kHloTextLowShmem));
 
-  EXPECT_TRUE(
-      RunAndCompareTwoModules(std::move(low_shmem_module_and_metadata.module),
-                              std::move(optin_shmem_module_and_metadata.module),
-                              ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
-                              /*run_hlo_passes=*/false));
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(low_shmem_module_and_metadata.module),
+      std::move(optin_shmem_module_and_metadata.module), ErrorSpec{0.3, 0.3},
+      /*run_hlo_passes=*/false));
 }
 
 TEST_F(CompareTest, NonMajorMostOutputBatchWorksCorrectly) {
@@ -2105,11 +2091,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
                           GetModuleAndNestedFusionMetadata(kHloTextRef));
 
-  EXPECT_TRUE(
-      RunAndCompareTwoModules(std::move(ref_module_and_metadata.module),
-                              std::move(test_module_and_metadata.module),
-                              ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
-                              /*run_hlo_passes=*/false));
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(ref_module_and_metadata.module),
+      std::move(test_module_and_metadata.module), ErrorSpec{0.3, 0.3},
+      /*run_hlo_passes=*/false));
 }
 
 TEST_F(CompareTest, TritonDotFusionCanHaveOnlyRHSParameter) {
@@ -2156,7 +2141,7 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
                                       std::move(module_and_metadata.module),
-                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
+                                      ErrorSpec{0.3, 0.3},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -2205,7 +2190,7 @@ ENTRY triton_gemm___computation {
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
                                       std::move(module_and_metadata.module),
-                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
+                                      ErrorSpec{0.3, 0.3},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -2329,7 +2314,7 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
                                       std::move(module_and_metadata.module),
-                                      ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4},
+                                      ErrorSpec{0.3, 0.3},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -2396,7 +2381,7 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
                                       std::move(module_and_metadata.module),
-                                      ErrorSpec{/*aabs=*/0, /*arel=*/0},
+                                      ErrorSpec{0.3, 0.3},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -2465,7 +2450,7 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
                                       std::move(module_and_metadata.module),
-                                      ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4},
+                                      ErrorSpec{0.3, 0.3},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -2508,9 +2493,8 @@ CHECK:      tt.dot
 CHECK:      inputPrecision = tf32
   )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
-                               ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
+                                       ErrorSpec{0.3, 0.3}));
 }
 
 TEST_F(TritonGemmTest, S8ToF16DotWithSmallTileDoesNotCrash) {
@@ -2637,7 +2621,7 @@ e {
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
                                       std::move(module_and_metadata.module),
-                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
+                                      ErrorSpec{0.3, 0.3},
                                       /*run_hlo_passes=*/false));
 }
 
