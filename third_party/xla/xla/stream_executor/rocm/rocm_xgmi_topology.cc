@@ -16,6 +16,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "rocm/include/rocm_smi/rocm_smi.h"
 #include "xla/stream_executor/rocm/rocm_smi_util.h"
 #include "xla/tsl/platform/logging.h"
@@ -24,6 +25,8 @@ namespace stream_executor::gpu {
 
 XgmiTopologyInfo GetRocmXgmiTopology(absl::string_view pci_bus_id) {
   XgmiTopologyInfo info;
+
+  absl::MutexLock lock(&rocm_smi_mutex);
 
   if (!InitRocmSmi()) return info;
 
