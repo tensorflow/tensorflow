@@ -120,7 +120,8 @@ limitations under the License.
                     typename TTypes<OUT_TYPE>::Flat out_tensor,    \
                     typename TTypes<IN_TYPE>::ConstFlat in_tensor, \
                     bool truncate = false) {                       \
-      out_tensor.device(d) = in_tensor.template cast<OUT_TYPE>();  \
+      out_tensor.device(d) =                                       \
+          in_tensor.unaryExpr(GpuSafeCastOp<IN_TYPE, OUT_TYPE>()); \    
     }                                                              \
   };
 #endif
