@@ -102,6 +102,7 @@ static PyObject *ParseFunc(PyObject *args) {
 // corresponding to 'self'.
 static PyObject *SetGetattributeCallback(PyObject *self, PyObject *args) {
   PyObject *func = ParseFunc(args);
+  if (func == nullptr) return nullptr;
   FastModuleObject* fast_module = FastModuleObject::UncheckedCast(self);
   PyObject* old_func = nullptr;
   {
@@ -117,6 +118,7 @@ static PyObject *SetGetattributeCallback(PyObject *self, PyObject *args) {
 // corresponding to 'self'.
 static PyObject *SetGetattrCallback(PyObject *self, PyObject *args) {
   PyObject *func = ParseFunc(args);
+  if (func == nullptr) return nullptr;
   FastModuleObject* fast_module = FastModuleObject::UncheckedCast(self);
   PyObject* old_func = nullptr;
   {
