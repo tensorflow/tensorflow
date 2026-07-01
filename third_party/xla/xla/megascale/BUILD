@@ -29,3 +29,10 @@ tf_proto_library(
     create_grpc_library = True,
     make_default_target_header_only = True,
 )
+
+tf_proto_library(
+    name = "megascale_runtime_error_overlay_proto",
+    srcs = ["megascale_runtime_error_overlay.proto"],
+    create_grpc_library = True,
+    make_default_target_header_only = True,
+)

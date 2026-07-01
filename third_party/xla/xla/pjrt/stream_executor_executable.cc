@@ -23,19 +23,32 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/local_client.h"
+#include "xla/layout.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/pjrt_abi_version.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
+#include "xla/pjrt/stream_executor_pjrt_abi_version.h"
+#include "xla/pjrt/utils.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -45,9 +58,14 @@ absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
     const {
   if (IsEarlyExitCompilation(compile_options_)) {
     ExecutableAndOptionsProto proto;
-    TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
-                        compile_options_.ToProto());
-    return proto.SerializeAsString();
+    ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                     compile_options_.ToProto());
+    std::string result;
+    if (!tsl::SerializeToStringDeterministic(proto, &result)) {
+      return absl::InternalError(
+          "Failed to serialize ExecutableAndOptionsProto");
+    }
+    return result;
   }
   std::string serialized;
   if (std::holds_alternative<std::vector<std::unique_ptr<CompiledModule>>>(
@@ -62,17 +80,17 @@ absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
           "PjRtStreamExecutorClient::SerializeExecutable unimplemented for "
           "MPMD executables");
     }
-    TF_ASSIGN_OR_RETURN(serialized, aot_executables[0]->SerializeAsString());
+    ASSIGN_OR_RETURN(serialized, aot_executables[0]->SerializeAsString());
   } else {
     const auto& local_executables =
         std::get<std::vector<std::unique_ptr<LocalExecutable>>>(executables_);
     Executable* built_executable = local_executables[0]->executable();
     CHECK(local_client_ != nullptr);
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::unique_ptr<CompiledModule> aot_result,
         local_client_->backend().compiler()->Export(built_executable));
 
-    TF_ASSIGN_OR_RETURN(serialized, aot_result->SerializeAsString());
+    ASSIGN_OR_RETURN(serialized, aot_result->SerializeAsString());
   }
 
   if (serialized.empty()) {
@@ -82,17 +100,32 @@ absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
   }
   ExecutableAndOptionsProto proto;
   *proto.mutable_serialized_executable() = std::move(serialized);
-  TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
-                      compile_options_.ToProto());
-  return proto.SerializeAsString();
+  ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                   compile_options_.ToProto());
+  std::string result;
+  if (!tsl::SerializeToStringDeterministic(proto, &result)) {
+    return absl::InternalError("Failed to serialize ExecutableAndOptionsProto");
+  }
+  return result;
+}
+
+absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+StreamExecutorExecutable::GetCostAnalysis() const {
+  if (local_client_ == nullptr) {
+    return absl::UnimplementedError("GetCostAnalysis is not supported.");
+  }
+  HloCostAnalysis cost_analysis(
+      local_client_->backend().compiler()->ShapeSizeBytesFunction());
+  return PjRtExecutableUtil::RunHloCostAnalysis(*this, &cost_analysis);
 }
 
 StreamExecutorExecutable::StreamExecutorExecutable(
-    const CompileOptions& compile_options,
+    PjRtPlatformId platform_id, const CompileOptions& compile_options,
     std::vector<std::unique_ptr<CompiledModule>> executables, int num_replicas,
     int num_partitions, absl::string_view name, absl::string_view fingerprint,
     absl::string_view default_memory_kind)
-    : compile_options_(compile_options),
+    : platform_id_(platform_id),
+      compile_options_(compile_options),
       executables_(std::move(executables)),
       num_replicas_(num_replicas),
       num_partitions_(num_partitions),
@@ -108,13 +141,14 @@ StreamExecutorExecutable::StreamExecutorExecutable(
 }
 
 StreamExecutorExecutable::StreamExecutorExecutable(
-    const CompileOptions& compile_options,
+    PjRtPlatformId platform_id, const CompileOptions& compile_options,
     std::optional<HloModuleProto> unoptimized_hlo_module_proto,
     std::vector<std::unique_ptr<LocalExecutable>> local_executables,
     LocalClient* local_client, int num_replicas, int num_partitions,
     absl::string_view name, absl::string_view fingerprint,
     absl::string_view default_memory_kind)
-    : compile_options_(compile_options),
+    : platform_id_(platform_id),
+      compile_options_(compile_options),
       unoptimized_hlo_module_proto_(std::move(unoptimized_hlo_module_proto)),
       executables_(std::move(local_executables)),
       local_client_(local_client),
@@ -142,21 +176,7 @@ StreamExecutorExecutable::GetCompiledMemoryStats() const {
           "Retrieving CompiledMemoryStats is not supported for multiple "
           "executables.");
     }
-    const auto& aot_executable = (*aot_executables)[0];
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffers,
-                        aot_executable->buffer_assignment());
-
-    BufferAssignmentProto proto = buffers->ToProto();
-    memory_stats.serialized_buffer_assignment = proto.SerializeAsString();
-    std::vector<const BufferAllocation*> alloc_ptrs;
-    alloc_ptrs.reserve(buffers->Allocations().size());
-    for (const BufferAllocation& alloc : buffers->Allocations()) {
-      alloc_ptrs.push_back(&alloc);
-    }
-    memory_stats.PopulateBufferStatsFromAllocations(alloc_ptrs);
-    TF_ASSIGN_OR_RETURN(memory_stats.peak_memory_in_bytes,
-                        ComputePeakMemory(proto));
-    return memory_stats;
+    return (*aot_executables)[0]->GetCompiledMemoryStats();
   }
 
   const auto& local_executables =
@@ -170,8 +190,16 @@ StreamExecutorExecutable::GetCompiledMemoryStats() const {
       local_executables[0]->executable()->buffer_assignment_proto();
   if (proto != nullptr) {
     memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
-    TF_ASSIGN_OR_RETURN(memory_stats.peak_memory_in_bytes,
-                        ComputePeakMemory(*proto));
+    HloModuleProto hlo_module_proto =
+        local_executables[0]->executable()->module().ToProto();
+    ASSIGN_OR_RETURN(auto peak_memories,
+                     ComputePeakMemorySizes(*proto, hlo_module_proto));
+    memory_stats.peak_memory_in_bytes = peak_memories.padded;
+    memory_stats.peak_unpadded_heap_bytes = peak_memories.unpadded;
+    memory_stats.total_allocation_bytes =
+        ComputeTotalAllocationBytes(*proto, /*memory_color=*/0);
+    memory_stats.indefinite_allocations =
+        ComputeIndefiniteAllocationsInBytes(*proto, /*memory_color=*/0);
   }
   memory_stats.PopulateBufferStatsFromAllocations(
       local_executables[0]->executable()->GetAllocations());
@@ -194,12 +222,9 @@ int64_t StreamExecutorExecutable::SizeOfGeneratedCodeInBytes() const {
 
 namespace {
 
-absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
-    const Shape& shape, absl::string_view default_memory_kind) {
-  if (!shape.has_layout()) {
-    return default_memory_kind;
-  }
-  switch (shape.layout().memory_space()) {
+absl::StatusOr<absl::string_view> MemoryKindFromLayout(
+    const Layout& layout, absl::string_view default_memory_kind) {
+  switch (layout.memory_space()) {
     case Layout::kHostMemorySpace:
       return PinnedHostMemorySpace::kKind;
     case Layout::kGenericFastMemorySpace:
@@ -207,21 +232,29 @@ absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
       return default_memory_kind;
     default:
       return InvalidArgument("Unexpected memory space %d in output layout",
-                             shape.layout().memory_space());
+                             layout.memory_space());
   }
+}
+
+absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
+    const Shape& shape, absl::string_view default_memory_kind) {
+  if (!shape.has_layout()) {
+    return default_memory_kind;
+  }
+  return MemoryKindFromLayout(shape.layout(), default_memory_kind);
 }
 
 absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
     const Shape& shape, absl::string_view default_memory_kind) {
   if (!shape.IsTuple()) {
-    TF_ASSIGN_OR_RETURN(absl::string_view memory_kind,
-                        MemoryKindFromSimpleShape(shape, default_memory_kind));
+    ASSIGN_OR_RETURN(absl::string_view memory_kind,
+                     MemoryKindFromSimpleShape(shape, default_memory_kind));
     return {{memory_kind}};
   }
   std::vector<absl::string_view> result;
   result.reserve(shape.tuple_shapes().size());
   for (const auto& element_shape : shape.tuple_shapes()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         absl::string_view element_memory_kind,
         MemoryKindFromSimpleShape(element_shape, default_memory_kind));
     result.push_back(element_memory_kind);
@@ -232,13 +265,43 @@ absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
 }  // namespace
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+StreamExecutorExecutable::GetParameterMemoryKinds() const {
+  ASSIGN_OR_RETURN(auto modules, GetHloModules());
+  // If no modules are available, we cannot determine memory kinds. Returning
+  // Unimplemented here triggers a safe fallback in IFRT (executable.cc) to
+  // avoid a crash when memory kinds are not available (e.g., when annotations
+  // are stripped).
+  if (modules.empty()) {
+    return absl::UnimplementedError(
+        "GetParameterMemoryKinds is not supported when no modules are "
+        "available.");
+  }
+
+  std::vector<std::vector<absl::string_view>> out;
+  out.reserve(modules.size());
+  for (const auto& module : modules) {
+    const ComputationLayout& comp_layout = module->entry_computation_layout();
+    ASSIGN_OR_RETURN(std::vector<Layout> layouts,
+                     xla::FlattenedParameterLayouts(comp_layout));
+    std::vector<absl::string_view>& memory_kinds = out.emplace_back();
+    memory_kinds.reserve(layouts.size());
+    for (const xla::Layout& layout : layouts) {
+      ASSIGN_OR_RETURN(absl::string_view memory_kind,
+                       MemoryKindFromLayout(layout, default_memory_kind_));
+      memory_kinds.push_back(memory_kind);
+    }
+  }
+  return out;
+}
+
+absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 StreamExecutorExecutable::GetOutputMemoryKinds() const {
-  TF_ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
+  ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
   std::vector<std::vector<absl::string_view>> out;
   out.reserve(shapes.size());
   for (const auto& shape : shapes) {
-    TF_ASSIGN_OR_RETURN(std::vector<absl::string_view> memory_kind,
-                        MemoryKindsFromShape(shape, default_memory_kind_));
+    ASSIGN_OR_RETURN(std::vector<absl::string_view> memory_kind,
+                     MemoryKindsFromShape(shape, default_memory_kind_));
     out.push_back(memory_kind);
   }
   return out;
@@ -247,10 +310,24 @@ StreamExecutorExecutable::GetOutputMemoryKinds() const {
 absl::StatusOr<std::unique_ptr<LocalExecutable>>
 StreamExecutorExecutable::ConsumeExecutable(
     LocalClient* client, const CompileOptions& compile_options) {
+  RETURN_IF_ERROR(GetOrLoadExecutable(client, compile_options).status());
   if (std::holds_alternative<std::vector<std::unique_ptr<LocalExecutable>>>(
           executables_)) {
     auto tmp = std::get<std::vector<std::unique_ptr<LocalExecutable>>>(
         std::move(executables_));
+    if (tmp.size() == 1) {
+      return std::move(tmp[0]);
+    }
+  }
+  return absl::UnimplementedError("Unsupported executable type.");
+}
+
+absl::StatusOr<LocalExecutable*> StreamExecutorExecutable::GetOrLoadExecutable(
+    LocalClient* client, const CompileOptions& compile_options) {
+  if (std::holds_alternative<std::vector<std::unique_ptr<LocalExecutable>>>(
+          executables_)) {
+    const auto& tmp =
+        std::get<std::vector<std::unique_ptr<LocalExecutable>>>(executables_);
     if (tmp.size() == 0) {
       return absl::InternalError("No local executable");
     }
@@ -258,7 +335,7 @@ StreamExecutorExecutable::ConsumeExecutable(
       return absl::InternalError(
           "ConsumeExecutable is not supported for more than one executable.");
     }
-    return std::move(tmp[0]);
+    return tmp[0].get();
   } else if (std::holds_alternative<
                  std::vector<std::unique_ptr<CompiledModule>>>(executables_)) {
     auto aot_executables =
@@ -271,10 +348,54 @@ StreamExecutorExecutable::ConsumeExecutable(
       return absl::InternalError(
           "ConsumeExecutable is not supported for more than one executable.");
     }
-    return client->Load(std::move(aot_executables[0]),
-                        compile_options.executable_build_options);
+    std::vector<std::unique_ptr<LocalExecutable>> tmp;
+    ASSIGN_OR_RETURN(auto local_executable,
+                     client->Load(std::move(aot_executables[0]),
+                                  compile_options.executable_build_options));
+    tmp.push_back(std::move(local_executable));
+    auto* result = tmp[0].get();
+    executables_ = std::move(tmp);
+    return result;
   }
   return absl::UnimplementedError("Unsupported executable type.");
+}
+
+absl::StatusOr<stream_executor::ExecutableAbiVersion>
+StreamExecutorExecutable::ExtractExecutableAbiVersion() const {
+  if (executables_.index() == 0) {
+    const std::vector<std::unique_ptr<CompiledModule>>& compiled_modules =
+        std::get<0>(executables_);
+    if (compiled_modules.empty()) {
+      return absl::InternalError("No compiled modules");
+    }
+
+    if (compiled_modules.size() > 1) {
+      return absl::InternalError(
+          "Can't extract the ABI version from multiple compiled modules");
+    }
+
+    return compiled_modules.front()->GetExecutableAbiVersion();
+  }
+  const std::vector<std::unique_ptr<LocalExecutable>>& local_executables =
+      std::get<1>(executables_);
+  if (local_executables.empty()) {
+    return absl::InternalError("No local executables");
+  }
+
+  if (local_executables.size() > 1) {
+    return absl::InternalError(
+        "Can't extract the ABI version from multiple local executables");
+  }
+
+  return local_executables.front()->executable()->GetExecutableAbiVersion();
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>>
+StreamExecutorExecutable::GetAbiVersion() const {
+  ASSIGN_OR_RETURN(stream_executor::ExecutableAbiVersion executable_abi_version,
+                   ExtractExecutableAbiVersion());
+  return std::make_unique<StreamExecutorPjRtExecutableAbiVersion>(
+      platform_id_, std::move(executable_abi_version));
 }
 
 }  // namespace xla

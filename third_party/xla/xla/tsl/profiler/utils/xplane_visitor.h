@@ -123,6 +123,17 @@ class XStatsOwner {
     return std::nullopt;  // type does not exist in this owner.
   }
 
+  // Shortcut to get a specific stat by its metadata, nullopt if absent.
+  std::optional<XStatVisitor> GetStat(
+      const XStatMetadata& stat_metadata) const {
+    for (const XStat& stat : stats_owner_->stats()) {
+      if (stat.metadata_id() == stat_metadata.id()) {
+        return XStatVisitor(plane_, &stat, &stat_metadata, std::nullopt);
+      }
+    }
+    return std::nullopt;
+  }
+
  protected:
   const XPlaneVisitor* plane() const { return plane_; }
   const T* stats_owner() const { return stats_owner_; }
@@ -151,7 +162,6 @@ class XEventMetadataVisitor : public XStatsOwner<XEventMetadata> {
   template <typename ForEachChildFunc>
   void ForEachChild(ForEachChildFunc&& for_each_child) const;
 
- private:
   const XEventMetadata* metadata() const { return stats_owner(); }
 };
 
@@ -300,6 +310,7 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
       for_each_line(XLineVisitor(this, &line));
     }
   }
+
   template <typename ThreadBundle, typename ForEachLineFunc>
   void ForEachLineInParallel(ForEachLineFunc&& for_each_line) const {
     ThreadBundle bundle;

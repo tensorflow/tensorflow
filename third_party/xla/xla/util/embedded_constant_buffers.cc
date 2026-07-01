@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Constants.h"
@@ -132,8 +133,8 @@ GetTargetMachineFromTriple(absl::string_view target_triple) {
 absl::StatusOr<EmbeddedConstantBuffers> CreateEmbeddedConstantBuffers(
     absl::string_view target_triple,
     absl::Span<ConstantToEmbed> constants_to_embed) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
-                      GetTargetMachineFromTriple(target_triple));
+  ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
+                   GetTargetMachineFromTriple(target_triple));
 
   llvm::LLVMContext llvm_context;
   auto module_with_serialized_proto = std::make_unique<llvm::Module>(
@@ -144,7 +145,7 @@ absl::StatusOr<EmbeddedConstantBuffers> CreateEmbeddedConstantBuffers(
   for (const ConstantToEmbed& constant_to_embed : constants_to_embed) {
     std::string constant_array_symbol_name;
 
-    TF_RETURN_IF_ERROR(AddBufferToLlvmModule(
+    RETURN_IF_ERROR(AddBufferToLlvmModule(
         module_with_serialized_proto.get(), constant_to_embed,
         constant_to_embed.symbol_prefix, constant_array_symbol_name));
 
@@ -171,9 +172,9 @@ absl::StatusOr<EmbeddedConstantBuffers> CreateEmbeddedConstantBuffers(
         {constant_array_symbol_name, cpp_variable_decl, cpp_access_shim});
   }
 
-  TF_ASSIGN_OR_RETURN(result.object_file_data,
-                      CodegenModule(target_machine.get(),
-                                    std::move(module_with_serialized_proto)));
+  ASSIGN_OR_RETURN(result.object_file_data,
+                   CodegenModule(target_machine.get(),
+                                 std::move(module_with_serialized_proto)));
   return result;
 }
 

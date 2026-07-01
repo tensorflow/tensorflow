@@ -356,33 +356,35 @@ TEST_F(HloLiveRangeTest, Determinism) {
 HloModule While, is_scheduled=true
 
 %WhileBody {
-  %body_param = (f32[2,3]{1,0}, f32[], f32[2,3]{1,0}) parameter(0)
-  %get-tuple-element.2 = f32[2,3]{1,0} get-tuple-element(%body_param), index=0
-  %constant.2 = f32[2,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 } })
-  %add.1 = f32[2,3]{1,0} add(f32[2,3]{1,0} %get-tuple-element.2, f32[2,3]{1,0} %constant.2)
-  %multiply = f32[2,3]{1,0} multiply(f32[2,3]{1,0} %get-tuple-element.2, f32[2,3]{1,0} %get-tuple-element.2)
-  %add.2 = f32[2,3]{1,0} add(f32[2,3]{1,0} %add.1, f32[2,3]{1,0} %multiply)
+  %body_param = (f32[2,3], f32[], f32[2,3]) parameter(0)
+  %get-tuple-element.2 = f32[2,3] get-tuple-element(%body_param), index=0
+  %constant.2 = f32[2,3] constant({ { 1, 2, 3 }, { 4, 5, 6 } })
+  %add.1 = f32[2,3] add(%get-tuple-element.2, %constant.2)
+  %multiply = f32[2,3] multiply(%get-tuple-element.2, %get-tuple-element.2)
+  %add.2 = f32[2,3] add(%add.1, %multiply)
   %get-tuple-element.1 = f32[] get-tuple-element(%body_param), index=1
   %constant.1 = f32[] constant(1)
-  %add = f32[] add(f32[] %get-tuple-element.1, f32[] %constant.1)
-  %get-tuple-element.3 = f32[2,3]{1,0} get-tuple-element(%body_param), index=2
-  %add.3 = f32[2,3]{1,0} add(f32[2,3]{1,0} %get-tuple-element.3, f32[2,3]{1,0} %constant.2)
-  ROOT %tuple = (f32[2,3]{1,0}, f32[], f32[2,3]{1,0}) tuple(f32[2,3]{1,0} %add.2, f32[] %add, f32[2,3]{1,0} %add.3)
+  %add = f32[] add(%get-tuple-element.1, %constant.1)
+  %get-tuple-element.3 = f32[2,3] get-tuple-element(%body_param), index=2
+  %add.3 = f32[2,3] add(%get-tuple-element.3, %constant.2)
+  ROOT %tuple = (f32[2,3], f32[], f32[2,3]) tuple(%add.2, %add, %add.3)
 }
 
 %WhileCond {
-  %cond_param = (f32[2,3]{1,0}, f32[], f32[2,3]{1,0}) parameter(0)
+  %cond_param = (f32[2,3], f32[], f32[2,3]) parameter(0)
   %get-tuple-element = f32[] get-tuple-element(%cond_param), index=1
   %constant = f32[] constant(50)
-  ROOT %compare = pred[] compare(f32[] %get-tuple-element, f32[] %constant), direction=LT
+  ROOT %compare = pred[] compare(%get-tuple-element, %constant), direction=LT
 }
 
 ENTRY %While {
-  %param_iter = f32[2,3]{1,0} parameter(0)
+  %param_iter = f32[2,3] parameter(0)
   %param_data = f32[] parameter(1)
-  %tuple.1 = (f32[2,3]{1,0}, f32[], f32[2,3]{1,0}) tuple(f32[2,3]{1,0} %param_iter, f32[] %param_data, f32[2,3]{1,0} %param_iter)
-  %while = (f32[2,3]{1,0}, f32[], f32[2,3]{1,0}) while(%tuple.1), condition=%WhileCond, body=%WhileBody
-  ROOT %get-tuple-element.4 = f32[2,3]{1,0} get-tuple-element(%while), index=0
+  %tuple.1 = (f32[2,3], f32[], f32[2,3]) tuple(%param_iter, %param_data,
+                                               %param_iter)
+  %while = (f32[2,3], f32[], f32[2,3]) while(%tuple.1), condition=%WhileCond,
+    body=%WhileBody
+  ROOT %get-tuple-element.4 = f32[2,3] get-tuple-element(%while), index=0
 }
 
 )";
@@ -424,31 +426,35 @@ ENTRY %While {
 
 TEST_F(HloLiveRangeTest, AsyncCall) {
   std::string hlo_string = R"(
-HloModule AsyncCall, is_scheduled=true, entry_computation_layout={(f32[4096]{0},f32[4096]{0})->f32[4096]{0}}
+HloModule AsyncCall, is_scheduled=true,
+  entry_computation_layout={(f32[4096],f32[4096])->f32[4096]}
 
 %called_computation (param_0: f32[4096], param_1: f32[4096]) -> f32[4096] {
-  %param_0 = f32[4096]{0} parameter(0)
-  %param_1 = f32[4096]{0} parameter(1)
-  %negate_2 = f32[4096]{0} negate(f32[4096]{0} %param_0)
-  %negate_3 = f32[4096]{0} negate(f32[4096]{0} %param_1)
-  ROOT %result.1 = f32[4096]{0} add(f32[4096]{0} %negate_2, f32[4096]{0} %negate_3)
+  %param_0 = f32[4096] parameter(0)
+  %param_1 = f32[4096] parameter(1)
+  %negate_2 = f32[4096] negate(%param_0)
+  %negate_3 = f32[4096] negate(%param_1)
+  ROOT %result.1 = f32[4096] add(%negate_2, %negate_3)
 }
 
 %async_wrapped (async_param: f32[4096], async_param.1: f32[4096]) -> f32[4096] {
-  %async_param = f32[4096]{0} parameter(0)
-  %async_param.1 = f32[4096]{0} parameter(1)
-  ROOT %call = f32[4096]{0} call(f32[4096]{0} %async_param, f32[4096]{0} %async_param.1), to_apply=%called_computation
+  %async_param = f32[4096] parameter(0)
+  %async_param.1 = f32[4096] parameter(1)
+  ROOT %call = f32[4096] call(%async_param, %async_param.1),
+    to_apply=%called_computation
 }
 
 ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
-  %a = f32[4096]{0} parameter(0)
-  %b = f32[4096]{0} parameter(1)
-  %negate_0 = f32[4096]{0} negate(f32[4096]{0} %a)
-  %negate_1 = f32[4096]{0} negate(f32[4096]{0} %b)
-  %async-start = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) async-start(f32[4096]{0} %negate_0, f32[4096]{0} %negate_1), calls=%async_wrapped
-  %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_0, f32[4096]{0} %negate_1)
-  %async-done = f32[4096]{0} async-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start)
-  ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done)
+  %a = f32[4096] parameter(0)
+  %b = f32[4096] parameter(1)
+  %negate_0 = f32[4096] negate(%a)
+  %negate_1 = f32[4096] negate(%b)
+  %async-start = ((f32[4096], f32[4096]), f32[4096], u32[]) async-start(
+    %negate_0, %negate_1), calls=%async_wrapped
+  %add_0 = f32[4096] add(%negate_0, %negate_1)
+  %async-done = f32[4096] async-done(
+    ((f32[4096], f32[4096]), f32[4096], u32[]) %async-start)
+  ROOT %add_1 = f32[4096] add(%add_0, %async-done)
 }
 )";
 
@@ -490,16 +496,16 @@ TEST_F(HloLiveRangeTest, Call) {
     HloModule Call, is_scheduled=true
 
     %called_computation (param_0: f32[4096]) -> f32[4096] {
-      %param_0 = f32[4096]{0} parameter(0)
-      ROOT %negate_0 = f32[4096]{0} negate(f32[4096]{0} %param_0)
+      %param_0 = f32[4096] parameter(0)
+      ROOT %negate_0 = f32[4096] negate(%param_0)
     }
 
     ENTRY %main (a: f32[4096]) -> f32[4096] {
-      %a = f32[4096]{0} parameter(0)
-      %b = f32[4096]{0} negate(%a)
-      %c = f32[4096]{0} call(%b), to_apply=%called_computation
-      %d = f32[4096]{0} negate(%c)
-      ROOT %e = f32[4096]{0} add(%c, %d)
+      %a = f32[4096] parameter(0)
+      %b = f32[4096] negate(%a)
+      %c = f32[4096] call(%b), to_apply=%called_computation
+      %d = f32[4096] negate(%c)
+      ROOT %e = f32[4096] add(%c, %d)
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
@@ -529,9 +535,9 @@ TEST_F(HloLiveRangeTest, ToStringSimpleComputation) {
 HloModule Module, is_scheduled=true
 
 ENTRY %main {
-  %paramA = f32[4]{0} parameter(0)
-  %paramX = f32[4]{0} parameter(1)
-  ROOT %multiply = f32[4]{0} multiply(%paramA, %paramX)
+  %paramA = f32[4] parameter(0)
+  %paramX = f32[4] parameter(1)
+  ROOT %multiply = f32[4] multiply(%paramA, %paramX)
 }
 )";
 
@@ -568,10 +574,10 @@ TEST_F(HloLiveRangeTest, ToStringComputationWithTuple) {
 HloModule Module, is_scheduled=true
 
 ENTRY %main {
-  %paramA = f32[4]{0} parameter(0)
-  %constant = (f32[], f32[4]{0}) constant((1.0, {2.0, 3.0, 4.0, 5.0}))
-  %get-tuple-element = f32[4]{0} get-tuple-element(%constant), index=1
-  ROOT %add = f32[4]{0} add(%paramA, %get-tuple-element)
+  %paramA = f32[4] parameter(0)
+  %constant = (f32[], f32[4]) constant((1.0, {2.0, 3.0, 4.0, 5.0}))
+  %get-tuple-element = f32[4] get-tuple-element(%constant), index=1
+  ROOT %add = f32[4] add(%paramA, %get-tuple-element)
 }
 )";
 

@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/common.h"
 
+#include <cstdarg>
 #include <cstddef>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -147,6 +149,35 @@ TEST(Quantization, TestQuantizationFree) {
   params->zero_point = TfLiteIntArrayCreate(3);
   t.quantization.params = reinterpret_cast<void*>(params);
   TfLiteTensorFree(&t);
+}
+
+TEST(Quantization, TestMultiAxisQuantizationCloneAndFree) {
+  auto* params = reinterpret_cast<TfLiteMultiAxisQuantization*>(
+      malloc(sizeof(TfLiteMultiAxisQuantization)));
+  params->scales = 1;
+  params->zero_points = -1;
+  params->blocksize = 32;
+  params->quantized_dimensions = BuildTfLiteArray<int>({0, 2}).release();
+  TfLiteQuantization quantization = {
+      /*type=*/kTfLiteMultiAxisQuantization,
+      /*params=*/params,
+  };
+
+  TfLiteQuantization clone = TfLiteQuantizationClone(quantization);
+
+  EXPECT_THAT(clone.type, Eq(kTfLiteMultiAxisQuantization));
+  ASSERT_THAT(clone.params, Not(AnyOf(nullptr, quantization.params)));
+  auto* clone_params =
+      reinterpret_cast<TfLiteMultiAxisQuantization*>(clone.params);
+  EXPECT_THAT(clone_params->scales, Eq(params->scales));
+  EXPECT_THAT(clone_params->zero_points, Eq(params->zero_points));
+  EXPECT_THAT(clone_params->blocksize, Eq(params->blocksize));
+  EXPECT_THAT(clone_params->quantized_dimensions,
+              TfLiteArrayIs(params->quantized_dimensions));
+  EXPECT_NE(clone_params->quantized_dimensions, params->quantized_dimensions);
+
+  TfLiteQuantizationFree(&clone);
+  TfLiteQuantizationFree(&quantization);
 }
 
 TEST(Sparsity, TestSparsityFree) {
@@ -1009,5 +1040,45 @@ TEST(TensorCloneTest, CloneATensorAttributes) {
 
   // model.sparsity;
 }
+
+static char last_error[1024];
+static void MockReportError(struct TfLiteContext* context, const char* format,
+                            ...) {
+  va_list args;
+  va_start(args, format);
+  vsnprintf(last_error, sizeof(last_error), format, args);
+  va_end(args);
+}
+
+TEST(EnsureOk, NoMessage) {
+  TfLiteContext context;
+  context.ReportError = MockReportError;
+  last_error[0] = '\0';
+
+  auto test_fn = [](TfLiteContext* ctx) -> TfLiteStatus {
+    TF_LITE_ENSURE_OK(ctx, kTfLiteError);
+    return kTfLiteOk;
+  };
+
+  EXPECT_EQ(test_fn(&context), kTfLiteError);
+  EXPECT_STREQ(last_error, "");
+}
+
+TEST(EnsureOk, WithMessage) {
+  TfLiteContext context;
+  context.ReportError = MockReportError;
+  last_error[0] = '\0';
+
+  auto test_fn = [](TfLiteContext* ctx) -> TfLiteStatus {
+    TF_LITE_ENSURE_OK(ctx, kTfLiteError, "Error code: %d", 42);
+    return kTfLiteOk;
+  };
+
+  EXPECT_EQ(test_fn(&context), kTfLiteError);
+  EXPECT_THAT(last_error, ::testing::HasSubstr("Error code: 42"));
+  EXPECT_THAT(last_error, ::testing::HasSubstr("common_test.cc"));
+}
+
+TEST(TensorFree, NullTensor_DoesNotCrash) { TfLiteTensorFree(nullptr); }
 
 }  // namespace tflite

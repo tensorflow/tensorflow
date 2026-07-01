@@ -175,6 +175,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -199,6 +200,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:elemental_ir_emitter",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -223,6 +225,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -263,6 +266,7 @@ cc_library(
         ":llvm_util",
         "//xla/service:hlo_module_config",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -296,6 +300,36 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "error_handler",
+    srcs = ["error_handler.cc"],
+    hdrs = ["error_handler.h"],
+    deps = [
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@tsl//tsl/platform:stacktrace",
+    ],
+)
+
+xla_cc_test(
+    name = "error_handler_test",
+    srcs = ["error_handler_test.cc"],
+    deps = [
+        ":error_handler",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 xla_cc_test(
     name = "ir_array_test",
     srcs = ["ir_array_test.cc"],
@@ -309,29 +343,6 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:ir_headers",
-    ],
-)
-
-xla_cc_test(
-    name = "llvm_util_test",
-    srcs = ["llvm_util_test.cc"],
-    tags = ["pjrt_migration_candidate"],
-    deps = [
-        ":llvm_util",
-        "//xla:error_spec",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ir_headers",
     ],
 )

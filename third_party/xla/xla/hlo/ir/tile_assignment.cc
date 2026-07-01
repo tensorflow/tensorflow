@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -30,11 +31,16 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/printer.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -219,6 +225,15 @@ DecanonicalizationInfo FullyDecanonicalize(
     perm_span = absl::MakeSpan(canonicalized_perm.data(), 1);
   }
   return IotaTileAssignment(dims, dims_span, perm_span);
+}
+
+/*static*/ IotaTileAssignment IotaTileAssignment::Create(
+    absl::Span<const int64_t> dims, const MeshProto::IotaTransform& transform) {
+  // This is an extra copy, but the array will typically be quite small since
+  // it scales with the number of dimensions.
+  absl::InlinedVector<int, 6> int_perm(transform.transpose_perm().begin(),
+                                       transform.transpose_perm().end());
+  return Create(dims, transform.reshape_dims(), absl::MakeSpan(int_perm));
 }
 
 // Materializes array representation of IotaTileAssignment.
@@ -661,11 +676,6 @@ std::string TileAssignment::ToString() const {
   return std::move(printer).ToString();
 }
 
-bool TileAssignment::UsesDevice(int64_t device) const {
-  return iota_ ? device < iota_->num_elements()
-               : absl::c_linear_search(array(), device);
-}
-
 const Array<int64_t>& TileAssignment::array() const {
   absl::MutexLock lock(mu_);
   MaybeMaterializeFullArray();
@@ -731,41 +741,56 @@ std::vector<int64_t> ExtractCommonFactorSequence(
 
 std::optional<std::vector<SubDimInfo>> GetOrderedSubDimsFromIotaTileAssignment(
     const IotaTileAssignment& iota) {
+  auto result = GetOrderedSubDims(iota.dims(), iota.reshape_dims(),
+                                  iota.transpose_perm());
+  if (!result.ok()) {
+    return std::nullopt;
+  }
+  return *std::move(result);
+}
+
+absl::StatusOr<std::vector<SubDimInfo>> GetOrderedSubDims(
+    absl::Span<const int64_t> dims, absl::Span<const int64_t> reshape_dims,
+    absl::Span<const int> transpose_perm) {
   std::vector<int64_t> device_shape;
-  device_shape.reserve(iota.transpose_perm().size());
-  for (const int perm_index : iota.transpose_perm()) {
-    device_shape.emplace_back(iota.reshape_dims()[perm_index]);
+  device_shape.reserve(transpose_perm.size());
+  for (const int perm_index : transpose_perm) {
+    device_shape.push_back(reshape_dims[perm_index]);
   }
 
   const std::vector<int64_t> axis_sizes =
-      ExtractCommonFactorSequence(iota.dims(), device_shape);
+      ExtractCommonFactorSequence(dims, device_shape);
   if (axis_sizes.empty()) {
-    return std::nullopt;
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to extract common factor sequence: dims: [",
+                     absl::StrJoin(dims, ","), "] reshape_dims: [",
+                     absl::StrJoin(reshape_dims, ","), "] transpose_perm: T(",
+                     absl::StrJoin(transpose_perm, ","), ")"));
   }
 
   std::vector<SubDimInfo> sub_dims;
   sub_dims.reserve(axis_sizes.size());
 
-  int64_t tile_dim_index = iota.ndims() - 1;
-  int64_t trans_perm_index = iota.transpose_perm().size() - 1;
+  int64_t tile_dim_index = dims.size() - 1;
+  int64_t trans_perm_index = transpose_perm.size() - 1;
   int64_t acc_tile_size = 1;
   int64_t acc_device_size = 1;
   int64_t sub_dim = 0;
 
   for (auto it = axis_sizes.rbegin(); it != axis_sizes.rend(); ++it) {
     int64_t axis_size = *it;
-    while (iota.dim(tile_dim_index) == 1) {
+    while (dims[tile_dim_index] == 1) {
       tile_dim_index--;
     }
     sub_dims.push_back(SubDimInfo{
         /* .tile_dim_index = */ tile_dim_index,
         /* .tile_sub_dim_index = */ sub_dim++,
-        /* .reshape_dim_index = */ iota.transpose_perm()[trans_perm_index],
+        /* .reshape_dim_index = */ transpose_perm[trans_perm_index],
         /* .size = */ axis_size,
     });
     acc_tile_size *= axis_size;
     acc_device_size *= axis_size;
-    if (iota.dim(tile_dim_index) == acc_tile_size) {
+    if (dims[tile_dim_index] == acc_tile_size) {
       tile_dim_index--;
       acc_tile_size = 1;
       sub_dim = 0;
@@ -801,7 +826,46 @@ std::optional<AnalyzeTileAssignmentResult> AnalyzeTileAssignment(
     return AnalyzeTileAssignmentResult{
         /* .sub_dims = */ std::move(*sub_dims),
         /* .local_mesh = */ std::move(mesh),
+        /* .iota = */ *tile_assignment.iota(),
     };
+  }
+
+  // If the input is a full array tile assignment (the corresponding HloSharding
+  // is in V1 format), we try to detect if it's an iota tile assignment.
+  // We try all permutations of the tile assignment dimensions to see if any
+  // matches the original array.
+  if (!tile_assignment.iota()) {
+    // If the input is a full array tile assignment (the corresponding
+    // HloSharding is in V1 format), we try to detect if it's an identity iota
+    // tile assignment.
+    std::vector<int> transpose_perm(tile_assignment.num_dimensions());
+    absl::c_iota(transpose_perm, 0);
+    if (auto sub_dims =
+            GetOrderedSubDims(tile_assignment.dimensions(),
+                              tile_assignment.dimensions(), transpose_perm);
+        sub_dims.ok()) {
+      IotaTileAssignment iota = IotaTileAssignment::Create(
+          tile_assignment.dimensions(), tile_assignment.dimensions(),
+          transpose_perm);
+      bool is_iota = true;
+      tile_assignment.array().Each(
+          [&](absl::Span<const int64_t> index, int64_t device_id) {
+            if (device_id != iota.value_at(index)) {
+              is_iota = false;
+            }
+          });
+      if (is_iota) {
+        std::vector<int64_t> mesh;
+        mesh.reserve(sub_dims->size());
+        absl::c_transform(*sub_dims, std::back_inserter(mesh),
+                          [](const SubDimInfo& info) { return info.size; });
+        return AnalyzeTileAssignmentResult{
+            /* .sub_dims = */ std::move(*sub_dims),
+            /* .local_mesh = */ std::move(mesh),
+            /* .iota = */ std::move(iota),
+        };
+      }
+    }
   }
 
   return std::nullopt;

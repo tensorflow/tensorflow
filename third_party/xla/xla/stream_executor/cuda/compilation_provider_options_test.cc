@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
 #include "absl/strings/str_cat.h"
+#include "xla/debug_options_flags.h"
 #include "xla/xla.pb.h"
 
 namespace stream_executor::cuda {
@@ -29,61 +30,53 @@ TEST(CompilationProviderOptionsTest, Default) {
   EXPECT_EQ(options.nvjitlink_mode(),
             CompilationProviderOptions::NvJitLinkMode::kDisabled);
   EXPECT_FALSE(options.enable_libnvptxcompiler());
-  EXPECT_FALSE(options.enable_llvm_module_compilation_parallelism());
   EXPECT_FALSE(options.enable_driver_compilation());
   EXPECT_EQ(options.cuda_data_dir(), "");
 }
 
 TEST(CompilationProviderOptionsTest, FromDebugOptions) {
-  xla::DebugOptions debug_options;
+  xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_libnvjitlink_mode(
       xla::DebugOptions::LIB_NV_JIT_LINK_MODE_ENABLED);
   debug_options.set_xla_gpu_enable_libnvptxcompiler(true);
-  debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(true);
   debug_options.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(true);
   debug_options.set_xla_gpu_cuda_data_dir("/usr/local/cuda");
   EXPECT_EQ(CompilationProviderOptions::FromDebugOptions(debug_options),
             CompilationProviderOptions(
                 CompilationProviderOptions::NvJitLinkMode::kEnabled, true, true,
-                true, "/usr/local/cuda"));
+                "/usr/local/cuda"));
 
   debug_options.set_xla_gpu_libnvjitlink_mode(
       xla::DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
   EXPECT_EQ(CompilationProviderOptions::FromDebugOptions(debug_options),
             CompilationProviderOptions(
                 CompilationProviderOptions::NvJitLinkMode::kDisabled, true,
-                true, true, "/usr/local/cuda"));
+                true, "/usr/local/cuda"));
 
   debug_options.set_xla_gpu_libnvjitlink_mode(
       xla::DebugOptions::LIB_NV_JIT_LINK_MODE_AUTO);
   EXPECT_EQ(CompilationProviderOptions::FromDebugOptions(debug_options),
             CompilationProviderOptions(
                 CompilationProviderOptions::NvJitLinkMode::kAuto, true, true,
-                true, "/usr/local/cuda"));
+                "/usr/local/cuda"));
 
   debug_options.set_xla_gpu_enable_libnvptxcompiler(false);
   EXPECT_EQ(CompilationProviderOptions::FromDebugOptions(debug_options),
             CompilationProviderOptions(
                 CompilationProviderOptions::NvJitLinkMode::kAuto, false, true,
-                true, "/usr/local/cuda"));
-
-  debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
-  EXPECT_EQ(CompilationProviderOptions::FromDebugOptions(debug_options),
-            CompilationProviderOptions(
-                CompilationProviderOptions::NvJitLinkMode::kAuto, false, false,
-                true, "/usr/local/cuda"));
+                "/usr/local/cuda"));
 
   debug_options.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
   EXPECT_EQ(CompilationProviderOptions::FromDebugOptions(debug_options),
             CompilationProviderOptions(
                 CompilationProviderOptions::NvJitLinkMode::kAuto, false, false,
-                false, "/usr/local/cuda"));
+                "/usr/local/cuda"));
 
   debug_options.set_xla_gpu_cuda_data_dir("");
-  EXPECT_EQ(CompilationProviderOptions::FromDebugOptions(debug_options),
-            CompilationProviderOptions(
-                CompilationProviderOptions::NvJitLinkMode::kAuto, false, false,
-                false, ""));
+  EXPECT_EQ(
+      CompilationProviderOptions::FromDebugOptions(debug_options),
+      CompilationProviderOptions(
+          CompilationProviderOptions::NvJitLinkMode::kAuto, false, false, ""));
 }
 
 TEST(CompilationProviderOptionsTest, ToString) {
@@ -91,7 +84,6 @@ TEST(CompilationProviderOptionsTest, ToString) {
   EXPECT_EQ(options.ToString(),
             "CompilationProviderOptions{nvjitlink_mode: 0, "
             "enable_libnvptxcompiler: false, "
-            "enable_llvm_module_compilation_parallelism: false, "
             "enable_driver_compilation: false, cuda_data_dir: }");
 }
 
@@ -107,20 +99,19 @@ TEST(CompilationProviderOptionsTest, AbslHashValue) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
       {CompilationProviderOptions{},
        CompilationProviderOptions{
-           CompilationProviderOptions::NvJitLinkMode::kDisabled, false, false,
-           true, ""},
-       CompilationProviderOptions{
-           CompilationProviderOptions::NvJitLinkMode::kEnabled, false, false,
-           false, "/usr/local/cuda"},
-       CompilationProviderOptions{
-           CompilationProviderOptions::NvJitLinkMode::kAuto, false, true, false,
+           CompilationProviderOptions::NvJitLinkMode::kDisabled, false, true,
            ""},
        CompilationProviderOptions{
+           CompilationProviderOptions::NvJitLinkMode::kEnabled, false, false,
+           "/usr/local/cuda"},
+       CompilationProviderOptions{
+           CompilationProviderOptions::NvJitLinkMode::kAuto, false, false, ""},
+       CompilationProviderOptions{
            CompilationProviderOptions::NvJitLinkMode::kDisabled, true, false,
-           false, ""},
+           ""},
        CompilationProviderOptions{
            CompilationProviderOptions::NvJitLinkMode::kDisabled, false, false,
-           false, "/usr/local/cuda"}}));
+           "/usr/local/cuda"}}));
 }
 
 }  // namespace

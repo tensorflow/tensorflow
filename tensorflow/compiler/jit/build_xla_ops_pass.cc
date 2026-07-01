@@ -234,7 +234,7 @@ absl::Status GetXlaClusterInfo(Node* n, XlaClusterInfo* result) {
 
   if (num_constant_inputs < 0 || num_resource_inputs < 0 ||
       num_constant_inputs + num_resource_inputs > n->num_inputs()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Invalid number of constant/resource arguments to XLA kernel.");
   }
 

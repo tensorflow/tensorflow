@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -59,7 +60,7 @@ class DecrementPositiveConstants : public HloModulePass {
             instruction->shape().element_type() == S32) {
           int32_t value = instruction->literal().GetFirstElement<int32_t>();
           if (value > 0) {
-            TF_RETURN_IF_ERROR(instruction->parent()->ReplaceWithNewInstruction(
+            RETURN_IF_ERROR(instruction->parent()->ReplaceWithNewInstruction(
                 instruction, HloInstruction::CreateConstant(
                                  LiteralUtil::CreateR0<int32_t>(value - 1))));
             changed = true;
@@ -90,7 +91,7 @@ class FlipAddSubtract : public HloModulePass {
           HloInstruction* rhs;
           CHECK(
               Match(instruction, match::Add(match::Op(&lhs), match::Op(&rhs))));
-          TF_RETURN_IF_ERROR(instruction->parent()->ReplaceWithNewInstruction(
+          RETURN_IF_ERROR(instruction->parent()->ReplaceWithNewInstruction(
               instruction,
               HloInstruction::CreateBinary(instruction->shape(),
                                            HloOpcode::kSubtract, lhs, rhs)));
@@ -101,7 +102,7 @@ class FlipAddSubtract : public HloModulePass {
           HloInstruction* rhs;
           CHECK(Match(instruction,
                       match::Subtract(match::Op(&lhs), match::Op(&rhs))));
-          TF_RETURN_IF_ERROR(instruction->parent()->ReplaceWithNewInstruction(
+          RETURN_IF_ERROR(instruction->parent()->ReplaceWithNewInstruction(
               instruction,
               HloInstruction::CreateBinary(instruction->shape(),
                                            HloOpcode::kAdd, lhs, rhs)));

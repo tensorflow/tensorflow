@@ -43,11 +43,11 @@ absl::Status ToStatusSlow(CUresult result, absl::string_view detail) {
 
   if (result == CUDA_ERROR_OUT_OF_MEMORY) {
     return absl::ResourceExhaustedError(error_detail);
-  } else if (result == CUDA_ERROR_NOT_FOUND) {
-    return absl::NotFoundError(error_detail);
-  } else {
-    return absl::InternalError(absl::StrCat("CUDA error: ", error_detail));
   }
+  if (result == CUDA_ERROR_NOT_FOUND) {
+    return absl::NotFoundError(error_detail);
+  }
+  return absl::InternalError(absl::StrCat("CUDA error: ", error_detail));
 }
 
 absl::Status ToStatusSlow(cudaError_t result, absl::string_view detail) {

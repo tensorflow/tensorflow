@@ -57,7 +57,7 @@ TEST(NegOpModel, NegTest_UInt8) {
   EXPECT_THAT(
       m.GetDequantizedOutput<uint8_t>(),
       ElementsAreArray(ArrayFloatNear({2.0f, 1.0f, 0.f, -1.0f, -2.0f, -3.0f},
-                                      /*max_abs_error=*/0.05)));
+                                      /*max_abs_err=*/0.05)));
 }
 
 TEST(NegOpModel, NegTest_Int8) {
@@ -68,7 +68,7 @@ TEST(NegOpModel, NegTest_Int8) {
   EXPECT_THAT(
       m.GetDequantizedOutput<int8_t>(),
       ElementsAreArray(ArrayFloatNear({2.0f, 1.0f, 0.f, -1.0f, -2.0f, -3.0f},
-                                      /*max_abs_error=*/0.05)));
+                                      /*max_abs_err=*/0.05)));
 }
 
 }  // namespace tflite

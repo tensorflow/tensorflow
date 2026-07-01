@@ -33,10 +33,9 @@ namespace gpu {
 // compiles them using a cuDNN handle and serializes them.
 class CuDnnFusionCompiler : public HloModulePass {
  public:
-  explicit CuDnnFusionCompiler(se::StreamExecutor& stream_exec,
+  explicit CuDnnFusionCompiler(se::dnn::DnnSupport& dnn_support,
                                BinaryMap& compilation_results)
-      : dnn_support_(*stream_exec.AsDnn()),
-        compilation_results_(compilation_results) {}
+      : dnn_support_(dnn_support), compilation_results_(compilation_results) {}
 
   absl::string_view name() const override { return "cudnn-fusion-compiler"; }
 

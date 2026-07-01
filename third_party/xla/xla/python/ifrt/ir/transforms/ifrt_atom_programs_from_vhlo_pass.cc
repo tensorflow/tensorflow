@@ -16,9 +16,7 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/InitAllDialects.h"
@@ -29,7 +27,6 @@ limitations under the License.
 #include "stablehlo/dialect/Serialization.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
-#include "xla/python/ifrt/ir/transforms/utils.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -69,7 +66,6 @@ class IfrtAtomProgramsFromVhloPass
 void IfrtAtomProgramsFromVhloPass::runOnOperation() {
   mlir::ModuleOp module = getOperation();
   mlir::MLIRContext& context = getContext();
-  mlir::OpBuilder builder(&context);
   for (const auto& atom_program_proto : atom_programs_) {
     auto atom_program_module = mlir::stablehlo::deserializePortableArtifact(
         atom_program_proto.program(), &context);
@@ -83,8 +79,7 @@ void IfrtAtomProgramsFromVhloPass::runOnOperation() {
     // Add the module at the end of the IFRT IR module.
     // Note: this assumes that the atom program modules are all in the top-level
     // IFRT IR module, which is what it is currently supported.
-    builder.setInsertionPointToEnd(module.getBody());
-    CloneModuleUsingBuilder(atom_program_module.get(), builder);
+    module.push_back(atom_program_module.release());
   }
 }
 

@@ -249,6 +249,42 @@ ENTRY entry {
   EXPECT_TRUE(HasTritonBlockLevelFusionConfig(root));
 }
 
+TEST_F(FusionBlockLevelRewriterTest,
+       DoesNotRewriteMultiOutputFusionIfTritonMultiOutputDisabled) {
+  const absl::string_view hlo_text = R"(
+%scalar_add_computation {
+  %scalar_lhs = s32[] parameter(0)
+  %scalar_rhs = s32[] parameter(1)
+  ROOT %add.1 = s32[] add(%scalar_lhs, %scalar_rhs)
+}
+
+%fused_reduce {
+  %param.1 = s32[8,8] parameter(1)
+  %broadcast.0 = s32[8,8,8] broadcast(%param.1), dimensions={0,2}
+  %param.0 = s32[8,8] parameter(0)
+  %broadcast.1 = s32[8,8,8] broadcast(%param.0), dimensions={1,2}
+  %multiply.2 = s32[8,8,8] multiply(%broadcast.0, %broadcast.1)
+  %constant_2 = s32[] constant(0)
+  %reduce.2 = s32[8,8] reduce(%multiply.2, %constant_2), dimensions={2}, to_apply=%scalar_add_computation
+  ROOT %tuple = (s32[8,8], s32[8,8,8]) tuple(%reduce.2, %multiply.2)
+}
+
+ENTRY entry  {
+  %param.0 = s32[8,8] parameter(0)
+  %param.1 = s32[8,8] parameter(1)
+  ROOT %input_reduce_fusion = (s32[8,8], s32[8,8,8]) fusion(%param.1, %param.0), kind=kInput, calls=%fused_reduce
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  EXPECT_THAT(
+      FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
+                               &mlir_context_)
+          .Run(module.get()),
+      absl_testing::IsOkAndHolds(false));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

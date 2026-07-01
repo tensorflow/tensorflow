@@ -315,7 +315,25 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_SIN:
+      if (!op_sig.inputs.empty() &&
+          op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 2;
+      }
+      return 1;
+
+    case BuiltinOperator_COS:
+      if (!op_sig.inputs.empty() &&
+          op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_MUL:
+      if (!op_sig.inputs.empty() &&
+          op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 8;
+      }
       // Version 7 supports int16 and uint32 inputs
       if ((op_sig.inputs.at(0).type == kTfLiteInt16 &&
            !op_sig.ext_options.mul.input_quantized) ||
@@ -361,6 +379,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TRANSPOSE:
+      if (!op_sig.inputs.empty() &&
+          op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 9;
+      }
+      if (op_sig.inputs.at(0).dims.size() > 6 ||
+          op_sig.inputs.at(0).type == kTfLiteBFloat16) {
+        return 8;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteInt4) {
         return 7;
       }
@@ -470,6 +496,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SLICE:
+      if (!op_sig.inputs.empty() &&
+          op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 8;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteInt4) {
         return 7;
       }
@@ -503,6 +533,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
           op_sig.outputs.at(0).type == kTfLiteInt16) {
         return 4;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteFloat16 ||
+          op_sig.inputs.at(0).type == kTfLiteBFloat16) {
+        return 5;
       }
       return 1;
 
@@ -716,6 +750,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_ADD: {
+      if (!op_sig.inputs.empty() &&
+          op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 6;
+      }
       if (!op_sig.inputs.empty() && op_sig.inputs.at(0).type == kTfLiteInt16 &&
           !op_sig.ext_options.add.input_quantized) {
         return 5;
@@ -882,6 +920,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_CONCATENATION:
+      if (!op_sig.inputs.empty() &&
+          op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 6;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteInt4) {
         return 5;
       }
@@ -898,6 +940,19 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SOFTMAX:
+      if (!op_sig.inputs.empty() &&
+          op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 4;
+      }
+      // In case of int16 inputs, the version is 3.
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
+        return 3;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_MEAN:
     case BuiltinOperator_MIRROR_PAD:
     case BuiltinOperator_REDUCE_MAX:
@@ -1075,7 +1130,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_DYNAMIC_UPDATE_SLICE:
-      if (op_sig.inputs.at(0).type == kTfLiteInt4) {
+      if (op_sig.inputs.at(0).type == kTfLiteBFloat16) {
+        return 6;
+      } else if (op_sig.inputs.at(0).type == kTfLiteInt4) {
         return 5;
       } else if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 4;
@@ -1127,6 +1184,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.inputs.at(0).type == kTfLiteBool) return 1;
       return 2;
     case BuiltinOperator_GELU:
+      if (!op_sig.inputs.empty() &&
+          op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 3;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
           op_sig.inputs.at(0).type == kTfLiteUInt8) {
         return 2;

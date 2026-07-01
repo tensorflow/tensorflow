@@ -33,7 +33,7 @@ load("//tensorflow/lite/core/shims:build_defs.bzl", "build_test")
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//tensorflow/lite:__subpackages__",
     ] + experimental_acceleration_api_allowlist(),

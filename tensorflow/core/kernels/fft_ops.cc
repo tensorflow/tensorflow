@@ -156,10 +156,10 @@ class FFTBase : public OpKernel {
     const Tensor& in = ctx->input(0);
     const TensorShape& input_shape = in.shape();
     const int fft_rank = Rank();
-    OP_REQUIRES(
-        ctx, input_shape.dims() >= fft_rank,
-        errors::InvalidArgument("Input must have rank of at least ", fft_rank,
-                                " but got: ", input_shape.DebugString()));
+    OP_REQUIRES(ctx, input_shape.dims() >= fft_rank,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input must have rank of at least ", fft_rank,
+                                 " but got: ", input_shape.DebugString())));
 
     Tensor* out;
     TensorShape output_shape = input_shape;
@@ -172,15 +172,15 @@ class FFTBase : public OpKernel {
       OP_REQUIRES(ctx,
                   fft_length.shape().dims() == 1 &&
                       fft_length.shape().dim_size(0) == fft_rank,
-                  errors::InvalidArgument("fft_length must have shape [",
-                                          fft_rank, "]"));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "fft_length must have shape [", fft_rank, "]")));
 
       auto fft_length_as_vec = fft_length.vec<int32_t>();
       for (int i = 0; i < fft_rank; ++i) {
         OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "fft_length[", i,
-                        "] must >= 0, but got: ", fft_length_as_vec(i)));
+                        "] must >= 0, but got: ", fft_length_as_vec(i))));
         fft_shape[i] = fft_length_as_vec(i);
         // Each input dimension must have length of at least fft_shape[i]. For
         // IRFFTs, the inner-most input dimension must have length of at least
@@ -194,10 +194,10 @@ class FFTBase : public OpKernel {
             // We pass through empty tensors, so special case them here.
             input_shape.dim_size(input_index) == 0 ||
                 input_shape.dim_size(input_index) >= min_input_dim_length,
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 "Input dimension ", input_index,
                 " must have length of at least ", min_input_dim_length,
-                " but got: ", input_shape.dim_size(input_index)));
+                " but got: ", input_shape.dim_size(input_index))));
         uint64_t dim = IsForward() && inner_most && fft_shape[i] != 0
                            ? fft_shape[i] / 2 + 1
                            : fft_shape[i];
@@ -218,23 +218,25 @@ class FFTBase : public OpKernel {
             ctx,
             (in.dtype() == DT_FLOAT && out->dtype() == DT_COMPLEX64) ||
                 (in.dtype() == DT_DOUBLE && out->dtype() == DT_COMPLEX128),
-            errors::InvalidArgument("Wrong types for forward real FFT: in=",
-                                    in.dtype(), " out=", out->dtype()));
+            absl::InvalidArgumentError(absl::StrCat(
+                "Wrong types for forward real FFT: in=", in.dtype(),
+                " out=", out->dtype())));
       } else {
         OP_REQUIRES(
             ctx,
             (in.dtype() == DT_COMPLEX64 && out->dtype() == DT_FLOAT) ||
                 (in.dtype() == DT_COMPLEX128 && out->dtype() == DT_DOUBLE),
-            errors::InvalidArgument("Wrong types for backward real FFT: in=",
-                                    in.dtype(), " out=", out->dtype()));
+            absl::InvalidArgumentError(absl::StrCat(
+                "Wrong types for backward real FFT: in=", in.dtype(),
+                " out=", out->dtype())));
       }
     } else {
       OP_REQUIRES(
           ctx,
           (in.dtype() == DT_COMPLEX64 && out->dtype() == DT_COMPLEX64) ||
               (in.dtype() == DT_COMPLEX128 && out->dtype() == DT_COMPLEX128),
-          errors::InvalidArgument("Wrong types for FFT: in=", in.dtype(),
-                                  " out=", out->dtype()));
+          absl::InvalidArgumentError(absl::StrCat(
+              "Wrong types for FFT: in=", in.dtype(), " out=", out->dtype())));
     }
 
     if (input_shape.num_elements() == 0) {
@@ -743,7 +745,7 @@ class FFTGPUBase : public FFTBase {
 
     OP_REQUIRES(
         ctx, plan != nullptr,
-        errors::Internal(
+        absl::InternalError(
             "Failed to create cuFFT batched plan with scratch allocator"));
 
     if (IsReal()) {
@@ -813,10 +815,10 @@ class FFTGPUBase : public FFTBase {
                                     output_shape.num_elements());
     auto fft = stream->parent()->AsFft();
     OP_REQUIRES(ctx, fft != nullptr, absl::InternalError("No FFT for stream."));
-    OP_REQUIRES(
-        ctx, fft->DoFft(stream, plan, src, &dst),
-        errors::Internal("fft failed : type=", static_cast<int>(fft_type),
-                         " in.shape=", input_shape.DebugString()));
+    OP_REQUIRES(ctx, fft->DoFft(stream, plan, src, &dst),
+                absl::InternalError(absl::StrCat(
+                    "fft failed : type=", static_cast<int>(fft_type),
+                    " in.shape=", input_shape.DebugString())));
     if (!IsForward()) {
       typedef typename RealTypeFromComplexType<OutT>::RealT RealT;
       RealT alpha = 1.0 / output_distance;
@@ -826,8 +828,8 @@ class FFTGPUBase : public FFTBase {
       OP_REQUIRES(
           ctx,
           blas->DoBlasScal(stream, output_shape.num_elements(), alpha, &dst, 1),
-          errors::Internal("BlasScal failed : in.shape=",
-                           input_shape.DebugString()));
+          absl::InternalError(absl::StrCat("BlasScal failed : in.shape=",
+                                           input_shape.DebugString())));
     }
   }
 };

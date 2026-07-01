@@ -444,8 +444,8 @@ absl::Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
   // TODO(rmlarsen): Support more general shapes.
   // TODO(lyandy): Change `value` to be int64 once int64 -> qint32 is supported.
   if (tensor->NumElements() != 1) {
-    return errors::InvalidArgument(
-        "Expected scalar tensor, got num_elements = ", tensor->NumElements());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Expected scalar tensor, got num_elements = ", tensor->NumElements()));
   }
   switch (dtype) {
     HANDLE_DOUBLE_CASE(DT_HALF);
@@ -467,8 +467,8 @@ absl::Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
     HANDLE_INT_CASE(DT_QUINT16);
     HANDLE_INT_CASE(DT_QINT32);
     default:
-      return errors::InvalidArgument("Unsupported type ",
-                                     DataTypeString(dtype));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported type ", DataTypeString(dtype)));
   }
   return absl::OkStatus();
 }
@@ -477,8 +477,9 @@ absl::Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
 
 absl::Status CheckAttrExists(const NodeDef& node, const std::string& key) {
   if (!HasNodeAttr(node, key)) {
-    return errors::InvalidArgument("Node '", node.name(), "' lacks '", key,
-                                   "' attr: ", node.ShortDebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Node '", node.name(), "' lacks '", key,
+                     "' attr: ", node.ShortDebugString()));
   }
   return absl::OkStatus();
 }
@@ -498,8 +499,8 @@ absl::Status IsKernelRegisteredForNode(
     AttrSlice node_attrs) {
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(node_device, &parsed_name)) {
-    return errors::InvalidArgument("Could not parse device name: ",
-                                   node_device);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Could not parse device name: ", node_device));
   }
   return FindKernelDef(DeviceType(parsed_name.type), node_name,
                        has_experimental_debug_info, experimental_debug_info,

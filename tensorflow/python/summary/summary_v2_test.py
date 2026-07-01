@@ -30,7 +30,10 @@ from tensorflow.python.summary import summary as summary_lib
 from tensorflow.python.summary import tb_summary
 from tensorflow.python.training import training_util
 
-TENSORBOARD_AVAILABLE = tb_summary.TENSORBOARD_AVAILABLE
+TENSORBOARD_AVAILABLE = (
+    hasattr(tb_summary, 'TENSORBOARD_AVAILABLE')
+    and tb_summary.TENSORBOARD_AVAILABLE
+)
 
 
 @unittest.skipIf(not TENSORBOARD_AVAILABLE, 'Tensorboard not installed.')

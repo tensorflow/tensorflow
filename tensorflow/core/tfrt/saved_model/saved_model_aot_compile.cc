@@ -310,7 +310,7 @@ AotCompileToGpuPjRtExecutable(
   TF_ASSIGN_OR_RETURN(
       xla::Compiler::GpuTargetConfig gpu_config,
       xla::Compiler::GpuTargetConfig::FromProto(gpu_target_config));
-  xla::StreamExecutorGpuCompiler pjrt_gpu_compiler;
+  xla::StreamExecutorGpuCompiler pjrt_gpu_compiler(xla::CudaId());
   // Create a trivial topology, which won't be used.
   xla::StreamExecutorGpuTopologyDescription topology(xla::CudaId(),
                                                      xla::CudaName(), nullptr);

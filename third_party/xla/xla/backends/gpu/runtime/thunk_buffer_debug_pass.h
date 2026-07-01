@@ -16,12 +16,17 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_THUNK_BUFFER_DEBUG_PASS_H_
 #define XLA_BACKENDS_GPU_RUNTIME_THUNK_BUFFER_DEBUG_PASS_H_
 
+#include <cstddef>
+
 #include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
@@ -37,11 +42,13 @@ class ThunkBufferDebugPass : public ThunkPassInterface {
     kBufferSaver,
   };
 
-  explicit ThunkBufferDebugPass(Mode mode) : mode_(mode) {}
+  explicit ThunkBufferDebugPass(
+      Mode mode, const BufferAssignment* buffer_assignment = nullptr)
+      : mode_(mode), buffer_assignment_(buffer_assignment) {}
 
   absl::string_view name() const override { return "thunk-buffer-debug"; }
 
-  absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
+  absl::StatusOr<bool> Run(ThunkSequence* thunk_sequence,
                            const DebugOptions& debug_options,
                            const HloModule* absl_nullable hlo_module,
                            const se::DeviceDescription& device_info,
@@ -49,7 +56,15 @@ class ThunkBufferDebugPass : public ThunkPassInterface {
 
  private:
   Mode mode_;
+  const BufferAssignment* buffer_assignment_;
 };
+
+absl::StatusOr<absl::flat_hash_map<size_t, ShapedSlice>> GetOutputShapedBuffers(
+    const HloModule* hlo_module, const BufferAssignment* buffer_assignment);
+
+absl::StatusOr<absl::flat_hash_map<size_t, BufferAllocation::Slice>>
+GetOutputBuffers(const HloModule* hlo_module,
+                 const BufferAssignment* buffer_assignment);
 
 }  // namespace gpu
 }  // namespace xla

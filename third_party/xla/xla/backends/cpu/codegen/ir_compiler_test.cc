@@ -23,11 +23,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/call_once.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/MC/TargetRegistry.h"
@@ -103,6 +105,28 @@ static absl::StatusOr<std::unique_ptr<llvm::Module>> ParseModule(
   return m;
 }
 
+namespace {
+void InitializeAllLLVMTargets() {
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTargetMC();
+  LLVMInitializeARMAsmParser();
+  LLVMInitializeARMAsmPrinter();
+  LLVMInitializeAArch64Target();
+  LLVMInitializeAArch64TargetInfo();
+  LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmParser();
+  LLVMInitializeAArch64AsmPrinter();
+  LLVMInitializeX86Target();
+  LLVMInitializeX86TargetInfo();
+  LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmParser();
+  LLVMInitializeX86AsmPrinter();
+}
+
+absl::once_flag init_once;
+}  // namespace
+
 TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
   auto context = std::make_unique<llvm::LLVMContext>();
   IrCompiler::CompilationHooks compilation_hooks;
@@ -119,8 +143,7 @@ TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
   auto add_module_with_options =
       [&](absl::string_view ir, absl::string_view name,
           const LlvmKernelOptions& options) -> absl::Status {
-    TF_ASSIGN_OR_RETURN(modules.emplace_back(),
-                        ParseModule(*context, ir, name));
+    ASSIGN_OR_RETURN(modules.emplace_back(), ParseModule(*context, ir, name));
 
     auto llvm_module = modules.back().get();
     SetXlaCpuBackendOptions(*llvm_module, options);
@@ -294,6 +317,41 @@ TEST(IrCompilerTest, EmitIntrinsicCall) {
   EXPECT_THAT(ir, ::testing::Not(::testing::HasSubstr("load i8")));
   EXPECT_THAT(ir, ::testing::Not(::testing::HasSubstr("store i8")));
 }
+
+class IrCompilerParameterizedTest
+    : public ::testing::TestWithParam<std::string> {};
+
+TEST_P(IrCompilerParameterizedTest, CrossCompileForDifferentTriples) {
+  const std::string& triple = GetParam();
+  absl::call_once(init_once, InitializeAllLLVMTargets);
+
+  auto context = std::make_unique<llvm::LLVMContext>();
+  IrCompiler::CompilationHooks compilation_hooks;
+
+  TargetMachineOptions target_machine_options(triple, /*cpu=*/"",
+                                              /*features=*/"");
+
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
+                          /*optimize_for_size=*/false, target_machine_options},
+      compilation_hooks);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto ir_module,
+                          ParseModule(*context, kUnoptimizedIr, "test_module"));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto target_machine,
+                          ir_compiler->build_target_machine());
+
+  ir_module->setDataLayout(target_machine->createDataLayout());
+  ir_module->setTargetTriple(target_machine->getTargetTriple());
+  EXPECT_FALSE(static_cast<bool>((*ir_compiler)(*ir_module).takeError()));
+}
+
+INSTANTIATE_TEST_SUITE_P(IrCompilerParameterizedTestInstantiation,
+                         IrCompilerParameterizedTest,
+                         ::testing::Values("x86_64-grtev4-linux-gnu",
+                                           "aarch64-unknown-linux-gnu"));
 
 }  // namespace
 

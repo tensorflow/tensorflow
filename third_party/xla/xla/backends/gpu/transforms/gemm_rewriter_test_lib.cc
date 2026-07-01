@@ -18,7 +18,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -26,31 +26,21 @@ limitations under the License.
 
 namespace xla::gpu {
 
-const auto& GemmRewriteTestBase::device_desc() const {
-  return backend().default_stream_executor()->GetDeviceDescription();
-}
-
-stream_executor::SemanticVersion GemmRewriteTestBase::GetRuntimeVersion()
-    const {
-  return device_desc().runtime_version();
-}
-
 const stream_executor::GpuComputeCapability& GemmRewriteTestBase::Capability()
     const {
-  return device_desc().gpu_compute_capability();
+  return device_description().gpu_compute_capability();
 }
 
 stream_executor::SemanticVersion GemmRewriteTestBase::GetToolkitVersion()
     const {
-  return backend()
-      .default_stream_executor()
-      ->GetDeviceDescription()
-      .runtime_version();
+  return device_description().runtime_version();
 }
 
 bool GemmRewriteTestBase::IsCuda() const { return Capability().IsCuda(); }
 
 bool GemmRewriteTestBase::IsRocm() const { return Capability().IsRocm(); }
+
+bool GemmRewriteTestBase::IsSycl() const { return Capability().IsOneAPI(); }
 
 bool GemmRewriteTestBase::IsBlackwell() const {
   if (IsCuda()) {
@@ -61,6 +51,7 @@ bool GemmRewriteTestBase::IsBlackwell() const {
 
 stream_executor::GpuComputeCapability
 GemmRewriteTestBase::CudaHopperOrRocmCapability() {
+  // TODO(intel-tf): Add a check for oneAPI.
   if (IsCuda()) {
     return se::CudaComputeCapability::Hopper();
   }
@@ -69,7 +60,7 @@ GemmRewriteTestBase::CudaHopperOrRocmCapability() {
 }
 
 DebugOptions GemmRewriteTestBase::GetDebugOptionsForTest() const {
-  DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+  DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
   // These tests test the cuBLAS rewriter so we have to make sure that we use
   // cuBLAS for them.
   debug_options.set_xla_gpu_enable_triton_gemm(false);
@@ -83,11 +74,23 @@ bool GemmRewriteTestBase::SkipGpuBlasLtTest() {
          GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
 }
 
+bool GemmRewriteTestBase::SkipGroupedGemmTest() {
+  // Grouped GEMM is only supported on ROCm with hipBLASLt on gfx942 or gfx950
+  return IsCuda() || !Capability().rocm_compute_capability()->has_hipblaslt() ||
+         (Capability().rocm_compute_capability()->has_hipblaslt() &&
+          !Capability().rocm_compute_capability()->gfx9_mi300_series());
+}
+
 bool GemmRewriteTestBase::HasFp8Support() const {
   if (IsCuda()) {
     return Capability().cuda_compute_capability()->IsAtLeast(8, 9);
+  } else if (IsSycl()) {
+    // TODO(intel-tf): Use compute capability to find out support when
+    // available.
+    return false;
+  } else {
+    return Capability().rocm_compute_capability()->has_fp8_support();
   }
-  return Capability().rocm_compute_capability()->has_fp8_support();
 }
 
 bool GemmRewriteTestBase::HasCudaComputeCapability(
@@ -97,14 +100,12 @@ bool GemmRewriteTestBase::HasCudaComputeCapability(
 }
 
 ParameterizedGemmRewriteTestBase::ParameterizedGemmRewriteTestBase() {
-  const bool kUsingCublasLt = GetParam();
-  replacements_[kCustomCallTargetPlaceholder] =
-      kUsingCublasLt ? "__cublas$lt$matmul" : "__cublas$gemm";
+  replacements_[kCustomCallTargetPlaceholder] = "__cublas$lt$matmul";
 }
 
 DebugOptions ParameterizedGemmRewriteTestBase::GetDebugOptionsForTest() const {
   DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_cublaslt(GetParam());
+  debug_options.set_xla_gpu_enable_cublaslt(true);
   debug_options.set_xla_gpu_enable_triton_gemm(false);
   return debug_options;
 }

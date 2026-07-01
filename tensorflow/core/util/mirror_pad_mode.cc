@@ -31,7 +31,8 @@ absl::Status GetNodeAttr(const NodeDef& node_def, absl::string_view attr_name,
   } else if (str_value == "SYMMETRIC") {
     *value = MirrorPadMode::SYMMETRIC;
   } else {
-    return errors::NotFound(str_value, " is not an allowed padding mode.");
+    return absl::NotFoundError(
+        absl::StrCat(str_value, " is not an allowed padding mode."));
   }
   return absl::OkStatus();
 }

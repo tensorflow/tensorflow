@@ -60,13 +60,13 @@ cc_library(
     srcs = ["embedded_constant_buffers.cc"],
     hdrs = ["embedded_constant_buffers.h"],
     # usage of llvm_type_conversion_util
-    compatible_with = [],
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:util",
         "//xla/backends/cpu:alignment",
         "//xla/service/llvm_ir:llvm_type_conversion_util",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -79,6 +79,20 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
+    ],
+)
+
+cc_library(
+    name = "buffer_slice_merge",
+    srcs = ["buffer_slice_merge.cc"],
+    hdrs = ["buffer_slice_merge.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/util:sorted_range",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -120,6 +134,17 @@ bzl_library(
     visibility = ["//visibility:private"],
     deps = [
         "//xla/tsl:package_groups_bzl",
-        "//xla/tsl/platform:rules_cc_bzl",
+        "@bazel_skylib//lib:new_sets",
+        "@com_google_protobuf//bazel/common:proto_info_bzl",
+    ],
+)
+
+xla_cc_test(
+    name = "buffer_slice_merge_test",
+    srcs = ["buffer_slice_merge_test.cc"],
+    deps = [
+        ":buffer_slice_merge",
+        "//xla/service:buffer_assignment",
+        "@com_google_googletest//:gtest_main",
     ],
 )

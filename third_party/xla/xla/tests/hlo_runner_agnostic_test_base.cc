@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "google/protobuf/message.h"
 #include "xla/error_spec.h"
@@ -110,22 +111,21 @@ absl::StatusOr<std::unique_ptr<HloModule>>
 HloRunnerAgnosticTestBase::HloModuleFromXlaComputation(
     const XlaComputation& computation,
     const ExecutionOptions& execution_options) const {
-  TF_ASSIGN_OR_RETURN(
-      HloModuleConfig module_config,
-      HloModule::CreateModuleConfigFromProto(computation.proto(),
-                                             execution_options.debug_options(),
-                                             &execution_options));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(HloModuleConfig module_config,
+                   HloModule::CreateModuleConfigFromProto(
+                       computation.proto(), execution_options.debug_options(),
+                       &execution_options));
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProto(computation.proto(), module_config));
-  TF_RETURN_IF_ERROR(verifier().Run(module.get()).status());
+  RETURN_IF_ERROR(verifier().Run(module.get()).status());
   return module;
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>>
 HloRunnerAgnosticTestBase::HloModuleFromXlaBuilder(
     XlaBuilder* builder, const ExecutionOptions& execution_options) const {
-  TF_ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
+  ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
   return HloModuleFromXlaComputation(computation, execution_options);
 }
 
@@ -147,7 +147,7 @@ void HloRunnerAgnosticTestBase::UpdateEntryComputationLayout(
 absl::StatusOr<Literal> HloRunnerAgnosticTestBase::Execute(
     std::unique_ptr<HloModule> module,
     absl::Span<const Literal* const> arguments, bool run_hlo_passes) {
-  TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module.get()));
+  RETURN_IF_ERROR(PreprocessModuleForTestRunner(module.get()));
   return test_runner_->Execute(std::move(module), arguments, run_hlo_passes);
 }
 
@@ -160,8 +160,7 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
   options.num_devices = num_devices;
   options.arguments = {arguments.begin(), arguments.end()};
   options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = use_threads;
-  TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module.get()));
+  RETURN_IF_ERROR(PreprocessModuleForTestRunner(module.get()));
   return test_runner_->ExecuteReplicated(std::move(module), std::move(options));
 }
 
@@ -175,8 +174,7 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
   options.num_devices = num_devices;
   options.arguments = {arguments.begin(), arguments.end()};
   options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = use_threads;
-  TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module.get()));
+  RETURN_IF_ERROR(PreprocessModuleForTestRunner(module.get()));
   return test_runner_->ExecuteReplicated(std::move(module), std::move(options),
                                          device_assignment);
 }
@@ -191,7 +189,6 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
   HloRunnerInterface::ReplicatedExecuteOptions options;
   options.num_devices = num_devices;
   options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = true;
   return test_runner_->ExecuteReplicated(
       std::move(executable_provider), std::move(argument_count_provider),
       std::move(argument_provider), std::move(options), device_assignment);
@@ -206,8 +203,8 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
   CHECK(num_devices > 0 && "expected at least one device");
   CHECK(num_devices == arguments.size() && "expect arguments for each device");
   int64_t argument_count = arguments.front().size();
-  TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module.get()));
-  TF_ASSIGN_OR_RETURN(
+  RETURN_IF_ERROR(PreprocessModuleForTestRunner(module.get()));
+  ASSIGN_OR_RETURN(
       const std::unique_ptr<OpaqueExecutable> executable,
       test_runner_->CreateExecutable(std::move(module), run_hlo_passes));
   return ExecuteReplicated(
@@ -322,7 +319,6 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
       module_0->config().replica_count() * module_0->config().num_partitions();
   options.arguments = LiteralUtil::MakePointers(fake_arguments);
   options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = use_threads;
   return RunAndCompareTwoModulesReplicated(std::move(module_0),
                                            std::move(module_1), options, error);
 }
@@ -588,7 +584,6 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoExecutables(
   options.num_devices = num_devices;
   options.arguments = {fake_argument_ptrs.begin(), fake_argument_ptrs.end()};
   options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = true;
   if (const absl::Status status = PreprocessModuleForTestRunner(module->get());
       !status.ok()) {
     return ::testing::AssertionFailure()
@@ -674,10 +669,10 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesInternalReplicated(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
     const HloRunnerInterface::ReplicatedExecuteOptions options,
     const std::optional<ErrorSpec>& error) {
-  TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module_0.get()));
-  TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module_1.get()));
-  TF_RETURN_IF_ERROR(verifier().Run(module_0.get()).status());
-  TF_RETURN_IF_ERROR(verifier().Run(module_1.get()).status());
+  RETURN_IF_ERROR(PreprocessModuleForTestRunner(module_0.get()));
+  RETURN_IF_ERROR(PreprocessModuleForTestRunner(module_1.get()));
+  RETURN_IF_ERROR(verifier().Run(module_0.get()).status());
+  RETURN_IF_ERROR(verifier().Run(module_1.get()).status());
 
   // Execute the two modules.
   const absl::StatusOr<std::vector<Literal>> test_0 =
@@ -713,17 +708,17 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesInternal(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
     absl::Span<const Literal* const> arguments,
     const std::optional<ErrorSpec>& error, bool run_hlo_passes) {
-  TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module_0.get()));
-  TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module_1.get()));
-  TF_RETURN_IF_ERROR(verifier().Run(module_0.get()).status());
-  TF_RETURN_IF_ERROR(verifier().Run(module_1.get()).status());
+  RETURN_IF_ERROR(PreprocessModuleForTestRunner(module_0.get()));
+  RETURN_IF_ERROR(PreprocessModuleForTestRunner(module_1.get()));
+  RETURN_IF_ERROR(verifier().Run(module_0.get()).status());
+  RETURN_IF_ERROR(verifier().Run(module_1.get()).status());
 
   // Compile and execute the two modules. We compile both before running either
   // to allow caching to work better.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       const std::unique_ptr<OpaqueExecutable> executable_0,
       test_runner_->CreateExecutable(std::move(module_0), run_hlo_passes));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       const std::unique_ptr<OpaqueExecutable> executable_1,
       test_runner_->CreateExecutable(std::move(module_1), run_hlo_passes));
 

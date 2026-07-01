@@ -49,6 +49,8 @@ const int8_t kMaxQuantizedValue4bit = 7;
 // The maximum number of dimensions supported in per-channel quantization.
 constexpr int kPerChannelMaxDim = 4;
 // LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantization_utils.cc:QuantizationUtilsConstants)
+const int8_t kMinQuantizedValue2bit = -1;
+const int8_t kMaxQuantizedValue2bit = 1;
 }  // namespace
 
 // LINT.IfChange(NumElements)
@@ -423,6 +425,10 @@ void SymmetricPerBlockQuantizeValues(
             output_value->at(index) = std::min<int8_t>(
                 kMaxQuantizedValue4bit,
                 std::max<int8_t>(kMinQuantizedValue4bit, quantized_value));
+          } else if (type == kTfLiteInt2) {
+            output_value->at(index) = std::min<int8_t>(
+                kMaxQuantizedValue2bit,
+                std::max<int8_t>(kMinQuantizedValue2bit, quantized_value));
           }
         }
       }

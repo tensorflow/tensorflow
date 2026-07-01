@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
@@ -114,7 +115,10 @@ TEST_P(ShapeSerDesTest, ToFromProto) {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, ShapeSerDesTest,
-    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 TEST(ShapeTest, Hash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
@@ -146,7 +150,10 @@ TEST_P(BoundedDynamicShapeTagSerDesTest, ToFromProto) {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, BoundedDynamicShapeTagSerDesTest,
-    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 TEST(DynamicShapeTest, SizeMismatch) {
   Shape shape({1, 2, 3});
@@ -213,7 +220,10 @@ TEST_P(DynamicShapeSerDesTest, ToFromProto) {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, DynamicShapeSerDesTest,
-    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 TEST(DynamicShapeTest, ToString) {
   {

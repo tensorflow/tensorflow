@@ -18,12 +18,15 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <string>
 
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
@@ -82,11 +85,11 @@ class Comparison {
   // (DEPRECATED) Represents the type of comparison. Prefer xla::PrimitiveType
   // and Comparison::Order, since there are multiple floating point
   // representations that support total ordering.
-  enum class [[deprecated("Use PrimitiveType and Order")]] Type : uint8_t{
-      kFloat,
-      kFloatTotalOrder,
-      kSigned,
-      kUnsigned,
+  enum class [[deprecated("Use PrimitiveType and Order")]] Type : uint8_t {
+    kFloat,
+    kFloatTotalOrder,
+    kSigned,
+    kUnsigned,
   };
 
   Comparison() = delete;
@@ -169,20 +172,20 @@ class Comparison {
   // Returns a comparison operator: (T, T) -> bool for this Comparison's
   // Direction.
   template <typename T>
-  inline std::function<bool(T, T)> GetComparator() const {
+  absl::FunctionRef<bool(T, T) const> GetComparator() const {
     switch (GetDirection()) {
       case Direction::kEq:
-        return std::equal_to<T>();
+        return +[](T l, T r) { return std::equal_to<T>()(l, r); };
       case Direction::kNe:
-        return std::not_equal_to<T>();
+        return +[](T l, T r) { return std::not_equal_to<T>()(l, r); };
       case Direction::kGe:
-        return std::greater_equal<T>();
+        return +[](T l, T r) { return std::greater_equal<T>()(l, r); };
       case Direction::kGt:
-        return std::greater<T>();
+        return +[](T l, T r) { return std::greater<T>()(l, r); };
       case Direction::kLe:
-        return std::less_equal<T>();
+        return +[](T l, T r) { return std::less_equal<T>()(l, r); };
       case Direction::kLt:
-        return std::less<T>();
+        return +[](T l, T r) { return std::less<T>()(l, r); };
     }
   }
 
@@ -235,6 +238,11 @@ inline std::ostream& operator<<(std::ostream& os, const Comparison& cmp) {
 std::string ComparisonDirectionToString(Comparison::Direction direction);
 std::string ComparisonTypeToString(Comparison::Type type);
 absl::string_view ComparisonPrimitiveTypeToString(PrimitiveType type);
+
+template <typename Sink>
+void AbslStringify(Sink& sink, const ComparisonDirection& direction) {
+  absl::Format(&sink, "%s", ComparisonDirectionToString(direction));
+}
 
 absl::StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction);

@@ -13,22 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_filter.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_debug_pass.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/ffi.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -36,7 +40,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -46,7 +49,7 @@ namespace {
 absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
     const HloModule& hlo_module, std::unique_ptr<Thunk> thunk,
     const std::string& path) {
-  std::vector<std::unique_ptr<Thunk>> sequence;
+  ThunkSequence sequence;
   sequence.emplace_back(std::move(thunk));
 
   absl::flat_hash_set<BufferAllocation::Slice> processed;
@@ -73,15 +76,13 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
     Thunk::ThunkInfo info;
     info.profile_annotation =
         absl::StrCat("Buffer saver ", sequence[0]->profile_annotation());
-    info.execution_stream_id = sequence[0]->execution_stream_id();
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto log_thunk,
         CustomCallThunk::Create(
             info, std::string{kXlaGpuAppendToFileCustomCallTag}, {output},
             {std::nullopt}, attributes, hlo_module.entry_computation(), "GPU",
             stream_executor::GpuComputeCapability()));
-    log_thunk->add_control_predecessor(sequence[0].get());
     sequence.emplace_back(std::move(log_thunk));
   }
 
@@ -90,26 +91,76 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
   return std::unique_ptr<Thunk>(std::move(wrapped_thunk));
 }
 
+absl::Status AppendOutputBufferSaverThunks(
+    ThunkSequence& thunk_sequence, const HloModule& hlo_module,
+    const BufferAssignment* buffer_assignment,
+    const DebugOptions& debug_options) {
+  if (!debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs()) {
+    return absl::OkStatus();
+  }
+  if (buffer_assignment == nullptr) {
+    LOG(ERROR) << "Buffer assignment is null, cannot determine module output "
+                  "buffers";
+    return absl::OkStatus();
+  }
+
+  ASSIGN_OR_RETURN(auto output_buffers,
+                   GetOutputShapedBuffers(&hlo_module, buffer_assignment));
+
+  std::vector<std::pair<size_t, ShapedSlice>> sorted_output_buffers(
+      output_buffers.begin(), output_buffers.end());
+  absl::c_sort(sorted_output_buffers,
+               [](const auto& a, const auto& b) { return a.first < b.first; });
+
+  std::string metadata_str =
+      absl::StrCat("Module ", hlo_module.name(), " Output Check");
+  std::string profile_annotation_str =
+      absl::StrCat("Buffer saver Module ", hlo_module.name(), " Output Check");
+
+  for (const auto& [idx, shaped_slice] : sorted_output_buffers) {
+    ffi::AttributesMap attributes{
+        {"dir", ffi::Attribute{debug_options.xla_dump_to()}},
+        {"metadata", {metadata_str}}};
+
+    Thunk::ThunkInfo info;
+    info.profile_annotation = profile_annotation_str;
+
+    ASSIGN_OR_RETURN(
+        auto log_thunk,
+        CustomCallThunk::Create(
+            info, std::string{kXlaGpuAppendToFileCustomCallTag}, {shaped_slice},
+            {std::nullopt}, attributes, hlo_module.entry_computation(), "GPU",
+            stream_executor::GpuComputeCapability()));
+    thunk_sequence.push_back(std::move(log_thunk));
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
-absl::Status RunDebugSaverInserter(SequentialThunk& root_thunk,
+absl::Status RunDebugSaverInserter(ThunkSequence* thunk_sequence,
                                    const DebugOptions& debug_options,
-                                   const HloModule& hlo_module) {
+                                   const HloModule& hlo_module,
+                                   const BufferAssignment* buffer_assignment) {
   if (debug_options.xla_dump_to().empty()) {
     LOG(WARNING)
         << "Buffer saver enabled but target directory is not provided.";
     return absl::OkStatus();
   }
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
-  return root_thunk.TransformAllNestedThunks(
-      [&](std::unique_ptr<Thunk> thunk)
-          -> absl::StatusOr<std::unique_ptr<Thunk>> {
-        if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
-          return thunk;
-        }
-        return InsertBufferSaverCustomCall(hlo_module, std::move(thunk),
-                                           debug_options.xla_dump_to());
-      });
+  auto transform_callback = [&](std::unique_ptr<Thunk> thunk)
+      -> absl::StatusOr<std::unique_ptr<Thunk>> {
+    if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
+      return thunk;
+    }
+    return InsertBufferSaverCustomCall(hlo_module, std::move(thunk),
+                                       debug_options.xla_dump_to());
+  };
+
+  RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
+  return AppendOutputBufferSaverThunks(*thunk_sequence, hlo_module,
+                                       buffer_assignment, debug_options);
 }
 
 }  // namespace xla::gpu

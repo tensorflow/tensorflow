@@ -44,18 +44,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct FusionEmissionResult {
-  std::unique_ptr<llvm::Module> module;
-  std::vector<std::unique_ptr<Thunk>> thunks;
-};
-
 class FusionInterface {
  public:
   virtual ~FusionInterface() = default;
 
-  virtual absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      const HloFusionInstruction& fusion) const = 0;
+  virtual AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
+                                  const HloFusionInstruction& fusion) const = 0;
 };
 
 // Interface for fusions that are implemented using cuda kernels.
@@ -65,39 +59,6 @@ class KernelFusionInterface : public FusionInterface {
 
   // Returns the fusion's launch dimensions.
   virtual LaunchDimensions launch_dimensions() const = 0;
-
-  // Computes an indexing map from thread to output element(s) of the **hero**.
-  //
-  // The dimensions in the resulting map are
-  //   d0, d1, d2: threadIdx.{x,y,z}
-  //   d3, d4, d5: blockIdx.{x,y,z}
-  // If one thread computes multiple elements, this will be represented using a
-  // symbol.
-  //
-  // Cases where the exact element cannot be statically determined are currently
-  // unsupported (scatter, in-place DUS). Implementations will return nullopt.
-  // Note: Work in progress, not implemented for all emitters.
-  virtual std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const = 0;
-
-  // Computes indexing maps from thread id to input elements of the root's
-  // **hero**. Note that in many cases this is not computable from the output
-  // indexing. The indexing may only be known for some operands of the hero.
-  virtual std::optional<std::vector<IndexingMap>>
-  ComputeThreadIdToInputIndexing(int64_t root_index,
-                                 mlir::MLIRContext* ctx) const = 0;
-
-  static constexpr std::array<int, 3> kIndexingMapThreadIdxDims = {0, 1, 2};
-  static constexpr std::array<int, 3> kIndexingMapBlockIdxDims = {3, 4, 5};
-
- protected:
-  // Returns the default mapping for the given launch dimensions: linearizes
-  // the thread index and then reshapes it into the given layout.
-  // Populates the ranges for d0, d1, d2, d3, d4, d5 from the thread counts and
-  // block sizes in the given launch dimensions.
-  static IndexingMap GetDefaultThreadIdIndexingMap(
-      const LaunchDimensions& launch_dims, int unroll_factor,
-      const Shape& shape, mlir::MLIRContext* mlir_context);
 };
 
 void CopySelectAttrs(const llvm::Function& src, llvm::Function& dst);
@@ -110,9 +71,20 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototype(
     const emitters::KernelArguments& arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
+// Removes unused arguments from a Triton kernel to match the XLA ABI.
+//
+// Parameters:
+//   llvm_module: The LLVM module containing the kernel function.
+//   sanitized_kernel_name: The original name of the Triton kernel function.
+//   sanitized_kernel_impl_name: A unique name for temporary function.
+//   keep_scratch: If true, the scratch buffer argument (if present) is kept
+//     in the wrapper function signature; otherwise, it's removed.
+//
+// Returns:
+//   A pointer to the newly created function, or an error status.
 absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
-    llvm::Module* llvm_module, IrEmitterContext& ir_emitter_context,
-    const std::string& sanitized_kernel_name, bool keep_scratch = false);
+    llvm::Module* llvm_module, const std::string& sanitized_kernel_name,
+    const std::string& sanitized_kernel_impl_name, bool keep_scratch = false);
 
 absl::Status AnnotateKernelLaunchDimensions(
     const se::DeviceDescription& device_info,

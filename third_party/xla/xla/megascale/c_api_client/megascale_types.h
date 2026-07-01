@@ -17,9 +17,7 @@ limitations under the License.
 #define XLA_MEGASCALE_C_API_CLIENT_MEGASCALE_TYPES_H_
 
 #include <cstdint>
-#include <string>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
@@ -27,18 +25,53 @@ limitations under the License.
 #include "xla/megascale/dcn_topology.pb.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_megascale_extension.h"
-#include "xla/pjrt/pjrt_executable.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace megascale {
 namespace c_api_client {
 
+class MultiSliceDeviceId {
+ public:
+  static absl::StatusOr<MultiSliceDeviceId> Create(int64_t megascale_id);
+  static absl::StatusOr<MultiSliceDeviceId> Create(int32_t slice_id,
+                                                   int32_t per_slice_device_id);
+
+  MultiSliceDeviceId(const MultiSliceDeviceId&) = default;
+  MultiSliceDeviceId& operator=(const MultiSliceDeviceId&) = default;
+
+  int32_t per_slice_device_id() const { return per_slice_device_id_; }
+  int32_t slice_id() const { return slice_id_; }
+  int64_t megascale_id() const { return megascale_id_; }
+
+  bool operator==(const MultiSliceDeviceId& rhs) const {
+    return megascale_id_ == rhs.megascale_id_;
+  }
+  bool operator!=(const MultiSliceDeviceId& rhs) const {
+    return megascale_id_ != rhs.megascale_id_;
+  }
+  template <typename H>
+  friend H AbslHashValue(H h, const MultiSliceDeviceId& m) {
+    return H::combine(std::move(h), m.megascale_id_);
+  }
+
+ private:
+  explicit MultiSliceDeviceId(int64_t megascale_id, int32_t slice_id,
+                              int32_t per_slice_device_id)
+      : megascale_id_(megascale_id),
+        slice_id_(slice_id),
+        per_slice_device_id_(per_slice_device_id) {}
+
+  int64_t megascale_id_;
+  int32_t slice_id_;
+  int32_t per_slice_device_id_;
+};
+
 class CApiPjRtClientContext {
  public:
   CApiPjRtClientContext(PJRT_Megascale_ClientContext* client_context,
                         const PJRT_Api* c_api,
-                        PJRT_Megascale_Extension* extension)
+                        const PJRT_Megascale_Extension* extension)
       : client_context_(client_context),
         c_api_(c_api),
         extension_(CHECK_NOTNULL(extension)) {}
@@ -54,29 +87,11 @@ class CApiPjRtClientContext {
 
   absl::StatusOr<int> megascale_port();
 
+  const PJRT_Api* c_api() const { return c_api_; }
+  const PJRT_Megascale_Extension* extension() const { return extension_; }
+
  private:
   PJRT_Megascale_ClientContext* client_context_;
-  const PJRT_Api* c_api_;
-  const PJRT_Megascale_Extension* extension_;
-};
-
-class PjRtCApiMultiSliceConfig : public xla::MultiSliceConfig {
- public:
-  PjRtCApiMultiSliceConfig(PJRT_MultiSlice_Config* config,
-                           const PJRT_Api* c_api,
-                           PJRT_Megascale_Extension* extension)
-      : config_(config), c_api_(c_api), extension_(CHECK_NOTNULL(extension)) {}
-
-  ~PjRtCApiMultiSliceConfig() override;
-
-  int32_t NumSlices() const override;
-  int32_t SliceId() const override;
-  absl::flat_hash_map<int32_t, int32_t> NumDevicesPerSlice() const override;
-  std::string Serialize() const override;
-  PJRT_MultiSlice_Config* get() const { return config_; }
-
- private:
-  PJRT_MultiSlice_Config* config_;
   const PJRT_Api* c_api_;
   const PJRT_Megascale_Extension* extension_;
 };

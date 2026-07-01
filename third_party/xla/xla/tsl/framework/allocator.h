@@ -18,19 +18,38 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <cstdint>
 #include <functional>
-#include <limits>
 #include <optional>
+#include <string>
+#include <vector>
 
-#include "absl/strings/string_view.h"
-#include "xla/tsl/framework/numeric_types.h"
-#include "xla/tsl/framework/type_traits.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/numa.h"
 
 namespace tsl {
+
+// Selects which end of an allocator's pre-allocated address range a request
+// should be served from, for allocators that spatially partition their range.
+// Allocators that do not spatially partition ignore this and always behave as
+// kLower.
+enum class AllocationEnd : uint8_t {
+  kLower,  // Carve from the lower-address end of the range (grows up).
+  kUpper,  // Carve from the upper-address end of the range (grows down).
+};
+
+template <typename Sink>
+void AbslStringify(Sink& sink, AllocationEnd end) {
+  switch (end) {
+    case AllocationEnd::kLower:
+      sink.Append("lower");
+      return;
+    case AllocationEnd::kUpper:
+      sink.Append("upper");
+      return;
+  }
+}
 
 // Attributes for a single allocation call. Different calls to the same
 // allocator could potentially have different allocation attributes.
@@ -38,10 +57,12 @@ struct AllocationAttributes {
   AllocationAttributes() = default;
 
   AllocationAttributes(bool retry_on_failure, bool allocation_will_be_logged,
-                       std::function<uint64_t()>* freed_by_func)
+                       std::function<uint64_t()>* freed_by_func,
+                       AllocationEnd allocation_end = AllocationEnd::kLower)
       : retry_on_failure(retry_on_failure),
         allocation_will_be_logged(allocation_will_be_logged),
-        freed_by_func(freed_by_func) {}
+        freed_by_func(freed_by_func),
+        allocation_end(allocation_end) {}
 
   // If the first attempt to allocate the memory fails, the allocation should
   // wait and retry (with a timeout).
@@ -60,6 +81,11 @@ struct AllocationAttributes {
   // a memory chunk whose freed_at_count is at this value or earlier may be
   // returned.
   std::function<uint64_t()>* freed_by_func = nullptr;  // Not owned.
+
+  // Which end of the allocator's pre-allocated address range to serve this
+  // request from. Only honored by allocators configured for spatial
+  // partitioning.
+  AllocationEnd allocation_end = AllocationEnd::kLower;
 
   AllocationAttributes(const AllocationAttributes&) = delete;
   void operator=(const AllocationAttributes&) = delete;
@@ -81,6 +107,7 @@ struct AllocatorStats {
   // Stats for reserved memory usage.
   int64_t bytes_reserved;       // Number of bytes reserved.
   int64_t peak_bytes_reserved;  // The peak number of bytes reserved.
+  int64_t peak_allocated_bytes;  // Peak of reserved and in-use bytes.
   // The upper limit on the number bytes of reservable memory,
   // if such a limit is known.
   std::optional<int64_t> bytes_reservable_limit;
@@ -99,6 +126,7 @@ struct AllocatorStats {
         largest_alloc_size(0),
         bytes_reserved(0),
         peak_bytes_reserved(0),
+        peak_allocated_bytes(0),
         largest_free_block_bytes(0) {}
 
   std::string DebugString() const;
@@ -108,7 +136,7 @@ struct AllocatorStats {
 enum class AllocatorMemoryType {
   kUnknown = 0,       // Memory type unknown.
   kDevice = 1,        // Memory on device.
-  kHostPageable = 2,  // Memory on host and it is pagable.
+  kHostPageable = 2,  // Memory on host and it is pageable.
   kHostPinned = 3,    // Memory on host and it is pinned.
 };
 
@@ -253,7 +281,7 @@ class AllocatorWrapper : public Allocator {
  public:
   explicit AllocatorWrapper(Allocator* wrapped) : wrapped_(wrapped) {}
 
-  ~AllocatorWrapper() override {}
+  ~AllocatorWrapper() override = default;
 
   // Returns the wrapped allocator to which all calls are delegated.
   Allocator* wrapped() const { return wrapped_; }
@@ -401,10 +429,10 @@ class SubAllocator {
   SubAllocator(const std::vector<Visitor>& alloc_visitors,
                const std::vector<Visitor>& free_visitors);
 
-  virtual ~SubAllocator() {}
+  virtual ~SubAllocator() = default;
   // Allocates at least num_bytes. Returns actual number of bytes allocated in
   // bytes_received. The caller can safely use the full bytes_received sized
-  // buffer following the returend pointer.
+  // buffer following the returned pointer.
   virtual void* Alloc(size_t alignment, size_t num_bytes,
                       size_t* bytes_received) = 0;
   virtual void Free(void* ptr, size_t num_bytes) = 0;

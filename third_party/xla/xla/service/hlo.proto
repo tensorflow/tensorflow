@@ -126,7 +126,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 98
+// Next ID: 100
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -268,6 +268,9 @@ message HloInstructionProto {
 
   // Backend configuration for the instruction. Has backend-specific meaning.
   bytes backend_config = 43;
+
+  // The backend configuration payload, can be either inline or an ID reference.
+  Payload backend_config_payload = 99;
 
   // Deprecated, but keeping for backward compatibility.
   // Use collective_device_list. Cross replica op fields.
@@ -424,6 +427,9 @@ message HloInstructionProto {
 
   // Conv type (fprop, dgrad, wgrad)
   ConvolutionKind conv_kind = 97;
+
+  // Convolution sparsity config.
+  SparsityConfig sparsity_config = 98;
 }
 
 // Serialization of HloComputation.
@@ -579,6 +585,7 @@ message StackFrameIndexProto {
 }
 
 // Serialization of HloModule.
+// Next ID: 24
 message HloModuleProto {
   string name = 1;
   string entry_computation_name = 2;
@@ -592,13 +599,23 @@ message HloModuleProto {
   xla.ProgramShapeProto host_program_shape = 4;
 
   // The id of this module.
+  // During replays, this field is ignored and a new unique ID is assigned to
+  // the `HloModule` object.
   int64 id = 5;
+  // If provided, `pjrt_id` is assigned as the `id` of the `HloModule` object
+  // upon creation from an `HloModuleProto`. Do not populate this field in
+  // `HloModule` text or proto dumps to avoid reusing potentially non-unique IDs
+  // during replays.
+  optional int64 pjrt_id = 23;
 
   // The schedule for this module.
   HloScheduleProto schedule = 7;
 
   // Describes alias information between inputs and outputs.
   HloInputOutputAliasProto input_output_alias = 8;
+
+  // A list from payload_id to the payload bytes.
+  repeated bytes payloads = 22;
 
   // Describes the information of input buffer donors.
   HloBufferDonorProto buffer_donor = 18;
@@ -661,6 +678,9 @@ message HloModuleProto {
   xla.FrontendAttributes frontend_attributes = 19;
 
   xla.OriginalValueRecoveryTableProto original_value_recovery_table = 20;
+
+  // The type of the device that the module is targeted for.
+  string device_type = 21;
 
   reserved 9;
   reserved "dynamic_parameter_binding";
@@ -756,6 +776,31 @@ message HloModuleGroupProto {
   repeated HloModuleProto hlo_modules = 2;
 }
 
+// Serialization of memory usage report.
+message MemoryUsageReportProto {
+  // Individual allocation.
+  message AllocationEntry {
+    // BufferAllocation::Index (allocation ID, not sort position).
+    int64 index = 1;
+    int64 size = 2;
+    // Running sum as entries traverse largest→smallest within the memory space.
+    int64 cumulative_size = 3;
+    double cumulative_percentage = 4;
+    // Defining position(s) of HLO value(s) assigned to this allocation.
+    repeated string defining_positions = 5;
+    string hlo_text = 6;
+  }
+
+  // Allocations grouped by memory space (color).
+  message AllocationEntryInMemorySpace {
+    int64 total_bytes = 1;
+    optional int32 memory_space_color = 2;
+    repeated AllocationEntry allocation_entries = 3;
+  }
+
+  repeated AllocationEntryInMemorySpace memory_space_allocation_entries = 1;
+}
+
 // Serialization of BufferAssignment.
 message BufferAssignmentProto {
   // Alias represents a source LogicalBuffer, and the buffer location that
@@ -765,10 +810,18 @@ message BufferAssignmentProto {
     LogicalBufferProto.Location location = 2;
   }
 
+  // Set of buffers live at the point of peak memory usage for a
+  // given allocation, represented by its index.
+  message PeakBuffers {
+    int64 index = 1;
+    repeated int64 logical_buffer_ids = 2;
+  }
+
   repeated LogicalBufferProto logical_buffers = 1;
   repeated BufferAlias buffer_aliases = 2;
   repeated BufferAllocationProto buffer_allocations = 3;
   repeated HeapSimulatorTrace heap_simulator_traces = 4;
+  repeated PeakBuffers peak_buffers = 5;
 }
 
 // Grouping message that contains all of the information above.

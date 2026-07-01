@@ -23,13 +23,17 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_executor_multigpu_test_kernels.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -39,13 +43,17 @@ namespace {
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
+using ::testing::IsEmpty;
+using ::testing::Not;
 using ::testing::NotNull;
 
 template <typename T>
 absl::StatusOr<stream_executor::DeviceAddressBase> AllocateInitializedMemory(
     CudaExecutor* executor, size_t size, size_t offset, T value) {
   stream_executor::DeviceAddressBase device_memory = executor->Allocate(
-      size + offset, static_cast<int64_t>(stream_executor::MemorySpace::kP2P));
+      size + offset,
+      static_cast<int64_t>(stream_executor::MemorySpace::kCollective));
   if (device_memory.opaque() == nullptr) {
     return absl::InternalError("Failed to allocate memory.");
   }
@@ -54,7 +62,7 @@ absl::StatusOr<stream_executor::DeviceAddressBase> AllocateInitializedMemory(
   std::vector<T> device_memory_vector(num_initialized_elements, value);
 
   auto stride_memory = device_memory.GetByteSlice(offset, size);
-  TF_RETURN_IF_ERROR(executor->SynchronousMemcpy(
+  RETURN_IF_ERROR(executor->SynchronousMemcpy(
       &stride_memory, device_memory_vector.data(), size));
   return stride_memory;
 }
@@ -65,7 +73,7 @@ absl::Status CheckMemory(CudaExecutor* executor,
                          T expected_value) {
   size_t num_elements = device_memory.size() / sizeof(T);
   std::vector<T> device_memory_vector(num_elements, 0);
-  TF_RETURN_IF_ERROR(executor->SynchronousMemcpy(
+  RETURN_IF_ERROR(executor->SynchronousMemcpy(
       device_memory_vector.data(), device_memory, device_memory.size()));
   for (int i = 0; i < device_memory_vector.size(); ++i) {
     EXPECT_EQ(device_memory_vector[i], expected_value);
@@ -145,27 +153,6 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemorySubscribeMoreDevices) {
   EXPECT_THAT(multicast_memory->SubscribeDevice(2),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        "All devices are already subscribed."));
-}
-
-TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryUsingNonVmmMemory) {
-  std::vector<CudaExecutor*> executors = {
-      static_cast<CudaExecutor*>(GetGpuExecutor(0)),
-      static_cast<CudaExecutor*>(GetGpuExecutor(1))};
-  if (!executors[0]->is_multicast_supported()) {
-    GTEST_SKIP() << "Test requires multicast support.";
-  }
-  const int64_t kNumDevices = 2;
-  std::unique_ptr<MulticastMemory> multicast_memory;
-  TF_ASSERT_OK_AND_ASSIGN(
-      multicast_memory, executors[0]->CreateMulticastMemory(1024, kNumDevices));
-  EXPECT_THAT(multicast_memory->SubscribeDevice(0), IsOk());
-  EXPECT_THAT(multicast_memory->SubscribeDevice(1), IsOk());
-
-  DeviceAddressBase device_memory = executors[0]->Allocate(8, 0);
-  EXPECT_THAT(
-      multicast_memory->MapMemory(device_memory, executors[0]),
-      StatusIs(absl::StatusCode::kInternal,
-               "CUDA error: : CUDA_ERROR_INVALID_VALUE: invalid argument"));
 }
 
 TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryUsingVmmMemory) {
@@ -293,5 +280,53 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryMapDifferentSlices) {
   EXPECT_THAT(CheckMemory(executors[0], output_device_memory, kExpectedValue),
               IsOk());
 }
+
+TEST(CudaExecutorMultiGpuTest, IsVmmMemoryCheck) {
+  CudaExecutor* executor = static_cast<CudaExecutor*>(GetGpuExecutor(0));
+
+  if (!executor->is_multicast_supported()) {
+    GTEST_SKIP() << "Test requires VMM/Multicast support.";
+  }
+
+  stream_executor::DeviceAddressBase device_mem = executor->Allocate(
+      1024, static_cast<int64_t>(stream_executor::MemorySpace::kDevice));
+  EXPECT_TRUE(executor->IsVmmMemory(device_mem));
+  executor->Deallocate(&device_mem);
+
+  stream_executor::DeviceAddressBase collective_mem = executor->Allocate(
+      1024, static_cast<int64_t>(stream_executor::MemorySpace::kCollective));
+  EXPECT_TRUE(executor->IsVmmMemory(collective_mem));
+  executor->Deallocate(&collective_mem);
+}
+
+TEST(CudaExecutorMultiGpuTest, GetGpuInterconnectStatus) {
+  CudaExecutor* executor = static_cast<CudaExecutor*>(GetGpuExecutor(0));
+
+  auto status_or = executor->GetInterconnectStatus();
+
+  const DeviceDescription& desc = executor->GetDeviceDescription();
+  bool is_target_platform = desc.cuda_compute_capability().IsAtLeastHopper();
+  bool supports_fabric_info = false;
+  supports_fabric_info =
+      desc.kernel_mode_driver_version().major_version() >= 545;
+
+  if (is_target_platform) {
+    EXPECT_THAT(status_or, IsOkAndHolds(Not(IsEmpty())));
+    EXPECT_THAT(*status_or, Not(IsEmpty()));
+    EXPECT_THAT(*status_or, HasSubstr("Fabric:"));
+    if (supports_fabric_info) {
+      EXPECT_THAT(*status_or, Not(HasSubstr("Fabric: failed to get info")));
+    }
+    EXPECT_THAT(*status_or, HasSubstr("NVLinks:"));
+    EXPECT_THAT(*status_or, Not(HasSubstr("NVLinks: ;")));
+    EXPECT_THAT(*status_or, HasSubstr("P2P NVLink:"));
+    EXPECT_THAT(*status_or, Not(HasSubstr("P2P NVLink: none")));
+  } else {
+    if (status_or.ok()) {
+      EXPECT_THAT(*status_or, Not(IsEmpty()));
+    }
+  }
+}
+
 }  // namespace
 }  // namespace stream_executor::gpu

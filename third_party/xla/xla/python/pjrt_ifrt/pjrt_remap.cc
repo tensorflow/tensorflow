@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -45,7 +46,7 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
                                 const RemapPlan& plan,
                                 absl::Span<xla::ifrt::ArrayRef> arrays,
                                 ArrayCopySemantics semantics) {
-  TF_RETURN_IF_ERROR(plan.CheckArrayCopySemantics(semantics));
+  RETURN_IF_ERROR(plan.CheckArrayCopySemantics(semantics));
   const int num_inputs = plan.input_specs.size();
   const int num_actual_inputs = arrays.size();
   const int num_outputs = plan.output_specs.size();
@@ -68,7 +69,7 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
     if (plan.input_specs[i].shape != arrays[i]->shape()) {
       return InvalidArgument(
           "RemapArrays expects input #%d to have shape %v, but got %v", i,
-          plan.input_specs[i].shape, arrays[i]->shape().DebugString());
+          plan.input_specs[i].shape, arrays[i]->shape());
     }
     // Skip xla::ifrt::Sharding::HasSamePartitioning() check because RemapArrays
     // is currently called with input arrays with implicit sharding
@@ -97,7 +98,7 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
   }
 
   for (const RemapPlan::Mapping& mapping : *plan.mappings) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         absl::Span<std::shared_ptr<xla::PjRtBuffer>> in_buffers,
         static_cast<PjRtCompatibleArray*>(arrays[mapping.in_array].get())
             ->mutable_pjrt_buffers());
@@ -134,7 +135,7 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
     CHECK_GE(out_buffers_list[i].size(), 1);
     std::shared_ptr<const xla::PjRtLayout> layout =
         out_buffers_list[i].front()->layout();
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto output_array,
         PjRtArray::Create(client, plan.output_specs[i].dtype,
                           plan.output_specs[i].shape,

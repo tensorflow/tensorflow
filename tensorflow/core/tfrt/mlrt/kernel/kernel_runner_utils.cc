@@ -18,11 +18,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
+#include "absl/log/check.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/register_span.h"
+#include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 
 namespace tensorflow {
 namespace tf_mlrt {
@@ -62,7 +65,18 @@ void LaunchAsyncOpKernel(
 
   auto* op_kernel_context_ptr = &async_state->context;
 
-  auto done_callback = [async_state = std::move(async_state)]() {
+  if (params.inc_num_deferred_ops_function) {
+    params.inc_num_deferred_ops_function();
+  }
+
+  auto done_callback = [async_state = std::move(async_state),
+                        dec_fn = params.dec_num_deferred_ops_function]() {
+    auto cleanup = absl::MakeCleanup([dec_fn] {
+      if (dec_fn) {
+        dec_fn();
+      }
+    });
+
     auto& op_kernel_context = async_state->context;
 
     if (!op_kernel_context.status().ok()) {

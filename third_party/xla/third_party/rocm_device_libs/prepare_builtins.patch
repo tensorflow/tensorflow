@@ -1,8 +1,8 @@
 diff --git a/utils/prepare-builtins/prepare-builtins.cpp b/utils/prepare-builtins/prepare-builtins.cpp
-index 7fc9d06dab7d..2a93638c3f8f 100644
+index 3f60dcd..82c23a1 100644
 --- a/utils/prepare-builtins/prepare-builtins.cpp
 +++ b/utils/prepare-builtins/prepare-builtins.cpp
-@@ -73,6 +73,13 @@ int main(int argc, char **argv) {
+@@ -73,6 +73,14 @@ int main(int argc, char **argv) {
      return 1;
    }
 
@@ -13,6 +13,7 @@ index 7fc9d06dab7d..2a93638c3f8f 100644
 +  if (NamedMDNode *OCLVersion = M->getNamedMetadata("opencl.ocl.version"))
 +      M->eraseNamedMetadata(OCLVersion);
 +
-   // Set linkage of every external definition to linkonce_odr.
-   for (Module::iterator i = M->begin(), e = M->end(); i != e; ++i) {
-     if (!i->isDeclaration() && i->getLinkage() == GlobalValue::ExternalLinkage) {
++
+   if (OutputFilename.empty()) {
+     errs() << "no output file\n";
+     return 1;

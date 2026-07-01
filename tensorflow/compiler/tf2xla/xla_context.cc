@@ -210,11 +210,11 @@ absl::StatusOr<int64_t> XlaContext::RecordCollectiveInfo(int group_key,
     collective_info_ = {group_key, group_size, 0};
   } else if (collective_info_->group_key != group_key ||
              collective_info_->group_size != group_size) {
-    return errors::InvalidArgument(
-        "Only single configuration of CollectiveReduceV2Op is ",
-        "supported in a given cluster. Recorded group_key=",
-        collective_info_->group_key,
-        " attempting to insert group_key=", group_key);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Only single configuration of CollectiveReduceV2Op is ",
+                     "supported in a given cluster. Recorded group_key=",
+                     collective_info_->group_key,
+                     " attempting to insert group_key=", group_key));
   }
 
   // Create the channel_id to be used for the collective. Avoid having the

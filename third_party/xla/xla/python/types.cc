@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/ndarray.h"  // IWYU pragma: keep
 #include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
@@ -78,7 +79,8 @@ struct CustomDtypes {
 };
 
 const CustomDtypes& GetCustomDtypes() {
-  const CustomDtypes& custom_dtypes = SafeStaticInit<CustomDtypes>([]() {
+  static SafeStatic<CustomDtypes> custom_dtypes;
+  return custom_dtypes.Get([]() {
     nb::module_ ml_dtypes = nb::module_::import_("ml_dtypes");
     auto dtypes = std::make_unique<CustomDtypes>();
     dtypes->bfloat16 = nb_dtype::from_args(ml_dtypes.attr("bfloat16"));
@@ -109,7 +111,6 @@ const CustomDtypes& GetCustomDtypes() {
     }
     return dtypes;
   });
-  return custom_dtypes;
 }
 
 }  // namespace
@@ -150,8 +151,10 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
   struct DtypeHash {
     ssize_t operator()(const nb_dtype& key) const { return nb::hash(key); }
   };
-  const auto& custom_dtype_map = SafeStaticInit<
-      absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>>([]() {
+  static SafeStatic<
+      absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>>
+      custom_dtype_map_init;
+  const auto& custom_dtype_map = custom_dtype_map_init.Get([]() {
     const CustomDtypes& custom_dtypes = GetCustomDtypes();
     auto map = std::make_unique<
         absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>>();
@@ -355,7 +358,7 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
     default:
       break;
   }
-  return Unimplemented("Unimplemented primitive type %s", dtype.DebugString());
+  return Unimplemented("Unimplemented primitive type %v", dtype);
 }
 
 absl::StatusOr<ifrt::DType> DtypeToIfRtDType(const nb_dtype& dtype) {
@@ -363,7 +366,7 @@ absl::StatusOr<ifrt::DType> DtypeToIfRtDType(const nb_dtype& dtype) {
   if (dtype.kind() == 'T') {
     return ifrt::DType(ifrt::DType::kString);
   }
-  TF_ASSIGN_OR_RETURN(auto primitive_type, DtypeToPrimitiveType(dtype));
+  ASSIGN_OR_RETURN(auto primitive_type, DtypeToPrimitiveType(dtype));
   return ifrt::ToDType(primitive_type);
 }
 
@@ -424,8 +427,8 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
     return dtypes;
   };
 
-  const NumpyScalarTypes& singleton = SafeStaticInit<NumpyScalarTypes>(init_fn);
-  return singleton;
+  static SafeStatic<NumpyScalarTypes> singleton;
+  return singleton.Get(init_fn);
 }
 
 const char* PEP3118FormatDescriptorForPrimitiveType(PrimitiveType type) {
@@ -516,7 +519,7 @@ absl::StatusOr<nb::object> LiteralToPython(
     std::vector<Literal> elems = m.DecomposeTuple();
     std::vector<nb::object> arrays(elems.size());
     for (int i = 0; i < elems.size(); ++i) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           arrays[i],
           LiteralToPython(std::make_unique<Literal>(std::move(elems[i]))));
     }
@@ -529,8 +532,8 @@ absl::StatusOr<nb::object> LiteralToPython(
   TF_RET_CHECK(m.shape().IsArray());
 
   nb::object literal_object = nb::cast(literal);
-  TF_ASSIGN_OR_RETURN(nb_dtype dtype,
-                      PrimitiveTypeToNbDtype(m.shape().element_type()));
+  ASSIGN_OR_RETURN(nb_dtype dtype,
+                   PrimitiveTypeToNbDtype(m.shape().element_type()));
   return nb_numpy_ndarray(dtype, m.shape().dimensions(),
                           ByteStridesForShape(m.shape()), m.untyped_data(),
                           literal_object);

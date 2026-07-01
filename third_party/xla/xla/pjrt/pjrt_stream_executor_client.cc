@@ -75,7 +75,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -87,16 +86,17 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/memory/memory.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
 #include "xla/client/executable_build_options.h"
@@ -105,25 +105,27 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/dump/dump.h"
+#include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/event_pool.h"
-#include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/layout_mode.h"
 #include "xla/pjrt/local_device_state.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/metrics.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/never_run_on_fiber.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -133,7 +135,9 @@ limitations under the License.
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/se_raw_buffer.h"
 #include "xla/pjrt/semaphore.h"
+#include "xla/pjrt/staging_buffer.h"
 #include "xla/pjrt/stream_executor_executable.h"
+#include "xla/pjrt/stream_executor_pjrt_abi_version.h"
 #include "xla/pjrt/thread_pool_async_work_runner.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/transpose.h"
@@ -152,6 +156,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -170,12 +175,30 @@ limitations under the License.
 #include "tsl/platform/context.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/mem.h"
-#include "tsl/profiler/lib/connected_traceme.h"
-#include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
+
+namespace {
+class HostStagingBuffer : public PjRtStagingBuffer {
+ public:
+  HostStagingBuffer(std::shared_ptr<void> buffer, size_t size)
+      : buffer_(std::move(buffer)), size_(size) {}
+
+  absl::Span<uint8_t> data() override {
+    return absl::MakeSpan(static_cast<uint8_t*>(buffer_.get()), size_);
+  }
+
+  absl::Span<const uint8_t> const_data() const override {
+    return absl::MakeConstSpan(static_cast<const uint8_t*>(buffer_.get()),
+                               size_);
+  }
+
+ private:
+  std::shared_ptr<void> buffer_;
+  size_t size_;
+};
+}  // namespace
 
 template <typename T>
 static std::function<void()> WrapClosureAsCopyable(T cb) {
@@ -189,23 +212,28 @@ void PjRtStreamExecutorClient::ThenRecordEvent(BufferSequencingEventRef event,
   local_device->event_pool().ThenRecordEvent(stream, device_event);
   event->SetSequencingEvent(std::move(device_event), stream);
   auto status = local_device->ThenExecuteCallback(
-      stream, [event]() { event.SetStateConcrete(); });
+      stream, [event]() { event.SetStateConcrete(); },
+      [event](absl::Status status) {
+        event.SetError(event->AppendErrorContext(status));
+      },
+      "RecordEvent");
   if (!status.ok()) {
-    event.SetError(status);
+    event.SetError(event->AppendErrorContext(status));
   }
 }
 
 absl::Status PjRtStreamExecutorClient::AllocateAndRecordEvent(
     BufferSequencingEventRef event, LocalDeviceState* local_device,
-    se::Stream* stream) {
+    se::Stream* stream, absl::string_view tag,
+    absl::AnyInvocable<void() &&> cleanup) {
   return local_device->AllocateAndRecordEvent(async_work_runner(), event,
-                                              stream);
+                                              stream, tag, std::move(cleanup));
 }
 
 void PjRtStreamExecutorClient::SetEventAsError(BufferSequencingEventRef event,
                                                absl::Status s) {
   event->SetDefinedStatus(s);
-  event.SetError(s);
+  event.SetError(event->AppendErrorContext(s));
 }
 
 PjRtStreamExecutorMemorySpace::PjRtStreamExecutorMemorySpace(
@@ -305,8 +333,7 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
           tsl::Env::Default(), "pjrt_compile_thread_pool",
           std::max<int>(DefaultThreadPoolSize(), client->device_count())),
       async_work_runner_(MakeUnboundedAsyncWorkRunner(
-          "pjrt_async_work_runner", {/*stack_size=*/512 * 1024})),
-      transpose_cache_(1024) {
+          "pjrt_async_work_runner", {/*stack_size=*/512 * 1024})) {
   if (owned_allocator_ != nullptr) {
     allocator_ = owned_allocator_.get();
   } else {
@@ -344,6 +371,20 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
   }
 }
 
+PjRtStreamExecutorClient::~PjRtStreamExecutorClient() {
+  // Properly quiesce async_dispatch_thread.
+  for (auto& device : owned_devices_) {
+    if (device->local_device_state()) {
+      if (device->local_device_state()->async_dispatch_thread()) {
+        absl::Notification done;
+        device->local_device_state()->async_dispatch_thread()->Schedule(
+            [&]() { done.Notify(); });
+        done.WaitForNotification();
+      }
+    }
+  }
+}
+
 std::optional<PjRtPluginAttributes>
 PjRtStreamExecutorClient::plugin_attributes() const {
   PjRtPluginAttributes attributes =
@@ -361,8 +402,12 @@ PjRtStreamExecutorClient::GetDefaultDeviceAssignment(int num_replicas,
 
 absl::StatusOr<Layout> PjRtStreamExecutorClient::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) {
+  if (!primitive_util::IsArrayType(element_type)) {
+    return InvalidArgument("Element type %s does not support layout",
+                           PrimitiveType_Name(element_type));
+  }
   Shape shape = ShapeUtil::MakeShape(element_type, dims);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       shape,
       client()->backend().transfer_manager()->ChooseCompactLayoutForShape(
           shape));
@@ -415,7 +460,8 @@ absl::Status AddDestinationBufferSynchronization(
     PjRtStreamExecutorClient* client, LocalDeviceState* local_device,
     BufferSequencingEventRef definition_event, se::Stream* copy_stream) {
   absl::Status status = client->AllocateAndRecordEvent(
-      definition_event, local_device, copy_stream);
+      definition_event, local_device, copy_stream,
+      "AddDestinationBufferSynchronization");
   if (!status.ok()) {
     StallStreamOnError(local_device, copy_stream);
   }
@@ -446,20 +492,56 @@ void MaybeWaitForEventOnStream(const BufferSequencingEventRef& event,
 }  // namespace
 
 absl::StatusOr<int64_t> PjRtStreamExecutorClient::GetOnDeviceBytesCount(
-    PjRtMemorySpace* memory_space, const xla::Shape& shape) const {
-  return client()->backend().transfer_manager()->GetByteSizeRequirement(shape);
+    int memory_space_kind, const xla::Shape& shape) const {
+  int64_t transfer_manager_size =
+      client()->backend().transfer_manager()->GetByteSizeRequirement(shape);
+
+  auto kind = GetDynamicShapeKind(memory_space_kind);
+  auto requirements =
+      PjRtShapeAndMetadataTransferRequirements::Get(shape, kind);
+
+  if (static_cast<int64_t>(requirements.size) != transfer_manager_size) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "%s mismatch between transfer_manager requirements (%ld) and "
+        "PjRtTransferRequirements (%zu)",
+        shape.ToString(true), transfer_manager_size, requirements.size));
+  }
+
+  return static_cast<int64_t>(requirements.size);
 }
 
 absl::StatusOr<xla::Shape>
 PjRtStreamExecutorClient::MakeDefaultShapeForMemorySpace(
     PjRtMemorySpace* memory_space, xla::Shape shape,
     const xla::Layout* layout) const {
+  auto topo = GetTopologyDescription();
+  if (topo.ok()) {
+    return (*topo)->MakeCanonicalShapeForMemorySpace(memory_space->kind_id(),
+                                                     std::move(shape), layout);
+  }
+  // TODO(parkers): ensure that topologies are always passed.
+  if (shape.IsToken()) {
+    return shape;
+  }
   TransferManager* transfer_manager = client()->backend().transfer_manager();
   if (layout != nullptr) {
-    *(shape.mutable_layout()) = *layout;
+    *shape.mutable_layout() = *layout;
+    if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+      ASSIGN_OR_RETURN(xla::Shape default_shape,
+                       transfer_manager->ChooseCompactLayoutForShape(shape));
+      if (default_shape.layout().element_size_in_bits() !=
+          shape.layout().element_size_in_bits()) {
+        return InvalidArgument(
+            "Device buffers require %d bits per element for an element type "
+            "%s, but got layout %s for shape %s",
+            default_shape.layout().element_size_in_bits(),
+            PrimitiveType_Name(shape.element_type()), layout->ToString(),
+            shape.ToString());
+      }
+    }
   } else {
-    TF_ASSIGN_OR_RETURN(shape,
-                        transfer_manager->ChooseCompactLayoutForShape(shape));
+    ASSIGN_OR_RETURN(shape,
+                     transfer_manager->ChooseCompactLayoutForShape(shape));
   }
   auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
       memory_space->devices()[0]);
@@ -483,16 +565,15 @@ PjRtStreamExecutorClient::MakeDefaultShapeForMemorySpace(
   return on_device_shape;
 }
 
-absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
-PjRtStreamExecutorClient::AllocateRawBuffer(
+absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorClient::AllocateRawBuffer(
     PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
     bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) {
   CHECK(allocate_after == nullptr)
       << "allocate_after is not supported for PjRtStreamExecutorClient.";
   auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
       memory_space->devices()[0]);
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
+  ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                   device->GetLocalDeviceState());
   PjRtMemorySpace* default_memory_space =
       device->default_memory_space().value_or(nullptr);
   auto layout_memory_space = Layout::kDefaultMemorySpace;
@@ -503,7 +584,7 @@ PjRtStreamExecutorClient::AllocateRawBuffer(
         absl::StrCat("Buffer allocation: invalid memory space: ",
                      memory_space->DebugString()));
   }
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto buffer,
       allocator()->Allocate(local_device->local_device_id().value(),
                             on_device_bytes_count, true, layout_memory_space));
@@ -518,58 +599,28 @@ PjRtStreamExecutorClient::AllocateRawBuffer(
       this, memory_space, local_device, std::move(mem), on_device_bytes_count);
 }
 
-absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+absl::StatusOr<PjRtRawBufferRef>
 PjRtStreamExecutorClient::AllocateRawBufferForExecute(
     PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
     bool retry_on_oom) {
   auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
       memory_space->devices()[0]);
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
+  ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                   device->GetLocalDeviceState());
   auto mem = RawSEDeviceMemory::CreateDelayedMemory();
   return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
       this, memory_space, local_device, std::move(mem), on_device_bytes_count);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtStreamExecutorClient::DefineBuffer(
-    const Shape& on_device_shape, PjRtMemorySpace* memory_space,
-    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-    absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
-        definition_device_events) {
-  if (raw_buffer && raw_buffer->memory_space() != memory_space) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("DefineBuffer: Mismatch in memory spaces: %s vs %s",
-                        raw_buffer->memory_space()->DebugString(),
-                        memory_space->DebugString()));
-  }
-  absl::InlinedVector<BufferSequencingEventRef, 2> definition_events;
-  definition_events.reserve(definition_device_events.size());
-  for (auto& ev : definition_device_events) {
-    definition_events.push_back(
-        tensorflow::down_cast<PjRtStreamExecutorDeviceEvent*>(ev.get())
-            ->event());
-  }
-  auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-      memory_space->devices()[0]);
-
-  auto dst_device_buffer = std::make_unique<TrackedDeviceBuffer>(
-      device, std::move(raw_buffer), definition_events);
-
-  auto py_buffer = std::make_unique<CommonPjRtBufferImpl>(
-      on_device_shape, std::move(dst_device_buffer), memory_space);
-  return py_buffer;
-}
-
-absl::StatusOr<std::pair<tsl::RCReference<CommonPjRtRawBuffer>,
+absl::StatusOr<std::pair<PjRtRawBufferRef,
                          CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
 PjRtStreamExecutorClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
                                                  size_t on_device_bytes_count) {
   auto buffer_promise = tsl::MakeIndirectAsyncValue();
   auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
       memory_space->devices()[0]);
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
+  ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                   device->GetLocalDeviceState());
   auto raw_buffer = tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
       this, memory_space, local_device,
       tsl::AsyncValueRef<RawSEDeviceMemory>(buffer_promise),
@@ -577,8 +628,7 @@ PjRtStreamExecutorClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
 
   auto buffer_promise_cb =
       [buffer_promise = std::move(buffer_promise), memory_space](
-          absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>> raw_buffer)
-      -> absl::Status {
+          absl::StatusOr<PjRtRawBufferRef> raw_buffer) -> absl::Status {
     if (!raw_buffer.ok()) {
       buffer_promise->SetError(raw_buffer.status());
       return raw_buffer.status();
@@ -591,73 +641,84 @@ PjRtStreamExecutorClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
       buffer_promise->SetError(status);
       return status;
     }
-    buffer_promise->ForwardTo(
-        tensorflow::down_cast<xla::PjRtStreamExecutorRawBuffer*>(
-            raw_buffer->get())
-            ->device_buffer()
-            .CopyRCRef());
+    auto* cpp_buf = raw_buffer->get()->down_cast<PjRtStreamExecutorRawBuffer>();
+    if (cpp_buf == nullptr) {
+      auto status =
+          absl::InvalidArgumentError("Not a StreamExecutor raw buffer");
+      buffer_promise->SetError(status);
+      return status;
+    }
+    buffer_promise->ForwardTo(cpp_buf->device_buffer().CopyRCRef());
     return absl::OkStatus();
   };
 
   return std::make_pair(std::move(raw_buffer), std::move(buffer_promise_cb));
 }
 
-void PjRtStreamExecutorClient::WaitForAllocation(
-    se::Stream* stream, const CommonPjRtRawBuffer& raw_buffer) {
-  auto event =
-      tensorflow::down_cast<const PjRtStreamExecutorRawBuffer*>(&raw_buffer)
-          ->device_buffer()
-          ->GetDefinitionEvent(async_work_runner(), /*nullptr_if_past=*/true);
-  CHECK_OK(event.status());
-  if (*event) {
-    (*event)->WaitForEventOnStream(stream);
+absl::Status PjRtStreamExecutorClient::WaitForAllocation(
+    se::Stream* stream, const PjRtRawBufferInterface& raw_buffer) {
+  auto* cpp_buf = raw_buffer.down_cast<const PjRtStreamExecutorRawBuffer>();
+  if (cpp_buf == nullptr) {
+    return absl::InvalidArgumentError("Not a StreamExecutor raw buffer");
   }
+  ASSIGN_OR_RETURN(auto event,
+                   cpp_buf->device_buffer()->GetDefinitionEvent(
+                       async_work_runner(), /*nullptr_if_past=*/true));
+  if (event) {
+    event->WaitForEventOnStream(stream);
+  }
+  return absl::OkStatus();
 }
 
 bool PjRtStreamExecutorClient::IsOnCpu(PjRtMemorySpace* memory_space) {
   return memory_space->kind() == PinnedHostMemorySpace::kKind;
 }
 
-absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+absl::StatusOr<PjRtDeviceEventRef>
 PjRtStreamExecutorClient::LinearizeHostBufferInto(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
     absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-    const xla::Shape& device_shape,
-    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) {
+    const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer) {
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::LinearizeHostBufferInto");
   PjRtMemorySpace* memory_space = raw_buffer->memory_space();
   PjRtDevice* device = memory_space->devices()[0];
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
-                          ->GetLocalDeviceState());
+  ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                   tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                       ->GetLocalDeviceState());
+
+  TransferManager* transfer_manager = client()->backend().transfer_manager();
+
+  auto* copy_stream = local_device->host_to_device_stream();
+
+  RETURN_IF_ERROR(WaitForAllocation(copy_stream, *raw_buffer));
+  auto definition_event = BufferSequencingEvent::Create(async_work_runner());
+
+  if (type == xla::TOKEN) {
+    RETURN_IF_ERROR(AllocateAndRecordEvent(definition_event, local_device,
+                                           copy_stream,
+                                           "LinearizeHostBufferIntoToken"));
+    return PjRtDeviceEventRef(definition_event);
+  }
 
   Shape on_host_shape = ShapeUtil::MakeShape(type, dims);
   absl::InlinedVector<int64_t, 4> tmp_strides;
   if (!byte_strides) {
     tmp_strides.resize(dims.size());
-    TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+    RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
         on_host_shape, absl::MakeSpan(tmp_strides)));
     byte_strides = tmp_strides;
   }
   int64_t size = ShapeUtil::ByteSizeOf(on_host_shape);
 
-  TransferManager* transfer_manager = client()->backend().transfer_manager();
-
   absl::InlinedVector<int64_t, 4> shape_strides(
       device_shape.dimensions().size());
-  TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+  RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
       device_shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
       (size == 0 || *byte_strides == shape_strides);
-
-  auto* copy_stream = local_device->host_to_device_stream();
-
-  WaitForAllocation(copy_stream, *raw_buffer);
-  auto definition_event = tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
-      BufferSequencingEvent::Create(async_work_runner()));
 
   std::shared_ptr<TransposePlan> transpose;
   if (!host_and_device_strides_equal) {
@@ -669,8 +730,7 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
     options.dims = dims;
     options.permutation = permutation;
     options.input_striding = TransposePlan::Striding{*byte_strides};
-    absl::MutexLock lock(transpose_mu_);
-    TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
+    ASSIGN_OR_RETURN(transpose, GetTransposePlan(options));
   }
 
   bool should_pack = primitive_util::IsSubByteNonPredType(type) &&
@@ -691,8 +751,11 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
       !host_and_device_strides_equal || packed_size != size;
   if (must_use_staging_buffer ||
       ShouldStageHostToDeviceTransfers(data, packed_size)) {
-    staging_buffer =
-        GetHostMemoryAllocator()->Allocate(transpose ? size : packed_size);
+    HostMemoryAllocator::AllocateOptions alloc_opts;
+    alloc_opts.numa_node = local_device->executor()->numa_node();
+    alloc_opts.local_device_id = local_device->local_device_id();
+    staging_buffer = GetHostMemoryAllocator()->Allocate(
+        transpose ? size : packed_size, alloc_opts);
   }
 
   // Copy the buffer into a staging buffer before returning control to the
@@ -726,15 +789,13 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
     }
   }
 
-  BufferSequencingEventRef event = definition_event->event();
-
   // The host to device transfer is performed on a thread pool, mostly because
   // it includes linearization that may be slow.
   // TODO(misard) assess if it would be preferable to introduce a heuristic to
   // put the transfer into the calling thread for small literals.
   auto transfer_h2d =
       [this, local_client = client(), local_device, data, size, type,
-       packed_size, event, raw_buffer, should_pack,
+       packed_size, event = definition_event, raw_buffer, should_pack,
        staging_buffer{std::move(staging_buffer)},
        on_done_with_host_buffer =
            on_done_with_host_buffer
@@ -748,11 +809,9 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
         // memory that has already been allocated, and a possible Event
         // allocation.
 
-        se::DeviceAddressBase device_memory =
-            tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(
-                raw_buffer.get())
-                ->device_buffer()
-                ->mem();
+        auto* cpp_buf = raw_buffer->down_cast<PjRtStreamExecutorRawBuffer>();
+        CHECK(cpp_buf != nullptr) << "Not a StreamExecutor raw buffer";
+        se::DeviceAddressBase device_memory = cpp_buf->device_buffer()->mem();
 
         // If applicable on the backend, stage the transfer via host memory
         // allocated via the host_memory_allocator. On GPU, this is pinned
@@ -804,32 +863,29 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
         });
       };
   async_work_runner()->Schedule(WrapClosureAsCopyable(std::move(transfer_h2d)));
-  return definition_event;
+  return PjRtDeviceEventRef(definition_event);
 }
 
-absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
-                         tsl::RCReference<PjRtDeviceEvent>>>
+absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
 PjRtStreamExecutorClient::CreateLinkedEventPromise(
     PjRtMemorySpace* memory_space, absl::string_view debug_info) {
   auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
       memory_space->devices()[0]);
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
+  ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                   device->GetLocalDeviceState());
   auto result = tsl::MakeRef<PjRtStreamExecutorDeviceEventPromise>(
       this, local_device, async_work_runner());
-  const auto& event = result->event();
-  return std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
-                   tsl::RCReference<PjRtDeviceEvent>>(
-      std::move(result), tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(event));
+  PjRtDeviceEventRef event = result->event().CopyRef();
+  return std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>(
+      PjRtDeviceEventPromiseRef(std::move(result)), std::move(event));
 }
 
-tsl::RCReference<PjRtDeviceEvent>
-PjRtStreamExecutorClient::CreateErrorDeviceEvent(absl::Status error) {
+PjRtDeviceEventRef PjRtStreamExecutorClient::CreateErrorDeviceEvent(
+    absl::Status error) {
   auto definition_event =
       BufferSequencingEvent::Create(this->async_work_runner());
   SetEventAsError(definition_event, error);
-  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
-      std::move(definition_event));
+  return PjRtDeviceEventRef(std::move(definition_event));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -849,32 +905,55 @@ PjRtStreamExecutorClient::CreateErrorBuffer(absl::Status error,
       BufferSequencingEvent::Create(this->async_work_runner());
   SetEventAsError(definition_event, error);
 
-  // Create an empty buffer.
-  auto dummy_device_buffer = std::make_unique<TrackedDeviceBuffer>(
-      device, tsl::RCReference<CommonPjRtRawBuffer>(),
-      absl::MakeSpan(&definition_event, 1));
-
-  return std::make_unique<CommonPjRtBufferImpl>(
-      shape, std::move(dummy_device_buffer), memory);
+  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events;
+  definition_events.emplace_back(std::move(definition_event));
+  return DefineBuffer(std::make_shared<const Shape>(shape), memory,
+                      PjRtRawBufferRef(), std::move(definition_events));
 }
 
-absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-PjRtStreamExecutorClient::LinearizeInto(
+absl::StatusOr<PjRtDeviceEventRef> PjRtStreamExecutorClient::CreateDeviceEvent(
+    PjRtMemorySpace* memory_space, Future<> dependency) {
+  auto definition_event = BufferSequencingEvent::Create(async_work_runner());
+  auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
+      memory_space->devices()[0]);
+  LocalDeviceState* local_device = device->local_device_state();
+  dependency.OnReady([definition_event = definition_event.CopyRef(),
+                      local_device, this](absl::Status status) mutable {
+    if (!status.ok()) {
+      SetEventAsError(definition_event, status);
+      return;
+    }
+    auto stream = local_device->BorrowStreamFromPool();
+    CHECK_OK(
+        AllocateAndRecordEvent(definition_event, local_device, stream.get(),
+                               "PjRtStreamExecutorClient::CreateDeviceEvent"));
+    local_device->ReturnStreamToPool(std::move(stream));
+  });
+  return PjRtDeviceEventRef(definition_event);
+}
+
+absl::StatusOr<PjRtDeviceEventRef> PjRtStreamExecutorClient::LinearizeInto(
     const LiteralSlice& literal, const xla::Shape& device_shape,
-    HostBufferSemantics host_buffer_semantics,
-    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) {
+    HostBufferSemantics host_buffer_semantics, PjRtRawBufferRef raw_buffer) {
   auto* memory_space = raw_buffer->memory_space();
 
   CHECK_EQ(memory_space->devices().size(), 1);
   PjRtDevice* device = memory_space->devices().front();
-  auto* local_device =
-      tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(raw_buffer.get())
-          ->local_device();
+  auto* cpp_buf = raw_buffer->down_cast<PjRtStreamExecutorRawBuffer>();
+  if (cpp_buf == nullptr) {
+    return absl::InvalidArgumentError("Not a StreamExecutor raw buffer");
+  }
+  auto* local_device = cpp_buf->local_device();
   auto* copy_stream = local_device->host_to_device_stream();
   BufferSequencingEventRef event =
       BufferSequencingEvent::Create(async_work_runner());
-  WaitForAllocation(copy_stream, *raw_buffer);
-  auto on_device_shape = device_shape;
+  RETURN_IF_ERROR(WaitForAllocation(copy_stream, *raw_buffer));
+
+  if (literal.shape().IsToken()) {
+    RETURN_IF_ERROR(AllocateAndRecordEvent(event, local_device, copy_stream,
+                                           "LinearizeIntoToken"));
+    return PjRtDeviceEventRef(event);
+  }
 
   TransferManager* transfer_manager = client()->backend().transfer_manager();
 
@@ -884,15 +963,15 @@ PjRtStreamExecutorClient::LinearizeInto(
   // put the transfer into the calling thread for small literals.
   auto transfer_h2d = [this, local_client = client(), transfer_manager,
                        local_device, raw_buffer, device, event, literal,
-                       on_device_shape = std::move(on_device_shape)]() mutable {
+                       on_device_shape = device_shape]() mutable {
     // This function uses CHECK_OK and value() since we have no way
     // to report failures from a callback. However, the operations here are
     // unlikely to fail and not recoverable even if we were to fail: DMAs to
     // memory that has already been allocated, and a possible Event
     // allocation.
-    auto device_memory =
-        tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(raw_buffer.get())
-            ->device_buffer();
+    auto* cpp_buf = raw_buffer->down_cast<PjRtStreamExecutorRawBuffer>();
+    CHECK(cpp_buf != nullptr) << "Not a StreamExecutor raw buffer";
+    auto device_memory = cpp_buf->device_buffer();
 
     se::Stream* h2d_stream = local_device->host_to_device_stream();
 
@@ -913,7 +992,7 @@ PjRtStreamExecutorClient::LinearizeInto(
     QCHECK(h2d_stream->ok());
   };
   async_work_runner()->Schedule(WrapClosureAsCopyable(std::move(transfer_h2d)));
-  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(event);
+  return PjRtDeviceEventRef(event);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -929,36 +1008,36 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
       se::DeviceAddressBase(device_ptr, buffer_size),
       std::move(on_delete_callback));
 
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
-                          ->GetLocalDeviceState());
+  ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                   tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                       ->GetLocalDeviceState());
 
-  absl::InlinedVector<BufferSequencingEventRef, 2> definition_events;
-  definition_events.emplace_back(
-      BufferSequencingEvent::Create(this->async_work_runner()));
+  auto definition_event =
+      BufferSequencingEvent::Create(this->async_work_runner());
 
   se::Stream* definition_stream;
   if (!stream) {
     definition_stream = local_device->compute_stream();
   } else {
-    TF_ASSIGN_OR_RETURN(definition_stream,
-                        local_device->GetStreamFromExternalStream(*stream));
+    ASSIGN_OR_RETURN(definition_stream,
+                     local_device->GetStreamFromExternalStream(*stream));
   }
-  TF_RETURN_IF_ERROR(AllocateAndRecordEvent(definition_events.back(),
-                                            local_device, definition_stream));
+  RETURN_IF_ERROR(AllocateAndRecordEvent(definition_event, local_device,
+                                         definition_stream,
+                                         "CreateViewOfDeviceBuffer"));
+  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events;
+  definition_events.emplace_back(std::move(definition_event));
 
-  auto device_buffer = std::make_unique<TrackedDeviceBuffer>(
-      device,
+  return DefineBuffer(
+      std::make_shared<const Shape>(shape), memory_space,
       tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
           this, memory_space, local_device, std::move(buffer), buffer_size),
-      definition_events);
-  return std::unique_ptr<PjRtBuffer>(std::make_unique<CommonPjRtBufferImpl>(
-      shape, std::move(device_buffer), memory_space));
+      std::move(definition_events));
 }
 
 absl::Status PjRtStreamExecutorClient::DmaMap(void* data, size_t buffer_size) {
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorClient::DmaMap");
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       LocalDeviceState * local_device,
       tensorflow::down_cast<PjRtStreamExecutorDevice*>(addressable_devices_[0])
           ->GetLocalDeviceState());
@@ -977,7 +1056,7 @@ absl::Status PjRtStreamExecutorClient::DmaMap(void* data, size_t buffer_size) {
 
 absl::Status PjRtStreamExecutorClient::DmaUnmap(void* data) {
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorClient::DmaUnmap");
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       LocalDeviceState * local_device,
       tensorflow::down_cast<PjRtStreamExecutorDevice*>(addressable_devices_[0])
           ->GetLocalDeviceState());
@@ -997,7 +1076,7 @@ absl::Status PjRtStreamExecutorClient::DmaUnmap(void* data) {
 absl::Status PjRtStreamExecutorDevice::TransferToInfeed(
     const LiteralSlice& literal) {
   // Only support infeed to local device.
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
+  ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return NeverRunOnFiber(
       tensorflow::down_cast<PjRtStreamExecutorClient*>(client_)
           ->async_work_runner(),
@@ -1010,7 +1089,7 @@ absl::Status PjRtStreamExecutorDevice::TransferToInfeed(
 absl::Status PjRtStreamExecutorDevice::TransferFromOutfeed(
     MutableBorrowingLiteral literal) {
   VLOG(1) << "PjRtStreamExecutorDevice::TransferFromOutfeed";
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
+  ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return NeverRunOnFiber(
       tensorflow::down_cast<PjRtStreamExecutorClient*>(client_)
           ->async_work_runner(),
@@ -1078,7 +1157,7 @@ PjRtStreamExecutorDevice::memory_space_by_kind_id(int id) const {
 
 absl::StatusOr<std::intptr_t>
 PjRtStreamExecutorDevice::GetStreamForExternalReadyEvents() const {
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
+  ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   se::Stream* stream = local_device->GetExternalReadyEventStream();
   void* raw_stream = stream->platform_specific_handle().stream;
   if (raw_stream == nullptr) {
@@ -1126,44 +1205,40 @@ bool IsAllZeros(const DeviceAssignment& assignment) {
 }  // namespace
 
 PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
-    std::unique_ptr<LocalExecutable> executable,
+    std::shared_ptr<LocalExecutable> executable,
+    std::shared_ptr<PjRtExecutable> pjrt_executable,
     bool parameter_is_tupled_arguments,
     std::shared_ptr<DeviceAssignment> device_assignment,
     CompileOptions compile_options,
     std::vector<LogicalDeviceIds> addressable_device_logical_ids,
     std::vector<PjRtDevice*> addressable_devices,
     PjRtStreamExecutorClient* client, std::vector<Shape> parameter_shapes,
-    xla::Shape result_shape, std::vector<int> output_memory_space_kind_ids)
+    xla::Shape result_shape, std::vector<int> parameter_memory_space_kind_ids,
+    std::vector<int> output_memory_space_kind_ids)
     : CommonPjRtLoadedExecutable(
-          [&parameter_shapes, client]() -> std::vector<Shape> {
-            TransferManager* transfer_manager =
-                client->client()->backend().transfer_manager();
+          [&parameter_shapes]() -> std::vector<Shape> {
             if (parameter_shapes.size() == 1 && parameter_shapes[0].IsTuple()) {
               std::vector<Shape> flat_parameter_shapes;
               for (const Shape& shape : parameter_shapes[0].tuple_shapes()) {
-                flat_parameter_shapes.push_back(
-                    transfer_manager->HostShapeToDeviceShape(shape));
+                flat_parameter_shapes.push_back(shape);
               }
               return flat_parameter_shapes;
             }
             return parameter_shapes;
           }(),
-          std::move(result_shape), std::move(output_memory_space_kind_ids),
+          std::make_shared<const Shape>(std::move(result_shape)),
+          std::move(parameter_memory_space_kind_ids),
+          std::move(output_memory_space_kind_ids),
           std::move(addressable_devices),
-          std::move(addressable_device_logical_ids)),
+          std::move(addressable_device_logical_ids),
+          std::move(device_assignment)),
       client_(client),
       executable_(std::move(executable)),
-      device_assignment_(std::move(device_assignment)),
+      pjrt_executable_(std::move(pjrt_executable)),
       compile_options_(std::move(compile_options)),
       parameter_is_tupled_arguments_(parameter_is_tupled_arguments) {
-  tsl::Fprint128 fingerprint = tsl::Fingerprint128(fingerprint_);
   on_device_executable_parameter_shapes_ =
       std::make_shared<std::vector<Shape>>(std::move(parameter_shapes));
-  fingerprint = tsl::FingerprintCat128(
-      fingerprint,
-      tsl::Fingerprint128(executable_->executable()->module().ToString(
-          HloPrintOptions::ModuleFingerprint())));
-  fingerprint_ = absl::StrCat(fingerprint.low64, fingerprint.high64);
 
   int num_partitions;
   if (device_assignment_ == nullptr) {
@@ -1179,7 +1254,7 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
         IsAllZeros(*device_assignment_)) {
       // This code path should only be triggered when we intentionally compile
       // an HLO without having enough devices to actually run it. See the
-      // "--run=false" option in
+      // "--compile_only=true" option in
       // tensorflow/compiler/xla/tools/multihost_hlo_runner/hlo_runner_main.cc.
       // That will help us debug the XLA compiler locally.
       LOG(INFO)
@@ -1205,14 +1280,10 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
 
 absl::Status PjRtStreamExecutorLoadedExecutable::SetUpDonation(
     bool tuple_inputs) {
-  TF_ASSIGN_OR_RETURN(parameters_that_must_be_donated_,
-                      ComputeParametersThatMustBeDonated(
-                          executable_->executable()->module(), tuple_inputs));
+  ASSIGN_OR_RETURN(parameters_that_must_be_donated_,
+                   ComputeParametersThatMustBeDonated(
+                       executable_->executable()->module(), tuple_inputs));
   return absl::OkStatus();
-}
-
-absl::string_view PjRtStreamExecutorLoadedExecutable::name() const {
-  return executable_->executable()->name();
 }
 
 template <typename T>
@@ -1265,7 +1336,7 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
     // Allocate event that will signal completion of send operation. We do not
     // actually track the completion of the send callback, we only have to keep
     // the device memory long enough to complete the memcpy command.
-    TF_ASSIGN_OR_RETURN(auto se_event, stream->parent()->CreateEvent());
+    ASSIGN_OR_RETURN(auto se_event, stream->parent()->CreateEvent());
     auto done_event = MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
         std::move(se_event));
 
@@ -1444,7 +1515,7 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
     // Allocate event that will signal completion of recv operation. We record
     // it on a stream after submitting the memcpy for the last chunk (see
     // `StreamExecutorCopyToDeviceStream` implementation above).
-    TF_ASSIGN_OR_RETURN(auto event, stream->parent()->CreateEvent());
+    ASSIGN_OR_RETURN(auto event, stream->parent()->CreateEvent());
     auto done_event = MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
         std::move(event));
 
@@ -1464,26 +1535,25 @@ struct PjRtStreamExecutorExecutionInput {
 
 // Makes a tuple from the arguments to an execution.
 static absl::StatusOr<ShapeTree<PjRtStreamExecutorExecutionInput>>
-MakeTupleHelper(
-    PjRtStreamExecutorClient* client, LocalDeviceState* local_device,
-    const Shape& tupled_parameter_shape,
-    absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> execution_inputs,
-    int device_ordinal) {
+MakeTupleHelper(PjRtStreamExecutorClient* client,
+                LocalDeviceState* local_device,
+                const Shape& tupled_parameter_shape,
+                absl::Span<const PjRtRawBufferRef> execution_inputs,
+                int device_ordinal) {
   se::DeviceAddressAllocator* allocator = client->allocator();
   TransferManager* transfer_manager =
       client->client()->backend().transfer_manager();
 
   se::Stream* stream = local_device->host_to_device_stream();
-  TF_ASSIGN_OR_RETURN(
-      se::ScopedDeviceAddress<uint8_t> owned_root_table_memory,
-      allocator->Allocate(
-          device_ordinal,
-          transfer_manager->GetByteSizeRequirement(tupled_parameter_shape)));
+  ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> owned_root_table_memory,
+                   allocator->Allocate(device_ordinal,
+                                       transfer_manager->GetByteSizeRequirement(
+                                           tupled_parameter_shape)));
   auto root_table_memory = owned_root_table_memory.cref();
 
   if (local_device->allocation_model() ==
       LocalDeviceState::kComputeSynchronized) {
-    TF_RETURN_IF_ERROR(stream->WaitFor(local_device->compute_stream()));
+    RETURN_IF_ERROR(stream->WaitFor(local_device->compute_stream()));
   } else {
     DCHECK(transfer_manager->CanBufferBeAccessedNow(
         local_device->compute_stream()->parent(), root_table_memory));
@@ -1499,10 +1569,12 @@ MakeTupleHelper(
                                       local_device, allocator)};
   ++input_iterator;
   // Then set each sub-tuple in turn from the parameters.
-  for (const tsl::RCReference<CommonPjRtRawBuffer>& input : execution_inputs) {
-    input_iterator->second.buf =
-        tensorflow::down_cast<const PjRtStreamExecutorRawBuffer*>(input.get())
-            ->device_buffer();
+  for (const PjRtRawBufferRef& input : execution_inputs) {
+    auto* cpp_buf = input->down_cast<const PjRtStreamExecutorRawBuffer>();
+    if (cpp_buf == nullptr) {
+      return absl::InvalidArgumentError("Not a StreamExecutor raw buffer");
+    }
+    input_iterator->second.buf = cpp_buf->device_buffer();
     input_iterator->second.is_donated = false;
     ++input_iterator;
   }
@@ -1515,7 +1587,7 @@ MakeTupleHelper(
     elements.push_back(execution_input.element({i}).buf->mem());
   }
 
-  TF_RETURN_IF_ERROR(transfer_manager->WriteSingleTupleIndexTable(
+  RETURN_IF_ERROR(transfer_manager->WriteSingleTupleIndexTable(
       stream, elements, tupled_parameter_shape, &root_table_memory));
   auto status = local_device->compute_stream()->WaitFor(stream);
   if (!status.ok()) {
@@ -1525,16 +1597,16 @@ MakeTupleHelper(
 }
 
 static absl::StatusOr<std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>>>
-WrapInputsInShapeTree(
-    PjRtStreamExecutorClient* client, LocalDeviceState* device_state,
-    bool parameter_is_tupled_arguments,
-    absl::Span<const Shape> executable_parameter_shapes,
-    absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> execution_inputs,
-    int device_ordinal) {
+WrapInputsInShapeTree(PjRtStreamExecutorClient* client,
+                      LocalDeviceState* device_state,
+                      bool parameter_is_tupled_arguments,
+                      absl::Span<const Shape> executable_parameter_shapes,
+                      absl::Span<const PjRtRawBufferRef> execution_inputs,
+                      int device_ordinal) {
   std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>> results;
   results.reserve(executable_parameter_shapes.size());
   if (parameter_is_tupled_arguments) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto tuple_handle,
         MakeTupleHelper(client, device_state, executable_parameter_shapes[0],
                         std::move(execution_inputs), device_ordinal));
@@ -1547,10 +1619,12 @@ WrapInputsInShapeTree(
       auto input_iterator = execution_input.begin();
       auto iterator_end = execution_input.end();
       CHECK(input_iterator != iterator_end);
-      input_iterator->second.buf =
-          tensorflow::down_cast<const PjRtStreamExecutorRawBuffer*>(
-              execution_inputs[i].get())
-              ->device_buffer();
+      auto* cpp_buf =
+          execution_inputs[i]->down_cast<const PjRtStreamExecutorRawBuffer>();
+      if (cpp_buf == nullptr) {
+        return absl::InvalidArgumentError("Not a StreamExecutor raw buffer");
+      }
+      input_iterator->second.buf = cpp_buf->device_buffer();
       input_iterator->second.is_donated = false;
       ++input_iterator;
       CHECK(input_iterator == iterator_end);
@@ -1562,11 +1636,11 @@ WrapInputsInShapeTree(
 absl::StatusOr<PjRtStreamExecutorExecutionOutput>
 PjRtStreamExecutorClient::RunAsync(
     LocalExecutable& exec, PjRtDevice* device,
-    absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> flat_arguments,
-    absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
+    absl::Span<const PjRtRawBufferRef> flat_arguments,
+    absl::Span<const PjRtRawBufferRef> results,
     ExecutableRunOptions run_options, bool parameter_is_tupled_arguments,
     absl::Span<const Shape> executable_parameter_shapes) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto arguments,
       WrapInputsInShapeTree(
           this, &device_state(run_options.device_ordinal()),
@@ -1585,9 +1659,11 @@ PjRtStreamExecutorClient::RunAsync(
     if (alias) {
       auto& input = *arguments[alias->parameter_number].mutable_element(
           alias->parameter_index);
-      auto buf =
-          tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(results[i].get())
-              ->device_buffer();
+      auto* cpp_buf = results[i]->down_cast<PjRtStreamExecutorRawBuffer>();
+      if (cpp_buf == nullptr) {
+        return absl::InvalidArgumentError("Not a StreamExecutor raw buffer");
+      }
+      auto buf = cpp_buf->device_buffer();
       if (buf.GetAsyncValue() == input.buf.GetAsyncValue()) {
         input.is_donated = true;
       }
@@ -1612,7 +1688,7 @@ PjRtStreamExecutorClient::RunAsync(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ExecutionOutput output,
       exec.RunAsync(std::move(xla_arguments), std::move(run_options)));
   ScopedShapedBuffer ssb = output.ConsumeResult();
@@ -1621,9 +1697,11 @@ PjRtStreamExecutorClient::RunAsync(
   absl::flat_hash_set<RawSEDeviceMemory*> output_args;
   se::DeviceAddressAllocator* allocator = ssb.memory_allocator();
   auto set_memory = [&](se::DeviceAddressBase mem, int i) -> absl::Status {
-    auto buf =
-        tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(results[i].get())
-            ->device_buffer();
+    auto* cpp_buf = results[i]->down_cast<PjRtStreamExecutorRawBuffer>();
+    if (cpp_buf == nullptr) {
+      return absl::InvalidArgumentError("Not a StreamExecutor raw buffer");
+    }
+    auto buf = cpp_buf->device_buffer();
     if (buf.IsAvailable()) {
       if (buf->mem().opaque() != mem.opaque() ||
           buf->mem().size() != mem.size()) {
@@ -1643,7 +1721,7 @@ PjRtStreamExecutorClient::RunAsync(
   if (released_ssb.on_device_shape().IsTuple()) {
     int tuple_count = released_ssb.on_device_shape().tuple_shapes().size();
     for (int i = 0; i < tuple_count; ++i) {
-      TF_RETURN_IF_ERROR(set_memory(released_ssb.buffer({i}), i));
+      RETURN_IF_ERROR(set_memory(released_ssb.buffer({i}), i));
     }
     se_to_be_released.push_back(se::ScopedDeviceAddress<uint8_t>(
         released_ssb.buffer({}),
@@ -1653,7 +1731,7 @@ PjRtStreamExecutorClient::RunAsync(
             .value(),
         allocator));
   } else {
-    TF_RETURN_IF_ERROR(set_memory(released_ssb.buffer({}), 0));
+    RETURN_IF_ERROR(set_memory(released_ssb.buffer({}), 0));
   }
   for (ShapeTree<PjRtStreamExecutorExecutionInput>& input : arguments) {
     for (auto& v : input) {
@@ -1674,10 +1752,9 @@ PjRtStreamExecutorClient::RunAsync(
 // to initialize `run_options`.
 PjRtRawLoadedExecutable::RawExecuteResult
 PjRtStreamExecutorRawLoadedExecutable::Execute(
-    const ExecuteOptions& options,
-    absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> inputs,
-    absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
-    PjRtDeviceEventSet& extra_deps, PjRtDeviceEventSet& control_deps,
+    const ExecuteOptions& options, absl::Span<const PjRtRawBufferRef> inputs,
+    absl::Span<const PjRtRawBufferRef> results,
+    PjRtDeviceEventRefVector extra_deps, PjRtDeviceEventRefVector control_deps,
     bool is_predetermined_error, bool fill_future) && {
   const uint64_t start_time_usecs = tsl::Env::Default()->NowMicros();
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
@@ -1685,9 +1762,14 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
                            ->local_device_id()
                            .value();
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
-  tsl::profiler::TraceMeConsumer activity(
-      "PjRtStreamExecutorLoadedExecutable::EnqueueExecution",
-      tsl::profiler::ContextType::kPjRt, run_id_.ToInt());
+
+  tsl::profiler::TraceMe trace([&] {
+    return tsl::profiler::TraceMeEncode(
+        absl::StrFormat("[%d] PjRtStreamExecutorRawLoadedExecutable::Execute",
+                        device_ordinal),
+        {{"replica", replica_}, {"partition", partition_}});
+  });
+
   VLOG(3) << "Replica " << replica_ << ", partition " << partition_
           << " mapped to device ordinal for execution: " << device_ordinal;
 
@@ -1701,31 +1783,42 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
   RecvDeviceMemoryFunction recv_device_memory =
       ConvertRecvCallbacksToRecvFunction(replica_, options);
 
+  // The choice of where we wait is arbitrary; the reason for the wait is
+  // pacing to avoid problems such as memory fragmentation and running ahead
+  // too far, not for correctness. Placing it before the executable launch
+  // allows the inputs for the next executable to be fetched even if the
+  // launch is delayed.
+  std::shared_ptr<Semaphore::ScopedReservation> compute_reservation;
+  if (std::optional<Semaphore>& compute_semaphore =
+          device_state->compute_semaphore();
+      compute_semaphore.has_value()) {
+    tsl::profiler::TraceMe traceme([&] {
+      return absl::StrFormat("ComputeSemaphoreAcquire [capacity=%d, value=%d]",
+                             compute_semaphore->capacity(),
+                             compute_semaphore->value());
+    });
+    compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
+        compute_semaphore->ScopedAcquire(1));
+  }
+
   auto launch_on_device =
       [device_state, gpu_run_options = client_->gpu_run_options(options),
        launch_id = options.launch_id, run_id = run_id_,
        context = options.context, client = client_, device = device_,
        device_assignment = device_assignment_,
+       compute_reservation = std::move(compute_reservation),
        send_device_memory = std::move(send_device_memory),
        recv_device_memory = std::move(recv_device_memory),
-       inputs = std::vector<tsl::RCReference<CommonPjRtRawBuffer>>(
-           inputs.begin(), inputs.end()),
-       results = std::vector<tsl::RCReference<CommonPjRtRawBuffer>>(
-           results.begin(), results.end()),
+       inputs = std::vector<PjRtRawBufferRef>(inputs.begin(), inputs.end()),
+       results = std::vector<PjRtRawBufferRef>(results.begin(), results.end()),
        device_ordinal, executable = executable_,
        execution_profile = options.execution_profile, is_predetermined_error,
        parameter_is_tupled_arguments = parameter_is_tupled_arguments_,
        on_device_executable_parameter_shapes =
            on_device_executable_parameter_shapes_,
        replica = replica_, partition = partition_,
-       extra_deps =
-           std::move(*tensorflow::down_cast<PjRtStreamExecutorDeviceEventSet*>(
-                         &extra_deps))
-               .event_refs(),
-       control_deps =
-           std::move(*tensorflow::down_cast<PjRtStreamExecutorDeviceEventSet*>(
-                         &control_deps))
-               .event_refs()]() mutable -> tsl::RCReference<PjRtDeviceEvent> {
+       extra_deps = std::move(extra_deps),
+       control_deps = std::move(control_deps)]() mutable -> PjRtDeviceEventRef {
     ExecutableRunOptions run_options;
     run_options.set_stream(device_state->compute_stream());
     run_options.set_device_ordinal(device_state->local_device_id().value());
@@ -1755,30 +1848,34 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     if (context != nullptr) {
       run_options.set_ffi_execution_context(&context->ffi_context());
     }
-    // The choice of where we wait is arbitrary; the reason for the wait is
-    // pacing to avoid problems such as memory fragmentation and running ahead
-    // too far, not for correctness. Placing it before the executable launch
-    // allows the inputs for the next executable to be fetched even if the
-    // launch is delayed.
-    std::shared_ptr<Semaphore::ScopedReservation> compute_reservation;
-    {
-      tsl::profiler::TraceMe traceme("ComputeSemaphoreAcquire");
-      compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
-          device_state->compute_semaphore().ScopedAcquire(1));
-    }
 
     absl::Status predetermined_error;
-    for (BufferSequencingEventRef& event : extra_deps) {
-      if (event->IsPredeterminedError()) {
-        if (predetermined_error.ok()) {
-          predetermined_error = event->GetDefinedStatus();
+    for (size_t i = 0; i < extra_deps.size(); ++i) {
+      const auto& event = extra_deps[i];
+      if (auto ev = event.down_cast<BufferSequencingEvent>()) {
+        if (ev->IsPredeterminedError()) {
+          if (predetermined_error.ok()) {
+            predetermined_error = ev->GetDefinedStatus();
+          }
+        }
+        ev->WaitForEventOnStream(device_state->compute_stream());
+      } else if (event) {
+        xla::BlockUntilReady(event);
+        if (auto error = event.GetErrorIfPresent()) {
+          if (predetermined_error.ok()) {
+            predetermined_error = *error;
+          }
         }
       }
-      event->WaitForEventOnStream(device_state->compute_stream());
     }
 
-    for (BufferSequencingEventRef& event : control_deps) {
-      event->WaitForEventOnStream(device_state->compute_stream());
+    for (size_t i = 0; i < control_deps.size(); ++i) {
+      const auto& event = control_deps[i];
+      if (auto ev = event.down_cast<BufferSequencingEvent>()) {
+        ev->WaitForEventOnStream(device_state->compute_stream());
+      } else if (event) {
+        xla::BlockUntilReady(event);
+      }
     }
 
     if (is_predetermined_error) {
@@ -1797,9 +1894,11 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     if (key.has_value()) {
       start_time_ns = std::make_shared<uint64_t>();
       auto status = device_state->ThenExecuteCallback(
-          device_state->compute_stream(), [start_time_ns]() {
+          device_state->compute_stream(),
+          [start_time_ns]() {
             *start_time_ns = tsl::Env::Default()->NowNanos();
-          });
+          },
+          nullptr, "RecordExecuteStart");
       if (!status.ok()) {
         StallStreamOnError(device_state, device_state->compute_stream());
         LOG(ERROR) << "Problem registering Execute start time: " << status;
@@ -1878,7 +1977,8 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
                 absl::FromUnixNanos(tsl::Env::Default()->NowNanos()) -
                 absl::FromUnixNanos(*start_time_ns);
             xla::RecordDeviceTimeMeasurement(*key, elapsed, device_type);
-          });
+          },
+          nullptr, "RecordExecuteFinish");
       if (!status.ok()) {
         LOG(ERROR) << "Error logging device time.";
         StallStreamOnError(device_state, device_state->compute_stream());
@@ -1889,26 +1989,34 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
       }
     }
 
-    auto definition_event = [&]() -> tsl::RCReference<PjRtDeviceEvent> {
+    static constexpr absl::string_view kExecutableName = "executable_name";
+    const auto add_error_context = [&](absl::Status status) {
+      status.SetPayload(kExecutableName,
+                        absl::Cord(executable->executable()->name()));
+      return status;
+    };
+
+    auto definition_event = [&]() -> PjRtDeviceEventRef {
       LocalDeviceState* device_state = &(client->device_state(device_ordinal));
       se::Stream* stream = device_state->compute_stream();
 
       if (!result_buffer_or_status.ok()) {
         StallStreamOnError(device_state, stream);
-        return client->CreateErrorDeviceEvent(result_buffer_or_status.status());
+        return client->CreateErrorDeviceEvent(
+            add_error_context(result_buffer_or_status.status()));
       }
-
-      auto definition_event_or =
+      absl::StatusOr<BufferSequencingEventRef> definition_event_or =
           device_state->GetEventForComputeStreamSyncPoint(
               device_state->GetNextComputeStreamSyncPoint(),
               client->async_work_runner());
       if (!definition_event_or.ok()) {
         StallStreamOnError(device_state, stream);
-        return client->CreateErrorDeviceEvent(definition_event_or.status());
+        return client->CreateErrorDeviceEvent(
+            add_error_context(definition_event_or.status()));
       }
-      return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
-          std::move(*definition_event_or), "PjRtStreamExecutorLoadedExecutable",
-          "Execute");
+      definition_event_or.value()->AddErrorContext(
+          kExecutableName, std::string(executable->executable()->name()));
+      return PjRtDeviceEventRef(*std::move(definition_event_or));
     }();
     if (device_state->allocation_model() == LocalDeviceState::kSynchronous &&
         result_buffer_or_status.ok()) {
@@ -1922,16 +2030,16 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
       std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> buffers_to_release;
       buffers_to_release.reserve(results.size() + inputs.size());
       for (auto& node : results) {
-        buffers_to_release.push_back(
-            tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(node.get())
-                ->device_buffer());
+        auto* cpp_buf = node->down_cast<PjRtStreamExecutorRawBuffer>();
+        CHECK(cpp_buf != nullptr) << "Not a StreamExecutor raw buffer";
+        buffers_to_release.push_back(cpp_buf->device_buffer());
       }
       for (auto& node : inputs) {
-        buffers_to_release.push_back(
-            tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(node.get())
-                ->device_buffer());
+        auto* cpp_buf = node->down_cast<PjRtStreamExecutorRawBuffer>();
+        CHECK(cpp_buf != nullptr) << "Not a StreamExecutor raw buffer";
+        buffers_to_release.push_back(cpp_buf->device_buffer());
       }
-      definition_event->AndThen(
+      definition_event.AndThen(
           [donated_memory = std::move(result_buffer_or_status->to_be_released),
            se_donated_memory =
                std::move(result_buffer_or_status->se_to_be_released),
@@ -1941,19 +2049,18 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     } else {
       // Any donated memory returned by the ExecutionOutput can be immediately
       // freed.
-      definition_event->AndThen([exe = executable,
-                                 reservation = compute_reservation,
-                                 assignment = device_assignment]() {});
+      definition_event.AndThen([exe = executable,
+                                reservation = compute_reservation,
+                                assignment = device_assignment]() {});
     }
     return definition_event;
   };
-  tsl::RCReference<PjRtDeviceEvent> definition_event;
+  PjRtDeviceEventRef definition_event;
   if (device_state->async_dispatch_thread()) {
     auto definition_event_promise =
         tsl::MakeRef<PjRtStreamExecutorDeviceEventPromise>(
             client_, device_state, client_->async_work_runner());
-    definition_event = tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
-        definition_event_promise->event());
+    definition_event = definition_event_promise->event().CopyRef();
     device_state->async_dispatch_thread()->Schedule(tsl::WithCurrentContext(
         [launch_on_device = std::move(launch_on_device),
          promise = std::move(definition_event_promise)]() mutable {
@@ -1967,11 +2074,11 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
   if (fill_future) {
     auto [promise, future] = MakePromise<>();
     maybe_future = std::move(future);
-    auto av = tsl::FormRef(definition_event->async_value());
-    definition_event->AndThen(
-        [promise = std::move(promise), av = std::move(av)]() mutable {
+    definition_event.AndThen(
+        [promise = std::move(promise),
+         av = definition_event.down_cast<BufferSequencingEvent>()]() mutable {
           absl::Status s;
-          if (const absl::Status* error = av->GetErrorIfPresent()) {
+          if (const absl::Status* error = av.GetErrorIfPresent()) {
             s = *error;
           }
           promise.Set(std::move(s));
@@ -1986,47 +2093,29 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
   return execute_results;
 }
 
-std::unique_ptr<PjRtDeviceEventSet>
-PjRtStreamExecutorClient::CreateDeviceEventSet(size_t preallocated_size) const {
-  return std::make_unique<PjRtStreamExecutorDeviceEventSet>(preallocated_size);
-}
-
 absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>>
-PjRtStreamExecutorLoadedExecutable::StartRawExecutable(
-    const ExecuteOptions& options, xla::RunId run_id, int replica,
-    int partition, PjRtDevice* device) const {
-  std::shared_ptr<DeviceAssignment> device_assignment;
-  if (device == nullptr) {
-    CHECK(device_assignment_ != nullptr);
-    const int64_t device_id = (*device_assignment_)(replica, partition);
-    GlobalDeviceId global_device_id(device_id);
-    TF_ASSIGN_OR_RETURN(device, client_->LookupDevice(global_device_id));
-    device_assignment = device_assignment_;
-  } else {
-    CHECK(device_assignment_ == nullptr);
-    CHECK_EQ(replica, 0);
-    CHECK_EQ(partition, 0);
-    CHECK(addressable_devices_.empty());
-    device_assignment = std::make_shared<DeviceAssignment>(1, 1);
-    (*device_assignment)(0, 0) = device->id();
-  }
-  CHECK_EQ(device->process_index(), client_->process_index());
+PjRtStreamExecutorLoadedExecutable::LoadRawExecutable(
+    const ExecuteOptions& options, size_t host_callback_idx, xla::RunId run_id,
+    DeviceAndAssignment device_and_assign, int attempt) const {
+  PjRtDevice* device = device_and_assign.device;
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
                            ->local_device_id()
                            .value();
   if (!addressable_devices_.empty()) {
-    TF_RETURN_IF_ERROR(executable_->VerifyRunDeviceCompatible(device_ordinal));
+    RETURN_IF_ERROR(executable_->VerifyRunDeviceCompatible(device_ordinal));
   }
+  int replica = device_and_assign.replica;
+  int partition = device_and_assign.partition;
   VLOG(1) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
   return std::make_unique<PjRtStreamExecutorRawLoadedExecutable>(
-      replica, partition, run_id, device, std::move(device_assignment),
-      executable_, client_, parameter_is_tupled_arguments_,
-      on_device_executable_parameter_shapes_);
+      replica, partition, run_id, device,
+      std::move(device_and_assign.device_assignment), executable_, client_,
+      parameter_is_tupled_arguments_, on_device_executable_parameter_shapes_);
 }
 
-void PjRtStreamExecutorLoadedExecutable::LaunchOnDevice(
+void PjRtStreamExecutorClient::LaunchOnDevice(
     PjRtDevice* device, absl::AnyInvocable<void()> execute_fn) const {
   const LocalDeviceState& device_state =
       *tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
@@ -2049,7 +2138,7 @@ PjRtStreamExecutorLoadedExecutable::Execute(
     for (const auto& argument_handle : argument_handles) {
       HloInputs hlo_inputs;
       for (const auto& buffer : argument_handle) {
-        TF_ASSIGN_OR_RETURN(auto literal, buffer->ToLiteral().Await());
+        ASSIGN_OR_RETURN(auto literal, buffer->ToLiteral().Await());
         *hlo_inputs.add_arguments() = literal->ToProto();
       }
       *hlo_snapshot.add_partitions() = std::move(hlo_inputs);
@@ -2085,17 +2174,6 @@ PjRtStreamExecutorLoadedExecutable::ExecutePortable(
       argument_handles, device, options, returned_future, fill_future);
 }
 
-absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
-PjRtStreamExecutorLoadedExecutable::GetHloModules() const {
-  std::vector<std::shared_ptr<HloModule>> modules;
-  const auto& local_exec = executable();
-  if (!local_exec->executable()->has_module()) {
-    return InvalidArgument("Executable does not have HLO modules.");
-  }
-  modules.push_back(local_exec->executable()->shared_module());
-  return std::move(modules);
-}
-
 namespace {
 
 absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
@@ -2118,14 +2196,14 @@ absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
 absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
     const Shape& shape, absl::string_view default_memory_kind) {
   if (!shape.IsTuple()) {
-    TF_ASSIGN_OR_RETURN(absl::string_view memory_kind,
-                        MemoryKindFromSimpleShape(shape, default_memory_kind));
+    ASSIGN_OR_RETURN(absl::string_view memory_kind,
+                     MemoryKindFromSimpleShape(shape, default_memory_kind));
     return {{memory_kind}};
   }
   std::vector<absl::string_view> result;
   result.reserve(shape.tuple_shapes().size());
   for (const auto& element_shape : shape.tuple_shapes()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         absl::string_view element_memory_kind,
         MemoryKindFromSimpleShape(element_shape, default_memory_kind));
     result.push_back(element_memory_kind);
@@ -2134,27 +2212,6 @@ absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
 }
 
 }  // namespace
-
-absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-PjRtStreamExecutorLoadedExecutable::GetOutputMemoryKinds() const {
-  TF_ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
-  if (addressable_devices().empty()) {
-    return Unimplemented(
-        "GetOutputMemoryKinds is not supported when there are no addressable "
-        "devices in PjRtStreamExecutorLoadedExecutable.");
-  }
-  TF_ASSIGN_OR_RETURN(PjRtMemorySpace * default_memory_space,
-                      addressable_devices()[0]->default_memory_space());
-  std::vector<std::vector<absl::string_view>> out;
-  out.reserve(shapes.size());
-  for (const auto& shape : shapes) {
-    TF_ASSIGN_OR_RETURN(
-        std::vector<absl::string_view> memory_kind,
-        MemoryKindsFromShape(shape, default_memory_space->kind()));
-    out.push_back(memory_kind);
-  }
-  return out;
-}
 
 absl::Status PjRtStreamExecutorClient::UpdateCompileOptions(
     CompileOptions* options, bool lookup_addressable_devices) {
@@ -2166,7 +2223,7 @@ absl::StatusOr<PjRtStreamExecutorClient::ExecutableExtras>
 PjRtStreamExecutorClient::UpdateCompileOptionsAndGetExecutableExtras(
     CompileOptions* options) {
   ExecutableExtras extras;
-  TF_RETURN_IF_ERROR(UpdateCompileOptionsInternal(
+  RETURN_IF_ERROR(UpdateCompileOptionsInternal(
       options, &extras, /*lookup_addressable_devices=*/true));
   return extras;
 }
@@ -2193,7 +2250,7 @@ absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
     const bool allow_auto_layout =
         build_options.has_debug_options() &&
         build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
-    TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+    RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
         XlaComputation(module.ToProto()),
         [local_client,
          allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
@@ -2234,7 +2291,7 @@ absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
 
   int num_replicas;
   int num_partitions;
-  TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+  RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
       options->compile_portable_executable, &options->executable_build_options,
       [this](int num_replicas, int num_partitions) {
         return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
@@ -2252,8 +2309,7 @@ absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
         int64_t device_id = (*device_assignment)(replica, partition);
         GlobalDeviceId global_device_id(device_id);
 
-        TF_ASSIGN_OR_RETURN(PjRtDevice * device,
-                            LookupDevice(global_device_id));
+        ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(global_device_id));
         all_process_indices.insert(device->process_index());
         if (device->process_index() != process_index()) {
           VLOG(3) << "Non-local device: " << device_id;
@@ -2302,9 +2358,8 @@ PjRtStreamExecutorClient::CompileInternal(
   }
   auto input_options = options;
 
-  TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
-  TF_RETURN_IF_ERROR(
-      UpdateCompileOptions(&options, lookup_addressable_devices));
+  RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
+  RETURN_IF_ERROR(UpdateCompileOptions(&options, lookup_addressable_devices));
 
   // It is important to set the canonicalization callback after creating
   // a copy of the options so that the executable's options remain without
@@ -2314,7 +2369,7 @@ PjRtStreamExecutorClient::CompileInternal(
         layout_canonicalization_callback);
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
       client()->Compile(computation, argument_layout_pointers,
                         options.executable_build_options));
@@ -2353,7 +2408,7 @@ PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
   const bool allow_auto_layout =
       build_options.has_debug_options() &&
       build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
-  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+  RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
       computation,
       [local_client = client(),
        allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
@@ -2372,27 +2427,33 @@ PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
-PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
+PjRtStreamExecutorClient::Compile(MaybeOwningMlirModule module,
                                   CompileOptions options) {
-  return Compile(module, options, /*lookup_addressable_devices=*/false);
+  return Compile(std::move(module), options,
+                 /*lookup_addressable_devices=*/false);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
-PjRtStreamExecutorClient::Compile(mlir::ModuleOp module, CompileOptions options,
+PjRtStreamExecutorClient::Compile(MaybeOwningMlirModule module,
+                                  CompileOptions options,
                                   bool lookup_addressable_devices) {
-  TF_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
-                      GetTopologyDescription());
-  TF_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module, *topology));
+  ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   GetTopologyDescription());
+  int module_id = HloModule::GetNextUniqueModuleId();
+  RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module.mlir_module(),
+                                               *topology, module_id));
 
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
   auto chlo_opts = gpu_run_options_ == nullptr
                        ? mlir::mhlo::getDefaultChloToHighLevelMhloOptions()
                        : mlir::mhlo::getGpuChloToHighLevelMhloOptions();
-  TF_RETURN_IF_ERROR(MlirToXlaComputation(
-      module, xla_computation,
+
+  RETURN_IF_ERROR(MlirToXlaComputation(
+      module.mlir_module(), xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false, &exec_build_options, chlo_opts));
+  xla_computation.mutable_proto()->set_pjrt_id(module_id);
 
   // If the compile options specify argument layout, then let's
   // fall back to using the options to determine layouts.
@@ -2400,14 +2461,17 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module, CompileOptions options,
     return Compile(xla_computation, options, lookup_addressable_devices);
   }
 
-  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
-                      GetArgLayoutModes(module));
-  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
-                      GetOutputLayoutModes(module));
-  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
-                      GetArgMemoryKinds(module));
-  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
-                      GetOutputMemoryKinds(module));
+  ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
+                   GetArgLayoutModes(module.mlir_module()));
+  ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
+                   GetOutputLayoutModes(module.mlir_module()));
+  ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
+                   GetArgMemoryKinds(module.mlir_module()));
+  ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
+                   GetOutputMemoryKinds(module.mlir_module()));
+
+  // MLIR module no longer required - release any memory if owned.
+  module = MaybeOwningMlirModule();
 
   // If auto-sharding modifies shapes of arguments and/or result,
   // we get a callback to restore the layouts. Let us restore the layouts
@@ -2428,17 +2492,17 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module, CompileOptions options,
   };
 
   // This call will update result_layout in options.executable_build_options.
-  TF_ASSIGN_OR_RETURN(auto arg_layouts_and_pointers,
-                      LayoutModesToXla(
-                          xla_computation, arg_layout_modes, out_layout_modes,
-                          arg_memory_spaces, out_memory_spaces,
-                          [this](Shape shape) -> absl::StatusOr<Shape> {
-                            return this->client()
-                                ->backend()
-                                .transfer_manager()
-                                ->ChooseCompactLayoutForShape(shape);
-                          },
-                          options.executable_build_options));
+  ASSIGN_OR_RETURN(auto arg_layouts_and_pointers,
+                   LayoutModesToXla(
+                       xla_computation, arg_layout_modes, out_layout_modes,
+                       arg_memory_spaces, out_memory_spaces,
+                       [this](Shape shape) -> absl::StatusOr<Shape> {
+                         return this->client()
+                             ->backend()
+                             .transfer_manager()
+                             ->ChooseCompactLayoutForShape(shape);
+                       },
+                       options.executable_build_options));
 
   return CompileInternal(xla_computation, arg_layouts_and_pointers.second,
                          layout_callback, options, lookup_addressable_devices);
@@ -2447,18 +2511,18 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module, CompileOptions options,
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::CompileAndLoad(const XlaComputation& computation,
                                          CompileOptions options) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtExecutable> executable,
       Compile(computation, options, /*lookup_addressable_devices=*/true));
   return Load(std::move(executable), LoadOptions());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::CompileAndLoad(mlir::ModuleOp module,
+PjRtStreamExecutorClient::CompileAndLoad(MaybeOwningMlirModule module,
                                          CompileOptions options) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtExecutable> executable,
-      Compile(module, options, /*lookup_addressable_devices=*/true));
+      Compile(std::move(module), options, /*lookup_addressable_devices=*/true));
   return Load(std::move(executable), LoadOptions());
 }
 
@@ -2476,9 +2540,9 @@ absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
 
   Executable* built_executable = se_executable->executable()->executable();
   Compiler* compiler = client_->backend().compiler();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
-                      compiler->Export(built_executable));
-  TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
+  ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
+                   compiler->Export(built_executable));
+  ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
   if (serialized.empty()) {
     return Internal(
         "PjRtStreamExecutorClient::SerializeExecutable proto serialization "
@@ -2486,8 +2550,8 @@ absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
   }
   ExecutableAndOptionsProto proto;
   *proto.mutable_serialized_executable() = std::move(serialized);
-  TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
-                      se_executable->compile_options_.ToProto());
+  ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                   se_executable->compile_options_.ToProto());
   *proto.mutable_pjrt_client_name() = kPjRtClientName;
 
   std::string result;
@@ -2515,22 +2579,10 @@ PjRtStreamExecutorClient::BuildPjRtExecutable(
   std::vector<std::unique_ptr<LocalExecutable>> local_executables;
   local_executables.push_back(std::move(local_executable));
   return std::make_unique<StreamExecutorExecutable>(
-      std::move(compile_options), std::move(unoptimized_hlo_module_proto),
-      std::move(local_executables), client_, num_replicas, num_partitions, name,
-      fingerprint, memory_spaces()[0]->kind());
-}
-
-absl::StatusOr<std::unique_ptr<PjRtExecutable>>
-PjRtStreamExecutorClient::DeserializeExecutable(
-    absl::string_view serialized,
-    std::optional<CompileOptions> compile_options) {
-  TF_ASSIGN_OR_RETURN(
-      auto local_executables_and_options,
-      DeserializeToLocalExecutable(serialized, compile_options));
-
-  return BuildPjRtExecutable(std::nullopt,
-                             std::move(local_executables_and_options.first),
-                             local_executables_and_options.second);
+      platform_id(), std::move(compile_options),
+      std::move(unoptimized_hlo_module_proto), std::move(local_executables),
+      client_, num_replicas, num_partitions, name, fingerprint,
+      memory_spaces()[0]->kind());
 }
 
 namespace {
@@ -2558,8 +2610,8 @@ absl::StatusOr<ExecutableAndOptionsProto> DeserializeExecutableAndOptionsProto(
 }
 }  // namespace
 
-absl::StatusOr<std::pair<std::unique_ptr<LocalExecutable>, CompileOptions>>
-PjRtStreamExecutorClient::DeserializeToLocalExecutable(
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+PjRtStreamExecutorClient::DeserializeExecutable(
     absl::string_view serialized, std::optional<CompileOptions> options) {
   ASSIGN_OR_RETURN(ExecutableAndOptionsProto proto,
                    DeserializeExecutableAndOptionsProto(serialized));
@@ -2575,43 +2627,65 @@ PjRtStreamExecutorClient::DeserializeToLocalExecutable(
   if (options.has_value()) {
     compile_options = *std::move(options);
   } else {
-    TF_ASSIGN_OR_RETURN(compile_options,
-                        CompileOptions::FromProto(proto.compile_options()));
+    ASSIGN_OR_RETURN(compile_options,
+                     CompileOptions::FromProto(proto.compile_options()));
   }
 
   tsl::profiler::TraceMe traceme(
-      "PjRtStreamExecutorClient::DeserializeToLocalExecutable");
-  VLOG(1) << "PjRtStreamExecutorClient::DeserializeToLocalExecutable";
+      "PjRtStreamExecutorClient::DeserializeExecutable");
+  VLOG(1) << "PjRtStreamExecutorClient::DeserializeExecutable";
 
   std::string str = std::move(*proto.mutable_serialized_executable());
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<LocalExecutable> loaded,
       client()->Load(str, compile_options.executable_build_options));
 
-  return std::make_pair(std::move(loaded), compile_options);
+  return BuildPjRtExecutable(std::nullopt, std::move(loaded), compile_options);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::LoadSerializedExecutable(
     absl::string_view serialized, std::optional<CompileOptions> options,
     const LoadOptions& load_options) {
-  TF_ASSIGN_OR_RETURN(auto local_executables_and_options,
-                      DeserializeToLocalExecutable(serialized, options));
-  return LoadInternal(/*unoptimized_hlo_module_proto=*/std::nullopt,
-                      std::move(local_executables_and_options.first),
-                      local_executables_and_options.second, /*dump=*/true);
+  ASSIGN_OR_RETURN(auto executable, DeserializeExecutable(serialized, options));
+  return LoadInternal(std::move(executable), /*dump=*/true);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::LoadInternal(
-    std::optional<HloModuleProto> unoptimized_hlo_module_proto,
-    std::unique_ptr<LocalExecutable> local_executable,
-    CompileOptions compile_options, bool dump) {
+    std::shared_ptr<PjRtExecutable> executable, bool dump) {
+  std::optional<HloModuleProto> unoptimized_hlo_module_proto;
+  std::optional<std::string> fingerprint = std::nullopt;
+  std::shared_ptr<LocalExecutable> local_executable;
+  CompileOptions compile_options;
+  {
+    auto se_executable =
+        std::static_pointer_cast<StreamExecutorExecutable>(executable);
+    compile_options = se_executable->compile_options();
+
+    tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::Load");
+    VLOG(1) << "PjRtStreamExecutorClient::Load";
+
+    ASSIGN_OR_RETURN(
+        LocalExecutable * local_executable_ptr,
+        se_executable->GetOrLoadExecutable(client(), compile_options));
+    absl::StatusOr<std::string> maybe_fingerprint =
+        se_executable->FingerprintExecutable();
+    if (maybe_fingerprint.ok() && !maybe_fingerprint->empty()) {
+      fingerprint = *std::move(maybe_fingerprint);
+    }
+
+    unoptimized_hlo_module_proto =
+        se_executable->unoptimized_hlo_module_proto();
+    local_executable =
+        std::shared_ptr<LocalExecutable>(executable, local_executable_ptr);
+  }
+
   auto input_options = compile_options;
 
-  TF_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
+  RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ExecutableExtras extras,
       UpdateCompileOptionsAndGetExecutableExtras(&compile_options));
   std::shared_ptr<DeviceAssignment>& device_assignment =
@@ -2644,6 +2718,8 @@ PjRtStreamExecutorClient::LoadInternal(
                                          : nullptr);
     }
   }
+  ASSIGN_OR_RETURN(PjRtMemorySpace* const default_memory_space,
+                   this->addressable_devices()[0]->default_memory_space());
   xla::Shape result_shape =
       local_executable->executable()->module().result_shape();
   std::vector<int> output_memory_space_kind_ids;
@@ -2652,8 +2728,6 @@ PjRtStreamExecutorClient::LoadInternal(
         result_shape.IsTuple() ? absl::MakeSpan(result_shape.tuple_shapes())
                                : absl::MakeSpan(&result_shape, 1);
     output_memory_space_kind_ids.reserve(shapes.size());
-    TF_ASSIGN_OR_RETURN(PjRtMemorySpace * default_memory_space,
-                        this->addressable_devices()[0]->default_memory_space());
     for (const auto& shape : shapes) {
       int kind = default_memory_space->kind_id();
       if (shape.has_layout()) {
@@ -2684,48 +2758,64 @@ PjRtStreamExecutorClient::LoadInternal(
     }
   }
 
-  TransferManager* transfer_manager = client()->backend().transfer_manager();
   ComputationLayout computation_layout =
       local_executable->executable()->compute_computation_layout();
   std::vector<Shape> parameter_shapes;
   parameter_shapes.reserve(computation_layout.parameter_count());
   for (int i = 0; i < computation_layout.parameter_count(); ++i) {
-    parameter_shapes.push_back(transfer_manager->HostShapeToDeviceShape(
-        computation_layout.parameter_shape(i)));
+    parameter_shapes.push_back(computation_layout.parameter_shape(i));
   }
-  auto executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
-      std::move(local_executable),
+  std::vector<int> parameter_memory_space_kind_ids;
+  {
+    absl::Span<const Shape> flat_parameter_shapes;
+    if (parameter_shapes.size() == 1 && parameter_shapes[0].IsTuple()) {
+      flat_parameter_shapes = parameter_shapes[0].tuple_shapes();
+    } else {
+      flat_parameter_shapes = parameter_shapes;
+    }
+    parameter_memory_space_kind_ids.reserve(flat_parameter_shapes.size());
+    for (const auto& shape : flat_parameter_shapes) {
+      int kind = default_memory_space->kind_id();
+      if (shape.has_layout()) {
+        switch (shape.layout().memory_space()) {
+          case Layout::kHostMemorySpace:
+            kind = PinnedHostMemorySpace::kKindId;
+            break;
+          case Layout::kGenericFastMemorySpace:
+          case Layout::kDefaultMemorySpace:
+            break;
+          default:
+            return InvalidArgument(
+                "Unexpected memory space %d in output layout",
+                shape.layout().memory_space());
+        }
+      }
+      parameter_memory_space_kind_ids.push_back(kind);
+    }
+  }
+  auto loaded_executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
+      std::move(local_executable), std::move(executable),
       compile_options.parameter_is_tupled_arguments,
       std::move(device_assignment), std::move(input_options),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
       this, std::move(parameter_shapes), std::move(result_shape),
+      std::move(parameter_memory_space_kind_ids),
       std::move(output_memory_space_kind_ids));
-  TF_RETURN_IF_ERROR(
-      executable->SetUpDonation(compile_options.parameter_is_tupled_arguments));
+  RETURN_IF_ERROR(loaded_executable->SetUpDonation(
+      compile_options.parameter_is_tupled_arguments));
   if (xla_dump_hlo_unoptimized_snapshots &&
       unoptimized_hlo_module_proto.has_value()) {
-    executable->SetInputHloSnapshotBits(
+    loaded_executable->SetInputHloSnapshotBits(
         std::move(*unoptimized_hlo_module_proto),
         compile_options.executable_build_options.debug_options());
   }
-  return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
+  return std::unique_ptr<PjRtLoadedExecutable>(std::move(loaded_executable));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::Load(std::unique_ptr<PjRtExecutable> executable,
+PjRtStreamExecutorClient::Load(std::shared_ptr<PjRtExecutable> executable,
                                const LoadOptions& load_options) {
-  auto se_executable = absl::WrapUnique(
-      tensorflow::down_cast<StreamExecutorExecutable*>(executable.release()));
-  CompileOptions compile_options = se_executable->compile_options();
-
-  tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::Load");
-  VLOG(1) << "PjRtStreamExecutorClient::Load";
-
-  TF_ASSIGN_OR_RETURN(auto local_executable, se_executable->ConsumeExecutable(
-                                                 client(), compile_options));
-  return LoadInternal(se_executable->unoptimized_hlo_module_proto(),
-                      std::move(local_executable), compile_options,
-                      /*dump=*/false);
+  return LoadInternal(std::move(executable), /*dump=*/false);
 }
 
 bool PjRtStreamExecutorClient::IsDmaMapped(const void* data_start,
@@ -2741,6 +2831,58 @@ bool PjRtStreamExecutorClient::IsDmaMapped(const void* data_start,
     }
   }
   return false;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>>
+PjRtStreamExecutorLoadedExecutable::GetAbiVersion() const {
+  if (executable_ == nullptr) {
+    return absl::InternalError("Executable is null.");
+  }
+  ASSIGN_OR_RETURN(stream_executor::ExecutableAbiVersion se_abi_version,
+                   executable_->executable()->GetExecutableAbiVersion());
+
+  return std::make_unique<StreamExecutorPjRtExecutableAbiVersion>(
+      client_->platform_id(), std::move(se_abi_version));
+}
+
+absl::Status PjRtStreamExecutorClient::WaitOnStream(
+    PjRtMemorySpace* memory_space, PjRtDeviceEventRef event,
+    std::intptr_t stream) {
+  return event.down_cast<BufferSequencingEvent>()->WaitForEventOnExternalStream(
+      stream);
+}
+
+bool PjRtStreamExecutorClient::ShouldDoDirectTransfer(
+    const MutableLiteralBase& literal, const Shape& shape,
+    PjRtMemorySpace* memory_space) const {
+  if (shape.IsTuple()) {
+    return false;
+  }
+  if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+    return false;
+  }
+
+  if (literal.shape().has_layout()) {
+    return Layout::Equal().IgnoreMemorySpace()(shape.layout(),
+                                               literal.shape().layout());
+  }
+
+  return LayoutUtil::HasDescendingLayout(shape.layout());
+}
+
+tsl::AsyncValueRef<PjRtStagingBuffer>
+PjRtStreamExecutorClient::AllocateForDelinearizationAsync(
+    size_t size, PjRtMemorySpace* memory_space) {
+  void* ptr = malloc(size);
+  if (ptr == nullptr) {
+    return tsl::MakeErrorAsyncValueRef(absl::ResourceExhaustedError(
+        absl::StrCat("Failed to allocate staging buffer of size ", size)));
+  }
+  std::shared_ptr<void> buffer(ptr, free);
+
+  auto staging_buffer = tsl::MakeAvailableAsyncValueRef<HostStagingBuffer>(
+      std::move(buffer), size);
+  return tsl::AsyncValueRef<PjRtStagingBuffer>(std::move(staging_buffer));
 }
 
 }  // namespace xla

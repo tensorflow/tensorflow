@@ -86,44 +86,45 @@ class SparseSliceGradOp : public OpKernel {
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsMatrix(input_indices->shape()) &&
                     TensorShapeUtils::IsMatrix(output_indices->shape()),
-                errors::InvalidArgument(
-                    "Input and output indices should be matrices "
-                    "but received shapes: ",
-                    input_indices->shape().DebugString(), " and ",
-                    output_indices->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input and output indices should be matrices "
+                                 "but received shapes: ",
+                                 input_indices->shape().DebugString(), " and ",
+                                 output_indices->shape().DebugString())));
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsVector(backprop_val_grad->shape()),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Input backprop_val_grad should be a vector but received shape: ",
-            backprop_val_grad->shape().DebugString()));
+            backprop_val_grad->shape().DebugString())));
     OP_REQUIRES(
-        ctx,
-        input_indices->dim_size(1) == output_indices->dim_size(1),
-        errors::InvalidArgument("The input and output should have the same "
-                                "ndims: got: ", input_indices->dim_size(1), " and ",
-                                output_indices->dim_size(1)));
+        ctx, input_indices->dim_size(1) == output_indices->dim_size(1),
+        absl::InvalidArgumentError(absl::StrCat(
+            "The input and output should have the same "
+            "ndims: got: ",
+            input_indices->dim_size(1), " and ", output_indices->dim_size(1))));
     OP_REQUIRES(
         ctx, output_indices->dim_size(0) <= input_indices->dim_size(0),
-        errors::InvalidArgument("# rows of output_indices should be not greater "
-                                "than of input_indices, got ",
-                                output_indices->dim_size(0), " and ",
-                                input_indices->dim_size(0)));
-    OP_REQUIRES(
-        ctx, backprop_val_grad->NumElements() == output_indices->dim_size(0),
-        errors::InvalidArgument("# elements of backprop_val_grad and # rows of "
-                                "output_indices should match (#nnz of sum): got ",
-                                backprop_val_grad->NumElements(), " and ",
-                                output_indices->dim_size(0)));
+        absl::InvalidArgumentError(absl::StrCat(
+            "# rows of output_indices should be not greater "
+            "than of input_indices, got ",
+            output_indices->dim_size(0), " and ", input_indices->dim_size(0))));
+    OP_REQUIRES(ctx,
+                backprop_val_grad->NumElements() == output_indices->dim_size(0),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "# elements of backprop_val_grad and # rows of "
+                    "output_indices should match (#nnz of sum): got ",
+                    backprop_val_grad->NumElements(), " and ",
+                    output_indices->dim_size(0))));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_start->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "The input_start should be a vector but received shape ",
-                    input_start->shape().DebugString()));
+                    input_start->shape().DebugString())));
 
     const int num_dims = input_indices->dim_size(1);
     OP_REQUIRES(ctx, num_dims == input_start->NumElements(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Expected input_start to be a vector of length ", num_dims,
-                    " but got length ", input_start->NumElements()));
+                    " but got length ", input_start->NumElements())));
 
     const int64_t input_nnz = input_indices->dim_size(0);
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_multi_slice_extension.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,8 +30,10 @@ extern "C" {
 
 #define PJRT_API_MEGASCALE_EXTENSION_VERSION 1
 
+// NOLINTBEGIN(modernize-use-using)
 typedef struct PJRT_Megascale_ClientContext PJRT_Megascale_ClientContext;
 typedef struct PJRT_MultiSlice_Config PJRT_MultiSlice_Config;
+typedef struct PJRT_Collectives PJRT_Collectives;
 typedef struct PJRT_Megascale_NumDevicesPerSlice
     PJRT_Megascale_NumDevicesPerSlice;
 typedef struct PJRT_Megascale_SerializedConfig PJRT_Megascale_SerializedConfig;
@@ -106,17 +109,6 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_CreateMultiSliceConfig_Args,
 typedef PJRT_Error* PJRT_Megascale_CreateMultiSliceConfig(
     PJRT_Megascale_CreateMultiSliceConfig_Args* args);
 
-struct PJRT_Megascale_DeleteMultiSliceConfig_Args {
-  size_t struct_size;
-  PJRT_MultiSlice_Config* multi_slice_config;
-};
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_DeleteMultiSliceConfig_Args,
-                          multi_slice_config);
-
-// Deletes a Megascale multi-slice config.
-typedef PJRT_Error* PJRT_Megascale_DeleteMultiSliceConfig(
-    PJRT_Megascale_DeleteMultiSliceConfig_Args* args);
-
 struct PJRT_Megascale_ClientContext_Initialize_Args {
   size_t struct_size;
   PJRT_Megascale_ClientContext* client_context;
@@ -147,55 +139,208 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_ClientContext_MegascalePort_Args,
 typedef PJRT_Error* PJRT_Megascale_ClientContext_MegascalePort(
     PJRT_Megascale_ClientContext_MegascalePort_Args* args);
 
-struct PJRT_Megascale_MultiSliceConfig_NumSlices_Args {
-  size_t struct_size;
-  PJRT_MultiSlice_Config* config;
-  int32_t num_slices;  // out
+struct PJRT_Megascale_ProcessesInfo {
+  const char** addresses;
+  size_t* address_sizes;
+  size_t num_addresses;
+  int32_t* slice_indexes;  // May be null if not set.
+  size_t num_slice_indexes;
+  int32_t* per_slice_indexes;  // May be null if not set.
+  size_t num_per_slice_indexes;
+  int32_t num_devices_per_process;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_MultiSliceConfig_NumSlices_Args,
-                          num_slices);
-typedef PJRT_Error* PJRT_Megascale_MultiSliceConfig_NumSlices(
-    PJRT_Megascale_MultiSliceConfig_NumSlices_Args* args);
 
-struct PJRT_Megascale_MultiSliceConfig_SliceId_Args {
+struct PJRT_Megascale_CreateMegascaleCollectives_Args {
   size_t struct_size;
-  PJRT_MultiSlice_Config* config;
-  int32_t slice_id;  // out
+  PJRT_Megascale_ClientContext* client_context;
+  PJRT_Megascale_ProcessesInfo* processes_info;
+  const char* dcn_topology;  // Serialized DCNTopology proto. May be null.
+  size_t dcn_topology_size;
+  PJRT_Collectives* collectives;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_MultiSliceConfig_SliceId_Args,
-                          slice_id);
-typedef PJRT_Error* PJRT_Megascale_MultiSliceConfig_SliceId(
-    PJRT_Megascale_MultiSliceConfig_SliceId_Args* args);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_CreateMegascaleCollectives_Args,
+                          collectives);
 
-struct PJRT_Megascale_MultiSliceConfig_GetNumDevicesPerSlice_Args {
+typedef PJRT_Error* PJRT_Megascale_CreateMegascaleCollectives(
+    PJRT_Megascale_CreateMegascaleCollectives_Args* args);
+struct PJRT_Megascale_DeviceId_To_MegascaleId_Args {
   size_t struct_size;
-  PJRT_MultiSlice_Config* config;
-  size_t num_devices_per_slice_map;                              // out
-  const int32_t* slice_ids;                                      // out
-  const int32_t* num_devices;                                    // out
-  PJRT_Megascale_NumDevicesPerSlice* devices_per_slice_map_ptr;  // out
-  void (*devices_per_slice_map_deleter)(
-      PJRT_Megascale_NumDevicesPerSlice* ptr);  // out
+  int32_t slice_id;
+  int32_t per_slice_device_id;
+  int64_t megascale_id;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_DeviceId_To_MegascaleId_Args,
+                          megascale_id);
+typedef PJRT_Error* PJRT_Megascale_DeviceId_To_MegascaleId(
+    PJRT_Megascale_DeviceId_To_MegascaleId_Args* args);
+
+struct PJRT_Megascale_MegascaleId_To_DeviceId_Args {
+  size_t struct_size;
+  int64_t megascale_id;
+  int32_t slice_id;             // out
+  int32_t per_slice_device_id;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_MegascaleId_To_DeviceId_Args,
+                          per_slice_device_id);
+typedef PJRT_Error* PJRT_Megascale_MegascaleId_To_DeviceId(
+    PJRT_Megascale_MegascaleId_To_DeviceId_Args* args);
+
+typedef void (*PJRT_Megascale_ErrorHandler)(const char* serialized_error,
+                                            size_t serialized_error_size,
+                                            void* user_data);
+
+struct PJRT_Megascale_RegisterErrorHandler_Args {
+  size_t struct_size;
+  const char* handler_name;
+  size_t handler_name_size;
+  PJRT_Megascale_ErrorHandler handler;
+  void* user_data;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_RegisterErrorHandler_Args, user_data);
+
+typedef PJRT_Error* PJRT_Megascale_RegisterErrorHandler(
+    PJRT_Megascale_RegisterErrorHandler_Args* args);
+
+struct PJRT_Megascale_UnregisterErrorHandler_Args {
+  size_t struct_size;
+  const char* handler_name;
+  size_t handler_name_size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_UnregisterErrorHandler_Args,
+                          handler_name_size);
+
+typedef PJRT_Error* PJRT_Megascale_UnregisterErrorHandler(
+    PJRT_Megascale_UnregisterErrorHandler_Args* args);
+
+typedef struct PJRT_Megascale_ErrorAggregator PJRT_Megascale_ErrorAggregator;
+typedef struct PJRT_Megascale_ErrorDigest PJRT_Megascale_ErrorDigest;
+
+struct PJRT_Megascale_ErrorAggregator_Create_Args {
+  size_t struct_size;
+  const char* app_type;
+  size_t app_type_size;
+  PJRT_Megascale_ErrorAggregator* aggregator;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_ErrorAggregator_Create_Args,
+                          aggregator);
+typedef PJRT_Error* PJRT_Megascale_ErrorAggregator_Create(
+    PJRT_Megascale_ErrorAggregator_Create_Args* args);
+
+struct PJRT_Megascale_ErrorAggregator_Delete_Args {
+  size_t struct_size;
+  PJRT_Megascale_ErrorAggregator* aggregator;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_ErrorAggregator_Delete_Args,
+                          aggregator);
+typedef PJRT_Error* PJRT_Megascale_ErrorAggregator_Delete(
+    PJRT_Megascale_ErrorAggregator_Delete_Args* args);
+
+struct PJRT_Megascale_ErrorDigest_Delete_Args {
+  size_t struct_size;
+  PJRT_Megascale_ErrorDigest* digest;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_ErrorDigest_Delete_Args, digest);
+typedef PJRT_Error* PJRT_Megascale_ErrorDigest_Delete(
+    PJRT_Megascale_ErrorDigest_Delete_Args* args);
+
+struct PJRT_Megascale_ErrorAggregator_AddError_Args {
+  size_t struct_size;
+  PJRT_Megascale_ErrorAggregator* aggregator;
+  const char* worker_id;
+  size_t worker_id_size;
+  const char* serialized_error;
+  size_t serialized_error_size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_ErrorAggregator_AddError_Args,
+                          serialized_error_size);
+typedef PJRT_Error* PJRT_Megascale_ErrorAggregator_AddError(
+    PJRT_Megascale_ErrorAggregator_AddError_Args* args);
+
+struct PJRT_Megascale_ErrorAggregator_ProcessAndShutdown_Args {
+  size_t struct_size;
+  PJRT_Megascale_ErrorAggregator* aggregator;
+  PJRT_Megascale_ErrorDigest* digest;  // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(
-    PJRT_Megascale_MultiSliceConfig_GetNumDevicesPerSlice_Args,
-    devices_per_slice_map_deleter);
-typedef PJRT_Error* PJRT_Megascale_MultiSliceConfig_GetNumDevicesPerSlice(
-    PJRT_Megascale_MultiSliceConfig_GetNumDevicesPerSlice_Args* args);
+    PJRT_Megascale_ErrorAggregator_ProcessAndShutdown_Args, digest);
+typedef PJRT_Error* PJRT_Megascale_ErrorAggregator_ProcessAndShutdown(
+    PJRT_Megascale_ErrorAggregator_ProcessAndShutdown_Args* args);
 
-struct PJRT_Megascale_MultiSliceConfig_Serialize_Args {
+struct PJRT_Megascale_ErrorAggregator_LogErrorDigest_Args {
   size_t struct_size;
-  PJRT_MultiSlice_Config* config;
-  const char* serialized;                                  // out
-  size_t size;                                             // out
-  PJRT_Megascale_SerializedConfig* serialized_config_ptr;  // out
-  void (*serialized_config_deleter)(
-      PJRT_Megascale_SerializedConfig* ptr);  // out
+  PJRT_Megascale_ErrorAggregator* aggregator;
+  PJRT_Megascale_ErrorDigest* digest;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_MultiSliceConfig_Serialize_Args,
-                          serialized_config_deleter);
-typedef PJRT_Error* PJRT_Megascale_MultiSliceConfig_Serialize(
-    PJRT_Megascale_MultiSliceConfig_Serialize_Args* args);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_ErrorAggregator_LogErrorDigest_Args,
+                          digest);
+typedef PJRT_Error* PJRT_Megascale_ErrorAggregator_LogErrorDigest(
+    PJRT_Megascale_ErrorAggregator_LogErrorDigest_Args* args);
+
+struct PJRT_Megascale_ErrorAggregator_Size_Args {
+  size_t struct_size;
+  PJRT_Megascale_ErrorAggregator* aggregator;
+  size_t size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_ErrorAggregator_Size_Args, size);
+typedef PJRT_Error* PJRT_Megascale_ErrorAggregator_Size(
+    PJRT_Megascale_ErrorAggregator_Size_Args* args);
+
+struct PJRT_Megascale_ErrorAggregator_Active_Args {
+  size_t struct_size;
+  PJRT_Megascale_ErrorAggregator* aggregator;
+  bool active;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_ErrorAggregator_Active_Args, active);
+typedef PJRT_Error* PJRT_Megascale_ErrorAggregator_Active(
+    PJRT_Megascale_ErrorAggregator_Active_Args* args);
+
+typedef struct PJRT_Megascale_SerializedAddresses
+    PJRT_Megascale_SerializedAddresses;
+
+struct PJRT_Megascale_GetInterfaceAddressesHelper_Args {
+  size_t struct_size;
+  const char* megascale_port_name;
+  size_t megascale_port_name_size;
+  int32_t megascale_port;
+  const char** interface_prefixes;
+  const size_t* interface_prefixes_sizes;
+  size_t num_interface_prefixes;
+  bool use_all_interfaces;
+  bool limit_to_process_numa_local_interfaces;
+  const char** serialized_addresses;                                   // out
+  size_t* serialized_addresses_sizes;                                  // out
+  size_t num_addresses;                                                // out
+  PJRT_Megascale_SerializedAddresses* addresses;                       // out
+  void (*addresses_deleter)(PJRT_Megascale_SerializedAddresses* ptr);  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_GetInterfaceAddressesHelper_Args,
+                          addresses_deleter);
+typedef PJRT_Error* PJRT_Megascale_GetInterfaceAddressesHelper(
+    PJRT_Megascale_GetInterfaceAddressesHelper_Args* args);
+
+typedef struct PJRT_Megascale_SerializedError PJRT_Megascale_SerializedError;
+
+struct PJRT_Megascale_GetOrCreateRuntimeError_Args {
+  size_t struct_size;
+  int32_t error_type;
+  int64_t start_time_nanos;
+  int32_t status_code;
+  const char* status_message;
+  size_t status_message_size;
+  int32_t launch_id;
+  bool has_unrecoverable_error_type;
+  int32_t unrecoverable_error_type;
+
+  const char* serialized_error;                                // out
+  size_t serialized_error_size;                                // out
+  bool is_new_error;                                           // out
+  PJRT_Megascale_SerializedError* error;                       // out
+  void (*error_deleter)(PJRT_Megascale_SerializedError* ptr);  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_GetOrCreateRuntimeError_Args,
+                          error_deleter);
+typedef PJRT_Error* PJRT_Megascale_GetOrCreateRuntimeError(
+    PJRT_Megascale_GetOrCreateRuntimeError_Args* args);
 
 typedef struct PJRT_Megascale_Extension {
   PJRT_Extension_Base base;
@@ -205,19 +350,37 @@ typedef struct PJRT_Megascale_Extension {
   PJRT_Megascale_DeleteClientContext* delete_client_context;
   PJRT_Megascale_CreateAoTConfig* create_aot_config;
   PJRT_Megascale_CreateMultiSliceConfig* create_multi_slice_config;
-  PJRT_Megascale_DeleteMultiSliceConfig* delete_multi_slice_config;
-  PJRT_Megascale_MultiSliceConfig_NumSlices* multi_slice_config_num_slices;
-  PJRT_Megascale_MultiSliceConfig_SliceId* multi_slice_config_slice_id;
-  PJRT_Megascale_MultiSliceConfig_GetNumDevicesPerSlice*
-      multi_slice_config_get_num_devices_per_slice;
-  PJRT_Megascale_MultiSliceConfig_Serialize* multi_slice_config_serialize;
+  void* delete_multi_slice_config;                     // deprecated
+  void* multi_slice_config_num_slices;                 // deprecated
+  void* multi_slice_config_slice_id;                   // deprecated
+  void* multi_slice_config_get_num_devices_per_slice;  // deprecated
+  void* multi_slice_config_serialize;                  // deprecated
   PJRT_Megascale_ClientContext_Initialize* client_context_initialize;
   PJRT_Megascale_ClientContext_UnblockPendingWork*
       client_context_unblock_pending_work;
   PJRT_Megascale_ClientContext_MegascalePort* client_context_megascale_port;
+  PJRT_Megascale_CreateMegascaleCollectives* create_megascale_collectives;
+  PJRT_Megascale_DeviceId_To_MegascaleId* device_id_to_megascale_id;
+  PJRT_Megascale_MegascaleId_To_DeviceId* megascale_id_to_device_id;
+  PJRT_Megascale_RegisterErrorHandler* register_megascale_error_handler;
+  PJRT_Megascale_UnregisterErrorHandler* unregister_megascale_error_handler;
+  PJRT_Megascale_ErrorAggregator_Create* error_aggregator_create;
+  PJRT_Megascale_ErrorAggregator_Delete* error_aggregator_delete;
+  PJRT_Megascale_ErrorDigest_Delete* error_digest_delete;
+  PJRT_Megascale_ErrorAggregator_AddError* error_aggregator_add_error;
+  PJRT_Megascale_ErrorAggregator_ProcessAndShutdown*
+      error_aggregator_process_and_shutdown;
+  PJRT_Megascale_ErrorAggregator_LogErrorDigest*
+      error_aggregator_log_error_digest;
+  PJRT_Megascale_ErrorAggregator_Size* error_aggregator_size;
+  PJRT_Megascale_ErrorAggregator_Active* error_aggregator_active;
+  PJRT_Megascale_GetInterfaceAddressesHelper* get_interface_addresses_helper;
+  PJRT_Megascale_GetOrCreateRuntimeError* get_or_create_runtime_error;
 } PJRT_Megascale_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_Extension,
-                          client_context_megascale_port);
+                          get_or_create_runtime_error);
+
+// NOLINTEND(modernize-use-using)
 
 #ifdef __cplusplus
 }

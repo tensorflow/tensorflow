@@ -29,12 +29,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/tsl/platform/errors.h"
-#include "tsl/platform/platform.h"
 
 #if !defined(PLATFORM_WINDOWS)
 #include <dlfcn.h>
+
+#include "xla/tsl/platform/status_macros.h"
 #endif
 
 namespace pjrt {
@@ -93,7 +94,6 @@ absl::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
   }
   (*pjrt_apis)[canonicalize_device_type] =
       std::make_pair(api, /*is_initialized=*/false);
-  LOG(INFO) << "PJRT_Api is set for device type " << canonicalize_device_type;
   return absl::OkStatus();
 }
 
@@ -112,13 +112,14 @@ absl::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
   PjrtApiInitFn init_fn;
   *reinterpret_cast<void**>(&init_fn) = dlsym(library, "GetPjrtApi");
   if (init_fn == nullptr) {
+    dlclose(library);
     return absl::NotFoundError(
         absl::StrCat("GetPjrtApi not found in ", library_path));
   }
   LOG(INFO) << "GetPjrtApi was found for " << device_type << " at "
             << library_path;
   const PJRT_Api* api = init_fn();
-  TF_RETURN_IF_ERROR(SetPjrtApi(device_type, api));
+  RETURN_IF_ERROR(SetPjrtApi(device_type, api));
   return api;
 #endif
 }

@@ -31,9 +31,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -55,7 +55,7 @@ class PjRtTestTopology : public PjRtTopologyDescription {
       const override {
     LOG(FATAL) << "Unused";
   }
-  absl::StatusOr<std::string> Serialize() const override { return "test_topo"; }
+  absl::StatusOr<uint64_t> Fingerprint() const override { return 123; }
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {
     LOG(FATAL) << "Unused";
@@ -67,6 +67,18 @@ class PjRtTestTopology : public PjRtTopologyDescription {
         "TestTopology does not support GetDefaultLayout");
   }
 };
+
+// Registers a compiler to compile programs for 'platform_name' with
+// 'compiler_variant'. Takes ownership of 'compiler'.
+//
+// REQUIRES: No compiler has been registered for the platform and compiler
+// variant yet.
+void PjRtRegisterCompiler(absl::string_view platform_name,
+                          absl::string_view compiler_variant,
+                          std::unique_ptr<PjRtCompiler> compiler) {
+  CHECK_OK(PjRtCompilerRegistry::Global().RegisterCompiler(
+      platform_name, compiler_variant, std::move(compiler)));
+}
 
 TEST(PjRtCompilerTest, CompilerNotRegistered) {
   PjRtTestTopology topology;
@@ -88,9 +100,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
     DeviceDescriptions() const override {
       LOG(FATAL) << "Unused";
     }
-    absl::StatusOr<std::string> Serialize() const override {
-      return "test_topo";
-    }
+    absl::StatusOr<uint64_t> Fingerprint() const override { return 123; }
     const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
         const override {
       LOG(FATAL) << "Unused";
@@ -112,7 +122,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
       return absl::UnimplementedError("test compiler!");
     }
     absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-        CompileOptions options, mlir::ModuleOp module,
+        CompileOptions options, MaybeOwningMlirModule module,
         const PjRtTopologyDescription& topology, PjRtClient* client) override {
       return absl::UnimplementedError("test compiler!");
     }
@@ -145,9 +155,7 @@ class PjRtDeserializeTopology : public PjRtTopologyDescription {
       const override {
     LOG(FATAL) << "Unused";
   }
-  absl::StatusOr<std::string> Serialize() const override {
-    return "serialized_topology";
-  }
+  absl::StatusOr<uint64_t> Fingerprint() const override { return 123; }
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {
     LOG(FATAL) << "Unused";
@@ -168,7 +176,7 @@ class PjRtDeserializeCompiler : public PjRtCompiler {
     return absl::UnimplementedError("test compiler!");
   }
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, mlir::ModuleOp module,
+      CompileOptions options, MaybeOwningMlirModule module,
       const PjRtTopologyDescription& topology, PjRtClient* client) override {
     return absl::UnimplementedError("test compiler!");
   }
@@ -241,6 +249,12 @@ TEST(PjRtCompilerTest, VariantRegistryLookup) {
   // Lookup using the single-parameter overload.
   status = GetDefaultPjRtCompiler(platform);
   EXPECT_TRUE(absl::IsNotFound(status.status()));
+}
+
+TEST(PjRtTopologyDescriptionTest, DefaultMemorySpaceKindIds) {
+  PjRtTestTopology topology;
+  EXPECT_THAT(topology.GetMemorySpaceKindIds(), ::testing::ElementsAre(-1));
+  EXPECT_EQ(topology.GetDefaultMemorySpaceKindId(), -1);
 }
 
 TEST(PjRtCompilerTest, CompilerFactoryRegistered) {

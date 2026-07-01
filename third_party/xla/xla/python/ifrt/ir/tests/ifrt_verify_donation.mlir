@@ -204,7 +204,7 @@ module @program_arg_not_donated_to_remap_error {
   func.func @main(%arg0: !array {ifrt.donated}, %arg1: !array) -> (!array)
       attributes {ifrt.function} {
     // expected-error @+1 {{'ifrt.RemapArrays' op input #1 has not been donated to the program.}}
-    %0 = ifrt.RemapArrays(%arg0, %arg1)
+    %0, %ctrl_0 = ifrt.RemapArrays(%arg0, %arg1)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
       {donated=true} : (!array, !array) -> !array
@@ -215,18 +215,54 @@ module @program_arg_not_donated_to_remap_error {
 // -----
 
 !array = !ifrt.array<tensor<2xi32>,
-                      #ifrt.sharding_param<2 to [0] on 2>, [0, 1]>
-module @donate_to_reshard_and_call_error {
+                     #ifrt.sharding_param<2 to [0] on 2>, [0, 1]>
+module @donate_to_remap_and_call_error {
   func.func @main(%arg0: !array {ifrt.donated}) -> (!array)
         attributes {ifrt.function} {
     %0, %ctrl_0 = ifrt.Call @identity(%arg0) on devices [0,1]
         {io_aliases=[array<i32: 0, 0>]} : (!array) -> !array
     // expected-error @+1 {{'ifrt.RemapArrays' op input #1 of op}}
-    %1 = ifrt.RemapArrays(%0, %arg0)
+    %1, %ctrl_1 = ifrt.RemapArrays(%0, %arg0)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
       {donated=true} : (!array, !array) -> !array
     return %1 : !array
+  }
+
+  func.func private @identity(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    return %arg0 : tensor<2xi32>
+  }
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<1x2x2xi32>,
+                      #ifrt.sharding_param<1x1x1 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+module @program_arg_not_donated_to_bitcast_error {
+  func.func @main(%arg0: !array0 {ifrt.donated}, %arg1: !array1) -> (!array1, !array0)
+      attributes {ifrt.function} {
+    // expected-error @+1 {{'ifrt.BitcastArrays' op input #1 has not been donated to the program.}}
+    %0, %1, %ctrl_0 = ifrt.BitcastArrays(%arg0, %arg1) {donated=true} : (!array0, !array1) -> (!array1, !array0)
+    return %0, %1 : !array1, !array0
+  }
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<2 to [0] on 2>, [0, 1]>
+!array1 = !ifrt.array<tensor<2x1xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+module @donate_to_bitcast_and_call_error {
+  func.func @main(%arg0: !array0 {ifrt.donated}) -> (!array1)
+        attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @identity(%arg0) on devices [0,1]
+        {io_aliases=[array<i32: 0, 0>]} : (!array0) -> !array0
+    // expected-error @+1 {{'ifrt.BitcastArrays' op input #0 of op}}
+    %1, %ctrl_1 = ifrt.BitcastArrays(%arg0) {donated=true} : (!array0) -> (!array1)
+    return %1 : !array1
   }
 
   func.func private @identity(%arg0: tensor<2xi32>) -> tensor<2xi32> {

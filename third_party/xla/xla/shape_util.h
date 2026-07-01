@@ -24,7 +24,6 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -36,6 +35,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/overflow_util.h"
@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/shape_util.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -180,6 +181,8 @@ class ShapeUtil {
   // tuple is stored as an array of pointers to other buffers. In this case,
   // this method only returns the size of the pointer array.
   static int64_t ByteSizeOf(const Shape& shape, int64_t pointer_size = -1);
+
+  static int64_t ByteSizeOfElementsRecursive(const Shape& shape);
 
   // Returns the number of bytes used to store the primitive_type.
   //
@@ -738,9 +741,10 @@ class ShapeUtil {
   template <typename Fn>
   static absl::Status ForEachLeafShapeWithStatus(const Shape& shape, Fn&& fn) {
     return ForEachSubshapeWithStatus(
-        shape, [&](const Shape& subshape, const ShapeIndex& index) {
+        shape,
+        [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
           if (IsLeafIndex(shape, index)) {
-            TF_RETURN_IF_ERROR(fn(subshape, index));
+            RETURN_IF_ERROR(fn(subshape, index));
           }
           return absl::OkStatus();
         });
@@ -748,9 +752,9 @@ class ShapeUtil {
   template <typename Fn>
   static absl::Status ForEachMutableLeafShapeWithStatus(Shape* shape, Fn&& fn) {
     return ForEachMutableSubshapeWithStatus(
-        shape, [&](Shape* subshape, const ShapeIndex& index) {
+        shape, [&](Shape* subshape, const ShapeIndex& index) -> absl::Status {
           if (IsLeafIndex(*shape, index)) {
-            TF_RETURN_IF_ERROR(fn(subshape, index));
+            RETURN_IF_ERROR(fn(subshape, index));
           }
           return absl::OkStatus();
         });
@@ -1243,14 +1247,14 @@ class ShapeUtil {
   template <typename Fn>
   static absl::Status ForEachMutableSubshapeWithStatusHelper(
       Shape* shape, Fn&& fn, ShapeIndex* index) {
-    TF_RETURN_IF_ERROR(fn(shape, *index));
+    RETURN_IF_ERROR(fn(shape, *index));
     if (Shape::TupleState* tuple = shape->if_tuple_state()) {
       Shape* tuple_shape = tuple->tuple_shapes.data();
       int64_t tuple_count = tuple->tuple_shapes.size();
       index->push_back(0);
       for (int64_t i = 0; i < tuple_count;
            ++i, ++tuple_shape, ++index->back()) {
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             ForEachMutableSubshapeWithStatusHelper(tuple_shape, fn, index));
       }
       index->pop_back();
@@ -1287,12 +1291,12 @@ class ShapeUtil {
       index->push_back(0);
       for (int64_t i = 0; i < tuple_count;
            ++i, ++tuple_shape, ++index->back()) {
-        TF_RETURN_IF_ERROR(ForEachMutableSubshapePostOrderWithStatusHelper(
+        RETURN_IF_ERROR(ForEachMutableSubshapePostOrderWithStatusHelper(
             tuple_shape, fn, index));
       }
       index->pop_back();
     }
-    TF_RETURN_IF_ERROR(fn(shape, *index));
+    RETURN_IF_ERROR(fn(shape, *index));
     return absl::OkStatus();
   }
 

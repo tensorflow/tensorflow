@@ -2516,7 +2516,10 @@ def _convert_pad_v2(pfor_input: _PforInput):
   t = pfor_input.stacked_input(0)
   paddings = pfor_input.unstacked_input(1)
   paddings = array_ops.concat([[[0, 0]], paddings], 0)
-  return wrap(array_ops.pad_v2(t, paddings, mode="CONSTANT"), True)
+  constant_values = pfor_input.unstacked_input(2)
+  return wrap(
+      array_ops.pad_v2(t, paddings, constant_values=constant_values), True
+  )
 
 
 @RegisterPFor("Split")

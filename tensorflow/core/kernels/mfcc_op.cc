@@ -42,13 +42,14 @@ class MfccOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& spectrogram = context->input(0);
     OP_REQUIRES(context, spectrogram.dims() == 3,
-                errors::InvalidArgument("spectrogram must be 3-dimensional",
-                                        spectrogram.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("spectrogram must be 3-dimensional",
+                                 spectrogram.shape().DebugString())));
     const Tensor& sample_rate_tensor = context->input(1);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(sample_rate_tensor.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input sample_rate should be a scalar tensor, got ",
-                    sample_rate_tensor.shape().DebugString(), " instead."));
+                    sample_rate_tensor.shape().DebugString(), " instead.")));
     const int32_t sample_rate = sample_rate_tensor.scalar<int32_t>()();
 
     const int spectrogram_channels = spectrogram.dim_size(2);
@@ -62,10 +63,10 @@ class MfccOp : public OpKernel {
     mfcc.set_dct_coefficient_count(dct_coefficient_count_);
     OP_REQUIRES(
         context, mfcc.Initialize(spectrogram_channels, sample_rate),
-        errors::InvalidArgument("Mfcc initialization failed for channel count ",
-                                spectrogram_channels, ", sample rate ",
-                                sample_rate, " and filterbank_channel_count ",
-                                filterbank_channel_count_));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Mfcc initialization failed for channel count ",
+            spectrogram_channels, ", sample rate ", sample_rate,
+            " and filterbank_channel_count ", filterbank_channel_count_)));
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,

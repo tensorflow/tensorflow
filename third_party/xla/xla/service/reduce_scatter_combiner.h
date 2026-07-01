@@ -17,14 +17,17 @@ limitations under the License.
 #define XLA_SERVICE_REDUCE_SCATTER_COMBINER_H_
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <tuple>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -57,6 +60,9 @@ class ReduceScatterCombiner : public HloModulePass {
       const HloInstruction* instruction, const HloDomainMap& domain_map,
       bool combine_by_dim);
 
+  using PostCombineFn = std::function<absl::Status(
+      absl::Span<HloInstruction* const>, HloInstruction*)>;
+
  protected:
   absl::StatusOr<bool> RunWithKeyCombiner(
       HloModule* module,
@@ -64,6 +70,14 @@ class ReduceScatterCombiner : public HloModulePass {
       absl::FunctionRef<std::optional<ReduceScatterCombiner::GroupKey>(
           const HloInstruction*, const HloDomainMap&, bool)>
           combine_key);
+
+  absl::StatusOr<bool> RunWithKeyCombiner(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      absl::FunctionRef<std::optional<ReduceScatterCombiner::GroupKey>(
+          const HloInstruction*, const HloDomainMap&, bool)>
+          combine_key,
+      PostCombineFn post_combine);
 
   absl::StatusOr<bool> RunImpl(
       HloModule* module,

@@ -39,7 +39,7 @@ TEST(RamFileSystemTest, Basic) {
   std::string data = "data";
   {
     std::unique_ptr<WritableFile> f;
-    TF_ASSERT_OK(fs.NewWritableFile("foo.txt", nullptr, &f));
+    TF_ASSERT_OK(fs.NewWritableFile("foo.txt", &f));
 
     TF_ASSERT_OK(f->Append(data));
   }
@@ -47,7 +47,7 @@ TEST(RamFileSystemTest, Basic) {
 
   {
     std::unique_ptr<RandomAccessFile> f;
-    TF_ASSERT_OK(fs.NewRandomAccessFile("foo.txt", nullptr, &f));
+    TF_ASSERT_OK(fs.NewRandomAccessFile("foo.txt", &f));
 
     absl::string_view contents;
     std::vector<char> scratch(data.size());
@@ -63,7 +63,7 @@ TEST(RamFileSystemTest, CustomScheme) {
   std::string data = "data";
   {
     std::unique_ptr<WritableFile> f;
-    TF_ASSERT_OK(fs.NewWritableFile("foo.txt", nullptr, &f));
+    TF_ASSERT_OK(fs.NewWritableFile("foo.txt", &f));
 
     TF_ASSERT_OK(f->Append(data));
   }

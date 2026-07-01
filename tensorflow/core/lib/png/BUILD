@@ -11,6 +11,12 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "hdrs",
+    srcs = ["png_io.h"],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "png_io",
     srcs = ["png_io.cc"],

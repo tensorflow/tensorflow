@@ -16,17 +16,24 @@ limitations under the License.
 #include "xla/python/ifrt/hlo/hlo_program.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::ifrt {
 namespace {
+
+using ::testing::ContainsRegex;
 
 std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
   auto context = std::make_unique<mlir::MLIRContext>(
@@ -42,7 +49,7 @@ std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
 absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>> ParseHloProgramString(
     absl::string_view str) {
   auto context = CreateMlirContext();
-  TF_ASSIGN_OR_RETURN(auto module, xla::ParseMlirModuleString(str, *context));
+  ASSIGN_OR_RETURN(auto module, xla::ParseMlirModuleString(str, *context));
   return std::make_unique<xla::ifrt::HloProgram>(std::move(context),
                                                  std::move(module));
 }
@@ -95,6 +102,29 @@ module @foo {
   EXPECT_EQ(hlo_program1->Fingerprint(), hlo_program2->Fingerprint());
 }
 
+TEST(HloProgramTest, FingerprintIgnoresDebugInfoStructure) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::unique_ptr<xla::ifrt::HloProgram> hlo_program1,
+      ParseHloProgramString(R"(
+module @foo {
+  func.func @main(%arg0: tensor<2x3xi32> loc("foo")) -> tensor<2x3xi32> {
+    return %arg0 : tensor<2x3xi32> loc("foo")
+  } loc("foo")
+} loc("foo")
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::unique_ptr<xla::ifrt::HloProgram> hlo_program2,
+      ParseHloProgramString(R"(
+module @foo {
+  func.func @main(%arg0: tensor<2x3xi32> loc("bar")) -> tensor<2x3xi32> {
+    return %arg0 : tensor<2x3xi32> loc("baz")
+  } loc("qux")
+} loc("quux")
+)"));
+
+  EXPECT_EQ(hlo_program1->Fingerprint(), hlo_program2->Fingerprint());
+}
+
 TEST(HloProgramTest, BytesRoundTrip) {
   static constexpr absl::string_view kModule = R"(
 module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
@@ -109,6 +139,52 @@ module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas 
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, program->ToBytes());
   TF_ASSERT_OK_AND_ASSIGN(auto deserialized, HloProgram::FromBytes(serialized));
   EXPECT_EQ(program->Fingerprint(), deserialized->Fingerprint());
+}
+
+TEST(HloProgramTest, ToMaybeOwningMlirModule) {
+  static constexpr absl::string_view kModule = R"(
+module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+    %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+    %1 = mhlo.add %arg0, %0 : tensor<f32>
+    return %1 : tensor<f32>
+  }
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
+  mlir::ModuleOp mlir_module = program->mlir_module();
+
+  xla::MaybeOwningMlirModule module =
+      std::move(*program).ToMaybeOwningMlirModule();
+  EXPECT_EQ(module.mlir_module(), mlir_module);
+}
+
+TEST(HloProgramTest, GetNameOnNamedModule) {
+  static constexpr absl::string_view kModule = R"(
+module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+    %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+    %1 = mhlo.add %arg0, %0 : tensor<f32>
+    return %1 : tensor<f32>
+  }
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
+  EXPECT_EQ(program->name(), "hlo_module");
+}
+
+TEST(HloProgramTest, GetNameOnUnnamedModule) {
+  static constexpr absl::string_view kModule = R"(
+module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+    %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+    %1 = mhlo.add %arg0, %0 : tensor<f32>
+    return %1 : tensor<f32>
+  }
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
+  EXPECT_THAT(program->name(), ContainsRegex(R"(unnamed_[0-9a-f]+)"));
 }
 
 }  // namespace

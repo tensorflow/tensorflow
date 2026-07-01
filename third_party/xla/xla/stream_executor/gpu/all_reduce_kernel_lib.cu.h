@@ -270,9 +270,10 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
 
   // Shot1: Wait for all participating devices to finish copying data to their
   // shared buffer.
+  __syncthreads();  // Make sure all writes to shared buffers are complete.
   SyncRemoteBlocks<PlatformT, kMaxNumAllReduceInputPtrs>(
       signal_flags_buffers, args.rank, args.num_ranks, args.signal_value);
-  __syncthreads();
+  __syncthreads();  // Block must wait here until remote signals are updated.
 
   // Step2: Accumulate data for the responsible indices in the shared buffers.
   for (int i = offset; i < offset_end; i += block_stride) {
@@ -308,9 +309,10 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
   // Shot2: Wait for all participating devices to finish accumulating data in
   // the shared buffer. Note that signal_value + 1 is used to ensure that the
   // synchronization is different from the one used above.
+  __syncthreads();  // Wait for all accumulations to shared buffer.
   SyncRemoteBlocks<PlatformT, kMaxNumAllReduceInputPtrs>(
       signal_flags_buffers, args.rank, args.num_ranks, args.signal_value + 1);
-  __syncthreads();
+  __syncthreads();  // Block must wait here until remote signals are updated.
 
   // Step3: Copy data from the shared buffers to the output buffer.
   for (int i = offset; i < offset_end; i += block_stride) {

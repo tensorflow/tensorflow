@@ -427,6 +427,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
       ShapeInference::InferConvolveShape(
           lhs_literal.shape(), rhs_literal.shape(),
           /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
+          /*sparsity_config=*/SparsityConfig(),
           /*preferred_element_type=*/std::nullopt)
           .value();
 
@@ -440,7 +441,8 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
       /*new_size=*/2, PrecisionConfig::DEFAULT);
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
-      /*batch_group_count=*/1, window, dnums, precision_config));
+      /*batch_group_count=*/1, window, dnums, precision_config,
+      SparsityConfig()));
   HloModuleConfig config;
   HloModule module("ReferenceUtil", config);
   auto computation = module.AddEntryComputation(b.Build());

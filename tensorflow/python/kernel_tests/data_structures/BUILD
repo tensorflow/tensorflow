@@ -87,6 +87,27 @@ cuda_py_strict_test(
     ],
 )
 
+cuda_py_strict_test(
+    name = "dynamic_stitch_op_spmd_test",
+    size = "small",
+    srcs = ["dynamic_stitch_op_test.py"],
+    env = {"TF_FLAG_TF_SHAPE_DEFAULT_INT64": "true"},
+    main = "dynamic_stitch_op_test.py",
+    deps = [
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:data_flow_grad",
+        "//tensorflow/python/ops:data_flow_ops",
+        "//tensorflow/python/ops:gradients_impl",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
 tf_py_strict_test(
     name = "fifo_queue_test",
     size = "small",

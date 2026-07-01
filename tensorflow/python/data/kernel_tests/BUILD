@@ -1,4 +1,5 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
@@ -11,7 +12,7 @@ package(
 
 tf_py_strict_test(
     name = "as_numpy_iterator_test",
-    size = "small",
+    size = "medium",
     srcs = ["as_numpy_iterator_test.py"],
     deps = [
         ":test_base",
@@ -63,7 +64,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "bucket_by_sequence_length_test",
-    size = "small",
+    size = "medium",
     srcs = ["bucket_by_sequence_length_test.py"],
     deps = [
         ":test_base",
@@ -114,7 +115,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "cardinality_test",
-    size = "small",
+    size = "medium",
     srcs = ["cardinality_test.py"],
     deps = [
         ":test_base",
@@ -127,7 +128,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "checkpoint_test",
-    size = "small",
+    size = "medium",
     srcs = ["checkpoint_test.py"],
     grpc_enabled = True,
     deps = [
@@ -158,9 +159,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "checkpoint_test_base",
     srcs = ["checkpoint_test_base.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_management",
@@ -188,7 +190,7 @@ py_strict_library(
 
 tf_py_strict_test(
     name = "choose_from_datasets_test",
-    size = "small",
+    size = "medium",
     srcs = ["choose_from_datasets_test.py"],
     shard_count = 12,
     deps = [
@@ -232,7 +234,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "counter_test",
-    size = "small",
+    size = "medium",
     srcs = ["counter_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -248,7 +250,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "dataset_spec_test",
-    size = "small",
+    size = "medium",
     srcs = ["dataset_spec_test.py"],
     deps = [
         ":test_base",
@@ -270,7 +272,7 @@ tf_py_strict_test(
     srcs = ["dataset_test.py"],
     deps = [
         ":test_base",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/framework:graph_proto_py_proto",
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:debug_mode",
@@ -301,7 +303,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "enumerate_test",
-    size = "small",
+    size = "medium",
     srcs = ["enumerate_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -319,7 +321,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "filter_test",
-    size = "small",
+    size = "medium",
     srcs = ["filter_test.py"],
     shard_count = 8,
     deps = [
@@ -341,16 +343,13 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "fingerprint_test",
-    size = "small",
+    size = "medium",
     srcs = ["fingerprint_test.py"],
     deps = [
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/kernel_tests:test_base",
+        ":test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:options",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/framework:combinations",
-        "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -360,7 +359,7 @@ tf_py_strict_test(
     name = "fixed_length_record_dataset_test",
     size = "medium",
     srcs = ["fixed_length_record_dataset_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -413,9 +412,9 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "from_generator_test",
-    size = "small",
+    size = "medium",
     srcs = ["from_generator_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":test_base",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -437,7 +436,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "from_sparse_tensor_slices_test",
-    size = "small",
+    size = "medium",
     srcs = ["from_sparse_tensor_slices_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -458,7 +457,7 @@ tf_py_strict_test(
     name = "from_tensor_slices_test",
     size = "medium",
     srcs = ["from_tensor_slices_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -482,7 +481,7 @@ tf_py_strict_test(
     name = "from_tensors_test",
     size = "medium",
     srcs = ["from_tensors_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -512,7 +511,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "get_single_element_test",
-    size = "small",
+    size = "medium",
     srcs = ["get_single_element_test.py"],
     deps = [
         ":test_base",
@@ -532,7 +531,7 @@ tf_py_strict_test(
     name = "group_by_window_test",
     size = "medium",
     srcs = ["group_by_window_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -555,7 +554,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "ignore_errors_test",
-    size = "small",
+    size = "medium",
     srcs = ["ignore_errors_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -601,7 +600,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "iterator_cluster_test",
-    size = "small",
+    size = "medium",
     srcs = ["iterator_cluster_test.py"],
     grpc_enabled = True,
     tags = [
@@ -633,7 +632,7 @@ tf_py_strict_test(
 
 cuda_py_strict_test(
     name = "iterator_test",
-    size = "small",
+    size = "medium",
     srcs = ["iterator_test.py"],
     grpc_enabled = True,
     deps = [
@@ -687,7 +686,7 @@ tf_py_strict_test(
     name = "list_files_test",
     size = "medium",
     srcs = ["list_files_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -814,7 +813,7 @@ cuda_py_strict_test(
 
 cuda_py_strict_test(
     name = "optional_test",
-    size = "small",
+    size = "medium",
     srcs = ["optional_test.py"],
     deps = [
         ":test_base",
@@ -842,7 +841,7 @@ cuda_py_strict_test(
 
 tf_py_strict_test(
     name = "options_test",
-    size = "small",
+    size = "medium",
     srcs = ["options_test.py"],
     deps = [
         ":test_base",
@@ -887,7 +886,7 @@ tf_py_strict_test(
 
 cuda_py_strict_test(
     name = "placement_test",
-    size = "small",
+    size = "medium",
     srcs = ["placement_test.py"],
     deps = [
         ":test_base",
@@ -931,9 +930,9 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "ragged_batch_test",
-    size = "small",
+    size = "medium",
     srcs = ["ragged_batch_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":test_base",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -972,7 +971,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "random_test",
-    size = "small",
+    size = "medium",
     srcs = ["random_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -1102,6 +1101,7 @@ cuda_py_strict_test(
     name = "scan_test",
     size = "medium",
     srcs = ["scan_test.py"],
+    xla_enable_strict_auto_jit = False,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -1234,7 +1234,7 @@ tf_py_strict_test(
     name = "take_test",
     size = "medium",
     srcs = ["take_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -1252,9 +1252,9 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "take_while_test",
-    size = "small",
+    size = "medium",
     srcs = ["take_while_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -1271,9 +1271,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_base",
     srcs = ["test_base.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/experimental/ops:lookup_ops",
         "//tensorflow/python/data/experimental/ops:random_access",
@@ -1303,7 +1304,7 @@ tf_py_strict_test(
     name = "text_line_dataset_test",
     size = "medium",
     srcs = ["text_line_dataset_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -1320,7 +1321,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "tf_record_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["tf_record_dataset_test.py"],
     shard_count = 8,
     deps = [
@@ -1337,14 +1338,15 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_record_test_base",
     srcs = [
         "tf_record_test_base.py",
     ],
+    strict_deps = True,
     deps = [
         ":test_base",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/example:example_protos_py_proto",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/framework:dtypes",
@@ -1397,9 +1399,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "io_test",
     srcs = ["io_test.py"],
+    strict_deps = True,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -1413,9 +1416,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "rebatch_test",
     srcs = ["rebatch_test.py"],
+    strict_deps = True,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -1453,9 +1457,9 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "zip_test",
-    size = "small",
+    size = "medium",
     srcs = ["zip_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",

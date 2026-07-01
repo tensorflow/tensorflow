@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
@@ -39,6 +40,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/utils.h"
@@ -324,23 +328,35 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
   // puts it to the key-value store.
   std::string global_topology_key = GetGlobalTopologyKey(platform);
   if (node_id == 0) {
-    TF_ASSIGN_OR_RETURN(std::vector<LocalTopologyProto> local_topologies,
-                        GetAllLocalTopologies(platform, num_nodes, kv_store,
-                                              get_local_topology_timeout));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(std::vector<LocalTopologyProto> local_topologies,
+                     GetAllLocalTopologies(platform, num_nodes, kv_store,
+                                           get_local_topology_timeout));
+    ASSIGN_OR_RETURN(
         *global_topology,
         BuildGlobalTopology(absl::Span<LocalTopologyProto>(local_topologies),
                             assign_global_device_ids));
-    TF_RETURN_IF_ERROR(kv_store->Set(global_topology_key,
-                                     global_topology->SerializeAsString()));
+    RETURN_IF_ERROR(kv_store->Set(global_topology_key,
+                                  global_topology->SerializeAsString()));
   } else {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::string global_topology_str,
         kv_store->Get(global_topology_key, get_global_topology_timeout));
     global_topology->ParseFromString(global_topology_str);
   }
-  VLOG(3) << "Global topology for platform " << platform << ":\n"
-          << global_topology->DebugString();
+
+  // Because we might do global topology assignment based on network proximity
+  // of XLA processes, the process id might not be ordered anymore, however it
+  // does not matter for XLA at run time, as we always lookup replica and
+  // partition id based on global topology we compute here.
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "Global topology for platform " << platform
+            << ": num_processes=" << global_topology->processes_size();
+    for (size_t rank = 0; rank < global_topology->processes_size(); ++rank) {
+      VLOG(3) << "topology for process rank #" << rank << ":\n"
+              << global_topology->processes(rank).DebugString();
+    }
+  }
+
   return absl::OkStatus();
 }
 
@@ -370,7 +386,9 @@ bool IsGpuTopologySymmetric(
 }
 
 absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
-    const GlobalTopologyProto& global_topology) {
+    const GlobalTopologyProto& global_topology,
+    const gpu::GpuTargetConfig& gpu_target_config,
+    const cpu::TargetMachineOptions& host_target_machine_options) {
   GpuTopologyProto gpu_topology;
   std::map<int, std::set<int>> partition_id_to_node_ids;
   std::map<int, int> process_id_to_device_count;
@@ -402,6 +420,10 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
     gpu_topology.set_num_hosts_per_partition(-1);
     gpu_topology.set_num_devices_per_host(-1);
   }
+
+  *gpu_topology.mutable_gpu_target_config() = gpu_target_config.ToProto();
+  *gpu_topology.mutable_host_target_machine_options() =
+      host_target_machine_options.ToProto();
   return gpu_topology;
 }
 

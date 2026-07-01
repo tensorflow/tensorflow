@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -109,14 +108,14 @@ void ShapeLayout::ResetLayout(const Layout& layout) {
   DCHECK(!shape_.IsTuple());
   DCHECK(!shape_.IsOpaque());
   *shape_.mutable_layout() = layout;
-  TF_DCHECK_OK(ShapeUtil::ValidateShape(shape_));
+  DCHECK_OK(ShapeUtil::ValidateShape(shape_));
 }
 
 void ShapeLayout::ResetLayout(const Layout& layout,
                               ShapeIndexView shape_index) {
   *ShapeUtil::GetMutableSubshape(&shape_, shape_index)->mutable_layout() =
       layout;
-  TF_DCHECK_OK(
+  DCHECK_OK(
       ShapeUtil::ValidateShape(ShapeUtil::GetSubshape(shape_, shape_index)));
 }
 

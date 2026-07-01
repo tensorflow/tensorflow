@@ -160,17 +160,25 @@ cc_library(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "//tensorflow/core/profiler/lib:mobile_srcs_no_runtime",
         "@tsl//tsl/profiler/lib:mobile_srcs_no_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
 filegroup(
-    name = "mobile_srcs_only_runtime",
+    name = "mobile_hdrs_no_runtime",
     srcs = [
-        "//tensorflow/core/profiler/lib:mobile_srcs_only_runtime",
-        "@tsl//tsl/profiler/lib:mobile_srcs_only_runtime",
+        "//tensorflow/core/profiler/lib:mobile_hdrs_no_runtime",
+        "@tsl//tsl/profiler/lib:mobile_hdrs_no_runtime",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "//tensorflow/core/profiler/lib:mobile_hdrs_only_runtime",
+        "@tsl//tsl/profiler/lib:mobile_hdrs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

@@ -6,7 +6,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite_combined")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -241,6 +241,7 @@ cc_library(
     deps = [
         ":file_util",
         ":flexbuffers_util",
+        ":moe_delegate_kernel",
         ":quantization_util",
         ":tflite_with_xnnpack_dynamic_fully_connected",  # buildcleaner: keep
         ":tflite_with_xnnpack_logging",  # buildcleaner: keep
@@ -292,6 +293,7 @@ cc_library(
     deps = [
         ":file_util",
         ":flexbuffers_util",
+        ":moe_delegate_kernel",
         ":quantization_util",
         ":weight_cache",
         "//tensorflow/compiler/mlir/lite/kernels/internal:compatibility_macros",
@@ -1301,6 +1303,24 @@ cc_library(
     }),
     deps = [
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "moe_delegate_kernel",
+    srcs = ["moe_delegate_kernel.cc"],
+    hdrs = ["moe_delegate_kernel.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + ["-DFLATBUFFERS_LOCALE_INDEPENDENT=0"],
+    deps = [
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
+        "@XNNPACK",
+        "@flatbuffers//:runtime_cc",
+        "@pthreadpool",
     ],
 )
 

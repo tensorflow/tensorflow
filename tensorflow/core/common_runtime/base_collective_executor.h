@@ -63,9 +63,9 @@ class CollectiveAdapter {
                         const AllocationAttributes& attr) const = 0;
 
   // Debugging string describing buffer location
-  virtual string TBounds(const Tensor& t) const = 0;
+  virtual std::string TBounds(const Tensor& t) const = 0;
 
-  virtual string DebugString() const = 0;
+  virtual std::string DebugString() const = 0;
 
   // Computes the number of elements per alias chunk tensor.
   //
@@ -110,7 +110,7 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   void StartAbort(const absl::Status& s) override TF_LOCKS_EXCLUDED(status_mu_);
 
   void ExecuteAsync(OpKernelContext* ctx, const CollectiveParams* col_params,
-                    const string& exec_key, StatusCallback done) override;
+                    const std::string& exec_key, StatusCallback done) override;
 
   void CompleteParamsAsync(const DeviceAttributes& device, CollectiveParams* cp,
                            CancellationManager* cancel_mgr,
@@ -145,7 +145,7 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   condition_variable launch_cv_;
   // collective instance key -> number of local devices for which NCCL ops have
   // been launched.
-  std::unordered_map<int32, int32> launched_ TF_GUARDED_BY(launch_mu_);
+  std::unordered_map<int32_t, int32_t> launched_ TF_GUARDED_BY(launch_mu_);
   mutex status_mu_;
   absl::Status status_ TF_GUARDED_BY(status_mu_);
 

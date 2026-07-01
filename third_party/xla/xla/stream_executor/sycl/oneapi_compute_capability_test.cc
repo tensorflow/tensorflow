@@ -42,7 +42,7 @@ TEST(OneAPIComputeCapabilityTest, ToProtoTest2) {
 }
 
 TEST(OneAPIComputeCapabilityTest, ToString) {
-  EXPECT_EQ(OneAPIComputeCapability(100, 20).ToString(), "100.20");
+  EXPECT_EQ(OneAPIComputeCapability::BMG().ToString(), "BMG");
 }
 
 TEST(OneAPIComputeCapabilityTest, PlatformCCTest) {

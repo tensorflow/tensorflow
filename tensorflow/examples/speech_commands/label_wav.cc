@@ -59,8 +59,8 @@ Status LoadGraph(const string& graph_file_name,
   Status load_graph_status =
       ReadBinaryProto(tensorflow::Env::Default(), graph_file_name, &graph_def);
   if (!load_graph_status.ok()) {
-    return tensorflow::errors::NotFound("Failed to load compute graph at '",
-                                        graph_file_name, "'");
+    return absl::NotFoundError(absl::StrCat("Failed to load compute graph at '",
+                                            graph_file_name, "'"));
   }
   session->reset(tensorflow::NewSession(tensorflow::SessionOptions()));
   Status session_create_status = (*session)->Create(graph_def);
@@ -75,8 +75,8 @@ Status LoadGraph(const string& graph_file_name,
 Status ReadLabelsFile(const string& file_name, std::vector<string>* result) {
   std::ifstream file(file_name);
   if (!file) {
-    return tensorflow::errors::NotFound("Labels file ", file_name,
-                                        " not found.");
+    return absl::NotFoundError(
+        absl::StrCat("Labels file ", file_name, " not found."));
   }
   result->clear();
   string line;

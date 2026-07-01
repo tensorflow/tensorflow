@@ -91,9 +91,9 @@ GatherCommonSPMDExpander::ComputeLayoutForward(
   const int params_rank = ValueRank(op->getOperand(0));
   const int indices_rank = ValueRank(op->getOperand(1));
   if (params_rank == -1)
-    return errors::InvalidArgument("missing rank for params input");
+    return absl::InvalidArgumentError("missing rank for params input");
   if (indices_rank == -1)
-    return errors::InvalidArgument("missing rank for indices input");
+    return absl::InvalidArgumentError("missing rank for indices input");
 
   // Handle the case of negative axis.
   if (axis < 0) axis += params_rank;
@@ -165,9 +165,9 @@ GatherCommonSPMDExpander::ComputeLayoutBackward(
   const int params_rank = ValueRank(op->getOperand(0));
   const int indices_rank = ValueRank(op->getOperand(1));
   if (params_rank == -1)
-    return errors::InvalidArgument("missing rank for params input");
+    return absl::InvalidArgumentError("missing rank for params input");
   if (indices_rank == -1)
-    return errors::InvalidArgument("missing rank for indices input");
+    return absl::InvalidArgumentError("missing rank for indices input");
 
   // Handle the case of negative axis.
   if (axis < 0) axis += params_rank;
@@ -293,9 +293,9 @@ StatusOr<mlir::Operation*> GatherNdSPMDExpander::ExpandOp(mlir::Operation* op) {
   const auto params_rank = ValueRank(gather_op.getParams());
   const auto indices_rank = ValueRank(gather_op.getIndices());
   if (params_rank == -1)
-    return errors::InvalidArgument("missing rank for params input");
+    return absl::InvalidArgumentError("missing rank for params input");
   if (indices_rank == -1)
-    return errors::InvalidArgument("missing rank for indices input");
+    return absl::InvalidArgumentError("missing rank for indices input");
 
   TF_ASSIGN_OR_RETURN(const Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
 
@@ -389,15 +389,15 @@ GatherNdSPMDExpander::ComputeLayoutForward(
                       ExtractGlobalInputShape(op->getOpOperand(1)));
   const int index_dimensions = indices_shape.back();
   if (index_dimensions < 0)
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "dynamic last dimension for index is not supported");
 
   const int params_rank = ValueRank(gather_op.getParams());
   const int indices_rank = ValueRank(gather_op.getIndices());
   if (params_rank == -1)
-    return errors::InvalidArgument("missing rank for params input");
+    return absl::InvalidArgumentError("missing rank for params input");
   if (indices_rank == -1)
-    return errors::InvalidArgument("missing rank for indices input");
+    return absl::InvalidArgumentError("missing rank for indices input");
 
   if (params_layout || indices_layout) {
     TF_ASSIGN_OR_RETURN(const Layout output_layout,
@@ -424,15 +424,15 @@ GatherNdSPMDExpander::ComputeLayoutBackward(
                       ExtractGlobalInputShape(op->getOpOperand(1)));
   const int index_dimensions = indices_shape.back();
   if (index_dimensions < 0)
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "dynamic last dimension for index is not supported");
 
   const int params_rank = ValueRank(gather_op.getParams());
   const int indices_rank = ValueRank(gather_op.getIndices());
   if (params_rank == -1)
-    return errors::InvalidArgument("missing rank for params input");
+    return absl::InvalidArgumentError("missing rank for params input");
   if (indices_rank == -1)
-    return errors::InvalidArgument("missing rank for indices input");
+    return absl::InvalidArgumentError("missing rank for indices input");
 
   const Layout output_layout = output_layouts.lookup(0);
   Layout params_layout, indices_layout;

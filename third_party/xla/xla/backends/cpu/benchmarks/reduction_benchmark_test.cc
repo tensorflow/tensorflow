@@ -91,6 +91,38 @@ static void BM_ReduceAddBF16(benchmark::State& state,
       RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
 }
 
+static void BM_ReduceAddF64(benchmark::State& state,
+                            HloBenchmarkOptions options) {
+  int64_t d0 = state.range(0);
+
+  absl::string_view hlo = R"(
+    HloModule reduce_add_f64_$d0
+
+    add {
+      p0 = f64[] parameter(0)
+      p1 = f64[] parameter(1)
+      ROOT add = f64[] add(p0, p1)
+    }
+
+    ENTRY e {
+      p0 = f64[1,2,1,$d0,256] parameter(0)
+      c0 = f64[] constant(0)
+      ROOT reduce = f64[1,2] reduce(p0, c0), dimensions={2,3,4}, to_apply=add
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(F64, {1, 2, 1, d0, 256});
+  auto p0_status =
+      LiteralUtil::CreateRandomLiteral<F64>(shape, &engine, 1.0, 0.1);
+  CHECK_OK(p0_status.status());
+
+  std::vector<const Literal*> args = {&p0_status.value()};
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+}
+
 static void BM_SumOfSquaresF32(benchmark::State& state,
                                HloBenchmarkOptions options) {
   int64_t d0 = state.range(0);
@@ -155,6 +187,39 @@ static void BM_ReduceWindowAddF32OuterAndInnerDim(benchmark::State& state,
                       options));
 }
 
+static void BM_ReduceWindowAddBF16OuterAndInnerDim(
+    benchmark::State& state, HloBenchmarkOptions options) {
+  int outer_dim = state.range(0);
+  int inner_dim = state.range(1);
+
+  constexpr absl::string_view hlo = R"(
+  HloModule reduce_window_add_bf16_outer_dim_$outer_dim_inner_dim_$inner_dim
+
+  add {
+    p0 = bf16[] parameter(0)
+    p1 = bf16[] parameter(1)
+    ROOT add = bf16[] add(p0, p1)
+  }
+
+  ENTRY e {
+    p0 = bf16[1024,1024] parameter(0)
+    c0 = bf16[] constant(0)
+    ROOT reduce = bf16[$result_outer_dim,$result_inner_dim]
+      reduce-window(p0, c0), window={size=$outer_dimx$inner_dim stride=$outer_dimx$inner_dim}, to_apply=add
+  }
+)";
+
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, {},
+                      {
+                          {"$outer_dim", absl::StrCat(outer_dim)},
+                          {"$result_outer_dim", absl::StrCat(1024 / outer_dim)},
+                          {"$inner_dim", absl::StrCat(inner_dim)},
+                          {"$result_inner_dim", absl::StrCat(1024 / inner_dim)},
+                      },
+                      options));
+}
+
 static void BM_ReduceAddF32OverDimension(benchmark::State& state,
                                          HloBenchmarkOptions options) {
   int64_t reduce_dim = state.range(0);
@@ -172,6 +237,54 @@ static void BM_ReduceAddF32OverDimension(benchmark::State& state,
     p0 = f32[1024,1024] parameter(0)
     c0 = f32[] constant(0)
     ROOT reduce = f32[1024] reduce(p0, c0), dimensions={$reduce_dim}, to_apply=add
+  }
+)";
+
+  CHECK_OK(RunHloBenchmark(
+      state, hlo, {}, {{"$reduce_dim", absl::StrCat(reduce_dim)}}, options));
+}
+
+static void BM_ReduceAddBF16OverDimension(benchmark::State& state,
+                                          HloBenchmarkOptions options) {
+  int64_t reduce_dim = state.range(0);
+
+  constexpr absl::string_view hlo = R"(
+  HloModule reduce_add_bf16_reduce_dim_$reduce_dim
+
+  add {
+    p0 = bf16[] parameter(0)
+    p1 = bf16[] parameter(1)
+    ROOT add = bf16[] add(p0, p1)
+  }
+
+  ENTRY e {
+    p0 = bf16[1024,1024] parameter(0)
+    c0 = bf16[] constant(0)
+    ROOT reduce = bf16[1024] reduce(p0, c0), dimensions={$reduce_dim}, to_apply=add
+  }
+)";
+
+  CHECK_OK(RunHloBenchmark(
+      state, hlo, {}, {{"$reduce_dim", absl::StrCat(reduce_dim)}}, options));
+}
+
+static void BM_ReduceAddF64OverDimension(benchmark::State& state,
+                                         HloBenchmarkOptions options) {
+  int64_t reduce_dim = state.range(0);
+
+  constexpr absl::string_view hlo = R"(
+  HloModule reduce_add_f64_reduce_dim_$reduce_dim
+
+  add {
+    p0 = f64[] parameter(0)
+    p1 = f64[] parameter(1)
+    ROOT add = f64[] add(p0, p1)
+  }
+
+  ENTRY e {
+    p0 = f64[1024,1024] parameter(0)
+    c0 = f64[] constant(0)
+    ROOT reduce = f64[1024] reduce(p0, c0), dimensions={$reduce_dim}, to_apply=add
   }
 )";
 
@@ -234,6 +347,7 @@ static void BM_ReduceWindowAddF32OverlappingWindows(
 
 BENCHMARK_SIZES(BM_ReduceAddF32);
 BENCHMARK_SIZES(BM_ReduceAddBF16);
+BENCHMARK_SIZES(BM_ReduceAddF64);
 BENCHMARK_SIZES(BM_SumOfSquaresF32);
 
 XLA_CPU_BENCHMARK(BM_ReduceAddF32OverDimension)
@@ -242,7 +356,31 @@ XLA_CPU_BENCHMARK(BM_ReduceAddF32OverDimension)
     ->Arg(1)
     ->MeasureProcessCPUTime();
 
+XLA_CPU_BENCHMARK(BM_ReduceAddBF16OverDimension)
+    ->ArgName("reduce_dim")
+    ->Arg(0)
+    ->Arg(1)
+    ->MeasureProcessCPUTime();
+
+XLA_CPU_BENCHMARK(BM_ReduceAddF64OverDimension)
+    ->ArgName("reduce_dim")
+    ->Arg(0)
+    ->Arg(1)
+    ->MeasureProcessCPUTime();
+
 XLA_CPU_BENCHMARK(BM_ReduceWindowAddF32OuterAndInnerDim)
+    ->MeasureProcessCPUTime()
+    ->ArgNames({"outer_dim", "inner_dim"})
+    ->Args({1, 32})
+    ->Args({32, 1})
+    ->Args({32, 2})
+    ->Args({32, 4})
+    ->Args({32, 8})
+    ->Args({32, 16})
+    ->Args({32, 32})
+    ->MeasureProcessCPUTime();
+
+XLA_CPU_BENCHMARK(BM_ReduceWindowAddBF16OuterAndInnerDim)
     ->MeasureProcessCPUTime()
     ->ArgNames({"outer_dim", "inner_dim"})
     ->Args({1, 32})

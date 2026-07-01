@@ -1,21 +1,24 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 licenses(["notice"])
 
-py_strict_library(
+py_library(
     name = "config",
     srcs = ["config.py"],
+    strict_deps = True,
     deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_util",
     srcs = ["test_util.py"],
+    strict_deps = True,
     deps = [
         ":config",
         ":extensions",
@@ -34,9 +37,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "np_wrapper",
     srcs = ["np_wrapper.py"],
+    strict_deps = True,
     visibility = [
         "//visibility:public",
     ],
@@ -55,9 +59,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "extensions",
     srcs = ["extensions.py"],
+    strict_deps = True,
     deps = [
         ":np_wrapper",
         "//tensorflow:tensorflow_py",
@@ -99,9 +104,10 @@ py_strict_library(
 )
 
 # copybara:uncomment_begin(google-only)
-# py_strict_test(
+# py_test(
 #     name = "extensions_test",
 #     srcs = ["extensions_test.py"],
+#     strict_deps = True,
 #     tags = [
 #         "gpu",
 #         "no_pip",
@@ -140,7 +146,7 @@ py_strict_library(
 #     ],
 # )
 #
-# py_strict_test(
+# py_test(
 #     name = "extensions_test_tpu",
 #     srcs = ["extensions_test.py"],
 #     args = [
@@ -148,6 +154,7 @@ py_strict_library(
 #         "--requires_tpu",
 #     ],
 #     main = "extensions_test.py",
+#     strict_deps = True,
 #     tags = [
 #         "no_pip",
 #         "requires-tpu",
@@ -185,7 +192,7 @@ py_strict_library(
 # )
 # copybara:uncomment_end
 
-py_strict_test(
+py_test(
     name = "np_test",
     timeout = "long",
     srcs = ["np_test.py"],
@@ -194,6 +201,7 @@ py_strict_test(
         "--enable_x64",  # Needed to enable dtype check
     ],
     shard_count = 20,
+    strict_deps = True,
     tags = [
         "gpu",
         "no_pip",
@@ -218,7 +226,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "np_indexing_test",
     srcs = ["np_indexing_test.py"],
     args = [
@@ -226,6 +234,7 @@ py_strict_test(
         "--enable_x64",  # Needed to enable dtype check
     ],
     shard_count = 10,
+    strict_deps = True,
     # TODO(b/164245103): Re-enable GPU once tf.tensor_strided_slice_update's segfault is fixed.
     tags = [
         "no_pip",
@@ -247,7 +256,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "np_einsum_test",
     srcs = ["np_einsum_test.py"],
     args = [
@@ -255,6 +264,7 @@ py_strict_test(
         "--enable_x64",  # Needed to enable dtype check
     ],
     shard_count = 20,
+    strict_deps = True,
     tags = [
         "gpu",
         "no_pip",

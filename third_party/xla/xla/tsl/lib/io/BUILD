@@ -1,8 +1,10 @@
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
 load(
     "//xla/tsl/platform:rules_cc.bzl",
+    "cc_binary",
     "cc_library",
 )
 
@@ -68,6 +70,7 @@ cc_library(
         ":inputstream_interface",
         ":random_inputstream",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -92,6 +95,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -109,6 +113,7 @@ cc_library(
     hdrs = ["inputstream_interface.h"],
     deps = [
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@tsl//tsl/platform:cord",
@@ -169,6 +174,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -195,6 +201,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "@tsl//tsl/platform:coding",
         "@tsl//tsl/platform:cord",
@@ -276,6 +283,7 @@ cc_library(
         "//xla/tsl/lib/hash:crc32c",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "@tsl//tsl/platform:cord",
     ],
 )
@@ -317,6 +325,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@tsl//tsl/platform:strcat",
@@ -335,6 +344,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -353,41 +363,47 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "block.cc",
-        "block.h",
         "block_builder.cc",
+        "buffered_inputstream.cc",
+        "cache.cc",
+        "compression.cc",
+        "format.cc",
+        "inputbuffer.cc",
+        "inputstream_interface.cc",
+        "iterator.cc",
+        "random_inputstream.cc",
+        "record_reader.cc",
+        "table.cc",
+        "table_builder.cc",
+        "two_level_iterator.cc",
+        "zlib_compression_options.cc",
+        "zlib_inputstream.cc",
+        "//xla/tsl/lib/io/snappy:snappy_inputstream.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "block.h",
         "block_builder.h",
         "buffered_file.h",
-        "buffered_inputstream.cc",
         "buffered_inputstream.h",
-        "cache.cc",
         "cache.h",
-        "compression.cc",
         "compression.h",
-        "format.cc",
         "format.h",
-        "inputbuffer.cc",
         "inputbuffer.h",
-        "inputstream_interface.cc",
         "inputstream_interface.h",
-        "iterator.cc",
         "iterator.h",
-        "random_inputstream.cc",
         "random_inputstream.h",
-        "record_reader.cc",
         "record_reader.h",
-        "table.cc",
         "table.h",
-        "table_builder.cc",
         "table_builder.h",
         "table_options.h",
-        "two_level_iterator.cc",
         "two_level_iterator.h",
-        "zlib_compression_options.cc",
         "zlib_compression_options.h",
-        "zlib_inputstream.cc",
         "zlib_inputstream.h",
         "//xla/tsl/lib/io/snappy:snappy_compression_options.h",
-        "//xla/tsl/lib/io/snappy:snappy_inputstream.cc",
         "//xla/tsl/lib/io/snappy:snappy_inputstream.h",
     ],
 )
@@ -619,5 +635,63 @@ tsl_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:strcat",
+        "@zlib",
+    ],
+)
+
+cc_library(
+    name = "zip_writer",
+    srcs = ["zip_writer.cc"],
+    hdrs = ["zip_writer.h"],
+    visibility = ["//xla:__subpackages__"],
+    deps = [
+        ":zlib_compression_options",
+        ":zlib_outputbuffer",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@zlib",
+    ],
+)
+
+cc_binary(
+    name = "zip_generator",
+    testonly = True,
+    srcs = ["zip_generator.cc"],
+    deps = [
+        ":zip_writer",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+py_test(
+    name = "zip_writer_integration_test",
+    srcs = ["zip_writer_integration_test.py"],
+    data = [":zip_generator"],
+    deps = [
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+tsl_cc_test(
+    name = "zip_writer_test",
+    srcs = ["zip_writer_test.cc"],
+    deps = [
+        ":zip_writer",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/bias_op_gpu.h"
 
 #include <algorithm>
+#include <limits>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -81,16 +82,16 @@ __global__ void BiasNCHWKernel(int64_t nthreads, const T* __restrict__ input,
 // Add "bias" to "input", broadcasting it on all dimensions but the bias
 // dimension.
 template <typename T>
-void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
-                         T* output, int32_t batch, int32_t height,
-                         int32_t width, int32_t depth, int32_t channel,
-                         TensorFormat data_format) {
+absl::Status BiasGPU<T>::compute(const GPUDevice& d, const T* input,
+                                 const T* bias, T* output, int32_t batch,
+                                 int32_t height, int32_t width, int32_t depth,
+                                 int32_t channel, TensorFormat data_format) {
   const int32_t bias_size = channel;
   const int64_t image_size = static_cast<int64_t>(height) * width * depth;
   const int64_t total_count =
       static_cast<int64_t>(batch) * bias_size * image_size;
   if (total_count == 0) {
-    return;
+    return absl::OkStatus();
   }
   // GetGpuLaunchConfig takes int, but only uses it to compute block_count
   // and thread_per_block, which are bounded by GPU hardware limits.
@@ -111,6 +112,7 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
                                 total_count, input, bias, output, bias_size,
                                 image_size));
   }
+  return absl::OkStatus();
 }
 
 // A naive implementation that is functional on all cases.
@@ -229,16 +231,18 @@ __global__ void BiasGradNCHW_SharedAtomics(
 }
 
 template <typename T>
-void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
-                             T* bias_backprop, int32_t batch, int32_t height,
-                             int32_t width, int32_t depth, int32_t channel,
-                             TensorFormat data_format) {
+absl::Status BiasGradGPU<T>::compute(const GPUDevice& d,
+                                     const T* output_backprop, T* bias_backprop,
+                                     int32_t batch, int32_t height,
+                                     int32_t width, int32_t depth,
+                                     int32_t channel,
+                                     TensorFormat data_format) {
   const int32_t bias_size = channel;
   const int64_t image_size = static_cast<int64_t>(height) * width * depth;
   const int64_t total_count =
       static_cast<int64_t>(batch) * bias_size * image_size;
   if (total_count == 0) {
-    return;
+    return absl::OkStatus();
   }
   static constexpr int32_t kWarpSize = 32;
   // GetGpuLaunchConfig takes int, but only uses it to compute block_count
@@ -287,6 +291,7 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
                                   bias_size, image_size));
     }
   }
+  return absl::OkStatus();
 }
 
 template <typename T>
@@ -316,7 +321,7 @@ void BiasGradGPU<T>::DoColReduction(OpKernelContext* context, T* output,
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 
 // No BiasGrad kernel for int32.
-template struct BiasGPU<int32>;
+template struct BiasGPU<int32_t>;
 
 }  // end namespace tensorflow
 

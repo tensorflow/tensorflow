@@ -50,7 +50,7 @@ class GpuExecutableRunOptions {
       std::optional<DeviceIdMap> device_ids);
   const std::optional<DeviceIdMap>& gpu_global_device_ids() const;
 
-  // Callback that returns a unique clieque id for a given clique key.
+  // Callback that returns a unique clique id for a given clique key.
   GpuExecutableRunOptions& set_clique_id_callback(
       CliqueIdCallback clique_id_callback);
   const CliqueIdCallback& clique_id_callback() const;

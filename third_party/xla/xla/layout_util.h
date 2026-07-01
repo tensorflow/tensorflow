@@ -247,6 +247,19 @@ class LayoutUtil {
   static int64_t LinearIndex(const Shape& shape,
                              absl::Span<const int64_t> indices);
 
+  // Maps a set of logical indices for a given shape to its corresponding
+  // physical index (linear offset) in memory. This mapping accounts for the
+  // shape's layout, including dimension order (`minor_to_major`) and nested
+  // tiling (`tiles`).
+  static int64_t LinearIndexForNestedTiling(const Shape& shape,
+                                            absl::Span<const int64_t> indices);
+
+  // Maps a physical index (linear memory offset) back to the logical indices of
+  // a shape, accounting for the shape's layout and nested tiling. This is the
+  // inverse operation of `LinearIndexForNestedTiling`.
+  static std::vector<int64_t> DelinearizeIndexForNestedTiling(
+      const Shape& shape, int64_t linear_index);
+
   // If the shape has a layout, returns the contained memory space.  Otherwise,
   // returns Layout::kDefaultMemorySpace.
   static int64_t MemorySpace(const Shape& shape);

@@ -60,11 +60,11 @@ class DeviceSetTest : public ::testing::Test {
 
 class DummyFactory : public DeviceFactory {
  public:
-  absl::Status ListPhysicalDevices(std::vector<string>* devices) override {
+  absl::Status ListPhysicalDevices(std::vector<std::string>* devices) override {
     return absl::OkStatus();
   }
   absl::Status CreateDevices(
-      const SessionOptions& options, const string& name_prefix,
+      const SessionOptions& options, const std::string& name_prefix,
       std::vector<std::unique_ptr<Device>>* devices) override {
     return absl::OkStatus();
   }

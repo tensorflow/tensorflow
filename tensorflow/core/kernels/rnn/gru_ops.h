@@ -93,8 +93,8 @@ struct GRUBlockCellFprop : public GRUCell {
         r_u_bar);
 
     // Creating a bias matrix for adding by broadcasting 'b_ru'
-    Eigen::array<Eigen::DenseIndex, 2> broadcast_shape({batch_size_, 1});
-    Eigen::array<Eigen::DenseIndex, 2> b_ru_shape({1, b_ru.dimensions()[0]});
+    Eigen::array<Eigen::DenseIndex, 2> broadcast_shape{batch_size_, 1};
+    Eigen::array<Eigen::DenseIndex, 2> b_ru_shape{1, b_ru.dimensions()[0]};
     r_u_bar.device(d) += b_ru.reshape(b_ru_shape).broadcast(broadcast_shape);
 
     // Slice r_u_bar into r, u and apply the sigmoid.
@@ -112,7 +112,7 @@ struct GRUBlockCellFprop : public GRUCell {
         ctx, d, false, false, typename gemm_compute_type<T>::type(1.f),
         const_x_h_prevr, w_c, typename gemm_compute_type<T>::type(0.f), c);
 
-    Eigen::array<Eigen::DenseIndex, 2> b_c_shape({1, b_c.dimensions()[0]});
+    Eigen::array<Eigen::DenseIndex, 2> b_c_shape{1, b_c.dimensions()[0]};
     c.device(d) += (b_c.reshape(b_c_shape).broadcast(broadcast_shape));
     c.device(d) = c.tanh();
 

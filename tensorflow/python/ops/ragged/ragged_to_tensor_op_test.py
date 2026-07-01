@@ -729,6 +729,23 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
     result = rt.to_tensor(shape=[2, constant_op.constant(2)])
     self.assertAllEqual(result, [[1, 2], [4, 0]])
 
+  def test_row_splits_out_of_bounds(self):
+    from tensorflow.python.ops import gen_ragged_conversion_ops
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Row partition size.*exceeds the number of values',
+    ):
+      self.evaluate(
+          gen_ragged_conversion_ops.ragged_tensor_to_tensor(
+              shape=[1, 100],
+              values=[42.0],
+              default_value=0.0,
+              row_partition_tensors=[[0, 100]],
+              row_partition_types=['ROW_SPLITS'],
+          )
+      )
+
 
 class RaggedToDenseBenchmark(googletest.Benchmark):
 

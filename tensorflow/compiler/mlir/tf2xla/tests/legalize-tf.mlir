@@ -1,4 +1,4 @@
-// RUN: tf-opt "-xla-legalize-tf=legalize-chlo=false" -split-input-file %s | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt "-xla-legalize-tf=legalize-chlo=false" -split-input-file %s | env FILECHECK_OPTS="" FileCheck %s
 // RUN: tf-opt "-xla-legalize-tf=legalize-chlo=true" -split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix CHLO
 // This test runs twice:
 //   1. Through FILECHECK_OPTS="" FileCheck with chlo legalization disabled since verifying

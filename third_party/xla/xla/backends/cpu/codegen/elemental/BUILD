@@ -1,4 +1,4 @@
-load("//xla:py_strict.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -35,6 +35,7 @@ cc_library(
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/cpu:ir_emitter",
         "//xla/service/llvm_ir:ir_array",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -45,9 +46,10 @@ cc_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "concatenate_kernel_emitter_test",
     srcs = ["concatenate_kernel_emitter_test.py"],
+    strict_deps = True,
     tags = [
         "no_oss",
     ],
@@ -86,6 +88,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:loop_emitter",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",

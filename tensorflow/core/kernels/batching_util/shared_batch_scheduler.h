@@ -29,6 +29,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -36,10 +37,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/criticality.h"
-#include "tensorflow/core/kernels/batching_util/batch_input_task.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
 #include "tensorflow/core/kernels/batching_util/batch_stats.h"
@@ -142,6 +144,13 @@ class SharedBatchScheduler
     // Must be >= 1, and should be tuned carefully.
     int num_batch_threads = port::MaxParallelism();
 
+    // Total number of warmup threads, which will only process warmup requests.
+    // Unlike real requests, warmup requests are CPU bound. Hence, when
+    // `use_global_scheduler` is enabled, a separate thread pool for warmup
+    // requests is useful to decrease model warmup time and derisk starving the
+    // thread pool with warmup requests while serving live traffic.
+    int num_warmup_batch_threads = 0;
+
     // The environment to use.
     // (Typically only overridden by test code.)
     Env* env = Env::Default();
@@ -154,6 +163,9 @@ class SharedBatchScheduler
     // the options provided in the first Create() call will be used to
     // initialize the global scheduler.
     bool use_global_scheduler = false;
+
+    // The startup delay for the batch threads. Useful for testing.
+    int64_t batch_threads_startup_delay_micros = 0;
   };
   // Ownership is shared between the caller of Create() and any queues created
   // via AddQueue().
@@ -314,6 +326,12 @@ class SharedBatchScheduler
     struct PriorityAwareSchedulerOptions {
       // The maximum sum of task sizes to enqueue.
       size_t max_queue_depth = 200;
+      // If true, the priority aware batch scheduler will resplit tasks into
+      // smaller batches if needed.
+      bool enable_task_resplit = false;
+      // If true, the batch scheduler lazily filters tasks whose RPC deadline
+      // has expired or were cancelled before they are sent for execution.
+      bool enable_lazy_cancellation_filtering = false;
     };
 
     PriorityAwareSchedulerOptions priority_aware_scheduler_options;
@@ -336,6 +354,12 @@ class SharedBatchScheduler
   // queue declines to provide a batch to process, moves onto the next queue. If
   // no queues provide a batch to process, just sleeps briefly and exits.
   void ThreadLogic();
+
+  // The code executed in 'warmup_threads_'. Obtains a warmup batch to process
+  // from the queue pointed to by 'next_queue_to_schedule_', and processes it.
+  // If that queue declines to provide a warmup batch to process, moves onto the
+  // next queue. If no queues provide a warmup batch to process, just exits.
+  void WarmupThreadLogic();
 
   // Called by `AddQueue`.
   absl::Status AddQueueAfterRewritingOptions(
@@ -366,8 +390,15 @@ class SharedBatchScheduler
   // whenever a batch becomes schedulable.
   condition_variable schedulable_batch_cv_;
 
+  // Used by idle warmup threads to wait for work to enter the system. Notified
+  // whenever a warmup batch becomes schedulable.
+  condition_variable warmup_scheduler_cv_;
+
   // Threads that process batches obtained from the queues.
   std::vector<std::unique_ptr<PeriodicFunction>> batch_threads_;
+
+  // Threads that process only warmup batches obtained from the queues.
+  std::vector<std::unique_ptr<PeriodicFunction>> warmup_threads_;
 
   SharedBatchScheduler(const SharedBatchScheduler&) = delete;
   void operator=(const SharedBatchScheduler&) = delete;
@@ -387,19 +418,28 @@ template <typename TaskType>
 class PriorityTaskQueue {
  public:
   explicit PriorityTaskQueue(
-      size_t max_queue_depth,
+      const std::vector<int32_t>& allowed_batch_sizes,
+      absl::string_view batch_padding_policy, size_t max_queue_depth,
       std::function<
           absl::Status(std::unique_ptr<TaskType>* input_task,
                        int first_output_task_size, int input_batch_size_limit,
                        std::vector<std::unique_ptr<TaskType>>* output_tasks)>
           split_input_task_func,
-      bool enable_large_batch_splitting, size_t max_execution_batch_size,
-      int64_t batch_timeout_micros, Env* env)
-      : max_queue_depth_(max_queue_depth),
+      bool enable_large_batch_splitting, bool enable_task_resplit,
+      bool enable_lazy_cancellation_filtering, size_t max_execution_batch_size,
+      int64_t batch_timeout_micros, bool disable_padding,
+      ModelBatchStats* model_batch_stats, Env* env)
+      : allowed_batch_sizes_(allowed_batch_sizes),
+        batch_padding_policy_(batch_padding_policy),
+        max_queue_depth_(max_queue_depth),
         split_input_task_func_(split_input_task_func),
         enable_large_batch_splitting_(enable_large_batch_splitting),
+        enable_task_resplit_(enable_task_resplit),
+        enable_lazy_cancellation_filtering_(enable_lazy_cancellation_filtering),
         max_execution_batch_size_(max_execution_batch_size),
         batch_timeout_micros_(batch_timeout_micros),
+        disable_padding_(disable_padding),
+        model_batch_stats_(model_batch_stats),
         env_(env) {}
 
   // If queue has capacity, adds task to queue and returns OK.
@@ -459,16 +499,53 @@ class PriorityTaskQueue {
   // considered first. Within a priority, tasks that came first are
   // considered first.
   std::vector<std::unique_ptr<TaskType>> RemoveTask(int size) {
-    std::vector<std::unique_ptr<TaskType>> tasks;
+    std::vector<std::unique_ptr<TaskType>> tasks_to_schedule;
     int remaining_size = size;
+
+    // Get current timestamp outside the loop to avoid repeated calls.
+    const absl::Time now = absl::FromUnixMicros(env_->NowMicros());
 
     while (remaining_size > 0 && !tasks_.empty()) {
       auto it = tasks_.begin();
-      QueueEntry highest_priority_entry = RemoveEntryInternal(it);
 
-      if (enable_large_batch_splitting_ &&
-          highest_priority_entry.task->size() > remaining_size) {
-        // Split
+      // TODO(b/491965163): Consider optimizing by evicting the highest priority
+      // task if the shared status is an error potentially due to an evicted
+      // sibling/sub-task.
+
+      // Lazy cancellation: skip cancelled/timed-out tasks first.
+      if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+        if (enable_lazy_cancellation_filtering_) {
+          if (it->task->IsDeadlineExceeded(now)) {
+            QueueEntry cancelled_entry = RemoveEntryInternal(it);
+            RecordLazyCancelledTaskMetrics(
+                cancelled_entry.task->size(),
+                kLazyCancellationReasonDeadlineExceeded);
+            cancelled_entry.task->FinishTask(absl::DeadlineExceededError(
+                "Task cancelled: RPC deadline exceeded."));
+            continue;
+          }
+          if (it->task->IsCancelled()) {
+            QueueEntry cancelled_entry = RemoveEntryInternal(it);
+            RecordLazyCancelledTaskMetrics(cancelled_entry.task->size(),
+                                           kLazyCancellationReasonRpcCancelled);
+            cancelled_entry.task->FinishTask(
+                absl::CancelledError("Task cancelled: RPC is cancelled."));
+            continue;
+          }
+        }
+      }
+
+      // If task fits just add it to tasks_to_schedule.
+      if (it->task->size() <= remaining_size) {
+        QueueEntry highest_priority_entry = RemoveEntryInternal(it);
+        remaining_size -= highest_priority_entry.task->size();
+        tasks_to_schedule.push_back(std::move(highest_priority_entry.task));
+        continue;
+      }
+
+      // If task does not fit, check if we can split it.
+      if (CanSplitTask(*(it->task))) {
+        QueueEntry highest_priority_entry = RemoveEntryInternal(it);
         std::unique_ptr<TaskType> highest_priority_task_ptr =
             std::move(highest_priority_entry.task);
         std::vector<std::unique_ptr<TaskType>> output_tasks;
@@ -486,7 +563,7 @@ class PriorityTaskQueue {
         // First task fits.
         remaining_size -= output_tasks[0]->size();
 
-        tasks.push_back(std::move(output_tasks[0]));
+        tasks_to_schedule.push_back(std::move(output_tasks[0]));
 
         for (size_t i = 1; i < output_tasks.size(); ++i) {
           QueueEntry new_entry;
@@ -496,12 +573,13 @@ class PriorityTaskQueue {
           new_entry.criticality = highest_priority_entry.criticality;
           AddEntryInternal(std::move(new_entry));
         }
-      } else {
-        remaining_size -= highest_priority_entry.task->size();
-        tasks.push_back(std::move(highest_priority_entry.task));
       }
+
+      // The task does not fit and we cannot split it. Leave it for the next
+      // batch to prevent priority inversion.
+      break;
     }
-    return tasks;
+    return tasks_to_schedule;
   }
 
   std::optional<uint64_t> EarliestTaskStartTime() const {
@@ -533,6 +611,9 @@ class PriorityTaskQueue {
     return tasks_.begin()->criticality;
   }
 
+  // Returns a batch of tasks from the queue if the batch is ready to be
+  // executed. Otherwise, returns nullptr.
+  // BatchPaddingPolicy is applied to determine the optimal batch size.
   std::unique_ptr<Batch<TaskType>> ScheduleBatch() {
     if (empty()) {
       return nullptr;
@@ -540,9 +621,12 @@ class PriorityTaskQueue {
     if (size() >= max_execution_batch_size_ ||
         env_->NowMicros() >=
             EarliestTaskStartTime().value() + batch_timeout_micros_) {
-      auto batch = std::make_unique<Batch<TaskType>>();
-      size_t tasks_to_schedule =
+      size_t candidate_size =
           std::min(static_cast<size_t>(size()), max_execution_batch_size_);
+      int32_t tasks_to_schedule = ApplyBatchPaddingPolicy(
+          candidate_size, allowed_batch_sizes_, disable_padding_,
+          batch_padding_policy_, model_batch_stats_);
+      auto batch = std::make_unique<Batch<TaskType>>();
       std::vector<std::unique_ptr<TaskType>> tasks =
           RemoveTask(tasks_to_schedule);
       for (auto& t : tasks) {
@@ -594,18 +678,36 @@ class PriorityTaskQueue {
     return std::move(entry);
   }
 
+  bool CanSplitTask(const TaskType& task) const {
+    if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+      // If a BatchTask is a subtask, we can split it if task resplitting and
+      // large batch splitting are enabled.
+      if (task.is_subtask()) {
+        return enable_task_resplit_ && enable_large_batch_splitting_;
+      }
+    }
+    return enable_large_batch_splitting_;
+  }
+
   std::multiset<QueueEntry> tasks_;
   std::multiset<uint64_t> start_times_;
-  const size_t max_queue_depth_;
   size_t current_queue_size_ = 0;
+
+  const std::vector<int32_t> allowed_batch_sizes_;
+  const std::string batch_padding_policy_;
+  const size_t max_queue_depth_;
   const std::function<absl::Status(
       std::unique_ptr<TaskType>* input_task, int first_output_task_size,
       int input_batch_size_limit,
       std::vector<std::unique_ptr<TaskType>>* output_tasks)>
       split_input_task_func_;
   const bool enable_large_batch_splitting_;
+  const bool enable_task_resplit_ = false;
+  const bool enable_lazy_cancellation_filtering_;
   const size_t max_execution_batch_size_;
   const int64_t batch_timeout_micros_;
+  const bool disable_padding_;
+  ModelBatchStats* const model_batch_stats_;
   Env* const env_;
 };
 
@@ -653,8 +755,10 @@ class Queue {
   using BatchPriorityKey = std::pair<int, int64_t>;
 
   Queue(const typename SharedBatchScheduler<TaskType>::QueueOptions& options,
-        Env* env, ProcessBatchCallback process_batch_callback,
-        SchedulableBatchCallback schedulable_batch_callback);
+        Env* env, bool enable_warmup_queue,
+        ProcessBatchCallback process_batch_callback,
+        SchedulableBatchCallback schedulable_batch_callback,
+        SchedulableBatchCallback schedulable_warmup_batch_callback);
 
   // Illegal to destruct unless the queue is empty.
   ~Queue();
@@ -684,6 +788,10 @@ class Queue {
   // nullptr if the queue declines to schedule a batch at this time. If it
   // returns a batch, the batch is guaranteed to be closed.
   typename SharedBatchScheduler<TaskType>::BatchTaskUniquePtr ScheduleBatch();
+
+  // Called by a warmup thread to request a batch from this queue.
+  // Returns a batch of warmup tasks if available, or nullptr.
+  std::unique_ptr<Batch<TaskType>> ScheduleWarmupBatch();
 
   // Without mutating the queue, checks if ScheduleBatch() will return a valid
   // batch and if so will return the priority of that batch.
@@ -732,6 +840,9 @@ class Queue {
   // Returns true iff the task is a low priority task based on the queue option.
   bool IsLowPriorityTask(std::unique_ptr<TaskType>* task);
 
+  // Returns true iff the task is a warmup task based on the queue option.
+  bool IsWarmupTask(std::unique_ptr<TaskType>* task);
+
   // Implementation of Schedule above. Enqueues `task` as it
   // is or split it inline (eagerly) to form batches to be processed by
   // `Queue<TaskType>::ProcessBatch`
@@ -758,8 +869,8 @@ class Queue {
   std::optional<BatchPriorityKey> PeekBatchPriorityImpl() const
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Determines whether the low priority tasks in `low_priority_tasks_` can form
-  // a batch on their own. If yes, returns a batch that is ready to be
+  // Determines whether the low priority tasks in `low_priority_tasks_` can
+  // form a batch on their own. If yes, returns a batch that is ready to be
   // processed. Otherwise, returns an empty unique_ptr.
   std::unique_ptr<Batch<TaskType>> ScheduleLowPriorityBatch()
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -777,9 +888,9 @@ class Queue {
   // Returns an error if the low priority task queue doesn't have capacity for
   // this task using the low priority batch options. Since the low priority
   // tasks are not batched until they get scheduled, it only checks that a
-  // single task does not it exceed input batch size limit and the total size of
-  // the tasks in the queue does not exceed the max batch size * max enqueued
-  // batch sizes.
+  // single task does not it exceed input batch size limit and the total size
+  // of the tasks in the queue does not exceed the max batch size * max
+  // enqueued batch sizes.
   absl::Status ValidateLowPriorityTaskQueueCapacity(const TaskType& task) const
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -811,6 +922,11 @@ class Queue {
   // The environment to use.
   Env* env_;
 
+  // If true, queue implementation splits warmup inputs from regular inputs,
+  // which will be processed by a separate pool of warmup threads.
+  // Requires: `num_warmup_batch_threads` > 0 in the scheduler's options.
+  bool enable_warmup_queue_ = false;
+
   // The maximum batch size to be executed by `Queue::ProcessBatch`.
   // See the comment of QueueOptions and helper function
   // `GetMaxExecutionBatchSize` for more details on what it means.
@@ -824,6 +940,10 @@ class Queue {
   // schedulable.
   SchedulableBatchCallback schedulable_batch_callback_;
 
+  // A callback invoked to notify the scheduler that a new warmup batch has
+  // become schedulable.
+  SchedulableBatchCallback schedulable_warmup_batch_callback_;
+
   mutable mutex mu_;
 
   // Whether this queue can accept new tasks. This variable is monotonic: it
@@ -831,10 +951,14 @@ class Queue {
   // for the duration of this object's life.
   std::atomic<bool> closed_ TF_GUARDED_BY(mu_){false};
 
+  // The enqueued tasks for warmup inputs.
+  // There should be at most one warmup task in the queue at any given time.
+  TaskQueue<TaskType> warmup_tasks_ TF_GUARDED_BY(mu_);
+
   // The enqueued tasks for low priority inputs.
   // Each element corresponds to a task to be dequeued. These tasks to be
-  // consumed by `Queue<TaskType>::ProcessBatch` to either pad the high priority
-  // batches below or form their own batch to be executed.
+  // consumed by `Queue<TaskType>::ProcessBatch` to either pad the high
+  // priority batches below or form their own batch to be executed.
   TaskQueue<TaskType> low_priority_tasks_ TF_GUARDED_BY(mu_);
 
   // The enqueued batches for high priority input.
@@ -942,6 +1066,10 @@ SharedBatchScheduler<TaskType>::~SharedBatchScheduler() {
   // Delete the batch threads before allowing state the threads may access (e.g.
   // 'mu_') to be deleted.
   batch_threads_.clear();
+  // Warmup threads sleep for a long time, so we need to notify them to
+  // wake up and exit.
+  warmup_scheduler_cv_.notify_all();
+  warmup_threads_.clear();
 }
 
 template <typename TaskType>
@@ -1002,18 +1130,6 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
   }
 
   if (options.enable_priority_aware_batch_scheduler) {
-    if (options.disable_padding) {
-      return absl::InvalidArgumentError(
-          "If enable_priority_aware_batch_scheduler is true, disable_padding "
-          "must be false.");
-    }
-    if (options.batch_padding_policy != kPadUpPolicy) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "If enable_priority_aware_batch_scheduler is true, "
-          "batch_padding_policy "
-          "must be kPadUpPolicy. The batch_padding_policy is %s.",
-          options.batch_padding_policy));
-    }
     if (options.mixed_priority_batching_policy !=
         MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize) {
       return absl::InvalidArgumentError(
@@ -1034,10 +1150,15 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
     mutex_lock l(mu_);
     schedulable_batch_cv_.notify_one();
   };
+  auto schedulable_warmup_batch_callback = [this] {
+    mutex_lock l(mu_);
+    warmup_scheduler_cv_.notify_one();
+  };
   auto internal_queue =
       std::unique_ptr<internal::Queue<TaskType>>(new internal::Queue<TaskType>(
-          options, options_.env, process_batch_callback,
-          schedulable_batch_callback));
+          options, options_.env, options_.num_warmup_batch_threads > 0,
+          process_batch_callback, schedulable_batch_callback,
+          schedulable_warmup_batch_callback));
   auto handle = std::unique_ptr<BatchScheduler<TaskType>>(
       new internal::QueueHandle<TaskType>(this->shared_from_this(),
                                           internal_queue.get()));
@@ -1059,11 +1180,23 @@ SharedBatchScheduler<TaskType>::SharedBatchScheduler(const Options& options)
   PeriodicFunction::Options periodic_fn_options;
   periodic_fn_options.thread_name_prefix =
       strings::StrCat(options.thread_pool_name, "_");
+  periodic_fn_options.startup_delay_micros =
+      options.batch_threads_startup_delay_micros;
+  periodic_fn_options.env = options.env;
   for (int i = 0; i < options.num_batch_threads; ++i) {
     std::unique_ptr<PeriodicFunction> thread(new PeriodicFunction(
         [this] { this->ThreadLogic(); },
         0 /* function invocation interval time */, periodic_fn_options));
     batch_threads_.push_back(std::move(thread));
+  }
+  // Kick off the warmup threads.
+  int num_warmup_batch_threads =
+      std::min(options.num_warmup_batch_threads, port::MaxParallelism());
+  for (int i = 0; i < num_warmup_batch_threads; ++i) {
+    auto thread = std::make_unique<PeriodicFunction>(
+        [this] { this->WarmupThreadLogic(); },
+        0 /* function invocation interval time */, periodic_fn_options);
+    warmup_threads_.push_back(std::move(thread));
   }
 }
 
@@ -1162,22 +1295,61 @@ void SharedBatchScheduler<TaskType>::ThreadLogic() {
       queue_for_batch->GetLowPriorityTasksForPadding(batch_size_to_schedule));
 }
 
+template <typename TaskType>
+void SharedBatchScheduler<TaskType>::WarmupThreadLogic() {
+  BatchTaskUniquePtr batch_to_process = nullptr;
+  internal::Queue<TaskType>* queue_for_batch = nullptr;
+  {
+    mutex_lock l(mu_);
+    while (true) {
+      if (queues_.empty()) return;
+      // Select the first queue with a warmup batch. Fairness between queues is
+      // unimportant for processing warmup batches.
+      for (auto& queue : queues_) {
+        batch_to_process = queue->ScheduleWarmupBatch();
+        if (BatchExists(batch_to_process)) {
+          queue_for_batch = queue.get();
+          break;
+        }
+      }
+      if (queue_for_batch != nullptr) break;
+
+      // No warmup batch found. Wait until a warmup batch is schedulable, or
+      // one second has elapsed, before checking again.
+      const int64_t kTimeoutMillis = 1000;
+      WaitForMilliseconds(&l, &warmup_scheduler_cv_, kTimeoutMillis);
+    }
+  }
+
+  queue_for_batch->ProcessBatch(std::move(batch_to_process),
+                                /*padding_task=*/{});
+}
+
 namespace internal {
 
 template <typename TaskType>
 Queue<TaskType>::Queue(
     const typename SharedBatchScheduler<TaskType>::QueueOptions& options,
-    Env* env, ProcessBatchCallback process_batch_callback,
-    SchedulableBatchCallback schedulable_batch_callback)
+    Env* env, bool enable_warmup_queue,
+    ProcessBatchCallback process_batch_callback,
+    SchedulableBatchCallback schedulable_batch_callback,
+    SchedulableBatchCallback schedulable_warmup_batch_callback)
     : tasks_priority_queue_(
+          options.allowed_batch_sizes, options.batch_padding_policy,
           options.priority_aware_scheduler_options.max_queue_depth,
           options.split_input_task_func, options.enable_large_batch_splitting,
-          GetMaxExecutionBatchSize(options), options.batch_timeout_micros, env),
+          options.priority_aware_scheduler_options.enable_task_resplit,
+          options.priority_aware_scheduler_options
+              .enable_lazy_cancellation_filtering,
+          GetMaxExecutionBatchSize(options), options.batch_timeout_micros,
+          options.disable_padding, options.model_batch_stats, env),
       options_(options),
       env_(env),
+      enable_warmup_queue_(enable_warmup_queue),
       max_execution_batch_size_(GetMaxExecutionBatchSize(options_)),
       process_batch_callback_(process_batch_callback),
-      schedulable_batch_callback_(schedulable_batch_callback) {
+      schedulable_batch_callback_(schedulable_batch_callback),
+      schedulable_warmup_batch_callback_(schedulable_warmup_batch_callback) {
   // Set the higher 32 bits of traceme_context_id_counter_ to be the creation
   // time of the queue. This prevents the batches in different queues to have
   // the same traceme_context_id_counter_.
@@ -1191,6 +1363,17 @@ Queue<TaskType>::~Queue() {
   mutex_lock l(mu_);
   DCHECK(IsEmptyInternal());
   GetBatches().back()->Close();
+}
+
+template <typename TaskType>
+bool Queue<TaskType>::IsWarmupTask(std::unique_ptr<TaskType>* task) {
+  if (!enable_warmup_queue_) {
+    return false;
+  }
+  if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+    return (*task)->is_warmup();
+  }
+  return false;
 }
 
 template <typename TaskType>
@@ -1344,12 +1527,20 @@ absl::Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   });
 
   bool notify_of_schedulable_batch = false;
+  bool notify_of_schedulable_warmup_batch = false;
   {
     mutex_lock l(mu_);
 
     DCHECK(!closed_);
 
-    if (options_.enable_priority_aware_batch_scheduler) {
+    if (IsWarmupTask(task)) {
+      if (!warmup_tasks_.empty()) {
+        return absl::InvalidArgumentError(
+            "Warmup queue only supports one task at a time.");
+      }
+      warmup_tasks_.AddTask(std::move(*task), env_->NowMicros());
+      notify_of_schedulable_warmup_batch = true;
+    } else if (options_.enable_priority_aware_batch_scheduler) {
       if ((*task)->size() > options_.input_batch_size_limit) {
         return absl::InvalidArgumentError(absl::StrFormat(
             "Task size %d is larger than maximum input batch size %d",
@@ -1385,6 +1576,9 @@ absl::Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   if (notify_of_schedulable_batch) {
     schedulable_batch_callback_();
   }
+  if (notify_of_schedulable_warmup_batch) {
+    schedulable_warmup_batch_callback_();
+  }
 
   return absl::OkStatus();
 }
@@ -1394,12 +1588,13 @@ size_t Queue<TaskType>::NumEnqueuedTasks() const {
   size_t num_enqueued_tasks = 0;
   mutex_lock l(mu_);
   if (options_.enable_priority_aware_batch_scheduler) {
-    return tasks_priority_queue_.num_tasks();
+    return tasks_priority_queue_.num_tasks() + warmup_tasks_.num_tasks();
   }
   for (const auto& batch : GetBatches()) {
     num_enqueued_tasks += batch->num_tasks();
   }
-  return num_enqueued_tasks + low_priority_tasks_.num_tasks();
+  return num_enqueued_tasks + low_priority_tasks_.num_tasks() +
+         warmup_tasks_.num_tasks();
 }
 
 template <typename TaskType>
@@ -1691,11 +1886,13 @@ void Queue<TaskType>::CloseAndWaitUntilEmpty() {
 template <typename TaskType>
 bool Queue<TaskType>::IsEmptyInternal() const {
   if (options_.enable_priority_aware_batch_scheduler) {
-    return num_batches_being_processed_ == 0 && tasks_priority_queue_.empty();
+    return num_batches_being_processed_ == 0 && tasks_priority_queue_.empty() &&
+           warmup_tasks_.empty();
   }
   const std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
   return num_batches_being_processed_ == 0 && batches.size() == 1 &&
-         batches.back()->empty() && low_priority_tasks_.empty();
+         batches.back()->empty() && low_priority_tasks_.empty() &&
+         warmup_tasks_.empty();
 }
 
 template <typename TaskType>
@@ -1845,6 +2042,19 @@ std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleLowPriorityBatch() {
   }
   batch_to_schedule->Close();
 
+  return batch_to_schedule;
+}
+
+template <typename TaskType>
+std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleWarmupBatch() {
+  mutex_lock l(mu_);
+  std::unique_ptr<Batch<TaskType>> batch_to_schedule;
+  if (std::unique_ptr<TaskType> task = warmup_tasks_.RemoveTask()) {
+    batch_to_schedule = std::make_unique<Batch<TaskType>>();
+    batch_to_schedule->AddTask(std::move(task), env_->NowMicros());
+    batch_to_schedule->Close();
+    ++num_batches_being_processed_;
+  }
   return batch_to_schedule;
 }
 

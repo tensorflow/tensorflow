@@ -128,6 +128,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla/tsl/platform:criticality",
     ],
@@ -145,6 +146,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla/tsl/platform:criticality",
     ],
@@ -157,8 +159,10 @@ cc_library(
     deps = [
         ":batch_scheduler_hdrs",
         ":batch_stats",
+        "//tensorflow/core:lib",
         "//tensorflow/core:portable_gif_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
     ],
@@ -187,6 +191,7 @@ tf_cc_test(
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -207,7 +212,6 @@ cc_library(
     name = "shared_batch_scheduler_hdrs",
     hdrs = ["shared_batch_scheduler.h"],
     deps = [
-        ":batch_input_task",
         ":batch_scheduler_hdrs",
         ":batch_scheduler_utils",
         ":batch_stats",
@@ -225,6 +229,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@tsl//tsl/platform:errors",
@@ -239,7 +244,6 @@ cc_library(
     name = "shared_batch_scheduler",
     hdrs = ["shared_batch_scheduler.h"],
     deps = [
-        ":batch_input_task",
         ":batch_scheduler",
         ":batch_scheduler_utils",
         ":batch_stats",
@@ -250,6 +254,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@tsl//tsl/profiler/lib:connected_traceme",
@@ -263,25 +268,29 @@ cc_library(
 tf_cc_test(
     name = "shared_batch_scheduler_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["shared_batch_scheduler_test.cc"],
     tags = ["no_windows"],
     deps = [
         ":batch_scheduler",
         ":batch_scheduler_utils",
+        ":batch_stats",
         ":fake_clock_env",
         ":input_split_metadata",
         ":shared_batch_scheduler",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest_main",
+        "@xla//xla/tsl/lib/monitoring:cell_reader",
     ],
 )
 
@@ -546,9 +555,7 @@ tf_cc_test(
         "@xla//xla/tsl/lib/monitoring:test_utils",
         "@xla//xla/tsl/platform:criticality",
         "@xla//xla/tsl/platform:statusor",
-    ] + if_google([
-        "//base:context",
-    ]),
+    ],
 )
 
 tf_cc_test(

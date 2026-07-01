@@ -329,9 +329,6 @@ ENTRY %CombineCollectivePermutes () -> (f32[256], f32[512], f32[2560], f32[1792]
   ROOT %tuple = (f32[256]{0}, f32[512]{0}, f32[2560]{0}, f32[1792]{0}, f32[1536]{0}) tuple(f32[256]{0} %collective-permute, f32[512]{0} %collective-permute.1, f32[2560]{0} %collective-permute.2, f32[1792]{0} %collective-permute.3, f32[1536]{0} %collective-permute.4)
 })";
   HloModuleConfig config = GetModuleConfigForTest();
-  auto opts = GetDebugOptionsForTest();
-  opts.set_xla_ignore_channel_id(true);
-  config.set_debug_options(opts);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
 
@@ -342,6 +339,241 @@ ENTRY %CombineCollectivePermutes () -> (f32[256], f32[512], f32[2560], f32[1792]
   // Expect one combined collective permute op since channel_id is ignored
   EXPECT_EQ(CollectivePermuteCount(*module), 1);
   EXPECT_TRUE(changed);
+}
+
+// Tests that independent collective permutes separated by interleaved
+// dependency chains are combined. Two chains: cp_A→cp_B and cp_C→cp_D.
+// Topological order: A, B, C, D. With the fix (continue instead of break),
+// A and C get combined, B and D get combined → 2 ops.
+// Without the fix (break), A becomes a singleton, B+C get combined, D becomes
+// a singleton → 3 ops.
+TEST_F(CollectivePermuteCombinerTest,
+       CombineAcrossInterleavedDependencyChains) {
+  auto module = CreateNewVerifiedModule();
+
+  HloComputation::Builder b(TestName());
+  const std::vector<std::pair<int64_t, int64_t>> source_target_pairs{{0, 1}};
+  Shape shape = ShapeUtil::MakeShape(F32, {256});
+
+  // Chain 1: constant1 → broadcast1 → cp_A → cp_B
+  auto constant1 = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1.0)));
+  auto input_a =
+      b.AddInstruction(HloInstruction::CreateBroadcast(shape, constant1, {}));
+  auto cp_a = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, input_a, source_target_pairs, /*channel_id=*/std::nullopt));
+  auto cp_b = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, cp_a, source_target_pairs, /*channel_id=*/std::nullopt));
+
+  // Chain 2: constant3 → broadcast3 → cp_C → cp_D
+  auto constant3 = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(3.0)));
+  auto input_c =
+      b.AddInstruction(HloInstruction::CreateBroadcast(shape, constant3, {}));
+  auto cp_c = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, input_c, source_target_pairs, /*channel_id=*/std::nullopt));
+  auto cp_d = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, cp_c, source_target_pairs, /*channel_id=*/std::nullopt));
+
+  b.AddInstruction(HloInstruction::CreateTuple({cp_a, cp_b, cp_c, cp_d}));
+  module->AddEntryComputation(b.Build());
+
+  ASSERT_EQ(CollectivePermuteCount(*module), 4);
+
+  // With the fix (continue instead of break), A and C get combined, B and D get
+  // combined → 2 ops.
+  // Without the fix (break), A becomes a singleton, B+C get combined, D becomes
+  // a singleton → 3 ops.
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_enable_enzyme_comms_opt(true);
+
+  CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(CollectivePermuteCount(*module), 2);
+}
+
+TEST_F(CollectivePermuteCombinerTest,
+       CombineAcrossInterleavedDependencyChainsDefault) {
+  auto module = CreateNewVerifiedModule();
+
+  HloComputation::Builder b(TestName());
+  const std::vector<std::pair<int64_t, int64_t>> source_target_pairs{{0, 1}};
+  Shape shape = ShapeUtil::MakeShape(F32, {256});
+
+  // Chain 1: constant1 → broadcast1 → cp_A → cp_B
+  auto constant1 = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1.0)));
+  auto input_a =
+      b.AddInstruction(HloInstruction::CreateBroadcast(shape, constant1, {}));
+  auto cp_a = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, input_a, source_target_pairs, /*channel_id=*/std::nullopt));
+  auto cp_b = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, cp_a, source_target_pairs, /*channel_id=*/std::nullopt));
+
+  // Chain 2: constant3 → broadcast3 → cp_C → cp_D
+  auto constant3 = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(3.0)));
+  auto input_c =
+      b.AddInstruction(HloInstruction::CreateBroadcast(shape, constant3, {}));
+  auto cp_c = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, input_c, source_target_pairs, /*channel_id=*/std::nullopt));
+  auto cp_d = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, cp_c, source_target_pairs, /*channel_id=*/std::nullopt));
+
+  b.AddInstruction(HloInstruction::CreateTuple({cp_a, cp_b, cp_c, cp_d}));
+  module->AddEntryComputation(b.Build());
+
+  ASSERT_EQ(CollectivePermuteCount(*module), 4);
+
+  // Default behavior is break, so it should result in 3 ops.
+  CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(CollectivePermuteCount(*module), 3);
+}
+
+TEST_F(CollectivePermuteCombinerTest, DeduplicateCombinedOperandsEnabled) {
+  const char* const hlo_string = R"(
+HloModule Deduplicate, entry_computation_layout={()->(f32[256]{0}, f32[256]{0}, f32[256]{0})}
+
+ENTRY %Deduplicate () -> (f32[256], f32[256], f32[256]) {
+  %constant = f32[256]{0} constant({...})
+  %op1 = f32[256]{0} copy(%constant)
+  %op2 = f32[256]{0} copy(%constant)
+  %cp1 = f32[256]{0} collective-permute(%op1), source_target_pairs={{0,1}}, channel_id=1
+  %cp2 = f32[256]{0} collective-permute(%op2), source_target_pairs={{0,1}}, channel_id=1
+  %cp3 = f32[256]{0} collective-permute(%op1), source_target_pairs={{0,1}}, channel_id=1
+  ROOT %tuple = (f32[256], f32[256], f32[256]) tuple(%cp1, %cp2, %cp3)
+})";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(CollectivePermuteCount(*module), 1);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* combined = root->operand(0)->operand(0);
+  ASSERT_EQ(combined->opcode(), HloOpcode::kCollectivePermute);
+  // Identical operands %op1 are deduplicated, so we have %op1 and %op2.
+  EXPECT_EQ(combined->operand_count(), 2);
+
+  // %cp1 -> GTE(0), %cp2 -> GTE(1), %cp3 -> GTE(0)
+  EXPECT_EQ(root->operand(0)->tuple_index(), 0);
+  EXPECT_EQ(root->operand(1)->tuple_index(), 1);
+  EXPECT_EQ(root->operand(2)->tuple_index(), 0);
+}
+
+TEST_F(CollectivePermuteCombinerTest, DeduplicateCombinedOperandsDisabled) {
+  const char* const hlo_string = R"(
+HloModule Deduplicate, entry_computation_layout={()->(f32[256]{0}, f32[256]{0}, f32[256]{0})}
+
+ENTRY %Deduplicate () -> (f32[256], f32[256], f32[256]) {
+  %constant = f32[256]{0} constant({...})
+  %op1 = f32[256]{0} copy(%constant)
+  %op2 = f32[256]{0} copy(%constant)
+  %cp1 = f32[256]{0} collective-permute(%op1), source_target_pairs={{0,1}}, channel_id=1
+  %cp2 = f32[256]{0} collective-permute(%op2), source_target_pairs={{0,1}}, channel_id=1
+  %cp3 = f32[256]{0} collective-permute(%op1), source_target_pairs={{0,1}}, channel_id=1
+  ROOT %tuple = (f32[256], f32[256], f32[256]) tuple(%cp1, %cp2, %cp3)
+})";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(false);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(CollectivePermuteCount(*module), 1);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* combined = root->operand(0)->operand(0);
+  ASSERT_EQ(combined->opcode(), HloOpcode::kCollectivePermute);
+  // No deduplication.
+  EXPECT_EQ(combined->operand_count(), 3);
+
+  EXPECT_EQ(root->operand(0)->tuple_index(), 0);
+  EXPECT_EQ(root->operand(1)->tuple_index(), 1);
+  EXPECT_EQ(root->operand(2)->tuple_index(), 2);
+}
+
+TEST_F(CollectivePermuteCombinerTest, DeduplicateToOneOperandEnabled) {
+  const char* const hlo_string = R"(
+HloModule Deduplicate, entry_computation_layout={()->(f32[256]{0}, f32[256]{0})}
+
+ENTRY %Deduplicate () -> (f32[256], f32[256]) {
+  %constant = f32[256]{0} constant({...})
+  %op1 = f32[256]{0} copy(%constant)
+  %cp1 = f32[256]{0} collective-permute(%op1), source_target_pairs={{0,1}}, channel_id=1
+  %cp2 = f32[256]{0} collective-permute(%op1), source_target_pairs={{0,1}}, channel_id=1
+  ROOT %tuple = (f32[256], f32[256]) tuple(%cp1, %cp2)
+})";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(CollectivePermuteCount(*module), 1);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  // Both %cp1 and %cp2 should be replaced by the same non-tuple %combined.
+  const HloInstruction* combined = root->operand(0);
+  EXPECT_EQ(combined, root->operand(1));
+  ASSERT_EQ(combined->opcode(), HloOpcode::kCollectivePermute);
+  EXPECT_EQ(combined->operand_count(), 1);
+  EXPECT_TRUE(combined->shape().IsArray());
+}
+
+TEST_F(CollectivePermuteCombinerTest,
+       PreservesFrontendAttributesAndMergedMetadata) {
+  const char* const hlo_string = R"(
+HloModule CombineCollectivePermutes
+
+ENTRY %CombineCollectivePermutes () -> (f32[256], f32[512]) {
+  %constant = f64[] constant(42.3)
+  %broadcast = f32[256]{0} broadcast(f64[] %constant), dimensions={}
+  %collective-permute = f32[256]{0} collective-permute(f32[256]{0} %broadcast), source_target_pairs={{0,1},{1,0}}, channel_id=1, frontend_attributes={RESOURCE_TYPE="2",_scheduling_group="ring_attn_fwd_0"}, metadata={op_type="cp" op_name="model/ring/cp_0"}
+
+  %constant.1 = f64[] constant(42.3)
+  %broadcast.1 = f32[512]{0} broadcast(f64[] %constant.1), dimensions={}
+  %collective-permute.1 = f32[512]{0} collective-permute(f32[512]{0} %broadcast.1), source_target_pairs={{0,1},{1,0}}, channel_id=1, frontend_attributes={RESOURCE_TYPE="2",_scheduling_group="ring_attn_fwd_0"}, metadata={op_type="cp" op_name="model/ring/cp_1"}
+
+  ROOT %tuple = (f32[256]{0}, f32[512]{0}) tuple(%collective-permute, %collective-permute.1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
+  ASSERT_EQ(CollectivePermuteCount(*module), 2);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_TRUE(changed);
+  ASSERT_EQ(CollectivePermuteCount(*module), 1);
+
+  const HloInstruction* combined =
+      FindInstruction(module.get(), HloOpcode::kCollectivePermute);
+  ASSERT_NE(combined, nullptr);
+
+  // Frontend attributes: shared keys with same values preserved.
+  ASSERT_TRUE(combined->has_frontend_attributes());
+  const auto& attrs = combined->frontend_attributes().map();
+  EXPECT_EQ(attrs.at("RESOURCE_TYPE"), "2");
+  EXPECT_EQ(attrs.at("_scheduling_group"), "ring_attn_fwd_0");
+
+  // Metadata: common prefix "model/ring/" extracted, suffixes joined.
+  const OpMetadata& md = combined->metadata();
+  EXPECT_EQ(md.op_type(), "cp");
+  EXPECT_EQ(md.op_name(), "model/ring/(cp_0:cp_1)");
 }
 
 }  // namespace

@@ -4,30 +4,30 @@ tf_class {
   is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_base.TPUEmbeddingBase\'>"
   is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "DEFAULT_MAX_IDS_PER_TABLE"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member {
     name: "DEFAULT_MAX_UNIQUE_IDS_PER_TABLE"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member {
     name: "embedding_layouts"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "embedding_table_shards"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "embedding_tables"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "variables"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

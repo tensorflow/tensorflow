@@ -55,9 +55,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class DynamicSliceTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+class DynamicSliceTest : public ClientLibraryTestRunnerMixin<
+                             HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  protected:
   template <typename IndexT, typename DataT>
   void TestR1() {
@@ -322,7 +321,7 @@ TEST_F(DynamicSliceTest, Int32R3Pred) {
 
 class DynamicUpdateSliceTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+          HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  protected:
   template <typename IndexT, typename DataT>
   void TestR0() {
@@ -754,7 +753,7 @@ TEST_F(DynamicUpdateSliceTest, R3ContiguousLargerBF16) {
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/7, /*size=*/1);
 }
 
-using DynamicOpsTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using DynamicOpsTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 // This test that buffer assignment does not alias constants with the output of
 // dynamic update slice.

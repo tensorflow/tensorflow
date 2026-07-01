@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -100,6 +101,7 @@ std::string NonRoundtripTestDataToString(
 //  - we parse it to an HloModule successfully, and
 //  - the stringification of the resulting HloModule is equal to our original
 //    string.
+[[clang::optnone]]
 std::vector<TestData> CreateTestCases() {
   // clang-format off
   return std::vector<TestData>({
@@ -1650,8 +1652,7 @@ R"(HloModule m, entry_computation_layout={()->pred[]}
 
 FileNames
 1 "<embedded module>"
-2 "experimental/module.py"
-3 "yet/another/test.py"
+2 "yet/another/test.py"
 
 FunctionNames
 1 "main"
@@ -1659,8 +1660,7 @@ FunctionNames
 
 FileLocations
 1 {file_name_id=1 function_name_id=1 line=153 end_line=153 column=2 end_column=31}
-2 {file_name_id=3 function_name_id=2 line=35 end_line=35 column=2 end_column=24}
-3 {file_name_id=2 function_name_id=2 line=83 end_line=83 column=2 end_column=15}
+2 {file_name_id=2 function_name_id=2 line=35 end_line=35 column=2 end_column=24}
 
 StackFrames
 1 {file_location_id=1 parent_frame_id=1}
@@ -1668,7 +1668,7 @@ StackFrames
 
 
 ENTRY %constant_pred () -> pred[] {
-  ROOT %constant = pred[] constant(true), metadata={op_type="const" op_name="opname" stack_frame_id=1}
+  ROOT %constant = pred[] constant(true), metadata={op_type="const" op_name="opname" stack_frame_id=2}
 }
 
 )"
@@ -1677,6 +1677,7 @@ ENTRY %constant_pred () -> pred[] {
   // clang-format on
 }
 
+[[clang::optnone]]
 std::vector<TestData> CreateShortTestCases() {
   // clang-format off
   return std::vector<TestData>({
@@ -1916,7 +1917,18 @@ R"(HloModule topk, entry_computation_layout={(f32[10,10]{0,1})->(f32[10,2]{0,1},
 
 ENTRY TopK {
   x = f32[10,10]{0,1} parameter(0)
-  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, largest=true
+  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, largest=true, is_stable=true
+}
+
+)"
+},
+{
+"TopKUnstable",
+R"(HloModule topk, entry_computation_layout={(f32[8,1024]{0,1})->(f32[8,24]{0,1}, s32[8,24]{0,1})}
+
+ENTRY TopK {
+  x = f32[8,1024]{0,1} parameter(0)
+  ROOT topk = (f32[8,24]{0,1}, s32[8,24]{0,1}) topk(x), k=24, largest=true, is_stable=false
 }
 
 )"
@@ -2126,6 +2138,25 @@ ENTRY AllReduceWithSubgroupsIotaList {
 
 )",
 /*replica_count=*/20,
+},
+// all-reduce with subgroups in mesh axes replica group list format
+{
+"AllReduceWithMeshAxesReplicaGroupList",
+R"(HloModule CRS_Subgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=4
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY AllReduceWithMeshAxesReplicaGroupList {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups=mesh['axis_0'=2,'axis_1'=2] {'axis_1'}, to_apply=add
+}
+
+)",
+/*replica_count=*/4,
 },
 // all-reduce with constrained layout
 {
@@ -2720,6 +2751,7 @@ ENTRY Scan {
   // clang-format on
 }
 
+[[clang::optnone]]
 std::vector<NonRoundtripTestData> CreateNonRoundtripTestCases() {
   // clang-format off
 return std::vector<NonRoundtripTestData>({
@@ -2812,6 +2844,120 @@ ENTRY test {
   ROOT root = f32[10,10]{1,0} sqrt(broadcast.anon)
 })"
 },
+
+{
+"CompactGte",
+R"(HloModule test
+
+ENTRY test {
+  p0 = (f32[10], f16[10]) parameter(0)
+  ROOT root = f32[10] add(f32[10] %p0#0, f32[10] %p0#0)
+})",
+R"(HloModule test, entry_computation_layout={((f32[10]{0}, f16[10]{0}))->f32[10]{0}}
+
+ENTRY test {
+  p0 = (f32[10]{0}, f16[10]{0}) parameter(0)
+  p0_0 = f32[10]{0} get-tuple-element(p0), index=0
+  ROOT root = f32[10]{0} add(p0_0, p0_0)
+})"
+},
+
+{
+"NestedCompactGte",
+R"(HloModule test
+
+ENTRY test {
+  p0 = (f32[10], (f32[20], f32[30])) parameter(0)
+  ROOT root = f32[20] add(f32[20] %p0#1#0, f32[20] %p0#1#0)
+})",
+R"(HloModule test, entry_computation_layout={((f32[10]{0}, (f32[20]{0}, f32[30]{0})))->f32[20]{0}}
+
+ENTRY test {
+  p0 = (f32[10]{0}, (f32[20]{0}, f32[30]{0})) parameter(0)
+  p0_1 = (f32[20]{0}, f32[30]{0}) get-tuple-element(p0), index=1
+  p0_1_0 = f32[20]{0} get-tuple-element(p0_1), index=0
+  ROOT root = f32[20]{0} add(p0_1_0, p0_1_0)
+})"
+},
+
+{
+"CompactGteMultipleUses",
+R"(HloModule test
+
+ENTRY test {
+  p0 = (f32[10], f16[10]) parameter(0)
+  gte_use1 = f32[10] negate(f32[10] %p0#0)
+  gte_use2 = f32[10] log(f32[10] %p0#0)
+  ROOT root = f32[10] add(gte_use1, gte_use2)
+})",
+R"(HloModule test, entry_computation_layout={((f32[10]{0}, f16[10]{0}))->f32[10]{0}}
+
+ENTRY test {
+  p0 = (f32[10]{0}, f16[10]{0}) parameter(0)
+  p0_0 = f32[10]{0} get-tuple-element(p0), index=0
+  gte_use1 = f32[10]{0} negate(p0_0)
+  gte_use2 = f32[10]{0} log(p0_0)
+  ROOT root = f32[10]{0} add(gte_use1, gte_use2)
+})"
+},
+
+{
+"CompactGteNameCollision",
+R"(HloModule test
+
+ENTRY test {
+  p0 = (f32[10], f16[10]) parameter(0)
+  p0_0 = f32[10] parameter(1)
+  ROOT root = f32[10] add(f32[10] %p0#0, f32[10] %p0_0)
+})",
+R"(HloModule test, entry_computation_layout={((f32[10]{0}, f16[10]{0}), f32[10]{0})->f32[10]{0}}
+
+ENTRY test {
+  p0 = (f32[10]{0}, f16[10]{0}) parameter(0)
+  p0_0.1 = f32[10]{0} get-tuple-element(p0), index=0
+  p0_0 = f32[10]{0} parameter(1)
+  ROOT root = f32[10]{0} add(p0_0.1, p0_0)
+})"
+},
+
+{
+"CompactGteMixedNesting",
+R"(HloModule test
+
+ENTRY test {
+  p0 = (f32[10], (f32[20], f32[30])) parameter(0)
+  ROOT root = ((f32[20], f32[30]), f32[20]) tuple((f32[20], f32[30]) %p0#1, f32[20] %p0#1#0)
+})",
+R"(HloModule test, entry_computation_layout={((f32[10]{0}, (f32[20]{0}, f32[30]{0})))->((f32[20]{0}, f32[30]{0}), f32[20]{0})}
+
+ENTRY test {
+  p0 = (f32[10]{0}, (f32[20]{0}, f32[30]{0})) parameter(0)
+  p0_1 = (f32[20]{0}, f32[30]{0}) get-tuple-element(p0), index=1
+  p0_1_0 = f32[20]{0} get-tuple-element(p0_1), index=0
+  ROOT root = ((f32[20]{0}, f32[30]{0}), f32[20]{0}) tuple(p0_1, p0_1_0)
+})"
+},
+
+{
+"CompactGteOnTuple",
+R"(HloModule test
+
+ENTRY test {
+  p0 = f32[10] parameter(0)
+  p1 = f16[10] parameter(1)
+  t = (f32[10], f16[10]) tuple(p0, p1)
+  ROOT root = f32[10] negate(f32[10] %t#0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10]{0}, f16[10]{0})->f32[10]{0}}
+
+ENTRY test {
+  p0 = f32[10]{0} parameter(0)
+  p1 = f16[10]{0} parameter(1)
+  t = (f32[10]{0}, f16[10]{0}) tuple(p0, p1)
+  t_0 = f32[10]{0} get-tuple-element(t), index=0
+  ROOT root = f32[10]{0} negate(t_0)
+})"
+},
 });
   // clang-format on
 }
@@ -2824,7 +2970,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnVerifiedModule(
       /*verifier_layout_sensitive=*/false,
       /*allow_mixed_precision_in_hlo_verifier=*/true,
       ShapeUtil::ByteSizeOfElements);
-  TF_RETURN_IF_ERROR(verified_module->ParseHloStringAndVerifyModule(hlo_text));
+  RETURN_IF_ERROR(verified_module->ParseHloStringAndVerifyModule(hlo_text));
   return verified_module;
 }
 
@@ -3039,6 +3185,115 @@ ENTRY %blabla (x: f32[]) -> pred[] {
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(absl::OkStatus(), result.status());
+}
+
+TEST_F(HloParserTest, CompactGteNonTuple) {
+  const std::string original = R"(HloModule test
+ENTRY test {
+  p0 = f32[10] parameter(0)
+  ROOT root = f32[10] add(f32[10] %p0#0, f32[10] %p0#0)
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("GTE operand must be tuple"));
+}
+
+TEST_F(HloParserTest, CompactGteIndexOutOfBounds) {
+  const std::string original = R"(HloModule test
+ENTRY test {
+  p0 = (f32[10], f16[10]) parameter(0)
+  ROOT root = f32[10] add(f32[10] %p0#2, f32[10] %p0#2)
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("GTE index 2 out of bounds"));
+}
+
+TEST_F(HloParserTest, CompactGteInvalidIndex) {
+  const std::string original = R"(HloModule test
+ENTRY test {
+  p0 = (f32[10], f16[10]) parameter(0)
+  ROOT root = f32[10] add(f32[10] %p0#a, f32[10] %p0#a)
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), HasSubstr("expects integer"));
+}
+
+TEST_F(HloParserTest, CompactGteNegativeIndex) {
+  const std::string original = R"(HloModule test
+ENTRY test {
+  p0 = (f32[10], f16[10]) parameter(0)
+  ROOT root = f32[10] add(f32[10] %p0#-1, f32[10] %p0#-1)
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("GTE index -1 out of bounds"));
+}
+
+TEST_F(HloParserTest, CompactGteRoundTrip) {
+  const std::string original =
+      R"(HloModule test, entry_computation_layout={((f32[10]{0}, f16[10]{0}))->f32[10]{0}}
+
+ENTRY %test {
+  %p0 = (f32[10]{0}, f16[10]{0}) parameter(0)
+  ROOT %root = f32[10]{0} add(f32[10]{0} %p0#0, f32[10]{0} %p0#0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(original));
+  HloPrintOptions options = HloPrintOptions::ShortParsable();
+  options.set_compact_gte(true);
+  options.set_print_operand_shape(true);
+  options.set_print_percent(true);
+
+  std::string printed = module->ToString(options);
+  EXPECT_EQ(absl::StripAsciiWhitespace(original),
+            absl::StripAsciiWhitespace(printed));
+}
+
+TEST_F(HloParserTest, CompactGteMixedNestingRoundTrip) {
+  const std::string original =
+      R"(HloModule test, entry_computation_layout={((f32[10]{0}, (f32[20]{0}, f32[30]{0})))->((f32[20]{0}, f32[30]{0}), f32[20]{0})}
+
+ENTRY %test {
+  %p0 = (f32[10]{0}, (f32[20]{0}, f32[30]{0})) parameter(0)
+  ROOT %root = ((f32[20]{0}, f32[30]{0}), f32[20]{0}) tuple((f32[20]{0}, f32[30]{0}) %p0#1, f32[20]{0} %p0#1#0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(original));
+  HloPrintOptions options = HloPrintOptions::ShortParsable();
+  options.set_compact_gte(true);
+  options.set_print_operand_shape(true);
+  options.set_print_percent(true);
+
+  std::string printed = module->ToString(options);
+  EXPECT_EQ(absl::StripAsciiWhitespace(original),
+            absl::StripAsciiWhitespace(printed));
+}
+
+TEST_F(HloParserTest, CompactGteOnTupleRoundTrip) {
+  const std::string original =
+      R"(HloModule test, entry_computation_layout={(f32[10]{0}, f16[10]{0})->f32[10]{0}}
+
+ENTRY %test {
+  %p0 = f32[10]{0} parameter(0)
+  %p1 = f16[10]{0} parameter(1)
+  %t = (f32[10]{0}, f16[10]{0}) tuple(f32[10]{0} %p0, f16[10]{0} %p1)
+  ROOT %root = f32[10]{0} negate(f32[10]{0} %t#0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(original));
+  HloPrintOptions options = HloPrintOptions::ShortParsable();
+  options.set_compact_gte(true);
+  options.set_print_operand_shape(true);
+  options.set_print_percent(true);
+
+  std::string printed = module->ToString(options);
+  EXPECT_EQ(absl::StripAsciiWhitespace(original),
+            absl::StripAsciiWhitespace(printed));
 }
 
 TEST_F(HloParserTest, MoreConstants) {
@@ -4099,64 +4354,79 @@ TEST_F(HloParserTest, ParseShardingSubGroup) {
 }
 
 TEST_F(HloParserTest, ParseNamedSharding1) {
-  const std::string original = "{mesh[a=2,b=4,c=3,d=8], [{a}, {b}]}";
+  const std::string original =
+      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'a'}, {'b'}]}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedSharding2) {
-  const std::string original = "{mesh[a=2,b=4,c=3,d=8], [{a}, {c, b}]}";
+  const std::string original =
+      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'a'}, {'c', 'b'}]}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingOpenDims) {
-  const std::string original = "{mesh[a=2,b=4,c=3,d=8], [{b, a}, {c, d, ?}]}";
+  const std::string original =
+      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'b', 'a'}, {'c', 'd', "
+      "?}]}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingSubAxes1) {
-  const std::string original = "{mesh[a=2,b=4,c=3,d=8], [{a}, {b:(2)2}]}";
+  const std::string original =
+      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'a'}, {'b':(2)2}]}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingSubAxes2) {
   const std::string original =
-      "{mesh[a=2,b=4,c=3,d=8], [{b:(2)2}, {d:(4)2, c}]}";
+      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'b':(2)2}, {'d':(4)2, "
+      "'c'}]}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingSubAxesOpenDims) {
   const std::string original =
-      "{mesh[a=2,b=4,c=3,d=8], [{b:(2)2}, {d:(4)2, c, ?}]}";
+      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'b':(2)2}, {'d':(4)2, "
+      "'c', ?}]}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingNonIotaMesh) {
   const std::string original =
-      "{mesh[a=2,b=4,c=4,d=2], device_ids=([4,16]T(1,0)), [{a}]}";
+      "{mesh['a'=2,'b'=4,'c'=4,'d'=2], device_ids=([4,16]T(1,0)), "
+      "[{'a'}]}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingNonIotaMeshDeviceList) {
-  const std::string original = "{mesh[x=2,y=2], device_ids=(0,2,1,3), [{x}]}";
+  const std::string original =
+      "{mesh['x'=2,'y'=2], device_ids=(0,2,1,3), [{'x'}]}";
+  ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
+}
+
+TEST_F(HloParserTest, ParseNamedShardingEmptyMeshReplicated) {
+  const std::string original = "{mesh[], replicated}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingFullyReplicated) {
-  const std::string original = "{mesh[a=2,b=4], replicated}";
+  const std::string original = "{mesh['a'=2,'b'=4], replicated}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingReplicatedAxes) {
-  const std::string original = "{mesh[a=2,b=4], [{a}], replicated={b}}";
+  const std::string original = "{mesh['a'=2,'b'=4], [{'a'}], replicated={'b'}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
@@ -4167,52 +4437,64 @@ TEST_F(HloParserTest, ParseNamedShardingMaximal) {
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
+TEST_F(HloParserTest, ParseNamedShardingWithSpecialCharacters) {
+  const std::string original =
+      "{mesh['a.b'=2,'<axis> def'=4,'z/w'=2], [{'a.b'}, {'<axis> def':(2)2, "
+      "'z/w'}]}";
+  ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
+}
+
 TEST_F(HloParserTest, ParseNamedShardingFullyUnreduced) {
-  const std::string original = "{mesh[a=2,b=4], unreduced}";
+  const std::string original = "{mesh['a'=2,'b'=4], unreduced}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingUnreducedAxes) {
   const std::string original =
-      "{mesh[a=2,b=4,c=3,d=8], [{}, {b}], unreduced={d:(4)2}}";
+      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{}, {'b'}], "
+      "unreduced={'d':(4)2}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingFullyManual) {
-  const std::string original = "{mesh[a=2,b=4], manual}";
+  const std::string original = "{mesh['a'=2,'b'=4], manual}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingManualAxes) {
   const std::string original =
-      "{mesh[a=2,b=4,c=3,d=8], [{a}], manual={d:(4)2}}";
+      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'a'}], manual={'d':(4)2}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingAllFieldsWithMetadata) {
   const std::string original =
-      "{mesh[a=2,b=4,c=3,d=8], [{a}], replicated={c}, unreduced={d:(4)2}, "
-      "manual={b:(2)2}, metadata={{op_name=\"foo\"}, {op_name=\"bar\"}}}";
+      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'a'}], replicated={'c'}, "
+      "unreduced={'d':(4)2}, "
+      "manual={'b':(2)2}, metadata={{op_name=\"foo\"}, {op_name=\"bar\"}}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingFullyReplicatedWithMetadata) {
   const std::string original =
-      "{mesh[a=2,b=4], replicated, metadata={{op_name=\"foo\"}}}";
+      "{mesh['a'=2,'b'=4], replicated, metadata={{op_name=\"foo\"}}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingTuple) {
   const std::string original =
-      "{{mesh[a=2,b=4,c=3,d=8], [{d, c}, {a, b}]}, {mesh[a=2,b=4,c=3,d=8], "
-      "replicated}, {mesh[a=2,b=4,c=3,d=8], [{d:(2)2, b}, {a, ?}], "
-      "unreduced={c}}, {mesh[a=2,b=4,c=3,d=8], [{d, c}, {a, b}], "
+      "{{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'d', 'c'}, {'a', 'b'}]}, "
+      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], replicated}, "
+      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], "
+      "[{'d':(2)2, 'b'}, {'a', ?}], unreduced={'c'}}, "
+      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'d', 'c'}, {'a', 'b'}], "
       "metadata={{op_name=\"foo\"}, {op_name=\"bar\"}}}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
@@ -4220,7 +4502,7 @@ TEST_F(HloParserTest, ParseNamedShardingTuple) {
 
 TEST_F(HloParserTest, ParseMixedShardingTuple1) {
   const std::string original =
-      "{{replicated}, {mesh[a=2,b=4], replicated}, {maximal device=5}, "
+      "{{replicated}, {mesh['a'=2,'b'=4], replicated}, {maximal device=5}, "
       "{maximal_mesh[device_id=5]}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
 
@@ -4232,14 +4514,14 @@ TEST_F(HloParserTest, ParseMixedShardingTuple1) {
   EXPECT_TRUE(sharding.tuple_elements()[1].UseNamedShardingLeaf());
   EXPECT_TRUE(sharding.tuple_elements()[1].IsReplicatedLeaf());
   EXPECT_FALSE(sharding.tuple_elements()[2].UseNamedShardingLeaf());
-  EXPECT_TRUE(sharding.tuple_elements()[2].IsTileMaximalLeaf());
+  EXPECT_TRUE(sharding.tuple_elements()[2].IsSingleDeviceLeaf());
   EXPECT_TRUE(sharding.tuple_elements()[3].UseNamedShardingLeaf());
-  EXPECT_TRUE(sharding.tuple_elements()[3].IsTileMaximalLeaf());
+  EXPECT_TRUE(sharding.tuple_elements()[3].IsSingleDeviceLeaf());
 }
 
 TEST_F(HloParserTest, ParseMixedShardingTuple2) {
   const std::string original =
-      "{{mesh[a=2,b=2], [{a}, {}]}, {devices=[2,2]<=[4] "
+      "{{mesh['a'=2,'b'=2], [{'a'}, {}]}, {devices=[2,2]<=[4] "
       "last_tile_dim_replicate}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
 
@@ -4359,6 +4641,60 @@ TEST_F(HloParserTest, ParseReplicaGroups) {
   ASSERT_OK_AND_ASSIGN(std::vector<ReplicaGroup> replica_groups,
                        ParseReplicaGroupsOnly(original));
   EXPECT_EQ(original, ReplicaGroupsToString(replica_groups));
+}
+
+TEST_F(HloParserTest, ParseReplicaGroupsV3) {
+  const std::string original = "mesh['axis_0'=2,'axis_1'=2] {'axis_1'}";
+  ASSERT_OK_AND_ASSIGN(std::vector<ReplicaGroup> replica_groups,
+                       ParseReplicaGroupsOnly(original));
+  // ParseReplicaGroupsOnly of mesh axes ['axis_0'=2, 'axis_1'=2] with axes
+  // {'axis_1'} results in V1 replica groups {{0,1}, {2,3}}.
+  EXPECT_EQ("{{0,1},{2,3}}", ReplicaGroupsToString(replica_groups));
+}
+
+TEST_F(HloParserTest, ParseReplicaGroupsMaximalMeshError) {
+  const std::string original = "maximal_mesh[device_id=1] {}";
+  auto status = ParseReplicaGroupsOnly(original).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("must have more than one device per group"));
+}
+
+TEST_F(HloParserTest, ParseDynamicReshapeMissingOperands) {
+  const std::string original = R"(
+HloModule test_module
+ENTRY %test_entry () -> f32[10,20] {
+  ROOT %dynamic-reshape = f32[10,20]{1,0} dynamic-reshape()
+}
+)";
+  auto status = ParseAndReturnVerifiedModule(original).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("DynamicReshape requires at least one operand."));
+}
+
+TEST_F(HloParserTest, ParseCollectiveDeviceListV1) {
+  const std::string original = "{{0,1},{2,3}}";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveDeviceListBase> device_list,
+                       ParseCollectiveDeviceListBase(original));
+  EXPECT_EQ(CollectiveDeviceListVersion::kListOfLists, device_list->version());
+  EXPECT_EQ(original, device_list->ToString());
+}
+
+TEST_F(HloParserTest, ParseCollectiveDeviceListV2) {
+  const std::string original = "[2,2]<=[4]";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveDeviceListBase> device_list,
+                       ParseCollectiveDeviceListBase(original));
+  EXPECT_EQ(CollectiveDeviceListVersion::kIota, device_list->version());
+  EXPECT_EQ(original, device_list->ToString());
+}
+
+TEST_F(HloParserTest, ParseCollectiveDeviceListV3) {
+  const std::string original = "mesh['axis_0'=2,'axis_1'=2] {'axis_1'}";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveDeviceListBase> device_list,
+                       ParseCollectiveDeviceListBase(original));
+  EXPECT_EQ(CollectiveDeviceListVersion::kMeshAxes, device_list->version());
+  EXPECT_EQ(original, device_list->ToString());
 }
 
 TEST_F(HloParserTest, ParsePaddingConfigNoInteriorPadding) {
@@ -4611,14 +4947,13 @@ TEST(HloParserSingleOpTest, ConvolutionTrivialFeatureGroupCount) {
 
 TEST(HloParserSingleOpTest, ConvolutionWithKind) {
   const std::string text =
-      R"(%convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, conv_kind=fprop)";
+      R"(%convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, convolution_kind=fprop)";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(text));
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   auto* convolution =
       Cast<HloConvolutionInstruction>(computation->root_instruction());
-  EXPECT_EQ(convolution->conv_kind(),
-            HloConvolutionInstruction::ConvKind::FPROP);
+  EXPECT_EQ(convolution->convolution_kind(), CONVOLUTION_KIND_FPROP);
 }
 
 TEST(HloParserSingleOpTest, MultipleOpsProducesError) {
@@ -5667,8 +6002,9 @@ ENTRY AsyncStartAndAsyncDone {
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
       absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
-                             HasSubstr("AsyncUpdate and AsyncDone expect a "
-                                       "single async op as their operand.")));
+                             HasSubstr("AsyncUpdate and AsyncDone expect an "
+                                       "asynchronous operation as their first "
+                                       "operand.")));
 }
 
 TEST_F(HloParserTest, AsyncUpdateAndAsyncDoneNoAsyncStart) {
@@ -5686,8 +6022,9 @@ ENTRY AsyncStartAndAsyncDone {
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
       absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
-                             HasSubstr("AsyncUpdate and AsyncDone expect a "
-                                       "single async op as their operand.")));
+                             HasSubstr("AsyncUpdate and AsyncDone expect an "
+                                       "asynchronous operation as their first "
+                                       "operand.")));
 }
 
 TEST_F(HloParserTest, AsyncUpdateWithSyntaxSugarWrongOp) {
@@ -6245,6 +6582,352 @@ ENTRY entry {
                        ParseAndReturnVerifiedModule(hlo_without_mode));
   EXPECT_EQ(*module_with_mode->entry_computation(),
             *module_without_mode->entry_computation());
+}
+
+TEST_F(HloParserTest, SparsityConfig_RHSOnly) {
+  const char* const hlo_string = R"(
+  HloModule SparsityConfigModule
+  ENTRY SparsityConfig {
+    %input = f32[1,2] parameter(0)
+    %filter = f32[2,2] parameter(1)
+    ROOT %convolution = f32[1,2] convolution(%input, %filter), dim_labels=bf_io->bf,
+      sparsity_config={rhs={sparsity=3x4 dimension=0 stride=1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto* conv = module->entry_computation()->root_instruction();
+  auto config = conv->sparsity_config();
+  EXPECT_EQ(config.rhs().block_size(), 4);
+  EXPECT_EQ(config.rhs().num_non_zero(), 3);
+  EXPECT_EQ(config.rhs().dimension(), 0);
+  EXPECT_EQ(config.rhs().stride(), 1);
+}
+
+TEST_F(HloParserTest, SparsityConfig_Both) {
+  const char* const hlo_string = R"(
+  HloModule SparsityConfigModule
+  ENTRY SparsityConfig {
+    %input = f32[1,2] parameter(0)
+    %filter = f32[2,2] parameter(1)
+    ROOT %convolution = f32[1,2] convolution(%input, %filter), dim_labels=bf_io->bf,
+      sparsity_config={lhs={sparsity=1x4 dimension=1 stride=1} rhs={sparsity=3x4 dimension=0 stride=1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto* conv = module->entry_computation()->root_instruction();
+  auto config = conv->sparsity_config();
+  EXPECT_EQ(config.lhs().block_size(), 4);
+  EXPECT_EQ(config.lhs().num_non_zero(), 1);
+  EXPECT_EQ(config.lhs().dimension(), 1);
+  EXPECT_EQ(config.lhs().stride(), 1);
+  EXPECT_EQ(config.rhs().block_size(), 4);
+  EXPECT_EQ(config.rhs().num_non_zero(), 3);
+  EXPECT_EQ(config.rhs().dimension(), 0);
+  EXPECT_EQ(config.rhs().stride(), 1);
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_DotStart) {
+  const char* const hlo = R"(
+HloModule async_dot_example
+
+ENTRY main {
+  %lhs = f32[128,128] parameter(0)
+  %rhs = f32[128,128] parameter(1)
+
+  %dot-start = ((f32[128,128], f32[128,128]), f32[128,128], u32[])
+    dot-start(%lhs, %rhs)
+  %dot-update = ((f32[128,128], f32[128,128]), f32[128,128], u32[])
+    dot-update(%dot-start)
+  ROOT %result = f32[128,128] dot-done(%dot-update)
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+}
+
+// negative tests
+TEST_F(HloParserTest, DesugarParsingTest_AllReduceUpdate_Invalid) {
+  const char* const hlo = R"(
+HloModule test
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[128] parameter(0)
+  start = ((f32[128]), f32[128], u32[]) all-reduce-start(p0), to_apply=add
+  update = ((f32[128]), f32[128], u32[]) all-reduce-update(start)
+  ROOT done = f32[128] all-reduce-done(update)
+}
+  )";
+  auto module_or_status = ParseAndReturnUnverifiedModule(hlo);
+  EXPECT_FALSE(module_or_status.ok());
+  EXPECT_THAT(module_or_status.status().message(),
+              HasSubstr("expects opcode but sees: all-reduce-update"));
+  EXPECT_THAT(module_or_status.status().message(),
+              HasSubstr("Unknown opcode: all-reduce-update"));
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_AllGatherUpdate_Invalid) {
+  const char* const hlo = R"(
+HloModule test
+ENTRY main {
+  p0 = f32[128] parameter(0)
+  start = ((f32[128]), f32[256], u32[]) all-gather-start(p0), dimensions={0}
+  update = ((f32[128]), f32[256], u32[]) all-gather-update(start)
+  ROOT done = f32[256] all-gather-done(update)
+}
+  )";
+  auto status = ParseAndReturnUnverifiedModule(hlo).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Unknown opcode: all-gather-update"));
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_CollectivePermuteUpdate_Invalid) {
+  const char* const hlo = R"(
+HloModule test
+ENTRY main {
+  p0 = f32[128] parameter(0)
+  start = ((f32[128]), f32[128], u32[]) collective-permute-start(p0), source_target_pairs={{0,1}}
+  update = ((f32[128]), f32[128], u32[]) collective-permute-update(start)
+  ROOT done = f32[128] collective-permute-done(update)
+}
+  )";
+  auto status = ParseAndReturnUnverifiedModule(hlo).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Unknown opcode: collective-permute-update"));
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_CopyUpdate_Invalid) {
+  const char* const hlo = R"(
+HloModule test
+ENTRY main {
+  p0 = f32[128] parameter(0)
+  start = (f32[128], f32[128], u32[]) copy-start(p0)
+  update = (f32[128], f32[128], u32[]) copy-update(start)
+  ROOT done = f32[128] copy-done(update)
+}
+  )";
+  auto status = ParseAndReturnUnverifiedModule(hlo).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Unknown opcode: copy-update"));
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_SendStart_Invalid) {
+  const char* const hlo = R"(
+HloModule test
+ENTRY main {
+  p0 = f32[128] parameter(0)
+  t = token[] after-all()
+  start = (f32[128], u32[], token[]) send-start(p0, t), channel_id=1
+  ROOT done = token[] send-done(start)
+}
+  )";
+  auto status = ParseAndReturnUnverifiedModule(hlo).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Unknown opcode: send-start"));
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_SendUpdate_Invalid) {
+  const char* const hlo = R"(
+HloModule test
+ENTRY main {
+  p0 = f32[128] parameter(0)
+  t = token[] after-all()
+  start = (f32[128], u32[], token[]) send(p0, t), channel_id=1
+  update = (f32[128], u32[], token[]) send-update(start)
+  ROOT done = token[] send-done(update), channel_id=1
+}
+  )";
+  auto status = ParseAndReturnUnverifiedModule(hlo).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Unknown opcode: send-update"));
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_RecvStart_Invalid) {
+  const char* const hlo = R"(
+HloModule test
+ENTRY main {
+  t = token[] after-all()
+  start = (f32[128], u32[], token[]) recv-start(t), channel_id=1
+  ROOT done = (f32[128], token[]) recv-done(start), channel_id=1
+}
+  )";
+  auto status = ParseAndReturnUnverifiedModule(hlo).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Unknown opcode: recv-start"));
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_RecvUpdate_Invalid) {
+  const char* const hlo = R"(
+HloModule test
+ENTRY main {
+  t = token[] after-all()
+  start = (f32[128], u32[], token[]) recv(t), channel_id=1
+  update = (f32[128], u32[], token[]) recv-update(start)
+  ROOT done = (f32[128], token[]) recv-done(update), channel_id=1
+}
+  )";
+  auto status = ParseAndReturnUnverifiedModule(hlo).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Unknown opcode: recv-update"));
+}
+
+TEST_F(HloParserTest, DeeplyNestedOperandsExceedsRecursionLimit) {
+  constexpr int kTestRecursionDepth = 10;
+  std::string deeply_nested = "f32[] ";
+
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested += "add(f32[] constant(0), f32[] ";
+  }
+  deeply_nested += "constant(0)";
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested += ")";
+  }
+  HloParserOptions options;
+  options.set_max_recursion_depth(kTestRecursionDepth);
+  auto result =
+      ParseAndReturnUnverifiedModule(deeply_nested, HloModuleConfig(), options);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "maximum recursion depth exceeded");
+}
+
+TEST_F(HloParserTest, DeeplyNestedShapesExceedsRecursionLimit) {
+  constexpr int kTestRecursionDepth = 10;
+  std::string deeply_nested = "";
+
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested += "(";
+  }
+  deeply_nested += "f32[]";
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested += ")";
+  }
+
+  // Create a minimal HLO string using this shape.
+  // ENTRY entry (p0: (((...f32[]...)))) -> (((...f32[]...))) { ... }
+  std::string hlo_string =
+      "HloModule test\nENTRY entry (p0: " + deeply_nested + ") -> " +
+      deeply_nested + " {\n  ROOT %p0 = " + deeply_nested + " parameter(0)\n}";
+
+  HloParserOptions options;
+  options.set_max_recursion_depth(kTestRecursionDepth);
+  auto result =
+      ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig(), options);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "maximum recursion depth exceeded");
+}
+
+TEST_F(HloParserTest, DeeplyNestedTupleLiteralsExceedsRecursionLimit) {
+  constexpr int kTestRecursionDepth = 10;
+  std::string deeply_nested_shape = "";
+  std::string deeply_nested_literal = "";
+
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested_shape += "(";
+    deeply_nested_literal += "(";
+  }
+  deeply_nested_shape += "f32[]";
+  deeply_nested_literal += "0";
+
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested_shape += ")";
+    deeply_nested_literal += ")";
+  }
+
+  std::string hlo_string = "HloModule test\nENTRY entry () -> " +
+                           deeply_nested_shape +
+                           " {\n  ROOT %c = " + deeply_nested_shape +
+                           " constant(" + deeply_nested_literal + ")\n}";
+
+  HloParserOptions options;
+  options.set_max_recursion_depth(kTestRecursionDepth);
+  auto result =
+      ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig(), options);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "maximum recursion depth exceeded");
+}
+
+TEST_F(HloParserTest, DeeplyNestedUntypedTupleLiteralExceedsRecursionLimit) {
+  constexpr int kTestRecursionDepth = 10;
+  std::string deeply_nested_literal = "";
+
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested_literal += "(";
+  }
+  deeply_nested_literal += "s32[] 0";
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested_literal += ")";
+  }
+
+  std::string hlo_string =
+      "HloModule test\nENTRY entry {\n"
+      "  %constant = f32[1]{0} constant({0})\n"
+      "  ROOT %custom-call = f32[1]{0} custom-call(f32[1]{0} %constant), "
+      "custom_call_target=\"foo\", literal=" +
+      deeply_nested_literal + "\n}";
+
+  HloParserOptions options;
+  options.set_max_recursion_depth(kTestRecursionDepth);
+  auto result =
+      ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig(), options);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "maximum recursion depth exceeded");
+}
+
+TEST_F(HloParserTest, DeeplyNestedInlineComputationsExceedsRecursionLimit) {
+  constexpr int kTestRecursionDepth = 10;
+  std::string deeply_nested = "";
+
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested += "p" + std::to_string(i) + " = f32[] parameter(0)\n";
+    deeply_nested += "ROOT r" + std::to_string(i) + " = f32[] call(p" +
+                     std::to_string(i) + "), to_apply={\n";
+  }
+
+  deeply_nested += "p_inner = f32[] parameter(0)\n";
+  deeply_nested += "ROOT r_inner = f32[] negate(p_inner)\n";
+
+  for (int i = 0; i < kTestRecursionDepth + 1; ++i) {
+    deeply_nested += "}\n";
+  }
+
+  std::string hlo_string =
+      "HloModule test\nENTRY entry {\n" + deeply_nested + "}";
+
+  HloParserOptions options;
+  options.set_max_recursion_depth(kTestRecursionDepth);
+  auto result =
+      ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig(), options);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "maximum recursion depth exceeded");
+}
+
+// Regression test for OSS-Fuzz stack overflow finding #390461336.
+// Generate deeply nested valid HLO that triggers ParseOperands recursion.
+TEST_F(HloParserTest, DISABLED_DeeplyNestedOperandsDoesNotStackOverflow) {
+  constexpr int kDepth = 9000;
+  std::string deeply_nested = "f32[] ";
+  for (int i = 0; i < kDepth; ++i) {
+    deeply_nested += "add(f32[] ";
+  }
+  deeply_nested += "constant(0)";
+  for (int i = 0; i < kDepth; ++i) {
+    deeply_nested += ", f32[] constant(0))";
+  }
+  auto result = ParseAndReturnUnverifiedModule(deeply_nested);
+  // The key assertion: parsing fails gracefully instead of crashing.
+  EXPECT_FALSE(result.ok());
+  ExpectHasSubstr(result.status().message(),
+                  "maximum recursion depth exceeded");
 }
 
 }  // namespace

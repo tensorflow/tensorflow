@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -30,11 +31,15 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
+#include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -67,6 +72,8 @@ struct MatrixLayout {  // plain MatrixLayout which is extended with create
                std::optional<blas::Transpose> transpose_ = {});
 
   void Transpose();
+
+  std::string ToString() const;
 
   xla::PrimitiveType dtype;
   // `num_rows` / `num_cols` are for the "logical" matrix shape:
@@ -116,6 +123,12 @@ struct OutputMatrixDescriptor : public MatrixDescriptor {
 bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
                            MatrixLayout& output, MatrixLayout* c = nullptr);
 
+enum class ScaleMode {
+  kNone,
+  kTensorScaling,
+  kBlockScaling,
+};
+
 struct GemmConfig {  // plain GemmConfig which is extended with create functions
                      // in matmul_utils.h
   MatrixLayout lhs_layout;
@@ -131,11 +144,50 @@ struct GemmConfig {  // plain GemmConfig which is extended with create functions
   std::optional<int64_t> algorithm;
   bool grad_x;
   bool grad_y;
+  ScaleMode scale_mode = ScaleMode::kNone;
   std::optional<blas::ComputationType> compute_type;
 
   static absl::StatusOr<GemmConfig> FromProto(
       const xla::GemmConfigProto& proto);
   xla::GemmConfigProto ToProto() const;
+};
+
+enum class RaggedDotMode : uint8_t {
+  kRaggedNonContracting = 0,
+  kRaggedContracting = 1,
+  kRaggedBatch = 2
+};
+
+absl::StatusOr<RaggedDotMode> RaggedDotModeFromProto(
+    const xla::RaggedDotModeProto& proto);
+xla::RaggedDotModeProto RaggedDotModeToProto(RaggedDotMode ragged_mode);
+
+struct GroupedGemmConfig {
+  uint64_t m, n, k;
+  uint64_t batch_count;
+  uint64_t group_count;
+  int64_t lhs_leading_dim_stride;
+  int64_t rhs_leading_dim_stride;
+  int64_t c_leading_dim_stride;
+  int64_t output_leading_dim_stride;
+  blas::Transpose trans_a, trans_b;
+  bool must_swap_operands;
+  xla::complex128 alpha;
+  double beta;
+  blas::DataType type_a, type_b, type_c, type_d;
+  int64_t stride_ragged_dim;
+  int64_t stride_group_dim;
+  int64_t c_stride_ragged_dim;
+  int64_t output_stride_ragged_dim;
+  // PrecisionConfig-level algorithm
+  xla::PrecisionConfig::Algorithm precision_algorithm;
+  int64_t compute_precision;
+  RaggedDotMode ragged_mode;
+  std::optional<blas::ComputationType> compute_type;
+
+  static absl::StatusOr<GroupedGemmConfig> FromProto(
+      const xla::GroupedGemmConfigProto& proto);
+  xla::GroupedGemmConfigProto ToProto() const;
 };
 
 struct BlasLt {
@@ -173,80 +225,25 @@ struct BlasLt {
     DeviceAddressBase a, b, c, d;  // these are mandatory
     DeviceAddressBase bias, aux;   // these may be null
     DeviceAddressBase a_scale, b_scale, c_scale, d_scale;  // these may be null
-    DeviceAddressBase d_amax;                              // this may be null
+    union {
+      DeviceAddressBase d_amax;       // this may be null
+      DeviceAddressBase group_sizes;  // used by grouped gemm
+    };
     DeviceAddressBase workspace;          // either workspace or
     ScratchAllocator* scratch_allocator;  // scratch_allocator must not be null
   };
 
   struct MatmulPlan {
-    // This function is to be removed once TF interface is fixed,
-    // see tensorflow/core/kernels/matmul_util.cc
-    absl::Status ExecuteOnStream(
-        Stream* stream, DeviceAddressBase a, DeviceAddressBase b,
-        DeviceAddressBase c, DeviceAddressBase d,
-        DeviceAddressBase bias,  // may be null
-        DeviceAddressBase aux,   // may be null
-        DeviceAddressBase a_scale, DeviceAddressBase b_scale,
-        DeviceAddressBase c_scale, DeviceAddressBase d_scale,
-        DeviceAddressBase d_amax, const MatmulAlgorithm& algorithm,
-        ScratchAllocator& scratch_allocator,
-        blas::ProfileResult* profile_result = nullptr) const {
-      // Temporary hack until Tensorflow side is fixed
-      TF_RETURN_IF_ERROR(
-          const_cast<MatmulPlan*>(this)->SetAlgorithm(algorithm));
-      return ExecuteOnStream(
-          stream,
-          MemoryArgs{a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale,
-                     d_amax, DeviceAddressBase{}, &scratch_allocator},
-          profile_result);
-    }
-
-    // API that uses scratch_allocator to allocate workspace.
-    // This version is used by TF: see tensorflow/core/kernels/matmul_util.cc
-    absl::Status ExecuteOnStream(
-        Stream* stream, DeviceAddressBase a, DeviceAddressBase b,
-        DeviceAddressBase c, DeviceAddressBase d,
-        DeviceAddressBase bias,  // may be null
-        DeviceAddressBase aux,   // may be null
-        DeviceAddressBase a_scale, DeviceAddressBase b_scale,
-        DeviceAddressBase c_scale, DeviceAddressBase d_scale,
-        DeviceAddressBase d_amax, ScratchAllocator& scratch_allocator,
-        blas::ProfileResult* profile_result = nullptr) const {
-      return ExecuteOnStream(
-          stream,
-          MemoryArgs{a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale,
-                     d_amax, DeviceAddressBase{}, &scratch_allocator},
-          profile_result);
-    }
-
-    // API that uses pre-allocated buffer as workspace.
-    absl::Status ExecuteOnStream(
-        Stream* stream, DeviceAddressBase a, DeviceAddressBase b,
-        DeviceAddressBase c, DeviceAddressBase d,
-        DeviceAddressBase bias,  // may be null
-        DeviceAddressBase aux,   // may be null
-        DeviceAddressBase a_scale, DeviceAddressBase b_scale,
-        DeviceAddressBase c_scale, DeviceAddressBase d_scale,
-        DeviceAddressBase d_amax, DeviceAddressBase workspace,
-        blas::ProfileResult* profile_result = nullptr) const {
-      return ExecuteOnStream(
-          stream,
-          MemoryArgs{a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale,
-                     d_amax, workspace, nullptr},
-          profile_result);
-    }
-
-    // The most general form: to be implemented by derived clases.
+    // Execute the matmul operation on the given stream.
     virtual absl::Status ExecuteOnStream(
         Stream* stream, const MemoryArgs& args,
-        blas::ProfileResult* profile_result) const = 0;
+        blas::ProfileResult* profile_result = nullptr) const = 0;
 
     // Returns a list of supported algorithms for DoMatmul. The algorithms are
     // returned in the order of increasing estimated compute time according to
     // an internal heuristic.
     virtual absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
-        const Stream* stream, size_t max_algorithm_count = 128,
-        size_t max_workspace_size = 1ll << 32) const = 0;
+        size_t max_algorithm_count, size_t max_workspace_size) const = 0;
 
     // Algorithm must to be set before calling ExecuteOnStream function(s).
     // Usually, we call ExecuteOnStream with the same algorithm ID, hence using
@@ -254,7 +251,19 @@ struct BlasLt {
     // optimizations (like preloading matmul kernels) once the algorithm is set.
     virtual absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) = 0;
 
+    // Same as above but combines GetAlgorithms and SetAlgorithm calls with
+    // a cached list of algorithms.
+    absl::Status SetCachedAlgorithm(size_t algorithm_idx,
+                                    size_t max_algorithm_count,
+                                    size_t max_workspace_size);
+
     virtual ~MatmulPlan() = default;
+
+   protected:
+    mutable size_t cached_algorithm_count_ = 0;
+    mutable size_t cached_workspace_size_ = 0;
+    mutable size_t cached_algorithm_idx_ = 0;
+    mutable std::vector<MatmulAlgorithm> cached_algorithms_;
   };  // class MatmulPlan
 
   using MatmulPlanPtr = std::unique_ptr<MatmulPlan>;
@@ -265,15 +274,14 @@ struct BlasLt {
   virtual absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(
       const GemmConfig& cfg, Epilogue epilogue) const = 0;
 
-  static BlasLt* Get(const Stream* stream);
+  virtual absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(
+      const gpu::GroupedGemmConfig& config, Epilogue epilogue) const = 0;
 
-  // convenience function to create MatmulPlan directly using stream
-  static absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(const Stream* stream,
-                                                     const GemmConfig& cfg,
-                                                     Epilogue epilogue);
+  static absl::StatusOr<BlasLt*> Get(StreamExecutor* executor);
 
-  absl::StatusOr<MatmulPlan*> GetOrCreateMatmulPlan(const std::string& key,
-                                                    PlanCreateFunc create);
+  absl::StatusOr<MatmulPlan*> GetOrCreateMatmulPlanWithAlgorithm(
+      const std::string& key, PlanCreateFunc create, size_t algorithm_idx,
+      size_t num_algorithms, size_t max_workspace_size);
 
   void ClearMatmulPlanCache();
   size_t GetMatmulPlanCacheSize() const;

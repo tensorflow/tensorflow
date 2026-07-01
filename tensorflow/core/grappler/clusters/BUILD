@@ -72,6 +72,7 @@ cc_library(
         "//tensorflow/core:session_options",
         "//tensorflow/core/grappler:grappler_item",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -92,6 +93,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:op_level_cost_estimator",
         "//tensorflow/core/grappler/costs:virtual_scheduler",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

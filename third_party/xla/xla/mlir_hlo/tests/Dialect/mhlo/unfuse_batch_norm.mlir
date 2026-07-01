@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt -split-input-file -mhlo-test-unfuse-batch-norm -cse -verify-diagnostics %s | FILECHECK_OPTS="" FileCheck --enable-var-scope %s
+// RUN: mlir-hlo-opt -split-input-file -mhlo-test-unfuse-batch-norm -cse -verify-diagnostics %s | env FILECHECK_OPTS="" FileCheck --enable-var-scope %s
 
 // CHECK-LABEL: @batchNormInference_2D_inner_features
 // CHECK-SAME: %[[X:[^:[:space:]]+]]

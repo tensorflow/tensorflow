@@ -78,27 +78,6 @@ Fusion into the custom calls, i.e. pattern-matching custom calls with the
 producers/consumers and rewriting them into the new custom calls is not allowed.
 In that case, it should be replaced with a proper fusion pass.
 
-#### Horizontal scaling
-
-Contributions to horizontal scaling encompass HLO optimizations, cost model
-improvements, library updates, and various infrastructure modifications. Due to
-the difficulty of reproducing the performance gains and the limited need for the
-multi-host configurations internally, we adhere to strict acceptance criteria:
-
-We prioritize minimally invasive changes that carry low risk.
-
-##### What we generally accept:
-
-* Updates to libraries handling inter-GPU or interhost communication.
-
-* Performance table updates for new platforms.
-
-##### What we generally reject:
-
-* HLO rewrites or runtime changes tailored to a specific model.
-
-* Infrastructure changes that introduce new flags, technical debt or regressions.
-
 #### Backends & Autotuning
 Backends for the unnested ops, e.g. custom calls and fusions, should implement
 [CodegenBackend](https://github.com/openxla/xla/blob/main/xla/backends/autotuner/codegen_backend.h)
@@ -141,7 +120,9 @@ be no pointers to `HloInstruction` or to other parts of the compiler or the
     Doing so will greatly increase the speed at which you can get your code
     merged due to improve reviewability, and reducing the likelihood of
     unintentional side effects of change. Even if you have a large change, there
-    are many strategies for breaking it up into more incremental changes.
+    are many strategies for breaking it up into more incremental changes. If
+    your PR is too large, it will receive an automated comment asking you to
+    break it down into smaller PRs.
 
 *   *Test Coverage*: All changes should include appropriate unit tests. Unit
     tests should not be dependent on specific hardware (CPU, GPU, etc.) timings,
@@ -152,6 +133,11 @@ be no pointers to `HloInstruction` or to other parts of the compiler or the
 
     All changes should include appropriate benchmark results as well in the
     change title to ensure the benefits are clearly understood.
+
+*   *Feature Flags*: All somewhat complicated new features should be guarded
+    with a flag first (e.g., via `DebugOptions`). This allows for easy rollback
+    of the flag flip if problems arise, and affected users can temporarily
+    set the flag themselves before a rollback is performed.
 
 *   When in doubt as to conventions within the code, it is always a good idea to
     examine pre-existing code and to try to follow the patterns already in place
@@ -169,19 +155,33 @@ information on using pull requests.
     optional and it is critical that the submitter ensure their code conforms
     before requesting review in order to assure timely acceptance of changes.
 
-*   *All tests must pass*. If you find that a test is broken and the issue is not
-    related to your build environment or otherwise your changes, please contact
-    the maintainers.
+*   *All tests and additional checks on GitHub must pass*. If you find that a
+    test is broken and the issue is not related to your build environment or
+    otherwise your changes, please contact the maintainers.
 
-*   Try to avoid scope creep during the review process. This is the
+*   Avoid scope creep during the review process. This is the
     responsibility of both the submitter and the reviewer. If a change starts to
     get too large, consider breaking it up into multiple changes.
 
-*   Before a change is merged, it will undergo internal testing that uses code
+*   After a change is approved on GitHub but before it is merged, it will
+    undergo internal testing that uses code
     internal to Google and other hardware vendors. This can potentially add extra
     steps to the review process if there are failures on internal tests that our
     public CI doesn't catch. The Googler reviewing your change will communicate
-    any internal test failures and describe what needs to be fixed.
+    any internal test failures and describe what needs to be fixed. The overall
+    state of the internal checks is visible in the checks list on GitHub:
+    - *import/copybara — Change imported to the internal review system*:
+    Your PR has been imported in Google's internal system and checks are
+    running.
+    - *import/copybara — An error happened while migrating the change*: Your PR
+    could not be imported into Google's internal system. This very rarely
+    happens. If you see this state please ping your reviewer.
+    - *feedback/copybara — Google internal checks PASS for runs with create time...*:
+    All internal checks pass. Your PR should be merged soon.
+    - *feedback/copybara — Google internal checks FAILED for runs with create time ...*:
+    Some internal checks failed. A Google engineer will soon post a comment with
+    more details. If you don't get any info about the failures within a day
+    please ping your reviewer.
 
 
 ## Frequently asked questions (FAQ)

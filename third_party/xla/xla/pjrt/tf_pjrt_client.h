@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -34,12 +35,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -105,6 +106,11 @@ class TfPjRtBuffer : public PjRtBuffer {
     wrapped_->CopyToRemoteDevice(std::move(serialized_descriptor),
                                  std::move(on_done));
   }
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> Bitcast(
+      xla::PrimitiveType element_type, absl::Span<const int64_t> dims,
+      const Layout* device_layout) override {
+    return wrapped_->Bitcast(element_type, dims, device_layout);
+  }
   Future<> GetReadyFuture() override { return wrapped_->GetReadyFuture(); }
   bool IsOnCpu() const override { return wrapped_->IsOnCpu(); }
 
@@ -148,6 +154,10 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
     return wrapped_->GetHloModules();
+  }
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    return wrapped_->GetParameterMemoryKinds();
   }
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
@@ -250,7 +260,7 @@ class TfPjRtClient : public PjRtClient {
     return WrapExecutable(wrapped_->CompileAndLoad(computation, options));
   }
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      mlir::ModuleOp module, CompileOptions options) override {
+      MaybeOwningMlirModule module, CompileOptions options) override {
     return WrapExecutable(wrapped_->CompileAndLoad(std::move(module), options));
   }
 
@@ -330,14 +340,13 @@ class TfPjRtClient : public PjRtClient {
  private:
   // Unwraps a TfPjRtBuffer.
   PjRtBuffer* UnwrapBuffer(PjRtBuffer* buffer) const {
-    return tensorflow::down_cast<TfPjRtBuffer*>(buffer)->wrapped();
+    return absl::down_cast<TfPjRtBuffer*>(buffer)->wrapped();
   }
 
   // Unwraps a TfPjRtExecutable.
   const PjRtLoadedExecutable& UnwrapExecutable(
       const PjRtLoadedExecutable& executable) const {
-    return *tensorflow::down_cast<const TfPjRtExecutable*>(&executable)
-                ->wrapped();
+    return *absl::down_cast<const TfPjRtExecutable*>(&executable)->wrapped();
   }
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> WrapExecutable(

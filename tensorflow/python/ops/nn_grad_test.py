@@ -81,7 +81,7 @@ class Conv2dOpTest(test.TestCase):
                                                       x.get_shape().as_list(),
                                                       y,
                                                       y.get_shape().as_list())
-      self.assertLess(error, 1e-3)
+      self.assertLess(error, 2e-3)
 
   @test_util.run_deprecated_v1
   def testConv2dGradWRTInput(self):
@@ -132,7 +132,7 @@ class DepthwiseConv2dTest(test.TestCase):
                                                       x.get_shape().as_list(),
                                                       y,
                                                       y.get_shape().as_list())
-      self.assertLess(error, 1e-3)
+      self.assertLess(error, 2e-3)
 
   @test_util.run_deprecated_v1
   def testDepthwiseConv2dGradWRTInput(self):

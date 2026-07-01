@@ -17,7 +17,11 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/status/status_matchers.h"
 #include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.pb.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 
 namespace xla {
@@ -58,6 +62,37 @@ TEST(IndexDomainTest, Hash) {
        IndexDomain(Index({2, 1}), Shape({3, 4})),
        IndexDomain(Index({2, 1}), Shape({4, 3}))}));
 }
+
+class IndexDomainSerDesTest : public testing::TestWithParam<SerDesVersion> {
+ public:
+  IndexDomainSerDesTest() : version_(GetParam()) {}
+
+  SerDesVersion version() const { return version_; }
+
+ private:
+  SerDesVersion version_;
+};
+
+TEST_P(IndexDomainSerDesTest, ToFromProto) {
+  {
+    IndexDomain index_domain(Index({}), Shape({}));
+    IndexDomainProto proto = index_domain.ToProto(version());
+    ASSERT_OK_AND_ASSIGN(IndexDomain index_domain_copy,
+                         IndexDomain::FromProto(proto));
+    EXPECT_EQ(index_domain_copy, index_domain);
+  }
+  {
+    IndexDomain index_domain(Index({1, 2}), Shape({3, 4}));
+    IndexDomainProto proto = index_domain.ToProto(version());
+    ASSERT_OK_AND_ASSIGN(IndexDomain index_domain_copy,
+                         IndexDomain::FromProto(proto));
+    EXPECT_EQ(index_domain_copy, index_domain);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion, IndexDomainSerDesTest,
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
 
 }  // namespace
 }  // namespace ifrt

@@ -44,6 +44,8 @@ TF_CONST_INIT extern const absl::string_view kVirtualDevicePlanePrefix;
 TF_CONST_INIT extern const char kTpuPlaneRegex[];
 // Regex for XPlanes that contain TPU Core planes.
 TF_CONST_INIT extern const char kSparseCorePlaneRegex[];
+// Regex for XPlanes that contain SparseCore CAE planes.
+TF_CONST_INIT extern const char kSparseCoreCAEPlaneRegex[];
 // Name prefix of XPlane that contains custom device events.
 TF_CONST_INIT extern const absl::string_view kCustomPlanePrefix;
 // Name prefix of XPlane that contains TPU non-core events such as HBM, ICI etc.
@@ -156,6 +158,8 @@ enum HostEventType {
   kScheduleWithSplit,
   kScheduleWithEagerSplit,
   kASBSQueueSchedule,
+  kOrbaxConcatInputBuffers,
+  kOrbaxProcessBatch,
   // TFRT related.
   kTfrtModelRun,
   // Serving related.
@@ -198,6 +202,7 @@ enum HostEventType {
 };
 
 enum StatType {
+  // LINT.IfChange(stat_type_enum)
   kFirstStatType = 0,
   kUnknownStatType = kFirstStatType,
   // TraceMe arguments.
@@ -388,7 +393,27 @@ enum StatType {
   kMetadataCudaDriverVersion,
   // LLO Debug Dump.
   kLloProto,
-  kLastStatType = kLloProto,
+  // Total VDD core energy consumed in nano Joules.
+  kVddCoreEnergy,
+  // Number of VDD core power events.
+  kVddCorePowerEvents,
+  // Total HBM energy consumed in nano Joules.
+  kHbmEnergy,
+  // Number of HBM power events.
+  kHbmPowerEvents,
+  // Stats for subprocess trace collection.
+  kConsumerPid,
+  kProcessId,
+  // Transaction ID for DMA transfers with
+  kTransactionWithChipCoreId,
+  // Program Counter in Oci Descriptors, etc
+  kProgramCounter,
+  // LINT.ThenChange(:last_stat_type)
+
+  // LINT.IfChange(last_stat_type)
+  // Change this to point to the last stat type when adding a new one.
+  kLastStatType = kProgramCounter,
+  // LINT.ThenChange(:stat_type_enum)
 };
 
 enum MegaScaleStatType : uint8_t {
@@ -420,7 +445,8 @@ enum MegaScaleStatType : uint8_t {
   kMegaScaleDelayBudgetUs,
   kMegaScaleHloModule,
   kMegaScaleMultiSliceTopology,
-  kLastMegaScaleStatType = kMegaScaleMultiSliceTopology,
+  kMegaScaleActivationToNetworkReceiveDurationUs,
+  kLastMegaScaleStatType = kMegaScaleActivationToNetworkReceiveDurationUs,
 };
 
 enum TaskEnvStatType {

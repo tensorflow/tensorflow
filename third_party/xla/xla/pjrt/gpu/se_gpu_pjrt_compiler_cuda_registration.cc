@@ -15,17 +15,21 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/check.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_compiler.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/stream_executor_platform_id_mapping.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/platform/initialize.h"
 
 namespace xla {
 
 STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(pjrt_register_se_gpu_compiler, {
-  PjRtRegisterDefaultCompiler(CudaName(),
-                              std::make_unique<StreamExecutorGpuCompiler>(
-                                  stream_executor::cuda::kCudaPlatformId));
+  PjRtRegisterDefaultCompiler(
+      CudaName(), std::make_unique<StreamExecutorGpuCompiler>(
+                      CudaId(), stream_executor::cuda::kCudaPlatformId));
+  CHECK_OK(StreamExecutorPlatformIdMapping::Global().AddMapping(
+      stream_executor::cuda::kCudaPlatformId, CudaId()));
 });
 
 }  // namespace xla

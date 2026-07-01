@@ -62,6 +62,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/SwapByteOrder.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -206,6 +207,10 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     return tflite::TensorType_BFLOAT16;
   } else if (type.isF64()) {
     return tflite::TensorType_FLOAT64;
+  } else if (mlir::isa<mlir::Float8E4M3FNType>(type)) {
+    return tflite::TensorType_FLOAT8_E4M3FN;
+  } else if (mlir::isa<mlir::Float8E5M2Type>(type)) {
+    return tflite::TensorType_FLOAT8_E5M2;
   } else if (mlir::isa<mlir::TF::StringType>(type)) {
     return tflite::TensorType_STRING;
   } else if (mlir::isa<mlir::TF::Quint8Type>(type)) {
@@ -231,12 +236,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
           return tflite::TensorType_INT2;
         }
       case 4:
-        if (itype.isUnsigned()) {
-          return Status(absl::StatusCode::kInvalidArgument,
-                        "Unsupported 4bit unsigned int type");
-        } else {
-          return tflite::TensorType_INT4;
-        }
+        return itype.isUnsigned() ? tflite::TensorType_UINT4
+                                  : tflite::TensorType_INT4;
       case 8:
         return itype.isUnsigned() ? tflite::TensorType_UINT8
                                   : tflite::TensorType_INT8;
@@ -1129,7 +1130,7 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     attr = mlir::DenseIntOrFPElementsAttr::getFromRawBuffer(
         mlir::cast<mlir::ShapedType>(
             vhlo_type_converter.convertType(tensor_v1_attr.getType())),
-        tensor_v1_attr.getData());
+        tensor_v1_attr.getData().getRawData());
   } else if (auto cst = dyn_cast<tfl::SparseConstOp>(inst)) {
     attr = cst.getCompressedData();
   } else if (auto cst = dyn_cast<tfl::SparseQConstOp>(inst)) {
@@ -1196,16 +1197,45 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
            auto apply) {
           auto [attr_, inst] = attr_and_inst;
           auto attr = mlir::cast<ElementsAttr>(attr_);
+          auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(attr.getType());
 
+          // Optimization Path for Numeric Dtypes (f32, i32, etc.)
+          // Flatbuffer requires little endian for numeric types. If the host
+          // is big endian, rely on the TensorFlow path below to reverse the
+          // byte order.
+          if (llvm::sys::IsLittleEndianHost && shaped_type &&
+              shaped_type.getElementType().isIntOrFloat()) {
+            int64_t expected_size = mlir::TFL::GetSizeInBytes(shaped_type);
+
+            // DenseElementsAttr
+            if (auto dense_attr =
+                    mlir::dyn_cast<mlir::DenseElementsAttr>(attr)) {
+              // Only use the optimization if it's not a single-value (Splat)
+              // and the raw memory matches the logical dimensions exactly.
+              if (!dense_attr.isSplat() &&
+                  dense_attr.getRawData().size() == expected_size) {
+                return apply(absl::string_view(dense_attr.getRawData().data(),
+                                               dense_attr.getRawData().size()));
+              }
+            }
+
+            // DenseResourceElementsAttr
+            if (auto res_attr =
+                    mlir::dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
+              if (auto blob =
+                      res_attr.getRawHandle().getResource()->getBlob()) {
+                auto data = blob->getData();
+                if (data.size() == expected_size) {
+                  return apply(absl::string_view(
+                      reinterpret_cast<const char*>(data.data()), data.size()));
+                }
+              }
+            }
+          }
+
+          // Fallback Path: use TensorFlow's conversion for compatibility.
           auto tensor = std::make_unique<tensorflow::Tensor>();
           auto status = tensorflow::ConvertToTensor(attr, tensor.get());
-
-          // Reset the attribute after copying it to a tensorflow::Tensor
-          // because the attribute is not needed anymore.
-          if (auto dense_resource_attr =
-                  dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
-            dense_resource_attr.getRawHandle().getResource()->setBlob({});
-          }
 
           if (!status.ok()) {
             std::string error_message =
@@ -2059,7 +2089,7 @@ Translator::BuildVhloCompositeV1Op(mlir::vhlo::CompositeOpV1 composite_op,
       auto dense = mlir::DenseIntOrFPElementsAttr::getFromRawBuffer(
           mlir::cast<mlir::ShapedType>(
               vhlo_type_converter.convertType(tensor_v1_attr.getType())),
-          tensor_v1_attr.getData());
+          tensor_v1_attr.getData().getRawData());
       auto type = mlir::cast<TensorType>(dense.getType());
       tflite::TensorType tflite_element_type =
           GetTFLiteType(type.getElementType()).value();

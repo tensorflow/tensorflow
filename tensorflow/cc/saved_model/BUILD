@@ -1,8 +1,7 @@
-#include "third_party/absl/strings/str_cat.h"
 #Description:
 # TensorFlow SavedModel.
 
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -16,7 +15,6 @@ load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
-    "if_static_and_not_mobile",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
@@ -102,17 +100,27 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "loader_default_deps",
+    visibility = ["//visibility:private"],
+    deps = if_static([
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:direct_session",
+    ]) + if_google(if_static(["//tensorflow/core/platform/default/build_config:tensorflow_platform_specific"])),
+)
+
+cc_library(
     name = "loader",
     hdrs = ["loader.h"],
     deps = [
         ":loader_lite",
-    ] + if_static_and_not_mobile([
-        "//tensorflow/core:direct_session",
-        "//tensorflow/core:all_kernels",
-    ] + if_google(
-        ["//tensorflow/core/platform/default/build_config:tensorflow_platform_specific"],
-        [],
-    )) + if_not_mobile([
+    ] + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:tflite_converter": ["//tensorflow/core:direct_session"] + if_google([
+            "//tensorflow/core/platform/default/build_config:tensorflow_platform_specific",
+        ]),
+        "//conditions:default": [":loader_default_deps"],
+    }) + if_not_mobile([
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",
@@ -265,13 +273,14 @@ tf_cc_test(
 )
 
 # A subset of the TF2 saved models can be generated with this tool.
-py_strict_binary(
+py_binary(
     name = "testdata/generate_saved_models",
     srcs = ["testdata/generate_saved_models.py"],
     data = [
         ":saved_model_asset_data",
         ":saved_model_static_hashtable_asset_data",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/compat:v2_compat",
@@ -293,9 +302,10 @@ py_strict_binary(
 
 # copybara:uncomment_begin(google-only)
 #
-# py_strict_binary(
+# py_binary(
 #     name = "testdata/generate_chunked_models",
 #     srcs = ["testdata/generate_chunked_models.py"],
+#     strict_deps = True,
 #     deps = [
 #         "//tensorflow/python/compat:v2_compat",
 #         "//tensorflow/python/eager:def_function",

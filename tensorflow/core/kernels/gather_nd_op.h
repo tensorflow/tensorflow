@@ -50,15 +50,15 @@ absl::Status DoGatherNd(
     Tensor* out,
     BadIndicesPolicy bad_indices_policy = BadIndicesPolicy::kDefault) {
   if (!TensorShapeUtils::IsVectorOrHigher(params.shape())) {
-    return errors::InvalidArgument("params must be at least a vector");
+    return absl::InvalidArgumentError("params must be at least a vector");
   }
   if (!TensorShapeUtils::IsVectorOrHigher(indices.shape())) {
-    return errors::InvalidArgument("indices must be at least a vector");
+    return absl::InvalidArgumentError("indices must be at least a vector");
   }
   if (indices.dim_size(indices.dims() - 1) > params.dims()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "index innermost dimension length must be <= params rank; saw: ",
-        indices.dim_size(indices.dims() - 1), " vs. ", params.dims());
+        indices.dim_size(indices.dims() - 1), " vs. ", params.dims()));
   }
 
   const TensorShape& indices_shape(indices.shape());
@@ -70,9 +70,9 @@ absl::Status DoGatherNd(
     N_big *= indices_shape.dim_size(i);
   }
   if (N_big > std::numeric_limits<int>::max()) {
-    return errors::InvalidArgument(
-        "indices has too many elements for int indexing: ", N_big, " > ",
-        std::numeric_limits<int>::max());
+    return absl::InvalidArgumentError(
+        absl::StrCat("indices has too many elements for int indexing: ", N_big,
+                     " > ", std::numeric_limits<int>::max()));
   }
   if (params.NumElements() > std::numeric_limits<Index>::max()) {
     return errors::InvalidArgument("params.NumElements() too large for ",
@@ -113,10 +113,10 @@ absl::Status DoGatherNd(
 
   if (N_result > 0) {
     if (params_shape.num_elements() == 0) {
-      return errors::InvalidArgument(
-          "Requested more than 0 entries, but "
-          "params is empty.  Params shape: ",
-          params_shape.DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Requested more than 0 entries, but "
+                       "params is empty.  Params shape: ",
+                       params_shape.DebugString()));
     }
 
     auto indices_mat = indices.flat_inner_dims<Index>();
@@ -148,10 +148,10 @@ absl::Status DoGatherNd(
       PARAMS_CASE(7);
 #undef PARAMS_CASE
       default:
-        return errors::InvalidArgument(
-            "Only indices.shape[-1] values between 1 and 7 "
-            "are currently supported.  Requested rank: ",
-            indices_nd);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Only indices.shape[-1] values between 1 and 7 "
+                         "are currently supported.  Requested rank: ",
+                         indices_nd));
     }
     using CPUDevice = Eigen::ThreadPoolDevice;
 

@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/tuple_points_to_analysis.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/map_util.h"
@@ -106,7 +108,7 @@ absl::Status UpdateControlDependencies(HloInstruction* original,
     // in the same computation eventually and we do want to add the control
     // dependency here.
     if (it->second->parent() == new_instr->parent()) {
-      TF_RETURN_IF_ERROR(it->second->AddControlDependencyTo(new_instr));
+      RETURN_IF_ERROR(it->second->AddControlDependencyTo(new_instr));
     }
   }
   return absl::OkStatus();
@@ -355,19 +357,23 @@ CheckStoreIntoSliceIsCompatible(
                            HloOpcode::kReduceScatter>(i)) {
         return false;
       }
+      // Allow DynamicUpdateSlice as a formatting op if it inserts in a
+      // dimension other than the pipeline's sliced dimension (dim 0).
+      // This enables sinking patterns where an intermediate DUS inserts
+      // a value into a small buffer before the final DUS inserts into the
+      // loop's output buffer. The intermediate DUS will be converted to a
+      // scatter when the batch dimension is added.
+      if (i->opcode() == HloOpcode::kDynamicUpdateSlice) {
+        auto* dus = Cast<HloDynamicUpdateSliceInstruction>(i);
+        auto sliced_dim = GetSlicedDimension(dus);
+        // GetSlicedDimension checks that only one index is non-constant
+        // and all constant indices are 0. The non-constant dimension must
+        // not be dimension 0 (the pipeline's batch/sliced dimension).
+        return sliced_dim.has_value() && *sliced_dim != 0;
+      }
     }
-    return HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,
-                            HloOpcode::kPad, HloOpcode::kCollectivePermute,
-                            HloOpcode::kConvert, HloOpcode::kReshape,
-                            HloOpcode::kAllReduce, HloOpcode::kTranspose,
-                            HloOpcode::kBroadcast, HloOpcode::kAllGather,
-                            HloOpcode::kReduce, HloOpcode::kGetTupleElement,
-                            HloOpcode::kConcatenate, HloOpcode::kReduceScatter,
-                            HloOpcode::kBitcast>(i) ||
+    return collective_pipeliner_utils::IsBaseAcceptableFormattingOp(i) ||
            (multi_uses_pipelining && i->IsElementwise()) ||
-           (i->opcode() == HloOpcode::kCustomCall &&
-            !Cast<HloCustomCallInstruction>(i)
-                 ->custom_call_has_side_effect()) ||
            i->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep) ||
            i->IsCustomCall(CollectivePipeliner::kSunkByPreviousStep);
   };
@@ -530,7 +536,8 @@ std::optional<std::vector<HloInstruction*>> CollectIndependentOperandChain(
           return false;
         }
         return !IsLoopIterator(instr, loop_iter) &&
-               !loop_invariant_params.count(instr);
+               !loop_invariant_params.count(instr) &&
+               !ShapeUtil::IsEffectiveScalar(instr->shape());
       };
 
   if (additional_chain_start_op_finder) {
@@ -689,6 +696,7 @@ struct WhileMoveInfo {
   int64_t sliced_idx;
   std::vector<int64_t> output_indices;
   HloInstruction* sink_instruction;
+  bool invalidated = false;
 };
 
 std::string ToString(const WhileMoveInfo& move_info) {
@@ -768,13 +776,13 @@ void UpdateInstructionChannelId(HloInstruction* cloned_instr,
 absl::Status UpdateInstructionSchedulingAnnotation(
     HloInstruction* cloned_instr, int64_t& scheduling_id,
     absl::flat_hash_map<int64_t, int64_t>& annotation_map) {
-  TF_ASSIGN_OR_RETURN(std::optional<int64_t> annotation_idx,
-                      GetSchedulingAnnotationGroupId(cloned_instr));
+  ASSIGN_OR_RETURN(std::optional<int64_t> annotation_idx,
+                   GetSchedulingAnnotationGroupId(cloned_instr));
   if (annotation_idx) {
     if (!annotation_map.contains(*annotation_idx)) {
       annotation_map[*annotation_idx] = scheduling_id++;
     }
-    TF_RETURN_IF_ERROR(SetSchedulingAnnotationGroupId(
+    RETURN_IF_ERROR(SetSchedulingAnnotationGroupId(
         cloned_instr, annotation_map[*annotation_idx]));
   }
   return absl::OkStatus();
@@ -806,7 +814,7 @@ absl::StatusOr<HloInstruction*> CloneBackwardChain(
     auto new_operands = MapNewOperands(chain_op->operands(), clone_map);
     HloInstruction* cloned = target_computation.AddInstruction(
         chain_op->CloneWithNewOperands(chain_op->shape(), new_operands));
-    TF_RETURN_IF_ERROR(UpdateControlDependencies(chain_op, cloned, clone_map));
+    RETURN_IF_ERROR(UpdateControlDependencies(chain_op, cloned, clone_map));
     UpdateInstructionChannelId(cloned, next_channel_id,
                                update_collective_channel_id);
     if (next_scheduling_id != -1) {
@@ -814,7 +822,7 @@ absl::StatusOr<HloInstruction*> CloneBackwardChain(
     }
     clone_map[chain_op] = cloned;
     if (postprocess_pipelined_ops) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           postprocess_pipelined_ops(cloned, /*new_while_instr=*/nullptr));
     }
     last_cloned = cloned;
@@ -1055,14 +1063,29 @@ bool WhileLoopAnalysis::ComputeLoopStatistics() {
   // Simple invariant analysis. Just support arrays in the first nest of the
   // while() input.
   if (loop_root->opcode() == HloOpcode::kTuple) {
+    HloInstruction* loop_parameter =
+        while_->while_body()->parameter_instruction(0);
+    absl::flat_hash_set<int64_t> invariant_indices;
+
+    // 1. identify which tuple indices are passed through completely unmodified.
+    // (This naturally catches scalars that LICM hoisted and threaded through
+    // the state)
     for (int i = 0; i < loop_root->operand_count(); ++i) {
-      if (loop_root->operand(i)->opcode() != HloOpcode::kGetTupleElement) {
-        continue;
+      const HloInstruction* out_val = loop_root->operand(i);
+      if (out_val->opcode() == HloOpcode::kGetTupleElement &&
+          out_val->tuple_index() == i &&
+          out_val->operand(0) == loop_parameter) {
+        invariant_indices.insert(i);
       }
-      if (i != loop_root->operand(i)->tuple_index()) {
-        continue;
+    }
+
+    // 2. register every clone in the loop body that reads an invariant index.
+    for (HloInstruction* inst : while_->while_body()->instructions()) {
+      if (inst->opcode() == HloOpcode::kGetTupleElement &&
+          inst->operand(0) == loop_parameter &&
+          invariant_indices.contains(inst->tuple_index())) {
+        invariant_loop_parameters_.insert(inst);
       }
-      invariant_loop_parameters_.insert(loop_root->operand(i));
     }
   }
 
@@ -1133,9 +1156,25 @@ WhileLoopAnalysis::IsSupportedDynamicUpdateSlice(
     }
   }
   const HloInstruction* to_insert_into = dyn_update->operand(0);
-  if (level_to_operate_on == 0 &&
-      (to_insert_into->opcode() != HloOpcode::kGetTupleElement ||
-       to_insert_into->operand(0) != loop_parameter)) {
+  // Look through an optimization barrier wrapping a single GTE from the
+  // loop parameter. Pattern: param -> GTE -> opt-barrier -> DUS.
+  const HloInstruction* gte_for_insert = to_insert_into;
+  if (to_insert_into->opcode() == HloOpcode::kOptimizationBarrier) {
+    gte_for_insert = to_insert_into->operand(0);
+  }
+  bool always_sink = false;
+  if (dyn_update->has_frontend_attributes()) {
+    auto it = dyn_update->frontend_attributes().map().find(
+        CollectivePipeliner::kAlwaysSinkAttr);
+    if (it != dyn_update->frontend_attributes().map().end() &&
+        it->second == "1") {
+      always_sink = true;
+    }
+  }
+
+  if (!always_sink && level_to_operate_on == 0 &&
+      (gte_for_insert->opcode() != HloOpcode::kGetTupleElement ||
+       gte_for_insert->operand(0) != loop_parameter)) {
     VLOG(5) << "Skipping " << instr->name()
             << " because slice to insert into is not a GTE from input "
                "parameter "
@@ -1145,10 +1184,10 @@ WhileLoopAnalysis::IsSupportedDynamicUpdateSlice(
   // If Level is > 0 then we already did our analysis in the previous
   // iteration for safeness of this index to transform.
   if (level_to_operate_on == 0) {
-    if (to_insert_into->opcode() == HloOpcode::kGetTupleElement) {
+    if (gte_for_insert->opcode() == HloOpcode::kGetTupleElement) {
       // GTE for this parameter is not CSEd. Abort because we don't analyze
       // every single use from other GTEs.
-      if (parameter_gtes_count.at(to_insert_into->tuple_index()) != 1) {
+      if (parameter_gtes_count.at(gte_for_insert->tuple_index()) != 1) {
         VLOG(5) << "Skipping " << instr->name()
                 << " because there are multiple parameter GTEs for this slice";
         return std::nullopt;
@@ -1156,6 +1195,8 @@ WhileLoopAnalysis::IsSupportedDynamicUpdateSlice(
     }
     const HloInstruction* dyn_update_idx = dyn_update->operand(
         dyn_update->first_index_operand_number() + *sliced_dim);
+    // Check parameter usage on to_insert_into (which may be an opt-barrier).
+    // Its users should only be the DUS itself.
     if (level_to_operate_on == 0 &&
         !CheckParameterUsageIsCompatible(to_insert_into, dyn_update,
                                          dyn_update_idx, *sliced_dim)) {
@@ -1289,7 +1330,7 @@ void WhileLoopAnalysis::MergeIntoExistingCollectivesForwardSink(
         move_infos_[idx].collectives_to_move, move_infos_[idx].formatting_ops,
         move_infos_[idx].dynamic_update_slices, move_infos_[idx].sliced_idx,
         move_infos_[idx].output_indices);
-    move_infos_.erase(move_infos_.begin() + idx);
+    move_infos_[idx].invalidated = true;
   }
 
   // Now merge the current entry into the existing target entry.
@@ -1537,6 +1578,17 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
       break;
     }
   }
+  if (direction ==
+      collective_pipeliner_utils::PipeliningDirection::kForwardSink) {
+    int64_t last_index = move_infos_.size() - 1;
+    for (int64_t i = move_infos_.size() - 1; i >= 0; --i) {
+      if (move_infos_[i].invalidated) {
+        move_infos_[i] = std::move(move_infos_[last_index]);
+        move_infos_.pop_back();
+        last_index--;
+      }
+    }
+  }
   if (direction != collective_pipeliner_utils::PipeliningDirection::kForward) {
     return;
   }
@@ -1658,6 +1710,109 @@ HloInstruction* CreateZero(HloComputation* comp, const Shape& shape,
               HloInstruction::CreateConstant(LiteralUtil::Zero(ptype))),
           {}));
   return zero_constant;
+}
+
+// In a nested loop structure, this calculates the final value of the outer loop
+// induction variable without executing the inner loop. It determines the total
+// number of iterations by computing the ceiling of the distance to the bound
+// i.e.((bound - start + step - 1) / step). It guards against negative
+// iterations by forcing the count to zero if the starting value is already past
+// the bound. Finally, it projects the end state using the formula: final_value
+// = start + (iters * step).
+HloInstruction* ProjectNestedLoopCounter(
+    HloInstruction* inner_while, int64_t t_idx, HloInstruction* loop_param,
+    HloComputation::Builder& body_builder) {
+  const Shape& shape = inner_while->shape().tuple_shapes(t_idx);
+  // Only project scalar integers.
+  if (!ShapeUtil::IsEffectiveScalar(shape) ||
+      !primitive_util::IsIntegralType(shape.element_type())) {
+    return nullptr;
+  }
+
+  int64_t bound_val = 0;
+  int64_t step_val = 0;
+  bool found = false;
+  auto parsed = PatternMatchParseWhileLoop(inner_while);
+  if (parsed && parsed->static_while_loop &&
+      parsed->static_while_loop->induction_var_index == t_idx) {
+    bound_val = parsed->static_while_loop->loop_bound;
+    step_val = parsed->static_while_loop->step_size;
+    found = true;
+  } else {
+    HloInstruction* cond_root =
+        inner_while->while_condition()->root_instruction();
+    if (cond_root->opcode() == HloOpcode::kCompare &&
+        cond_root->operand(1)->opcode() == HloOpcode::kConstant) {
+      std::optional<int64_t> bound =
+          cond_root->operand(1)->literal().GetFirstInteger();
+      if (bound.has_value()) {
+        bound_val = *bound;
+        HloInstruction* update =
+            inner_while->while_body()->root_instruction()->mutable_operand(
+                t_idx);
+        // Look through GTE(Tuple) if necessary for the update
+        while (update->opcode() == HloOpcode::kGetTupleElement &&
+               update->operand(0)->opcode() == HloOpcode::kTuple) {
+          update = update->mutable_operand(0)->mutable_operand(
+              update->tuple_index());
+        }
+        if (update->opcode() == HloOpcode::kAdd &&
+            update->operand(1)->opcode() == HloOpcode::kConstant) {
+          std::optional<int64_t> step =
+              update->operand(1)->literal().GetFirstInteger();
+          if (step.has_value()) {
+            step_val = *step;
+            found = true;
+          }
+        }
+      }
+    }
+  }
+  if (!found || step_val <= 0) {
+    return nullptr;
+  }
+
+  auto bound_literal = CreateLiteralOfShape(shape, bound_val);
+  auto step_literal = CreateLiteralOfShape(shape, step_val);
+  auto step_m1_literal = CreateLiteralOfShape(shape, step_val - 1);
+  auto zero_literal = CreateLiteralOfShape(shape, 0);
+
+  if (!bound_literal.has_value() || !step_literal.has_value() ||
+      !step_m1_literal.has_value() || !zero_literal.has_value()) {
+    return nullptr;
+  }
+
+  HloInstruction* i_start = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, loop_param, t_idx));
+  HloInstruction* bound_hlo = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(*bound_literal)));
+  HloInstruction* step_hlo = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(*step_literal)));
+  HloInstruction* zero_hlo = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(*zero_literal)));
+
+  HloInstruction* diff =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kSubtract, bound_hlo, i_start));
+  HloInstruction* dividend =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kAdd, diff,
+          body_builder.AddInstruction(
+              HloInstruction::CreateConstant(std::move(*step_m1_literal)))));
+  HloInstruction* iteration_count =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kDivide, dividend, step_hlo));
+
+  HloInstruction* past_bound = body_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), i_start,
+                                    bound_hlo, ComparisonDirection::kGe));
+  iteration_count = body_builder.AddInstruction(HloInstruction::CreateTernary(
+      shape, HloOpcode::kSelect, past_bound, zero_hlo, iteration_count));
+
+  return body_builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, i_start,
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kMultiply, iteration_count, step_hlo))));
 }
 
 }  // namespace
@@ -1804,8 +1959,8 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
 
   // Duplicate the loop body into the loop parent computation, so that the first
   // iteration happens there.
-  TF_ASSIGN_OR_RETURN(int64_t next_scheduling_id,
-                      NextSchedulingGroupId(*while_loop->GetModule()));
+  ASSIGN_OR_RETURN(int64_t next_scheduling_id,
+                   NextSchedulingGroupId(*while_loop->GetModule()));
   absl::flat_hash_map<int64_t, int64_t> annotation_map;
   for (auto* instr : while_body->MakeInstructionPostOrder()) {
     if (instr == loop_parameter) {
@@ -1838,7 +1993,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
           loop_computation->parent()->AddEmbeddedComputation(
               instr->while_body()->CloneWithReplacements(nullptr)));
     }
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         UpdateControlDependencies(instr, cloned_instr, while_body_to_peeled));
     UpdateInstructionChannelId(cloned_instr, next_channel_id,
                                update_collective_channel_id);
@@ -1848,7 +2003,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
             .iteration_id.has_value()) {
       RemoveSchedulingAnnotation(cloned_instr);
     } else {
-      TF_RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
+      RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
           cloned_instr, next_scheduling_id, annotation_map));
     }
     while_body_to_peeled[instr] = cloned_instr;
@@ -1919,24 +2074,22 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
   HloInstruction* new_init = loop_computation->AddInstruction(
       HloInstruction::CreateTuple(new_init_operands));
   while_body_to_peeled[while_body->root_instruction()] = new_init;
-  TF_RETURN_IF_ERROR(UpdateControlDependencies(while_body->root_instruction(),
-                                               new_init, while_body_to_peeled));
+  RETURN_IF_ERROR(UpdateControlDependencies(while_body->root_instruction(),
+                                            new_init, while_body_to_peeled));
   HloInstruction* new_while_loop =
       loop_computation->AddInstruction(HloInstruction::CreateWhile(
           loop_state_shape, new_while_condition, new_while_body, new_init));
-  TF_RETURN_IF_ERROR(
-      while_loop->ReplaceAllUsesWithDifferentShape(new_while_loop));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(while_loop->ReplaceAllUsesWithDifferentShape(new_while_loop));
+  RETURN_IF_ERROR(
       loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
-  TF_RETURN_IF_ERROR(new_while_loop->GetModule()->RemoveUnusedComputations());
+  RETURN_IF_ERROR(new_while_loop->GetModule()->RemoveUnusedComputations());
   // Run WhileLoopAnalysis again on the new loop to collect the position of the
   // all-reduces in the new cloned loop as they aren't the same of the old.
   // Loop analysis should result exactly the same, because the loop is the same
   // except some new scalar unused parameters added at the end.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloDataflowAnalysis> new_dataflow_analysis,
-      HloDataflowAnalysis::Run(*(new_while_loop->GetModule()),
-                               /*ssa_form=*/true));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> new_dataflow_analysis,
+                   HloDataflowAnalysis::Run(*(new_while_loop->GetModule()),
+                                            /*ssa_form=*/true));
   WhileLoopAnalysis new_loop_analysis(
       new_while_loop, loop_analysis.GetMaxPipeliningPerLoop(),
       pipeline_use_tree, process_different_sized_ops,
@@ -2000,7 +2153,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
     }
 
     if (post_processing_fn) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           post_processing_fn(processed, /*new_while_instr=*/nullptr));
     }
     InstructionMap new_cloned_map;
@@ -2020,7 +2173,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
       }
       (*formatting_cloned_map)[formatting_op] = processed;
       if (post_processing_fn) {
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             post_processing_fn(processed, /*new_while_instr=*/nullptr));
       }
     }
@@ -2061,7 +2214,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
           computation->AddInstruction(HloInstruction::CreateDynamicSlice(
               slice_target_shape, data_to_slice, indices, dynamic_slice_sizes));
     }
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         sliced_data,
         process_slice(sliced_data, pipelined_values_map, move_info,
                       /*formatting_cloned_map=*/nullptr, update_annotations));
@@ -2081,15 +2234,15 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
     }
     auto replace_instructions_with =
         [](absl::Span<HloInstruction*> to_replace_instrs,
-           HloInstruction* new_instr) {
-          for (auto* to_replace : to_replace_instrs) {
-            HloComputation* computation = to_replace->parent();
-            TF_RETURN_IF_ERROR(to_replace->ReplaceAllUsesWith(new_instr));
-            TF_RETURN_IF_ERROR(
-                computation->RemoveInstructionAndUnusedOperands(to_replace));
-          }
-          return absl::OkStatus();
-        };
+           HloInstruction* new_instr) -> absl::Status {
+      for (auto* to_replace : to_replace_instrs) {
+        HloComputation* computation = to_replace->parent();
+        RETURN_IF_ERROR(to_replace->ReplaceAllUsesWith(new_instr));
+        RETURN_IF_ERROR(
+            computation->RemoveInstructionAndUnusedOperands(to_replace));
+      }
+      return absl::OkStatus();
+    };
     if (move_info.dynamic_update_slices.empty()) {
       auto it = moves_requiring_special_output_to_idx.find(i);
       CHECK(it != moves_requiring_special_output_to_idx.end());
@@ -2105,7 +2258,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
               new_while_loop, it->second));
       // This is the case where the instruction is a sink.
       InstructionMap updated_pipelined_values_map;
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           auto* in_sink_instr,
           process_slice(input_data_to_sink, pipelined_values_map_inloop,
                         move_info,
@@ -2120,7 +2273,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
           move_info.sink_instruction->CloneWithNewOperands(
               move_info.sink_instruction->shape(), new_input_sink_operands));
       updated_pipelined_values_map.clear();
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           auto* out_sink_instr,
           process_slice(output_data_to_sink, pipelined_values_map_outloop,
                         move_info,
@@ -2137,11 +2290,11 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
           move_info.sink_instruction->CloneWithNewOperands(
               move_info.sink_instruction->shape(), new_output_sink_operands));
       RemoveSchedulingAnnotation(out_sink_instr);
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           move_info.sink_instruction->ReplaceAllUsesWith(in_sink_instr));
-      TF_RETURN_IF_ERROR(new_while_body->RemoveInstructionAndUnusedOperands(
+      RETURN_IF_ERROR(new_while_body->RemoveInstructionAndUnusedOperands(
           move_info.sink_instruction));
-      TF_RETURN_IF_ERROR(replace_instructions_with(
+      RETURN_IF_ERROR(replace_instructions_with(
           absl::MakeSpan(loop_output_to_replace), out_sink_instr));
       continue;
     }
@@ -2185,12 +2338,12 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
               move_info.collectives_to_move.front()->operand(0)->shape(),
               new_while_loop, it->second));
     }
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         input_stacked_data,
         extract_and_process_slice(input_stacked_data, input_data_to_slice,
                                   move_info, pipelined_values_map_inloop,
                                   input_dus_idx, /*update_annotations=*/false));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         output_stacked_data,
         extract_and_process_slice(output_stacked_data, output_data_to_slice,
                                   move_info, pipelined_values_map_outloop,
@@ -2206,13 +2359,13 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
                                       move_info.sliced_idx),
           input_stacked_data);
     }
-    TF_RETURN_IF_ERROR(dyn_update->ReplaceAllUsesWith(new_peeled_dus));
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(dyn_update->ReplaceAllUsesWith(new_peeled_dus));
+    RETURN_IF_ERROR(
         new_while_body->RemoveInstructionAndUnusedOperands(dyn_update));
-    TF_RETURN_IF_ERROR(replace_instructions_with(
+    RETURN_IF_ERROR(replace_instructions_with(
         absl::MakeSpan(loop_output_to_replace), output_stacked_data));
   }
-  TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
+  RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
   return new_while_loop;
 }
 
@@ -2283,6 +2436,35 @@ absl::Status TransformFormattingOp(
             ComputeFullOutputShape(to_move, formatting_op->shape()),
             collect_operands(formatting_op)));
     pipelined_map[formatting_op] = cloned_elementwise;
+    return absl::OkStatus();
+  }
+  if (formatting_op->opcode() == HloOpcode::kCustomCall &&
+      formatting_op->custom_call_target() == "LayoutConstraint") {
+    auto operands = collect_operands(formatting_op);
+    auto* custom_call = Cast<HloCustomCallInstruction>(formatting_op);
+    Shape expanded_shape =
+        ComputeFullOutputShape(to_move, formatting_op->shape());
+
+    std::vector<Shape> operand_shapes_with_layout;
+    for (const Shape& old_shape : custom_call->operand_shapes_with_layout()) {
+      Shape new_shape_with_layout = ComputeFullOutputShape(to_move, old_shape);
+      std::vector<int64_t> new_minor_to_major;
+      new_minor_to_major.reserve(old_shape.layout().minor_to_major_size() + 1);
+      for (int64_t dim : old_shape.layout().minor_to_major()) {
+        new_minor_to_major.push_back(dim + 1);
+      }
+      new_minor_to_major.push_back(0);
+      *new_shape_with_layout.mutable_layout() =
+          LayoutUtil::MakeLayout(new_minor_to_major);
+      operand_shapes_with_layout.push_back(new_shape_with_layout);
+    }
+
+    HloInstruction* expanded_custom_call =
+        loop_computation->AddInstruction(HloInstruction::CreateCustomCall(
+            expanded_shape, operands, custom_call->custom_call_target(),
+            operand_shapes_with_layout, custom_call->opaque(),
+            custom_call->api_version()));
+    pipelined_map[formatting_op] = expanded_custom_call;
     return absl::OkStatus();
   }
   if (formatting_op->opcode() == HloOpcode::kAllGather) {
@@ -2417,6 +2599,103 @@ absl::Status TransformFormattingOp(
     pipelined_map[formatting_op] = expanded_concat;
     return absl::OkStatus();
   }
+  if (formatting_op->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    VLOG(1) << "Transforming DUS: " << formatting_op->ToString()
+            << " to scatter.";
+    // Convert an intermediate DUS formatting op to a scatter when adding
+    // the batch dimension. The DUS inserts a value into a small buffer at
+    // a position determined by a single non-constant index. After batching,
+    // each batch element independently performs its own insertion, which is
+    // naturally expressed as a scatter with explicit batch indexing.
+    auto* dus = Cast<HloDynamicUpdateSliceInstruction>(formatting_op);
+    auto sliced_dim = GetSlicedDimension(dus);
+    CHECK(sliced_dim.has_value() && *sliced_dim != to_move.sliced_idx)
+        << "DUS formatting op should have been validated in "
+           "is_acceptable_user";
+    auto operands = collect_operands(formatting_op);
+    CHECK_GE(operands.size(), 2);
+    HloInstruction* expanded_base = operands[0];
+    HloInstruction* expanded_update = operands[1];
+    // Reshape the update to remove the DUS insert dimension. In scatter,
+    // inserted_window_dims means those operand dims are NOT present in
+    // the update tensor. The DUS update has size 1 in the insert dimension,
+    // so we squeeze it out.
+    std::vector<int64_t> squeezed_dims;
+    for (int64_t i = 0; i < expanded_update->shape().dimensions().size(); ++i) {
+      if (i != *sliced_dim + 1) {
+        squeezed_dims.push_back(expanded_update->shape().dimensions(i));
+      }
+    }
+    Shape squeezed_update_shape = ShapeUtil::MakeShape(
+        expanded_update->shape().element_type(), squeezed_dims);
+    expanded_update = loop_computation->AddInstruction(
+        HloInstruction::CreateReshape(squeezed_update_shape, expanded_update));
+    // The non-constant index (insertion position).
+    // In collect_operands, operands[0] is base, operands[1] is update,
+    // and operands[2+] are index operands.
+    int64_t non_const_index_operand =
+        *sliced_dim + dus->first_index_operand_number();
+    HloInstruction* insert_index = operands[non_const_index_operand];
+    // insert_index shape is [N] (batched scalar).
+    int64_t num_iterations = insert_index->shape().dimensions(0);
+    // Create an iota for batch indexing: [0, 1, 2, ..., N-1]
+    HloInstruction* batch_iota =
+        loop_computation->AddInstruction(HloInstruction::CreateIota(
+            ShapeUtil::MakeShape(insert_index->shape().element_type(),
+                                 {num_iterations}),
+            0));
+    // Reshape both to [N, 1] and concatenate to [N, 2]:
+    //   column 0 = batch index (iota)
+    //   column 1 = insertion position
+    Shape col_shape = ShapeUtil::MakeShape(insert_index->shape().element_type(),
+                                           {num_iterations, 1});
+    HloInstruction* batch_col = loop_computation->AddInstruction(
+        HloInstruction::CreateReshape(col_shape, batch_iota));
+    HloInstruction* insert_col = loop_computation->AddInstruction(
+        HloInstruction::CreateReshape(col_shape, insert_index));
+    Shape indices_shape = ShapeUtil::MakeShape(
+        insert_index->shape().element_type(), {num_iterations, 2});
+    HloInstruction* scatter_indices =
+        loop_computation->AddInstruction(HloInstruction::CreateConcatenate(
+            indices_shape, {batch_col, insert_col}, 1));
+    // Build the scatter dimension numbers.
+    // After batching, the operand shape is [N, d0, d1, ...].
+    // The DUS inserts along original dim *sliced_dim, which is now
+    // dim (*sliced_dim + 1) in the batched operand. Dim 0 is the batch dim.
+    ScatterDimensionNumbers scatter_dims;
+    // update_window_dims: all dims of the squeezed update except dim 0
+    // (which is the scatter dim, iterating over the N scatter index rows).
+    // The insert dimension has already been removed from the update by
+    // the reshape above.
+    for (int64_t i = 1; i < expanded_update->shape().dimensions().size(); ++i) {
+      scatter_dims.add_update_window_dims(i);
+    }
+    scatter_dims.add_inserted_window_dims(0);
+    scatter_dims.add_inserted_window_dims(*sliced_dim + 1);
+    scatter_dims.add_scatter_dims_to_operand_dims(0);
+    scatter_dims.add_scatter_dims_to_operand_dims(*sliced_dim + 1);
+    scatter_dims.set_index_vector_dim(1);
+    // Create an "assign" computation: (a, b) -> b, since DUS overwrites.
+    PrimitiveType element_type = expanded_base->shape().element_type();
+    HloComputation::Builder assign_builder("dus_assign");
+    assign_builder.AddInstruction(HloInstruction::CreateParameter(
+        0, ShapeUtil::MakeShape(element_type, {}), "lhs"));
+    auto assign_rhs =
+        assign_builder.AddInstruction(HloInstruction::CreateParameter(
+            1, ShapeUtil::MakeShape(element_type, {}), "rhs"));
+    HloComputation* assign_computation =
+        loop_computation->parent()->AddEmbeddedComputation(
+            assign_builder.Build(assign_rhs));
+    HloInstruction* expanded_scatter =
+        loop_computation->AddInstruction(HloInstruction::CreateScatter(
+            expanded_base->shape(), expanded_base, scatter_indices,
+            expanded_update, assign_computation, scatter_dims,
+            /*indices_are_sorted=*/true,
+            /*unique_indices=*/true));
+    VLOG(1) << "Expanded scatter: " << expanded_scatter->ToString();
+    pipelined_map[formatting_op] = expanded_scatter;
+    return absl::OkStatus();
+  }
   return absl::InvalidArgumentError(
       absl::StrCat("Unsupported instruction ", formatting_op->ToString()));
 }
@@ -2470,8 +2749,8 @@ absl::StatusOr<HloInstruction*> TransformLoopForwardSink(
         inst->operand(1)->IsCustomCall(
             CollectivePipeliner::kSunkByPreviousStep)) {
       HloInstruction* cc = inst->mutable_operand(1);
-      TF_RETURN_IF_ERROR(inst->ReplaceOperandWith(1, cc->mutable_operand(0)));
-      TF_RETURN_IF_ERROR(cc->parent()->RemoveInstruction(cc));
+      RETURN_IF_ERROR(inst->ReplaceOperandWith(1, cc->mutable_operand(0)));
+      RETURN_IF_ERROR(cc->parent()->RemoveInstruction(cc));
     }
   }
   CHECK_EQ(while_body->root_instruction()->opcode(), HloOpcode::kTuple);
@@ -2691,8 +2970,8 @@ absl::StatusOr<HloInstruction*> TransformLoopForwardSink(
         cloned_body->AddInstruction(HloInstruction::CreateGetTupleElement(
             output->shape(), cloned_body->parameter_instruction(0), *idx));
     HloInstruction* old_operand_param = output->mutable_operand(0);
-    TF_RETURN_IF_ERROR(output->ReplaceOperandWith(0, new_param));
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(output->ReplaceOperandWith(0, new_param));
+    RETURN_IF_ERROR(
         old_operand_param->parent()->RemoveInstruction(old_operand_param));
     if (insert_non_alias_custom_call && indices_to_insert.contains(i)) {
       auto* old_operand = output->mutable_operand(1);
@@ -2700,7 +2979,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForwardSink(
           cloned_body->AddInstruction(HloInstruction::CreateCustomCall(
               old_operand->shape(), {old_operand},
               /*custom_call_target=*/CollectivePipeliner::kSunkByPreviousStep));
-      TF_RETURN_IF_ERROR(output->ReplaceOperandWith(1, custom_call));
+      RETURN_IF_ERROR(output->ReplaceOperandWith(1, custom_call));
     }
   }
   HloInstruction* new_while =
@@ -2768,7 +3047,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForwardSink(
     //  an effect on the instruction itself (like say broadcast, slices ...
     //  etc).
     for (HloInstruction* formatting_op : to_move.formatting_ops) {
-      TF_RETURN_IF_ERROR(TransformFormattingOp(
+      RETURN_IF_ERROR(TransformFormattingOp(
           formatting_op, to_move, loop_computation, pipelined_map,
           to_add_batch_set, next_channel_id, update_collective_channel_id));
     }
@@ -2798,10 +3077,10 @@ absl::StatusOr<HloInstruction*> TransformLoopForwardSink(
   }
   HloInstruction* new_tuple = loop_computation->AddInstruction(
       HloInstruction::CreateTuple(new_output_tuple));
-  TF_RETURN_IF_ERROR(while_loop->ReplaceAllUsesWithDifferentShape(new_tuple));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(while_loop->ReplaceAllUsesWithDifferentShape(new_tuple));
+  RETURN_IF_ERROR(
       loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
-  TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
+  RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
   return new_while;
 }
 
@@ -2923,8 +3202,8 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
   // Add to the rewritten loop the new parameter/output data that is going to be
   // pipelined. Clone chains of pipelined data in the parent computation in the
   // process (they will endup being executed before the loop).
-  TF_ASSIGN_OR_RETURN(int64_t next_scheduling_id,
-                      NextSchedulingGroupId(*while_loop->GetModule()));
+  ASSIGN_OR_RETURN(int64_t next_scheduling_id,
+                   NextSchedulingGroupId(*while_loop->GetModule()));
   absl::flat_hash_map<int64_t, int64_t> annotation_map;
   for (int i = 0; i < loop_analysis.GetMoveInfos().size(); ++i) {
     const int64_t idx = i + loop_parameter->shape().tuple_shapes().size();
@@ -2932,7 +3211,7 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
         loop_analysis.GetMoveInfos()[i].collectives_to_move[0]->shape();
     new_root_operands[idx] =
         loop_analysis.GetMoveInfos()[i].collectives_to_move[0];
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         new_init_operands[idx],
         CloneBackwardChain(
             *while_loop->parent(), loop_analysis.GetMoveInfos()[i],
@@ -2942,12 +3221,12 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
             /*loop_variant_parameter_info=*/nullptr, post_processing_fn));
 
     if (post_processing_fn) {
-      TF_RETURN_IF_ERROR(post_processing_fn(new_init_operands[idx],
-                                            /*new_while_instr=*/nullptr));
+      RETURN_IF_ERROR(post_processing_fn(new_init_operands[idx],
+                                         /*new_while_instr=*/nullptr));
     }
     if (postprocess_peeled) {
-      TF_RETURN_IF_ERROR(postprocess_peeled(new_init_operands[idx],
-                                            /*new_while_instr=*/nullptr));
+      RETURN_IF_ERROR(postprocess_peeled(new_init_operands[idx],
+                                         /*new_while_instr=*/nullptr));
     }
   }
   ConstantValue next_loop_iteration =
@@ -2993,7 +3272,7 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
       // Passing -1 as the next scheduling id to indicate that we should not
       // update the scheduling id of the cloned instructions.
       int64_t next_scheduling_id = -1;
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           cloned_instr,
           CloneBackwardChain(
               body_builder, loop_analysis.GetMoveInfos()[it->second],
@@ -3003,30 +3282,39 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
               &loop_variant_parameter_info, post_processing_fn));
 
       if (post_processing_fn) {
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             post_processing_fn(cloned_instr, /*new_while_instr=*/nullptr));
       }
       if (postprocess_rotated) {
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             postprocess_rotated(cloned_instr, /*new_while_instr=*/nullptr));
       }
     } else {
       auto new_operands =
           MapNewOperands(instr->operands(), while_body_replacement_map);
-      cloned_instr = body_builder.AddInstruction(
-          instr->CloneWithNewOperands(instr->shape(), new_operands));
-      if (cloned_instr->opcode() == HloOpcode::kWhile) {
-        cloned_instr->set_while_condition(
-            while_loop->GetModule()->AddEmbeddedComputation(
-                instr->while_condition()->CloneWithReplacements(nullptr)));
-        cloned_instr->set_while_body(
-            while_loop->GetModule()->AddEmbeddedComputation(
-                instr->while_body()->CloneWithReplacements(nullptr)));
+      if (instr->opcode() == HloOpcode::kGetTupleElement &&
+          instr->operand(0)->opcode() == HloOpcode::kWhile) {
+        cloned_instr = ProjectNestedLoopCounter(instr->mutable_operand(0),
+                                                instr->tuple_index(),
+                                                new_loop_param, body_builder);
       }
-      TF_RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
-                                                   while_body_replacement_map));
-      UpdateInstructionChannelId(cloned_instr, next_channel_id,
-                                 update_collective_channel_id);
+
+      if (cloned_instr == nullptr) {
+        cloned_instr = body_builder.AddInstruction(
+            instr->CloneWithNewOperands(instr->shape(), new_operands));
+        if (cloned_instr->opcode() == HloOpcode::kWhile) {
+          cloned_instr->set_while_condition(
+              while_loop->GetModule()->AddEmbeddedComputation(
+                  instr->while_condition()->CloneWithReplacements(nullptr)));
+          cloned_instr->set_while_body(
+              while_loop->GetModule()->AddEmbeddedComputation(
+                  instr->while_body()->CloneWithReplacements(nullptr)));
+        }
+        RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
+                                                  while_body_replacement_map));
+        UpdateInstructionChannelId(cloned_instr, next_channel_id,
+                                   update_collective_channel_id);
+      }
     }
     if (it != collective_to_move_map.end()) {
       const int64_t tuple_idx =
@@ -3048,7 +3336,7 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
     auto it = while_body_replacement_map.find(new_root_operands[idx]);
     CHECK(it != while_body_replacement_map.end())
         << new_root_operands[idx]->ToString() << " not present in map";
-    TF_RETURN_IF_ERROR(value->ReplaceAllUsesWith(it->second));
+    RETURN_IF_ERROR(value->ReplaceAllUsesWith(it->second));
   }
 
   new_root_operands.back() =
@@ -3069,9 +3357,9 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
   HloComputation* new_while_body =
       while_loop->GetModule()->AddEmbeddedComputation(
           body_builder.Build(new_loop_root));
-  TF_RETURN_IF_ERROR(UpdateControlDependencies(while_body->root_instruction(),
-                                               new_loop_root,
-                                               while_body_replacement_map));
+  RETURN_IF_ERROR(UpdateControlDependencies(while_body->root_instruction(),
+                                            new_loop_root,
+                                            while_body_replacement_map));
   auto cond_builder =
       HloComputation::Builder(while_loop->while_condition()->name());
   HloInstruction* new_cond_param =
@@ -3108,8 +3396,8 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
           cond_builder.Build(comparison));
   HloInstruction* new_loop_init = while_loop->parent()->AddInstruction(
       HloInstruction::CreateTuple(new_init_operands));
-  TF_RETURN_IF_ERROR(UpdateControlDependencies(while_body->root_instruction(),
-                                               new_loop_init, chain_clone_map));
+  RETURN_IF_ERROR(UpdateControlDependencies(while_body->root_instruction(),
+                                            new_loop_init, chain_clone_map));
   // Create the new loop.
   HloInstruction* new_while_loop =
       while_loop->parent()->AddInstruction(HloInstruction::CreateWhile(
@@ -3148,15 +3436,15 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
         instr->CloneWithNewOperands(instr->shape(), new_operands));
     if (postprocess_peeled_trailing_op) {
       CHECK_NE(new_while_loop, nullptr);
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           postprocess_peeled_trailing_op(cloned_instr, new_while_loop));
     }
 
-    TF_RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
-                                                 while_body_replacement_map));
+    RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
+                                              while_body_replacement_map));
     UpdateInstructionChannelId(cloned_instr, next_channel_id,
                                update_collective_channel_id);
-    TF_RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
+    RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
         cloned_instr, next_scheduling_id, annotation_map));
     while_body_replacement_map[instr] = cloned_instr;
     if (instruction_is_output_it != is_output_instruction.end()) {
@@ -3169,11 +3457,11 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
   HloInstruction* final_loop_output = while_loop->parent()->AddInstruction(
       HloInstruction::CreateTuple(output_tuple_instructions));
   HloComputation* loop_computation = while_loop->parent();
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       while_loop->ReplaceAllUsesWithDifferentShape(final_loop_output));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
-  TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
+  RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
   return new_while_loop;
 }
 
@@ -3185,11 +3473,11 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
   // Precompute module-scoped analyses. Because we are running a while-loop
   // analysis over all while instructions in the module, computing them here and
   // passing them in avoids recomputing them once for each while instruction.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis,
       TuplePointsToAnalysis::Run(module));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-                      HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
+                   HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
 
   std::vector<std::pair<HloInstruction*, std::unique_ptr<WhileLoopAnalysis>>>
       loop_analyses;
@@ -3250,7 +3538,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     if (config_.pipelining_direction ==
         collective_pipeliner_utils::PipeliningDirection::kForward) {
       CHECK(config_.reuse_pipelined_op_buffer);
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           transformed_while_loop,
           TransformLoopForward(
               *loop_analysis, !config_.last_run, config_.level_to_operate_on,
@@ -3260,7 +3548,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
               config_.unique_channel_id, config_.postprocess_pipelined_ops));
     } else if (config_.pipelining_direction ==
                collective_pipeliner_utils::PipeliningDirection::kForwardSink) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           transformed_while_loop,
           TransformLoopForwardSink(
               *loop_analysis, !config_.last_run, config_.level_to_operate_on,
@@ -3270,7 +3558,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     } else {
       CHECK_EQ(config_.pipelining_direction,
                collective_pipeliner_utils::PipeliningDirection::kBackward);
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           transformed_while_loop,
           TransformLoopBackward(
               *loop_analysis, !config_.last_run, config_.level_to_operate_on,
@@ -3282,7 +3570,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
               config_.unique_channel_id, config_.postprocess_pipelined_ops));
     }
     if (config_.postprocess_transformed_while_loop) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           config_.postprocess_transformed_while_loop(transformed_while_loop));
     }
     ++transformed_loops;
@@ -3297,16 +3585,15 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
         if (instruction->IsCustomCall(
                 CollectivePipeliner::kInsertedByPreviousStep)) {
           to_remove.push_back(instruction);
-          TF_RETURN_IF_ERROR(
+          RETURN_IF_ERROR(
               instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
           changed = true;
         }
       }
     }
     for (auto* instruction : to_remove) {
-      TF_RETURN_IF_ERROR(
-          instruction->parent()->RemoveInstructionAndUnusedOperands(
-              instruction));
+      RETURN_IF_ERROR(instruction->parent()->RemoveInstructionAndUnusedOperands(
+          instruction));
     }
   }
   VLOG(1) << "Transformed loops: " << transformed_loops
@@ -3315,7 +3602,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
           << GetPipelineDirectionString(config_.pipelining_direction);
   // Run necessary cleanup to make sure unused code doesn't trigger HloVerifier.
   if (changed) {
-    TF_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
+    RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
   }
 
   return changed;
@@ -3340,13 +3627,13 @@ absl::StatusOr<bool> CollectivePipeliner::RunImpl(
   bool changed = true;
   int64_t iter = 0;
   while (changed) {
-    TF_ASSIGN_OR_RETURN(changed, RunPipeliner(module, execution_threads));
+    ASSIGN_OR_RETURN(changed, RunPipeliner(module, execution_threads));
     VLOG(1) << "Finished running pipeliner's iteration for small collectives: "
             << iter;
     iter++;
   }
   config_.delay_sinking_large_collectives = false;
-  TF_ASSIGN_OR_RETURN(changed, RunPipeliner(module, execution_threads));
+  ASSIGN_OR_RETURN(changed, RunPipeliner(module, execution_threads));
   VLOG(1) << "Finished running pipeliner's iteration for large collectives: "
           << iter;
   return iter > 1 || changed;

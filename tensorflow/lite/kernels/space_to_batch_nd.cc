@@ -146,15 +146,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                        GetTensorData<int32_t>(op_context.paddings),    \
                        GetTensorShape(op_context.output),              \
                        GetTensorData<scalar>(op_context.output))
-  switch (op_context.input->type) {  // Already know in/out types are same.
-    case kTfLiteFloat32:
-      if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_BATCH_ND(reference_ops, float, 0);
-      } else {
-        TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, float, 0);
-      }
-      break;
-    case kTfLiteUInt8:
+  // Already know in/out types are same.
+  switch (TfLiteTypeGetSizeBits(op_context.input->type)) {
+    case 8:
       if (kernel_type == kReference) {
         TF_LITE_SPACE_TO_BATCH_ND(reference_ops, uint8_t,
                                   op_context.output->params.zero_point);
@@ -163,16 +157,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                   op_context.output->params.zero_point);
       }
       break;
-    case kTfLiteInt8:
-      if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_BATCH_ND(reference_ops, int8_t,
-                                  op_context.output->params.zero_point);
-      } else {
-        TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, int8_t,
-                                  op_context.output->params.zero_point);
-      }
-      break;
-    case kTfLiteInt16:
+    case 16:
       if (kernel_type == kReference) {
         TF_LITE_SPACE_TO_BATCH_ND(reference_ops, int16_t,
                                   op_context.output->params.zero_point);
@@ -181,14 +166,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                   op_context.output->params.zero_point);
       }
       break;
-    case kTfLiteInt32:
+    case 32:
       if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_BATCH_ND(reference_ops, int32_t, 0);
+        TF_LITE_SPACE_TO_BATCH_ND(reference_ops, float, 0);
       } else {
-        TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, int32_t, 0);
+        TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, float, 0);
       }
       break;
-    case kTfLiteInt64:
+    case 64:
       if (kernel_type == kReference) {
         TF_LITE_SPACE_TO_BATCH_ND(reference_ops, int64_t, 0);
       } else {

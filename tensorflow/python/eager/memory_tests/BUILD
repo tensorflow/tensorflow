@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
@@ -10,9 +10,10 @@ package(
 # seem to confuse the memory_profiler, and the tests begin to flake. Add new
 # test files as needed.
 
-py_strict_library(
+py_library(
     name = "memory_test_util",
     srcs = ["memory_test_util.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = ["//tensorflow/python/eager:context"],
 )

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-tpu-parallel-execute-sink-resource-write | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt %s -tf-tpu-parallel-execute-sink-resource-write | env FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: func @multiple_uses
 // CHECK-SAME:  ({{.+}}: tensor<i1>, [[ARG1:%.+]]: tensor<!tf_type.resource>)

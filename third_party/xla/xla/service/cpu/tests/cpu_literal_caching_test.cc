@@ -21,13 +21,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
-#include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/service/cpu/tests/cpu_pjrt_codegen_test.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {
 namespace {
-class CpuDuplicateConstantsTest : public CpuCodegenTest {};
+class CpuDuplicateConstantsTest : public CpuPjRtCodegenTest {};
 
 TEST_F(CpuDuplicateConstantsTest, RepeatedArrayConstants) {
   // We use a while loop here to force the two constant HloInstructions to be in

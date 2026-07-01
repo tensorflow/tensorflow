@@ -26,7 +26,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "llvm/ADT/STLExtras.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
@@ -130,12 +134,12 @@ absl::StatusOr<OutputArguments> ExtractOutputArguments(
     const BufferAssignment& buffer_assignment,
     const HloInstruction* hlo_instruction) {
   OutputArguments result;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       hlo_instruction->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray()) return absl::OkStatus();
 
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             BufferAllocation::Slice slice,
             buffer_assignment.GetUniqueSlice(hlo_instruction, index));
 
@@ -151,15 +155,21 @@ absl::StatusOr<KernelArguments> CreateKernelArguments(
     const HloInstruction* hlo_instruction,
     absl::Span<const Shape> unmanaged_arguments) {
   std::vector<KernelArgument> kernel_arguments;
-  for (const HloInstruction* operand : hlo_instruction->operands()) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                        buffer_assignment.GetUniqueSlice(operand, {}));
-    kernel_arguments.emplace_back(KernelArgument(operand->shape(), slice));
+  absl::flat_hash_set<int> no_invariant_operands =
+      NonInvariantOperands(*hlo_instruction);
+
+  for (auto [op_idx, operand] : llvm::enumerate(hlo_instruction->operands())) {
+    ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                     buffer_assignment.GetUniqueSlice(operand, {}));
+    KernelArgument arg(operand->shape(), slice);
+    if (no_invariant_operands.contains(op_idx)) {
+      arg.set_invariant(false);
+    }
+    kernel_arguments.emplace_back(std::move(arg));
   }
 
-  TF_ASSIGN_OR_RETURN(
-      OutputArguments output_result,
-      ExtractOutputArguments(buffer_assignment, hlo_instruction));
+  ASSIGN_OR_RETURN(OutputArguments output_result,
+                   ExtractOutputArguments(buffer_assignment, hlo_instruction));
 
   absl::c_move(output_result.output_arguments,
                std::back_inserter(kernel_arguments));
@@ -203,9 +213,8 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
 
   const auto& operands = hlo_instruction->operands();
 
-  TF_ASSIGN_OR_RETURN(
-      OutputArguments output_result,
-      ExtractOutputArguments(buffer_assignment, hlo_instruction));
+  ASSIGN_OR_RETURN(OutputArguments output_result,
+                   ExtractOutputArguments(buffer_assignment, hlo_instruction));
   auto& [output_arguments, buffers_written] = output_result;
 
   // Check bounds: all output indices must be valid positions
@@ -238,9 +247,8 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
         return absl::InvalidArgumentError(
             "Not enough inputs for remaining positions");
       }
-      TF_ASSIGN_OR_RETURN(
-          BufferAllocation::Slice slice,
-          buffer_assignment.GetUniqueSlice(operands[arg_idx], {}));
+      ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                       buffer_assignment.GetUniqueSlice(operands[arg_idx], {}));
       kernel_arguments.emplace_back(
           KernelArgument(operands[arg_idx]->shape(), slice));
       ++arg_idx;
