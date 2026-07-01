@@ -494,8 +494,8 @@ Status BaseGPUDevice::InitScratchBuffers() {
           "Failed to allocate scratch buffer for device ",
           tf_device_id_.value());
     }
-    se::DeviceMemory<char> mem(
-        se::DeviceMemoryBase(scratch_buffer, scratch_buffer_size));
+    stream_executor::DeviceAddress<char> mem(stream_executor::DeviceAddressBase(
+        scratch_buffer, scratch_buffer_size));
     TF_RETURN_IF_ERROR(stream_->compute->MemZero(
         &mem, Eigen::kGpuScratchSize + sizeof(unsigned int)));
     scratch_ = static_cast<char*>(scratch_buffer);
@@ -705,8 +705,8 @@ Tensor BaseGPUDevice::CopyGpuTensorToHostDebugOnly(const Tensor& gpu_tensor) {
   auto stream = device_context_->stream();
   CHECK(stream  // Crash OK
             ->Memcpy(host_tensor.data(),
-                     se::DeviceMemoryBase(gpu_tensor.data(),
-                                          gpu_tensor.TotalBytes()),
+                     stream_executor::DeviceAddressBase(
+                         gpu_tensor.data(), gpu_tensor.TotalBytes()),
                      gpu_tensor.TotalBytes())
             .ok());
   CHECK(stream->BlockHostUntilDone().ok());  // Crash OK
