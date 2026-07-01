@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities to convert data buffers to/from DTensor tensors."""
+import os
+import warnings
 from typing import List
 
 import numpy as np
@@ -58,6 +60,17 @@ def to_numpy(tensor: TensorLike) -> np.ndarray:
   """Copy `input` DTensor to an equivalent local numpy array."""
   layout = api.fetch_layout(tensor)
   if layout.mesh.is_remote():
+    if os.environ.get("TF_DTENSOR_RAISE_ON_REMOTE", "0") != "1":
+      warnings.warn(
+          "to_numpy() on a remote mesh is deprecated and will raise "
+          "NotImplementedError in a future release. Use "
+          "dtensor.copy_to_client() to fetch the tensor onto the local "
+          "client mesh first.",
+          DeprecationWarning,
+          stacklevel=2,
+      )
+      return np.array([None])
+
     raise NotImplementedError(
         "to_numpy() is not supported on a remote mesh. Use "
         "dtensor.copy_to_client() to fetch the tensor onto the local "
