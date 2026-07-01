@@ -192,12 +192,13 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
           _TF_DTYPE_TOLERANCE))
   def test_kaiser_bessel_derived_window_negative_beta(self, window_length, beta,
                                                       tf_dtype_tol):
-    """Check that kaiser_bessel_derived_window handles negative beta same as positive."""
+    """Check that it handles negative beta same as positive beta."""
     pos_beta_win = window_ops.kaiser_bessel_derived_window(
         window_length, beta, tf_dtype_tol[0])
     neg_beta_win = window_ops.kaiser_bessel_derived_window(
         window_length, -beta, tf_dtype_tol[0])
-    self.assertAllClose(pos_beta_win, neg_beta_win, tf_dtype_tol[1], tf_dtype_tol[1])
+    self.assertAllClose(
+        pos_beta_win, neg_beta_win, tf_dtype_tol[1], tf_dtype_tol[1])
 
 if __name__ == '__main__':
   test.main()
