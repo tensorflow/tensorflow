@@ -189,6 +189,11 @@ struct SchedulerConfig {
   bool enable_schedule_by_structure = false;
   // If set, only log computations that match the given regular expression.
   std::string log_computation_re;
+  // If > 0, enables buffer urgency tracking. When a multi-consumer buffer
+  // with size >= this threshold has only one unscheduled consumer remaining,
+  // that consumer is boosted to highest priority (force_early) to minimize
+  // the buffer's live range.
+  int64_t eager_free_threshold_bytes = 0;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.
@@ -1440,6 +1445,8 @@ class MemoryPressureTracker {
   int64_t memory_usage() const {
     return live_memory_usage_ + initial_memory_pressure_;
   }
+  // Returns the total number of tracked buffers.
+  int64_t live_buffers_count() const { return live_buffers_.size(); }
   // Returns the initial memory pressure at the bottom of the computation.
   int64_t initial_memory_pressure() const { return initial_memory_pressure_; }
 
@@ -1692,11 +1699,13 @@ class DefaultSchedulerCore : public SchedulerCore {
     bool has_pressure_change = false;
     bool has_estimated_connected_send_ready_time = false;
     bool has_resource_constrained = false;
+    bool has_consumer_pressure = false;
 
     int64_t pressure_change_first;
     int64_t pressure_change_second;
     HloGraphNode::TimeCost estimated_connected_send_ready_time;
     bool resource_constrained;
+    int64_t consumer_pressure = 0;
   };
 
   struct CandidateResult {
@@ -1802,6 +1811,14 @@ class DefaultSchedulerCore : public SchedulerCore {
     // If this set is not empty it means that we shouldn't schedule any more
     // annotated nodes until empty.
     absl::flat_hash_set<HloGraphNode*> nodes_holding_annotations;
+    // Per-buffer remaining consumer count for buffer urgency tracking.
+    // Indexed by HloBuffer::Id. Only meaningful when
+    // config.eager_free_threshold_bytes > 0.
+    std::vector<int32_t> buffer_remaining_consumers;
+    // Per-buffer list of consuming instructions, only for buffers with
+    // size >= eager_free_threshold_bytes and >1 consumer.
+    absl::flat_hash_map<HloBuffer::Id, std::vector<const HloInstruction*>>
+        buffer_consumers;
     // Reference to this scheduler run configuration.
     const SchedulerConfig& config;
     void Reset() override;
@@ -1928,6 +1945,9 @@ class DefaultSchedulerCore : public SchedulerCore {
       const std::vector<HloInstruction*>& instructions);
 
   ModulePressureState* GetModulePressureState() {
+    return module_pressure_state_.get();
+  }
+  const ModulePressureState* GetModulePressureState() const {
     return module_pressure_state_.get();
   }
 
@@ -2075,6 +2095,15 @@ class ReadySetLt {
       const HloGraphNode* cand_node) const;
 
   std::pair<int64_t, int64_t> GetMemoryPressureChanges(
+      const DefaultSchedulerCore::SchedulingState& state,
+      DefaultSchedulerCore::ScheduleCandidate& cand,
+      const HloGraphNode* cand_node) const;
+
+  // Computes the Consumer Pressure Reduction score for a candidate node.
+  // For each large multi-consumer buffer that the node consumes, contributes
+  // buffer_size / remaining_consumers to the total score. Last consumers
+  // contribute full weight; earlier consumers contribute proportionally less.
+  int64_t ComputeConsumerPressureReduction(
       const DefaultSchedulerCore::SchedulingState& state,
       DefaultSchedulerCore::ScheduleCandidate& cand,
       const HloGraphNode* cand_node) const;

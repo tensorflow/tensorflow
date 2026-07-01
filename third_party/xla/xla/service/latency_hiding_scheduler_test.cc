@@ -6104,5 +6104,81 @@ TEST_F(LatencyHidingSchedulerTest, NopBypassPreferenceInteraction) {
       << "Expected bitcast.0 to be scheduled before negate.0";
 }
 
+// Test that Consumer Pressure Reduction (Design D) co-schedules dual consumers.
+// When a large buffer has two consumers, enabling eager_free_threshold_bytes
+// causes the CPR comparison step in AIsBetterThanB to prefer the second
+// consumer over unrelated work, collapsing the buffer's live range.
+TEST_F(LatencyHidingSchedulerTest, BufferUrgencyDualConsumer) {
+  // HLO with a large broadcast consumed by two convolutions.
+  // Independent convolutions provide scheduling freedom.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY %module {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[16,64,256]{2,1,0} parameter(1)
+  p2 = f32[16,256,256]{2,1,0} parameter(2)
+  p3 = f32[16,256,256]{2,1,0} parameter(3)
+  p_scalar = f32[] parameter(4)
+
+  // Large shared buffer: ~16MB (16*256*256*4 bytes)
+  large_broadcast = f32[16,256,256]{2,1,0} broadcast(p_scalar), dimensions={}
+
+  // Consumer 1: uses the large broadcast
+  consumer1 = f32[16,256,256]{2,1,0} convolution(large_broadcast, p2),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+
+  // Consumer 2: also uses the large broadcast
+  consumer2 = f32[16,256,256]{2,1,0} convolution(large_broadcast, p3),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+
+  // Independent work to give the scheduler room to separate consumers.
+  independent1 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  independent2 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  independent3 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+
+  // Combine everything so nothing is dead.
+  sum1 = f32[16,256,256]{2,1,0} add(consumer1, consumer2)
+  sum2 = f32[16,256,256]{2,1,0} add(independent1, independent2)
+  sum3 = f32[16,256,256]{2,1,0} add(sum1, independent3)
+  ROOT result = f32[16,256,256]{2,1,0} add(sum2, sum3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+
+  // Run with buffer urgency enabled (threshold = 1MB).
+  SchedulerConfig sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 1024 * 1024 * 1024;         // 1 GB
+  sched_config.eager_free_threshold_bytes = 1024 * 1024;  // 1 MB
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
+
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> new_instruction_sequence =
+      hlo_module->schedule().sequence(entry_computation).instructions();
+
+  if (VLOG_IS_ON(1)) {
+    for (int i = 0; i < new_instruction_sequence.size(); ++i) {
+      VLOG(1) << i << ": " << new_instruction_sequence[i]->name();
+    }
+  }
+
+  int consumer1_pos = GetIndex(new_instruction_sequence, "consumer1");
+  int consumer2_pos = GetIndex(new_instruction_sequence, "consumer2");
+
+  // With buffer urgency, the two consumers should be scheduled close together.
+  // The exact gap depends on the scheduler, but it should be much less than
+  // the total schedule length.
+  int gap = std::abs(consumer1_pos - consumer2_pos);
+  int schedule_length = new_instruction_sequence.size();
+  EXPECT_LE(gap, 3)
+      << "Expected consumer1 and consumer2 to be scheduled within 3 steps "
+      << "of each other (buffer urgency), but gap was " << gap
+      << " (schedule length: " << schedule_length << ")";
+}
+
 }  // namespace
 }  // namespace xla
