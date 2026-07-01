@@ -1526,6 +1526,17 @@ xla_test(
     ],
 )
 
+cc_library(
+    name = "ragged_all_to_all_test_utils",
+    testonly = True,
+    srcs = ["ragged_all_to_all_test_utils.cc"],
+    hdrs = ["ragged_all_to_all_test_utils.h"],
+    deps = [
+        "//xla:array",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 xla_test(
     name = "ragged_all_to_all_e2e_test",
     srcs = ["ragged_all_to_all_e2e_test.cc"],
@@ -1537,6 +1548,7 @@ xla_test(
     ],
     deps = [
         ":collective_ops_e2e_test_base",
+        ":ragged_all_to_all_test_utils",
         "//xla:array",
         "//xla:literal",
         "//xla:literal_util",
