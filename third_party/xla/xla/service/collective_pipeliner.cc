@@ -2449,7 +2449,8 @@ absl::Status TransformFormattingOp(
     for (const Shape& old_shape : custom_call->operand_shapes_with_layout()) {
       Shape new_shape_with_layout = ComputeFullOutputShape(to_move, old_shape);
       std::vector<int64_t> new_minor_to_major;
-      new_minor_to_major.reserve(old_shape.layout().minor_to_major_size() + 1);
+      new_minor_to_major.reserve(old_shape.layout().minor_to_major().size() +
+                                 1);
       for (int64_t dim : old_shape.layout().minor_to_major()) {
         new_minor_to_major.push_back(dim + 1);
       }
