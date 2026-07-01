@@ -82,7 +82,12 @@ static inline const char* DecodeEntry(const char* p, const char* limit,
       return nullptr;
   }
 
-  if (static_cast<uint32_t>(limit - p) < (*non_shared + *value_length)) {
+  // *non_shared and *value_length are attacker-controlled 32-bit varints, so
+  // add them in 64 bits: a 32-bit sum can wrap around and spuriously pass this
+  // bounds check, letting callers read past `limit`.
+  const uint64_t entry_bytes =
+      static_cast<uint64_t>(*non_shared) + static_cast<uint64_t>(*value_length);
+  if (entry_bytes > static_cast<uint64_t>(limit - p)) {
     return nullptr;
   }
   return p;
