@@ -29,16 +29,19 @@ cc_library(
     deps = replace_with_portable_tf_lib_when_required([
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
     ]) + [
         "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
         "@flatbuffers",
+        "@tsl//tsl/platform:status",
     ],
 )
 
@@ -56,14 +59,18 @@ cc_test(
     deps = [
         ":signature_def_util",
         "//tensorflow/cc/saved_model:signature_constants",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
+        "@tsl//tsl/platform:status",
     ],
 )
 
