@@ -158,7 +158,13 @@ TuplePointsToAnalysis::Run(const HloModule* module) {
 
 absl::Status TuplePointsToAnalysis::Analyze() {
   per_instruction_.clear();
-  per_instruction_.reserve(module_->instruction_count());
+  int64_t max_computation_id = -1;
+  for (const HloComputation* computation : module_->computations()) {
+    if (computation->unique_id() > max_computation_id) {
+      max_computation_id = computation->unique_id();
+    }
+  }
+  per_instruction_.resize(max_computation_id + 1);
 
   logical_buffer_aliases_.clear();
   logical_buffer_aliases_.resize(
