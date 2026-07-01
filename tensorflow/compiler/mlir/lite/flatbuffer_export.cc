@@ -1904,39 +1904,35 @@ uint32_t Translator::GetOpcodeIndex(const std::string& op_name,
 
 void CreateFlexbufferVector(
     const std::unique_ptr<flexbuffers::Builder>& flex_builder,
-    std::string& name, const mlir::Attribute& attr) {
-  auto start = flex_builder->StartVector(name.c_str());
+    std::optional<absl::string_view> key, const mlir::Attribute& attr) {
+  auto start = key.has_value()
+                   ? flex_builder->StartVector(std::string(*key).c_str())
+                   : flex_builder->StartVector();
   auto array = mlir::cast<mlir::vhlo::ArrayV1Attr>(attr).getValue();
 
   for (int i = 0; i < array.size(); i++) {
     if (llvm::isa<mlir::BoolAttr>(array[i])) {
-      flex_builder->Bool(name.c_str(),
-                         mlir::cast<mlir::BoolAttr>(array[i]).getValue());
-    } else if (llvm::isa<mlir::StringAttr>(attr)) {
+      flex_builder->Bool(mlir::cast<mlir::BoolAttr>(array[i]).getValue());
+    } else if (llvm::isa<mlir::StringAttr>(array[i])) {
       flex_builder->String(
-          name.c_str(),
           mlir::cast<mlir::StringAttr>(array[i]).getValue().str());
     } else if (llvm::isa<mlir::vhlo::BooleanV1Attr>(array[i])) {
       flex_builder->Bool(
-          name.c_str(),
           mlir::cast<mlir::vhlo::BooleanV1Attr>(array[i]).getValue());
     } else if (llvm::isa<mlir::vhlo::StringV1Attr>(array[i])) {
       flex_builder->String(
-          name.c_str(),
           mlir::cast<mlir::vhlo::StringV1Attr>(array[i]).getValue().str());
     } else if (llvm::isa<mlir::vhlo::IntegerV1Attr>(array[i])) {
-      flex_builder->Int(name.c_str(),
-                        mlir::cast<mlir::vhlo::IntegerV1Attr>(array[i])
+      flex_builder->Int(mlir::cast<mlir::vhlo::IntegerV1Attr>(array[i])
                             .getValue()
                             .getSExtValue());
     } else if (llvm::isa<mlir::vhlo::FloatV1Attr>(array[i])) {
-      flex_builder->Float(name.c_str(),
-                          mlir::cast<mlir::vhlo::FloatV1Attr>(array[i])
+      flex_builder->Float(mlir::cast<mlir::vhlo::FloatV1Attr>(array[i])
                               .getValue()
                               .convertToFloat());
 
     } else if (llvm::isa<mlir::vhlo::ArrayV1Attr>(array[i])) {
-      CreateFlexbufferVector(flex_builder, name, array[i]);
+      CreateFlexbufferVector(flex_builder, std::nullopt, array[i]);
     }
   }
 
