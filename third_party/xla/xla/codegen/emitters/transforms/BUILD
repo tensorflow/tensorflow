@@ -40,6 +40,7 @@ cc_library(
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:Support",
     ],
 )
 
