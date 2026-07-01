@@ -388,6 +388,7 @@ cc_test(
         "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite:version",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/c:common",
