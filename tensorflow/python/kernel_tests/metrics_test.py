@@ -4599,8 +4599,9 @@ class MeanIoUUnknownRankTest(test.TestCase):
   """Regression tests for MeanIoU with unknown-rank inputs inside tf.function.
 
   MeanIoU.update_state compared shape.ndims directly to an integer.
-  When a tf.function is traced with input_signature using TensorSpec(shape=None),
-  ndims is None at trace time, causing a TypeError at graph construction.
+  When a tf.function is traced with input_signature using
+  TensorSpec(shape=None), ndims is None at trace time, causing a TypeError
+  at graph construction.
   """
 
   def test_update_state_unknown_rank_does_not_crash(self):
