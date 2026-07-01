@@ -377,9 +377,7 @@ class Shape:
       dims: Sequence[int],
       layout: Sequence[int] | None = ...,
       dynamic_dimensions: Sequence[bool] | None = ...,
-  ) -> Shape:
-    """Constructs an array shape."""
-
+  ) -> Shape: ...
   @overload
   @staticmethod
   def array_shape(
@@ -387,17 +385,19 @@ class Shape:
       dims: Sequence[int],
       layout: Sequence[int] | None = ...,
       dynamic_dimensions: Sequence[bool] | None = ...,
-  ) -> Shape: ...
+  ) -> Shape:
+    """Constructs an array shape."""
+
   @staticmethod
   def token_shape() -> Shape: ...
   @overload
   @staticmethod
-  def scalar_shape(type: PrimitiveType) -> Shape:
-    """Constructs a scalar shape."""
-
+  def scalar_shape(type: PrimitiveType) -> Shape: ...
   @overload
   @staticmethod
-  def scalar_shape(type: numpy.dtype) -> Shape: ...
+  def scalar_shape(type: numpy.dtype) -> Shape:
+    """Constructs a scalar shape."""
+
   def dimensions(self) -> tuple[int, ...]: ...
   def layout(self) -> Layout: ...
   def xla_element_type(self) -> PrimitiveType: ...
