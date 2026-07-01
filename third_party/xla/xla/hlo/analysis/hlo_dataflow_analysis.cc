@@ -475,8 +475,11 @@ bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
   if (!is_thread_included) {
     return changed;
   }
-  HloInstruction* root =
-      async_op->async_wrapped_computation()->root_instruction();
+  HloComputation* wrapped_comp = async_op->async_wrapped_computation();
+  if (wrapped_comp == nullptr) {
+    return changed;
+  }
+  HloInstruction* root = wrapped_comp->root_instruction();
   ShapeUtil::ForEachSubshape(
       root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray() && !subshape.IsToken()) {
@@ -505,9 +508,24 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
     changed |= UpdateAsyncChainOperandValueSet(async_start, i);
   }
 
-  // AsyncStart forwards the async wrapped computation root values to element
-  // {1} of its output.
-  changed |= UpdateAsyncChainOutputValueSet(async_start);
+  bool is_slice_or_copy =
+      async_start->async_wrapped_opcode() == HloOpcode::kSlice ||
+      async_start->async_wrapped_opcode() == HloOpcode::kDynamicSlice ||
+      async_start->async_wrapped_opcode() == HloOpcode::kCopy ||
+      async_start->async_wrapped_opcode() == HloOpcode::kDynamicUpdateSlice;
+  if (!is_slice_or_copy) {
+    // AsyncStart forwards the async wrapped computation root values to element
+    // {1} of its output.
+    changed |= UpdateAsyncChainOutputValueSet(async_start);
+  } else if (async_start->async_wrapped_opcode() ==
+             HloOpcode::kDynamicUpdateSlice) {
+    const HloValueSet& operand_value_set = GetValueSet(async_start->operand(0));
+    HloValueSet& value_set = GetMutableValueSet(async_start, {1});
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
   return changed;
 }
 
@@ -521,6 +539,11 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
                                        execution_threads_)
           ? async_update->async_wrapped_computation()->root_instruction()
           : nullptr;
+  bool is_slice_or_copy =
+      async_update->async_wrapped_opcode() == HloOpcode::kSlice ||
+      async_update->async_wrapped_opcode() == HloOpcode::kDynamicSlice ||
+      async_update->async_wrapped_opcode() == HloOpcode::kCopy ||
+      async_update->async_wrapped_opcode() == HloOpcode::kDynamicUpdateSlice;
   // AsyncUpdate forwards all of the operand values to corresponding elements of
   // its output.
   ShapeUtil::ForEachSubshape(
@@ -534,7 +557,7 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
 
         HloValueSet& value_set = GetMutableValueSet(async_update, index);
         CHECK_GE(index.size(), 0);
-        if (index[0] == 1 && root != nullptr) {
+        if (index[0] == 1 && root != nullptr && !is_slice_or_copy) {
           // If this subshape is an output (index {1}), we need to create the
           // union with the async wrapped computation root.
           ShapeIndex root_index(index.begin() + 1, index.end());
@@ -552,11 +575,18 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
 bool HloDataflowAnalysis::UpdateAsyncDoneValueSet(HloInstruction* async_done) {
   CHECK_EQ(async_done->opcode(), HloOpcode::kAsyncDone);
   bool changed = false;
+  HloComputation* wrapped_comp = async_done->async_wrapped_computation();
   HloInstruction* root =
-      HloInstruction::IsThreadIncluded(async_done->async_execution_thread(),
-                                       execution_threads_)
-          ? async_done->async_wrapped_computation()->root_instruction()
+      (wrapped_comp != nullptr &&
+       HloInstruction::IsThreadIncluded(async_done->async_execution_thread(),
+                                        execution_threads_))
+          ? wrapped_comp->root_instruction()
           : nullptr;
+  bool is_slice_or_copy =
+      async_done->async_wrapped_opcode() == HloOpcode::kSlice ||
+      async_done->async_wrapped_opcode() == HloOpcode::kDynamicSlice ||
+      async_done->async_wrapped_opcode() == HloOpcode::kCopy ||
+      async_done->async_wrapped_opcode() == HloOpcode::kDynamicUpdateSlice;
   // AsyncDone creates a union of the operand values at {1} and the async
   // wrapped computation root to element {} of its output.
   ShapeUtil::ForEachSubshape(
@@ -571,7 +601,7 @@ bool HloDataflowAnalysis::UpdateAsyncDoneValueSet(HloInstruction* async_done) {
 
         ShapeIndex output_index(index.begin() + 1, index.end());
         HloValueSet& value_set = GetMutableValueSet(async_done, output_index);
-        if (root != nullptr) {
+        if (root != nullptr && !is_slice_or_copy) {
           const HloValueSet& root_value_set = GetValueSet(root, output_index);
           changed |=
               value_set.AssignUnionOf({&operand_value_set, &root_value_set});
@@ -826,6 +856,10 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
     } else if (opcode == HloOpcode::kAsyncStart) {
       inputs.push_back(&GetInstructionValueSet(
           callsite.instruction()->operand(parameter->parameter_number())));
+    } else if (opcode == HloOpcode::kAsyncUpdate ||
+               opcode == HloOpcode::kAsyncDone) {
+      // AsyncUpdate and AsyncDone do not define input operand values for
+      // parameters of the wrapped computation.
     } else {
       LOG(FATAL) << "CallContext::kControlFlow computations should only be "
                     "called from call, while, conditional, or async-start "
@@ -1165,13 +1199,14 @@ void HloDataflowAnalysis::Propagate() {
                                              execution_threads_)) {
           // For async update and async done, we cannot distinguish which
           // parameter needs to be updated so add all to the worklist.
-          for (int64_t parameter_number = 0;
-               parameter_number <
-               user->async_wrapped_computation()->num_parameters();
-               ++parameter_number) {
-            add_to_worklist(
-                user->async_wrapped_computation()->parameter_instruction(
-                    parameter_number));
+          HloComputation* wrapped_comp = user->async_wrapped_computation();
+          if (wrapped_comp != nullptr) {
+            for (int64_t parameter_number = 0;
+                 parameter_number < wrapped_comp->num_parameters();
+                 ++parameter_number) {
+              add_to_worklist(
+                  wrapped_comp->parameter_instruction(parameter_number));
+            }
           }
         }
       } else {
@@ -1318,10 +1353,15 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // dataflow, and define the destination values too.
           bool thread_included = HloInstruction::IsThreadIncluded(
               instruction->async_execution_thread(), execution_threads_);
+          bool is_slice_or_copy =
+              instruction->async_wrapped_opcode() == HloOpcode::kSlice ||
+              instruction->async_wrapped_opcode() == HloOpcode::kDynamicSlice ||
+              instruction->async_wrapped_opcode() == HloOpcode::kCopy;
           define_all_values([&](const ShapeIndex& index) {
             return ShapeUtil::GetSubshape(instruction->shape(), index)
                        .IsTuple() ||
                    (!thread_included && index.front() == 1) ||
+                   (is_slice_or_copy && index.front() == 1) ||
                    (index.front() > 1);
           });
           break;
@@ -1675,8 +1715,10 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
             std::make_pair(operand, operand_index),
             absl::flat_hash_set<HloUse>());
     if (operand_inserted) {
-      auto uses = GetUniqueValueAt(operand, operand_index).GetUses();
-      operand_it->second.insert(uses.begin(), uses.end());
+      for (const HloValue* val : GetValueSet(operand, operand_index).values()) {
+        auto uses = val->GetUses();
+        operand_it->second.insert(uses.begin(), uses.end());
+      }
     }
     auto [user_it, user_inserted] = cache_share_buffer_with_user_.try_emplace(
         user, absl::flat_hash_map<ShapeIndex, std::vector<HloOperandIndex>>());

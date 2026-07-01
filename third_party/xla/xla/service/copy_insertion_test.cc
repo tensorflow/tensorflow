@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -1449,6 +1450,54 @@ TEST_F(CopyInsertionTest, SwizzlingWhile) {
               op::Tuple(op::Copy(op::Copy()), op::Copy(op::Copy())));
 
   EXPECT_EQ(CountCopies(*module->entry_computation()), 2);
+  EXPECT_THAT(xla_while->operand(0), op::Tuple(op::Copy(), op::Copy()));
+}
+
+TEST_F(CopyInsertionTest, SwizzlingWhileDisabledCopies) {
+  auto module = CreateNewVerifiedModule();
+  const Shape loop_state_shape =
+      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+
+  auto body_builder = HloComputation::Builder("body");
+  auto body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, loop_state_shape, "param"));
+  auto body_element_0 = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape_, body_param, 0));
+  auto body_element_1 = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape_, body_param, 1));
+  body_builder.AddInstruction(
+      HloInstruction::CreateTuple({body_element_1, body_element_0}));
+  HloComputation* body = module->AddEmbeddedComputation(body_builder.Build());
+
+  auto cond_builder = HloComputation::Builder("condition");
+  cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, loop_state_shape, "param"));
+  auto cond_constant = cond_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+  cond_builder.AddInstruction(HloInstruction::CreateUnary(
+      cond_constant->shape(), HloOpcode::kNot, cond_constant));
+  HloComputation* condition =
+      module->AddEmbeddedComputation(cond_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+  auto tuple = builder.AddInstruction(
+      HloInstruction::CreateTuple({constant1, constant2}));
+  auto xla_while = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape, condition, body, tuple));
+  xla_while->set_frontend_attribute(kXlaDisableWhileLoopCopiesNoUnderscore,
+                                    "true");
+  module->AddEntryComputation(builder.Build());
+
+  InsertCopies(module.get());
+
+  EXPECT_EQ(CountCopies(*module), 3);
+  EXPECT_EQ(CountCopies(*body), 0);
+  EXPECT_EQ(CountControlEdges(*body), 0);
+  EXPECT_EQ(CountCopies(*module->entry_computation()), 3);
   EXPECT_THAT(xla_while->operand(0), op::Tuple(op::Copy(), op::Copy()));
 }
 
@@ -3990,7 +4039,7 @@ ENTRY %main {
 
   auto* main_computation = module->GetComputationWithName("main");
   ASSERT_THAT(main_computation, NotNull());
-  EXPECT_EQ(CountCopies(*main_computation), 1);
+  EXPECT_EQ(CountCopies(*main_computation), 2);
 }
 
 TEST_F(CopyInsertionTest, AsyncDUSInLoop) {

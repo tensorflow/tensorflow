@@ -26,6 +26,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -383,6 +384,34 @@ TEST_F(HloInstructionTest, AddFrontendAttributes) {
   EXPECT_EQ(instr.get_frontend_attribute("key1").value(), "value1")
       << "key1 should not be overwritten";
   EXPECT_EQ(instr.get_frontend_attribute("key2").value(), "value2");
+}
+
+TEST_F(HloInstructionTest, DisjointReadWriteRegionsAttributes) {
+  HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
+  EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(&instr));
+  EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(nullptr));
+  SetDisjointReadWriteRegionsAttr(nullptr);  // Should be a no-op and not crash.
+
+  SetDisjointReadWriteRegionsAttr(&instr);
+  EXPECT_TRUE(HasDisjointReadWriteRegionsAttr(&instr));
+
+  // Test different key variations and case-insensitive values.
+  for (absl::string_view key :
+       {kXlaDisjointReadWriteRegions, kXlaDisjointReadWriteRegionsNoUnderscore,
+        "xla.disjoint_read_write_regions"}) {
+    for (absl::string_view val : {"true", "True", "1", "yes", "YES"}) {
+      HloConstantInstruction test_instr(ShapeUtil::MakeShape(U32, {3, 2}));
+      test_instr.set_frontend_attribute(key, val);
+      EXPECT_TRUE(HasDisjointReadWriteRegionsAttr(&test_instr))
+          << "Failed for key: " << key << " and val: " << val;
+    }
+    for (absl::string_view val : {"false", "0", "no", "invalid", ""}) {
+      HloConstantInstruction test_instr(ShapeUtil::MakeShape(U32, {3, 2}));
+      test_instr.set_frontend_attribute(key, val);
+      EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(&test_instr))
+          << "Expected false for key: " << key << " and val: " << val;
+    }
+  }
 }
 
 TEST_F(HloInstructionTest, CustomCallInstructionStorage) {

@@ -6090,12 +6090,7 @@ ENTRY AsyncStartAndAsyncDone {
   ROOT async-done = f32[2,3] custom-call-done(tuple)
 }
   )";
-  EXPECT_THAT(
-      ParseAndReturnUnverifiedModule(hlo_string).status(),
-      absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
-                             HasSubstr("AsyncUpdate and AsyncDone expect an "
-                                       "asynchronous operation as their first "
-                                       "operand.")));
+  EXPECT_OK(ParseAndReturnUnverifiedModule(hlo_string).status());
 }
 
 TEST_F(HloParserTest, AsyncUpdateAndAsyncDoneNoAsyncStart) {
@@ -6110,11 +6105,7 @@ ENTRY AsyncStartAndAsyncDone {
   ROOT async-done = f32[2,3] custom-call-done(tuple)
 }
   )";
-  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              absl_testing::StatusIs(
-                  tsl::error::INVALID_ARGUMENT,
-                  HasSubstr("AsyncUpdate and AsyncDone expect an asynchronous "
-                            "operation as their first operand.")));
+  EXPECT_OK(ParseAndReturnUnverifiedModule(hlo_string).status());
 }
 
 TEST_F(HloParserTest, AsyncUpdateZeroOperandsRejected) {
@@ -6214,11 +6205,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
   ROOT %async-done.1 = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-start.1)
 }
   )";
-  EXPECT_THAT(
-      ParseAndReturnUnverifiedModule(hlo_string).status(),
-      absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
-                             HasSubstr("Computation async_wrapped is called by "
-                                       "more than one async op")));
+  EXPECT_OK(ParseAndReturnVerifiedModule(hlo_string).status());
 }
 
 TEST_F(HloParserTest, AsyncUpdateWrongComputation) {
@@ -7560,5 +7547,219 @@ ENTRY Entry {
       ShapeUtil::MakeTupleShape(
           {ShapeUtil::MakeShape(F32, {3}), ShapeUtil::MakeShape(F32, {3})})));
 }
+TEST_F(HloParserTest, LoopCrossingAsync) {
+  const char* const hlo_string = R"(
+HloModule LoopCrossingAsync
+
+async_computation {
+  p = f32[1024] parameter(0)
+  ROOT custom-call = f32[1024] custom-call(p), custom_call_target="foo"
+}
+
+while_cond {
+  param = (s32[], ((f32[1024]), f32[1024], s32[])) parameter(0)
+  count = s32[] get-tuple-element(param), index=0
+  limit = s32[] constant(10)
+  ROOT cmp = pred[] compare(count, limit), direction=LT
+}
+
+while_body {
+  param = (s32[], ((f32[1024]), f32[1024], s32[])) parameter(0)
+  count = s32[] get-tuple-element(param), index=0
+  one = s32[] constant(1)
+  new_count = s32[] add(count, one)
+  
+  async_state = ((f32[1024]), f32[1024], s32[]) get-tuple-element(param), index=1
+  
+  async_update = ((f32[1024]), f32[1024], s32[]) async-update(async_state), calls=async_computation
+  
+  ROOT body_root = (s32[], ((f32[1024]), f32[1024], s32[])) tuple(new_count, async_update)
+}
+
+ENTRY main {
+  p0 = f32[1024] parameter(0)
+  async-start = ((f32[1024]), f32[1024], s32[]) async-start(p0), calls=async_computation
+  
+  start_count = s32[] constant(0)
+  iter_init = (s32[], ((f32[1024]), f32[1024], s32[])) tuple(start_count, async-start)
+  
+  while_loop = (s32[], ((f32[1024]), f32[1024], s32[])) while(iter_init), condition=while_cond, body=while_body
+  
+  final_async_state = ((f32[1024]), f32[1024], s32[]) get-tuple-element(while_loop), index=1
+  
+  ROOT async-done = f32[1024] async-done(final_async_state), calls=async_computation
+}
+  )";
+  HloModuleConfig config;
+  config.set_content_aware_computation_sorting(true);
+  auto test_name =
+      ::testing::UnitTest::GetInstance()->current_test_info()->name();
+
+  ASSERT_OK_AND_ASSIGN(auto module, xla::ParseAndReturnVerifiedModule(
+                                        test_name, hlo_string, config));
+  EXPECT_NE(module, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_sugar,
+      xla::ParseAndReturnVerifiedModule(
+          test_name,
+          module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(true)),
+          config));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_no_sugar,
+      xla::ParseAndReturnVerifiedModule(
+          test_name,
+          module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(false)),
+          config));
+
+  auto fp_options = HloPrintOptions::Fingerprint();
+  EXPECT_EQ(roundtrip_sugar->ToString(fp_options),
+            module->ToString(fp_options));
+  EXPECT_EQ(roundtrip_no_sugar->ToString(fp_options),
+            module->ToString(fp_options));
+}
+
+TEST_F(HloParserTest, LoopCrossingAsyncDynamicUpdateSliceSyntaxSugar) {
+  const char* const hlo_string = R"(
+HloModule LoopCrossingAsyncDynamicUpdateSliceSyntaxSugar
+
+while_cond (state: (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]))) -> pred[] {
+  state = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) parameter(0)
+  ROOT cond = pred[] constant(true)
+}
+
+while_body (state: (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]))) -> (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) {
+  state = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) parameter(0)
+  val = f32[10,10]{1,0} get-tuple-element(state), index=0
+  async_state = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) get-tuple-element(state), index=1
+
+  async_update = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) dynamic-update-slice-update(async_state)
+  done = f32[10,10]{1,0} dynamic-update-slice-done(async_update)
+  
+  slice = f32[2,2]{1,0} constant({ {1.0, 2.0}, {3.0, 4.0} })
+  zero = s32[] constant(0)
+  next_start = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) dynamic-update-slice-start(done, slice, zero, zero)
+  ROOT next_state = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) tuple(done, next_start)
+}
+
+ENTRY Entry (p0: f32[10,10], p1: f32[2,2], idx0: s32[], idx1: s32[]) -> f32[10,10] {
+  p0 = f32[10,10]{1,0} parameter(0)
+  p1 = f32[2,2]{1,0} parameter(1)
+  idx0 = s32[] parameter(2)
+  idx1 = s32[] parameter(3)
+  async_start = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) dynamic-update-slice-start(p0, p1, idx0, idx1)
+  init = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) tuple(p0, async_start)
+  loop = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) while(init), condition=while_cond, body=while_body
+  post_loop_async = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) get-tuple-element(loop), index=1
+  ROOT post_loop_done = f32[10,10]{1,0} dynamic-update-slice-done(post_loop_async)
+}
+  )";
+  HloModuleConfig config;
+  config.set_content_aware_computation_sorting(true);
+  auto test_name =
+      ::testing::UnitTest::GetInstance()->current_test_info()->name();
+
+  ASSERT_OK_AND_ASSIGN(auto module, xla::ParseAndReturnVerifiedModule(
+                                        test_name, hlo_string, config));
+  EXPECT_NE(module, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_sugar,
+      xla::ParseAndReturnVerifiedModule(
+          test_name,
+          module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(true)),
+          config));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_no_sugar,
+      xla::ParseAndReturnVerifiedModule(
+          test_name,
+          module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(false)),
+          config));
+
+  auto fp_options = HloPrintOptions::Fingerprint();
+  EXPECT_EQ(roundtrip_sugar->ToString(fp_options),
+            module->ToString(fp_options));
+  EXPECT_EQ(roundtrip_no_sugar->ToString(fp_options),
+            module->ToString(fp_options));
+}
+
+TEST_F(HloParserTest, LoopCrossingAsyncDynamicUpdateSliceExplicit) {
+  const char* const hlo_string = R"(
+HloModule LoopCrossingAsyncDynamicUpdateSliceExplicit
+
+async_dus (base: f32[100], update: f32[10], idx: s32[]) -> f32[100] {
+  base = f32[100]{0} parameter(0)
+  update = f32[10]{0} parameter(1)
+  idx = s32[] parameter(2)
+  ROOT dynamic-update-slice = f32[100]{0} dynamic-update-slice(base, update, idx)
+}
+
+while_cond (state: (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[]))) -> pred[] {
+  state = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) parameter(0)
+  count = s32[] get-tuple-element(state), index=0
+  limit = s32[] constant(5)
+  ROOT cond = pred[] compare(count, limit), direction=LT
+}
+
+while_body (state: (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[]))) -> (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) {
+  state = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) parameter(0)
+  count = s32[] get-tuple-element(state), index=0
+  one = s32[] constant(1)
+  next_count = s32[] add(count, one)
+
+  async_state = ((f32[100], f32[10], s32[]), f32[100], s32[]) get-tuple-element(state), index=1
+
+  async-update = ((f32[100], f32[10], s32[]), f32[100], s32[]) async-update(async_state), calls=async_dus
+  done = f32[100]{0} async-done(async-update), calls=async_dus
+
+  update = f32[10]{0} constant({1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0})
+  next_start = ((f32[100], f32[10], s32[]), f32[100], s32[]) async-start(done, update, next_count), calls=async_dus
+  ROOT next_state = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) tuple(next_count, next_start)
+}
+
+ENTRY Entry (p0: f32[100], update: f32[10], idx: s32[]) -> f32[100] {
+  p0 = f32[100]{0} parameter(0)
+  update = f32[10]{0} parameter(1)
+  idx = s32[] parameter(2)
+  async-start = ((f32[100], f32[10], s32[]), f32[100], s32[]) async-start(p0, update, idx), calls=async_dus
+  init_count = s32[] constant(0)
+  init = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) tuple(init_count, async-start)
+  loop = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) while(init), condition=while_cond, body=while_body
+  post_loop_async = ((f32[100], f32[10], s32[]), f32[100], s32[]) get-tuple-element(loop), index=1
+  ROOT post_loop_done = f32[100]{0} async-done(post_loop_async), calls=async_dus
+}
+  )";
+  HloModuleConfig config;
+  config.set_content_aware_computation_sorting(true);
+  auto test_name =
+      ::testing::UnitTest::GetInstance()->current_test_info()->name();
+
+  ASSERT_OK_AND_ASSIGN(auto module, xla::ParseAndReturnVerifiedModule(
+                                        test_name, hlo_string, config));
+  EXPECT_NE(module, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_sugar,
+      xla::ParseAndReturnVerifiedModule(
+          test_name,
+          module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(true)),
+          config));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_no_sugar,
+      xla::ParseAndReturnVerifiedModule(
+          test_name,
+          module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(false)),
+          config));
+
+  auto fp_options = HloPrintOptions::Fingerprint();
+  EXPECT_EQ(roundtrip_sugar->ToString(fp_options),
+            module->ToString(fp_options));
+  EXPECT_EQ(roundtrip_no_sugar->ToString(fp_options),
+            module->ToString(fp_options));
+}
+
 }  // namespace
 }  // namespace xla

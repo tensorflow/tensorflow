@@ -1444,106 +1444,107 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
   for (const auto& position_and_chunk : preset_assignments_->chunks()) {
     const HloPosition& position = position_and_chunk.first;
     const HeapSimulator::Chunk& chunk = position_and_chunk.second;
-    const HloBuffer& buffer =
-        alias_analysis.GetUniqueBufferAt(position.instruction, position.index);
-    CHECK(!seen_buffers.contains(buffer.id()))
-        << "Multiple preset assignments for the same buffer: "
-        << buffer.ToString() << ", pos: " << position.ToString()
-        << ", off: " << chunk.offset << ", size: " << chunk.size;
-    seen_buffers.insert(buffer.id());
-
-    for (const HloValue* value : buffer.values()) {
-      const HloLiveRange::TimeBound& time_bound =
-          GetTimeBoundAndExtendIfConcatBitcast(
-              value, alias_analysis.dataflow_analysis(), *hlo_live_range);
-      const HloInstruction* last_use_instruction = nullptr;
-      int64_t last_use_time = time_bound.start;
-      std::vector<HloUse> uses = GetUsesAndExtendIfConcatBitcast(
-          value, alias_analysis.dataflow_analysis());
-      for (const HloUse& use : uses) {
-        int64_t use_time =
-            hlo_live_range->instruction_schedule().at(use.instruction);
-        if (use_time > last_use_time) {
-          last_use_time = use_time;
-          last_use_instruction = use.instruction;
-        }
+    for (const HloBuffer* buffer_ptr : alias_analysis.ComputeBuffersAt(
+             position.instruction, position.index)) {
+      const HloBuffer& buffer = *buffer_ptr;
+      if (seen_buffers.contains(buffer.id())) {
+        continue;
       }
+      seen_buffers.insert(buffer.id());
 
-      std::function<absl::Status(const HloInstruction*, int64_t, int64_t,
-                                 absl::string_view)>
-          split_conditional_buffer;
-      split_conditional_buffer =
-          [&](const HloInstruction* use_instruction, int64_t start_time,
-              int64_t end_time,
-              absl::string_view indent_string) -> absl::Status {
-        // Special case when verifying conditional: we internally split the use
-        // of alternate memory in conditionals, so fish them out from the
-        // conditionals.
-        VLOG(3) << indent_string
-                << "Splitting conditional buffer: " << buffer.ToString()
-                << " value: " << value->ToShortString() << ": (" << start_time
-                << ", " << end_time << ") off: " << chunk.offset
-                << ", size: " << chunk.size;
-        int64_t earliest_computation_start_time = end_time;
-        for (const HloComputation* called_computation :
-             use_instruction->called_computations()) {
-          int64_t computation_start_time =
-              hlo_live_range->computation_span_times()
-                  .at(called_computation)
-                  .start;
-          earliest_computation_start_time =
-              std::min(earliest_computation_start_time, computation_start_time);
-          int64_t last_use_time = -1;
-          const HloInstruction* last_use_instruction = nullptr;
-          std::vector<HloUse> uses = GetUsesAndExtendIfConcatBitcast(
-              value, alias_analysis.dataflow_analysis());
-          for (const HloUse& use : uses) {
-            int64_t use_time =
-                hlo_live_range->instruction_schedule().at(use.instruction);
-            if (use.instruction->parent() == called_computation &&
-                use_time > last_use_time) {
-              last_use_time = use_time;
-              last_use_instruction = use.instruction;
-            }
-          }
-          if (last_use_time != -1) {
-            VLOG(3) << indent_string
-                    << " computation: " << called_computation->name() << ": ("
-                    << computation_start_time << ", " << last_use_time << ")";
-            CHECK(last_use_instruction);
-            last_use_time = std::min(last_use_time, end_time);
-            if (last_use_instruction->opcode() == HloOpcode::kConditional) {
-              // The last use is another (nested) conditional. Call this
-              // function recursively.
-              RETURN_IF_ERROR(split_conditional_buffer(
-                  last_use_instruction, computation_start_time, last_use_time,
-                  absl::StrCat(indent_string, "  ")));
-            } else {
-              RETURN_IF_ERROR(add_allocation_and_verify(
-                  computation_start_time, last_use_time, chunk, value));
-            }
+      for (const HloValue* value : buffer.values()) {
+        const HloLiveRange::TimeBound& time_bound =
+            GetTimeBoundAndExtendIfConcatBitcast(
+                value, alias_analysis.dataflow_analysis(), *hlo_live_range);
+        const HloInstruction* last_use_instruction = nullptr;
+        int64_t last_use_time = time_bound.start;
+        std::vector<HloUse> uses = GetUsesAndExtendIfConcatBitcast(
+            value, alias_analysis.dataflow_analysis());
+        for (const HloUse& use : uses) {
+          int64_t use_time =
+              hlo_live_range->instruction_schedule().at(use.instruction);
+          if (use_time > last_use_time) {
+            last_use_time = use_time;
+            last_use_instruction = use.instruction;
           }
         }
-        VLOG(3) << indent_string << " from beginning until first computation: ("
-                << start_time << ", " << (earliest_computation_start_time - 1)
-                << ")";
-        RETURN_IF_ERROR(add_allocation_and_verify(
-            start_time, earliest_computation_start_time - 1, chunk, value));
-        return absl::OkStatus();
-      };
 
-      if (last_use_instruction &&
-          last_use_instruction->opcode() == HloOpcode::kConditional) {
-        RETURN_IF_ERROR(split_conditional_buffer(
-            last_use_instruction, time_bound.start, time_bound.end, " "));
-      } else if (!value->GetUses().empty()) {
-        last_use_time = std::min(last_use_time, time_bound.end);
-        VLOG(3) << " buffer: " << buffer.ToString()
-                << " value: " << value->ToShortString() << ": ("
-                << time_bound.start << ", " << last_use_time
-                << ") off: " << chunk.offset << ", size: " << chunk.size;
-        RETURN_IF_ERROR(add_allocation_and_verify(time_bound.start,
-                                                  last_use_time, chunk, value));
+        std::function<absl::Status(const HloInstruction*, int64_t, int64_t,
+                                   absl::string_view)>
+            split_conditional_buffer;
+        split_conditional_buffer =
+            [&](const HloInstruction* use_instruction, int64_t start_time,
+                int64_t end_time,
+                absl::string_view indent_string) -> absl::Status {
+          // Special case when verifying conditional: we internally split the
+          // use of alternate memory in conditionals, so fish them out from the
+          // conditionals.
+          VLOG(3) << indent_string
+                  << "Splitting conditional buffer: " << buffer.ToString()
+                  << " value: " << value->ToShortString() << ": (" << start_time
+                  << ", " << end_time << ") off: " << chunk.offset
+                  << ", size: " << chunk.size;
+          int64_t earliest_computation_start_time = end_time;
+          for (const HloComputation* called_computation :
+               use_instruction->called_computations()) {
+            int64_t computation_start_time =
+                hlo_live_range->computation_span_times()
+                    .at(called_computation)
+                    .start;
+            earliest_computation_start_time = std::min(
+                earliest_computation_start_time, computation_start_time);
+            int64_t last_use_time = -1;
+            const HloInstruction* last_use_instruction = nullptr;
+            std::vector<HloUse> uses = GetUsesAndExtendIfConcatBitcast(
+                value, alias_analysis.dataflow_analysis());
+            for (const HloUse& use : uses) {
+              int64_t use_time =
+                  hlo_live_range->instruction_schedule().at(use.instruction);
+              if (use.instruction->parent() == called_computation &&
+                  use_time > last_use_time) {
+                last_use_time = use_time;
+                last_use_instruction = use.instruction;
+              }
+            }
+            if (last_use_time != -1) {
+              VLOG(3) << indent_string
+                      << " computation: " << called_computation->name() << ": ("
+                      << computation_start_time << ", " << last_use_time << ")";
+              CHECK(last_use_instruction);
+              last_use_time = std::min(last_use_time, end_time);
+              if (last_use_instruction->opcode() == HloOpcode::kConditional) {
+                // The last use is another (nested) conditional. Call this
+                // function recursively.
+                RETURN_IF_ERROR(split_conditional_buffer(
+                    last_use_instruction, computation_start_time, last_use_time,
+                    absl::StrCat(indent_string, "  ")));
+              } else {
+                RETURN_IF_ERROR(add_allocation_and_verify(
+                    computation_start_time, last_use_time, chunk, value));
+              }
+            }
+          }
+          VLOG(3) << indent_string
+                  << " from beginning until first computation: (" << start_time
+                  << ", " << (earliest_computation_start_time - 1) << ")";
+          RETURN_IF_ERROR(add_allocation_and_verify(
+              start_time, earliest_computation_start_time - 1, chunk, value));
+          return absl::OkStatus();
+        };
+
+        if (last_use_instruction &&
+            last_use_instruction->opcode() == HloOpcode::kConditional) {
+          RETURN_IF_ERROR(split_conditional_buffer(
+              last_use_instruction, time_bound.start, time_bound.end, " "));
+        } else if (!value->GetUses().empty()) {
+          last_use_time = std::min(last_use_time, time_bound.end);
+          VLOG(3) << " buffer: " << buffer.ToString()
+                  << " value: " << value->ToShortString() << ": ("
+                  << time_bound.start << ", " << last_use_time
+                  << ") off: " << chunk.offset << ", size: " << chunk.size;
+          RETURN_IF_ERROR(add_allocation_and_verify(
+              time_bound.start, last_use_time, chunk, value));
+        }
       }
     }
   }

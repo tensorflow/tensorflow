@@ -296,54 +296,102 @@ HloAsyncInstruction::HloAsyncInstruction(
   }
 
   if (opcode == HloOpcode::kAsyncUpdate || opcode == HloOpcode::kAsyncDone) {
-    HloAsyncInstruction* prev = Cast<HloAsyncInstruction>(operands[0]);
-    prev->async_chain_next_ = this;
+    if (!operands.empty()) {
+      HloInstruction* producer = HloInstruction::FindAsyncProducer(operands[0]);
+      if (producer != nullptr && HloAsyncInstruction::ClassOf(producer)) {
+        HloAsyncInstruction* prev = Cast<HloAsyncInstruction>(producer);
+        prev->async_chain_next_ = this;
+      }
+    }
   }
 
   // Drop 'async' from async-{start/update/done} to get the suffix.
   absl::string_view suffix = HloOpcodeString(opcode).substr(5);
   absl::string_view wrapped_name = HloOpcodeString(async_wrapped_opcode);
-  SetAndSanitizeName(absl::StrCat(wrapped_name, suffix));
+  if (async_wrapped_opcode == opcode) {
+    SetAndSanitizeName(wrapped_name);
+  } else {
+    SetAndSanitizeName(absl::StrCat(wrapped_name, suffix));
+  }
 }
 
-HloAsyncInstruction::HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
-                                         HloInstruction* operand)
-    : HloAsyncInstruction(opcode, shape, absl::MakeConstSpan(&operand, 1),
-                          operand->async_wrapped_opcode()) {
-  CHECK(operand->opcode() == HloOpcode::kAsyncStart ||
-        operand->opcode() == HloOpcode::kAsyncUpdate);
-  HloAsyncInstruction* prev = Cast<HloAsyncInstruction>(operand);
-  prev->async_chain_next_ = this;
-}
+HloAsyncInstruction::HloAsyncInstruction(
+    HloOpcode opcode, const Shape& shape, HloInstruction* operand,
+    std::optional<HloOpcode> async_wrapped_opcode)
+    : HloAsyncInstruction(
+          opcode, shape, absl::MakeConstSpan(&operand, 1),
+          async_wrapped_opcode.has_value() ? *async_wrapped_opcode : [&]() {
+            HloInstruction* producer =
+                HloInstruction::FindAsyncProducer(operand);
+            if (producer != nullptr && HloAsyncInstruction::ClassOf(producer)) {
+              return Cast<HloAsyncInstruction>(producer)
+                  ->async_wrapped_opcode();
+            }
+            return opcode;
+          }()) {}
 
 HloComputation* HloAsyncInstruction::async_wrapped_computation() const {
-  return async_chain_start()->called_computations().front();
+  if (!called_computations().empty()) {
+    return called_computations().front();
+  }
+  auto* start = async_chain_start();
+  if (start == nullptr) {
+    return nullptr;
+  }
+  if (start->called_computations().empty()) {
+    return nullptr;
+  }
+  return start->called_computations().front();
 }
 
 HloInstruction* HloAsyncInstruction::async_wrapped_instruction() const {
-  return async_chain_start()->async_wrapped_computation()->root_instruction();
+  auto* comp = async_wrapped_computation();
+  if (comp == nullptr) {
+    return nullptr;
+  }
+  return comp->root_instruction();
 }
 
 HloOpcode HloAsyncInstruction::async_wrapped_opcode() const {
-  return async_chain_start()->async_wrapped_instruction()->opcode();
+  auto* instr = async_wrapped_instruction();
+  if (instr == nullptr) {
+    return opcode();
+  }
+  return instr->opcode();
 }
 
 absl::string_view HloAsyncInstruction::async_execution_thread() const {
-  return async_chain_start()->async_execution_thread();
+  auto* start = async_chain_start();
+  if (start == nullptr) {
+    return kMainExecutionThread;
+  }
+  return start->async_execution_thread();
 }
 
 HloAsyncInstruction* HloAsyncInstruction::async_chain_start() const {
   if (opcode() == HloOpcode::kAsyncStart) {
     return const_cast<HloAsyncInstruction*>(this);
   }
-
-  HloInstruction* prev = operands()[0];
-  while (prev->opcode() != HloOpcode::kAsyncStart) {
-    // If the prev op in the chain isn't async-start, it must be async-update.
-    CHECK(prev->opcode() == HloOpcode::kAsyncUpdate);
-    prev = prev->operands()[0];
+  if (operands().empty()) {
+    return nullptr;
   }
-  return Cast<HloAsyncInstruction>(prev);
+  HloInstruction* prev = operands()[0];
+  while (true) {
+    HloInstruction* producer = HloInstruction::FindAsyncProducer(prev);
+    if (producer == nullptr) {
+      return nullptr;
+    }
+    if (producer->opcode() == HloOpcode::kAsyncStart) {
+      return Cast<HloAsyncInstruction>(producer);
+    }
+    if (producer->opcode() != HloOpcode::kAsyncUpdate) {
+      return nullptr;
+    }
+    if (producer->operands().empty()) {
+      return nullptr;
+    }
+    prev = producer->operands()[0];
+  }
 }
 
 HloAsyncInstruction* HloAsyncInstruction::async_chain_done() const {
@@ -352,9 +400,11 @@ HloAsyncInstruction* HloAsyncInstruction::async_chain_done() const {
   }
 
   HloAsyncInstruction* next = async_chain_next_;
-  while (next->opcode() != HloOpcode::kAsyncDone) {
+  while (next != nullptr && next->opcode() != HloOpcode::kAsyncDone) {
     // If the next op in the chain isn't async-done, it must be async-update.
-    CHECK(next->opcode() == HloOpcode::kAsyncUpdate);
+    if (next->opcode() != HloOpcode::kAsyncUpdate) {
+      return nullptr;
+    }
     next = next->async_chain_next_;
   }
   return next;
@@ -363,21 +413,24 @@ HloAsyncInstruction* HloAsyncInstruction::async_chain_done() const {
 void HloAsyncInstruction::UpdateAsyncChain() {
   auto update_chain = [this]() {
     if (this->users().size() == 1) {
-      // If this instruction has more than one user, assuming async_chain_next_
-      // is already pointing to the correct user and the other users are
-      // transient.
-      CHECK(this->users()[0]->opcode() == HloOpcode::kAsyncUpdate ||
-            this->users()[0]->opcode() == HloOpcode::kAsyncDone);
-      Cast<HloAsyncInstruction>(this)->async_chain_next_ =
-          Cast<HloAsyncInstruction>(this->users()[0]);
+      HloInstruction* user = this->users()[0];
+      if (HloAsyncInstruction::ClassOf(user)) {
+        Cast<HloAsyncInstruction>(this)->async_chain_next_ =
+            Cast<HloAsyncInstruction>(user);
+      }
     }
   };
   auto update_operand_chain = [this]() {
     CHECK_GE(this->operand_count(), 1);
-    CHECK(this->operand(0)->opcode() == HloOpcode::kAsyncStart ||
-          this->operand(0)->opcode() == HloOpcode::kAsyncUpdate);
-    Cast<HloAsyncInstruction>(this->mutable_operand(0))->async_chain_next_ =
-        this;
+    HloInstruction* operand = this->mutable_operand(0);
+    if (HloAsyncInstruction::ClassOf(operand)) {
+      Cast<HloAsyncInstruction>(operand)->async_chain_next_ = this;
+    } else {
+      HloInstruction* producer = HloInstruction::FindAsyncProducer(operand);
+      if (producer != nullptr && HloAsyncInstruction::ClassOf(producer)) {
+        Cast<HloAsyncInstruction>(producer)->async_chain_next_ = this;
+      }
+    }
   };
   if (this->opcode() == HloOpcode::kAsyncStart) {
     update_chain();

@@ -116,6 +116,34 @@ bool ShouldCopyRootValue(const HloValue& value,
   return false;
 }
 
+bool IsWhileLoopCopyDisabled(const HloInstruction* instruction,
+                             const CallGraph& call_graph) {
+  if (instruction == nullptr || instruction->parent() == nullptr) {
+    return false;
+  }
+  absl::flat_hash_set<const HloComputation*> visited;
+  std::vector<const HloComputation*> worklist = {instruction->parent()};
+  while (!worklist.empty()) {
+    const HloComputation* curr = worklist.back();
+    worklist.pop_back();
+    if (!visited.insert(curr).second) {
+      continue;
+    }
+    const CallGraphNode& node = call_graph.GetNode(curr);
+    for (const CallSite& callsite : node.caller_callsites()) {
+      const HloInstruction* caller = callsite.instruction();
+      if (caller != nullptr && caller->opcode() == HloOpcode::kWhile &&
+          HasDisableWhileLoopCopiesAttr(caller)) {
+        return true;
+      }
+      if (caller != nullptr && caller->parent() != nullptr) {
+        worklist.push_back(caller->parent());
+      }
+    }
+  }
+  return false;
+}
+
 // Deep copy the given instructions 'from' and 'to' at the ShapeIndexes given in
 // 'indices_to_copy'. Add control edges from the respective kCopy instructions
 // in deep copy of 'from' to the respective kCopy instruction in the deep copy
@@ -415,6 +443,12 @@ absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
       HloInstruction * while_init_copy,
       xla_while->parent()->DeepCopyInstruction(while_init, &indices_to_copy));
   RETURN_IF_ERROR(while_init->ReplaceUseWith(xla_while, while_init_copy));
+
+  if (HasDisableWhileLoopCopiesAttr(xla_while)) {
+    VLOG(2) << "While loop body parameter/root copy insertion disabled for "
+            << xla_while->name();
+    return absl::OkStatus();
+  }
 
   // Deep copy the parameter and the root. Extend a control edge from the copy
   // of the parameter value to the corresponding copy value of the root.
@@ -1239,8 +1273,12 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
   // Identify which shape indices of which instructions need to be copied. Store
   // these results in 'instructions_to_copy'.
   HloInstructionMap<ShapeTree<bool>> instructions_to_copy;
-  auto add_index_to_copy = [&instructions_to_copy](HloInstruction* instruction,
-                                                   const ShapeIndex& index) {
+  auto add_index_to_copy = [&instructions_to_copy, &call_graph](
+                               HloInstruction* instruction,
+                               const ShapeIndex& index) {
+    if (IsWhileLoopCopyDisabled(instruction, call_graph)) {
+      return;
+    }
     // Buffers are non-copyable and needed copies are added to transition
     // in and out non-copyable values.
     if (ShapeUtil::GetSubshape(instruction->shape(), index).IsBuffer()) {
