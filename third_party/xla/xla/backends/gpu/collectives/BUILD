@@ -180,6 +180,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
+        "//xla/tsl/util:sorted_range",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -245,6 +246,7 @@ xla_cc_test(
         ":gpu_clique_key",
         ":gpu_cliques",
         ":gpu_collectives",
+        ":gpu_communicator",
         ":loopback_collectives",
         ":nccl_or_rccl_collectives",  # fixdeps: keep
         "//xla:executable_run_options",
@@ -263,12 +265,12 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
-        "@tsl//tsl/platform:casts",
     ],
 )
 
