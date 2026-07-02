@@ -148,10 +148,15 @@ cc_library(
 
 cc_library(
     name = "pjrt_client_registry",
+    testonly = True,
     srcs = ["pjrt_client_registry.cc"],
     hdrs = ["pjrt_client_registry.h"],
     deps = [
+        ":aot_interception_pjrt_client",
         "//xla/pjrt:pjrt_client",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3628,10 +3633,16 @@ cc_library(
     srcs = ["aot_interception_pjrt_client.cc"],
     hdrs = ["aot_interception_pjrt_client.h"],
     deps = [
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_computation",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_executable",
+        "//xla/runtime:device_id",
+        "//xla/service:computation_placer_hdr",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
