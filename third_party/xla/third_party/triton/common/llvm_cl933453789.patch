@@ -1,6 +1,6 @@
 --- a/lib/Analysis/Membar.cpp
 +++ b/lib/Analysis/Membar.cpp
-@@ -201,7 +201,7 @@
+@@ -201,7 +201,7 @@ void MembarOrFenceAnalysis::visitTerminator(
      SmallVector<RegionSuccessor> regions;
      br.getSuccessorRegions(RegionBranchPoint::parent(), regions);
      for (RegionSuccessor &region : regions) {
@@ -9,7 +9,7 @@
          successors.emplace_back(br->getBlock(), br->getIterator());
        } else {
          Block &block = region.getSuccessor()->front();
-@@ -221,7 +221,7 @@
+@@ -221,7 +221,7 @@ void MembarOrFenceAnalysis::visitTerminator(
      SmallVector<RegionSuccessor> regions;
      br.getSuccessorRegions(operands, regions);
      for (RegionSuccessor &region : regions) {
@@ -21,7 +21,7 @@
 
 --- a/lib/Dialect/TritonGPU/IR/Ops.cpp
 +++ b/lib/Dialect/TritonGPU/IR/Ops.cpp
-@@ -1253,12 +1253,12 @@
+@@ -1249,12 +1249,12 @@ void WarpSpecializeOp::getSuccessorRegions(
    // And the default region branches transparently back to the parent.
    if (src.getTerminatorPredecessorOrNull()->getParentRegion() ==
        &getDefaultRegion())
@@ -39,7 +39,7 @@
 
 --- a/third_party/amd/lib/Analysis/RangeAnalysis.cpp
 +++ b/third_party/amd/lib/Analysis/RangeAnalysis.cpp
-@@ -720,14 +720,14 @@
+@@ -720,14 +720,14 @@ void TritonIntegerRangeAnalysis::visitRegionSuccessors(
        if (!point->isBlockStart()) {
          if (!inputs.empty())
            firstIndex = cast<OpResult>(inputs.front()).getResultNumber();
@@ -62,7 +62,7 @@
 
 --- a/third_party/proton/Dialect/lib/Analysis/ScopeIdAllocation.cpp
 +++ b/third_party/proton/Dialect/lib/Analysis/ScopeIdAllocation.cpp
-@@ -297,7 +297,7 @@
+@@ -297,7 +297,7 @@ void ScopeIdAllocation::visitTerminator(Operation *op,
      SmallVector<RegionSuccessor> regions;
      br.getSuccessorRegions(RegionBranchPoint::parent(), regions);
      for (RegionSuccessor &region : regions) {
@@ -71,7 +71,7 @@
          successors.emplace_back(br->getBlock(), br->getIterator());
        } else {
          Block &block = region.getSuccessor()->front();
-@@ -317,7 +317,7 @@
+@@ -317,7 +317,7 @@ void ScopeIdAllocation::visitTerminator(Operation *op,
      SmallVector<RegionSuccessor> regions;
      br.getSuccessorRegions(operands, regions);
      for (RegionSuccessor &region : regions) {

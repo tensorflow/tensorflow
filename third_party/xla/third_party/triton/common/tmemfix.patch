@@ -110,8 +110,8 @@
    return ret;
  }
  
-@@ -340,6 +346,18 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
-   }
+@@ -331,6 +337,18 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
+   auto *ctx = memType.getContext();
    auto layout = getDistributedLayoutForTmemLdSt(
        memType, TMemAccessAtom::I32x32b, numWarps);
 +  if (!layout) {
@@ -129,7 +129,7 @@
    assert(layout);
    return LinearEncodingAttr::get(ctx, std::move(*layout));
  }
-@@ -413,6 +431,10 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
+@@ -404,6 +422,10 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
  bool isDistributedLayoutTMemCompatible(Operation *op,
                                         RankedTensorType tensorType,
                                         gpu::MemDescType memType) {
@@ -214,9 +214,21 @@
  
  } // namespace mlir::triton::nvidia_gpu
 
+--- a/python/test/gluon/test_fpsan.py
++++ b/python/test/gluon/test_fpsan.py
+@@ -1792,6 +1792,8 @@ _WMMA_DOT_CASES = [
+ 
+ 
+ def _native_mma_k(type_a: str) -> int:
++    if is_cuda() and type_a == "f32":
++        return 16
+     return 256 // _float_dtype_info(type_a)[0]
+ 
+ 
+
 --- a/python/test/unit/language/test_core.py
 +++ b/python/test/unit/language/test_core.py
-@@ -3452,10 +3452,7 @@ def get_test_small_dots_cases():
+@@ -3595,10 +3595,7 @@ def get_test_small_dots_cases():
      if not is_cuda():
          return []
      return [(2, 4, 32, 1, False, False, 'None', 'ieee', 'float16', 'float32', 1, None),
@@ -228,7 +240,7 @@
  
  
  @pytest.mark.interpreter
-@@ -3690,21 +3687,19 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dty
+@@ -3833,21 +3830,19 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dty
      # make sure ld/st are vectorized
      ptx = pgm.asm['ptx']
  
@@ -266,7 +278,7 @@
 
 --- a/python/test/unit/language/test_matmul.py
 +++ b/python/test/unit/language/test_matmul.py
-@@ -365,6 +365,8 @@ def test_mxfp(BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES, nonKDim, NUM_WARPS, device)
+@@ -402,6 +402,8 @@ def test_mxfp(BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES, nonKDim, NUM_WARPS, device)
              pytest.skip(f"CDNA4 does not support {BLOCK_K=} for scaled mfma {nonKDim=} variants")
          if (BLOCK_M == 256 or BLOCK_N == 256) and BLOCK_K == 256:
              pytest.skip("Config requires too much shared memory")
@@ -311,14 +323,7 @@
 
 --- a/test/TritonGPU/accelerate-matmul.mlir
 +++ b/test/TritonGPU/accelerate-matmul.mlir
-@@ -1,5 +1,5 @@
- // RUN: triton-opt %s -split-input-file --tritongpu-accelerate-matmul -verify-diagnostics=only-expected | FileCheck %s
--// RUN: env TRITON_PREFER_TMEM_16x256_LAYOUT=1 triton-opt %s -split-input-file --tritongpu-accelerate-matmul | FileCheck %s --check-prefix=LAYOUT_16x256
-+// RUN: env TRITON_PREFER_TMEM_16x256_LAYOUT=1 triton-opt %s -split-input-file --tritongpu-accelerate-matmul -verify-diagnostics=only-expected | FileCheck %s --check-prefix=LAYOUT_16x256
- 
- // CHECK: #[[MMA:.+]] = #ttg.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [16, 16, 16]}>
- // CHECK: #[[MMA1:.+]] = #ttg.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [16, 64, 16]}>
-@@ -893,36 +893,3 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
+@@ -1001,36 +1001,3 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
    }
  }
  
@@ -393,17 +398,3 @@
      int wordIdx = k / (4 / scaleFactorColsPerSet);
      Value scaleA = tb.add(
 
-diff --git a/python/test/gluon/test_fpsan.py b/python/test/gluon/test_fpsan.py
---- a/python/test/gluon/test_fpsan.py
-+++ b/python/test/gluon/test_fpsan.py
-@@ -1560,8 +1560,10 @@
- ]
- 
- 
- def _native_mma_k(type_a: str) -> int:
-+    if is_cuda() and type_a == "f32":
-+        return 16
-     return 256 // _float_dtype_info(type_a)[0]
- 
- 
- _DOT_FMA_CASES = [
