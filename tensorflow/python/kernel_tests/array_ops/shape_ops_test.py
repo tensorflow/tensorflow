@@ -420,6 +420,14 @@ class ShapeOpsTest(test.TestCase):
         r"axis.*must be.*integer.*list.*not a Tensor"):
       array_ops.squeeze(input_tensor, axis_tensor)
 
+    # Test with a list containing a Tensor
+    input_tensor = constant_op.constant([[1, 2, 3]], dtype=dtypes.float32)
+    axis_list = [constant_op.constant(0, dtype=dtypes.int32)]
+    with self.assertRaisesRegex(
+        TypeError,
+        r"axis.*must be.*integer.*list.*cannot.*contain Tensors"):
+      array_ops.squeeze(input_tensor, axis_list)
+
   @test_util.run_deprecated_v1
   def testSqueezeGradient(self):
     with self.cached_session():
