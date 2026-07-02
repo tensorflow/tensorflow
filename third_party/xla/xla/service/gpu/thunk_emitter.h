@@ -221,6 +221,8 @@ class ThunkEmitter {
   AsyncThunkSequence EmitDynamicSliceFusionV2(
       const HloFusionInstruction* instr);
 
+  std::optional<BufferAllocation::Slice> GetAllocationOverride(
+      const HloInstruction* instr, const ShapeIndex& index) const;
   absl::StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
       const HloInstruction* instr, const ShapeIndex& index = {}) const;
   absl::StatusOr<ShapedSlice> GetShapedSliceForHlo(

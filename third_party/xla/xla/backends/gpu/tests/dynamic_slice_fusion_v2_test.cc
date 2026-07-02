@@ -248,6 +248,79 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUSWithOffsetExpression) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(DynamicSliceFusionV2Test, CublasLtMatmulWithBitcastSlicedOperand) {
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    %dsf_computation {
+      %p0 = f32[4,4] parameter(0)
+      %p1 = f32[1,4] parameter(1)
+      %p2 = s32[] parameter(2)
+      %zero = s32[] constant(0)
+      %ds = f32[1,4] dynamic-slice(%p0, %p2, %zero),
+        dynamic_slice_sizes={1,4},
+        backend_config={"dynamic_slice_config":
+          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+      %lhs = f32[4,1] bitcast(%ds)
+      ROOT %gemm = f32[4,4] custom-call(%lhs, %p1),
+        custom_call_target="__cublas$lt$matmul",
+        backend_config={"gemm_backend_config":{"alpha_real":1,"alpha_imag":0,
+          "beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],
+          "rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],
+          "rhs_batch_dimensions":[]},"precision_config":{"operand_precision":["DEFAULT",
+          "DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","grad_x":false,
+          "grad_y":false,"damax_output":false}}
+    }
+
+    body {
+      param = (s32[], f32[4,4], f32[1,4], f32[4,4]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      input = f32[4,4] get-tuple-element(param), index=1
+      rhs = f32[1,4] get-tuple-element(param), index=2
+      output = f32[4,4] get-tuple-element(param), index=3
+      updated = f32[4,4] fusion(input, rhs, i),
+        kind=kCustom, calls=%dsf_computation,
+        backend_config={"fusion_backend_config":{
+          "kind":"__custom_fusion",
+          "custom_fusion_config":
+            {"name":"dynamic_slice_fusion"}}}
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      ROOT tuple = (s32[], f32[4,4], f32[1,4], f32[4,4])
+        tuple(next_i, input, rhs, updated)
+    }
+
+    cond {
+      param = (s32[], f32[4,4], f32[1,4], f32[4,4]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      limit = s32[] constant(4)
+      ROOT cmp = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      zero = s32[] constant(0)
+      input = f32[4,4] broadcast(f32[] constant(1)), dimensions={}
+      rhs = f32[1,4] broadcast(f32[] constant(1)), dimensions={}
+      init_output = f32[4,4] broadcast(f32[] constant(0)), dimensions={}
+      init = (s32[], f32[4,4], f32[1,4], f32[4,4])
+        tuple(zero, input, rhs, init_output)
+      while = (s32[], f32[4,4], f32[1,4], f32[4,4])
+        while(init), condition=cond, body=body
+      ROOT result = f32[4,4] get-tuple-element(while), index=3
+    }
+  )";
+
+  Literal expected = LiteralUtil::CreateR2<float>({{1.0f, 1.0f, 1.0f, 1.0f},
+                                                   {1.0f, 1.0f, 1.0f, 1.0f},
+                                                   {1.0f, 1.0f, 1.0f, 1.0f},
+                                                   {1.0f, 1.0f, 1.0f, 1.0f}});
+
+  ASSERT_OK_AND_ASSIGN(
+      Literal result, Execute(std::move(*ParseAndReturnVerifiedModule(hlo)), {},
+                              /*run_hlo_passes=*/false));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_F(DynamicSliceFusionV2Test, TupleOutputTwoDUS) {
   const char* hlo = R"(
     HloModule test, is_scheduled=true
