@@ -37,7 +37,10 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/config_assigner.h"
+#include "xla/backends/autotuner/directory_cache.h"
+#include "xla/backends/autotuner/local_cache.h"
 #include "xla/backends/autotuner/profiler.h"
+#include "xla/backends/autotuner/tiered_cache.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -123,6 +126,8 @@ struct AutotunerEnvironment {
   std::unique_ptr<AliasInfo> alias_info;
   std::unique_ptr<Compiler::GpuTargetConfig> target_config;
   std::unique_ptr<se::DeviceAddressAllocator> allocator;
+  // For cache
+  AutotuneScope scope;
   // For parallel codegen and autotuning.
   std::unique_ptr<tsl::thread::ThreadPool> thread_pool;
   // The autotuner.
@@ -194,6 +199,13 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
           gpu_compiler->ShapeSizeBytesFunction(), gpu_compiler,
           platform->id()));
 
+  AutotuneScope scope;
+  scope.device = target_config->device_description.name();
+  scope.codegen_version = "unknown";
+  for (const auto& backend : autotuner_backends) {
+    scope.per_backend_versions[backend->backend()] = backend->version();
+  }
+
   ASSIGN_OR_RETURN(
       auto autotuner_orchestrator,
       CodegenOrchestrator::Create(std::move(autotuner_backends),
@@ -214,20 +226,34 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
                                      std::move(autotuner_profilers),
                                      autotuner_options, thread_pool.get()));
 
-  return AutotunerEnvironment{std::move(compiler),   std::move(mlir_context),
-                              std::move(alias_info), std::move(target_config),
-                              std::move(allocator),  std::move(thread_pool),
-                              std::move(autotuner)};
+  return AutotunerEnvironment{std::move(compiler),    std::move(mlir_context),
+                              std::move(alias_info),  std::move(target_config),
+                              std::move(allocator),   std::move(scope),
+                              std::move(thread_pool), std::move(autotuner)};
 }
 
 }  // namespace
 
 absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
-                           const DebugOptions& debug_options) {
+                           const DebugOptions& debug_options,
+                           absl::string_view cache_dir) {
   ASSIGN_OR_RETURN(AutotunerEnvironment env,
                    CreateAutotunerEnvironment(debug_options));
 
-  auto autotuner_cache = std::make_unique<PrintingAutotunerCache>();
+  std::unique_ptr<AutotunerCacheInterface> autotuner_cache;
+
+  if (!cache_dir.empty()) {
+    auto dir_cache = std::make_unique<DirectoryCache>(
+        env.scope, std::string(cache_dir), CacheMode::kReadWrite,
+        KeyMatchingMode::kLoose);
+    auto local_cache = std::make_unique<LocalCache>(
+        dir_cache->GetKeyMatchingMode(),
+        &LocalCacheStorage::GetInstance(env.scope));
+    autotuner_cache = std::make_unique<TieredCache>(std::move(local_cache),
+                                                    std::move(dir_cache));
+  } else {
+    autotuner_cache = std::make_unique<PrintingAutotunerCache>();
+  }
 
   auto should_autotune = [](const xla::HloInstruction&) { return true; };
 
@@ -254,9 +280,12 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
 
 int main(int argc, char* argv[]) {
   std::string hlo_files_str;
+  std::string cache_dir;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("hlo_files", &hlo_files_str,
                 "Comma-separated list of paths to the HLO files to autotune."),
+      tsl::Flag("cache_dir", &cache_dir,
+                "Directory path for the autotuner directory cache."),
   };
 
   const std::string usage_string =
@@ -273,7 +302,8 @@ int main(int argc, char* argv[]) {
   }
 
   xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
-  absl::Status status = xla::gpu::RunAutotuning(hlo_files, debug_options);
+  absl::Status status =
+      xla::gpu::RunAutotuning(hlo_files, debug_options, cache_dir);
   if (!status.ok()) {
     std::cerr << "Failed to autotune: " << status.ToString() << std::endl;
     return 1;

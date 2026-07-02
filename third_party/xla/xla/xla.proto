@@ -862,7 +862,9 @@ message DebugOptions {
   optional bool xla_gpu_experimental_autotune_post_fusion = 481
       [deprecated = true];
 
-  // Specifies the directory to store per kernel autotuning cache.
+  // Specifies the directory for the new structured autotuning cache.
+  // This supersedes `xla_gpu_per_fusion_autotune_cache_dir`, which uses
+  // a different cache format.
   optional string xla_gpu_experimental_autotuner_cache_dir = 407;
 
   // Specifies the distance threshold in ScheduleAwareCollectiveOpsCSE
