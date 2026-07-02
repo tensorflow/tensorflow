@@ -6326,7 +6326,7 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
         
     padding: 'VALID' or int
                  - 'VALID': no padding (default)
-                 - 'SAME': is not supported yet
+                 - 'SAME': matches tf.image.extract_patches padding behavior
                  - int: symmetric padding on all sides
                  
     dilation: Int or tuple (dilation_h, dilation_w) - spacing between 
@@ -6405,29 +6405,36 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
         f" {shape_internal(patches)[3]} and kernel_size is {kernel_size}")
   channels = patch_dim // (kernel_h * kernel_w)
     
-  height, width = output_size
+  height, width = output_size 
+  #TODO: ^ Validate that output_size is consistent with the patch tensor shape?
     
   # Handling inputs for padding argument
+  k_eff_h = (kernel_h - 1) * dilation_h + 1
+  k_eff_w = (kernel_w - 1) * dilation_w + 1
   if isinstance(padding, str):
     if padding == 'VALID':
-      pad_h = pad_w = 0
+      pad_top = pad_bottom = pad_left = pad_right = 0
     elif padding == 'SAME':
-      raise NotImplementedError(
-          "SAME padding is not yet supported. Only 'VALID' or"
-          " Symmetric padding is available by passing an integer")
+      # Calculate total padding required
+      pad_total_h = max(0, (out_h - 1) * stride_h + k_eff_h - height)
+      pad_total_w = max(0, (out_w - 1) * stride_w + k_eff_w - width)
+      # For odd values of total padding, add more padding at the 'right' side of the given dimension.
+      pad_top = pad_total_h // 2
+      pad_bottom = pad_total_h - pad_top
+      pad_left = pad_total_w // 2
+      pad_right = pad_total_w - pad_left
     else:
       raise ValueError(f"padding must be 'VALID' or int got {padding}")
   elif isinstance(padding, int):
-    pad_h = pad_w = padding
-    if padding<0:
-      raise ValueError("padding must be >= 0")
-
+        if padding < 0:
+            raise ValueError("padding must be >= 0")
+        pad_top = pad_bottom = pad_left = pad_right = padding
   else:
-    raise ValueError(f"padding must be 'VALID' or int got {padding}")
+      raise ValueError(f"padding must be 'VALID', 'SAME' or int, got {padding}")
     
   # Padded output size
-  padded_height = height + 2 * pad_h
-  padded_width = width + 2 * pad_w
+  padded_height = height + pad_top + pad_bottom
+  padded_width = width + pad_left + pad_right
     
   # Reshape patches
   patches_reshaped = reshape(
@@ -6468,10 +6475,10 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
     shape=[batch_size, padded_height, padded_width, channels]
   )
     
-  # Crop to desired output_size if symmetric padding was applied
+  # Crop to desired output_size by removing the calculated padding
   # No-op if padding='VALID' or 0
-  if pad_h > 0 or pad_w > 0:
-    output = output[:, pad_h:pad_h+height, pad_w:pad_w+width, :]
+  if pad_top > 0 or pad_bottom > 0 or pad_left > 0 or pad_right > 0:
+    output = output[:, pad_top:pad_top+height, pad_left:pad_left+width, :]
     
   return output
 
