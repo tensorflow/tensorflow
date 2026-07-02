@@ -880,19 +880,13 @@ RendezvousResources(int device_ordinal, RankId rank,
 
 absl::Status RaggedAllToAllThunk::PrepareCollective(
     const PrepareParams& params, const GpuCliqueKey& clique_key) {
-  if (config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel) {
+  if (config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel ||
+      use_symmetric_memory()) {
     // Request symmetric memory for the output buffer only.
-    auto& mem_requests = *params.collective_memory_requests;
     const Buffer& output_buffer = buffers()[1];
-    RETURN_IF_ERROR(mem_requests.RequestSymmetricAllocationSlice(
-        clique_key, output_buffer.destination_buffer.slice));
-  }
-
-  if (use_symmetric_memory()) {
-    const Buffer& output_buf = buffers()[1];
     RETURN_IF_ERROR(
-        params.collective_memory_requests->RequestSymmetricAllocation(
-            clique_key, output_buf.destination_buffer.slice.index()));
+        params.collective_memory_requests->RequestSymmetricAllocationSlice(
+            clique_key, output_buffer.destination_buffer.slice));
   }
 
   return absl::OkStatus();
