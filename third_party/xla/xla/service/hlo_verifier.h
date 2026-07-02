@@ -352,8 +352,7 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status CheckAsyncOpOutputShape(const HloInstruction* async_op);
   // Checks that the shape of async op operands and results match the called
   // computation parameters and root.
-  absl::Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
-                                             const Shape& async_shape);
+  absl::Status CheckAsyncOpComputationShapes(const HloInstruction* async_op);
 
   // Checks that the aliasing config of the given async instruction is valid.
   absl::Status CheckAsyncOpAliasConfig(const HloInstruction* async_op);
