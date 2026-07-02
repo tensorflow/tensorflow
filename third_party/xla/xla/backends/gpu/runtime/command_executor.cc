@@ -292,6 +292,8 @@ CommandExecutor::CommandExecutor(
   commands_.Walk([&](const Command* command) {
     Command::BufferUses buffer_uses = command->buffer_uses();
     buffer_uses_.insert(buffer_uses.begin(), buffer_uses.end());
+    requires_update_on_initialize_ |= command->requires_update_on_initialize();
+    requires_update_on_execute_ |= command->requires_update_on_execute();
   });
 
   // Buffer allocations referenced by all buffer uses.
