@@ -527,6 +527,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_aot_compiled_thunks(true);
   opts.set_xla_gpu_deviceless_cub_mode(
       DebugOptions::DEVICELESS_CUB_WITH_FALLBACK);
+  opts.set_xla_gpu_cudnn_deviceless_compilation_mode(
+      DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED);
   return opts;
 }
 
@@ -665,6 +667,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           return false;
         }
         debug_options->set_xla_gpu_deviceless_cub_mode(mode);
+        return true;
+      };
+
+  // Custom "sub-parser" lambda for xla_gpu_cudnn_deviceless_compilation_mode.
+  auto setter_for_xla_gpu_cudnn_deviceless_compilation_mode =
+      [debug_options](const std::string& value) {
+        DebugOptions::CudnnDevicelessCompilationMode mode;
+        if (!DebugOptions::CudnnDevicelessCompilationMode_Parse(value, &mode)) {
+          return false;
+        }
+        debug_options->set_xla_gpu_cudnn_deviceless_compilation_mode(mode);
         return true;
       };
 
@@ -2785,6 +2798,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_cudnn_gemm_max_plans(),
       "Limit for the number of kernel configurations (plans) to use during "
       "autotuning of cuDNN GEMM fusions."));
+
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_cudnn_deviceless_compilation_mode",
+                setter_for_xla_gpu_cudnn_deviceless_compilation_mode,
+                DebugOptions::CudnnDevicelessCompilationMode_Name(
+                    debug_options->xla_gpu_cudnn_deviceless_compilation_mode()),
+                "When to compile cuDNN fusions in deviceless mode (no live "
+                "cuDNN handle). "
+                "Available options: CUDNN_DEVICELESS_COMPILATION_DISABLED, "
+                "CUDNN_DEVICELESS_COMPILATION_AUTO, "
+                "CUDNN_DEVICELESS_COMPILATION_ALWAYS."));
 
   flag_list->push_back(tsl::Flag("xla_gpu_enable_triton_gemm_int4",
                                  noop_flag_setter<bool>, true,
