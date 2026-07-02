@@ -35,8 +35,8 @@ const absl::string_view kTpuNonCorePlaneNamePrefix = "#Chip";
 const char kTpuPlaneRegex[] = {"/device:TPU:([0-9]*)$"};
 const char kSparseCorePlaneRegex[] = {
     "/device:TPU:[0-9]+ SparseCore ([0-9]+)$"};
-const char kSparseCoreCAEPlaneRegex[] = {
-    "/device:TPU:[0-9]+ SparseCore CAE ([0-9]+)$"};
+const char kSparseCoreAltPlaneRegex[] = {
+    "/device:TPU:[0-9]+ SparseCore Alt ([0-9]+)$"};
 // TODO(b/195582092): change it to /device:custom once all literals are
 // migrated.
 const absl::string_view kCustomPlanePrefix = "/device:CUSTOM:";
