@@ -35,5 +35,6 @@ common_patch_list = [
     "//third_party/triton:common/mig_limits_pytests.patch",
     "//third_party/triton:common/llvm_cl930478990.patch",
     "//third_party/triton:common/llvm_cl933453789.patch",
+    "//third_party/triton:common/llvm_cl941436129.patch",
     # Add new patches just above this line
 ]
