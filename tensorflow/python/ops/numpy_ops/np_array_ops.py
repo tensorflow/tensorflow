@@ -919,10 +919,23 @@ def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
   def adjust_axes(axes, rank):
     def f(x):
       if isinstance(x, int):
+        # Match np.swapaxes behavior: raise clear error for out-of-bounds
+        # instead of producing a perm with negative entries.
+        # This is the key fix for #122054 — prevents the situation where
+        # eager silently succeeds but jit_compile=True / tf2xla blows up
+        # with an opaque range error.
+        if isinstance(rank, int) and not (-rank <= x < rank):
+          raise ValueError(
+              f'axis {x} is out of bounds for array of dimension {rank}'
+          )
         if x < 0:
           x = x + rank
       else:
-        x = array_ops.where_v2(x < 0, np_utils.add(x, a_rank), x)
+        # Dynamic (tensor) axis case — normalize at runtime.
+        # We use the parameter `rank` (not the outer `a_rank`) for correctness.
+        x = array_ops.where_v2(
+            x < 0, np_utils.add(x, rank), x
+        )
       return x
 
     return nest.map_structure(f, axes)

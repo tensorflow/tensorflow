@@ -1045,7 +1045,7 @@ class ArrayMethodsTest(test.TestCase):
   def match_dtype(self, actual, expected, msg=None):
     if msg:
       msg = 'Dtype match failed for: {}. Expected: {} Actual: {}.'.format(
-          msg, expected.dtype, actual.dtype)
+        msg, expected.dtype, actual.dtype)
     self.assertEqual(actual.dtype, expected.dtype, msg=msg)
 
   def match(self, actual, expected, msg=None, check_dtype=True):
@@ -1123,6 +1123,30 @@ class ArrayMethodsTest(test.TestCase):
                         np_array_ops.swapaxes(x, 0, 2))
     self.assertAllEqual([[[0, 4], [2, 6]], [[1, 5], [3, 7]]],
                         np_array_ops.swapaxes(x, -3, -1))
+
+  def testSwapaxesOutOfBoundsAxisRaises(self):
+    # Regression test for GitHub issue #122054: an axis far outside
+    # `[-rank, rank)` (e.g. -10 on a rank-5 array) used to be only
+    # partially normalized, producing a `perm` with leftover negative
+    # entries. That silently "succeeded" in eager (whose `Transpose`
+    # kernel re-normalizes negative perm entries) but crashed under
+    # `jit_compile=True` with an opaque tf2xla error, since the XLA
+    # bridge does not re-normalize. `swapaxes` should instead raise a
+    # clear, consistent error in both modes, matching `np.swapaxes`.
+    x = np.zeros((1, 4, 32, 32, 8), dtype=np.float32)
+    for axis1, axis2 in [(-10, -8), (-8, -10), (5, 0), (0, -6)]:
+      with self.assertRaisesRegex(ValueError, 'out of bounds'):
+        np_array_ops.swapaxes(x, axis1, axis2)
+  
+  def testSwapaxesNegativeAxisWithJitCompile(self):
+    x = np.random.randn(2, 3, 4, 5, 6, 7).astype(np.float32)
+    expected = np.swapaxes(x, -3, 1)
+
+    @tf.function(jit_compile=True)
+    def f(a):
+      return np_array_ops.swapaxes(a, -3, 1)
+
+    self.assertAllClose(expected, f(x))
 
   def testMoveaxis(self):
 
@@ -1240,7 +1264,7 @@ class ArrayManipulationTest(test.TestCase):
   def match_dtype(self, actual, expected, msg=None):
     if msg:
       msg = 'Dtype match failed for: {}. Expected: {} Actual: {}.'.format(
-          msg, expected.dtype, actual.dtype)
+        msg, expected.dtype, actual.dtype)
     self.assertEqual(actual.dtype, expected.dtype, msg=msg)
 
   def match(self, actual, expected, msg=None):
