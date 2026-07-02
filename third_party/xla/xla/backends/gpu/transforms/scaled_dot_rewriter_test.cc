@@ -23,9 +23,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/primitive_util.h"
+#include "xla/shape.h"
 #include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -71,11 +75,11 @@ TEST_P(ScaledDotRewriterTestFixture, ScaledDot) {
         absl::AsciiStrToLower(PrimitiveType_Name(test_case.operand_type)),
         absl::AsciiStrToLower(PrimitiveType_Name(test_case.scale_type)),
         absl::AsciiStrToLower(PrimitiveType_Name(output_type)));
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            ParseAndReturnUnverifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnUnverifiedModule(hlo_string));
 
     ScaledDotRewriter rewriter;
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
     EXPECT_TRUE(changed);
 
     // Verify that the module is still valid after the rewrite.
@@ -118,6 +122,47 @@ TEST_P(ScaledDotRewriterTestFixture, ScaledDot) {
 
     EXPECT_TRUE(RunAndCompare(std::move(module),
                               ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  }
+}
+
+using ScaledDotRewriterElementSizeTest = HloHardwareIndependentTestBase;
+
+// Upcasting an fp4 operand (whose layout carries element_size_in_bits=4) to
+// BF16 must drop the custom sub-byte element size; otherwise the rewriter emits
+// an illegal bf16[...]{:E(4)} shape that the CpuGpuShapeVerifier rejects.
+TEST_F(ScaledDotRewriterElementSizeTest, Fp4OperandDropsSubByteElementSize) {
+  const std::string hlo_string = R"(
+    HloModule module
+
+    ENTRY main {
+      lhs = f4e2m1fn[1024,512]{1,0:E(4)} parameter(0)
+      rhs = f8e4m3fn[64,512] parameter(1)
+      lhs_scale = f8e8m0fnu[1024,16] parameter(2)
+      rhs_scale = f8e8m0fnu[64,16] parameter(3)
+      ROOT dot = f32[1024,64] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+
+  ScaledDotRewriter rewriter;
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      const Shape& shape = instruction->shape();
+      if (!shape.IsArray() || !shape.has_layout()) {
+        continue;
+      }
+      if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+        continue;
+      }
+      EXPECT_EQ(shape.layout().element_size_in_bits(), 0)
+          << "Non-sub-byte instruction retains custom element size: "
+          << instruction->ToString();
+    }
   }
 }
 
