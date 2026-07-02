@@ -615,6 +615,8 @@ def _resolve_xla_einsum_ellipsis(equation, input0_shape, input1_shape):
 
   batch0 = rank0 - len(left_explicit)
   batch1 = rank1 - len(right_explicit)
+  if '...' in left and '...' in right and batch0 != batch1:
+    return equation
   # The ellipsis covers the maximum batch dims across operands (broadcasting).
   batch_ndims = max(batch0, batch1)
 
@@ -647,8 +649,8 @@ def _einsum_grad(op, grad):
   # the gradient xla_einsum ops get concrete equations that XLA can lower to
   # efficient DOT/matmul kernels (fixes register-spill regression, #122274).
   if '...' in equation:
-    input0_shape = op.inputs[0].shape.as_list() if op.inputs[0].shape else None
-    input1_shape = op.inputs[1].shape.as_list() if op.inputs[1].shape else None
+    input0_shape = op.inputs[0].shape.as_list() if op.inputs[0].shape.ndims is not None else None
+    input1_shape = op.inputs[1].shape.as_list() if op.inputs[1].shape.ndims is not None else None
     equation = _resolve_xla_einsum_ellipsis(equation, input0_shape,
                                             input1_shape)
 
