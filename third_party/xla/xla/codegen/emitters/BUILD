@@ -89,6 +89,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/emitters/transforms:lowering_utils",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
