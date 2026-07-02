@@ -1908,8 +1908,8 @@ pytype_strict_library(
     srcs = ["type_spec_registry.py"],
     visibility = visibility + ["//third_party/py/tensorflow_gnn:__subpackages__"],
     deps = [
-        "//tensorflow/python/types:internal",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/types:internal",
     ],
 )
 
