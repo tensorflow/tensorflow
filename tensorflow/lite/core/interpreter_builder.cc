@@ -375,9 +375,13 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
         init_data = reinterpret_cast<const char*>(op->custom_options()->data());
         init_data_size = op->custom_options()->size();
       } else if (op->large_custom_options_offset() > 1 && allocation_) {
-        if (op->large_custom_options_offset() +
-                op->large_custom_options_size() >
-            allocation_->bytes()) {
+        // Validate that offset + size does not overflow and stays within the
+        // allocation. Use subtraction from the upper bound to avoid any
+        // arithmetic overflow (including under UBSan sanitized builds).
+        const uint64_t custom_opts_size = op->large_custom_options_size();
+        const uint64_t custom_opts_offset = op->large_custom_options_offset();
+        if (custom_opts_size > allocation_->bytes() ||
+            custom_opts_offset > allocation_->bytes() - custom_opts_size) {
           TF_LITE_REPORT_ERROR(
               error_reporter_,
               "Custom Option Offset for opcode_index %d is out of bound\n",
@@ -760,7 +764,12 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
           *buffer_data = reinterpret_cast<const char*>(array->data());
           return kTfLiteOk;
         } else if (offset > 1 && allocation_) {
-          if (offset + buffer->size() > allocation_->bytes()) {
+          // Validate that offset + size does not overflow and stays within the
+          // allocation. Use subtraction from the upper bound to avoid any
+          // arithmetic overflow (including under UBSan sanitized builds).
+          const uint64_t buffer_size = buffer->size();
+          if (buffer_size > allocation_->bytes() ||
+              offset > allocation_->bytes() - buffer_size) {
             TF_LITE_REPORT_ERROR(
                 error_reporter_,
                 "Constant buffer %d specified an out of range offset.\n",
