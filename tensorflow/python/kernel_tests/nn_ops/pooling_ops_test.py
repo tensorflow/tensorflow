@@ -2587,6 +2587,23 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
               inp, grad, argmax, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
               padding="VALID")
 
+  def testMaxPoolGradWithArgmaxInvalidArgmaxIndices(self):
+    # Tests that out-of-bounds argmax indices do not cause process crash (on CPU)
+    # or OOB writes (on GPU). Let it skip invalid indices gracefully instead
+    # of hitting fatal CHECK failures.
+    with self.cached_session():
+      inp = array_ops.ones((1, 3, 3, 1), dtype=dtypes.float32)
+      grad = array_ops.ones((1, 3, 3, 1), dtype=dtypes.float32)
+      # 999999 is out of bounds
+      argmax = constant_op.constant(
+          [999999] + [0] * 8, dtype=dtypes.int64, shape=[1, 3, 3, 1])
+
+      # This should execute without CRASH
+      res = gen_nn_ops.max_pool_grad_with_argmax(
+          inp, grad, argmax, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
+          padding="VALID")
+      self.evaluate(res)
+
   def testAvgPoolGradInvalidInputShapeRaiseError(self):
     with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
       with self.cached_session():
