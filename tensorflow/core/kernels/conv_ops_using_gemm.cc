@@ -258,7 +258,7 @@ class Im2ColConvFunctor {
       const int n = filter_count;
       const int64_t k = static_cast<int64_t>(input_height) * input_width *
                         input_depth;
-      const int lda = k;
+      const int64_t lda = k;
       const int ldb = filter_count;
       const int ldc = filter_count;
       TGemmFunctor gemm_functor;
@@ -298,10 +298,13 @@ class Im2ColConvFunctor {
     // input, with the depth channel as the most contiguous in memory, followed
     // by the width, then the height. This is the standard memory order in the
     // image world if it helps to visualize it.
-    const int64_t filter_value_count =
+    const int64_t filter_value_count_64 =
         static_cast<int64_t>(filter_width) * filter_height * input_depth;
-    OP_REQUIRES(context, (filter_value_count * sizeof(T1)) <= kMaxChunkSize,
+    OP_REQUIRES(context, (filter_value_count_64 * sizeof(T1)) <= kMaxChunkSize,
                 errors::InvalidArgument("Im2Col patch too large for buffer"));
+    // Safe to narrow: OP_REQUIRES guarantees filter_value_count_64 * sizeof(T1)
+    // <= kMaxChunkSize (≤16 MB), so filter_value_count_64 fits in int32.
+    const int filter_value_count = static_cast<int>(filter_value_count_64);
     const int64_t patches_per_chunk =
         kMaxChunkSize / (filter_value_count * sizeof(T1));
     const int64_t chunk_value_count =
