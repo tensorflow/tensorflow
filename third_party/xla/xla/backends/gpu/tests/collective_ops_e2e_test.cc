@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -2676,19 +2677,20 @@ ENTRY entry {
 
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(std::move(module),
-                                           /*run_hlo_passes=*/true));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+  ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                       test_runner().HloModuleFromWrapped(executable.get()));
   const HloInstruction* all_gather =
       FindCollectiveStart(hlo_module, HloOpcode::kAllGather);
 
   EXPECT_THAT(all_gather, NotNull());
-  EXPECT_EQ(all_gather->shape().tuple_shapes(0).element_type(), BF16);
+  EXPECT_EQ(all_gather->shape().tuple_shapes(0).tuple_shapes(0).element_type(),
+            BF16);
   EXPECT_EQ(all_gather->shape().tuple_shapes(1).element_type(), BF16);
 }
 
