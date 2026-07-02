@@ -1258,6 +1258,22 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 64, 1}, cc);
 }
 
+TEST_P(ConcatenateDeviceTest, TritonDoesNotSupportUnalignedConcatenate) {
+  auto [cc, tiling] = GetParam();
+  // Operand 0 has size 63 along concat dim (1), which is not divisible by 64.
+  // Operand 1 has size 128 (aligned).
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  p0 = $0[18,63,20] parameter(0)
+  p1 = $0[18,128,20] parameter(1)
+  ROOT concatenate = $0[18,191,20] concatenate(p0, p1), dimensions={1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                          ParseTemplateAndGetInstruction(
+                              kHloTestTemplate, F32, HloOpcode::kConcatenate));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 64, 1}, cc);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     ConcatenateTestSuite, ConcatenateDeviceTest,
     ::testing::Combine(::testing::ValuesIn(AllDevicesToTest()),

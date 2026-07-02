@@ -345,14 +345,14 @@ TEST_P(GemmFusionTestV2, UnhoistedBitcastIsNotFusedAtEdge) {
 HloModule m
 
 ENTRY e {
-  p0 = f32[2,8,8] parameter(0)
-  p2 = f32[2,8,8] parameter(2)
-  c = f32[4,8,8] concatenate(p0, p2), dimensions={0}
-  r1 = f32[2,16,8] reshape(c)
-  bi = f32[32,8] bitcast(r1)
+  p0 = f32[64,8,8] parameter(0)
+  p2 = f32[64,8,8] parameter(2)
+  c = f32[128,8,8] concatenate(p0, p2), dimensions={0}
+  r1 = f32[64,16,8] reshape(c)
+  bi = f32[1024,8] bitcast(r1)
   p1 = s8[8,7] parameter(1)
   c1 = f32[8,7] convert(p1)
-  ROOT d = f32[32,7] dot(bi, c1),
+  ROOT d = f32[1024,7] dot(bi, c1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
@@ -2029,11 +2029,7 @@ ENTRY main {
   RunAndFilecheckHloRewrite(hlo_text, GemmFusion(gpu_version_), std::nullopt);
 }
 
-TEST_P(GemmFusionTest, TransposeFusesInConcatGemm) {
-  if (!GetParam()) {
-    GTEST_SKIP() << "Tiling propagation is not enabled.";
-  }
-
+TEST_P(GemmFusionTestVersioned, TransposeFusesInConcatGemm) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 HloModule module
@@ -2067,11 +2063,7 @@ ENTRY main {
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
 }
 
-TEST_P(GemmFusionTest, TransposeDoesNotFuseInConcatGemmIfUnaligned) {
-  if (!GetParam()) {
-    GTEST_SKIP() << "Tiling propagation is not enabled.";
-  }
-
+TEST_P(GemmFusionTestVersioned, TransposeDoesNotFuseInConcatGemmIfUnaligned) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 HloModule module
