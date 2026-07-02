@@ -214,8 +214,11 @@ class GpuExecutable : public Executable {
     return *buffer_allocator_;
   }
 
-  absl::Status ExecuteThunks(const BufferAllocations& buffer_allocations,
-                             const ServiceExecutableRunOptions* run_options);
+  absl::Status ExecuteThunks(
+      const BufferAllocations& buffer_allocations,
+      const ServiceExecutableRunOptions* run_options,
+      std::optional<absl::Span<const BufferAllocation::Index>>
+          persistent_alloc_indices = std::nullopt);
 
   using BufferAllocToDeviceMemoryMap =
       GpuModuleGlobals::BufferAllocToDeviceMemoryMap;
@@ -300,6 +303,8 @@ class GpuExecutable : public Executable {
       Thunk::ExecutableSource executable_source,
       const ServiceExecutableRunOptions* run_options,
       const BufferAllocations& buffer_allocations, bool block_host_until_done,
+      std::optional<absl::Span<const BufferAllocation::Index>>
+          persistent_alloc_indices,
       NumAdditionalStreams num_additional_streams,
       CollectiveMemoryCache& collective_memory_cache,
       bool collective_use_minimal_resource);
@@ -395,7 +400,9 @@ class GpuExecutable : public Executable {
   std::unique_ptr<GpuModuleGlobals> module_globals_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
   bool enable_debug_info_manager_;
+
   std::unique_ptr<GpuExecutableBufferAllocator> buffer_allocator_;
+
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;
 

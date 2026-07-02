@@ -24,6 +24,7 @@ limitations under the License.
 #include "google/protobuf/descriptor.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -76,6 +77,22 @@ TEST(DebugOptions, GetDebugOptionsFromProtoAndFlags_PtxCompilerExtraFlags) {
   DebugOptions options = GetDebugOptionsFromProtoAndFlags(&empty_options);
   EXPECT_THAT(options.xla_gpu_ptx_compiler_extra_flags(),
               ElementsAre("--maxntid=8,8,8", "--register-usage-level=10"));
+}
+
+TEST(DebugOptionsDeathTest, CommandBufferAdaptiveUpdateModeRejected) {
+  int* pargc;
+  std::vector<char*>* pargv;
+  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+  tsl::setenv("XLA_FLAGS",
+              "--xla_gpu_command_buffer_update_mode=ADAPTIVE_UPDATE", 1);
+
+  DebugOptions options;
+  std::vector<tsl::Flag> flag_list;
+  MakeDebugOptionsFlags(&flag_list, &options);
+
+  EXPECT_DEATH(ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_list),
+               "Flag parsing failed");
+  tsl::unsetenv("XLA_FLAGS");
 }
 
 TEST(DebugOptions, AllFieldsHavePresence) {

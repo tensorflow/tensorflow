@@ -225,6 +225,70 @@ TEST_F(GpuExecutableTest, RunThunkPasses) {
   EXPECT_EQ(dump_files.size(), 1);
 }
 
+TEST_F(GpuExecutableTest, CommandBufferAllocationIndexesIncludeMlirConstants) {
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  debug_options.set_xla_gpu_command_buffer_update_mode(
+      DebugOptions::NEVER_UPDATE);
+
+  std::vector<BufferAllocation> allocations;
+  allocations.reserve(2);
+  allocations.emplace_back(0, 4, 0);
+  allocations.back().set_constant(true);
+  allocations.emplace_back(1, 4, 0);
+
+  Shape shape = ShapeUtil::MakeShape(S32, {});
+  BufferAllocation::Slice constant_slice(&allocations[0], 0, 4);
+  BufferAllocation::Slice temp_slice(&allocations[1], 0, 4);
+
+  emitters::KernelArgument constant_arg(shape, constant_slice);
+  constant_arg.set_written(false);
+  emitters::KernelArgument temp_arg(shape, temp_slice);
+
+  ThunkSequence thunk_sequence;
+  thunk_sequence.push_back(std::make_unique<KernelThunk>(
+      ThunkInfoWithId(123),
+      /*kernel_name=*/"test_kernel",
+      /*kernel_arguments=*/
+      emitters::KernelArguments(
+          std::vector<emitters::KernelArgument>{constant_arg, temp_arg}),
+      /*launch_dimensions=*/LaunchDimensions(),
+      /*cluster_dim=*/std::nullopt,
+      /*shmem_bytes=*/0,
+      /*tma_metadata=*/se::gpu::TmaMetadata()));
+
+  GpuExecutable::Params params;
+  params.executable =
+      std::make_unique<ThunkExecutor>(std::move(thunk_sequence));
+  params.debug_options = debug_options;
+  params.module_name = "test_module";
+  params.mlir_allocations = std::move(allocations);
+  se::DeviceDescription device_description;
+  device_description.set_gpu_compute_capability(
+      se::GpuComputeCapability{se::CudaComputeCapability::Volta()});
+  device_description.set_driver_version({12, 3, 0});
+  device_description.set_runtime_version({12, 3, 0});
+  params.device_description = device_description;
+  params.enable_debug_info_manager = false;
+  params.debug_module =
+      std::make_unique<HloModule>(params.module_name, HloModuleConfig());
+  params.debug_module->mutable_config().set_debug_options(debug_options);
+  SetDummyBufferAssignment(params);
+
+  absl::StatusOr<std::unique_ptr<GpuExecutable>> executable_or =
+      GpuExecutable::Create(std::move(params));
+  ASSERT_THAT(executable_or, absl_testing::IsOk());
+  std::unique_ptr<GpuExecutable> executable = std::move(executable_or).value();
+
+  EXPECT_THAT(
+      executable->thunk_executor().thunks(),
+      ElementsAre(Pointee(Property(&Thunk::kind, Thunk::kCommandBuffer))));
+  EXPECT_THAT(
+      executable->buffer_allocator().command_buffer_allocation_indexes(),
+      ElementsAre(0, 1));
+}
+
 TEST_F(GpuExecutableTest, ComputeComputationLayout) {
   GpuExecutable::Params params;
   params.module_name = "test_module";

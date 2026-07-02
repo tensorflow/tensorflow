@@ -592,7 +592,7 @@ ConvertThunksToCommandBuffer(
       std::move(cmd_executor), std::move(thunk_info),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
                                         std::move(thunks_to_convert)),
-      debug_options.xla_enable_command_buffers_during_profiling(), update_mode);
+      debug_options.xla_enable_command_buffers_during_profiling());
 }
 
 absl::Status FlushCommandBuffer(

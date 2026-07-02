@@ -264,6 +264,12 @@ class Thunk {
 
     // Execution scoped state shared between prepare, initialize and execute.
     ExecutionScopedState* execution_scoped_state = nullptr;
+
+    // Optional allocation indices whose device addresses are stable for this
+    // execution. If absent, consumers that need address-change checks should
+    // conservatively treat allocation addresses as dynamic.
+    std::optional<absl::Span<const BufferAllocation::Index>>
+        persistent_alloc_indices = std::nullopt;
   };
 
   //===--------------------------------------------------------------------===//
@@ -284,7 +290,9 @@ class Thunk {
         CollectiveCliques* collective_cliques,
         CollectiveMemory* collective_memory,
         std::vector<se::Stream*> additional_compute_streams = {},
-        ExecutionScopedState* execution_scoped_state = nullptr);
+        ExecutionScopedState* execution_scoped_state = nullptr,
+        std::optional<absl::Span<const BufferAllocation::Index>>
+            persistent_alloc_indices = std::nullopt);
 
     // Constructs execute parameters from an existing parameters but with
     // different buffer allocations.
@@ -335,6 +343,12 @@ class Thunk {
 
     uint64_t rng_seed = 0;
 
+    // Optional allocation indices whose device addresses are stable for this
+    // execution. If absent, consumers that need address-change checks should
+    // conservatively treat allocation addresses as dynamic.
+    std::optional<absl::Span<const BufferAllocation::Index>>
+        persistent_alloc_indices = std::nullopt;
+
    private:
     friend class CommandBufferThunk;
 
@@ -350,8 +364,10 @@ class Thunk {
                   const ffi::ExecutionContext* ffi_execution_context,
                   std::vector<se::Stream*> additional_compute_streams = {},
                   ExecutionScopedState* execution_scoped_state = nullptr,
-                  bool mock_collectives = false, RunId execution_id = RunId(0),
-                  uint64_t rng_seed = 0);
+                  bool mock_collectives = false, int64_t execution_id = 0,
+                  uint64_t rng_seed = 0,
+                  std::optional<absl::Span<const BufferAllocation::Index>>
+                      persistent_alloc_indices = std::nullopt);
   };
 
   //===--------------------------------------------------------------------===//

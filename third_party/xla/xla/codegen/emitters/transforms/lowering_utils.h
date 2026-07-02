@@ -30,6 +30,14 @@ namespace emitters {
 // AMDGPU requires allocas in AS5, but MLIR lowering creates them in AS0.
 void EnsureAMDGPUAllocasUseAS5(mlir::Operation* operation);
 
+// Emits MLIR operations to convert float `value` (scalar or shaped) to integer
+// type `dst_element_ty` (signed or unsigned), applying bounds clamping and
+// mapping NaN to 0.
+mlir::Value EmitFloatToIntConvertWithClamping(
+    mlir::ImplicitLocOpBuilder& builder, mlir::Value value,
+    mlir::FloatType src_fp_element_ty, mlir::IntegerType dst_element_ty,
+    mlir::Type src_ty, mlir::Type dst_ty);
+
 namespace spirv {
 namespace mm = ::mlir::math;
 namespace ml = ::mlir::LLVM;

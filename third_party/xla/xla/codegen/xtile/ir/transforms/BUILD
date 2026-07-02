@@ -41,6 +41,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/emitters/transforms:lowering_utils",
         "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/service/llvm_ir:llvm_util",

@@ -485,22 +485,21 @@ GpuExecutable::GpuExecutable(
   }
   set_module_stats(std::move(module_stats));
 
-  DebugOptions::CommandBufferUpdateMode update_mode =
-      has_module()
-          ? module_config().debug_options().xla_gpu_command_buffer_update_mode()
-          : DebugOptions::ALWAYS_UPDATE;
-  absl::StatusOr<GpuExecutableBufferAllocator::AllocationIndexSet>
-      command_buffer_allocation_indexes =
-          GpuExecutableBufferAllocator::CollectCommandBufferAllocationIndexes(
-              thunk_executor_.get(), allocation_ptrs_, update_mode);
-  CHECK_OK(command_buffer_allocation_indexes.status());
+  const DebugOptions* allocation_debug_options =
+      has_module() ? &module_config().debug_options() : nullptr;
+  GpuExecutableBufferAllocator::AllocationIndexSet
+      returned_output_allocation_indexes;
+  for (const auto& [_, output_info] : output_info_) {
+    returned_output_allocation_indexes.insert(output_info.allocation_index);
+  }
   buffer_allocator_ = std::make_unique<GpuExecutableBufferAllocator>(
       module_name_, allocation_ptrs_, program_shape_.result(),
-      has_module() ? &module_config().debug_options() : nullptr, update_mode,
-      std::move(*command_buffer_allocation_indexes));
+      allocation_debug_options, thunk_executor_.get(),
+      std::move(returned_output_allocation_indexes));
 }
 
 GpuExecutable::~GpuExecutable() {
+  buffer_allocator_.reset();
   if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->UnregisterModule(module().unique_id());
   }
@@ -552,6 +551,8 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
     Thunk::ExecutableSource executable_source,
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
+    std::optional<absl::Span<const BufferAllocation::Index>>
+        persistent_alloc_indices,
     GpuExecutable::NumAdditionalStreams num_additional_streams,
     CollectiveMemoryCache& collective_memory_cache,
     bool collective_use_minimal_resource) {
@@ -732,12 +733,10 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);
 
   {  // Prepare thunks for execution and collect requested GPU cliques.
-    Thunk::PrepareParams prepare_params{&collective_params,
-                                        &collective_clique_requests,
-                                        &collective_memory_requests,
-                                        executor,
-                                        &buffer_allocations,
-                                        &execution_scoped_state};
+    Thunk::PrepareParams prepare_params{
+        &collective_params,          &collective_clique_requests,
+        &collective_memory_requests, executor,
+        &buffer_allocations,         &execution_scoped_state};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
     RETURN_IF_ERROR(thunk_executor.Prepare(prepare_params));
@@ -784,6 +783,7 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         run_options->run_options().ffi_execution_context(),
         run_options->local_device_count(),
         &execution_scoped_state};
+    initialize_params.persistent_alloc_indices = persistent_alloc_indices;
 
     tsl::profiler::TraceMe trace_initialize("Thunks::Initialize");
     RETURN_IF_ERROR(thunk_executor.Initialize(initialize_params));
@@ -803,7 +803,7 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
       *run_options, buffer_allocations, main_stream,
       command_buffer_trace_stream, &collective_params, &collective_cliques,
       &collective_memory, std::move(compute_streams.streams),
-      &execution_scoped_state);
+      &execution_scoped_state, persistent_alloc_indices);
 
   XLA_VLOG_DEVICE(1, run_options->device_ordinal())
       << "Start GpuExecutable::ExecuteOnStream module: " << module_name;
@@ -1064,10 +1064,12 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
             .AsDeviceAddress(),
         param_no};
   };
+
   ASSIGN_OR_RETURN(
       GpuExecutableBufferAllocator::ExecutionScope allocation_scope,
       buffer_allocator_->CreateExecutionScope(run_options, memory_allocator,
                                               device_ordinal));
+
   ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
                    allocation_scope.GenerateBufferAllocations(
                        run_options, get_parameter_buffer, globals,
@@ -1175,10 +1177,12 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
   absl::Status execute_status = allocation_scope.ExecuteWithBufferAllocations(
       buffer_allocations, device_ordinal,
-      [&](const BufferAllocations& execution_buffers) {
-        return ExecuteThunks(execution_buffers, run_options);
+      [&](const BufferAllocations& execution_buffers,
+          std::optional<absl::Span<const BufferAllocation::Index>>
+              persistent_alloc_indices) {
+        return ExecuteThunks(execution_buffers, run_options,
+                             persistent_alloc_indices);
       });
-
   absl::Status teardown_status =
       buffer_allocations.TearDown(buffers_in_result, GetAllocations());
 
@@ -1242,7 +1246,9 @@ std::optional<BufferAssignmentProto> GpuExecutable::buffer_assignment_proto()
 }
 absl::Status GpuExecutable::ExecuteThunks(
     const BufferAllocations& buffer_allocations,
-    const ServiceExecutableRunOptions* run_options) {
+    const ServiceExecutableRunOptions* run_options,
+    std::optional<absl::Span<const BufferAllocation::Index>>
+        persistent_alloc_indices) {
   tsl::profiler::TraceMe trace([&] {
     return tsl::profiler::TraceMeEncode(
         absl::StrFormat("[%d] GpuExecutable::ExecuteThunks",
@@ -1272,7 +1278,7 @@ absl::Status GpuExecutable::ExecuteThunks(
   se::StreamExecutor* executor = run_options->stream()->parent();
 
   XLA_VLOG_DEVICE(3, executor->device_ordinal()) << absl::StreamFormat(
-      "ExecuteThunks: command_buffer_allocation_indexes_.size()=%d",
+      "ExecuteThunks: command_buffer_persistent_allocation_indexes.size()=%d",
       buffer_allocator_->command_buffer_allocation_count());
 
   bool collective_use_minimal_resource = false;
@@ -1283,8 +1289,9 @@ absl::Status GpuExecutable::ExecuteThunks(
   RETURN_IF_ERROR(ExecuteThunksImpl(
       has_module() ? &module_config().debug_options() : nullptr, module_name_,
       unique_id, *thunk_executor_, executable_source, run_options,
-      buffer_allocations, block_host_until_done, num_additional_streams_,
-      collective_memory_cache_, collective_use_minimal_resource));
+      buffer_allocations, block_host_until_done, persistent_alloc_indices,
+      num_additional_streams_, collective_memory_cache_,
+      collective_use_minimal_resource));
   return absl::OkStatus();
 }
 
