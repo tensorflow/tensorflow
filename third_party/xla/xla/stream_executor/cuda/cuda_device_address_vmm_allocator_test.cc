@@ -592,6 +592,111 @@ TEST_F(DeviceAddressVmmAllocatorTest,
   ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
 }
 
+TEST_F(DeviceAddressVmmAllocatorTest,
+       AllocateIntoReservationReusesPendingReservationAddress) {
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
+
+  const int ordinal = executor_->device_ordinal();
+  const uint64_t granularity = allocator->GetAllocationGranularity(executor_);
+  ASSERT_GT(granularity, 0);
+
+  ASSERT_OK_AND_ASSIGN(auto reservation, gpu::CudaMemoryReservation::Create(
+                                             executor_, granularity));
+  DeviceAddressBase reservation_address = reservation->address().GetByteSlice(
+      /*offset_bytes=*/0, granularity);
+  ASSERT_OK_AND_ASSIGN(
+      auto address,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective),
+                          reservation.get(), /*reservation_offset=*/0,
+                          granularity,
+                          /*return_reservation_address=*/true));
+  auto* raw_allocation = allocator->GetRawAllocation(ordinal, address.cref());
+  ASSERT_NE(raw_allocation, nullptr);
+
+  ASSERT_THAT(allocator->Deallocate(ordinal, address.Release()), IsOk());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto reused, allocator->Allocate(
+                       ordinal, granularity, /*retry_on_failure=*/true,
+                       static_cast<int64_t>(MemorySpace::kCollective),
+                       reservation.get(), /*reservation_offset=*/0, granularity,
+                       /*return_reservation_address=*/true));
+  EXPECT_TRUE(reused.cref().IsSameAs(reservation_address));
+  EXPECT_EQ(allocator->GetRawAllocation(ordinal, reused.cref()),
+            raw_allocation);
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+  EXPECT_EQ(allocator->GetRawAllocation(ordinal, reused.cref()),
+            raw_allocation);
+
+  ASSERT_THAT(allocator->Deallocate(ordinal, reused.Release()), IsOk());
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+}
+
+TEST_F(DeviceAddressVmmAllocatorTest,
+       AllocateIntoReservationReusesPendingAllocatorAndReservationAddresses) {
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
+
+  const int ordinal = executor_->device_ordinal();
+  const uint64_t granularity = allocator->GetAllocationGranularity(executor_);
+  ASSERT_GT(granularity, 0);
+
+  ASSERT_OK_AND_ASSIGN(auto reservation, gpu::CudaMemoryReservation::Create(
+                                             executor_, granularity));
+  DeviceAddressBase reservation_address = reservation->address().GetByteSlice(
+      /*offset_bytes=*/0, granularity);
+  ASSERT_OK_AND_ASSIGN(
+      auto address,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective),
+                          reservation.get(), /*reservation_offset=*/0,
+                          granularity,
+                          /*return_reservation_address=*/false));
+  DeviceAddressBase allocator_address = address.cref();
+  auto* raw_allocation =
+      allocator->GetRawAllocation(ordinal, allocator_address);
+  auto* allocator_owned_reservation =
+      allocator->GetReservation(ordinal, allocator_address);
+  ASSERT_NE(raw_allocation, nullptr);
+  ASSERT_NE(allocator_owned_reservation, nullptr);
+  ASSERT_EQ(allocator->GetRawAllocation(ordinal, reservation_address),
+            raw_allocation);
+
+  ASSERT_THAT(allocator->UnMap(ordinal, reservation.get(),
+                               /*reservation_offset=*/0, granularity),
+              IsOk());
+  ASSERT_THAT(allocator->Deallocate(ordinal, address.Release()), IsOk());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto reused, allocator->Allocate(
+                       ordinal, granularity, /*retry_on_failure=*/true,
+                       static_cast<int64_t>(MemorySpace::kCollective),
+                       reservation.get(), /*reservation_offset=*/0, granularity,
+                       /*return_reservation_address=*/false));
+  EXPECT_TRUE(reused.cref().IsSameAs(allocator_address));
+  EXPECT_EQ(allocator->GetRawAllocation(ordinal, reused.cref()),
+            raw_allocation);
+  EXPECT_EQ(allocator->GetRawAllocation(ordinal, reservation_address),
+            raw_allocation);
+  EXPECT_EQ(allocator->GetReservation(ordinal, reused.cref()),
+            allocator_owned_reservation);
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+  EXPECT_EQ(allocator->GetRawAllocation(ordinal, reused.cref()),
+            raw_allocation);
+  EXPECT_EQ(allocator->GetRawAllocation(ordinal, reservation_address),
+            raw_allocation);
+
+  ASSERT_THAT(allocator->UnMap(ordinal, reservation.get(),
+                               /*reservation_offset=*/0, granularity),
+              IsOk());
+  ASSERT_THAT(allocator->Deallocate(ordinal, reused.Release()), IsOk());
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+}
+
 TEST_F(DeviceAddressVmmAllocatorTest, DeallocateNull) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto allocator,
