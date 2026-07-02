@@ -578,6 +578,13 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDotLoop(
                                            /*operand_index=*/1, rhs_indices));
     Value accum = iter_args[0];
 
+    if (algorithm_util::IsBf16ToF32AlgorithmRequested(instr)) {
+      Value lhs_trunc = arith::TruncFOp::create(b, b.getBF16Type(), lhs_value);
+      lhs_value = arith::ExtFOp::create(b, b.getF32Type(), lhs_trunc);
+      Value rhs_trunc = arith::TruncFOp::create(b, b.getBF16Type(), rhs_value);
+      rhs_value = arith::ExtFOp::create(b, b.getF32Type(), rhs_trunc);
+    }
+
     ASSIGN_OR_RETURN(
         accum, EmitMulAdd(lhs_value, rhs_value, accum,
                           instr->shape().element_type(), accumulator_type, b));

@@ -3217,6 +3217,11 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   if (primitive_type == BF16) {
     lhs_value = b_->CreateFPExt(lhs_value, b_->getFloatTy());
     rhs_value = b_->CreateFPExt(rhs_value, b_->getFloatTy());
+  } else if (algorithm_util::IsBf16ToF32AlgorithmRequested(hlo)) {
+    lhs_value = b_->CreateFPExt(b_->CreateFPTrunc(lhs_value, b_->getBFloatTy()),
+                                b_->getFloatTy());
+    rhs_value = b_->CreateFPExt(b_->CreateFPTrunc(rhs_value, b_->getBFloatTy()),
+                                b_->getFloatTy());
   }
 
   llvm::Value* next_accumulator =
