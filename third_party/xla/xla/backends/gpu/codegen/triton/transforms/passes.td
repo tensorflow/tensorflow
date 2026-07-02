@@ -248,6 +248,25 @@ def XTileLowerToTritonPass
   ];
 }
 
+def XTileStripMineScanPass
+    : Pass<"xtile-strip-mine-scan", "mlir::ModuleOp"> {
+  let summary = "Tiles xtile.scan operations into scf loops over tiles.";
+  let dependentDialects = [
+    "::mlir::scf::SCFDialect",
+    "::mlir::tensor::TensorDialect",
+    "::xla::xtile::XTileDialect",
+  ];
+}
+
+def XTileScalarizeScanPass
+    : Pass<"xtile-scalarize-scan", "mlir::ModuleOp"> {
+  let summary = "Scalarizes the region of an xtile.scan operation.";
+  let dependentDialects = [
+    "::mlir::tensor::TensorDialect",
+    "::xla::xtile::XTileDialect",
+  ];
+}
+
 def ArithFP8ConversionToTritonPass
     : Pass<"arith-fp8-conversion-to-triton", "mlir::ModuleOp"> {
   let summary =

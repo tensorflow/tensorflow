@@ -13,28 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Region.h"
 #include "mlir/IR/TypeUtilities.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/triton/transforms/lowering_utils.h"
-#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -222,6 +226,141 @@ class LowerDotScaled
   }
 };
 
+static void CloneScanBlockToTriton(mlir::PatternRewriter& rewriter,
+                                   mlir::Location loc, int num_operands,
+                                   mlir::Block& old_block,
+                                   mlir::Region& triton_scan_region) {
+  llvm::SmallVector<Type> arg_types;
+  llvm::SmallVector<mlir::Location> arg_locs;
+  for (auto type : old_block.getArgumentTypes()) {
+    if (auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(type)) {
+      type = shaped_type.getElementType();
+    }
+    arg_types.push_back(type);
+    arg_locs.push_back(loc);
+  }
+  mlir::Block* new_block = rewriter.createBlock(
+      &triton_scan_region, triton_scan_region.begin(), arg_types, arg_locs);
+
+  mlir::IRMapping mapping;
+  rewriter.setInsertionPointToStart(new_block);
+  for (auto [old_arg, new_arg] :
+       llvm::zip(old_block.getArguments(), new_block->getArguments())) {
+    mapping.map(old_arg, new_arg);
+  }
+
+  for (mlir::Operation& op : old_block.without_terminator()) {
+    rewriter.clone(op, mapping);
+  }
+
+  SmallVector<Value> return_operands;
+  // The terminator now yields (out_1, ..., out_N, acc_1, ..., acc_N) where
+  // out_i and acc_i are the same values for a scan. We only need the first N
+  // outputs for the Triton scan block return.
+  for (int i = 0; i < num_operands; ++i) {
+    Value operand = old_block.getTerminator()->getOperand(i);
+    Value mapped_op = mapping.lookupOrDefault(operand);
+    return_operands.push_back(mapped_op);
+  }
+
+  ttir::ScanReturnOp::create(rewriter, loc, return_operands);
+}
+
+class LowerScan : public mlir::OpRewritePattern<::xla::xtile::ScanOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      ::xla::xtile::ScanOp op, mlir::PatternRewriter& rewriter) const override {
+    int32_t axis = op.getDimension();
+    bool reverse = op.getIsReverse();
+    int num_operands = op.getInputs().size();
+    SmallVector<Type> adjusted_result_types;
+    for (auto result : op.getOutputs()) {
+      adjusted_result_types.push_back(result.getType());
+    }
+
+    auto triton_scan_op =
+        ttir::ScanOp::create(rewriter, op.getLoc(), adjusted_result_types,
+                             op.getInputs(), axis, reverse);
+    mlir::Region& triton_scan_region = triton_scan_op.getCombineOp();
+
+    mlir::Block& old_block = op.getBody().front();
+    CloneScanBlockToTriton(rewriter, op.getLoc(), num_operands, old_block,
+                           triton_scan_region);
+
+    // Apply the initial values if needed.
+    rewriter.setInsertionPointAfter(triton_scan_op);
+
+    bool all_add = llvm::all_of(
+        old_block.without_terminator(), [](mlir::Operation& op_in_block) {
+          return isa<stablehlo::AddOp, arith::AddFOp, arith::AddIOp,
+                     tensor::ExtractOp, tensor::FromElementsOp>(op_in_block);
+        });
+
+    if (!all_add) {
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "Only addition scans are supported");
+    }
+
+    SmallVector<Value> final_results;
+    for (int i = 0; i < num_operands; ++i) {
+      Value result = triton_scan_op->getResult(i);
+      Value init_val = op.getInits()[i];
+      auto result_type = mlir::cast<mlir::RankedTensorType>(result.getType());
+      auto bcast_type = RankedTensorType::get(result_type.getShape(),
+                                              result_type.getElementType());
+
+      SmallVector<int64_t> bcast_dims;
+      for (int64_t d = 0; d < result_type.getRank(); ++d) {
+        if (d != axis) {
+          bcast_dims.push_back(d);
+        }
+      }
+
+      Value init_bcast = mlir::stablehlo::BroadcastInDimOp::create(
+          rewriter, op.getLoc(), bcast_type, init_val,
+          rewriter.getDenseI64ArrayAttr(bcast_dims));
+      if (mlir::isa<mlir::FloatType>(result_type.getElementType())) {
+        result =
+            arith::AddFOp::create(rewriter, op.getLoc(), init_bcast, result);
+      } else {
+        result =
+            arith::AddIOp::create(rewriter, op.getLoc(), init_bcast, result);
+      }
+      final_results.push_back(result);
+    }
+    for (int i = 0; i < op.getCarries().size(); ++i) {
+      auto result_type =
+          mlir::cast<mlir::RankedTensorType>(final_results[i].getType());
+      SmallVector<OpFoldResult> offsets, sizes, strides;
+      for (int64_t d = 0; d < result_type.getRank(); ++d) {
+        if (d == axis) {
+          int64_t start_idx = reverse ? 0 : (result_type.getDimSize(d) - 1);
+          offsets.push_back(rewriter.getIndexAttr(start_idx));
+          sizes.push_back(rewriter.getIndexAttr(1));
+        } else {
+          offsets.push_back(rewriter.getIndexAttr(0));
+          sizes.push_back(rewriter.getIndexAttr(result_type.getDimSize(d)));
+        }
+        strides.push_back(rewriter.getIndexAttr(1));
+      }
+      auto carry_type =
+          mlir::cast<mlir::RankedTensorType>(op.getCarries()[i].getType());
+
+      // The slice is extracted from the corresponding output
+      // (final_results[i]).
+      Value slice = mlir::tensor::ExtractSliceOp::create(
+          rewriter, op.getLoc(), carry_type, final_results[i], offsets, sizes,
+          strides);
+      final_results.push_back(slice);
+    }
+
+    rewriter.replaceOp(op, final_results);
+    return mlir::success();
+  }
+};
+
 class XTileLowerToTritonPass
     : public impl::XTileLowerToTritonPassBase<XTileLowerToTritonPass> {
  public:
@@ -230,8 +369,9 @@ class XTileLowerToTritonPass
 
     {
       mlir::RewritePatternSet patterns(mlir_context);
-      patterns.add<CanonicalizeDotScaled, LowerDotScaled, LowerReshape>(
-          mlir_context);
+      patterns
+          .add<CanonicalizeDotScaled, LowerDotScaled, LowerReshape, LowerScan>(
+              mlir_context);
       if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),
                                                    std::move(patterns)))) {
         return signalPassFailure();
