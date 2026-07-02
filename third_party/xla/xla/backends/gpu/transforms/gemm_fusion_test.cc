@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,7 +37,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -128,9 +129,9 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Bool(), ::testing::Bool()),
     [](const ::testing::TestParamInfo<GemmFusionTestVersioned::ParamType>&
            info) {
-      return std::string(std::get<0>(info.param) ? "V2" : "V1") +
-             std::string(std::get<1>(info.param) ? "TilingPropagation"
-                                                 : "SymbolicAnalysis");
+      return absl::StrCat(
+          std::get<0>(info.param) ? "V2" : "V1", "_",
+          std::get<1>(info.param) ? "TilingPropagation" : "SymbolicAnalysis");
     });
 
 INSTANTIATE_TEST_SUITE_P(
@@ -2106,6 +2107,36 @@ ENTRY main {
                   m::Parameter(),
                   m::Concatenate(m::Bitcast(m::Transpose(m::Parameter())),
                                  m::Bitcast(m::Transpose(m::Parameter()))))));
+}
+
+TEST_P(GemmFusionTestVersioned, InstructionWithCalledComputationsIsSkipped) {
+  // Tests that reduce instruction (which has called computations) is not fused.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add_fn (x: f32[], y: f32[]) -> f32[] {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY e {
+  p0 = f32[32,1] parameter(0)
+  p1 = f32[32,1,32] parameter(1)
+  p2 = f32[32,1] parameter(2)
+  c0 = f32[] constant(0)
+  profitable = f32[32,1] log(p2)
+  reduced = f32[1,32] reduce(p1, c0), to_apply=add_fn, dimensions={0}
+  ROOT d = f32[32,32] dot(profitable, reduced),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kFusion);
+  EXPECT_THAT(root->operands(),
+              ::testing::UnorderedElementsAre(GmockMatch(m::Parameter()),
+                                              GmockMatch(m::Reduce())));
 }
 
 }  // namespace

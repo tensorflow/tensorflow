@@ -1807,7 +1807,7 @@ xla_cc_test(
         "//xla/service/gpu:triton_fusion_analysis",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tsl/platform:statusor",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",

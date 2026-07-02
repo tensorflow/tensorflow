@@ -698,8 +698,13 @@ bool AllowedInGemmFusion(const HloInstruction& instr) {
   if (!instr.IsFusible()) {
     return false;
   }
-  return HloPredicateIsNotOp<HloOpcode::kFusion, HloOpcode::kDot,
-                             HloOpcode::kParameter, HloOpcode::kReduce>(&instr);
+  if (instr.has_called_computations()) {
+    // Blocks instructions with sub-computations - fusing these is not
+    // implemented (currently crashes) and we don't want to fuse them anyway at
+    // the moment. Includes kFusion, kReduce, kAllReduce, etc.
+    return false;
+  }
+  return HloPredicateIsNotOp<HloOpcode::kDot, HloOpcode::kParameter>(&instr);
 }
 
 // Returns true if we should consider fusing the instruction into the GEMM
