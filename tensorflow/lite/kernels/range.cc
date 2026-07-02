@@ -17,7 +17,9 @@ limitations under the License.
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <cmath>
 #include <functional>
+#include <limits>
 #include <type_traits>
 
 #include "tensorflow/lite/core/c/common.h"
@@ -43,16 +45,58 @@ struct OpData {
 };
 
 template <typename T>
+typename std::make_unsigned<T>::type AbsAsUnsigned(T value) {
+  using UnsignedT = typename std::make_unsigned<T>::type;
+  return value < 0 ? UnsignedT{0} - static_cast<UnsignedT>(value)
+                   : static_cast<UnsignedT>(value);
+}
+
+template <typename T>
+typename std::make_unsigned<T>::type AbsDiffAsUnsigned(T a, T b) {
+  using UnsignedT = typename std::make_unsigned<T>::type;
+  return a >= b ? static_cast<UnsignedT>(a) - static_cast<UnsignedT>(b)
+                : static_cast<UnsignedT>(b) - static_cast<UnsignedT>(a);
+}
+
+template <typename T>
+TfLiteStatus GetSizeImpl(TfLiteContext* context, T start, T limit, T delta,
+                         int* size, std::true_type) {
+  using UnsignedT = typename std::make_unsigned<T>::type;
+  const UnsignedT distance = AbsDiffAsUnsigned(limit, start);
+  const UnsignedT step = AbsAsUnsigned(delta);
+  const UnsignedT range_size =
+      distance == 0 ? 0 : ((distance - 1) / step) + 1;
+  TF_LITE_ENSURE(
+      context,
+      range_size <= static_cast<UnsignedT>(std::numeric_limits<int>::max()));
+  *size = static_cast<int>(range_size);
+  return kTfLiteOk;
+}
+
+template <typename T>
+TfLiteStatus GetSizeImpl(TfLiteContext* context, T start, T limit, T delta,
+                         int* size, std::false_type) {
+  const double range_size =
+      std::ceil(std::abs((static_cast<double>(limit) -
+                          static_cast<double>(start)) /
+                         static_cast<double>(delta)));
+  TF_LITE_ENSURE(context, std::isfinite(range_size));
+  TF_LITE_ENSURE(context, range_size >= 0);
+  TF_LITE_ENSURE(
+      context,
+      range_size <= static_cast<double>(std::numeric_limits<int>::max()));
+  *size = static_cast<int>(range_size);
+  return kTfLiteOk;
+}
+
+template <typename T>
 TfLiteStatus GetSize(TfLiteContext* context, T start, T limit, T delta,
                      int* size) {
   TF_LITE_ENSURE(context, !std::equal_to<T>()(delta, 0));
   TF_LITE_ENSURE(
       context, (start >= limit && delta < 0) || (start <= limit && delta > 0));
-  *size =
-      (std::is_integral<T>::value
-           ? ((std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta))
-           : std::ceil(std::abs((limit - start) / delta)));
-  return kTfLiteOk;
+  return GetSizeImpl(context, start, limit, delta, size,
+                     std::is_integral<T>());
 }
 
 TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* start,
@@ -101,7 +145,9 @@ void CalculateRange(const TfLiteTensor* start, const TfLiteTensor* delta,
   T value = start_value;
   for (int i = 0; i < num_elements; ++i) {
     output_data[i] = value;
-    value += delta_value;
+    if (i + 1 < num_elements) {
+      value += delta_value;
+    }
   }
 }
 
