@@ -22,6 +22,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <variant>
@@ -43,6 +44,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -2104,6 +2106,7 @@ StreamExecutorGpuClient::RunAsync(
       gpu::GpuExecutableBufferAllocator::ExecutionScope allocation_scope,
       gpu_exec->buffer_allocator().CreateExecutionScope(
           run_options, memory_allocator, device_ordinal));
+
   ASSIGN_OR_RETURN(xla::gpu::BufferAllocations buffer_allocations,
                    allocation_scope.GenerateBufferAllocations(
                        run_options, get_parameter_buffer, globals,
@@ -2190,8 +2193,11 @@ StreamExecutorGpuClient::RunAsync(
 
   absl::Status execute_status = allocation_scope.ExecuteWithBufferAllocations(
       buffer_allocations, device_ordinal,
-      [&](const gpu::BufferAllocations& execution_buffers) {
-        return gpu_exec->ExecuteThunks(execution_buffers, run_options);
+      [&](const gpu::BufferAllocations& execution_buffers,
+          std::optional<absl::Span<const BufferAllocation::Index>>
+              persistent_alloc_indices) {
+        return gpu_exec->ExecuteThunks(execution_buffers, run_options,
+                                       persistent_alloc_indices);
       });
   absl::Status teardown_status = buffer_allocations.TearDown(
       buffers_in_result, gpu_exec->GetAllocations());

@@ -715,8 +715,7 @@ TEST(DynamicSliceFusionV2ThunkTest,
   CommandBufferThunk command_buffer_thunk(
       std::move(command_executor), Thunk::ThunkInfo(),
       /*thunks=*/nullptr,
-      /*enable_command_buffers_during_profiling=*/true,
-      DebugOptions::ALWAYS_UPDATE);
+      /*enable_command_buffers_during_profiling=*/true);
 
   se::DeviceAddress<int32_t> src = executor->AllocateArray<int32_t>(4, 0);
   std::vector<int32_t> src_data{10, 20, 30, 40};

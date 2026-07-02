@@ -19,6 +19,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 #define ABSL_DEFINE_UNQUALIFIED_STATUS_MACROS 1
-#include "absl/status/status_macros.h"
+#include "absl/status/status_macros.h"  // IWYU pragma: export
 
 #endif  // XLA_TSL_PLATFORM_STATUS_MACROS_H_
