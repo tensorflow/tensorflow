@@ -8578,12 +8578,28 @@ HloComputation* HloParserImpl::CreateAsyncWrappedComputation(
     absl::Span<const Shape> operand_shapes,
     absl::btree_map<std::string, AttrConfig>& attrs, bool allow_attributes) {
   std::vector<HloInstruction*> async_wrapped_operands;
+  // Some async-wrapped opcodes require a certain number of operands.
+  // for example, kDot, without providing the 2 operands, CreateInstruction
+  // will fail and crash. When there are not enough operands at creation time
+  // (when late binding is used), we add dummy operands, and update the
+  // async-wrapped computation later.
+  std::optional<int8_t> async_wrapped_opcode_arity =
+      HloOpcodeArity(async_wrapped_opcode);
+  uint64_t num_async_operands = std::max<uint64_t>(
+      async_wrapped_opcode_arity.value_or(0), operand_shapes.size());
 
   HloComputation::Builder async_wrapped_builder("async_wrapped");
-  async_wrapped_operands.reserve(operand_shapes.size());
-  for (int i = 0; i < operand_shapes.size(); ++i) {
+  async_wrapped_operands.reserve(num_async_operands);
+  for (int i = 0; i < num_async_operands; ++i) {
+    Shape param_shape;
+    if (i < operand_shapes.size()) {
+      param_shape = operand_shapes[i];
+    } else {
+      // Use a dummy shape for the operand.
+      param_shape = ShapeUtil::MakeShape(F32, {1});
+    }
     async_wrapped_operands.push_back(async_wrapped_builder.AddInstruction(
-        HloInstruction::CreateParameter(i, operand_shapes[i], "async_param")));
+        HloInstruction::CreateParameter(i, param_shape, "async_param")));
   }
 
   HloInstruction* root = CreateInstruction(

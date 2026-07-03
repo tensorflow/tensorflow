@@ -6778,6 +6778,71 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 }
 
+TEST_F(HloParserTest, DesugarParsingTest_DotStart_WithZeroOperands) {
+  const char* const hlo = R"(
+HloModule module
+
+ENTRY main {
+  %lhs = f32[4,4] parameter(0)
+  %rhs = f32[4,4] parameter(1)
+  %dot-start = ((), (), u32[]) dot-start()
+  %dot-update.0 = ((f32[4,4]), (), u32[]) dot-update(%dot-start, %lhs)
+  %dot-update.1 = ((f32[4,4], f32[4,4]), (), u32[]) dot-update(%dot-update.0, %rhs)
+  %dot-update.2 = ((f32[4,4], f32[4,4]), u32[]) dot-update(%dot-update.1)
+  ROOT %result = f32[4,4] dot-done(%dot-update.2)
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto async_done = module->entry_computation()->root_instruction();
+  EXPECT_EQ(async_done->opcode(), HloOpcode::kAsyncDone);
+  EXPECT_EQ(async_done->operand_count(), 1);
+  auto async_update_2 = async_done->operand(0);
+  ASSERT_EQ(async_update_2->operand_count(), 1);
+  auto called_computation = async_done->async_wrapped_computation();
+  ASSERT_EQ(called_computation->num_parameters(), 2);
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_DotStart_WithOneOperand) {
+  const char* const hlo = R"(
+HloModule async_dot_example
+
+ENTRY main {
+  %lhs = f32[128,128] parameter(0)
+  %rhs = f32[128,128] parameter(1)
+
+  %dot-start = ((f32[128,128]), (), u32[])
+    dot-start(%lhs)
+
+  %dot-update.0 = ((f32[128,128], f32[128,128]), (), u32[]) dot-update(%dot-start, %rhs)
+  ROOT %result = f32[128,128] dot-done(%dot-update.0)
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto async_done = module->entry_computation()->root_instruction();
+  auto async_update = async_done->operand(0);
+  EXPECT_EQ(async_update->operand_count(), 2);
+  auto called_computation = async_done->async_wrapped_computation();
+  EXPECT_EQ(called_computation->num_parameters(), 2);
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_Dot_Incomplete_Chain) {
+  const char* const hlo = R"(
+HloModule main
+
+ENTRY main {
+  p0 = f32[128,128] parameter(0)
+  p1 = f32[128,128] parameter(1)
+  ROOT %dot-start = ((), (), s32[]) dot-start()
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* dot_start = module->entry_computation()->root_instruction();
+  EXPECT_EQ(dot_start->opcode(), HloOpcode::kAsyncStart);
+  EXPECT_EQ(dot_start->operand_count(), 0);
+  HloComputation* called_computation = dot_start->async_wrapped_computation();
+  EXPECT_EQ(called_computation->num_parameters(), 2);
+}
+
 // negative tests
 TEST_F(HloParserTest, DesugarParsingTest_AllReduceUpdate_Invalid) {
   const char* const hlo = R"(
