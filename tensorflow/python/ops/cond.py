@@ -378,26 +378,33 @@ def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
       if functions_run_eagerly is not None:
         eager_function_run.run_functions_eagerly(functions_run_eagerly)
   else:
-    # For conditions which are eager tensors with a constant value,
-    # we still need to trace both branches for error detection to ensure
-    # consistency with XLA compilation mode.
-    from tensorflow.python.eager.polymorphic_function import polymorphic_function
+    # For conditions which are eager tensors with a constant value, we still
+    # trace both branches so that errors in the inactive branch are surfaced
+    # early, consistent with graph/XLA compilation mode. The selected branch is
+    # then executed eagerly using the original callable, which keeps standard
+    # eager execution and gradient-tape semantics intact (only the active
+    # branch's ops are recorded on the tape).
+    from tensorflow.python.eager.polymorphic_function import polymorphic_function  # pylint: disable=g-import-not-at-top
+
+    original_true_fn = true_fn
+    original_false_fn = false_fn
 
     if not isinstance(true_fn, core.PolymorphicFunction):
       true_fn = polymorphic_function.function(true_fn)
     if not isinstance(false_fn, core.PolymorphicFunction):
       false_fn = polymorphic_function.function(false_fn)
 
-    functions_run_eagerly = eager_function_run.functions_run_eagerly()
-    eager_function_run.run_functions_eagerly(False)
-    try:
-      result = cond_v2.cond_v2(pred, true_fn, false_fn, name)
+    true_fn.get_concrete_function()
+    false_fn.get_concrete_function()
+
+    with ops.name_scope(name, "cond", [pred]):
+      if pred_constant_value:
+        result = original_true_fn()
+      else:
+        result = original_false_fn()
       if not strict:
         result = _UnpackIfSingleton(result)
       return result
-    finally:
-      if functions_run_eagerly is not None:
-        eager_function_run.run_functions_eagerly(functions_run_eagerly)
 
 
 def _cast_indexed_slice_indices(a, b):
