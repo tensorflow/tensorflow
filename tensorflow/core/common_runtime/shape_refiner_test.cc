@@ -1562,5 +1562,28 @@ TEST_F(ShapeRefinerTest, FunctionShapeInferenceWorksForResourceHandles) {
   EXPECT_RESOURCE_SINGLE_TYPE(DataType::DT_FLOAT, m, swap, 1);
 }
 
+TEST_F(ShapeRefinerTest, CorruptInferenceContextWithOutOfBoundsEdge) {
+  // Use ASAN to catch memory corruption.
+  // When running this test, use the following arguments: --config=asan
+  Scope root = Scope::NewRootScope();
+  Graph* g = root.graph();
+
+  // Create two nodes.
+  auto a = ops::Const(root, {1.0f});
+  auto b = ops::Identity(root, a);
+
+  // Add an invalid edge where dst_input >= b.node()->num_inputs()
+  // b is an Identity op, which expects exactly 1 input (dst_input = 0).
+  // We add an extra data edge at dst_input = 1.
+  g->AddEdge(a.node(), 0, b.node(), 1);
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(a.node()));
+
+  // This AddNode should not crash immediately but will corrupt InferenceContext
+  // causing an ASAN violation during destruction.
+  m.AddNode(b.node()).IgnoreError();
+}
+
 }  // namespace
 }  // namespace tensorflow

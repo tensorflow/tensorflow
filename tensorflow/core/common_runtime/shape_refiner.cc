@@ -231,6 +231,12 @@ absl::Status ShapeRefiner::AddNodeInternal(
           "Index ", e->dst_input(), " is negative but not a control edge."));
     }
 
+    if (e->dst_input() >= node->num_inputs()) {
+      return absl::InternalError(absl::StrCat("Index ", e->dst_input(),
+                                              " is >= num_inputs (",
+                                              node->num_inputs(), ")."));
+    }
+
     const Node* input = e->src();
     auto it = node_to_context_.find(input);
     if (it == node_to_context_.end()) {
