@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 
+#include <cstdint>
 #include <memory>
+#include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,6 +39,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_comparison.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -45,6 +49,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
@@ -294,6 +299,54 @@ TEST(PjRtStreamExecutorClientTest, ExecutePortableRemoteDevice) {
   EXPECT_THAT(result_or.status(),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      HasSubstr("not addressable")));
+}
+
+TEST(PjRtStreamExecutorClientTest, MakeAllocationReadyEventAsync) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  ASSERT_FALSE(client->addressable_devices().empty());
+  auto* device0 = client->addressable_devices().front();
+  TF_ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * memory_space,
+                          device0->default_memory_space());
+
+  std::vector<int32_t> data(1024);
+  std::iota(data.begin(), data.end(), 100);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer, client->BufferFromHostBuffer(
+                       data.data(), S32, {1024}, /*byte_strides=*/std::nullopt,
+                       PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
+                       nullptr, memory_space, /*device_layout=*/nullptr));
+
+  Shape shape = buffer->on_device_shape();
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          client->CreateAliasBuffer(shape, memory_space));
+  std::unique_ptr<PjRtBuffer> unfulfilled_buffer = std::move(result.first);
+  auto fulfill_callback = std::move(result.second);
+
+  auto* common_buffer =
+      static_cast<xla::CommonPjRtBuffer*>(unfulfilled_buffer.get());
+  auto hold = common_buffer->GetBufferWithHold(
+      xla::CommonPjRtBuffer::ScopedHold::kUsage);
+  ASSERT_TRUE(hold.ok());
+  auto unfulfilled_raw_buffer = hold.buffer()->raw_buffer();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto slice, unfulfilled_raw_buffer->Slice(0, 128 * sizeof(int32_t)));
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_ready_event,
+                          slice->MakeAllocationReadyEvent());
+
+  // Since the parent buffer is not yet fulfilled, the event must NOT be ready
+  // yet.
+  EXPECT_FALSE(slice_ready_event.async_value()->IsAvailable());
+
+  // Fulfill the buffer.
+  TF_ASSERT_OK(std::move(fulfill_callback)(buffer.get()));
+
+  // Await the slice event.
+  tsl::BlockUntilReady(slice_ready_event.async_value());
+  EXPECT_TRUE(slice_ready_event.async_value()->IsConcrete());
+  if (auto* error = slice_ready_event.async_value()->GetErrorIfPresent()) {
+    ASSERT_OK(*error);
+  }
 }
 
 }  // namespace
