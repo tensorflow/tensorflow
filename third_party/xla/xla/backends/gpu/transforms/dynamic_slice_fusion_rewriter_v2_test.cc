@@ -964,6 +964,59 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
                             MakePipeline(std::move(options)), expected);
 }
 
+TEST_F(DynamicSliceFusionRewriterV2Test, ZeroSizedTupleElementNotFused) {
+  const char* hlo = R"(
+    HloModule zero_sized_tuple_test
+
+    hero_comp {
+      p0 = f32[8] parameter(0)
+      c_f32_0 = f32[0] constant({})
+      triton_call = (f32[0], f32[8]) custom-call(p0, c_f32_0),
+          custom_call_target="triton_kernel_call_ffi"
+      ROOT elem1 = f32[8] get-tuple-element(triton_call), index=1
+    }
+
+    body {
+      loop_tuple = (s32[], f32[16,8], f32[8]) parameter(0)
+      iter = s32[] get-tuple-element(loop_tuple), index=0
+      buffer = f32[16,8] get-tuple-element(loop_tuple), index=1
+      p0 = f32[8] get-tuple-element(loop_tuple), index=2
+      call_res = f32[8] call(p0), to_apply=hero_comp
+      reshaped_res = f32[1,8] reshape(call_res)
+      c0 = s32[] constant(0)
+      updated_buffer = f32[16,8] dynamic-update-slice(buffer, reshaped_res, iter, c0)
+      c1 = s32[] constant(1)
+      next_iter = s32[] add(iter, c1)
+      ROOT out_tuple = (s32[], f32[16,8], f32[8]) tuple(next_iter, updated_buffer, p0)
+    }
+
+    cond {
+      loop_tuple = (s32[], f32[16,8], f32[8]) parameter(0)
+      iter = s32[] get-tuple-element(loop_tuple), index=0
+      limit = s32[] constant(2)
+      ROOT cond = pred[] compare(iter, limit), direction=LT
+    }
+
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      c_init = s32[] constant(0)
+      c_zero = f32[] constant(0)
+      buf_init = f32[16,8] broadcast(c_zero), dimensions={}
+      init_tuple = (s32[], f32[16,8], f32[8]) tuple(c_init, buf_init, p0)
+      while_loop = (s32[], f32[16,8], f32[8]) while(init_tuple), condition=cond, body=body
+      ROOT res = f32[16,8] get-tuple-element(while_loop), index=1
+    }
+  )";
+
+  Options options = DefaultOptions();
+  options.predicate = [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kCustomCall;
+  };
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(std::move(options)),
+                            std::nullopt);
+}
+
 TEST_F(DynamicSliceFusionRewriterV2Test, CanCaptureSlicedInputsOnly) {
   Options options = DefaultOptions();
   options.capture_update_slice = [](const HloInstruction*,

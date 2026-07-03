@@ -132,6 +132,12 @@ bool HasSupportedShapes(const HloInstruction* hero) {
                    << " because operand " << operand->name() << " is a tuple";
       return false;
     }
+    if (ShapeUtil::IsZeroElementArray(operand->shape())) {
+      LOG(WARNING) << "DynamicSliceFusionRewriterV2: skipping " << hero->name()
+                   << " because operand " << operand->name()
+                   << " is zero-sized";
+      return false;
+    }
   }
   if (hero->shape().IsTuple()) {
     for (const Shape& tuple_shape : hero->shape().tuple_shapes()) {
@@ -141,7 +147,17 @@ bool HasSupportedShapes(const HloInstruction* hero) {
                      << " because nested tuple results are not supported";
         return false;
       }
+      if (ShapeUtil::IsZeroElementArray(tuple_shape)) {
+        LOG(WARNING) << "DynamicSliceFusionRewriterV2: skipping "
+                     << hero->name()
+                     << " because zero-sized tuple results are not supported";
+        return false;
+      }
     }
+  } else if (ShapeUtil::IsZeroElementArray(hero->shape())) {
+    LOG(WARNING) << "DynamicSliceFusionRewriterV2: skipping " << hero->name()
+                 << " because result is zero-sized";
+    return false;
   }
   return true;
 }
