@@ -348,8 +348,15 @@ class ShapeVerifier : public DfsHloVisitor {
                                         const HloComputation* computation,
                                         int64_t parameter_number);
 
+  absl::Status CheckAsyncOp(const HloInstruction* async_op);
   // Checks that the shape of the output of the given async instruction
   absl::Status CheckAsyncOpOutputShape(const HloInstruction* async_op);
+  // Checks that the shape of the given async op's operands.
+  absl::Status CheckAsyncOpOperands(const HloInstruction* async_op);
+  absl::Status CheckAsyncStartOperands(const HloInstruction* async_start);
+  absl::Status CheckAsyncUpdateOperands(const HloInstruction* async_update);
+  absl::Status CheckAsyncDoneOperands(const HloInstruction* async_done);
+
   // Checks that the shape of async op operands and results match the called
   // computation parameters and root.
   absl::Status CheckAsyncOpComputationShapes(const HloInstruction* async_op);
