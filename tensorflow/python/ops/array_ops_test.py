@@ -433,7 +433,286 @@ class TestFoldGradients(test.TestCase):
       rtol=1e-3,
       msg="Autodiff and numerical gradients don't match",
       )
-         
+    
+class TestFoldSamePadding(test.TestCase):
+  
+  def _extract_patches(self, x, kernel, stride, padding="VALID", dilation=1):
+    """Helper that matches TensorFlow's _extract_patches API"""
+    return array_ops.extract_image_patches_v2(
+        images=x,
+        sizes=[1, kernel, kernel, 1],
+        strides=[1, stride, stride, 1],
+        rates=[1, dilation, dilation, 1],
+        padding=padding,
+    )
+  
+  def setUp(self):
+    super().setUp()
+    random_seed.set_seed(42)
+    config.enable_op_determinism()
+
+  def test_perfect_inverse_no_overlap_same(self):
+    """TEST 1: Verifies SAME padding reconstructs perfectly when stride == kernel.
+    An image size of 5 with kernel/stride 3 forces 1 pixel of padding."""
+    x = random_ops.random_normal([2, 5, 5, 3])
+    patches = self._extract_patches(x, kernel=3, stride=3, padding='SAME')
+    
+    reconstructed = array_ops.fold(
+        patches,
+        output_size=(5, 5),
+        kernel_size=3,
+        stride=3,
+        padding='SAME'
+    )
+    
+    self.assertAllClose(
+        reconstructed, x,
+        msg="fold() is not a perfect inverse with SAME padding"
+    )
+
+  def test_fold_asymmetric_same_padding(self):
+    """TEST 2: Crucial for testing the (pad_total // 2) logic. 
+    Image 6x6, Kernel 3, Stride 2 requires EXACTLY 1 pixel of total padding.
+    TensorFlow puts this on the bottom/right. The crop logic must respect this."""
+    image_size, kernel_size, stride = 6, 3, 2
+    x = random_ops.random_normal([1, image_size, image_size, 1])
+    
+    patches = self._extract_patches(
+        x, kernel=kernel_size, stride=stride, padding='SAME')
+    
+    reconstructed = array_ops.fold(
+        patches,
+        output_size=(image_size, image_size),
+        kernel_size=kernel_size,
+        stride=stride,
+        padding='SAME'
+    )
+
+    # Use the ones-tensor trick to calculate expected overlap accumulation
+    ones = array_ops.ones_like(x)
+    ones_patches = self._extract_patches(
+        ones, kernel=kernel_size, stride=stride, padding='SAME')
+    overlap_counts = array_ops.fold(
+        ones_patches,
+        output_size=(image_size, image_size),
+        kernel_size=kernel_size,
+        stride=stride,
+        padding='SAME'
+    )
+    
+    expected = x * overlap_counts
+    self.assertAllClose(reconstructed, expected)
+
+  def test_fold_with_dilation(self):
+    """TEST 3: Verifies k_eff (Effective Kernel) calculation.
+    A 3x3 kernel with dilation 2 acts like a 5x5 kernel physically."""
+    image_size, kernel_size, stride, dilation = 7, 3, 1, 2
+    x = random_ops.random_normal([1, image_size, image_size, 2])
+    
+    patches = self._extract_patches(
+        x, kernel=kernel_size, stride=stride, padding='VALID', dilation=dilation)
+    
+    reconstructed = array_ops.fold(
+        patches,
+        output_size=(image_size, image_size),
+        kernel_size=kernel_size,
+        stride=stride,
+        padding='VALID',
+        dilation=dilation
+    )
+
+    ones = array_ops.ones_like(x)
+    ones_patches = self._extract_patches(
+        ones, kernel=kernel_size, stride=stride, padding='VALID', dilation=dilation)
+    overlap_counts = array_ops.fold(
+        ones_patches,
+        output_size=(image_size, image_size),
+        kernel_size=kernel_size,
+        stride=stride,
+        padding='VALID',
+        dilation=dilation
+    )
+    
+    expected = x * overlap_counts
+    self.assertAllClose(reconstructed, expected)
+
+  def test_fold_integer_padding(self):
+    """TEST 4: Verifies the manual symmetric integer padding fallback."""
+    image_size, kernel_size, stride, pad_val = 4, 3, 1, 1
+    x = random_ops.random_normal([1, image_size, image_size, 1])
+    
+    # We simulate manual integer padding by padding x first, 
+    # extracting VALID, and then testing if fold(padding=pad_val) undoes it.
+    x_padded = array_ops.pad(x, [[0,0], [pad_val,pad_val], [pad_val,pad_val], [0,0]])
+    
+    patches = self._extract_patches(
+        x_padded, kernel=kernel_size, stride=stride, padding='VALID')
+    
+    reconstructed = array_ops.fold(
+        patches,
+        output_size=(image_size, image_size),
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=pad_val
+    )
+
+    ones = array_ops.ones_like(x)
+    ones_padded = array_ops.pad(ones, [[0,0], [pad_val,pad_val], [pad_val,pad_val], [0,0]])
+    ones_patches = self._extract_patches(
+        ones_padded, kernel=kernel_size, stride=stride, padding='VALID')
+    
+    overlap_counts = array_ops.fold(
+        ones_patches,
+        output_size=(image_size, image_size),
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=pad_val
+    )
+    
+    expected = x * overlap_counts
+    self.assertAllClose(reconstructed, expected)         
+  def test_fold_mixed_symmetric_asymmetric_same_padding(self):
+    """Height padding is symmetric, width padding is asymmetric.
+
+    Input: 5x4
+    Kernel: 3x3
+    Stride: 2x2
+
+    Height:
+      out_h = ceil(5/2) = 3
+      pad_h = (3 - 1) * 2 + 3 - 5 = 2
+      => top=1, bottom=1
+
+    Width:
+      out_w = ceil(4/2) = 2
+      pad_w = (2 - 1) * 2 + 3 - 4 = 1
+      => left=0, right=1
+    """
+    height, width = 5, 4
+    kernel_size, stride = 3, 2
+
+    x = random_ops.random_normal([1, height, width, 1])
+
+    patches = self._extract_patches(
+        x,
+        kernel=kernel_size,
+        stride=stride,
+        padding="SAME"
+    )
+
+    reconstructed = array_ops.fold(
+        patches,
+        output_size=(height, width),
+        kernel_size=kernel_size,
+        stride=stride,
+        padding="SAME"
+    )
+
+    # Compute expected overlap accumulation
+    ones = array_ops.ones_like(x)
+    ones_patches = self._extract_patches(
+        ones,
+        kernel=kernel_size,
+        stride=stride,
+        padding="SAME"
+    )
+
+    overlap_counts = array_ops.fold(
+        ones_patches,
+        output_size=(height, width),
+        kernel_size=kernel_size,
+        stride=stride,
+        padding="SAME"
+    )
+
+    expected = x * overlap_counts
+    self.assertAllClose(reconstructed, expected)
+def test_fold_same_padding_with_dilation(self):
+  """TEST: SAME padding with dilation > 1.
+
+  kernel=3, dilation=2 -> effective kernel size = 5.
+  This exercises the k_eff calculation inside SAME padding logic.
+  """
+  image_size, kernel_size, stride, dilation = 6, 3, 2, 2
+
+  x = random_ops.random_normal([1, image_size, image_size, 1])
+
+  patches = self._extract_patches(
+      x,
+      kernel=kernel_size,
+      stride=stride,
+      padding="SAME",
+      dilation=dilation)
+
+  reconstructed = array_ops.fold(
+      patches,
+      output_size=(image_size, image_size),
+      kernel_size=kernel_size,
+      stride=stride,
+      padding="SAME",
+      dilation=dilation)
+
+  ones = array_ops.ones_like(x)
+  ones_patches = self._extract_patches(
+      ones,
+      kernel=kernel_size,
+      stride=stride,
+      padding="SAME",
+      dilation=dilation)
+
+  overlap_counts = array_ops.fold(
+      ones_patches,
+      output_size=(image_size, image_size),
+      kernel_size=kernel_size,
+      stride=stride,
+      padding="SAME",
+      dilation=dilation)
+
+  expected = x * overlap_counts
+  self.assertAllClose(reconstructed, expected)
+  
+def test_fold_non_square_parameters(self):
+  """TEST: Non-square kernel, stride and dilation."""
+  height, width = 7, 8
+  kernel_size = (3, 5)
+  stride = (2, 3)
+  dilation = (1, 2)
+
+  x = random_ops.random_normal([1, height, width, 2])
+
+  patches = self._extract_patches(
+      x,
+      kernel=kernel_size,
+      stride=stride,
+      padding="SAME",
+      dilation=dilation)
+
+  reconstructed = array_ops.fold(
+      patches,
+      output_size=(height, width),
+      kernel_size=kernel_size,
+      stride=stride,
+      padding="SAME",
+      dilation=dilation)
+
+  ones = array_ops.ones_like(x)
+  ones_patches = self._extract_patches(
+      ones,
+      kernel=kernel_size,
+      stride=stride,
+      padding="SAME",
+      dilation=dilation)
+
+  overlap_counts = array_ops.fold(
+      ones_patches,
+      output_size=(height, width),
+      kernel_size=kernel_size,
+      stride=stride,
+      padding="SAME",
+      dilation=dilation)
+
+  expected = x * overlap_counts
+  self.assertAllClose(reconstructed, expected)
   
 
 
