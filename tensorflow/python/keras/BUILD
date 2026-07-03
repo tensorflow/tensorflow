@@ -2,6 +2,7 @@
 #   Contains the Keras API (internal TensorFlow version).
 
 load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -373,6 +374,19 @@ py_library(
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/util:tf_decorator_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_strict_test(
+    name = "metrics_test",
+    size = "small",
+    srcs = ["metrics_test.py"],
+    deps = [
+        ":metrics",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
