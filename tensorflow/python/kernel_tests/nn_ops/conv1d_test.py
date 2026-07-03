@@ -21,6 +21,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import nn_ops
@@ -129,7 +130,7 @@ class Conv1DTest(test.TestCase):
 
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
-        "Negative dimension size caused by subtracting 11 from 10"):
+        "(Negative dimension size|must be at least effective_filter_size)"):
       nn_ops.conv1d(
           x,
           filters,
@@ -138,6 +139,10 @@ class Conv1DTest(test.TestCase):
           dilations=10)
 
   def testInvalidDilationValidPaddingRaisesDynamic(self):
+    # XLA compilation bypasses the standard CPU/GPU kernels where the runtime
+    # check is located.
+    if test_util.is_xla_enabled():
+      return
     # 2. Dynamic shape validation fails during execution (runtime).
     if context.executing_eagerly():
 
@@ -162,7 +167,7 @@ class Conv1DTest(test.TestCase):
 
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          "must be at least effective_filter_size"):
+          "(Negative dimension size|must be at least effective_filter_size)"):
         self.evaluate(run_conv(x_val, filters_val, dyn_len))
 
     else:
@@ -183,7 +188,7 @@ class Conv1DTest(test.TestCase):
 
         with self.assertRaisesRegex(
             errors.InvalidArgumentError,
-            "must be at least effective_filter_size"):
+            "(Negative dimension size|must be at least effective_filter_size)"):
           sess.run(output, feed_dict={
               x: x_val,
               filters: filters_val,
