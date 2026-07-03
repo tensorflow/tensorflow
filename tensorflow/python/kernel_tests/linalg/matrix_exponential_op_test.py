@@ -140,20 +140,21 @@ class ExponentialOpTest(test.TestCase):
     result = self.evaluate(linalg_impl.matrix_exponential(in_tensor))
     self.assertTrue(np.all(np.isnan(result)))
 
-  def testFloat16(self):
-    matrix = np.array([[1.]], dtype=np.float16)
+  def testFloat16AndBfloat16(self):
+    for dtype in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
+      matrix = np.array([[1.]], dtype=dtype)
 
-    result = self.evaluate(linalg_impl.matrix_exponential(matrix))
+      result = self.evaluate(linalg_impl.matrix_exponential(matrix))
 
-    expected = self.evaluate(
-      linalg_impl.matrix_exponential(matrix.astype(np.float32)))
+      expected = self.evaluate(
+          linalg_impl.matrix_exponential(matrix.astype(np.float32)))
 
-    self.assertEqual(result.dtype, np.float16)
-    self.assertAllClose(
-      result,
-      expected.astype(np.float16),
-      rtol=1e-2,
-      atol=1e-2)
+      self.assertEqual(result.dtype, dtype)
+      self.assertAllClose(
+          result,
+          expected.astype(dtype),
+          rtol=1e-2,
+          atol=1e-2)
 
   def testEmpty(self):
     self._verifyExponentialReal(np.empty([0, 2, 2]))
