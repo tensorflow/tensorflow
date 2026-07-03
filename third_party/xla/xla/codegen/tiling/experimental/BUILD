@@ -28,6 +28,7 @@ cc_library(
     deps = [
         ":tiling_space_utils",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/tiling:constraint_expression",
         "//xla/hlo/analysis:indexing_analysis",
