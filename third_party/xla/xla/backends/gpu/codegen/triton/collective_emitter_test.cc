@@ -60,7 +60,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -69,9 +68,9 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::AllOf;
 using ::testing::ElementsAre;
-using ::testing::Optional;
 using ::tsl::proto_testing::EqualsProto;
 
 MATCHER_P(HasShape, expected_shape, "") {
@@ -191,15 +190,8 @@ class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
       std::string module_str, const GpuTopology& gpu_topology) const {
     ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
                      BuildModuleWithFusion(std::move(module_str)));
-    ASSIGN_OR_RETURN(
-        bool collective_fusion_config_set,
-        TrySetGpuBackendConfigForCollective(
-            gpu_topology, module_with_fusion.MutableFusionInstr()));
-    if (!collective_fusion_config_set) {
-      return absl::InternalError(
-          "Failed to set collective fusion config. "
-          "TrySetGpuBackendConfigForCollective returned false.");
-    }
+    RETURN_IF_ERROR(TrySetGpuBackendConfigForCollective(
+        gpu_topology, module_with_fusion.MutableFusionInstr()));
     auto result = std::make_unique<ModuleWithEmitter>(
         std::move(module_with_fusion.module));
     const se::DeviceDescription& device_info =
@@ -243,7 +235,7 @@ TEST_P(CollectiveBlockLevelConfigParameterizedTest, AllReduceBlockLevelConfig) {
   ASSERT_OK_AND_ASSIGN(const auto block_level_config,
                        GetCollectiveBlockLevelFusionConfig(
                            *gpu_topology_, module_with_fusion.FusionInstr()));
-  EXPECT_THAT(block_level_config, Optional(EqualsProto(param.expected_proto)));
+  EXPECT_THAT(block_level_config, EqualsProto(param.expected_proto));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -270,7 +262,7 @@ INSTANTIATE_TEST_SUITE_P(
           /* .shape= */ ShapeUtil::MakeShape(F32, {1040}),
           /* .expected_proto= */ R"pb(
             num_warps: 16
-            num_ctas: 1
+         }
             num_stages: 1
             output_tiles { sizes: 2048 }
           )pb"}}),
@@ -284,10 +276,9 @@ TEST_F(CollectiveEmitterTest, AllReduceBlockLevelConfigNoReplicaGroups) {
       const auto module_with_fusion,
       BuildModuleWithFusion(GetModuleStr(ShapeUtil::MakeShape(F32, {65536}),
                                          /* replica_groups= */ "")));
-  ASSERT_OK_AND_ASSIGN(const auto block_level_config,
-                       GetCollectiveBlockLevelFusionConfig(
-                           *gpu_topology_, module_with_fusion.FusionInstr()));
-  EXPECT_EQ(block_level_config, std::nullopt);
+  ASSERT_THAT(GetCollectiveBlockLevelFusionConfig(
+                  *gpu_topology_, module_with_fusion.FusionInstr()),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(CollectiveEmitterTest, AllReduceGetCollectiveUnmanagedKernelArguments) {

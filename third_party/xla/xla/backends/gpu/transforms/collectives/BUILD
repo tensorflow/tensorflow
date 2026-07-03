@@ -780,6 +780,53 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "collective_fusion",
+    srcs = ["collective_fusion.cc"],
+    hdrs = ["collective_fusion.h"],
+    deps = [
+        ":collective_ops_utils",
+        "//xla:shape_util",
+        "//xla/backends/gpu/codegen/triton:collective_emitter",
+        "//xla/backends/gpu/runtime:all_reduce",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:computation_placer_hdr",
+        "//xla/service:gpu_topology",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor/gpu:all_reduce_kernel",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_fusion_test",
+    srcs = ["collective_fusion_test.cc"],
+    deps = [
+        ":collective_fusion",
+        ":collective_kernel_strategy_annotator",
+        "//xla:shape_util",
+        "//xla/backends/gpu/target_config",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:gpu_topology",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 xla_cc_test(
     name = "async_collective_annotator_test",
     srcs = ["async_collective_annotator_test.cc"],

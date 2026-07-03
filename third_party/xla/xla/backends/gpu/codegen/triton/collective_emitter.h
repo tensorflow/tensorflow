@@ -70,7 +70,7 @@ llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
 // For now only all-reduce is supported.
 // If an std::nullopt is returned, it implies that the collective kernel is
 // not supported and cannot be emitted.
-absl::StatusOr<std::optional<xla::gpu::BlockLevelFusionConfig>>
+absl::StatusOr<xla::gpu::BlockLevelFusionConfig>
 GetCollectiveBlockLevelFusionConfig(
     const GpuTopology& gpu_topology, const HloFusionInstruction* fusion_instr,
     const DeviceAssignment* device_assignment = nullptr);
@@ -81,7 +81,7 @@ GetCollectiveBlockLevelFusionConfig(
 // Returns false if the collective op is not supported. No backend config is set
 // in this case.
 // Returns an error in case of an internal error or invalid arguments.
-absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
+absl::Status TrySetGpuBackendConfigForCollective(
     const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
     const DeviceAssignment* device_assignment = nullptr);
 

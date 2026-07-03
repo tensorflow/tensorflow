@@ -297,12 +297,8 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveKernelThunk(
     device_assignment =
         &ir_emitter_context_->hlo_module().config().static_device_assignment();
   }
-  ASSIGN_OR_RETURN(bool did_set_config,
-                   TrySetGpuBackendConfigForCollective(
-                       gpu_topology, fusion_instr, device_assignment));
-  if (!did_set_config) {
-    return Internal("Failed to set GPU backend config for collective kernel.");
-  }
+  RETURN_IF_ERROR(TrySetGpuBackendConfigForCollective(
+      gpu_topology, fusion_instr, device_assignment));
   analysis_garbage_collector_.push_back(
       std::make_unique<HloFusionAnalysis>(HloFusionAnalysis::Create(
           *fusion_instr, ir_emitter_context_->gpu_device_info())));

@@ -72,6 +72,9 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::H100SXMDeviceInfo(
   b.set_registers_per_block_limit(65536);
   b.set_runtime_version(stream_executor::SemanticVersion{12, 4, 0});
   b.set_driver_version(stream_executor::SemanticVersion{12, 4, 0});
+  b.set_device_interconnect_info(stream_executor::DeviceInterconnectInfo{
+      /* .active_links = */ 18,
+  });
 
   b.set_fpus_per_core(
       stream_executor::gpu::GetFpusPerCore(*cc.cuda_compute_capability()));
@@ -103,6 +106,9 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::B200SXMDeviceInfo(
   b.set_registers_per_block_limit(65536);
   b.set_runtime_version(stream_executor::SemanticVersion{12, 4, 0});
   b.set_driver_version(stream_executor::SemanticVersion{12, 4, 0});
+  b.set_device_interconnect_info(stream_executor::DeviceInterconnectInfo{
+      /* .active_links = */ 18,
+  });
 
   b.set_fpus_per_core(
       stream_executor::gpu::GetFpusPerCore(*cc.cuda_compute_capability()));
