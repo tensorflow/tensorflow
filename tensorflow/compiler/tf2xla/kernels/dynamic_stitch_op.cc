@@ -26,14 +26,16 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/hlo/builder/xla_builder.h"
-#include "xla/literal_util.h"
-#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/literal_util.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -149,7 +151,6 @@ class DynamicStitchOp : public XlaOpKernel {
     std::vector<int32_t> src_input_vector(number_of_indices);
     std::vector<int32_t> src_slice_vector(number_of_indices);
     std::vector<bool> src_index_used(number_of_indices);
-    int index_used_count = 0;
     for (int input_num = 0; input_num < indices.size(); input_num++) {
       for (int i = 0; i < indices[input_num].shape().dimensions(0); ++i) {
         int index = indices[input_num].Get<int>({i});
@@ -159,14 +160,9 @@ class DynamicStitchOp : public XlaOpKernel {
 
         src_input_vector[index] = input_num;
         src_slice_vector[index] = i;
-        if (!src_index_used[index]) {
-          src_index_used[index] = true;
-          ++index_used_count;
-        }
+        src_index_used[index] = true;
       }
     }
-    OP_REQUIRES(ctx, index_used_count == number_of_indices,
-                absl::InvalidArgumentError("not all indices are used"));
 
     // Look up all the children expressions that represent the data
     // inputs.
@@ -196,8 +192,24 @@ class DynamicStitchOp : public XlaOpKernel {
     for (int d = indices0_shape.dims(); d < data0_shape.dims(); d++) {
       slice_limit[1 + d - indices0_shape.dims()] = data0_shape.dim_size(d);
     }
+    xla::PrimitiveType element_type =
+        ctx->input_xla_type(ctx->num_inputs() - 1);
+    std::vector<int64_t> zero_slice_dims(result_rank);
+    zero_slice_dims[0] = 1;
+    for (int d = indices0_shape.dims(); d < data0_shape.dims(); d++) {
+      zero_slice_dims[1 + d - indices0_shape.dims()] = data0_shape.dim_size(d);
+    }
+    xla::Shape zero_slice_shape =
+        xla::ShapeUtil::MakeShape(element_type, zero_slice_dims);
+    xla::XlaOp zero_slice = xla::Zeros(ctx->builder(), zero_slice_shape);
+
     std::vector<xla::XlaOp> to_concat(number_of_indices);
     for (int index_num = 0; index_num < number_of_indices; index_num++) {
+      if (!src_index_used[index_num]) {
+        to_concat[index_num] = zero_slice;
+        continue;
+      }
+
       const auto& expression = input[src_input_vector[index_num]];
       // Take the appropriate slice of data.
       slice_start[0] = src_slice_vector[index_num];
