@@ -629,6 +629,7 @@ py_library(
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//learning/deepmind/deepfunc:__subpackages__",
+    # "//research/air/foundation/pterodactyl:__subpackages__",
     # "//tensorflow:internal",
     # ],
     # copybara:uncomment_end_and_comment_begin
