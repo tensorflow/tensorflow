@@ -92,9 +92,7 @@ message CollectiveKernelThunkProto {
   // collective kernel.
   int32 shmem_bytes = 8;
 
-  // Whether NVLink multi-memory (multicast address space) strategy is enabled
-  // for P2P communication.
-  bool is_multimem_enabled = 9;
+  reserved 9;  // Was is_multimem_enabled.
 
   // Precompiled GPU kernel (CUDA binary) containing the compiled collective
   // kernel.
@@ -103,4 +101,9 @@ message CollectiveKernelThunkProto {
   // If true, enables Programmatic Dependent Launch (PDL) to trigger dependent
   // kernels directly from the GPU.
   bool use_pdl = 11;
+
+  // Operation specific parameters.
+  // Used to find runtime requirements for an emitted kernel.
+  // See collective_params.h for more details.
+  CollectiveKernelSpecProto kernel_spec = 12;
 }
