@@ -215,8 +215,6 @@ class LocalDeviceState {
 
   std::optional<Semaphore>& compute_semaphore() { return compute_semaphore_; }
 
-  // Returns a fresh, PRNG-generated random seed for an XLA computation.
-  int GetNewPrngSeed();
 
   // Whether to allow deleting a buffer before the operation fulfilling the
   // buffer is scheduled by the host.
@@ -273,9 +271,6 @@ class LocalDeviceState {
   int next_fixed_size_pool_usage_stream_ ABSL_GUARDED_BY(mu_) = 0;
   int next_external_ready_event_stream_ ABSL_GUARDED_BY(mu_) = 0;
 
-  std::random_device prng_seed_device_ ABSL_GUARDED_BY(mu_);
-  std::mt19937 prng_seed_generator_ ABSL_GUARDED_BY(mu_);
-  std::uniform_int_distribution<> prng_seed_distribution_ ABSL_GUARDED_BY(mu_);
 
   absl::Mutex stream_pool_mu_;
   std::stack<std::unique_ptr<se::Stream>> usage_stream_pool_
