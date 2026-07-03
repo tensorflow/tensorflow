@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
+#include "xla/map_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -1138,10 +1139,51 @@ FusionDecision CanFuse(mlir::MLIRContext& mlir_context,
                  *HloFusionAdaptor::ForProducerConsumer(producer, consumer));
 }
 
+bool IsBinaryElementwiseOfBroadcastParamOrConst(const HloInstruction& hlo) {
+  if (!hlo.IsElementwise() || hlo.operand_count() != 2) {
+    return false;
+  }
+  for (const HloInstruction* operand : hlo.operands()) {
+    if (operand->opcode() == HloOpcode::kBroadcast &&
+        HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant>(
+            operand->operand(0))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+FusionDecision ShouldFuseUser(mlir::MLIRContext& mlir_context,
+                              HloInstruction* user,
+                              const HloInstruction& original_user,
+                              HloInstruction* fusion) {
+  if (triton_fusion::IsOutputWorthFusing(original_user)) {
+    return CanFuse(mlir_context, fusion, user);
+  }
+  return FusionDecision::Forbid("Not obviously profitable to fuse as output.");
+}
+
+FusionDecision ShouldFuseOperand(mlir::MLIRContext& mlir_context,
+                                 HloInstruction* operand,
+                                 const HloInstruction& original_operand,
+                                 HloInstruction* fusion) {
+  int parameter_count = fusion->operand_count() + NumAddedParameters(*operand);
+  if (parameter_count > TritonFusionAnalysis::kMaxParameterPerDotOperand * 2) {
+    return FusionDecision::Forbid("Too many parameters.");
+  }
+  if (IsBinaryElementwiseOfBroadcastParamOrConst(original_operand) ||
+      triton_fusion::IsInputWorthFusing(original_operand)) {
+    return CanFuse(mlir_context, operand, fusion);
+  }
+  return FusionDecision::Forbid("Not obviously profitable to fuse as input.");
+}
+
 // Attempts to fuse all candidates and their operands into the fusion.
-void FuseOperandsBFS(mlir::MLIRContext& mlir_context,
-                     const HloInstruction::InstructionVector& candidates,
-                     HloInstruction* fusion) {
+void FuseOperandsBFS(
+    mlir::MLIRContext& mlir_context,
+    const HloInstruction::InstructionVector& candidates, HloInstruction* fusion,
+    const absl::flat_hash_map<HloInstruction*, HloInstruction*>&
+        fused_to_original) {
   std::queue<HloInstruction*> queue;
   for (HloInstruction* operand : candidates) {
     queue.push(operand);
@@ -1151,18 +1193,13 @@ void FuseOperandsBFS(mlir::MLIRContext& mlir_context,
     HloInstruction* candidate = queue.front();
     queue.pop();
 
-    int parameter_count =
-        fusion->operand_count() + NumAddedParameters(*candidate);
-    if (parameter_count >
-        TritonFusionAnalysis::kMaxParameterPerDotOperand * 2) {
-      VLOG(5) << "Not fusing operand: " << candidate->ToString()
-              << " due to too many parameters.";
-      continue;
-    }
-
-    if (FusionDecision decision = CanFuse(mlir_context, candidate, fusion);
+    const HloInstruction& original_candidate =
+        *FindOrDefault(fused_to_original, candidate, candidate);
+    if (FusionDecision decision = ShouldFuseOperand(mlir_context, candidate,
+                                                    original_candidate, fusion);
         !decision.IsAllowed()) {
-      VLOG(5) << "Cannot fuse operand: " << decision.Explain();
+      VLOG(5) << "Not fusing operand: " << candidate->ToString()
+              << " due to decision: " << decision.Explain();
       continue;
     }
     VLOG(5) << "Fusing operand: " << candidate->ToString();
@@ -1178,7 +1215,9 @@ void FuseOperandsBFS(mlir::MLIRContext& mlir_context,
 // only way to fuse a user is to create a new fusion.
 absl::StatusOr<HloInstruction*> FuseUserAndOperands(
     mlir::MLIRContext& mlir_context, HloInstruction* fusion,
-    HloInstruction* user) {
+    HloInstruction* user,
+    const absl::flat_hash_map<HloInstruction*, HloInstruction*>&
+        fused_to_original) {
   int64_t operand_count = fusion->operand_count();
   HloInstruction* new_fusion =
       fusion->parent()->AddInstruction(HloInstruction::CreateFusion(
@@ -1188,7 +1227,8 @@ absl::StatusOr<HloInstruction*> FuseUserAndOperands(
   CHECK_EQ(0, fusion->users().size());
   RETURN_IF_ERROR(fusion->parent()->RemoveInstruction(fusion));
   if (new_fusion->operand_count() > operand_count) {
-    FuseOperandsBFS(mlir_context, new_fusion->operands(), new_fusion);
+    FuseOperandsBFS(mlir_context, new_fusion->operands(), new_fusion,
+                    fused_to_original);
   }
   return new_fusion;
 }
@@ -1249,21 +1289,27 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
   HloInstruction* original_output = original_dot;
 
   // BFS of operands until we cannot tile.
-  FuseOperandsBFS(mlir_context, fusion->operands(), fusion);
+  FuseOperandsBFS(mlir_context, fusion->operands(), fusion,
+                  fusion_search_space.fused_to_original());
 
   // Fuse in users until we cannot tile or reach the root.
   while (!fusion->IsRoot()) {
     // Search space was created so that the result only ever has a single user.
     CHECK_EQ(fusion->users().size(), 1);
     auto user = fusion->users()[0];
-    if (FusionDecision decision = CanFuse(mlir_context, fusion, user);
+    HloInstruction* original_user =
+        fusion_search_space.fused_to_original().at(user);
+    if (FusionDecision decision =
+            ShouldFuseUser(mlir_context, user, *original_user, fusion);
         !decision.IsAllowed()) {
-      VLOG(5) << "Cannot fuse user: " << decision.Explain();
+      VLOG(5) << "Not fusing user: " << decision.Explain();
       break;
     }
     VLOG(5) << "Fusing user into epilogue: " << user->ToString();
-    ASSIGN_OR_RETURN(fusion, FuseUserAndOperands(mlir_context, fusion, user));
-    original_output = fusion_search_space.fused_to_original().at(user);
+    ASSIGN_OR_RETURN(
+        fusion, FuseUserAndOperands(mlir_context, fusion, user,
+                                    fusion_search_space.fused_to_original()));
+    original_output = original_user;
   }
 
   // Move bitcasts out of the fusion computation in case we have some on the
