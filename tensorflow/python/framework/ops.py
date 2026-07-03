@@ -5799,18 +5799,18 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
     if ctx.executing_eagerly():
       # Validate name in eager mode to match Graph.name_scope behavior.
       if self._name:
-        if ctx.scope_name:
+        if ctx.scope_name.rstrip("/"):
           if not _VALID_SCOPE_NAME_REGEX.match(self._name):
             raise ValueError(
-                "'%s' is not a valid scope name. A scope name has to match "
-                "the following pattern: %s" %
-                (self._name, _VALID_SCOPE_NAME_REGEX.pattern))
+                f"'{self._name}' is not a valid scope name. A scope name has "
+                f"to match the following pattern: "
+                f"{_VALID_SCOPE_NAME_REGEX.pattern}")
         else:
           if not _VALID_OP_NAME_REGEX.match(self._name):
             raise ValueError(
-                "'%s' is not a valid root scope name. A root scope name has "
-                "to match the following pattern: %s" %
-                (self._name, _VALID_OP_NAME_REGEX.pattern))
+                f"'{self._name}' is not a valid root scope name. A root scope "
+                f"name has to match the following pattern: "
+                f"{_VALID_OP_NAME_REGEX.pattern}")
 
       # Names are not auto-incremented in eager mode.
       # A trailing slash breaks out of nested name scopes, indicating a
