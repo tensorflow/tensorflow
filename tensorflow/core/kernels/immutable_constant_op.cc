@@ -113,13 +113,19 @@ void ImmutableConstantOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES(ctx, dtype_ != DT_STRING,
               absl::UnimplementedError("Sorry, DT_STRING is not currently "
                                        "supported for ImmutableConstOp."));
-
-  // Validate that the tensor size can be computed without overflow
-  const int64_t num_elements = shape_.num_elements();
-  OP_REQUIRES(ctx, num_elements >= 0,
-              absl::InvalidArgumentError(absl::StrCat(
-                  "Shape ", shape_.DebugString(),
-                  " results in overflow when computing number of elements")));
+  int64_t num_elements = 1;
+  for (int i = 0; i < shape_.dims(); ++i) {
+    const int64_t dim = shape_.dim_size(i);
+    OP_REQUIRES(ctx, dim >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Shape ", shape_.DebugString(), " has negative dimension ",
+                    dim, " at index ", i)));
+    num_elements = MultiplyWithoutOverflow(num_elements, dim);
+    OP_REQUIRES(ctx, num_elements >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Shape ", shape_.DebugString(),
+                    " results in overflow when computing number of elements")));
+  }
 
   // Check that num_elements fits in size_t
   OP_REQUIRES(
@@ -144,6 +150,14 @@ void ImmutableConstantOp::Compute(OpKernelContext* ctx) {
               absl::InvalidArgumentError(absl::StrCat(
                   "Tensor size computation overflows: ", num_elements,
                   " elements * ", element_size, " bytes per element")));
+
+  OP_REQUIRES(
+      ctx,
+      static_cast<uint64_t>(num_bytes_int64) <=
+          std::numeric_limits<size_t>::max(),
+      absl::InvalidArgumentError(absl::StrCat(
+          "Total byte size (", num_bytes_int64,
+          ") exceeds maximum representable size on this platform")));
 
   const size_t num_bytes = static_cast<size_t>(num_bytes_int64);
 
