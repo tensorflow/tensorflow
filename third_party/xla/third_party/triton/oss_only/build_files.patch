@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1290 @@
+@@ -0,0 +1,1300 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -71,9 +71,20 @@ new file mode 100644
 +# generate version.h for building TritonPluginUtils
 +genrule(
 +    name = "triton_version_h_gen",
-+    srcs = ["include/triton/Version.h.in"],
++    srcs = [
++        "include/triton/Version.h.in",
++        "@xla//third_party/triton:workspace",
++    ],
 +    outs = ["include/triton/Version.h"],
-+    cmd = "sed 's/@TRITON_VERSION@//g' $< > $@",
++    cmd = "TRITON_COMMIT=$$(sed -n 's/.*TRITON_COMMIT = \"\\(.*\\)\".*/\\1/p' $(location @xla//third_party/triton:workspace)) && " +
++          "sed \"s/@TRITON_VERSION@/$$TRITON_COMMIT/g\" $(location include/triton/Version.h.in) > $@",
++)
++
++cc_library(
++    name = "triton_version",
++    hdrs = ["include/triton/Version.h"],
++    strip_include_prefix = "include",
++    deps = [":triton_version_h_gen"],
 +)
 +
 +td_library(
@@ -1088,14 +1099,13 @@ new file mode 100644
 +    srcs = ["lib/Tools/PluginUtils.cpp"],
 +    hdrs = [
 +        "include/triton/Tools/PluginUtils.h",
-+        "include/triton/Version.h",
 +    ],
 +    copts = _no_unused_variable,
 +    includes = ["include"],
 +    deps = [
 +        ":Dump",
 +        ":GetEnv",
-+        ":triton_version_h_gen",
++        ":triton_version",
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:Pass",
@@ -1266,7 +1276,7 @@ new file mode 100644
 +#         "@triton//:leakr_badwords.dic",
 +#         "@triton//patches:patch_files",
 +#         "//third_party/xla:copybara_library",
-+#         "//third_party/xla/third_party/triton:patch_files",
++#         "@xla//third_party/triton:patch_files",
 +#     ],
 +# )
 +# copybara:uncomment_end

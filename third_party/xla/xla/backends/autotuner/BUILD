@@ -491,3 +491,19 @@ tf_proto_library(
         "@com_google_protobuf//:duration_proto",
     ],
 )
+
+xla_cc_test(
+    name = "triton_version_test",
+    srcs = ["triton_version_test.cc"],
+    data = [
+        "//third_party/triton:workspace",
+    ],
+    env = {
+        "WORKSPACE_BZL_PATH": "$(rootpath //third_party/triton:workspace)",
+    },
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@triton//:triton_version",
+    ],
+)
