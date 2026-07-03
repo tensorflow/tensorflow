@@ -435,21 +435,26 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(proto.operand_ids_size() >= 1)
           << "Async update requires at least one operand";
       HloInstruction* prev_op = operands(0);
-      TF_RET_CHECK(prev_op->IsAsynchronous())
-          << "Async update requires its operand to be an asynchronous op";
-      if (!proto.async_execution_thread().empty()) {
-        TF_RET_CHECK(proto.async_execution_thread() ==
-                     prev_op->async_execution_thread())
-            << "Async update should have " << prev_op->async_execution_thread()
-            << " async_execution_thread, but sees "
-            << proto.async_execution_thread();
-      }
-      if (!proto.called_computation_ids().empty()) {
-        TF_RET_CHECK(computations(0) == prev_op->async_wrapped_computation())
-            << "Async update should have "
-            << prev_op->async_wrapped_computation()->name()
-            << " async_wrapped_computation, but sees "
-            << computations(0)->name();
+      HloInstruction* async_op =
+          prev_op->IsAsynchronous()
+              ? prev_op
+              : HloInstruction::FindAsyncProducer(prev_op);
+      if (async_op != nullptr) {
+        if (!proto.async_execution_thread().empty()) {
+          TF_RET_CHECK(proto.async_execution_thread() ==
+                       async_op->async_execution_thread())
+              << "Async update should have "
+              << async_op->async_execution_thread()
+              << " async_execution_thread, but sees "
+              << proto.async_execution_thread();
+        }
+        if (!proto.called_computation_ids().empty()) {
+          TF_RET_CHECK(computations(0) == async_op->async_wrapped_computation())
+              << "Async update should have "
+              << async_op->async_wrapped_computation()->name()
+              << " async_wrapped_computation, but sees "
+              << computations(0)->name();
+        }
       }
       instruction = CreateAsyncUpdate(shape, all_operands());
       break;
@@ -458,21 +463,25 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(proto.operand_ids_size() == 1)
           << "Async done requires one singular operand";
       HloInstruction* prev_op = operands(0);
-      TF_RET_CHECK(prev_op->IsAsynchronous())
-          << "Async done requires its operand to be an asynchronous op";
-      if (!proto.async_execution_thread().empty()) {
-        TF_RET_CHECK(proto.async_execution_thread() ==
-                     prev_op->async_execution_thread())
-            << "Async done should have " << prev_op->async_execution_thread()
-            << " async_execution_thread, but sees "
-            << proto.async_execution_thread();
-      }
-      if (!proto.called_computation_ids().empty()) {
-        TF_RET_CHECK(computations(0) == prev_op->async_wrapped_computation())
-            << "Async done should have "
-            << prev_op->async_wrapped_computation()->name()
-            << " async_wrapped_computation, but sees "
-            << computations(0)->name();
+      HloInstruction* async_op =
+          prev_op->IsAsynchronous()
+              ? prev_op
+              : HloInstruction::FindAsyncProducer(prev_op);
+      if (async_op != nullptr) {
+        if (!proto.async_execution_thread().empty()) {
+          TF_RET_CHECK(proto.async_execution_thread() ==
+                       async_op->async_execution_thread())
+              << "Async done should have " << async_op->async_execution_thread()
+              << " async_execution_thread, but sees "
+              << proto.async_execution_thread();
+        }
+        if (!proto.called_computation_ids().empty()) {
+          TF_RET_CHECK(computations(0) == async_op->async_wrapped_computation())
+              << "Async done should have "
+              << async_op->async_wrapped_computation()->name()
+              << " async_wrapped_computation, but sees "
+              << computations(0)->name();
+        }
       }
       instruction = CreateAsyncDone(shape, prev_op);
       break;
@@ -1674,24 +1683,50 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncUpdate(
-    const Shape& shape, HloInstruction* operand) {
-  return absl::WrapUnique(
-      new HloAsyncInstruction(HloOpcode::kAsyncUpdate, shape, operand));
+    const Shape& shape, HloInstruction* operand,
+    std::optional<HloOpcode> async_wrapped_opcode,
+    HloComputation* async_computation) {
+  auto instruction = std::make_unique<HloAsyncInstruction>(
+      HloOpcode::kAsyncUpdate, shape, operand, async_wrapped_opcode);
+  if (async_computation != nullptr) {
+    instruction->AppendComputation(async_computation);
+  }
+  return instruction;
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncUpdate(
-    const Shape& shape, absl::Span<HloInstruction* const> operands) {
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    std::optional<HloOpcode> async_wrapped_opcode,
+    HloComputation* async_computation) {
   CHECK_GE(operands.size(), 1);
   HloInstruction* prev_async = operands[0];
-  return absl::WrapUnique(new HloAsyncInstruction(
-      HloOpcode::kAsyncUpdate, shape, operands,
-      Cast<HloAsyncInstruction>(prev_async)->async_wrapped_opcode()));
+  HloOpcode wrapped_op = async_wrapped_opcode.value_or(HloOpcode::kAsyncUpdate);
+  if (!async_wrapped_opcode.has_value()) {
+    if (HloInstruction* producer = FindAsyncProducer(prev_async)) {
+      if (HloAsyncInstruction::ClassOf(producer)) {
+        wrapped_op =
+            Cast<HloAsyncInstruction>(producer)->async_wrapped_opcode();
+      }
+    }
+  }
+  auto instruction = absl::WrapUnique(new HloAsyncInstruction(
+      HloOpcode::kAsyncUpdate, shape, operands, wrapped_op));
+  if (async_computation != nullptr) {
+    instruction->AppendComputation(async_computation);
+  }
+  return instruction;
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncDone(
-    const Shape& shape, HloInstruction* operand) {
-  return absl::WrapUnique(
-      new HloAsyncInstruction(HloOpcode::kAsyncDone, shape, operand));
+    const Shape& shape, HloInstruction* operand,
+    std::optional<HloOpcode> async_wrapped_opcode,
+    HloComputation* async_computation) {
+  auto instruction = std::make_unique<HloAsyncInstruction>(
+      HloOpcode::kAsyncDone, shape, operand, async_wrapped_opcode);
+  if (async_computation != nullptr) {
+    instruction->AppendComputation(async_computation);
+  }
+  return instruction;
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCopyStart(
@@ -4482,6 +4517,9 @@ void HloInstruction::PrintExtraAttributes(
           });
         }
         break;
+      case HloOpcode::kAsyncUpdate:
+      case HloOpcode::kAsyncDone:
+        break;
       default:
         if (!called_computations().empty()) {
           printer.Next([this, &new_options](Printer* printer) {
@@ -6257,6 +6295,149 @@ const DomainMetadata& HloInstruction::operand_side_metadata() const {
 
 const DomainMetadata& HloInstruction::user_side_metadata() const {
   return Cast<HloDomainInstruction>(this)->user_side_metadata();
+}
+
+namespace {
+// Helper function to trace backward from an instruction to find the matching
+// async producer (e.g. kAsyncStart). It traces through kGetTupleElement,
+// kTuple, kWhile, and kParameter to handle loop-crossing async operations.
+// 'index' tracks the shape index path to match tuple elements.
+// If 'stop_at_parameter' is true, it stops tracing at a computation parameter
+// (used when tracing inside loop bodies).
+const HloInstruction* FindAsyncProducerImpl(const HloInstruction* instr,
+                                            ShapeIndex& index,
+                                            bool stop_at_parameter) {
+  if (instr == nullptr) {
+    return nullptr;
+  }
+
+  if (HloAsyncInstruction::ClassOf(instr)) {
+    return instr;
+  }
+
+  switch (instr->opcode()) {
+    case HloOpcode::kGetTupleElement: {
+      index.push_back(instr->tuple_index());
+      const HloInstruction* res =
+          FindAsyncProducerImpl(instr->operand(0), index, stop_at_parameter);
+      if (res != nullptr) {
+        return res;
+      }
+      index.pop_back();
+      return nullptr;
+    }
+    case HloOpcode::kTuple: {
+      if (index.empty()) {
+        if (instr->operand_count() > 0) {
+          index.push_back(0);
+          const HloInstruction* res = FindAsyncProducerImpl(
+              instr->operand(0), index, stop_at_parameter);
+          index.pop_back();
+          return res;
+        }
+        return nullptr;
+      }
+      int64_t idx = index.back();
+      index.pop_back();
+      const HloInstruction* res =
+          FindAsyncProducerImpl(instr->operand(idx), index, stop_at_parameter);
+      if (res != nullptr) {
+        return res;
+      }
+      index.push_back(idx);
+      return nullptr;
+    }
+    case HloOpcode::kCopy:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kDomain:
+    case HloOpcode::kOptimizationBarrier:
+    case HloOpcode::kAddDependency:
+      return FindAsyncProducerImpl(instr->operand(0), index, stop_at_parameter);
+    case HloOpcode::kWhile:
+    case HloOpcode::kCall:
+    case HloOpcode::kFusion:
+    case HloOpcode::kConditional: {
+      int64_t num_branches = instr->opcode() == HloOpcode::kConditional
+                                 ? instr->branch_count()
+                                 : 1;
+      for (int64_t j = 0; j < num_branches; ++j) {
+        const HloComputation* comp;
+        if (instr->opcode() == HloOpcode::kWhile) {
+          comp = instr->while_body();
+        } else if (instr->opcode() == HloOpcode::kCall) {
+          comp = instr->to_apply();
+        } else if (instr->opcode() == HloOpcode::kFusion) {
+          comp = instr->fused_instructions_computation();
+        } else {
+          comp = instr->branch_computation(j);
+        }
+        const HloInstruction* comp_root = comp->root_instruction();
+        ShapeIndex comp_index = index;
+        const HloInstruction* comp_producer = FindAsyncProducerImpl(
+            comp_root, comp_index, /*stop_at_parameter=*/true);
+        if (comp_producer != nullptr) {
+          if (comp_producer->opcode() == HloOpcode::kParameter &&
+              comp_producer->parent() == comp) {
+            const HloInstruction* arg =
+                instr->opcode() == HloOpcode::kConditional
+                    ? instr->operand(j + 1)
+                    : instr->operand(comp_producer->parameter_number());
+            return FindAsyncProducerImpl(arg, comp_index, stop_at_parameter);
+          }
+          return comp_producer;
+        }
+      }
+      return nullptr;
+    }
+    case HloOpcode::kParameter: {
+      if (stop_at_parameter) {
+        return instr;
+      }
+      const HloComputation* comp = instr->parent();
+      if (comp == nullptr || comp->parent() == nullptr ||
+          comp->IsEntryComputation()) {
+        return nullptr;
+      }
+      auto callers = comp->caller_instructions();
+      for (const HloInstruction* caller : callers) {
+        const HloInstruction* res = nullptr;
+        if (caller->opcode() == HloOpcode::kWhile ||
+            caller->opcode() == HloOpcode::kCall ||
+            caller->opcode() == HloOpcode::kFusion) {
+          res =
+              FindAsyncProducerImpl(caller->operand(instr->parameter_number()),
+                                    index, stop_at_parameter);
+        } else if (caller->opcode() == HloOpcode::kConditional) {
+          for (int j = 0; j < caller->branch_count(); ++j) {
+            if (caller->branch_computation(j) == comp) {
+              res = FindAsyncProducerImpl(caller->operand(j + 1), index,
+                                          stop_at_parameter);
+              break;
+            }
+          }
+        }
+        if (res != nullptr) {
+          return res;
+        }
+      }
+      return nullptr;
+    }
+    default:
+      return nullptr;
+  }
+}
+}  // namespace
+
+/* static */ const HloInstruction* HloInstruction::FindAsyncProducer(
+    const HloInstruction* instr) {
+  ShapeIndex index;
+  return FindAsyncProducerImpl(instr, index, /*stop_at_parameter=*/false);
+}
+
+/* static */ HloInstruction* HloInstruction::FindAsyncProducer(
+    HloInstruction* instr) {
+  return const_cast<HloInstruction*>(
+      FindAsyncProducer(const_cast<const HloInstruction*>(instr)));
 }
 
 HloInstruction* HloInstruction::async_chain_start() const {

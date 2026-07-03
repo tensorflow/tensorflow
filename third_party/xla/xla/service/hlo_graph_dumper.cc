@@ -1254,8 +1254,10 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       return kGreen;
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
-    case HloOpcode::kAsyncDone:
-      return GetInstructionColor(instr->async_wrapped_instruction());
+    case HloOpcode::kAsyncDone: {
+      const HloInstruction* wrapped = instr->async_wrapped_instruction();
+      return wrapped != nullptr ? GetInstructionColor(wrapped) : kWhite;
+    }
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
     case HloOpcode::kRaggedDot:

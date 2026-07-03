@@ -182,6 +182,7 @@ xla_cc_test(
     srcs = ["hlo_instruction_test.cc"],
     deps = [
         ":hlo",
+        "//xla:frontend_attributes",
         "//xla:literal_util",
         "//xla:printer",
         "//xla:shape_util",

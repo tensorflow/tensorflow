@@ -4145,6 +4145,7 @@ xla_cc_test(
         ":hlo_module_config",
         "//xla:comparison_util",
         "//xla:debug_options_flags",
+        "//xla:frontend_attributes",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",

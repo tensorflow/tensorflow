@@ -1884,14 +1884,20 @@ absl::Status ShapeVerifier::HandlePad(HloInstruction* pad) {
 namespace {
 
 absl::Status CheckAsyncOpComputationThreadName(const HloInstruction* async_op) {
+  HloComputation* comp = async_op->async_wrapped_computation();
+  if (comp == nullptr) {
+    // If we cannot trace the computation, we might be in an intermediate
+    // state (e.g. parsing) or the chain is invalid (which is caught by other
+    // checks). Do not verify thread name in this case to avoid crash.
+    return absl::OkStatus();
+  }
   absl::string_view async_execution_thread = async_op->async_execution_thread();
-  if (async_execution_thread !=
-      async_op->async_wrapped_computation()->execution_thread()) {
+  if (async_execution_thread != comp->execution_thread()) {
     return Internal(
         "%s expects same async thread name as wrapped computation's "
         "thread name (%s vs %s).",
         HloOpcodeString(async_op->opcode()), async_execution_thread,
-        async_op->async_wrapped_computation()->execution_thread());
+        comp->execution_thread());
   }
   return absl::OkStatus();
 }
@@ -2041,15 +2047,39 @@ absl::Status ShapeVerifier::CheckAsyncUpdateOperands(
                     async_update->operand_count());
   }
   const HloInstruction* operand0 = async_update->operand(0);
-
-  if (operand0->opcode() != HloOpcode::kAsyncStart &&
-      operand0->opcode() != HloOpcode::kAsyncUpdate) {
+  const HloInstruction* async_producer =
+      HloInstruction::FindAsyncProducer(operand0);
+  if (async_producer == nullptr ||
+      (async_producer->opcode() != HloOpcode::kAsyncStart &&
+       async_producer->opcode() != HloOpcode::kAsyncUpdate)) {
     return Internal(
-        "%s (opcode: %s) expects the operand to be async-start or "
-        "async-update, "
-        "found %s.",
+        "%s (opcode: %s) expects operand to trace to async-start or "
+        "async-update, found "
+        "%s.",
         async_update->name(), HloOpcodeString(async_update->opcode()),
-        HloOpcodeString(operand0->opcode()));
+        async_producer != nullptr ? HloOpcodeString(async_producer->opcode())
+                                  : HloOpcodeString(operand0->opcode()));
+  }
+  HloComputation* op_comp = async_update->async_wrapped_computation();
+  HloComputation* prod_comp = async_producer->async_wrapped_computation();
+  if (op_comp == nullptr || prod_comp == nullptr || *op_comp != *prod_comp) {
+    return Internal(
+        "The %s expects its wrapped async computation to be identical to its "
+        "operand's wrapped async computation (%s vs %s), thread name (%s vs "
+        "%s).",
+        HloOpcodeString(async_update->opcode()),
+        async_update->async_wrapped_instruction() != nullptr
+            ? async_update->async_wrapped_instruction()->ToString()
+            : "null",
+        async_producer->async_wrapped_instruction() != nullptr
+            ? async_producer->async_wrapped_instruction()->ToString()
+            : "null",
+        async_update->async_wrapped_computation() != nullptr
+            ? async_update->async_wrapped_computation()->execution_thread()
+            : "null",
+        async_producer->async_wrapped_computation() != nullptr
+            ? async_producer->async_wrapped_computation()->execution_thread()
+            : "null");
   }
 
   if (!ShapesSame(operand0->shape(), async_update->shape())) {
@@ -2073,14 +2103,39 @@ absl::Status ShapeVerifier::CheckAsyncDoneOperands(
   }
 
   const HloInstruction* operand0 = async_done->operand(0);
-  if (operand0->opcode() != HloOpcode::kAsyncStart &&
-      operand0->opcode() != HloOpcode::kAsyncUpdate) {
+  const HloInstruction* async_producer =
+      HloInstruction::FindAsyncProducer(operand0);
+  if (async_producer == nullptr ||
+      (async_producer->opcode() != HloOpcode::kAsyncStart &&
+       async_producer->opcode() != HloOpcode::kAsyncUpdate)) {
     return Internal(
-        "%s (opcode: %s) expects the operand to be async-start or "
-        "async-update, "
-        "found %s.",
+        "%s (opcode: %s) expects operand to trace to async-start or "
+        "async-update, found "
+        "%s.",
         async_done->name(), HloOpcodeString(async_done->opcode()),
-        HloOpcodeString(operand0->opcode()));
+        async_producer != nullptr ? HloOpcodeString(async_producer->opcode())
+                                  : HloOpcodeString(operand0->opcode()));
+  }
+  HloComputation* op_comp = async_done->async_wrapped_computation();
+  HloComputation* prod_comp = async_producer->async_wrapped_computation();
+  if (op_comp == nullptr || prod_comp == nullptr || *op_comp != *prod_comp) {
+    return Internal(
+        "The %s expects its wrapped async computation to be identical to its "
+        "operand's wrapped async computation (%s vs %s), thread name (%s vs "
+        "%s).",
+        HloOpcodeString(async_done->opcode()),
+        async_done->async_wrapped_instruction() != nullptr
+            ? async_done->async_wrapped_instruction()->ToString()
+            : "null",
+        async_producer->async_wrapped_instruction() != nullptr
+            ? async_producer->async_wrapped_instruction()->ToString()
+            : "null",
+        async_done->async_wrapped_computation() != nullptr
+            ? async_done->async_wrapped_computation()->execution_thread()
+            : "null",
+        async_producer->async_wrapped_computation() != nullptr
+            ? async_producer->async_wrapped_computation()->execution_thread()
+            : "null");
   }
 
   const Shape& root_shape = async_done->operand(0)->shape().tuple_shapes(1);
@@ -2786,29 +2841,11 @@ absl::Status VerifySingleOperand(
   return absl::OkStatus();
 }
 
-// Checks asynchronous instruction pairs.
 absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
   // CopyStart must have a single CopyDone user.
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
-        case HloOpcode::kAsyncStart: {
-          RETURN_IF_ERROR(VerifySingleUser(
-              instruction, {HloOpcode::kAsyncUpdate, HloOpcode::kAsyncDone}));
-          break;
-        }
-        case HloOpcode::kAsyncUpdate: {
-          RETURN_IF_ERROR(VerifySingleOperand(
-              instruction, {HloOpcode::kAsyncStart, HloOpcode::kAsyncUpdate}));
-          RETURN_IF_ERROR(VerifySingleUser(
-              instruction, {HloOpcode::kAsyncUpdate, HloOpcode::kAsyncDone}));
-          break;
-        }
-        case HloOpcode::kAsyncDone: {
-          RETURN_IF_ERROR(VerifySingleOperand(
-              instruction, {HloOpcode::kAsyncStart, HloOpcode::kAsyncUpdate}));
-          break;
-        }
         case HloOpcode::kAllReduceStart: {
           RETURN_IF_ERROR(
               VerifySingleUser(instruction, {HloOpcode::kAllReduceDone}));
@@ -2886,6 +2923,83 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
       }
     }
   }
+
+  // Verify pairing of asynchronous instructions.
+  std::vector<const HloInstruction*> async_starts;
+  std::vector<const HloInstruction*> async_updates;
+  std::vector<const HloInstruction*> async_dones;
+
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kAsyncStart) {
+        async_starts.push_back(instruction);
+      } else if (instruction->opcode() == HloOpcode::kAsyncUpdate) {
+        async_updates.push_back(instruction);
+      } else if (instruction->opcode() == HloOpcode::kAsyncDone) {
+        async_dones.push_back(instruction);
+      }
+    }
+  }
+
+  absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
+      start_to_done;
+  absl::flat_hash_set<const HloInstruction*> visited_updates;
+
+  for (const HloInstruction* async_done : async_dones) {
+    if (async_done->operand_count() != 1) {
+      return Internal("async-done %s must have exactly one operand",
+                      async_done->name());
+    }
+    const HloInstruction* current = async_done;
+    const HloInstruction* producer =
+        HloInstruction::FindAsyncProducer(current->operand(0));
+
+    while (producer != nullptr &&
+           producer->opcode() == HloOpcode::kAsyncUpdate) {
+      if (producer->operand_count() != 1) {
+        return Internal("async-update %s must have exactly one operand",
+                        producer->name());
+      }
+      if (!visited_updates.insert(producer).second) {
+        return Internal("Async update %s is part of multiple chains or a cycle",
+                        producer->name());
+      }
+      current = producer;
+      producer = HloInstruction::FindAsyncProducer(current->operand(0));
+    }
+
+    if (producer == nullptr) {
+      return Internal("Async done %s does not trace back to an async start",
+                      async_done->name());
+    }
+
+    if (producer->opcode() != HloOpcode::kAsyncStart) {
+      return Internal("Async done %s traces back to non-start async op %s",
+                      async_done->name(), producer->name());
+    }
+
+    auto [it, inserted] = start_to_done.emplace(producer, async_done);
+    if (!inserted) {
+      return Internal(
+          "Async start %s is matched by multiple async done instructions: %s "
+          "and %s",
+          producer->name(), it->second->name(), async_done->name());
+    }
+  }
+
+  for (const HloInstruction* async_start : async_starts) {
+    if (!start_to_done.contains(async_start)) {
+      return Internal("Async start %s has no matching async done",
+                      async_start->name());
+    }
+  }
+
+  for (const HloInstruction* async_update : async_updates) {
+    if (!visited_updates.contains(async_update)) {
+      return Internal("Orphan async update %s found", async_update->name());
+    }
+  }
+
   return absl::OkStatus();
 }
 
@@ -3565,13 +3679,16 @@ absl::Status CheckElementwiseInstruction(HloInstruction* instruction) {
 }
 
 bool IsCollectivesGroupComputation(HloComputation* computation) {
-  auto maybe_caller = computation->GetUniqueCaller(HloOpcode::kAsyncStart);
-  if (!maybe_caller.has_value()) {
+  auto callers = computation->caller_instructions(HloOpcode::kAsyncStart);
+  if (callers.empty()) {
     return false;
   }
-  return (*maybe_caller)
-      ->get_frontend_attribute(kCollectivesGroupAttr)
-      .has_value();
+  for (auto* caller : callers) {
+    if (!caller->get_frontend_attribute(kCollectivesGroupAttr).has_value()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool IsAsyncBarrierComputation(HloComputation* computation) {
