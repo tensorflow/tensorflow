@@ -238,8 +238,12 @@ TEST(ImmutableConstantOpTest, LargeShapeDimensionsOverflow) {
   TF_ASSERT_OK(CreateTempFileBadString(env, '\x00', 1, "overflow_test", 
                                        &dummy_file));
 
-  // Use dimensions that multiply to overflow int64_t
-  // 2147482841 * 2147485163 would overflow
+  // These dimensions multiply to 4611681483743124083 elements, which still
+  // fits in int64. The overflow is triggered later in the kernel, when that
+  // element count is multiplied by the 8-byte element size of DT_DOUBLE, so
+  // this exercises the byte-size overflow check. Note we can't pick dimensions
+  // whose product itself overflows int64: TensorShape construction rejects
+  // those (via TF_CHECK_OK), which would abort before the op ever runs.
   const TensorShape kOverflowShape({2147482841, 2147485163});
   
   auto result = ops::ImmutableConst(root, DT_DOUBLE, kOverflowShape, 
