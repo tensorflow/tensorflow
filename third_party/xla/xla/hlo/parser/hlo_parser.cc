@@ -2125,12 +2125,14 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
 
-      if (opcode == HloOpcode::kAsyncStart) {
+      if (opcode == HloOpcode::kAsyncStart ||
+          opcode == HloOpcode::kAsyncUpdate) {
         if (!shape->IsTuple() || shape->tuple_shapes().size() < 2 ||
             !shape->tuple_shapes(0).IsTuple()) {
           TokenError(
-              "AsyncStart expects the op shape to be in the form of "
-              "((async-operands), async-outputs, state).");
+              "AsyncStart and AsyncUpdate expect the shape to be in the "
+              "form of ((operand0_shape, operand1_shape, ...), output_shape, "
+              "...).");
           return nullptr;
         }
       }
