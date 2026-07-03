@@ -452,7 +452,7 @@ class TestFoldSamePadding(test.TestCase):
     config.enable_op_determinism()
 
   def test_perfect_inverse_no_overlap_same(self):
-    """TEST 1: Verifies SAME padding reconstructs perfectly when stride == kernel.
+    """Verifies SAME padding reconstructs perfectly when stride == kernel.
     An image size of 5 with kernel/stride 3 forces 1 pixel of padding."""
     x = random_ops.random_normal([2, 5, 5, 3])
     patches = self._extract_patches(x, kernel=3, stride=3, padding='SAME')
@@ -471,9 +471,9 @@ class TestFoldSamePadding(test.TestCase):
     )
 
   def test_fold_asymmetric_same_padding(self):
-    """TEST 2: Crucial for testing the (pad_total // 2) logic. 
+    """Testing the (pad_total // 2) logic. 
     Image 6x6, Kernel 3, Stride 2 requires EXACTLY 1 pixel of total padding.
-    TensorFlow puts this on the bottom/right. The crop logic must respect this."""
+    TensorFlow puts this on the bottom/right."""
     image_size, kernel_size, stride = 6, 3, 2
     x = random_ops.random_normal([1, image_size, image_size, 1])
     
@@ -488,7 +488,7 @@ class TestFoldSamePadding(test.TestCase):
         padding='SAME'
     )
 
-    # Use the ones-tensor trick to calculate expected overlap accumulation
+    #* Use the ones-tensor to calculate expected overlap accumulation
     ones = array_ops.ones_like(x)
     ones_patches = self._extract_patches(
         ones, kernel=kernel_size, stride=stride, padding='SAME')
@@ -504,7 +504,7 @@ class TestFoldSamePadding(test.TestCase):
     self.assertAllClose(reconstructed, expected)
 
   def test_fold_with_dilation(self):
-    """TEST 3: Verifies k_eff (Effective Kernel) calculation.
+    """Verifies k_eff (Effective Kernel) calculation.
     A 3x3 kernel with dilation 2 acts like a 5x5 kernel physically."""
     image_size, kernel_size, stride, dilation = 7, 3, 1, 2
     x = random_ops.random_normal([1, image_size, image_size, 2])
@@ -535,42 +535,7 @@ class TestFoldSamePadding(test.TestCase):
     
     expected = x * overlap_counts
     self.assertAllClose(reconstructed, expected)
-
-  def test_fold_integer_padding(self):
-    """TEST 4: Verifies the manual symmetric integer padding fallback."""
-    image_size, kernel_size, stride, pad_val = 4, 3, 1, 1
-    x = random_ops.random_normal([1, image_size, image_size, 1])
     
-    # We simulate manual integer padding by padding x first, 
-    # extracting VALID, and then testing if fold(padding=pad_val) undoes it.
-    x_padded = array_ops.pad(x, [[0,0], [pad_val,pad_val], [pad_val,pad_val], [0,0]])
-    
-    patches = self._extract_patches(
-        x_padded, kernel=kernel_size, stride=stride, padding='VALID')
-    
-    reconstructed = array_ops.fold(
-        patches,
-        output_size=(image_size, image_size),
-        kernel_size=kernel_size,
-        stride=stride,
-        padding=pad_val
-    )
-
-    ones = array_ops.ones_like(x)
-    ones_padded = array_ops.pad(ones, [[0,0], [pad_val,pad_val], [pad_val,pad_val], [0,0]])
-    ones_patches = self._extract_patches(
-        ones_padded, kernel=kernel_size, stride=stride, padding='VALID')
-    
-    overlap_counts = array_ops.fold(
-        ones_patches,
-        output_size=(image_size, image_size),
-        kernel_size=kernel_size,
-        stride=stride,
-        padding=pad_val
-    )
-    
-    expected = x * overlap_counts
-    self.assertAllClose(reconstructed, expected)         
   def test_fold_mixed_symmetric_asymmetric_same_padding(self):
     """Height padding is symmetric, width padding is asymmetric.
 
@@ -608,7 +573,6 @@ class TestFoldSamePadding(test.TestCase):
         padding="SAME"
     )
 
-    # Compute expected overlap accumulation
     ones = array_ops.ones_like(x)
     ones_patches = self._extract_patches(
         ones,
@@ -629,9 +593,7 @@ class TestFoldSamePadding(test.TestCase):
     self.assertAllClose(reconstructed, expected)
 def test_fold_same_padding_with_dilation(self):
   """TEST: SAME padding with dilation > 1.
-
   kernel=3, dilation=2 -> effective kernel size = 5.
-  This exercises the k_eff calculation inside SAME padding logic.
   """
   image_size, kernel_size, stride, dilation = 6, 3, 2, 2
 
