@@ -306,6 +306,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_dynamic_slice_fusion_verify_offsets(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
+  opts.set_xla_gpu_enable_nccl_user_buffers_in_default_space(false);
   opts.set_xla_gpu_enable_allocator_spatial_partitioning(true);
   opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(true);
@@ -2120,6 +2121,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enables NCCL User Buffer Registration. collective_memory_size in the "
       "allocator config must also be set to a non-zero value that is large "
       "enough to meet peak collective memory usage."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_nccl_user_buffers_in_default_space",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_nccl_user_buffers_in_default_space),
+      debug_options->xla_gpu_enable_nccl_user_buffers_in_default_space(),
+      "Register NCCL user buffers in default space with allocator memory "
+      "registration."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_allocator_spatial_partitioning",
       bool_setter_for(

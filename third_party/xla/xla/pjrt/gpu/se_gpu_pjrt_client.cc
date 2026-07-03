@@ -1299,29 +1299,6 @@ BuildLocalDeviceStates(LocalClient* xla_client, bool schedule_async,
   return std::move(addressable_devices);
 }
 
-// Creates allocator memory registration and adds the required suballocator
-// visitors to `allocator_config`. Allocators that do not use suballocator
-// visitors simply ignore them.
-std::shared_ptr<gpu::AllocatorMemoryRegistration>
-CreateAllocatorMemoryRegistration(GpuAllocatorConfig* allocator_config) {
-  // Automatic memory registration is only safe for preallocated BFC arenas.
-  // If BFC grows later, ranks may not see a consistent set of registered
-  // backing allocations, which can lead to undefined behavior or deadlocks.
-  if (!allocator_config->preallocate) {
-    return nullptr;
-  }
-
-  auto memory_registration =
-      std::make_shared<gpu::AllocatorMemoryRegistration>();
-  gpu::RegisterOnGpuCliqueCreatedCallback(
-      memory_registration->CliqueCreatedCallback());
-  allocator_config->sub_allocator_alloc_visitors.push_back(
-      memory_registration->alloc_visitor());
-  allocator_config->sub_allocator_free_visitors.push_back(
-      memory_registration->free_visitor());
-
-  return memory_registration;
-}
 
 // Constructs a GPU device memory allocator to use, according to the allocator
 // configuration the client requested.
@@ -1533,6 +1510,35 @@ void NameDeviceAndLauncherThread(const LocalTopologyProto& node,
 }
 
 }  // namespace
+
+// Creates allocator memory registration and adds the required suballocator
+// visitors to `allocator_config`. Allocators that do not use suballocator
+// visitors simply ignore them.
+std::shared_ptr<gpu::AllocatorMemoryRegistration>
+CreateAllocatorMemoryRegistration(GpuAllocatorConfig* allocator_config) {
+  const DebugOptions& debug_options = GetDebugOptionsFromFlags();
+  // TODO(b/530631424): Enable by default once bug is fixed.
+  if (!debug_options.xla_gpu_enable_nccl_user_buffers_in_default_space()) {
+    return nullptr;
+  }
+  // Automatic memory registration is only safe for preallocated BFC arenas.
+  // If BFC grows later, ranks may not see a consistent set of registered
+  // backing allocations, which can lead to undefined behavior or deadlocks.
+  if (!allocator_config->preallocate) {
+    return nullptr;
+  }
+
+  auto memory_registration =
+      std::make_shared<gpu::AllocatorMemoryRegistration>();
+  gpu::RegisterOnGpuCliqueCreatedCallback(
+      memory_registration->CliqueCreatedCallback());
+  allocator_config->sub_allocator_alloc_visitors.push_back(
+      memory_registration->alloc_visitor());
+  allocator_config->sub_allocator_free_visitors.push_back(
+      memory_registration->free_visitor());
+
+  return memory_registration;
+}
 
 absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     absl::string_view platform_name,
