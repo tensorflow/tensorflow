@@ -7099,10 +7099,10 @@ ENTRY main {
   EXPECT_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
   EXPECT_EQ(async_start->operand_count(), 0);
   HloComputation* called_computation = async_start->async_wrapped_computation();
-  EXPECT_EQ(called_computation->num_parameters(), 0);
+  EXPECT_EQ(called_computation->num_parameters(), 2);
   HloInstruction* call = called_computation->root_instruction();
   EXPECT_EQ(call->opcode(), HloOpcode::kCall);
-  EXPECT_EQ(call->operand_count(), 0);
+  EXPECT_EQ(call->operand_count(), 2);
 }
 
 // Tests related to desugaring fusion-start/update/done.
@@ -7129,10 +7129,10 @@ ENTRY main {
   HloComputation* called_computation = async_done->async_wrapped_computation();
   // because only one parameter is bound, the constructed async wrapper
   // computation has only one parameter.
-  EXPECT_EQ(called_computation->num_parameters(), 1);
+  EXPECT_EQ(called_computation->num_parameters(), 2);
   HloInstruction* call = called_computation->root_instruction();
   EXPECT_EQ(call->opcode(), HloOpcode::kCall);
-  EXPECT_EQ(call->operand_count(), 1);
+  EXPECT_EQ(call->operand_count(), 2);
   EXPECT_EQ(call->to_apply()->num_parameters(), 2);
 }
 
@@ -7155,10 +7155,10 @@ ENTRY main {
   EXPECT_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
   EXPECT_EQ(async_start->operand_count(), 0);
   HloComputation* called_computation = async_start->async_wrapped_computation();
-  EXPECT_EQ(called_computation->num_parameters(), 0);
+  EXPECT_EQ(called_computation->num_parameters(), 2);
   HloInstruction* fusion = called_computation->root_instruction();
   EXPECT_EQ(fusion->opcode(), HloOpcode::kFusion);
-  EXPECT_EQ(fusion->operand_count(), 0);
+  EXPECT_EQ(fusion->operand_count(), 2);
 }
 
 TEST_F(HloParserTest, DesugarParsingTest_FusionStart_Incomplete_Binding) {
@@ -7182,10 +7182,10 @@ ENTRY main {
   EXPECT_EQ(async_done->opcode(), HloOpcode::kAsyncDone);
   EXPECT_EQ(async_done->operand_count(), 1);
   HloComputation* called_computation = async_done->async_wrapped_computation();
-  EXPECT_EQ(called_computation->num_parameters(), 1);
+  EXPECT_EQ(called_computation->num_parameters(), 2);
   HloInstruction* fusion = called_computation->root_instruction();
   EXPECT_EQ(fusion->opcode(), HloOpcode::kFusion);
-  EXPECT_EQ(fusion->operand_count(), 1);
+  EXPECT_EQ(fusion->operand_count(), 2);
   EXPECT_EQ(fusion->fused_instructions_computation()->num_parameters(), 2);
 }
 
@@ -7233,8 +7233,8 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   HloInstruction* async_done = module->entry_computation()->root_instruction();
   HloComputation* called_computation = async_done->async_wrapped_computation();
-  EXPECT_EQ(called_computation->num_parameters(), 2);
-  EXPECT_EQ(called_computation->root_instruction()->operand_count(), 2);
+  EXPECT_EQ(called_computation->num_parameters(), 1);
+  EXPECT_EQ(called_computation->root_instruction()->operand_count(), 1);
 }
 
 TEST_F(HloParserTest, DeeplyNestedOperandsExceedsRecursionLimit) {

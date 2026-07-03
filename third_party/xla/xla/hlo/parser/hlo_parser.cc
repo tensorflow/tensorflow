@@ -614,6 +614,9 @@ class HloParserImpl : public HloParser {
   void UpdateAsyncWrappedComputation(HloComputation* async_wrapped_computation,
                                      const Shape& result_shape,
                                      absl::Span<const Shape> operand_shapes);
+
+  void UpdateAsyncWrappedComputation(HloComputation* async_wrapped_computation,
+                                     const HloComputation* called_computation);
   bool ParseFftType(FftType* result);
   bool ParsePaddingType(PaddingType* result);
   bool ParsePrimitiveType(PrimitiveType* result);
@@ -2274,7 +2277,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
             HloInstruction::CreateAsyncUpdate(*shape, operands));
         //  We update async_wrapped_computation with the parsed shape,
         //  if there is mismatch, the verifier will catch it.
-        if (async_wrapped_opcode) {
+        if (async_wrapped_opcode && async_wrapped_opcode != HloOpcode::kCall &&
+            async_wrapped_opcode != HloOpcode::kFusion) {
           UpdateAsyncWrappedComputation(
               async_update->async_wrapped_computation(),
               /*result_shape=*/shape->tuple_shapes(1),
@@ -2289,7 +2293,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
 
       const Shape& operand_shape = async_done->operand(0)->shape();
 
-      if (async_wrapped_opcode) {
+      if (async_wrapped_opcode && async_wrapped_opcode != HloOpcode::kCall &&
+          async_wrapped_opcode != HloOpcode::kFusion) {
         UpdateAsyncWrappedComputation(
             async_done->async_wrapped_computation(),
             /*result_shape=*/*shape,
@@ -8609,7 +8614,22 @@ HloComputation* HloParserImpl::CreateAsyncWrappedComputation(
   if (!root) {
     return nullptr;
   }
-  computations_.emplace_back(async_wrapped_builder.Build(root));
+  std::unique_ptr<HloComputation> async_wrapped_computation =
+      async_wrapped_builder.Build(root);
+
+  if (async_wrapped_opcode == HloOpcode::kFusion ||
+      async_wrapped_opcode == HloOpcode::kCall) {
+    HloComputation* called_computation = nullptr;
+    if (async_wrapped_opcode == HloOpcode::kFusion) {
+      called_computation = root->fused_instructions_computation();
+    } else {
+      called_computation = root->to_apply();
+    }
+    UpdateAsyncWrappedComputation(async_wrapped_computation.get(),
+                                  called_computation);
+  }
+
+  computations_.emplace_back(std::move(async_wrapped_computation));
   return computations_.back().get();
 }
 
@@ -8633,6 +8653,41 @@ void HloParserImpl::UpdateAsyncWrappedComputation(
   // Update the root instruction's shape to match the result shape.
   Shape* root_shape =
       async_wrapped_computation->root_instruction()->mutable_shape();
+  if (!ShapeUtil::Compatible(*root_shape, result_shape)) {
+    *root_shape = result_shape;
+  }
+}
+
+// Updates the async-wrapped computation to match the called computation.
+// This is used to update the async-wrapped computation when parsing call-start
+// or fusion-start. In these cases, the called computation is specified,
+// allowing us to fully infer and update the shape of the async-wrapped
+// computation to match.
+void HloParserImpl::UpdateAsyncWrappedComputation(
+    HloComputation* async_wrapped_computation,
+    const HloComputation* called_computation) {
+  // Update the parameters of the async wrapped computation
+  for (int i = 0; i < called_computation->num_parameters(); ++i) {
+    if (i < async_wrapped_computation->num_parameters()) {
+      Shape* param_shape =
+          async_wrapped_computation->parameter_instruction(i)->mutable_shape();
+      if (!ShapeUtil::Compatible(
+              *param_shape,
+              called_computation->parameter_instruction(i)->shape())) {
+        *param_shape = called_computation->parameter_instruction(i)->shape();
+      }
+    } else {
+      auto* new_param = async_wrapped_computation->AddParameter(
+          HloInstruction::CreateParameter(
+              i, called_computation->parameter_instruction(i)->shape(),
+              "async_param"));
+      async_wrapped_computation->root_instruction()->AppendOperand(new_param);
+    }
+  }
+  // Update the root instruction's shape to match the result shape.
+  Shape* root_shape =
+      async_wrapped_computation->root_instruction()->mutable_shape();
+  const Shape& result_shape = called_computation->root_instruction()->shape();
   if (!ShapeUtil::Compatible(*root_shape, result_shape)) {
     *root_shape = result_shape;
   }
