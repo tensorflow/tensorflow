@@ -6324,7 +6324,7 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
         
     stride: Int or tuple (stride_h, stride_w) - step between patches
         
-    padding: 'VALID' or int
+    padding: 'VALID' , 'SAME' or int
                  - 'VALID': no padding (default)
                  - 'SAME': matches tf.image.extract_patches padding behavior
                  - int: symmetric padding on all sides
@@ -6424,7 +6424,7 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
       pad_left = pad_total_w // 2
       pad_right = pad_total_w - pad_left
     else:
-      raise ValueError(f"padding must be 'VALID' or int got {padding}")
+      raise ValueError(f"padding must be 'VALID' , 'SAME' or int got {padding}")
   elif isinstance(padding, int):
         if padding < 0:
             raise ValueError("padding must be >= 0")
