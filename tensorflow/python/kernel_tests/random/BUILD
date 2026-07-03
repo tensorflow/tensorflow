@@ -86,6 +86,7 @@ cuda_py_strict_test(
     name = "parameterized_truncated_normal_op_test",
     size = "medium",
     srcs = ["parameterized_truncated_normal_op_test.py"],
+    tags = ["nozapfhahn"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",

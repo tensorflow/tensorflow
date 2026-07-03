@@ -25,17 +25,27 @@ limitations under the License.
 #include "tensorflow/core/kernels/parameterized_truncated_normal_op.h"
 
 #include <algorithm>
-#include <cmath>
-#include <memory>
+#include <array>
+#include <limits>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "Eigen/Core"  // from @eigen_archive  // IWYU pragma: keep
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive  // IWYU pragma: keep
+#include "xla/tsl/lib/random/philox_random.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/stateless_random_ops.h"
+#include "tensorflow/core/lib/random/philox_random.h"  // IWYU pragma: keep // NOLINT(misc-include-cleaner)
 #include "tensorflow/core/lib/random/random_distributions.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/bcast.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -49,6 +59,7 @@ using random::PhiloxRandom;
 
 static constexpr int kMaxIterations = 1000;
 
+// NOLINTBEGIN(misc-include-cleaner)
 template <typename T>
 struct TruncatedNormalFunctor<CPUDevice, T> {
   void operator()(OpKernelContext* ctx, const CPUDevice& d, int64_t num_batches,
@@ -89,8 +100,8 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
 
       // Vectorized intermediate calculations for uniform rejection sampling.
       // We always generate at most 4 samples.
-      Eigen::array<T, 4> z;
-      Eigen::array<T, 4> g;
+      std::array<T, 4> z;
+      std::array<T, 4> g;
 
       for (int64_t b = start_batch; b < limit_batch; ++b) {
         // We are passed a flat array for each of the parameter tensors.
@@ -276,20 +287,17 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
     };
     // The cost of the initial calculations for the batch.
     const int64_t batchInitCost =
-        // normMin, normMax
         (Eigen::TensorOpCost::AddCost<T>() +
          Eigen::TensorOpCost::MulCost<T>()) *
-            2
-        // sqrtFactor
-        + Eigen::TensorOpCost::AddCost<T>() +
-        Eigen::TensorOpCost::MulCost<T>() +
+            2 +
+        Eigen::TensorOpCost::AddCost<T>() + Eigen::TensorOpCost::MulCost<T>() +
         Eigen::internal::functor_traits<
-            Eigen::internal::scalar_sqrt_op<T>>::Cost
-        // cutoff
-        + Eigen::TensorOpCost::MulCost<T>() * 4 +
-        Eigen::internal::functor_traits<Eigen::internal::scalar_exp_op<T>>::Cost
-        // diff
-        + Eigen::TensorOpCost::AddCost<T>();
+            Eigen::internal::scalar_sqrt_op<T>>::Cost +
+        Eigen::TensorOpCost::MulCost<T>() * 4 +
+        Eigen::internal::functor_traits<
+            Eigen::internal::scalar_exp_op<T>>::Cost +
+        Eigen::TensorOpCost::AddCost<T>();  // NOLINT
+
     const int64_t uniformSampleCost =
         random::PhiloxRandom::kElementCost +
         random::UniformDistribution<random::PhiloxRandom, T>::kElementCost;
@@ -301,7 +309,9 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
         Eigen::TensorOpCost::AddCost<T>() + uniformSampleCost +
         Eigen::internal::functor_traits<
             Eigen::internal::scalar_exp_op<T>>::Cost +
-        Eigen::TensorOpCost::MulCost<T>() + Eigen::TensorOpCost::AddCost<T>();
+        Eigen::TensorOpCost::MulCost<T>() +
+        Eigen::TensorOpCost::AddCost<T>();  // NOLINT
+
     // Estimate the cost for an entire batch.
     // Assume we use uniform sampling, and accept the 2nd sample on average.
     const int64_t batchCost =
@@ -354,8 +364,10 @@ struct TruncatedNormalFunctorV2<CPUDevice, T> {
 
       // Vectorized intermediate calculations for uniform rejection sampling.
       // We always generate at most 4 samples.
-      Eigen::array<T, Uniform::kResultElementCount> z;
-      Eigen::array<T, Uniform::kResultElementCount> g;
+      // clang-format off
+      std::array<T, Uniform::kResultElementCount> z;
+      std::array<T, Uniform::kResultElementCount> g;
+      // clang-format on
 
       const bool should_bcast = bcast.IsBroadcastingRequired();
       const auto& means_batch_indices = bcast.batch_indices(0);
@@ -567,20 +579,17 @@ struct TruncatedNormalFunctorV2<CPUDevice, T> {
     };
     // The cost of the initial calculations for the batch.
     const int64_t batchInitCost =
-        // normMin, normMax
         (Eigen::TensorOpCost::AddCost<T>() +
          Eigen::TensorOpCost::MulCost<T>()) *
-            2
-        // sqrtFactor
-        + Eigen::TensorOpCost::AddCost<T>() +
-        Eigen::TensorOpCost::MulCost<T>() +
+            2 +
+        Eigen::TensorOpCost::AddCost<T>() + Eigen::TensorOpCost::MulCost<T>() +
         Eigen::internal::functor_traits<
-            Eigen::internal::scalar_sqrt_op<T>>::Cost
-        // cutoff
-        + Eigen::TensorOpCost::MulCost<T>() * 4 +
-        Eigen::internal::functor_traits<Eigen::internal::scalar_exp_op<T>>::Cost
-        // diff
-        + Eigen::TensorOpCost::AddCost<T>();
+            Eigen::internal::scalar_sqrt_op<T>>::Cost +
+        Eigen::TensorOpCost::MulCost<T>() * 4 +
+        Eigen::internal::functor_traits<
+            Eigen::internal::scalar_exp_op<T>>::Cost +
+        Eigen::TensorOpCost::AddCost<T>();  // NOLINT
+
     const int64_t uniformSampleCost =
         random::PhiloxRandom::kElementCost +
         random::UniformDistribution<random::PhiloxRandom, T>::kElementCost;
@@ -592,7 +601,9 @@ struct TruncatedNormalFunctorV2<CPUDevice, T> {
         Eigen::TensorOpCost::AddCost<T>() + uniformSampleCost +
         Eigen::internal::functor_traits<
             Eigen::internal::scalar_exp_op<T>>::Cost +
-        Eigen::TensorOpCost::MulCost<T>() + Eigen::TensorOpCost::AddCost<T>();
+        Eigen::TensorOpCost::MulCost<T>() +
+        Eigen::TensorOpCost::AddCost<T>();  // NOLINT
+
     // Estimate the cost for an entire batch.
     // Assume we use uniform sampling, and accept the 2nd sample on average.
     const int64_t batchCost = batchInitCost + uniformRejectionSamplingCost * 2;
@@ -600,6 +611,7 @@ struct TruncatedNormalFunctorV2<CPUDevice, T> {
           batchCost, do_work);
   }
 };
+// NOLINTEND(misc-include-cleaner)
 
 }  // namespace functor
 
@@ -635,13 +647,21 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
     TensorShape tensor_shape;
     OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_tensor, &tensor_shape));
 
-    int32_t num_batches = tensor_shape.dim_size(0);
-    int32_t samples_per_batch = 1;
+    int64_t num_batches = tensor_shape.dim_size(0);
+    int64_t samples_per_batch = 1;
     const int32_t num_dims = tensor_shape.dims();
     for (int32_t i = 1; i < num_dims; i++) {
       samples_per_batch *= tensor_shape.dim_size(i);
     }
-    const int32_t num_elements = num_batches * samples_per_batch;
+    const int64_t num_elements = tensor_shape.num_elements();
+
+    OP_REQUIRES(
+        ctx,
+        num_elements >= 0 &&
+            num_elements <= std::numeric_limits<int32_t>::max(),
+        absl::InvalidArgumentError(
+            "ParameterizedTruncatedNormal does not support output shapes with "
+            "more than 2**31 - 1 elements."));
 
     // Allocate the output before fudging num_batches and samples_per_batch.
     Tensor* samples_tensor;
@@ -671,10 +691,11 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
       // All batches have the same parameters, so we can update the batch size
       // to a reasonable value to improve parallelism (ensure enough batches,
       // and no very small batches which have high overhead).
-      int32_t size = num_batches * samples_per_batch;
-      int32_t adjusted_samples = kDesiredBatchSize;
+      int64_t size = num_batches * samples_per_batch;
+      int64_t adjusted_samples = kDesiredBatchSize;
       // Ensure adjusted_batches * adjusted_samples >= size.
-      int32_t adjusted_batches = Eigen::divup(size, adjusted_samples);
+      int64_t adjusted_batches =
+          (size + adjusted_samples - 1) / adjusted_samples;
       num_batches = adjusted_batches;
       samples_per_batch = adjusted_samples;
     } else {
@@ -799,7 +820,15 @@ class StatelessParameterizedTruncatedNormal : public OpKernel {
     for (int64_t i = num_sample_dims; i < shape_tensor.dim_size(0); ++i) {
       num_batches *= output_shape.dim_size(i);
     }
-    const int64_t num_elements = num_batches * samples_per_batch;
+    const int64_t num_elements = output_shape.num_elements();
+
+    OP_REQUIRES(
+        ctx,
+        num_elements >= 0 &&
+            num_elements <= std::numeric_limits<int32_t>::max(),
+        absl::InvalidArgumentError(
+            "ParameterizedTruncatedNormal does not support output shapes with "
+            "more than 2**31 - 1 elements."));
 
     Tensor* samples_tensor;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &samples_tensor));

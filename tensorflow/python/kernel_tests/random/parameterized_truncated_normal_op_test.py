@@ -12,8 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ParameterizedTruncatedNormalOp."""
+"""Tests for ParameterizedTruncatedNormalOp on CPU and GPU.
 
+This module validates the correct execution of the truncated normal random
+number generator, checking distributions, bounds, and edge cases.
+"""
+
+# pylint: disable=g-direct-tensorflow-import,invalid-name
 import functools
 import math
 import timeit
@@ -23,6 +28,8 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
@@ -407,6 +414,78 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
         maxval=stddev_inside_bounds_before_using_randn + epsilon,
         use_stateless=True)
 
+  @test_util.run_deprecated_v1
+  def testIntegerOverflow(self):
+    # Test that integer overflow of 32-bit is handled/prevented.
+    # Note: shape has total elements exceeding max int32, which overflows
+    # to negative in int32 scaling logic.
+    shape = [2, 1073741824]
+    means = 0.0
+    stddevs = 1.0
+    minvals = [2.0]
+    maxvals = 3.0
+
+    for use_gpu in [True]:
+      if not test.is_gpu_available():
+        continue
+      with self.session(use_gpu=use_gpu):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError),
+            "does not support output shapes with more than 2\\*\\*31 - 1"
+            " elements",
+        ):
+          samples = random_ops.parameterized_truncated_normal(
+              shape=shape,
+              means=means,
+              stddevs=stddevs,
+              minvals=minvals,
+              maxvals=maxvals,
+              dtype=dtypes.half,
+          )
+          self.evaluate(samples)
+
+  @test_util.run_deprecated_v1
+  def testParallelismAdjustment(self):
+    # Shape: 101 (which is kDesiredBatchSize + 1).
+    # If the size is adjusted incorrectly (e.g. size - 1 mutant), the last
+    # element (index 100) will not be generated/written to.
+    for use_gpu in [False, True]:
+      with self.session(use_gpu=use_gpu):
+        samples = random_ops.parameterized_truncated_normal(
+            shape=[101],
+            means=10.0,
+            stddevs=1.0,
+            minvals=5.0,
+            maxvals=15.0,
+            dtype=dtypes.float32,
+        )
+        val = self.evaluate(samples)
+        self.assertLen(val, 101)
+        self.assertTrue(np.all(val >= 5.0))
+        self.assertTrue(np.all(val <= 15.0))
+
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla("Stateful RNG determinism varies")
+  def testDeterministicValues(self):
+    random_seed.set_random_seed(1234)
+    with self.session(use_gpu=False) as sess, ops.device("/cpu:0"):
+      samples = random_ops.parameterized_truncated_normal(
+          shape=[2, 50],
+          means=0.0,
+          stddevs=1.0,
+          minvals=-1.0,
+          maxvals=1.0,
+          seed=5678,
+      )
+      _ = sess.run(samples)
+      val2 = sess.run(samples)
+      self.assertAllClose(
+          val2[0][:5],
+          [0.3233, -0.0250, 0.4741, -0.8287, 0.8338],
+          rtol=1e-2,
+          atol=1e-2,
+      )
+
 
 # Benchmarking code
 def parameterized_vs_naive(shape, num_iters, use_gpu=False):
@@ -535,4 +614,6 @@ class TruncatedNormalBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
+  # Required to make the GPU benchmarks pass under the TF 2.0 environment.
+  ops.disable_eager_execution()
   test.main()
