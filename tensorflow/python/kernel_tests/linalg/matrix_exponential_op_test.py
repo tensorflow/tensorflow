@@ -139,17 +139,17 @@ class ExponentialOpTest(test.TestCase):
     in_tensor = [[np.inf, 1.], [1., 1.]]
     result = self.evaluate(linalg_impl.matrix_exponential(in_tensor))
     self.assertTrue(np.all(np.isnan(result)))
-    
+
   def testFloat16(self):
-  matrix = np.array([[1.]], dtype=np.float16)
+    matrix = np.array([[1.]], dtype=np.float16)
 
-  result = self.evaluate(linalg_impl.matrix_exponential(matrix))
+    result = self.evaluate(linalg_impl.matrix_exponential(matrix))
 
-  expected = self.evaluate(
+    expected = self.evaluate(
       linalg_impl.matrix_exponential(matrix.astype(np.float32)))
 
-  self.assertEqual(result.dtype, np.float16)
-  self.assertAllClose(
+    self.assertEqual(result.dtype, np.float16)
+    self.assertAllClose(
       result,
       expected.astype(np.float16),
       rtol=1e-2,
