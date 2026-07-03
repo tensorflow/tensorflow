@@ -736,7 +736,6 @@ cc_library(
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:decision",
         "//xla/stream_executor:device_description",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
