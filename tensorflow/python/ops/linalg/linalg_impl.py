@@ -264,6 +264,11 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
     matrix = ops.convert_to_tensor(input, name='input')
     if matrix.shape[-2:] == [0, 0]:
       return matrix
+
+    original_dtype = matrix.dtype
+    if original_dtype == dtypes.float16:
+      matrix = math_ops.cast(matrix, dtypes.float32)
+
     batch_shape = matrix.shape[:-2]
     if not batch_shape.is_fully_defined():
       batch_shape = array_ops.shape(matrix)[:-2]
@@ -341,10 +346,18 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
 
     _, result = while_loop.while_loop(c, b, [i, result])
     if not matrix.shape.is_fully_defined():
-      return array_ops.reshape(
-          result,
-          array_ops.concat((batch_shape, array_ops.shape(result)[-2:]), axis=0))
-    return array_ops.reshape(result, batch_shape.concatenate(result.shape[-2:]))
+      result = array_ops.reshape(
+        result,
+        array_ops.concat((batch_shape, array_ops.shape(result)[-2:]), axis=0))
+    else:
+      result = array_ops.reshape(
+        result,
+        batch_shape.concatenate(result.shape[-2:]))
+
+    if original_dtype == dtypes.float16:
+      result = math_ops.cast(result, original_dtype)
+
+    return result
 
 
 @tf_export('linalg.banded_triangular_solve', v1=[])
