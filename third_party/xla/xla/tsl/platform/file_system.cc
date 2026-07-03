@@ -376,7 +376,9 @@ absl::string_view FileSystem::Extension(absl::string_view path) const {
   if (pos == absl::string_view::npos) {
     return absl::string_view(path.data() + path.size(), 0);
   } else {
-    return absl::string_view(path.data() + pos + 1, path.size() - (pos + 1));
+    // pos indexes into basename, so slice basename rather than path.
+    return absl::string_view(basename.data() + pos + 1,
+                             basename.size() - (pos + 1));
   }
 }
 
