@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
@@ -125,11 +126,54 @@ class BitcastOp : public XlaOpKernel {
       ctx->SetOutput(0, output);
       return;
     }
-    // Error out if the bitcast has a complex source or destination type and
-    // the bitcast is not trivial.
-    OP_REQUIRES(ctx,
-                !xla::primitive_util::IsComplexType(src_type_) &&
-                    !xla::primitive_util::IsComplexType(dst_type_),
+
+    const bool src_complex = xla::primitive_util::IsComplexType(src_type_);
+    const bool dst_complex = xla::primitive_util::IsComplexType(dst_type_);
+
+    if (src_complex && !dst_complex) {
+      // A bitcast from a complex type reinterprets its contiguous
+      // [real, imag] storage. XLA's BitcastConvert cannot cross the
+      // complex<->real boundary, so express it with supported primitives:
+      // split into real/imag, lay them out as a trailing [real, imag]
+      // dimension, and bitcast the real component type to the destination.
+      // This is byte-for-byte equivalent to the eager Bitcast kernel.
+      const xla::PrimitiveType component =
+          xla::primitive_util::ComplexComponentType(src_type_);
+      const int64_t component_bit_width =
+          xla::primitive_util::BitWidth(component);
+      const int64_t dst_bit_width = xla::primitive_util::BitWidth(dst_type_);
+      OP_REQUIRES(ctx,
+                  dst_bit_width % component_bit_width == 0 ||
+                      component_bit_width % dst_bit_width == 0,
+                  absl::InvalidArgumentError(
+                      "Neither bit width is a multiple of the other."));
+
+      const TensorShape input_shape = ctx->InputShape(0);
+      const int64_t rank = input_shape.dims();
+      std::vector<int64_t> component_dims(input_shape.dim_sizes().begin(),
+                                          input_shape.dim_sizes().end());
+      component_dims.push_back(1);
+      xla::XlaOp real = xla::Reshape(xla::Real(input), component_dims);
+      xla::XlaOp imag = xla::Reshape(xla::Imag(input), component_dims);
+      xla::XlaOp paired = xla::ConcatInDim(ctx->builder(), {real, imag}, rank);
+      xla::XlaOp bits = xla::BitcastConvertType(paired, dst_type_);
+
+      // Match the shape the eager Bitcast produces: when the source element
+      // is wider than the destination it expands into a trailing minor
+      // dimension of src_bit_width / dst_bit_width integers.
+      const int64_t src_bit_width = xla::primitive_util::BitWidth(src_type_);
+      std::vector<int64_t> output_dims(input_shape.dim_sizes().begin(),
+                                       input_shape.dim_sizes().end());
+      if (src_bit_width > dst_bit_width) {
+        output_dims.push_back(src_bit_width / dst_bit_width);
+      }
+      ctx->SetOutput(0, xla::Reshape(bits, output_dims));
+      return;
+    }
+
+    // Real->complex and complex->complex bitcasts are not yet supported;
+    // XLA's BitcastConvert cannot cross the complex<->real boundary.
+    OP_REQUIRES(ctx, !src_complex && !dst_complex,
                 absl::UnimplementedError("Complex types not supported."));
     auto input_bit_width = xla::primitive_util::BitWidth(src_type_);
     auto output_bit_width = xla::primitive_util::BitWidth(dst_type_);
