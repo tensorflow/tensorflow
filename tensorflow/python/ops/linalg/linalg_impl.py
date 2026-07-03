@@ -266,7 +266,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
       return matrix
 
     original_dtype = matrix.dtype
-    if original_dtype == dtypes.float16:
+    if original_dtype in (dtypes.float16, dtypes.bfloat16):
       matrix = math_ops.cast(matrix, dtypes.float32)
 
     batch_shape = matrix.shape[:-2]
