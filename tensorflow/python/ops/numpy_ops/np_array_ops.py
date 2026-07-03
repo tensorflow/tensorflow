@@ -452,14 +452,16 @@ def compress(condition, a, axis=None):  # pylint: disable=redefined-outer-name,m
 
   assert axis >= 0 and axis < a.ndim
 
-  # `tf.boolean_mask` requires the first dimensions of array and condition to
-  # match. `np.compress` pads condition with False when it is shorter.
-  condition_t = condition
-  a_t = a
+  # `tf.boolean_mask` requires `a`'s size along `axis` to match `condition`'s
+  # length. `np.compress` ignores the entries of `a` beyond `len(condition)`, so
+  # we slice `a` down to `condition`'s length rather than padding `condition` up
+  # to `a`'s size with `False`. Both are equivalent, but slicing keeps the
+  # result bounded by `len(condition)` instead of `a.shape[axis]`; under XLA the
+  # padded version yields a looser dynamic bound that fails to compile when the
+  # result feeds an op requiring a smaller static extent (see #122055).
   if condition.shape[0] < a.shape[axis]:
-    padding = array_ops.fill([a.shape[axis] - condition.shape[0]], False)
-    condition_t = array_ops.concat([condition_t, padding], axis=0)
-  return array_ops.boolean_mask(tensor=a_t, mask=condition_t, axis=axis)
+    a = array_ops.gather(a, math_ops.range(condition.shape[0]), axis=axis)
+  return array_ops.boolean_mask(tensor=a, mask=condition, axis=axis)
 
 
 @tf_export.tf_export('experimental.numpy.copy', v1=[])
