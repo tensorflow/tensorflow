@@ -1220,11 +1220,14 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
+  // The parser updates the async wrapped computation to match `async-done`
+  // (via UpdateAsyncWrappedComputation). Consequently, the verifier now
+  // detects the mismatch at `async-start` (which still has the old shape)
+  // rather than at `async-done`.
   EXPECT_THAT(
       status.message(),
-      HasSubstr("async-done (opcode: async-done) expects the shape of output "
-                "to match the "
-                "shape of the second element in the async tuple at index {1}"));
+      HasSubstr("The async-start expects the async shape at index {1} to match "
+                "the async computation root shape"));
 }
 
 TEST_F(HloVerifierTest, AsyncStartMultipleAsyncDone) {
