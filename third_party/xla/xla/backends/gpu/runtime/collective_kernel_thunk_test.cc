@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/future.h"
 #include "xla/runtime/buffer_use.h"
@@ -50,6 +52,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/assemble_compilation_provider.h"
@@ -62,6 +65,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/future.h"
@@ -456,6 +460,168 @@ TEST(CollectiveKernelThunkTest, BufferUses) {
                           metadata.buffers[0].source_buffer.shape),
           BufferUse::Write(metadata.buffers[0].destination_buffer.slice,
                            metadata.buffers[0].destination_buffer.shape)));
+}
+
+bool IsAtLeastCuda12900(const se::StreamExecutor* executor) {
+  const auto& desc = executor->GetDeviceDescription();
+  const auto* cuda_cc = desc.gpu_compute_capability().cuda_compute_capability();
+  if (cuda_cc == nullptr) {
+    return false;
+  }
+  return std::min(desc.driver_version(), desc.compile_time_toolkit_version()) >=
+         se::SemanticVersion(12, 9, 0);
+}
+
+static CollectiveThunk::Buffer MakeNoOpBuffer(const BufferAllocation& alloc_src,
+                                              const BufferAllocation& alloc_dst,
+                                              int64_t length) {
+  int64_t byte_length = sizeof(float) * length;
+  ShapedSlice src_slice{BufferAllocation::Slice(&alloc_src, 0, byte_length),
+                        ShapeUtil::MakeShape(F32, {length})};
+  ShapedSlice dst_slice{BufferAllocation::Slice(&alloc_dst, 0, byte_length),
+                        ShapeUtil::MakeShape(F32, {length})};
+  CollectiveThunk::Buffer buffer{/*.element_count=*/length,
+                                 /*.source_buffer=*/src_slice,
+                                 /*.destination_buffer=*/dst_slice,
+                                 /*.source_memory_space=*/0,
+                                 /*.destination_memory_space=*/0};
+  return buffer;
+}
+
+TEST(CollectiveKernelThunkTest, RecordCommandBufferCreateUpdate) {
+  se::StreamExecutor* executor = GetGpuExecutor(0);
+  if (!IsAtLeastCuda12900(executor)) {
+    GTEST_SKIP() << "Child command nodes require CUDA 12.9+";
+  }
+
+  if (!executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastHopper() &&
+      !executor->GetDeviceDescription().gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP()
+        << "Collective kernel requires Hopper or newer, or a ROCm device";
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto trace_stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto async_stream, executor->CreateStream());
+
+  constexpr int64_t kLength = 4;
+  constexpr int64_t kByteLength = sizeof(float) * kLength;
+
+  se::DeviceAddress<float> src1 = executor->AllocateArray<float>(kLength, 0);
+  se::DeviceAddress<float> dst1 = executor->AllocateArray<float>(kLength, 0);
+  se::DeviceAddress<float> src2 = executor->AllocateArray<float>(kLength, 0);
+  se::DeviceAddress<float> dst2 = executor->AllocateArray<float>(kLength, 0);
+
+  BufferAllocation alloc_src(/*index=*/0, kByteLength, /*color=*/0);
+  BufferAllocation alloc_dst(/*index=*/1, kByteLength, /*color=*/0);
+  std::vector<CollectiveThunk::Buffer> buffers = {
+      MakeNoOpBuffer(alloc_src, alloc_dst, kLength)};
+
+  ReplicaGroup replica_group;
+  replica_group.add_replica_ids(0);
+  CollectiveConfig collective_config{
+      /*operand_element_type=*/{F32},
+      /*replica_groups=*/{replica_group},
+      /*group_mode=*/
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
+      /*use_symmetric_buffer=*/false};
+
+  const LaunchDimensions launch_dimensions(1, kLength);
+
+  auto collective_kernel_thunk = std::make_unique<CollectiveKernelThunk>(
+      Thunk::ThunkInfo(), collective_config,
+      /*is_async=*/true, buffers,
+      /*is_collective_kernel_enabled=*/true, std::string(kKernelName),
+      launch_dimensions);
+
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/1);
+  device_assignment(0, 0) = 0;
+
+  GpuExecutableRunOptions gpu_options;
+  gpu_options.set_gpu_global_device_ids(GpuExecutableRunOptions::DeviceIdMap{
+      std::make_pair(LocalDeviceId(0), GlobalDeviceId(0))});
+
+  ServiceExecutableRunOptions run_options;
+  run_options.mutable_run_options()->set_stream(stream.get());
+  run_options.mutable_run_options()->set_device_assignment(&device_assignment);
+  run_options.mutable_run_options()->set_gpu_executable_run_options(
+      &gpu_options);
+  run_options.mutable_run_options()->set_local_device_count(1);
+
+  std::vector<se::Stream*> async_streams = {async_stream.get()};
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveParams collective_params,
+      CollectiveParams::Create(run_options, async_streams,
+                               LocalDeviceId(executor->device_ordinal())));
+
+  ASSERT_OK_AND_ASSIGN(
+      GpuCliqueKey clique_key,
+      GetCollectiveGpuCliqueKey(collective_params, collective_config));
+  absl::Status is_supported = collective_kernel_thunk->IsSupported(
+      clique_key, *executor, collective_params);
+  if (!is_supported.ok()) {
+    GTEST_SKIP() << "Collective kernel is not supported on this executor: "
+                 << is_supported;
+  }
+
+  BufferAllocations allocations1({src1, dst1}, 0, nullptr);
+  BufferAllocations allocations2({src2, dst2}, 0, nullptr);
+
+  CollectiveCliqueRequests clique_requests;
+  CollectiveMemoryRequests memory_requests(allocations1);
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &memory_requests, executor,
+                                      &allocations1};
+  ASSERT_OK(collective_kernel_thunk->Prepare(prepare_params));
+
+  Thunk::InitializeParams initialize_params;
+  initialize_params.executor = executor;
+  initialize_params.stream = stream.get();
+  initialize_params.buffer_allocations = &allocations1;
+  initialize_params.collective_params = &collective_params;
+  initialize_params.src.text = kKernelSource;
+  ASSERT_OK(collective_kernel_thunk->Initialize(initialize_params));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  Thunk::ExecuteParams params1 = Thunk::ExecuteParams::Create(
+      run_options, allocations1, stream.get(), trace_stream.get(),
+      &collective_params, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr);
+
+  CommandStateManager state;
+  Command::RecordParams record_params = {state};
+  ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* cmd,
+      collective_kernel_thunk->Record(
+          params1, record_params, Command::RecordCreate{/*dependencies=*/{}},
+          command_buffer.get()));
+  ASSERT_NE(cmd, nullptr);
+
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  BufferAllocations updated_allocations({src2, dst2}, 0, nullptr);
+  Thunk::ExecuteParams params2 = Thunk::ExecuteParams::Create(
+      run_options, updated_allocations, stream.get(), trace_stream.get(),
+      &collective_params, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr);
+  std::vector<BufferAllocation::Index> updated_allocs = {0, 1};
+  Command::RecordParams update_record_params = {state,
+                                                std::move(updated_allocs)};
+  ASSERT_OK(command_buffer->Update());
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* updated_cmd,
+                       collective_kernel_thunk->Record(
+                           params2, update_record_params,
+                           Command::RecordUpdate{cmd}, command_buffer.get()));
+  EXPECT_EQ(updated_cmd, cmd);
+  ASSERT_OK(command_buffer->Finalize());
 }
 
 }  // namespace

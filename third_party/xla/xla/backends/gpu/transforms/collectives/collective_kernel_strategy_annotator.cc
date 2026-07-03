@@ -121,8 +121,7 @@ absl::StatusOr<bool> CollectiveKernelStrategyAnnotator::RunImpl(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : computation->instructions()) {
-      if (instr->opcode() != HloOpcode::kAllReduce &&
-          instr->opcode() != HloOpcode::kAllReduceStart) {
+      if (instr->opcode() != HloOpcode::kAllReduce) {
         continue;
       }
       ASSIGN_OR_RETURN(

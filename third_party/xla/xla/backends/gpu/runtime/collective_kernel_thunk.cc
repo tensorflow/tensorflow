@@ -152,25 +152,26 @@ absl::Status CopyCollectiveMetadataToDevice(
 }
 }  // namespace
 
-absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
+absl::Status CollectiveKernelThunk::IsSupported(
     const GpuCliqueKey& clique_key, se::StreamExecutor& executor,
     const CollectiveParams& collective_params) const {
   // For backward compatibility in proto we drop support for collective
   // kernels if the kernel name is empty.
   if (kernel_name_.empty()) {
-    return false;
+    return absl::FailedPreconditionError(
+        absl::StrFormat("Empty kernel name ('%s')", kernel_name_));
   }
   // Check if peer access is supported for all devices in the clique.
   for (const GlobalDeviceId& device : clique_key.devices()) {
     ASSIGN_OR_RETURN(const int peer_device_id,
                      GetLocalDeviceId(device, collective_params));
     if (!executor.CanEnablePeerAccessTo(peer_device_id)) {
-      XLA_VLOG_DEVICE(3, executor.device_ordinal())
-          << "Peer access is not supported with device " << peer_device_id;
-      return false;
+      return absl::FailedPreconditionError(absl::StrFormat(
+          "Peer access is not supported from device %d to device %d",
+          executor.device_ordinal(), peer_device_id));
     }
   }
-  return true;
+  return absl::OkStatus();
 }
 
 absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
@@ -181,13 +182,8 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
       GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_));
 
-  ASSIGN_OR_RETURN(
-      bool use_collective_kernel,
+  RETURN_IF_ERROR(
       IsSupported(clique_key, *params.executor, *params.collective_params));
-
-  if (!use_collective_kernel) {
-    return absl::OkStatus();
-  }
 
   ASSIGN_OR_RETURN(
       std::vector<std::vector<GlobalDeviceId>> device_groups,

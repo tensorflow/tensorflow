@@ -36,6 +36,7 @@ limitations under the License.*/
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -59,7 +60,7 @@ namespace xla::gpu {
 // - Launch the kernel.
 // When codegen kernel is used, kernel_name, launch_dimensions, shmem_bytes
 // must be set.
-class CollectiveKernelThunk : public Thunk {
+class CollectiveKernelThunk : public TracedCommand {
  public:
   static constexpr auto kMaxNumExecutors =
       ::stream_executor::gpu::kMaxNumAllReduceInputPtrs;
@@ -75,7 +76,7 @@ class CollectiveKernelThunk : public Thunk {
       bool is_multimem_enabled = false,
       std::optional<std::vector<uint8_t>> cubin = std::nullopt,
       bool use_pdl = false)
-      : Thunk{Thunk::kCollectiveKernel, info},
+      : TracedCommand{Thunk::kCollectiveKernel, info},
         collective_kernel_enabled_(is_collective_kernel_enabled),
         is_async_(is_async),
         collective_config_(std::move(collective_config)),
@@ -102,10 +103,11 @@ class CollectiveKernelThunk : public Thunk {
   bool use_pdl() const { return use_pdl_; }
   const std::optional<std::vector<uint8_t>>& cubin() const { return cubin_; }
 
-  // Returns true if the collective kernel is supported for the given clique.
-  absl::StatusOr<bool> IsSupported(
-      const GpuCliqueKey& clique_key, se::StreamExecutor& executor,
-      const CollectiveParams& collective_params) const;
+  // Returns the reason why the collective kernel is not supported.
+  // Returns OK if the collective kernel is supported.
+  absl::Status IsSupported(const GpuCliqueKey& clique_key,
+                           se::StreamExecutor& executor,
+                           const CollectiveParams& collective_params) const;
 
   // The single host collective thunk actually requires a clique key.
   absl::Status Prepare(const PrepareParams& params) final;

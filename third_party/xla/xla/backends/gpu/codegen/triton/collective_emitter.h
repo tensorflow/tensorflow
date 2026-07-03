@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
 namespace xla {
