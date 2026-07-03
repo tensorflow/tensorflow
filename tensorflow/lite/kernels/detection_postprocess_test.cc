@@ -129,9 +129,11 @@ class BaseDetectionPostprocessOpModel : public SingleOpModel {
 class PrepareOnlyDetectionPostprocessOpModel : public SingleOpModel {
  public:
   PrepareOnlyDetectionPostprocessOpModel(int max_detections,
-                                         int max_classes_per_detection) {
+                                         int max_classes_per_detection,
+                                         float scale = 10.0,
+                                         int num_class_predictions = 2) {
     input1_ = AddInput({TensorType_FLOAT32, {1, 1, 4}});
-    input2_ = AddInput({TensorType_FLOAT32, {1, 1, 2}});
+    input2_ = AddInput({TensorType_FLOAT32, {1, 1, num_class_predictions}});
     input3_ = AddInput({TensorType_FLOAT32, {1, 4}});
     AddOutput({TensorType_FLOAT32, {}});
     AddOutput({TensorType_FLOAT32, {}});
@@ -145,10 +147,10 @@ class PrepareOnlyDetectionPostprocessOpModel : public SingleOpModel {
       fbb.Float("nms_score_threshold", 0.0);
       fbb.Float("nms_iou_threshold", 0.5);
       fbb.Int("num_classes", 1);
-      fbb.Float("y_scale", 10.0);
-      fbb.Float("x_scale", 10.0);
-      fbb.Float("h_scale", 5.0);
-      fbb.Float("w_scale", 5.0);
+      fbb.Float("y_scale", scale);
+      fbb.Float("x_scale", scale);
+      fbb.Float("h_scale", scale);
+      fbb.Float("w_scale", scale);
     });
     fbb.Finish();
     SetCustomOp("TFLite_Detection_PostProcess", fbb.GetBuffer(),
@@ -183,6 +185,33 @@ TEST(DetectionPostprocessOpTest, RejectsNegativeMaxDetections) {
 TEST(DetectionPostprocessOpTest, RejectsNegativeMaxClassesPerDetection) {
   PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
                                            /*max_classes_per_detection=*/-1);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// A zero max_classes_per_detection leaves the outputs zero-sized while the
+// regular NMS path still writes up to max_detections results, so Prepare() must
+// reject it.
+TEST(DetectionPostprocessOpTest, RejectsZeroMaxClassesPerDetection) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
+                                           /*max_classes_per_detection=*/0);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// A zero scale value would divide by zero while decoding boxes.
+TEST(DetectionPostprocessOpTest, RejectsZeroScale) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
+                                           /*max_classes_per_detection=*/1,
+                                           /*scale=*/0.0);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// A zero class dimension on the predictions input leaves the score reads and
+// writes in Eval out of bounds.
+TEST(DetectionPostprocessOpTest, RejectsZeroClassDimension) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
+                                           /*max_classes_per_detection=*/1,
+                                           /*scale=*/10.0,
+                                           /*num_class_predictions=*/0);
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 

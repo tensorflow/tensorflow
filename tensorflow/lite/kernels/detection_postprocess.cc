@@ -162,12 +162,25 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_box_encodings), 3);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_class_predictions), 3);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_anchors), 2);
-  // number of detected boxes. max_detections and max_classes_per_detection come
+  // The class dimension of the predictions input sizes the temporary scores
+  // tensor and is indexed while writing results in Eval, so a zero here leaves
+  // those reads and writes out of bounds.
+  TF_LITE_ENSURE(context, input_class_predictions->dims->data[2] > 0);
+  // max_detections, max_classes_per_detection and the scale values all come
   // straight from the model's flexbuffer custom_options and are not checked by
-  // the flatbuffer verifier, so guard against a negative value or an overflow
-  // of the int multiply before it is used to size the output tensors.
+  // the flatbuffer verifier, so guard them before they size the output tensors
+  // or decode boxes.
   TF_LITE_ENSURE(context, op_data->max_detections >= 0);
-  TF_LITE_ENSURE(context, op_data->max_classes_per_detection >= 0);
+  // A zero max_classes_per_detection leaves the output tensors zero-sized while
+  // the regular NMS path still writes up to max_detections results, so require
+  // it to be strictly positive.
+  TF_LITE_ENSURE(context, op_data->max_classes_per_detection > 0);
+  // Zero scale values would divide by zero while decoding boxes.
+  TF_LITE_ENSURE(context, op_data->scale_values.y != 0);
+  TF_LITE_ENSURE(context, op_data->scale_values.x != 0);
+  TF_LITE_ENSURE(context, op_data->scale_values.h != 0);
+  TF_LITE_ENSURE(context, op_data->scale_values.w != 0);
+  // Guard against an overflow of the int multiply before it sizes the outputs.
   const int64_t num_detected_boxes_64 =
       static_cast<int64_t>(op_data->max_detections) *
       op_data->max_classes_per_detection;
