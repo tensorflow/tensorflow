@@ -1186,6 +1186,21 @@ DeviceAddressVmmAllocator::EvaluateMapTarget(
         source_record.reservation_address().opaque()));
   }
 
+  // Reject an active destination before waiting for a stale source alias. A
+  // failed Map() must not drain unrelated pending state.
+  if (FindOverlappingRecord(state, request.reservation_address,
+                            /*include_allocator=*/true,
+                            /*include_reservation=*/true,
+                            /*include_active=*/true,
+                            /*include_stale=*/false,
+                            /*exact_only=*/false,
+                            /*partial_only=*/false)
+          .has_value()) {
+    return absl::AlreadyExistsError(absl::StrFormat(
+        "reservation range is already tracked at virtual address %p",
+        request.reservation_address.opaque()));
+  }
+
   if (source_record.reservation_stale()) {
     CHECK(source_record.has_reservation_address());
     if (!source_record.reservation_matches(request.reservation_address)) {
@@ -1253,8 +1268,12 @@ DeviceAddressVmmAllocator::EvaluateMapTarget(
 absl::StatusOr<DeviceAddressVmmAllocator::PreparedMapTarget>
 DeviceAddressVmmAllocator::PrepareMapTarget(PerDeviceState& state,
                                             const MapRequest& request) {
+  // One source can have one stale alias and the destination can have one stale
+  // occupant. Without concurrent changes, at most two waits are needed before
+  // a third attempt can install or reuse the requested mapping.
+  constexpr int kMaxStaleMappingWaits = 2;
   bool first_attempt = true;
-  while (true) {
+  for (int wait_count = 0;; ++wait_count) {
     std::optional<PendingDeallocationKey> pending_completion_key;
     {
       // Keep record pointers inside this scope so none survives a wait that
@@ -1292,6 +1311,11 @@ DeviceAddressVmmAllocator::PrepareMapTarget(PerDeviceState& state,
               PreparedMapTarget::Action::kReusedStaleMapping};
         case MapTargetEvaluation::Action::kWait:
           CHECK(evaluation.pending_completion_key.has_value());
+          if (wait_count == kMaxStaleMappingWaits) {
+            return absl::AbortedError(
+                "Map() allocator state changed repeatedly while waiting for "
+                "stale mappings; retry Map()");
+          }
           pending_completion_key = evaluation.pending_completion_key;
           break;
       }
