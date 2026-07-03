@@ -32,14 +32,18 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/bit.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/shape_util.h"
@@ -413,6 +417,48 @@ absl::Status RunAllReduceKernel(
   return absl::InvalidArgumentError(
       "Unsupported AllReduce kernel. This line should never be reached if the "
       "result of `IsAllReduceKernelSupported` is correct.");
+}
+
+absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions) {
+  int64_t group_size = instr->GetModule()->config().replica_count();
+  if (!instr->replica_groups().empty() &&
+      instr->replica_groups()[0].replica_ids_size() > 0) {
+    group_size = instr->replica_groups()[0].replica_ids_size();
+  }
+  const int64_t input_size_bytes =
+      ShapeUtil::ByteSizeOf(instr->operand(0)->shape());
+  const se::gpu::AllReduceStrategy strategy =
+      GetAllReduceStrategy(input_size_bytes, /*is_multimem_enabled=*/false);
+  const int64_t num_signal_flags = group_size * launch_dimensions.num_blocks();
+  const int64_t signal_size = xla::RoundUpTo<uint64_t>(
+      num_signal_flags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
+  const int64_t remote_size =
+      xla::RoundUpTo<uint64_t>(input_size_bytes, kXlaAllocatedBufferAlignBytes);
+
+  CollectiveKernelSpec kernel_spec = {
+      /* .input_buffer_specs= */ {
+          {/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+      /* .output_buffer_specs= */
+      {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+      /* .scratch_buffers= */
+      {{signal_size, /*requires_multimem=*/false,  // Signal buffers
+        SymmetricMemoryType::kXlaRendezvous,
+        /*should_memzero=*/true,
+        /*should_double_buffer=*/true},
+       {remote_size, /*requires_multimem=*/false,  // Remote buffers
+        SymmetricMemoryType::kXlaRendezvous,
+        /*should_memzero=*/false,
+        /*should_double_buffer=*/true}},
+      /* .argument_descriptors= */
+      {{KernelArgType::kInputBuffer, /*index=*/0},   // buffers[0].source_buffer
+       {KernelArgType::kOutputBuffer, /*index=*/0},  // buffers[0].dst_buffer
+       {KernelArgType::kRuntimeRank},
+       {KernelArgType::kInvocationCount},
+       {KernelArgType::kScratchBuffer, /*index=*/0},   // signal buffers
+       {KernelArgType::kScratchBuffer, /*index=*/1}},  // scratch buffers
+      /* .sync_count_increment = */ 1 + static_cast<uint32_t>(strategy)};
+  return kernel_spec;
 }
 
 }  // namespace xla::gpu

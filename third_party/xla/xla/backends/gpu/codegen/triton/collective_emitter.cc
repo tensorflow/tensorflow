@@ -58,6 +58,8 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
@@ -214,8 +216,8 @@ GetBlockLevelFusionConfigForAllReduce(
     const DeviceAssignment* device_assignment) {
   ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    all_reduce->backend_config<GpuBackendConfig>());
-  if (gpu_config.collective_backend_config().kernel_strategy() ==
-      CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT) {
+  if (!IsTritonCollectiveKernel(
+          gpu_config.collective_backend_config().kernel_strategy())) {
     VLOG(3) << "All-reduce is not annotated with Triton strategy. Skipping.";
     return std::nullopt;
   }
@@ -1094,6 +1096,23 @@ mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
   VLOG(3) << "AllReduceEmitter::Emit using strategy: "
           << maybe_context->strategy;
   return AllReduceEmitter::Emit(maybe_context.value(), rewriter);
+}
+
+absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions) {
+  const HloInstruction* collective = instr;
+  if (instr->opcode() == HloOpcode::kFusion) {
+    collective = instr->fused_instructions_computation()->root_instruction();
+  }
+  switch (collective->opcode()) {
+    case HloOpcode::kAllReduce:
+      return CreateAllReduceKernelSpec(collective, launch_dimensions);
+    default:
+      return absl::UnimplementedError(
+          absl::StrFormat("CollectiveKernelSpec creation not implemented for "
+                          "opcode: %s",
+                          HloOpcodeString(collective->opcode())));
+  }
 }
 
 }  // namespace xla::gpu

@@ -4098,6 +4098,7 @@ cc_library(
     srcs = ["all_reduce.cc"],
     hdrs = ["all_reduce.h"],
     deps = [
+        ":collective_params",
         "//xla:shape_util",
         "//xla:types",
         "//xla:util",
@@ -4109,6 +4110,7 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer_hdr",
         "//xla/service:gpu_topology",
+        "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",

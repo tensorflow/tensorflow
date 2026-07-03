@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -88,6 +90,10 @@ int64_t GetMaxSupportedAllReduceSizeBytes(se::gpu::AllReduceStrategy strategy);
 // the all-reduce strategy.
 LaunchDimensions AllReduceLaunchDimensions(int64_t elements, int64_t num_ranks,
                                            se::gpu::AllReduceStrategy strategy);
+
+// Creates a CollectiveKernelSpec for a given all-reduce instruction.
+absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
 
 // Returns absl::OkStatus() if supported, or an error status detailing why
 // it is not supported.
