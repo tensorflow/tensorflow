@@ -61,3 +61,9 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )
+
+alias(
+    name = "sqlite3",
+    actual = ":org_sqlite",
+    visibility = ["//visibility:public"],
+)
