@@ -155,6 +155,16 @@ bool ShouldRewriteReductionFusion(
 absl::StatusOr<bool> ShouldTryRewriteFusion(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_description) {
+  // If a dot fusion can be handled by Triton, GemmRewriter would have already
+  // taken care of it.
+  for (const HloInstruction* instr :
+       fusion->fused_instructions_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kDot ||
+        instr->opcode() == HloOpcode::kScaledDot) {
+      return false;
+    }
+  }
+
   if (fusion->IsMultiOutputFusion() &&
       !fusion->GetModule()
            ->config()

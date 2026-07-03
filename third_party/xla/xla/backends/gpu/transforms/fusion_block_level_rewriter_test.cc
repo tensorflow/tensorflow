@@ -290,6 +290,29 @@ ENTRY entry  {
       IsOkAndHolds(false));
 }
 
+TEST_F(FusionBlockLevelRewriterTest, DoesNotRewriteFusionContainingDot) {
+  const absl::string_view hlo_text = R"(
+fusion_computation {
+  param_0 = f32[10,10] parameter(0)
+  param_1 = f32[10,10] parameter(1)
+  ROOT dot = f32[10,10] dot(param_0, param_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  param_0 = f32[10,10] parameter(0)
+  param_1 = f32[10,10] parameter(1)
+  ROOT fusion = f32[10,10] fusion(param_0, param_1), kind=kLoop, calls=fusion_computation
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  EXPECT_THAT(
+      FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
+                               &mlir_context_)
+          .Run(module.get()),
+      absl_testing::IsOkAndHolds(false));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
