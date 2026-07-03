@@ -477,7 +477,7 @@ void initialize_cufft() {
           [](StreamExecutor *parent) -> fft::FftSupport * {
             return new gpu::CUDAFft(parent);
           });
-  if (!status.ok()) {
+  if (!status.ok() && status.code() != absl::StatusCode::kAlreadyExists) {
     LOG(INFO) << "Unable to register cuFFT factory: " << status.message();
   }
 }

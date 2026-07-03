@@ -6977,7 +6977,7 @@ void initialize_cudnn() {
             return dnn;
           });
 
-  if (!status.ok()) {
+  if (!status.ok() && status.code() != absl::StatusCode::kAlreadyExists) {
     LOG(INFO) << "Unable to register cuDNN factory: " << status.message();
   }
 }
