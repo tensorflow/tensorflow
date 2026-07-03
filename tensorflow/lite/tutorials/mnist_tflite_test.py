@@ -17,6 +17,12 @@ class MnistTfliteTest(unittest.TestCase):
 
     self.assertFalse(mnist_tflite.is_correct_prediction(output, 2))
 
+  def test_should_raise_value_error_if_output_is_empty(self):
+    output = np.array([], dtype=np.float32)
+
+    with self.assertRaisesRegex(ValueError, 'Output must not be empty.'):
+      mnist_tflite.predicted_label(output)
+
 
 if __name__ == '__main__':
   unittest.main()

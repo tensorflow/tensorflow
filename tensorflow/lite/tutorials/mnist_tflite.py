@@ -67,6 +67,8 @@ def run_eval(interpreter, input_image):
 
 
 def predicted_label(output):
+  if np.size(output) == 0:
+    raise ValueError('Output must not be empty.')
   return int(np.argmax(output))
 
 
