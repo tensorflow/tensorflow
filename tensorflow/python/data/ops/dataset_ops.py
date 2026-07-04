@@ -1502,19 +1502,14 @@ class DatasetV2(
     When you `shuffle` a dataset and then `zip` it with an unshuffled dataset,
     the element pairing will not match the original order because each input
     dataset is iterated independently. If you need to shuffle multiple datasets
-    while preserving the correspondence between their elements, either shuffle
-    after zipping or use the same `seed` on all datasets:
+    while preserving the correspondence between their elements, you should
+    shuffle after zipping:
 
     ```python
     # Correct: shuffle after zipping to keep pairs aligned.
     a = tf.data.Dataset.range(3)
     b = tf.data.Dataset.range(3)
     dataset = tf.data.Dataset.zip(a, b).shuffle(3)
-
-    # Also correct: same seed + buffer_size on both datasets.
-    a = tf.data.Dataset.range(3).shuffle(3, seed=42)
-    b = tf.data.Dataset.range(3).shuffle(3, seed=42)
-    dataset = tf.data.Dataset.zip(a, b)
     ```
 
     Args:
