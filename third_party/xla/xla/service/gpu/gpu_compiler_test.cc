@@ -121,7 +121,7 @@ using ::testing::Values;
 using ::tsl::gtl::ValueOrDie;
 
 class GpuCompilerTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   se::CudaComputeCapability get_cuda_cc() const {
     return device_description().cuda_compute_capability();
@@ -1353,7 +1353,7 @@ TEST_F(PassOrderTest,
 }
 
 // Tests that passes are converging and pipelines reach a fix point.
-class FixPointTest : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
+class FixPointTest : public HloInterpreterReferenceMixin<HloTestBase> {
  public:
   void ExpectPipelinesReachFixedPoint(absl::string_view module_text) {
     ASSERT_OK_AND_ASSIGN(
