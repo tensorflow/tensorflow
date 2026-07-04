@@ -18,6 +18,7 @@ import itertools
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
@@ -227,6 +228,20 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.match(
         np_math_ops.isclose(a, b, equal_nan=equal_nan),
         np.isclose(a, b, equal_nan=equal_nan))
+
+  def testAllCloseNonBroadcastableShapesXla(self):
+    t = ops.convert_to_tensor(np.arange(8, dtype=np.complex64))
+
+    def model(x):
+      a = np_array_ops.hstack((5, 5, 5, 5))
+      b = np_math_ops.logical_xor(x, x)
+      return np_math_ops.allclose(a, b, atol=-2.92515058314041)
+
+    eager_out = model(t)
+    xla_out = def_function.function(model, jit_compile=True)(t)
+
+    self.assertAllEqual(eager_out, xla_out)
+    self.assertAllEqual(False, xla_out)
 
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
