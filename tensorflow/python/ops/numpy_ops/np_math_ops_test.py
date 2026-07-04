@@ -424,7 +424,11 @@ class MathTest(test.TestCase, parameterized.TestCase):
       (
           np.ones((2, 2), dtype=np.int32), 
           np.zeros((0, 3, 4), dtype=np.int32)
-      )
+      ),
+      # scalar (Rank 0) vs Empty Tensor
+      (5, np.zeros((0, 3), dtype=np.float32)),
+      # Rank 0 vs Rank 0
+      (5, 3.5)
     ]
 
     return self._testBinaryOp(
