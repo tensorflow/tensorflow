@@ -104,12 +104,12 @@ mlir::LogicalResult ExtractTfVersions(mlir::ModuleOp module,
 absl::StatusOr<int64_t> GetTfGraphProducerVersion(mlir::ModuleOp module) {
   auto versions = module->getAttrOfType<::mlir::DictionaryAttr>("tf.versions");
   if (!versions) {
-    return errors::Internal(
+    return absl::InternalError(
         "Missing 'tf.versions' attribute on the module, abort.\n");
   }
   auto producer = mlir::dyn_cast<mlir::IntegerAttr>(versions.get("producer"));
   if (!producer) {
-    return errors::Internal(
+    return absl::InternalError(
         "Missing 'producer' attribute on the module, abort.\n");
   }
   return producer.getInt();
