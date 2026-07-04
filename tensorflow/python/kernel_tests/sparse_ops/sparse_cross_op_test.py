@@ -1076,7 +1076,8 @@ class SparseCrossHashedOpTest(BaseSparseCrossOpTest):
       )
       self.evaluate(op)
 
-  def test_sparse_cross_hashed_with_dense_inputs_and_strong_hash(self):
+  def test_sparse_and_dense_hashed_strong_hash(self):
+    # test sparse_cross_hashed with mixed inputs and strong_hash
     dense = constant_op.constant([[1], [2]], dtype=dtypes.int64)
     idx = constant_op.constant([[0, 0], [1, 0]], dtype=dtypes.int64)
     shape = constant_op.constant([2, 1], dtype=dtypes.int64)
@@ -1107,6 +1108,21 @@ class SparseCrossHashedOpTest(BaseSparseCrossOpTest):
 
     with self.session():
       self.evaluate(output)    
+
+  def test_dense_hashed_strong_hash(self):
+    # test sparse_cross_hashed with only dense inputs and strong_hash 
+    dense_inp = constant_op.constant([[11, 12], [21, 22]], dtypes.int64)
+    inds, vals, shapes = gen_sparse_ops.sparse_cross_hashed(
+      indices=[],
+      values=[],
+      shapes=[],
+      dense_inputs=[dense_inp],
+      strong_hash=True,
+      num_buckets=10,
+      salt=[137, 173])
+    out = sparse_tensor.SparseTensor(inds, vals, shapes)
+    with self.cached_session():
+      self.evaluate(out)
 
 if __name__ == '__main__':
   test.main()
