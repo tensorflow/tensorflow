@@ -127,7 +127,7 @@ struct AutotunerEnvironment {
   std::unique_ptr<Compiler::GpuTargetConfig> target_config;
   std::unique_ptr<se::DeviceAddressAllocator> allocator;
   // For cache
-  AutotuneScope scope;
+  AutotuneCacheContext cache_ctx;
   // For parallel codegen and autotuning.
   std::unique_ptr<tsl::thread::ThreadPool> thread_pool;
   // The autotuner.
@@ -199,12 +199,8 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
           gpu_compiler->ShapeSizeBytesFunction(), gpu_compiler,
           platform->id()));
 
-  AutotuneScope scope;
-  scope.device = target_config->device_description.name();
-  scope.codegen_version = "unknown";
-  for (const auto& backend : autotuner_backends) {
-    scope.per_backend_versions[backend->backend()] = backend->version();
-  }
+  AutotuneCacheContext ctx = AutotuneCacheContext::Create(
+      target_config->device_description, autotuner_backends);
 
   ASSIGN_OR_RETURN(
       auto autotuner_orchestrator,
@@ -228,7 +224,7 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
 
   return AutotunerEnvironment{std::move(compiler),    std::move(mlir_context),
                               std::move(alias_info),  std::move(target_config),
-                              std::move(allocator),   std::move(scope),
+                              std::move(allocator),   std::move(ctx),
                               std::move(thread_pool), std::move(autotuner)};
 }
 
@@ -244,11 +240,11 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
 
   if (!cache_dir.empty()) {
     auto dir_cache = std::make_unique<DirectoryCache>(
-        env.scope, std::string(cache_dir), CacheMode::kReadWrite,
+        env.cache_ctx, std::string(cache_dir), CacheMode::kReadWrite,
         KeyMatchingMode::kLoose);
     auto local_cache = std::make_unique<LocalCache>(
         dir_cache->GetKeyMatchingMode(),
-        &LocalCacheStorage::GetInstance(env.scope));
+        &LocalCacheStorage::GetInstance(env.cache_ctx));
     autotuner_cache = std::make_unique<TieredCache>(std::move(local_cache),
                                                     std::move(dir_cache));
   } else {

@@ -33,7 +33,7 @@ namespace xla {
 // to a backing store (e.g., filesystem, database).
 class PersistentCache : public AutotunerCacheInterface {
  public:
-  PersistentCache(AutotuneScope context, CacheMode mode,
+  PersistentCache(AutotuneCacheContext context, CacheMode mode,
                   KeyMatchingMode matching_mode);
 
   std::optional<Config> Lookup(const HloInstruction* instr) override;
@@ -58,7 +58,7 @@ class PersistentCache : public AutotunerCacheInterface {
   virtual absl::Status Write(const autotuner::AutotuneEntry& entry) = 0;
 
  private:
-  AutotuneScope context_;
+  AutotuneCacheContext context_;
   CacheMode mode_;
   KeyMatchingMode matching_mode_;
 

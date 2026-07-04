@@ -62,7 +62,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -244,20 +243,16 @@ std::unique_ptr<AutotunerCacheInterface> CreateAutotunerCache(
                  << new_cache_dir;
   }
   if (!new_cache_dir.empty()) {
-    AutotuneScope scope;
-    scope.device = target_config.device_description.name();
-    scope.codegen_version = "unknown";
-    for (const auto& backend : backends) {
-      scope.per_backend_versions[backend->backend()] = backend->version();
-    }
+    AutotuneCacheContext cache_ctx = AutotuneCacheContext::Create(
+        target_config.device_description, backends);
 
     auto dir_cache = std::make_unique<DirectoryCache>(
-        scope, new_cache_dir,
+        cache_ctx, new_cache_dir,
         GetCacheMode(debug_options.xla_gpu_experimental_autotune_cache_mode()),
         KeyMatchingMode::kLoose);
-    auto local_cache =
-        std::make_unique<LocalCache>(dir_cache->GetKeyMatchingMode(),
-                                     &LocalCacheStorage::GetInstance(scope));
+    auto local_cache = std::make_unique<LocalCache>(
+        dir_cache->GetKeyMatchingMode(),
+        &LocalCacheStorage::GetInstance(cache_ctx));
     return std::make_unique<TieredCache>(std::move(local_cache),
                                          std::move(dir_cache));
   }

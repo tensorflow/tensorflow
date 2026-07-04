@@ -30,6 +30,22 @@ cc_library(
 )
 
 cc_library(
+    name = "fake_codegen_backend",
+    testonly = 1,
+    hdrs = ["fake_codegen_backend.h"],
+    deps = [
+        ":backend_config_proto_cc",
+        ":backends_proto_cc",
+        ":codegen_backend",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:executable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "autotune_fingerprint",
     srcs = ["autotune_fingerprint.cc"],
     hdrs = ["autotune_fingerprint.h"],
@@ -254,19 +270,26 @@ cc_library(
     ],
 )
 
+# TODO(b/444398084): Rename to autotuner_cache.h as it is no longer just an interface.
 cc_library(
     name = "autotuner_cache_interface",
+    srcs = ["autotuner_cache_interface.cc"],
     hdrs = ["autotuner_cache_interface.h"],
     deps = [
         ":backend_config_proto_cc",
         ":backends_proto_cc",
+        ":codegen_backend",
         "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/util:sorted_range",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:fingerprint",
     ],
 )
 
@@ -300,9 +323,13 @@ xla_cc_test(
     deps = [
         ":autotuner_cache_interface",
         ":backends_proto_cc",
+        ":codegen_backend",
+        ":fake_codegen_backend",
         ":persistent_cache",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -337,9 +364,13 @@ xla_cc_test(
     deps = [
         ":autotuner_cache_interface",
         ":backends_proto_cc",
+        ":codegen_backend",
         ":directory_cache",
+        ":fake_codegen_backend",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "//xla/tsl/testing:temporary_directory",
@@ -370,11 +401,15 @@ xla_cc_test(
     deps = [
         ":autotuner_cache_interface",
         ":backends_proto_cc",
+        ":codegen_backend",
         ":directory_cache",
+        ":fake_codegen_backend",
         ":local_cache",
         ":tiered_cache",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:test",
         "//xla/tsl/testing:temporary_directory",
         "@com_google_googletest//:gtest_main",
@@ -505,5 +540,23 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@triton//:triton_version",
+    ],
+)
+
+xla_cc_test(
+    name = "autotune_cache_test",
+    srcs = ["autotune_cache_test.cc"],
+    deps = [
+        ":autotuner_cache_interface",
+        ":backends_proto_cc",
+        ":codegen_backend",
+        ":fake_codegen_backend",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -27,31 +27,50 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/fake_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
 
-AutotuneScope CreateScope() {
-  AutotuneScope scope;
-  scope.device = "test_device";
-  scope.explicit_version = "v1.0";
-  scope.codegen_version = "cg_v1";
-  scope.per_backend_versions[autotuner::Backend::TRITON] = "triton_v1";
-  return scope;
+AutotuneCacheContext CreateCacheContext(
+    std::string explicit_version = "v1.0",
+    std::vector<std::pair<autotuner::Backend, std::string>> backends_info = {
+        {autotuner::Backend::TRITON, "triton_v1"}}) {
+  stream_executor::DeviceDescription device_description;
+  device_description.set_name("test_gpu");
+  device_description.set_core_count(108);
+  device_description.set_clock_rate_ghz(1.41);
+  device_description.set_memory_bandwidth(1555000000000);
+  device_description.set_l2_cache_size(41943040);
+
+  stream_executor::CudaComputeCapability cuda_cc(8, 0);
+  stream_executor::GpuComputeCapability gpu_cc(cuda_cc);
+  device_description.set_gpu_compute_capability(gpu_cc);
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  for (const auto& [backend, version] : backends_info) {
+    backends.push_back(std::make_unique<FakeCodegenBackend>(backend, version));
+  }
+
+  return AutotuneCacheContext::Create(device_description, backends,
+                                      std::move(explicit_version));
 }
 
 using ::tsl::protobuf::util::MessageDifferencer;
 
 class MockPersistentCache : public PersistentCache {
  public:
-  MockPersistentCache(AutotuneScope scope, CacheMode mode,
+  MockPersistentCache(AutotuneCacheContext cache_ctx, CacheMode mode,
                       KeyMatchingMode matching_mode,
                       std::vector<autotuner::AutotuneEntry>* entries)
-      : PersistentCache(std::move(scope), mode, matching_mode),
+      : PersistentCache(std::move(cache_ctx), mode, matching_mode),
         entries_(entries) {}
 
  protected:
@@ -107,7 +126,7 @@ TEST_F(PersistentCacheTest, BasicInsertAndLookup) {
                        ParseAndReturnVerifiedModule(kHlo1));
   const HloInstruction* dot = module->entry_computation()->root_instruction();
 
-  MockPersistentCache cache(CreateScope(), CacheMode::kReadWrite,
+  MockPersistentCache cache(CreateCacheContext(), CacheMode::kReadWrite,
                             KeyMatchingMode::kStrict, &shared_entries_);
   AutotunerCacheInterface::Config config = CreateTestConfig();
 
@@ -126,14 +145,17 @@ TEST_F(PersistentCacheTest, StrictModeRejection) {
                        ParseAndReturnVerifiedModule(kHlo1));
   const HloInstruction* dot = module->entry_computation()->root_instruction();
 
-  AutotuneScope scope = CreateScope();
-  MockPersistentCache cache(scope, CacheMode::kReadWrite,
+  AutotuneCacheContext cache_ctx = CreateCacheContext();
+  MockPersistentCache cache(cache_ctx, CacheMode::kReadWrite,
                             KeyMatchingMode::kStrict, &shared_entries_);
   AutotunerCacheInterface::Config config = CreateTestConfig();
   EXPECT_OK(cache.Insert(dot, config));
 
-  scope.codegen_version = "cg_v2";
-  MockPersistentCache cache2(scope, CacheMode::kReadOnly,
+  // Create a new context with different backend version to change
+  // codegen_version.
+  AutotuneCacheContext cache_ctx2 =
+      CreateCacheContext("v1.0", {{autotuner::Backend::TRITON, "triton_v2"}});
+  MockPersistentCache cache2(cache_ctx2, CacheMode::kReadOnly,
                              KeyMatchingMode::kStrict, &shared_entries_);
 
   std::optional<AutotunerCacheInterface::Config> result = cache2.Lookup(dot);
@@ -145,16 +167,20 @@ TEST_F(PersistentCacheTest, LooseModeMatching) {
                        ParseAndReturnVerifiedModule(kHlo1));
   const HloInstruction* dot = module->entry_computation()->root_instruction();
 
-  AutotuneScope scope = CreateScope();
-  MockPersistentCache cache(scope, CacheMode::kReadWrite,
+  AutotuneCacheContext cache_ctx = CreateCacheContext();
+  MockPersistentCache cache(cache_ctx, CacheMode::kReadWrite,
                             KeyMatchingMode::kLoose, &shared_entries_);
   AutotunerCacheInterface::Config config =
       CreateTestConfig(autotuner::Backend::TRITON);
   EXPECT_OK(cache.Insert(dot, config));
 
   // Change codegen version, but keep backend version same.
-  scope.codegen_version = "cg_v2";
-  MockPersistentCache cache2(scope, CacheMode::kReadOnly,
+  // Add another backend to change codegen_version, but keep TRITON version
+  // same.
+  AutotuneCacheContext cache_ctx2 =
+      CreateCacheContext("v1.0", {{autotuner::Backend::TRITON, "triton_v1"},
+                                  {autotuner::Backend::CUDNN, "cudnn_v1"}});
+  MockPersistentCache cache2(cache_ctx2, CacheMode::kReadOnly,
                              KeyMatchingMode::kLoose, &shared_entries_);
 
   std::optional<AutotunerCacheInterface::Config> result = cache2.Lookup(dot);
@@ -167,7 +193,7 @@ TEST_F(PersistentCacheTest, CacheReadOnlyConstraints) {
                        ParseAndReturnVerifiedModule(kHlo1));
   const HloInstruction* dot = module->entry_computation()->root_instruction();
 
-  MockPersistentCache cache_ro(CreateScope(), CacheMode::kReadOnly,
+  MockPersistentCache cache_ro(CreateCacheContext(), CacheMode::kReadOnly,
                                KeyMatchingMode::kStrict, &shared_entries_);
   AutotunerCacheInterface::Config config = CreateTestConfig();
   EXPECT_EQ(cache_ro.Insert(dot, config).code(),
