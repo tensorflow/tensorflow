@@ -109,7 +109,7 @@ class WindowsEnv : public Env {
     return PathMatchSpecW(ws_path.c_str(), ws_pattern.c_str()) == TRUE;
   }
 
-  void SleepForMicroseconds(int64 micros) override { Sleep(micros / 1000); }
+  void SleepForMicroseconds(int64_t micros) override { Sleep(micros / 1000); }
 
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
                       absl::AnyInvocable<void()> fn) override {
@@ -161,7 +161,7 @@ class WindowsEnv : public Env {
     delete f;
   }
 
-  void SchedClosureAfter(int64 micros,
+  void SchedClosureAfter(int64_t micros,
                          absl::AnyInvocable<void()> closure) override {
     PTP_TIMER timer = CreateThreadpoolTimer(
         SchedClosureAfterCallback,
