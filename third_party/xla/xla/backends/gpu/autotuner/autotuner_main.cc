@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -57,6 +56,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
+#include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -71,7 +71,7 @@ This tool autotunes a list of HLO modules and prints the results to stdout.
 
 Usage:
 
-  bazel run autotuner_main -- --hlo_files=path/to/hlo_module1,path/to/hlo_module2
+  bazel run autotuner_main -- --hlo_files=path/to/*.hlo,path/to/hlo_module2.hlo
 )";
 }  // namespace
 
@@ -111,12 +111,23 @@ class PrintingAutotunerCache : public AutotunerCacheInterface {
   }
 };
 
-absl::StatusOr<std::unique_ptr<HloModule>> GetModule(
-    absl::string_view hlo_file) {
-  std::string hlo_text;
-  RETURN_IF_ERROR(
-      tsl::ReadFileToString(tsl::Env::Default(), hlo_file, &hlo_text));
-  return ParseAndReturnUnverifiedModule(hlo_text);
+absl::StatusOr<std::vector<std::string>> GetHloFiles(
+    absl::string_view hlo_files_str) {
+  std::vector<std::string> hlo_files_patterns =
+      absl::StrSplit(hlo_files_str, ',', absl::SkipEmpty());
+  std::vector<std::string> hlo_files;
+  for (const auto& pattern : hlo_files_patterns) {
+    std::vector<std::string> matched_files;
+    RETURN_IF_ERROR(
+        tsl::Env::Default()->GetMatchingPaths(pattern, &matched_files))
+        << "Failed to match pattern: " << pattern;
+    if (matched_files.empty()) {
+      LOG(WARNING) << "No files matched pattern: " << pattern;
+    }
+    hlo_files.insert(hlo_files.end(), matched_files.begin(),
+                     matched_files.end());
+  }
+  return hlo_files;
 }
 
 struct AutotunerEnvironment {
@@ -255,7 +266,8 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
 
   for (const auto& hlo_file : hlo_files) {
     LOG(INFO) << "Autotuning " << hlo_file;
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module, GetModule(hlo_file));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     LoadModuleFromFile(hlo_file));
     ASSIGN_OR_RETURN(
         std::vector<Autotuner::TuningResult> results,
         env.autotuner->TuneConfigs(*module, should_autotune,
@@ -292,9 +304,16 @@ int main(int argc, char* argv[]) {
   }
   tsl::port::InitMain(usage_string.c_str(), &argc, &argv);
 
-  std::vector<std::string> hlo_files = absl::StrSplit(hlo_files_str, ',');
-  if (hlo_files.empty() || (hlo_files.size() == 1 && hlo_files[0].empty())) {
-    LOG(QFATAL) << "No HLO files specified.";
+  absl::StatusOr<std::vector<std::string>> hlo_files_or =
+      xla::gpu::GetHloFiles(hlo_files_str);
+  if (!hlo_files_or.ok()) {
+    LOG(QFATAL) << "Failed to get HLO files: " << hlo_files_or.status();
+  }
+  std::vector<std::string> hlo_files = *hlo_files_or;
+
+  if (hlo_files.empty()) {
+    LOG(QFATAL) << "No HLO files matched the specified patterns:"
+                << hlo_files_str << ">";
   }
 
   xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
