@@ -3695,6 +3695,9 @@ def leaky_relu(features, alpha=0.2, name=None):
     if features.dtype.is_integer:
       features = math_ops.cast(features, dtypes.float32)
     if isinstance(alpha, np.ndarray):
+    if alpha < 0:
+      raise ValueError(
+          f'alpha must be >= 0, got {alpha}')
       alpha = alpha.item()
     return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
 
