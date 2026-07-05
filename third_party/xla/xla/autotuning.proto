@@ -12,14 +12,18 @@ import "google/protobuf/duration.proto";
 import "xla/tsl/protobuf/dnn.proto";
 
 message CudnnVersion {
-  int32 major = 1;
-  int32 minor = 2;
-  int32 patch = 3;
+  reserved 1, 2, 3;
+  reserved "major", "minor", "patch";
+  int32 major_version = 4;
+  int32 minor_version = 5;
+  int32 patch_version = 6;
 }
 
 message ComputeCapability {
-  int32 major = 1;
-  int32 minor = 2;
+  reserved 1, 2;
+  reserved "major", "minor";
+  int32 major_version = 3;
+  int32 minor_version = 4;
 }
 
 message AutotuneResult {
@@ -79,12 +83,13 @@ message AutotuneResult {
     int64 block_m = 1;
     int64 block_n = 2;
     int64 block_k = 3;
-    int64 split_k = 4;
+    int64 split_k = 4 [deprecated = true];
     int64 num_stages = 5;
     int64 num_warps = 6;
     int64 num_ctas = 7;
     bool is_tma_allowed = 8;
     bool is_warp_specialization_allowed = 9;
+    int64 waves_per_eu = 10;
     // LINT.ThenChange(//tensorflow/compiler/xla/service/gpu/matmul_utils.h)
   }
 

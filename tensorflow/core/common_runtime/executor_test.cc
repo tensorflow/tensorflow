@@ -159,11 +159,10 @@ Rendezvous::ParsedKey Key(const std::string& sender, const uint64_t incarnation,
                           const std::string& receiver,
                           const std::string& name) {
   Rendezvous::ParsedKey result;
-  CHECK(
+  CHECK_OK(
       Rendezvous::ParseKey(Rendezvous::CreateKey(sender, incarnation, receiver,
                                                  name, FrameAndIter(0, 0)),
-                           &result)
-          .ok());
+                           &result));
   return result;
 }
 
@@ -437,7 +436,7 @@ TEST_F(ExecutorTest, Abort) {
   rendez_->Ref();
   SchedClosure([this]() {
     Env::Default()->SleepForMicroseconds(100 * 1000);
-    rendez_->StartAbort(errors::Aborted(""));
+    rendez_->StartAbort(absl::AbortedError(""));
     rendez_->Unref();
   });
   EXPECT_TRUE(absl::IsAborted(Run(rendez_)));

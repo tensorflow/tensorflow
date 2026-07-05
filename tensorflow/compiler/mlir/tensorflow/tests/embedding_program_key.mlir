@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-embedding-program-key | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-embedding-program-key | env FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: func @single_op_program_key
 func.func @single_op_program_key() {

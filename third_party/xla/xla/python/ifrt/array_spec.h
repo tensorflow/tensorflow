@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.pb.h"
 #include "xla/python/ifrt/dtype.h"
@@ -89,7 +90,7 @@ struct ArraySpec {
   absl::StatusOr<ArraySpecProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     ArraySpecProto proto;
-    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 

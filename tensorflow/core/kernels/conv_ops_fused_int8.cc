@@ -58,29 +58,31 @@ struct LaunchFusedConv2DOpCpuInt8Helper {
                   const FusedComputationArgs& fusion_args,
                   const Conv2DParameters& params,
                   const Conv2DDimensions& dimensions, Tensor* output) {
-    OP_REQUIRES(ctx, dimensions.in_depth == filter.dim_size(2),
-                errors::Unimplemented("Fused conv implementation does not "
-                                      "support grouped convolutions for now."));
+    OP_REQUIRES(
+        ctx, dimensions.in_depth == filter.dim_size(2),
+        absl::UnimplementedError("Fused conv implementation does not "
+                                 "support grouped convolutions for now."));
     OP_REQUIRES(
         ctx, params.data_format == FORMAT_NHWC,
-        errors::Unimplemented(
+        absl::UnimplementedError(
             "Fused conv implementation for int8/qint8 on CPU only supports "
             "NHWC tensor format for now."));
-    OP_REQUIRES(ctx,
-                DataTypeToEnum<T>::value == DT_INT8 ||
-                    DataTypeToEnum<T>::value == DT_QINT8,
-                errors::Unimplemented("Specialized fused conv implemented for "
-                                      "only int8 and qint8 on CPU."));
+    OP_REQUIRES(
+        ctx,
+        DataTypeToEnum<T>::value == DT_INT8 ||
+            DataTypeToEnum<T>::value == DT_QINT8,
+        absl::UnimplementedError("Specialized fused conv implemented for "
+                                 "only int8 and qint8 on CPU."));
     OP_REQUIRES(
         ctx, dimensions.dilation_rows == 1 && dimensions.dilation_cols == 1,
-        errors::Unimplemented(
+        absl::UnimplementedError(
             "Fused conv implementation for int8/qint8 on CPU only supports "
             "dilation of 1 for rows and cols."));
     OP_REQUIRES(
         ctx,
         fusion == FusedComputationType::kBiasAdd ||
             fusion == FusedComputationType::kBiasAddWithRelu,
-        errors::Unimplemented(
+        absl::UnimplementedError(
             "Fused conv implementation for int8/qint8 on CPU only supports "
             "BiasAdd + None or BiasAdd + Relu."));
 
@@ -317,100 +319,100 @@ void operator()(
     FusedComputationType fusion, const FusedComputationArgs& fusion_args,
     const Conv2DParameters& params, const Conv2DDimensions& dimensions,
     Tensor* output_param) {
-    OP_REQUIRES(ctx, dimensions.in_depth == filter_param.dim_size(1),
-                errors::Unimplemented("Fused conv implementation does not "
-                                      "support grouped convolutions for now."));
-    OP_REQUIRES(ctx, params.data_format == TensorFormat::FORMAT_NCHW_VECT_C,
-                errors::Unimplemented(
-                    "Fused convolution for int8 is only supported on GPU "
-                    "for NCHW_VECT_C format"));
-    OP_REQUIRES(ctx,
-                DataTypeToEnum<T>::value == DT_INT8 ||
-                    DataTypeToEnum<T>::value == DT_QINT8,
-                errors::Unimplemented("Specialized fused conv implemented for "
-                                      "only int8 and qint8 on GPU."));
-    OP_REQUIRES(
-        ctx, dimensions.dilation_rows == 1 && dimensions.dilation_cols == 1,
-        errors::Unimplemented(
-            "Fused conv implementation for int8/qint8 on GPU only supports "
-            "dilation of 1 for rows and cols."));
-    OP_REQUIRES(
-        ctx,
-        fusion == FusedComputationType::kBiasAdd ||
-            fusion == FusedComputationType::kBiasAddWithRelu,
-        errors::Unimplemented(
-            "Fused conv implementation for int8/qint8 on GPU only supports "
-            "BiasAdd + None or BiasAdd + Relu."));
+  OP_REQUIRES(
+      ctx, dimensions.in_depth == filter_param.dim_size(1),
+      absl::UnimplementedError("Fused conv implementation does not "
+                               "support grouped convolutions for now."));
+  OP_REQUIRES(ctx, params.data_format == TensorFormat::FORMAT_NCHW_VECT_C,
+              absl::UnimplementedError(
+                  "Fused convolution for int8 is only supported on GPU "
+                  "for NCHW_VECT_C format"));
+  OP_REQUIRES(ctx,
+              DataTypeToEnum<T>::value == DT_INT8 ||
+                  DataTypeToEnum<T>::value == DT_QINT8,
+              absl::UnimplementedError("Specialized fused conv implemented for "
+                                       "only int8 and qint8 on GPU."));
+  OP_REQUIRES(
+      ctx, dimensions.dilation_rows == 1 && dimensions.dilation_cols == 1,
+      absl::UnimplementedError(
+          "Fused conv implementation for int8/qint8 on GPU only supports "
+          "dilation of 1 for rows and cols."));
+  OP_REQUIRES(
+      ctx,
+      fusion == FusedComputationType::kBiasAdd ||
+          fusion == FusedComputationType::kBiasAddWithRelu,
+      absl::UnimplementedError(
+          "Fused conv implementation for int8/qint8 on GPU only supports "
+          "BiasAdd + None or BiasAdd + Relu."));
 
-    constexpr int kBias = 2;
-    constexpr int kSideInput = 3;
-    constexpr int kConvInputScale = 4;
-    constexpr int kSideInputScale = 5;
+  constexpr int kBias = 2;
+  constexpr int kSideInput = 3;
+  constexpr int kConvInputScale = 4;
+  constexpr int kSideInputScale = 5;
 
-    const Tensor& bias = ctx->input(kBias);
-    const Tensor& side_input_param = ctx->input(kSideInput);
-    const Tensor& conv_input_scale_param = ctx->input(kConvInputScale);
-    const Tensor& side_input_scale_param = ctx->input(kSideInputScale);
+  const Tensor& bias = ctx->input(kBias);
+  const Tensor& side_input_param = ctx->input(kSideInput);
+  const Tensor& conv_input_scale_param = ctx->input(kConvInputScale);
+  const Tensor& side_input_scale_param = ctx->input(kSideInputScale);
 
-    // Assuming int8 <--> NCHW_VECT_C, OIHW_VECT_I (int8x4) here.
-    constexpr TensorFormat data_format = TensorFormat::FORMAT_NCHW_VECT_C;
-    constexpr FilterTensorFormat filter_format =
-        FilterTensorFormat::FORMAT_OIHW_VECT_I;
-    const Padding padding = params.padding;
+  // Assuming int8 <--> NCHW_VECT_C, OIHW_VECT_I (int8x4) here.
+  constexpr TensorFormat data_format = TensorFormat::FORMAT_NCHW_VECT_C;
+  constexpr FilterTensorFormat filter_format =
+      FilterTensorFormat::FORMAT_OIHW_VECT_I;
+  const Padding padding = params.padding;
 
-    int32_t row_stride = dimensions.stride_rows;
-    int32_t col_stride = dimensions.stride_cols;
+  int32_t row_stride = dimensions.stride_rows;
+  int32_t col_stride = dimensions.stride_cols;
 
-    auto* stream = ctx->op_device_context()->stream();
-    OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
-    OP_REQUIRES(ctx, stream->GetCudaComputeCapability().IsAtLeast(6, 1),
-                errors::Unimplemented(
-                    "Fused convolution for int8 is only supported on GPUs with "
-                    "compute capability 6.1 or later."));
+  auto* stream = ctx->op_device_context()->stream();
+  OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
+  OP_REQUIRES(ctx, stream->GetCudaComputeCapability().IsAtLeast(6, 1),
+              absl::UnimplementedError(
+                  "Fused convolution for int8 is only supported on GPUs with "
+                  "compute capability 6.1 or later."));
 
-    se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
-                                                stream);
-    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter);
+  se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
+                                              stream);
+  se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter);
 
-    const int batch_size = GetTensorDim(input_param, data_format, 'N');
-    int conv_input_rows = GetTensorDim(input_param, data_format, 'H');
-    int conv_input_cols = GetTensorDim(input_param, data_format, 'W');
-    const int conv_input_depth =
-        GetTensorDim(input_param, data_format, 'C') * 4;
+  const int batch_size = GetTensorDim(input_param, data_format, 'N');
+  int conv_input_rows = GetTensorDim(input_param, data_format, 'H');
+  int conv_input_cols = GetTensorDim(input_param, data_format, 'W');
+  const int conv_input_depth = GetTensorDim(input_param, data_format, 'C') * 4;
 
-    const int output_rows = GetTensorDim(*output_param, data_format, 'H');
-    const int output_cols = GetTensorDim(*output_param, data_format, 'W');
-    const int output_depth = GetFilterDim(filter_param, filter_format, 'O');
-    const int filter_rows = GetFilterDim(filter_param, filter_format, 'H');
-    const int filter_cols = GetFilterDim(filter_param, filter_format, 'W');
-    int padding_rows = 0;
-    int padding_cols = 0;
-    const Tensor* conv_input = &input_param;
+  const int output_rows = GetTensorDim(*output_param, data_format, 'H');
+  const int output_cols = GetTensorDim(*output_param, data_format, 'W');
+  const int output_depth = GetFilterDim(filter_param, filter_format, 'O');
+  const int filter_rows = GetFilterDim(filter_param, filter_format, 'H');
+  const int filter_cols = GetFilterDim(filter_param, filter_format, 'W');
+  int padding_rows = 0;
+  int padding_cols = 0;
+  const Tensor* conv_input = &input_param;
 
-    Tensor maybe_padded_conv_input;
-    if (padding == Padding::SAME) {
-      // Adjusts padding so cudnn supports it. Sets `adjusted_padding` to be the
-      // adjusted padding, and `extra_padding_before` and `extra_padding_after`
-      // to be the extra padding that FusedConv needs to apply before calling
-      // cudnn.
-      auto AdjustPaddingForCudnn =
-          [](int padding, int filter_size, int* adjusted_padding,
-             int* extra_padding_before, int* extra_padding_after) {
+  Tensor maybe_padded_conv_input;
+  if (padding == Padding::SAME) {
+    // Adjusts padding so cudnn supports it. Sets `adjusted_padding` to be the
+    // adjusted padding, and `extra_padding_before` and `extra_padding_after`
+    // to be the extra padding that FusedConv needs to apply before calling
+    // cudnn.
+    auto AdjustPaddingForCudnn =
+        [](int padding, int filter_size, int* adjusted_padding,
+           int* extra_padding_before, int* extra_padding_after) {
 #if CUDNN_VERSION < 7000
-            if (filter_size >= 6) {
-              // TODO(b/70795525): Remove after NVIDIA fixes this bug with int8
-              // fused convolution. I don't know cuDNN7 still has the bug, so
-              // enable this workaround for cuDNN6 or older.
-              *adjusted_padding = 0;
-              *extra_padding_before = padding / 2;
-              *extra_padding_after = padding - *extra_padding_before;
-              return;
-            }
+          if (filter_size >= 6) {
+            // TODO(b/70795525): Remove after NVIDIA fixes this bug with int8
+            // fused convolution. I don't know cuDNN7 still has the bug, so
+            // enable this workaround for cuDNN6 or older.
+            *adjusted_padding = 0;
+            *extra_padding_before = padding / 2;
+            *extra_padding_after = padding - *extra_padding_before;
+            return;
+          }
 #endif
-            *adjusted_padding = padding / 2 * 2;
-            *extra_padding_before = 0;
-            *extra_padding_after = padding % 2;
-          };
+          *adjusted_padding = padding / 2 * 2;
+          *extra_padding_before = 0;
+          *extra_padding_after = padding % 2;
+        };
 
       // Total padding on rows and cols is
       // Pr = (R' - 1) * S + Kr - R

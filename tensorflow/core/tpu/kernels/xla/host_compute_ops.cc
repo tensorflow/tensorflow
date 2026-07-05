@@ -108,14 +108,14 @@ class HostComputeOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("tpu_core", &tpu_core_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Tinputs", &input_dtypes_));
     OP_REQUIRES(ctx, ctx->num_inputs() == input_dtypes_.size(),
-                errors::InvalidArgument("Tinputs size=", input_dtypes_.size(),
-                                        " but expected ", ctx->num_inputs(),
-                                        " inputs."));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Tinputs size=", input_dtypes_.size(), " but expected ",
+                    ctx->num_inputs(), " inputs.")));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Toutputs", &output_dtypes_));
     OP_REQUIRES(ctx, ctx->num_outputs() == output_dtypes_.size(),
-                errors::InvalidArgument("Toutputs size=", output_dtypes_.size(),
-                                        " but expected ", ctx->num_outputs(),
-                                        " outputs."));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Toutputs size=", output_dtypes_.size(), " but expected ",
+                    ctx->num_outputs(), " outputs.")));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("ancestors", &ancestors_));
     NameAttrList shape_inference_graph;
     OP_REQUIRES_OK(
@@ -124,9 +124,9 @@ class HostComputeOp : public XlaOpKernel {
     if (shape_inference_func_name.empty()) {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("shapes", &static_output_shapes_));
       OP_REQUIRES(ctx, static_output_shapes_.size() == output_dtypes_.size(),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "shapes attr list size ", static_output_shapes_.size(),
-                      " differs from dtypes size ", output_dtypes_.size()));
+                      " differs from dtypes size ", output_dtypes_.size())));
       OP_REQUIRES_OK(ctx, MakeXlaShapes(static_output_shapes_, output_dtypes_,
                                         &static_xla_output_shapes_,
                                         &static_xla_output_shape_));
@@ -134,15 +134,15 @@ class HostComputeOp : public XlaOpKernel {
     } else {
       FunctionLibraryRuntime* flib_runtime = ctx->function_library();
       OP_REQUIRES(ctx, flib_runtime != nullptr,
-                  errors::Internal(
+                  absl::InternalError(
                       "No function library runtime at kernel construction"));
       const FunctionLibraryDefinition* library =
           flib_runtime->GetFunctionLibraryDefinition();
       const FunctionDef* fdef = library->Find(shape_inference_func_name);
-      OP_REQUIRES(
-          ctx, fdef != nullptr,
-          errors::Internal("Failed to find function ",
-                           shape_inference_func_name, " in function library."));
+      OP_REQUIRES(ctx, fdef != nullptr,
+                  absl::InternalError(absl::StrCat("Failed to find function ",
+                                                   shape_inference_func_name,
+                                                   " in function library.")));
       OP_REQUIRES_OK(ctx, FunctionDefToBodyHelper(
                               *fdef, AttrSlice(&shape_inference_graph.attr()),
                               library, &shape_inference_graph_function_));
@@ -151,8 +151,9 @@ class HostComputeOp : public XlaOpKernel {
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr(kXlaTokenInputNodesAttrName, &token_input_nodes_));
     OP_REQUIRES(ctx, !token_input_nodes_.empty(),
-                errors::InvalidArgument("XlaHostCompute node does not have ",
-                                        kXlaTokenInputNodesAttrName, " attr"));
+                absl::InvalidArgumentError(
+                    absl::StrCat("XlaHostCompute node does not have ",
+                                 kXlaTokenInputNodesAttrName, " attr")));
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kXlaOriginalOutsideCompilationNodeName,
                                      &original_node_name_));
   }
@@ -231,9 +232,9 @@ class HostComputeOp : public XlaOpKernel {
     }
     OP_REQUIRES(
         ctx, output_shapes->size() == ctx->num_outputs(),
-        errors::InvalidArgument("Op has ", ctx->num_outputs(), " outputs ",
-                                " but output shape vector of size ",
-                                output_shapes->size()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Op has ", ctx->num_outputs(), " outputs ",
+            " but output shape vector of size ", output_shapes->size())));
     if (ctx->num_outputs() > 0) {
       // Register the shapes used in this transfer.
       OP_REQUIRES_OK(ctx, ctx->compiler()->SetHostToDeviceMetadata(
@@ -340,24 +341,24 @@ class HostComputeOp : public XlaOpKernel {
       if (node->type_string() == kRecvAtHostOp) {
         const AttrValue* key_attr = node->attrs().Find("key");
         if (key_attr == nullptr) {
-          return errors::InvalidArgument("Node ", node->name(),
-                                         " has no key attribute");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Node ", node->name(), " has no key attribute"));
         }
         std::vector<TensorShape> dtoh_shapes;
         if (!ctx->compiler()
                  ->GetDeviceToHostShapes(key_attr->s(), &dtoh_shapes)
                  .ok()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Shape inference for HostCompute ", ctx->op_kernel().name(),
               " failed: host recv node ", node->name(), " with key '",
-              key_attr->s(), "' has unknown shapes.");
+              key_attr->s(), "' has unknown shapes."));
         }
         if (dtoh_shapes.size() != node->num_outputs()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Shape inference for HostCompute ", ctx->op_kernel().name(),
               " failed: host recv node ", node->name(), " with key '",
               key_attr->s(), "' has ", node->num_outputs(),
-              " outputs but inferred shapes expect ", dtoh_shapes.size());
+              " outputs but inferred shapes expect ", dtoh_shapes.size()));
         }
         for (int i = 0; i < node->num_outputs(); ++i) {
           shape_inference::InferenceContext* shape_ctx =
@@ -369,9 +370,9 @@ class HostComputeOp : public XlaOpKernel {
         }
       } else if (node->type_string() == kSendFromHostOp) {
         if (got_output_shapes) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Shape inference for HostCompute ", ctx->op_kernel().name(),
-              " failed: inference graph has multiple send from host nodes");
+              " failed: inference graph has multiple send from host nodes"));
         }
         got_output_shapes = true;
         // The last input is the dynamic key so don't record its shape.
@@ -381,10 +382,10 @@ class HostComputeOp : public XlaOpKernel {
         for (int i = 0; i < node->num_inputs() - 1; ++i) {
           shape_inference::ShapeHandle handle = shape_ctx->input(i);
           if (!shape_ctx->FullyDefined(handle)) {
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(absl::StrCat(
                 "Shape inference for HostCompute ", ctx->op_kernel().name(),
                 " failed: send from host node ", node->name(),
-                " has non-fully defined shape of input index ", i);
+                " has non-fully defined shape of input index ", i));
           }
           TensorShapeProto shape_proto;
           shape_ctx->ShapeHandleToProto(handle, &shape_proto);
@@ -394,9 +395,9 @@ class HostComputeOp : public XlaOpKernel {
       }
     }
     if (!got_output_shapes) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Shape inference for HostCompute ", ctx->op_kernel().name(),
-          " failed: inference graph has no send from host node");
+          " failed: inference graph has no send from host node"));
     }
     return absl::OkStatus();
   }
@@ -431,8 +432,9 @@ class SendToHostOp : public XlaOpKernel {
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr(kXlaTokenInputNodesAttrName, &token_input_nodes_));
     OP_REQUIRES(ctx, !token_input_nodes_.empty(),
-                errors::InvalidArgument("XlaSendToHost node does not have ",
-                                        kXlaTokenInputNodesAttrName, " attr"));
+                absl::InvalidArgumentError(
+                    absl::StrCat("XlaSendToHost node does not have ",
+                                 kXlaTokenInputNodesAttrName, " attr")));
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kXlaOriginalOutsideCompilationNodeName,
                                      &original_node_name_));
   }
@@ -486,8 +488,9 @@ class RecvFromHostOp : public XlaOpKernel {
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr(kXlaTokenInputNodesAttrName, &token_input_nodes_));
     OP_REQUIRES(ctx, !token_input_nodes_.empty(),
-                errors::InvalidArgument("XlaRecvFromHost node does not have ",
-                                        kXlaTokenInputNodesAttrName, " attr"));
+                absl::InvalidArgumentError(
+                    absl::StrCat("XlaRecvFromHost node does not have ",
+                                 kXlaTokenInputNodesAttrName, " attr")));
     if (!ctx->GetAttr(kXlaOriginalOutsideCompilationNodeName,
                       &original_node_name_)
              .ok())

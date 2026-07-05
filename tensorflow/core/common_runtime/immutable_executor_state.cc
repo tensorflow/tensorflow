@@ -318,7 +318,7 @@ absl::Status ImmutableExecutorState::BuildControlFlowInfo(
       // Exit to the parent frame.
       parent = parent_nodes[curr_id];
       if (!parent) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Invalid Exit op: Cannot find a corresponding Enter op.");
       }
       frame_name = cf_info->frame_names[parent->id()];

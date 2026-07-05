@@ -122,6 +122,8 @@ void HloLiveRange::FlattenSchedule(const HloComputation& computation,
                               : async_context);
         }
       } else if (instruction->opcode() == HloOpcode::kWhile) {
+        // Order of flattening matters here: for while loops, the condition
+        // must be flattened first, then the body.
         FlattenSchedule(*instruction->while_condition(), async_context);
         FlattenSchedule(*instruction->while_body(), async_context);
       }

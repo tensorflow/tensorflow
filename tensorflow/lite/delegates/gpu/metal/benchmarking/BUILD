@@ -46,7 +46,7 @@ ios_application(
         "ipad",
     ],
     infoplists = ["Info.plist"],
-    minimum_os_version = "12.0",
+    minimum_os_version = "15.0",
     provisioning_profile = "//tensorflow/lite/delegates/gpu/metal/benchmarking:provisioning_profile.mobileprovision",
     tags = [
         "local",

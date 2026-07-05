@@ -81,7 +81,7 @@ class DatasetIterator
     tensors_.clear();
     status_ = iterator_->GetNext(iterator_ctx_.get(), &tensors_, &end_of_input);
     if (status_.ok() && end_of_input) {
-      status_ = errors::OutOfRange("end of iterator");
+      status_ = absl::OutOfRangeError("end of iterator");
     }
   }
 
@@ -131,9 +131,9 @@ std::unique_ptr<InitializerSerializer> MakeDatasetInitializerSerializer(
         *out = ops::BinaryOp("InitializeTableFromDataset", table, dataset_node,
                              builder->opts());
         if (*out == nullptr) {
-          return errors::Internal(
-              "Failed to create InitializeTableFromDataset op: ",
-              builder->opts().StatusToString());
+          return absl::InternalError(
+              absl::StrCat("Failed to create InitializeTableFromDataset op: ",
+                           builder->opts().StatusToString()));
         }
         return absl::OkStatus();
       },

@@ -38,11 +38,13 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-class ScatterTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+class ScatterTest : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
  protected:
   void RunTest(const absl::string_view hlo_text, Literal* const operand,
                Literal* const scatter_indices, Literal* const updates) {

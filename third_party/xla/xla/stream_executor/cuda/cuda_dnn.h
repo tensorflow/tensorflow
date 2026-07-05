@@ -58,9 +58,12 @@ class CudnnGraph : public dnn::DnnGraph {
   explicit CudnnGraph(cudnn_frontend::graph::Graph&& graph)
       : graph_(std::move(graph)) {}
   // Prepares a graph and checks whether it is generally supported.
-  absl::Status Prepare(dnn::DnnSupport&, const EngineOptions&) override;
+  absl::Status Prepare(dnn::DnnSupport*,
+                       const DeviceDescription& gpu_device_info,
+                       const EngineOptions&) override;
   // Builds single plan of the graph with given ID.
-  absl::Status Build(dnn::DnnSupport&, std::optional<int64_t> plan_id) override;
+  absl::Status Build(dnn::DnnSupport*, const DeviceDescription& gpu_device_info,
+                     std::optional<int64_t> plan_id) override;
   // Builds all the plans
   absl::Status Execute(Stream& stream, absl::Span<DeviceAddressBase> operands,
                        int64_t local_device_ordinal) const override;
@@ -681,7 +684,7 @@ class CudnnSupport : public dnn::DnnSupport {
 };
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
-    dnn::DnnSupport& dnn_support,
+    dnn::DnnSupport* dnn_support, const DeviceDescription& gpu_device_info,
     const dnn::MatmulTensorDescriptor& q_descriptor,
     const dnn::MatmulTensorDescriptor& k_descriptor,
     const dnn::MatmulTensorDescriptor& v_descriptor,
@@ -695,7 +698,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     int max_seg_per_batch, ScoreModFunc* score_mod);
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
-    dnn::DnnSupport& dnn_support,
+    dnn::DnnSupport* dnn_support, const DeviceDescription& gpu_device_info,
     const dnn::MatmulTensorDescriptor& q_descriptor,
     const dnn::MatmulTensorDescriptor& k_descriptor,
     const dnn::MatmulTensorDescriptor& v_descriptor,
@@ -704,7 +707,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
     dnn::FMHAMaskKind mask_type);
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
-    dnn::DnnSupport& dnn_support, const dnn::MatmulTensorDescriptor& q_desc,
+    dnn::DnnSupport* dnn_support, const DeviceDescription& gpu_device_info,
+    const dnn::MatmulTensorDescriptor& q_desc,
     const dnn::MatmulTensorDescriptor& k_desc,
     const dnn::MatmulTensorDescriptor& p_desc,
     const dnn::MatmulTensorDescriptor& v_desc,
@@ -720,7 +724,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     ScoreModFunc* score_mod);
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
-    dnn::DnnSupport& dnn_support, const dnn::MatmulTensorDescriptor& q_desc,
+    dnn::DnnSupport* dnn_support, const DeviceDescription& gpu_device_info,
+    const dnn::MatmulTensorDescriptor& q_desc,
     const dnn::MatmulTensorDescriptor& k_desc,
     const dnn::MatmulTensorDescriptor& p_desc,
     const dnn::MatmulTensorDescriptor& v_desc,
@@ -730,7 +735,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
     dnn::FMHAMaskKind mask_type);
 
 absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
-    dnn::DnnSupport& dnn_support, const dnn::TensorDescriptor& lhs_data,
+    dnn::DnnSupport* dnn_support, const DeviceDescription& gpu_device_info,
+    const dnn::TensorDescriptor& lhs_data,
     const dnn::TensorDescriptor& lhs_scale,
     const dnn::TensorDescriptor& rhs_data,
     const dnn::TensorDescriptor& rhs_scale, dnn::DataType result_type,

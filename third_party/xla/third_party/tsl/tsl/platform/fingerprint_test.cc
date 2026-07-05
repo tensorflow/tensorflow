@@ -16,6 +16,7 @@ limitations under the License.
 #include "tsl/platform/fingerprint.h"
 
 #include <array>
+#include <cstdint>
 #include <unordered_set>
 
 #include "xla/tsl/platform/test.h"

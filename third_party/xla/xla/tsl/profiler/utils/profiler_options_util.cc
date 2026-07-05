@@ -32,7 +32,8 @@ std::optional<std::variant<std::string, bool, int64_t>> GetConfigValue(
         config->second;
     if (config_value.has_string_value()) {
       return config_value.string_value();
-    } else if (config_value.has_bool_value()) {
+    }
+    if (config_value.has_bool_value()) {
       return config_value.bool_value();
     } else if (config_value.has_int64_value()) {
       return config_value.int64_value();

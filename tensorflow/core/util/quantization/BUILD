@@ -24,6 +24,12 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "uniform_quant_ops_params.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "uniform_quant_ops_params.h",
     ],
 )

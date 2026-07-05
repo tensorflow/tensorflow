@@ -72,9 +72,9 @@ class QuantizeV2Op : public OpKernel {
     OP_REQUIRES(ctx,
                 (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST" ||
                  mode_string == "SCALED"),
-                errors::InvalidArgument("Mode string must be 'MIN_COMBINED',"
-                                        " 'MIN_FIRST', or 'SCALED', is '" +
-                                        mode_string + "'"));
+                absl::InvalidArgumentError("Mode string must be 'MIN_COMBINED',"
+                                           " 'MIN_FIRST', or 'SCALED', is '" +
+                                           mode_string + "'"));
     if (mode_string == "MIN_COMBINED") {
       mode_ = QUANTIZE_MODE_MIN_COMBINED;
     } else if (mode_string == "MIN_FIRST") {
@@ -88,18 +88,19 @@ class QuantizeV2Op : public OpKernel {
     OP_REQUIRES(ctx,
                 (round_mode_string == "HALF_AWAY_FROM_ZERO" ||
                  round_mode_string == "HALF_TO_EVEN"),
-                errors::InvalidArgument("Round mode string must be "
-                                        "'HALF_AWAY_FROM_ZERO' or "
-                                        "'HALF_TO_EVEN', is '" +
-                                        round_mode_string + "'"));
+                absl::InvalidArgumentError("Round mode string must be "
+                                           "'HALF_AWAY_FROM_ZERO' or "
+                                           "'HALF_TO_EVEN', is '" +
+                                           round_mode_string + "'"));
     if (round_mode_string == "HALF_AWAY_FROM_ZERO") {
       round_mode_ = ROUND_HALF_AWAY_FROM_ZERO;
     } else if (round_mode_string == "HALF_TO_EVEN") {
-      OP_REQUIRES(ctx, mode_string == "SCALED",
-                  errors::InvalidArgument("Round mode 'HALF_TO_EVEN' "
-                                          "only supported for mode 'SCALED', "
-                                          "but mode is '" +
-                                          mode_string + "'."));
+      OP_REQUIRES(
+          ctx, mode_string == "SCALED",
+          absl::InvalidArgumentError("Round mode 'HALF_TO_EVEN' "
+                                     "only supported for mode 'SCALED', "
+                                     "but mode is '" +
+                                     mode_string + "'."));
       round_mode_ = ROUND_HALF_TO_EVEN;
     }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
@@ -117,48 +118,48 @@ class QuantizeV2Op : public OpKernel {
     if (axis_ > -1) {
       OP_REQUIRES(
           ctx, input.dims() > axis_,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Axis is on a zero-based index, so its value must always be less "
               "than number of input's dims, but given axis value was ",
-              axis_, " and input's dims was ", input.dims()));
+              axis_, " and input's dims was ", input.dims())));
       num_slices = input.dim_size(axis_);
       OP_REQUIRES(ctx, input_min_range.dims() == 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "If axis is specified, min_range must be a 1-D tensor "
                       "whose size matches the axis dimension of the input and "
                       "output tensors, but min_range dims are ",
-                      input_min_range.dims()));
+                      input_min_range.dims())));
       OP_REQUIRES(ctx, input_min_range.dim_size(0) == num_slices,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "If axis is specified, min_range must be a 1-D tensor "
                       "whose size matches the axis dimension of the input and "
                       "output tensors, but min_range is a 1-D tensor of size ",
                       input_min_range.dim_size(0),
-                      " and input's axis dimension is of size ", num_slices));
+                      " and input's axis dimension is of size ", num_slices)));
       OP_REQUIRES(ctx, input_max_range.dims() == 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "If axis is specified, max_range must be a 1-D tensor "
                       "whose size matches the axis dimension of the input and "
                       "output tensors, but max_range dims are ",
-                      input_max_range.dims()));
+                      input_max_range.dims())));
       OP_REQUIRES(ctx, input_max_range.dim_size(0) == num_slices,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "If axis is specified, max_range must be a 1-D tensor "
                       "whose size matches the axis dimension of the input and "
                       "output tensors, but max_range is a 1-D tensor of size ",
                       input_max_range.dim_size(0),
-                      " and input's axis dimension is of size ", num_slices));
+                      " and input's axis dimension is of size ", num_slices)));
     } else {
       OP_REQUIRES(ctx, input_min_range.NumElements() == 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "If axis is not specified, min_range must contain a "
                       "single float element, but it contains ",
-                      input_min_range.NumElements(), " elements"));
+                      input_min_range.NumElements(), " elements")));
       OP_REQUIRES(ctx, input_max_range.NumElements() == 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "If axis is not specified, max_range must contain a "
                       "single float element, but it contains ",
-                      input_max_range.NumElements(), " elements"));
+                      input_max_range.NumElements(), " elements")));
     }
 
     const TensorShape& minmax_shape = ctx->input(1).shape();
@@ -178,9 +179,10 @@ class QuantizeV2Op : public OpKernel {
       return;
     }
 
-    OP_REQUIRES(ctx, mode_ != QUANTIZE_MODE_MIN_FIRST,
-                errors::Unimplemented("MIN_FIRST mode is not implemented for "
-                                      "Quantize with axis != -1."));
+    OP_REQUIRES(
+        ctx, mode_ != QUANTIZE_MODE_MIN_FIRST,
+        absl::UnimplementedError("MIN_FIRST mode is not implemented for "
+                                 "Quantize with axis != -1."));
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(1, minmax_shape, &output_min_tensor));
     OP_REQUIRES_OK(ctx,
@@ -213,7 +215,7 @@ class QuantizeV2Op : public OpKernel {
                       Tensor* output, Tensor* output_min_tensor,
                       Tensor* output_max_tensor) {
     OP_REQUIRES(ctx, !(input_max_range < input_min_range),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "input_max_range must be larger than input_min_range."));
 
     // When the minimum and maximum ranges are too close together, nudge them
@@ -260,7 +262,7 @@ class QuantizeV2Op : public OpKernel {
                      float input_max_range, Vec output, float* output_min_range,
                      float* output_max_range) {
     OP_REQUIRES(ctx, !(input_max_range < input_min_range),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "input_max_range must be larger than input_min_range."));
     float min_range = std::min(0.0f, input_min_range);
     const float epsilon = std::max(1.0f, std::max(fabsf(input_min_range),

@@ -179,6 +179,21 @@ func.func @attr_custom_call_api_version_status_returning_unified(%arg0: tensor<f
 
 // -----
 
+func.func private @mesh()
+
+// CHECK-LABEL: "attr_replica_groups_mesh_axes"
+func.func @attr_replica_groups_mesh_axes(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "mhlo.custom_call"([[ARG0:%arg[0-9]+]])
+  // CHECK-SAME: replica_groups = #mhlo.replica_group_mesh_axes<mesh = @mesh, axes = [#mhlo.axis_ref<name = "foo">, #mhlo.axis_ref<name = "bar", sub_axis_info = (1)2>]>
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "test",
+    replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh, axes = [#stablehlo.axis_ref<name = "foo">, #stablehlo.axis_ref<name = "bar", sub_axis_info = (1)2>]>
+  } : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
 // CHECK-LABEL: "attr_fft_type_fft"
 func.func @attr_fft_type_fft(%arg0: tensor<16xcomplex<f32>>) -> tensor<16xcomplex<f32>> {
   %0 = "stablehlo.fft"(%arg0) {
@@ -2596,6 +2611,20 @@ func.func @op_topk_mhlo_v1(%arg0: tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<
     mhlo.version = 1 : i64
   } : (tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>)
   func.return %0#0, %0#1 : tensor<5x8xf32>, tensor<5x8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: "topk_unstable"
+func.func @topk_unstable(%arg0: tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>) {
+  // CHECK: "mhlo.topk"([[ARG0:%arg[0-9]+]]) <{is_stable = false, k = 8 : i64, largest = true}>
+  // CHECK-SAME: (tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  %0:2 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "mhlo.topk",
+    mhlo.attributes = {is_stable = false, k = 8 : i64, largest = true},
+    mhlo.version = 1 : i64
+  } : (tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  func.return %0#0, %0#1 : tensor<16x8xf32>, tensor<16x8xi32>
 }
 
 // -----

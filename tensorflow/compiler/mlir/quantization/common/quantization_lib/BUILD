@@ -8,7 +8,6 @@ package(
     # By default, these targets should only be used within the quantization library.
     default_visibility = [
         "//learning/brain/mlir/quantization:__subpackages__",
-        "//platforms/darwinn/compiler:__subpackages__",
         "//tensorflow:__subpackages__",
     ],
     licenses = ["notice"],

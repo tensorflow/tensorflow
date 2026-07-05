@@ -1,5 +1,7 @@
 # Description:
 #   SipHash and HighwayHash: cryptographically-strong pseudorandom functions
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(
     default_visibility = ["//visibility:public"],
     features = ["header_modules"],
@@ -8,31 +10,6 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
-
-config_setting(
-    name = "haswell",
-    values = {"cpu": "haswell"},
-)
-
-config_setting(
-    name = "k8",
-    values = {"cpu": "k8"},
-)
-
-config_setting(
-    name = "cpu_ppc",
-    values = {"cpu": "ppc"},
-)
-
-config_setting(
-    name = "cpu_aarch64",
-    values = {"cpu": "aarch64"},
-)
-
-config_setting(
-    name = "cpu_darwin_arm64",
-    values = {"cpu": "darwin_arm64"},
-)
 
 #-----------------------------------------------------------------------------
 # Platform-specific
@@ -274,9 +251,10 @@ cc_library(
         ":hh_portable",
         ":hh_types",
     ] + select({
-        ":cpu_ppc": [":hh_vsx"],
-        ":cpu_aarch64": [":hh_neon"],
-        ":cpu_darwin_arm64": [":hh_neon"],
+        "@platforms//cpu:aarch64": [":hh_neon"],
+        "@platforms//cpu:arm64": [":hh_neon"],
+        "@platforms//cpu:ppc": [":hh_vsx"],
+        "@platforms//cpu:ppc64le": [":hh_vsx"],
         "//conditions:default": [
             ":hh_avx2",
             ":hh_sse41",
@@ -295,9 +273,10 @@ cc_library(
         ":hh_portable",
         ":hh_types",
     ] + select({
-        ":cpu_ppc": [":hh_vsx"],
-        ":cpu_aarch64": [":hh_neon"],
-        ":cpu_darwin_arm64": [":hh_neon"],
+        "@platforms//cpu:aarch64": [":hh_neon"],
+        "@platforms//cpu:arm64": [":hh_neon"],
+        "@platforms//cpu:ppc": [":hh_vsx"],
+        "@platforms//cpu:ppc64le": [":hh_vsx"],
         "//conditions:default": [
             ":hh_avx2",
             ":hh_sse41",

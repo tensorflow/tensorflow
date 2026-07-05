@@ -229,7 +229,7 @@ absl::Status Placer::Run() {
 
 absl::Status Placer::Run(const GraphOptimizationPassOptions& options) {
   if (devices_->devices().empty()) {
-    return errors::FailedPrecondition("No devices are registered");
+    return absl::FailedPreconditionError("No devices are registered");
   }
 
   if (VLOG_IS_ON(3)) {
@@ -278,10 +278,10 @@ absl::Status Placer::Run(const GraphOptimizationPassOptions& options) {
     const std::vector<Device*>* devices;
     absl::Status status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
-      return AttachDef(
-          errors::InvalidArgument("Cannot assign a device for operation ",
-                                  node->name(), ": ", status.message()),
-          *node);
+      return AttachDef(absl::InvalidArgumentError(
+                           absl::StrCat("Cannot assign a device for operation ",
+                                        node->name(), ": ", status.message())),
+                       *node);
     }
 
     // TODO(mdan): This is a constrained optimization solver. Write it like one.
@@ -328,10 +328,10 @@ absl::Status Placer::Run(const GraphOptimizationPassOptions& options) {
     const std::vector<Device*>* devices;
     absl::Status status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
-      return AttachDef(
-          errors::InvalidArgument("Cannot assign a device for operation ",
-                                  node->name(), ": ", status.message()),
-          *node);
+      return AttachDef(absl::InvalidArgumentError(
+                           absl::StrCat("Cannot assign a device for operation ",
+                                        node->name(), ": ", status.message())),
+                       *node);
     }
 
     int assigned_device = -1;

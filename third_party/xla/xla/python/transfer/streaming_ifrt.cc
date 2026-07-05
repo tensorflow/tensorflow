@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/raw_buffer.h"
@@ -93,7 +94,7 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
 absl::StatusOr<std::vector<DmaCopyChunk>>
 DmaCopyChunk::DivideBufferCopiesEvenly(std::shared_ptr<xla::PjRtBuffer> buffer,
                                        size_t xfer_size, size_t buffer_id) {
-  TF_ASSIGN_OR_RETURN(size_t copy_size, buffer->GetOnDeviceSizeInBytes());
+  ASSIGN_OR_RETURN(size_t copy_size, buffer->GetOnDeviceSizeInBytes());
   size_t total_num_copies = (copy_size + xfer_size - 1) / xfer_size;
   std::vector<DmaCopyChunk> work_units;
   work_units.reserve(total_num_copies);
@@ -103,7 +104,7 @@ DmaCopyChunk::DivideBufferCopiesEvenly(std::shared_ptr<xla::PjRtBuffer> buffer,
                               int64_t transfer_size) -> tsl::Future<> {
                        return buffer->CopyRawToHost(dst, offset, transfer_size);
                      },
-                     buffer_id, i* xfer_size,
+                     buffer_id, i * xfer_size,
                      std::min(copy_size - i * xfer_size, xfer_size)});
   }
   return work_units;
@@ -271,9 +272,9 @@ tsl::RCReference<ChunkDestination> MakeDmaDestination(
 
 class SlicedRawBufferChunkDestination : public ChunkDestination {
  public:
-  SlicedRawBufferChunkDestination(
-      tsl::RCReference<xla::PjRtRawBuffer> raw_buffer, size_t offset,
-      size_t size, tsl::Promise<> promise)
+  SlicedRawBufferChunkDestination(xla::PjRtRawBufferRef raw_buffer,
+                                  size_t offset, size_t size,
+                                  tsl::Promise<> promise)
       : raw_buffer_(raw_buffer),
         slice_offset_(offset),
         slice_size_(size),
@@ -288,7 +289,7 @@ class SlicedRawBufferChunkDestination : public ChunkDestination {
     }
     {
       absl::MutexLock l(mu_);
-      TF_RETURN_IF_ERROR(saved_status_);
+      RETURN_IF_ERROR(saved_status_);
       sent_bytes_ += size;
     }
     auto future =
@@ -327,7 +328,7 @@ class SlicedRawBufferChunkDestination : public ChunkDestination {
   }
 
  private:
-  tsl::RCReference<xla::PjRtRawBuffer> raw_buffer_;
+  xla::PjRtRawBufferRef raw_buffer_;
   size_t slice_offset_;
   size_t slice_size_;
   size_t sent_bytes_ ABSL_GUARDED_BY(&mu_) = 0;
@@ -338,8 +339,8 @@ class SlicedRawBufferChunkDestination : public ChunkDestination {
 };
 
 absl::StatusOr<std::pair<tsl::RCReference<ChunkDestination>, tsl::Future<>>>
-CreateSlicedRawBufferDest(tsl::RCReference<xla::PjRtRawBuffer> raw_buffer,
-                          size_t offset, size_t size) {
+CreateSlicedRawBufferDest(xla::PjRtRawBufferRef raw_buffer, size_t offset,
+                          size_t size) {
   auto [promise, future] = tsl::MakePromise();
   auto dest = tsl::MakeRef<SlicedRawBufferChunkDestination>(
       raw_buffer, offset, size, std::move(promise));
@@ -465,9 +466,8 @@ bool PjRtBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
           }
           for (size_t i = 0; i * xfer_size < buf_size; ++i) {
             DmaCopyChunk blob;
-            blob.copy_fn = [buffer = std::move(buffer)](
-                               void* dst, int64_t offset,
-                               int64_t transfer_size) -> tsl::Future<> {
+            blob.copy_fn = [buffer](void* dst, int64_t offset,
+                                    int64_t transfer_size) -> tsl::Future<> {
               return buffer->CopyRawToHost(dst, offset, transfer_size);
             };
             blob.buffer_id = bid;

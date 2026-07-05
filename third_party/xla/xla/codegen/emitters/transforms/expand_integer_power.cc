@@ -77,8 +77,4 @@ class ExpandIntegerPowerPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateExpandIntegerPowerPass() {
-  return std::make_unique<ExpandIntegerPowerPass>();
-}
-
 }  // namespace xla::emitters

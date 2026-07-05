@@ -247,19 +247,6 @@ TEST(TileAssignmentTest, Transpose) {
   EXPECT_EQ(transposed2({1, 0}), 1);
 }
 
-TEST(TileAssignmentTest, UsesDevice) {
-  IotaTileAssignment iota = IotaTileAssignment::Create({2, 3});
-  TileAssignment ta(iota);
-  EXPECT_TRUE(ta.UsesDevice(0));
-  EXPECT_TRUE(ta.UsesDevice(5));
-  EXPECT_FALSE(ta.UsesDevice(6));
-
-  Array2D<int64_t> array({{1, 2}, {3, 4}});
-  TileAssignment ta2(std::make_shared<Array<int64_t>>(array));
-  EXPECT_TRUE(ta2.UsesDevice(1));
-  EXPECT_FALSE(ta2.UsesDevice(0));
-}
-
 TEST(TileAssignmentTest, MaterializeArray) {
   IotaTileAssignment iota = IotaTileAssignment::Create({2, 3});
   TileAssignment ta(iota);
@@ -367,10 +354,20 @@ TEST(TileAssignmentTest, AnalyzeTileAssignment) {
   ASSERT_EQ(result->sub_dims.size(), 4);
   EXPECT_THAT(result->local_mesh, ::testing::ElementsAre(7, 2, 5, 3));
 
-  Array2D<int64_t> array({{0, 1}, {2, 3}});
-  TileAssignment ta_v1(std::make_shared<Array<int64_t>>(array));
-  auto result_v1 = AnalyzeTileAssignment(ta_v1);
-  EXPECT_FALSE(result_v1.has_value());
+  // V1 sharding with iota pattern.
+  Array2D<int64_t> array_iota({{0, 1}, {2, 3}});
+  TileAssignment ta_v1_iota(std::make_shared<Array<int64_t>>(array_iota));
+  auto result_v1_iota = AnalyzeTileAssignment(ta_v1_iota);
+  EXPECT_TRUE(result_v1_iota.has_value());
+  EXPECT_THAT(result_v1_iota->local_mesh, ::testing::ElementsAre(2, 2));
+
+  // V1 sharding with iota pattern and 1s in dimensions.
+  Array<int64_t> array_iota_1s({1, 2, 1, 2});
+  array_iota_1s.FillIota(0);
+  TileAssignment ta_v1_iota_1s(std::make_shared<Array<int64_t>>(array_iota_1s));
+  auto result_v1_iota_1s = AnalyzeTileAssignment(ta_v1_iota_1s);
+  EXPECT_TRUE(result_v1_iota_1s.has_value());
+  EXPECT_THAT(result_v1_iota_1s->local_mesh, ::testing::ElementsAre(2, 2));
 }
 
 }  // namespace

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider_test.h"
 #include "xla/stream_executor/cuda/composite_compilation_provider.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace stream_executor::cuda {
 using ::testing::_;
@@ -730,6 +730,21 @@ TEST_P(CompilationProviderTest, CancelsOnRegSpill) {
       compilation_provider()->CompileAndLink(
           kDefaultComputeCapability, {Ptx{kSpillingKernelPrefix}}, options),
       absl_testing::IsOk());
+}
+
+TEST_P(CompilationProviderTest, PropagatesAdditionalPtxasFlags) {
+  if (GetParam() == kDriverCompilationProviderName) {
+    GTEST_SKIP() << "Driver compilation provider does not use ptxas flags";
+  }
+
+  CompilationOptions options;
+  options.additional_ptxas_flags = {"--this-is-an-invalid-ptxas-flag"};
+
+  EXPECT_THAT(
+      compilation_provider()->Compile(kDefaultComputeCapability, kStandalonePtx,
+                                      options),
+      absl_testing::StatusIs(_, HasSubstr("ptxas fatal   : Unknown option "
+                                          "'-this-is-an-invalid-ptxas-flag'")));
 }
 
 TEST_P(CompilationProviderTest,

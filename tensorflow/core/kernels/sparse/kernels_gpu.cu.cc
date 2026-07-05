@@ -85,11 +85,11 @@ absl::Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
       /*stream*/ cu_stream);
 
   if (first_success != gpuSuccess) {
-    return errors::Internal(
-        "SparseTensorToCSRSparseMatrix: Could not launch "
-        "gpuprim::DeviceHistogram::HistogramEven "
-        "to calculate temp_storage_bytes, status: ",
-        GpuGetErrorString(first_success));
+    return absl::InternalError(
+        absl::StrCat("SparseTensorToCSRSparseMatrix: Could not launch "
+                     "gpuprim::DeviceHistogram::HistogramEven "
+                     "to calculate temp_storage_bytes, status: ",
+                     GpuGetErrorString(first_success)));
   }
 
   Tensor temp_storage;
@@ -109,11 +109,11 @@ absl::Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
       /*stream*/ cu_stream);
 
   if (second_success != gpuSuccess) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "SparseTensorToCSRSparseMatrix: Could not launch "
         "gpuprim::DeviceHistogram::HistogramEven "
         "to count nnz entries per batch.  temp_storage_bytes: ",
-        temp_storage_bytes, ", status: ", GpuGetErrorString(second_success));
+        temp_storage_bytes, ", status: ", GpuGetErrorString(second_success)));
   }
 
   return absl::OkStatus();

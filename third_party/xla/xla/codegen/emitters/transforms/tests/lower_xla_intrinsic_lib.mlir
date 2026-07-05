@@ -163,3 +163,135 @@ func.func @rsqrt_unsupported_vector_size(%arg0: vector<3xf32>) -> vector<3xf32> 
   // CHECK: return %[[RESULT]]
   return %ret : vector<3xf32>
 }
+// -----
+
+func.func @exp_f16(%arg0: f16) -> f16 {
+  %ret = math.exp %arg0 : f16
+  return %ret : f16
+}
+// CHECK-LABEL: @exp_f16
+// CHECK: math.exp %arg0 : f16
+// CHECK: return
+
+
+// -----
+
+func.func @tanh_bf16_vector(%arg0: vector<4xbf16>) -> vector<4xbf16> {
+  %ret = math.tanh %arg0 : vector<4xbf16>
+  return %ret : vector<4xbf16>
+}
+// CHECK-LABEL: @tanh_bf16_vector
+// CHECK: %[[EXT:.*]] = arith.extf %arg0 : vector<4xbf16> to vector<4xf32>
+// CHECK: %[[CALL:.*]] = call @xla.tanh.v4f32(%[[EXT]])
+// CHECK: %[[TRUNC:.*]] = call @xla.fptrunc.v4f32.to.v4bf16(%[[CALL]])
+// CHECK: return %[[TRUNC]]
+
+// -----
+
+func.func @rsqrt_unsupported_f16_vector(%arg0: vector<3xf16>) -> vector<3xf16> {
+  %ret = math.rsqrt %arg0 : vector<3xf16>
+  return %ret : vector<3xf16>
+}
+// CHECK-LABEL: @rsqrt_unsupported_f16_vector
+// CHECK: %[[EXT:.*]] = arith.extf %arg0 : vector<3xf16> to vector<3xf32>
+// CHECK: %[[EX0:.*]] = vector.extract %[[EXT]][0]
+// CHECK: %[[C0:.*]] = call @xla.rsqrt.f32(%[[EX0]])
+// CHECK: %[[EX1:.*]] = vector.extract %[[EXT]][1]
+// CHECK: %[[C1:.*]] = call @xla.rsqrt.f32(%[[EX1]])
+// CHECK: %[[EX2:.*]] = vector.extract %[[EXT]][2]
+// CHECK: %[[C2:.*]] = call @xla.rsqrt.f32(%[[EX2]])
+// CHECK: %[[FROM:.*]] = vector.from_elements %[[C0]], %[[C1]], %[[C2]]
+// CHECK: %[[TRUNC:.*]] = arith.truncf %[[FROM]] : vector<3xf32> to vector<3xf16>
+// CHECK: return %[[TRUNC]]
+
+// -----
+
+module {
+  func.func @atan2_simplify(%arg0: f32) -> f32 {
+    %cst = arith.constant 1.0 : f32
+    %ret = math.atan2 %arg0, %cst : f32
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @atan2_simplify
+// CHECK-NOT: math.atan2
+// CHECK: %[[ATAN_CALL:.*]] = call @xla.atan.f32(%arg0) : (f32) -> f32
+// CHECK: return %[[ATAN_CALL]] : f32
+
+// -----
+
+module {
+  func.func @atan2_no_simplify(%arg0: f32) -> f32 {
+    %cst = arith.constant 2.0 : f32
+    %ret = math.atan2 %arg0, %cst : f32
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @atan2_no_simplify
+// CHECK-NOT: call @xla.atan
+// CHECK: math.atan2 %arg0, %cst : f32
+// CHECK: return
+
+// -----
+
+module {
+  func.func @atan_vector(%arg0: vector<4xf32>) -> vector<4xf32> {
+    %ret = math.atan %arg0 : vector<4xf32>
+    return %ret : vector<4xf32>
+  }
+}
+
+// CHECK-LABEL: @atan_vector
+// CHECK-NOT: math.atan
+// CHECK: %[[ATAN_CALL:.*]] = call @xla.atan.v4f32(%arg0) : (vector<4xf32>) -> vector<4xf32>
+// CHECK: return %[[ATAN_CALL]]
+
+// -----
+
+module {
+  func.func @atan_vector_unsupported(%arg0: vector<3xf32>) -> vector<3xf32> {
+    %ret = math.atan %arg0 : vector<3xf32>
+    return %ret : vector<3xf32>
+  }
+}
+
+// CHECK-LABEL: @atan_vector_unsupported
+// CHECK: %[[IN0:.*]] = vector.extract %arg0[0]
+// CHECK: %[[ATAN0:.*]] = call @xla.atan.f32(%[[IN0]])
+// CHECK: %[[IN1:.*]] = vector.extract %arg0[1]
+// CHECK: %[[ATAN1:.*]] = call @xla.atan.f32(%[[IN1]])
+// CHECK: %[[IN2:.*]] = vector.extract %arg0[2]
+// CHECK: %[[ATAN2:.*]] = call @xla.atan.f32(%[[IN2]])
+// CHECK: %[[RESULT:.*]] = vector.from_elements %[[ATAN0]], %[[ATAN1]], %[[ATAN2]]
+// CHECK: return %[[RESULT]]
+
+// -----
+
+module {
+  func.func @atan_f32(%arg0: f32) -> f32 {
+    %ret = math.atan %arg0 : f32
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @atan_f32
+// CHECK-NOT: math.atan
+// CHECK: %[[RESULT:.*]] = call @xla.atan.f32(%arg0) : (f32) -> f32
+// CHECK: return %[[RESULT]] : f32
+
+// -----
+
+module {
+  func.func @atan2_vector_simplify(%arg0: vector<8xf32>) -> vector<8xf32> {
+    %cst = arith.constant dense<1.000000e+00> : vector<8xf32>
+    %ret = math.atan2 %arg0, %cst : vector<8xf32>
+    return %ret : vector<8xf32>
+  }
+}
+
+// CHECK-LABEL: @atan2_vector_simplify
+// CHECK-NOT: math.atan2
+// CHECK: %[[RESULT:.*]] = call @xla.atan.v8f32(%arg0) : (vector<8xf32>) -> vector<8xf32>
+// CHECK: return %[[RESULT]] : vector<8xf32>

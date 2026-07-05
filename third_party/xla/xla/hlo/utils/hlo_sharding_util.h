@@ -104,8 +104,8 @@ HloInstruction* ReverseFormatShape(
 //    must align with `sharding` such that no sub-tile crosses the boundary of a
 //    parent tile.
 bool IsSubTilingOrEqualSharding(const Shape& shape,
-                                const HloSharding& potential_subsharding,
-                                const HloSharding& sharding);
+                                const HloSharding& raw_potential_subsharding,
+                                const HloSharding& raw_sharding);
 
 // Returns true if the lhs sharding is preferable over the rhs sharding.
 // The most specific sharding is tile maximal followed by single device tile
@@ -122,11 +122,12 @@ bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
 
 // Merges `to_merge` into `dst` only if they are compatible, and the merged
 // sharding has >= `minimum_tiles` tiles. Returns if merging happened.
-bool MergeShardingIfCompatible(const HloSharding& to_merge,
+bool MergeShardingIfCompatible(const HloSharding& to_merge_input,
                                int64_t minimum_tiles, HloSharding* dst);
 
 // Same as above, but with `minimum_tiles` = `dst->NumTiles() + 1`.
-bool MergeShardingIfCompatible(const HloSharding& to_merge, HloSharding* dst);
+bool MergeShardingIfCompatible(const HloSharding& to_merge_input,
+                               HloSharding* dst);
 
 // Find a reasonable common sharding for a list of shardings. The reasonable
 // sharding should incur little(the least) amount of total resharding cost when

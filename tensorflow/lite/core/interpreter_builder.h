@@ -24,6 +24,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_INTERPRETER_BUILDER_H_
 #define TENSORFLOW_LITE_CORE_INTERPRETER_BUILDER_H_
 
+#include <cstddef>
 #include <map>
 #include <memory>
 #include <string>
@@ -139,7 +140,8 @@ class InterpreterBuilder {
   TfLiteStatus ApplyDelegates(Interpreter* interpreter);
   TfLiteStatus ParseQuantization(const QuantizationParameters* src_quantization,
                                  TfLiteQuantization* quantization,
-                                 const std::vector<int>& dims);
+                                 const std::vector<int>& dims,
+                                 size_t num_tensors);
   TfLiteStatus ParseSparsity(const SparsityParameters* src_sparsity,
                              TfLiteSparsity** sparsity);
   TfLiteStatus ParseSignatureDefs(

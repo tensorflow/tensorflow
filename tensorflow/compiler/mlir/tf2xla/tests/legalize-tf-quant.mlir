@@ -1,4 +1,4 @@
-// RUN: tf-opt -convert-tf-quant-types -quant-convert-tf-quant-ops-to-mhlo -canonicalize "-xla-legalize-tf=legalize-chlo=false" -split-input-file %s | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt -convert-tf-quant-types -quant-convert-tf-quant-ops-to-mhlo -canonicalize "-xla-legalize-tf=legalize-chlo=false" -split-input-file %s | env FILECHECK_OPTS="" FileCheck %s
 
 
 //===----------------------------------------------------------------------===//

@@ -279,6 +279,9 @@ vec4 val = vec4(0.0f);
       code += "\n// Stage 2\n";
       for (int block = 0; block < left_blocks; block++) {
         for (int elem = 0; elem < 4; elem++) {
+          if (shift == in_ch) {
+            break;
+          }
           if (shift % 4 == 0) {
             code += "vec4 " + temp(*t) + " = $" + input + "[gid.x, gid.y, " +
                     std::to_string(block + 1) + "]$;\n";
@@ -286,9 +289,6 @@ vec4 val = vec4(0.0f);
           }
           code += "val[" + std::to_string(elem) + "] = " + temp(*t - 1) + "[" +
                   std::to_string(shift % 4) + "];\n";
-          if (shift == in_ch) {
-            break;
-          }
           shift++;
         }
         code += "$output_data_0[gid.x, gid.y, z] = val$;\n";

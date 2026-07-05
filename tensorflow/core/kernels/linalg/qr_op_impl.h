@@ -149,10 +149,10 @@ class QrOpGpu : public AsyncOpKernel {
         input.template flat_inner_dims<Scalar, 3>().dimension(0);
 
     // Validate inputs.
-    OP_REQUIRES_ASYNC(
-        context, ndims >= 2,
-        errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
-        done);
+    OP_REQUIRES_ASYNC(context, ndims >= 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input must have rank >= 2, got ", ndims)),
+                      done);
 
     // Allocate output.
     // If full_matrices_ is true then Q is m x m and R is m x n.

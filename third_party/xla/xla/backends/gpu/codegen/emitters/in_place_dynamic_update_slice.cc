@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineExpr.h"
@@ -56,7 +57,7 @@ LaunchDimensions InPlaceDynamicUpdateSliceFusion::launch_dimensions() const {
   const auto& update_shape =
       dus_ops_.front().GetOperand(kDUSUpdateIndex).shape();
   return CalculateLaunchDimensions(update_shape, analysis_.device_info(),
-                                   config_);
+                                   unroll_factor_);
 }
 
 std::optional<std::vector<IndexingMap>>
@@ -90,7 +91,7 @@ InPlaceDynamicUpdateSliceFusion::GetEpilogues(
 
 WorkDimensions InPlaceDynamicUpdateSliceFusion::GetWorkDimensions() const {
   WorkDimensions work_dimensions = launch_dimensions().AsWorkDimensions();
-  work_dimensions.work_tile_size.dimensions.push_back(config_.unroll_factor);
+  work_dimensions.work_tile_size.dimensions.push_back(unroll_factor_);
   return work_dimensions;
 }
 
@@ -104,7 +105,7 @@ InPlaceDynamicUpdateSliceFusion::CreateMLIRModule(
       GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,
       BackendKind::kGpu);
 
-  TF_ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
+  ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
   return std::move(kernel_definition).TakeSource().TakeModule();
 }
 

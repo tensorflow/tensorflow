@@ -17,14 +17,17 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_ASYNC_THUNK_H_
 
 #include <memory>
+#include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/async_execution.h"
+#include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
-#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/command_buffer.h"
 
 namespace xla::gpu {
 
@@ -45,27 +48,25 @@ namespace xla::gpu {
 // scopes.
 class AsyncStartThunk : public Thunk {
  public:
-  // Kind of async execution scope created by the start thunk.
-  enum class AsyncKind { kCommunication, kCompute };
-
-  template <typename Sink>
-  friend void AbslStringify(Sink& sink, AsyncKind kind) {
-    switch (kind) {
-      case AsyncKind::kCommunication:
-        sink.Append("communication");
-        return;
-      case AsyncKind::kCompute:
-        sink.Append("compute");
-        return;
-    }
-  }
-
-  AsyncStartThunk(ThunkInfo thunk_info, AsyncKind async_kind,
+  AsyncStartThunk(ThunkInfo thunk_info, ExecutionStreamId execution_stream_id,
                   ThunkSequence thunks);
+
+  // Constructor that shares an existing AsyncExecution with another
+  // AsyncStartThunk. Used for pipelined send/recv where multiple operations
+  // share the same async stream.
+  AsyncStartThunk(ThunkInfo thunk_info, ExecutionStreamId execution_stream_id,
+                  ThunkSequence thunks,
+                  std::shared_ptr<AsyncExecution> async_execution);
 
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  // TODO(b/527907619): Implement this properly once we have figured out how
+  // buffer uses should look like for async thunks.
+  BufferUses buffer_uses() const override { return {}; }
+
+  ExecutionStreamId execution_stream_id() const { return execution_stream_id_; }
 
   const ThunkSequence& thunks() const { return executor_.thunks(); }
 
@@ -77,12 +78,14 @@ class AsyncStartThunk : public Thunk {
   AsyncExecutionId async_execution_id() const;
   std::shared_ptr<AsyncExecution> async_execution() const;
 
+  std::string ToString(int indent) const override;
+
  protected:
   absl::Status WalkNested(Walker callback) override;
   absl::Status TransformNested(Transformer callback) override;
 
  private:
-  AsyncKind async_kind_;
+  ExecutionStreamId execution_stream_id_;
   ThunkExecutor executor_;
   std::shared_ptr<AsyncExecution> async_execution_;
 };
@@ -95,12 +98,24 @@ class AsyncStartThunk : public Thunk {
 // corresponding AsyncStartThunk (for pipelined async operations async execution
 // scope owned by a canonical start operation). It synchronizes the compute
 // stream with the async operation's completion event.
-class AsyncDoneThunk : public Thunk {
+//
+// Also implements the Command interface so it can be recorded directly into
+// command buffers as an empty dependency node when needed.
+class AsyncDoneThunk : public Command {
  public:
   AsyncDoneThunk(ThunkInfo thunk_info,
                  std::shared_ptr<AsyncExecution> async_execution);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+
+  // AsyncDoneThunk touches no buffers; this is explicit rather than relying on
+  // the base class default.
+  BufferUses buffer_uses() const override { return {}; }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
   static absl::StatusOr<std::unique_ptr<AsyncDoneThunk>> FromProto(
@@ -109,6 +124,8 @@ class AsyncDoneThunk : public Thunk {
 
   AsyncExecutionId async_execution_id() const;
   std::shared_ptr<AsyncExecution> async_execution() const;
+
+  std::string ToString(int indent) const override;
 
  private:
   std::shared_ptr<AsyncExecution> async_execution_;

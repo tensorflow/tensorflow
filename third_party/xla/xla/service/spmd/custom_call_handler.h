@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/shape_inference.h"
@@ -57,11 +58,11 @@ class CreateShardedScaledDotFunctor final
     HloInstruction* r = rr.operand().hlo();
     HloInstruction* l_scale = ll.scale().hlo();
     HloInstruction* r_scale = rr.scale().hlo();
-    TF_ASSIGN_OR_RETURN(Shape sharded_scaled_dot_shape,
-                        ShapeInference::InferDotOpShape(
-                            l->shape(), r->shape(), dimension_numbers_,
-                            /*preferred_element_type=*/
-                            block_scaled_dot_->shape().element_type()));
+    ASSIGN_OR_RETURN(Shape sharded_scaled_dot_shape,
+                     ShapeInference::InferDotOpShape(
+                         l->shape(), r->shape(), dimension_numbers_,
+                         /*preferred_element_type=*/
+                         block_scaled_dot_->shape().element_type()));
 
     return b->AddInstruction(HloInstruction::CreateCustomCall(
         sharded_scaled_dot_shape, {l, r, l_scale, r_scale},

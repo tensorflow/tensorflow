@@ -72,10 +72,11 @@ The
 describes the components of the tool and the information presented.
 
 Focus on the *HLO Ops at Peak Memory Allocation* section that shows three buffer
-charts at the peak memory usage point. The buffer includes: * Program Inputs and
-Outputs: Training batches, optimizer states, etc. * TensorCore and SparseCore
-Temporaries: Dynamic memory required for intermediate calculations (like
-activations, gradients, etc.)
+charts at the peak memory usage point. The buffer includes:
+
+-   **Program Inputs and Outputs:** Training batches, optimizer states, etc.
+-   **TensorCore and SparseCore Temporaries:** Dynamic memory required for
+    intermediate calculations (like activations, gradients, etc.)
 
 You can hover on the buffer charts to get more details about the Op like it's
 size, shape, allocation type, and more. This can help you identify and evaluate

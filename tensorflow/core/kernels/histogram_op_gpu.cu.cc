@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -37,18 +39,20 @@ namespace functor {
 // TODO(yongtang) int64 of atomicAdd is not supported yet.
 template <typename T, typename Tout>
 struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<T, 1>::ConstTensor& values,
-                        const typename TTypes<T, 1>::ConstTensor& value_range,
-                        int32 nbins, typename TTypes<Tout, 1>::Tensor& out) {
+  static absl::Status Compute(
+      OpKernelContext* context,
+      const typename TTypes<T, 1>::ConstTensor& values,
+      const typename TTypes<T, 1>::ConstTensor& value_range, int32_t nbins,
+      typename TTypes<Tout, 1>::Tensor& out) {
     tensorflow::AllocatorAttributes pinned_allocator;
     pinned_allocator.set_on_host(true);
     pinned_allocator.set_gpu_compatible(true);
 
     Tensor levels_tensor;
-    TF_RETURN_IF_ERROR(context->allocate_temp(
-        DataTypeToEnum<T>::value, TensorShape({nbins + 1}), &levels_tensor,
-        pinned_allocator));
+    TF_RETURN_IF_ERROR(
+        context->allocate_temp(DataTypeToEnum<T>::value,
+                               TensorShape({static_cast<int64_t>(nbins) + 1}),
+                               &levels_tensor, pinned_allocator));
     auto levels = levels_tensor.flat<T>();
 
     // Avoid overflow in step computation.
@@ -57,6 +61,11 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
                                                static_cast<double>(nbins) -
                                            static_cast<double>(value_range(0)) /
                                                static_cast<double>(nbins);
+    if (nbins > 1 && step <= 0.0) {
+      return absl::InvalidArgumentError(
+          "Step size in histogram computation must be positive. Check if "
+          "value_range is too narrow or suffers from precision loss.");
+    }
     levels(0) = std::numeric_limits<T>::lowest();
     for (int i = 1; i < nbins; i++) {
       levels(i) =
@@ -84,18 +93,18 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
         /* num_samples */ num_samples,
         /* stream */ stream);
     if (err != gpuSuccess) {
-      return errors::Internal(
-          "Could not launch HistogramRange to get temp storage: ",
-          GpuGetErrorString(err), ".");
+      return absl::InternalError(
+          absl::StrCat("Could not launch HistogramRange to get temp storage: ",
+                       GpuGetErrorString(err), "."));
     }
 
     Tensor temp_storage;
     TF_RETURN_IF_ERROR(context->allocate_temp(
-        DataTypeToEnum<int8>::value,
+        DataTypeToEnum<int8_t>::value,
         TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
         &temp_storage));
 
-    void* d_temp_storage = temp_storage.flat<int8>().data();
+    void* d_temp_storage = temp_storage.flat<int8_t>().data();
 
     // The second HistogramRange is to actual run with d_temp_storage
     // allocated with temp_storage_bytes.
@@ -109,11 +118,11 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
         /* num_samples */ num_samples,
         /* stream */ stream);
     if (err != gpuSuccess) {
-      return errors::Internal(
-          "Could not launch HistogramRange: ", GpuGetErrorString(err), ".");
+      return absl::InternalError(absl::StrCat(
+          "Could not launch HistogramRange: ", GpuGetErrorString(err), "."));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

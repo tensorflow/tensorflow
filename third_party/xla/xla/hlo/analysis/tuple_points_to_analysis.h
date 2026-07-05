@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <iosfwd>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,90 +31,128 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/hlo/analysis/logical_buffer_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/logical_buffer.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/compactptrset.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 
-// A class describing the source(s) of the Buffer(s) contained in the output of
-// a particular HLO instruction. The structure of PointsToSet mirrors the
-// structure of the instruction's shape, which may be an arbitrary tree (eg, a
-// nested tuple). Each node in this tree corresponds to a single buffer in the
-// instruction's output and contains the set of Buffers which might define
-// the corresponding buffer.
+// A PointsToSet describes the source(s) of the LogicalBuffer(s) contained in
+// the output of a particular HLO instruction.
+//
+// In XLA, HLO instructions do not necessarily allocate new memory; some may
+// forward or alias existing buffers (e.g., GetTupleElement, Bitcast). To track
+// who defines the buffers, the compiler performs points-to analysis.
+//
+// Since an instruction's output can have a nested or structured shape (like a
+// nested tuple), PointsToSet internally uses a ShapeTree. The structure of this
+// tree mirrors the Shape of the instruction.
+//
+// Each node in the tree (corresponding to a subshape index/path in the output
+// Shape) contains:
+// 1) A list of LogicalBuffers (`BufferList`) that can potentially define the
+//    buffer at that subshape index.
+// 2) A set of HLO instructions (`SourceSet`) representing the instructions that
+//    define/originate the tuple shape at that index (i.e. 'tuple sources').
+//
+// Thread Safety: PointsToSet is not thread-safe due to internal mutation of
+// the ShapeTree without locking.
 class PointsToSet {
  public:
-  // Construct our ShapeTree with a pointer rather than a reference to a Shape
-  // because this is very hot code, and copying (and then destroying) all these
-  // Shapes is slow.
+  // Constructs a PointsToSet for the given shape.
+  //
+  // Note: Accepts a `const Shape*` instead of a copy or reference. This is an
+  // optimization in hot execution paths to avoid copying/creating many
+  // temporary `Shape` objects.
   explicit PointsToSet(const Shape* shape) : tree_(shape) {}
 
-  // Returns true if any points-to sets for any subshape element is not a
-  // singleton.
+  // Returns true if any of the points-to sets (at any subshape index) contains
+  // more than one LogicalBuffer.
+  //
+  // An ambiguous set indicates that the compiler cannot statically determine
+  // a single unique source buffer for that part of the output.
   bool IsAmbiguous() const;
 
-  // Returns true if no LogicalBuffer appears in more than one points-to set of
-  // the shape nodes.
+  // Returns true if no LogicalBuffer appears at more than one subshape index
+  // of the instruction's shape.
+  //
+  // A distinct points-to set guarantees that different components/paths of the
+  // output (e.g., elements in a tuple) do not share or alias the same logical
+  // buffers.
   bool IsDistinct() const;
 
-  // Returns the total number of different LogicalBuffers contained in this
-  // object. This is equal to CreateFlattenedSet().size().
+  // Returns the total number of unique LogicalBuffers across all subshape
+  // indices in this PointsToSet. This is equivalent to
+  // `CreateFlattenedSet().size()`.
   size_t size() const;
 
-  // Creates a set containing the union of all LogicalBuffers contained in the
-  // PointsToSet.
+  // Returns the union of all LogicalBuffers contained in all subshape indices
+  // of this PointsToSet.
   using BufferSet = tsl::gtl::CompactPointerSet<const LogicalBuffer*>;
   BufferSet CreateFlattenedSet() const;
 
-  // Returns true if the given buffer is in the points-to set at the given
-  // index.
+  // Returns true if the points-to set at the given `ShapeIndex` contains the
+  // specified `LogicalBuffer`.
   bool ContainsBufferAtIndex(const LogicalBuffer& buffer,
                              const ShapeIndex& index) const;
 
-  // Returns true if the given buffer is in the points-to set at any index.
+  // Returns true if the specified `LogicalBuffer` is present in the points-to
+  // set at any `ShapeIndex` in this PointsToSet.
   bool ContainsBuffer(const LogicalBuffer& buffer) const;
 
-  // Adds the given buffer to the points-to set at the given index. This is a
-  // nop if the buffer already is in the set at that index.
+  // Adds the given `LogicalBuffer` to the points-to set at the specified
+  // `ShapeIndex`. This is a no-op if the buffer is already present at that
+  // index.
   void AddPointedToBuffer(const LogicalBuffer& buffer, const ShapeIndex& index);
 
-  // For the subshape at the given index (where index is defined as in
-  // ShapeUtil::GetSubshape) this method returns the set of HLO instructions
-  // which may produce the tuple subshape at that index. For example, given:
-  //
-  // %tuple1 = tuple(...)
-  // %tuple2 = tuple(...)
-  // %select = select(%tuple1, %tuple2)
-  // %nested_tuple = tuple(%select, %tuple1)
-  //
-  // These are the values for tuple_sources() for the PointsToSet of
-  // %nested_tuple:
-  //
-  // tuple_sources({}) = {%nested_tuple}
-  // tuple_sources({0}) = {%tuple1, %tuple2}
-  // tuple_sources({1}) = {%tuple1}
-  //
-  // tuple_sources() at the index of an array shape (not a tuple) returns the
-  // empty set. The instructions in the set returned by tuple_sources
-  // necessarily are either Tuple instructions, constants, or parameters.
   using SourceSet = tsl::gtl::CompactPointerSet<HloInstruction*>;
+
+  // For the subshape at the given index (which must be a tuple shape), returns
+  // the set of HLO instructions that may define/originate the tuple structure
+  // at that index.
+  //
+  // This is used to track the allocation/creation points of tuple shapes,
+  // which helps analyze how tuple buffers are shared.
+  //
+  // Example:
+  // Given:
+  //   %tuple1 = tuple(...)
+  //   %tuple2 = tuple(...)
+  //   %cond = conditional(...) // selects between %tuple1 and %tuple2
+  //   %nested_tuple = tuple(%cond, %tuple1)
+  //
+  // In `nested_tuple`'s PointsToSet:
+  //   tuple_sources({})   -> {%nested_tuple}
+  //   tuple_sources({0})  -> {%cond}
+  //   tuple_sources({1})  -> {%tuple1}
+  //
+  // If the subshape at the index is an array (not a tuple), this returns an
+  // empty set. The instructions in the set are typically Tuple instructions,
+  // constants, parameters, or control flow instructions (e.g., While,
+  // Conditional).
+  //
+  // Note: One cannot assume that `tuple_sources` is a subset of the defining
+  // instructions of the `buffers` at the same index. For example, a shallow
+  // copy of a tuple `%copy = copy(%original_tuple)` allocates a new top-level
+  // buffer defined by `%copy` at index `{}`, which updates `buffers({})` to
+  // contain `LogicalBuffer(%copy, {})`. However, the tuple structure origin is
+  // unchanged, so `tuple_sources({})` remains `{%original_tuple}`.
   const SourceSet& tuple_sources(const ShapeIndex& index) const;
 
-  // Add a tuple source instruction for the given index.
+  // Adds the given HLO instruction as a tuple source for the subshape index.
   void add_tuple_source(const ShapeIndex& index, HloInstruction* tuple);
 
   using BufferList = absl::InlinedVector<const LogicalBuffer*, 1>;
 
-  // Return the list of logical buffers for the subshape at index.
+  // Returns the `BufferList` (list of `LogicalBuffer`s) for the subshape at the
+  // given index.
   const BufferList& element(const ShapeIndex& index) const {
     return tree_.element(index).buffers;
   }
@@ -123,7 +160,9 @@ class PointsToSet {
     return &tree_.mutable_element(index)->buffers;
   }
 
-  // Call fn(index, buflist) for every subshape index.
+  // Invokes `fn` (a callable with signature compatible with
+  // `void(const ShapeIndex&, const BufferList&)`) on each element in the
+  // points-to set.
   template <typename Fn>
   void ForEachElement(const Fn& fn) const {
     tree_.ForEachElement([&fn](const ShapeIndex& index, const Elem& elem) {
@@ -137,6 +176,13 @@ class PointsToSet {
     });
   }
   template <typename Fn>
+  absl::Status ForEachMutableElementWithStatus(const Fn& fn) {
+    return tree_.ForEachMutableElementWithStatus(
+        [&fn](const ShapeIndex& index, Elem* elem) {
+          return fn(index, &elem->buffers);
+        });
+  }
+  template <typename Fn>
   absl::Status ForEachElementWithStatus(const Fn& fn) const {
     return tree_.ForEachElementWithStatus(
         [&fn](const ShapeIndex& index, const Elem& elem) {
@@ -144,11 +190,18 @@ class PointsToSet {
         });
   }
 
+  // Returns a string representation of the PointsToSet for debugging.
   std::string ToString() const;
 
  private:
   struct Elem {
+    // The list of LogicalBuffers that may potentially define/provide the value
+    // at this subshape.
     BufferList buffers;
+    // The set of HLO instructions that define/originate the tuple shape at
+    // this subshape (populated only if this subshape is tuple-shaped). Note
+    // that this set is not necessarily a subset of the instructions defining
+    // the buffers in `buffers` (e.g., in the case of a shallow copy).
     SourceSet tuple_sources;
   };
   ShapeTree<Elem> tree_;
@@ -305,6 +358,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // Information kept per instruction
   struct PerInstruction {
     std::unique_ptr<PointsToSet> points_to_set;
+    // Buffers defined by this instruction.
     // Empirically, ~92% of instructions have 1
     // instruction_defined_buffer, and 99% have 0 or 1
     BufferDefinitionVector instruction_defined_buffers;

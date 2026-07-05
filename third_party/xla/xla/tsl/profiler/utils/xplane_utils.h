@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -81,10 +82,23 @@ std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
 std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
                                                  absl::string_view prefix);
 
+// Sets the given pid on all planes in the given space that do not have a pid
+// set.
+void SetXSpacePidIfNotSet(XSpace& space, int32_t pid);
+// Sets the given pid on the given plane if not already set.
+void SetXPlanePidIfNotSet(XPlane& plane, int32_t pid);
+
+// Merges the src XSpace into the dst XSpace. Must have set the kProcessId stat
+// on all planes in src XSpace.
+void MergeSubprocessXSpace(XSpace& dst, const XSpace& src);
+
 // Returns the plane with the given id/name or nullptr if not found.
 const XLine* FindLineWithId(const XPlane& plane, int64_t id);
 std::vector<const XLine*> FindLinesWithId(const XPlane& plane, int64_t id);
 const XLine* FindLineWithName(const XPlane& plane, absl::string_view name);
+
+// Returns the mutable line with the given name or nullptr if not found.
+XLine* FindMutableLineWithName(XPlane& plane, absl::string_view name);
 
 XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event);
 
@@ -113,8 +127,10 @@ class XLinesComparatorByName {
   }
 };
 
-// Sorts each XLine's XEvents by offset_ps (ascending) and duration_ps
+// Sorts the XLine's XEvents by offset_ps (ascending) and duration_ps
 // (descending) so nested events are sorted from outer to innermost.
+void SortXLine(XLine* line);
+// Sorts each line of the XPlane.
 void SortXPlane(XPlane* plane);
 // Sorts each plane of the XSpace.
 void SortXSpace(XSpace* space);
@@ -298,6 +314,14 @@ inline bool IsOpLineName(absl::string_view line_name) {
 // Returns the timespan of the event from the device offset and duration stats.
 // If the stats are not present, returns the event's timespan.
 Timespan GetDeviceEventTimespan(const XEventVisitor& event);
+
+// Merges `from` XSpace into `to` XSpace.
+// This function performs a zero-copy merge by transferring ownership of planes,
+// lines, and events out of `from` to avoid memory duplication. It dynamically
+// maps and builds new metadata IDs to prevent collisions on duplicate names.
+// After the merge, `from` will be left as an empty shell and safely
+// deallocated.
+void MergeXSpace(std::unique_ptr<XSpace> from, XSpace* to);
 
 }  // namespace profiler
 }  // namespace tsl

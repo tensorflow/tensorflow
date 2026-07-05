@@ -19,7 +19,7 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
-    "//third_party/py/rules_pywrap:pywrap.impl.bzl",
+    "@rules_ml_toolchain//py/rules_pywrap:pywrap.impl.bzl",
     "pybind_extension",
     _pywrap_binaries = "pywrap_binaries",
     _pywrap_library = "pywrap_library",
@@ -36,7 +36,11 @@ def nanobind_pywrap_extension(
         pytype_deps = [],  # @unused
         copts = [],
         linkopts = [],
-        visibility = None):
+        visibility = None,
+        enable_stub_generation = True,  # @unused
+        stub_replacement_patterns = {},  # @unused
+        additional_stubgen_deps = [],  # @unused
+        postprocess_stubgen = None):  # @unused
     # buildifier: disable=function-docstring-args
     "Python extension rule using nanobind and the pywrap rules."
     module_name = name

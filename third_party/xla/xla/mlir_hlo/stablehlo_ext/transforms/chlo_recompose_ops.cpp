@@ -389,6 +389,15 @@ struct AsinhOpCustomCallRecomposePattern
         op, {"mhlo.asinh", "chlo.asinh"}, rewriter);
   }
 };
+struct MulhiOpCustomCallRecomposePattern
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
+                                PatternRewriter& rewriter) const override {
+    return recomposeChloOpFromCustomCall<chlo::MulhiOp>(
+        op, {"mhlo.mulhi", "chlo.mulhi"}, rewriter);
+  }
+};
 
 struct ScanOpCustomCallRecomposePattern
     : public OpRewritePattern<stablehlo::CustomCallOp> {
@@ -453,6 +462,7 @@ struct ChloRecomposeOpsPass
       CoshOpCustomCallRecomposePattern,
       SinhOpCustomCallRecomposePattern,
       ErfOpCustomCallRecomposePattern,
+      MulhiOpCustomCallRecomposePattern,
       RaggedDotOpCustomCallRecomposePattern,
       ScanOpCustomCallRecomposePattern,
       TanOpCustomCallRecomposePattern,
@@ -468,6 +478,7 @@ struct ChloRecomposeOpsPass
       ChloOpRecomposePattern<chlo::CoshOp>,
       ChloOpRecomposePattern<chlo::SinhOp>,
       ChloOpRecomposePattern<chlo::ErfOp>,
+      ChloOpRecomposePattern<chlo::MulhiOp>,
       ChloOpRecomposePattern<chlo::RaggedDotOp>,
       ChloOpRecomposePattern<chlo::ScanOp>,
       ChloOpRecomposePattern<chlo::TopKOp>>(ctx);

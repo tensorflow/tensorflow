@@ -28,9 +28,9 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/AffineExpr.h"
-#include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -201,10 +201,9 @@ void AddGroupIdConstraint(IndexingMap& map, int64_t root_index,
   // Only threads with the right y block index actually do anything for each
   // particular root.
   int group_index = groups.group_id_per_root[root_index];
-  map.AddConstraint(
-      mlir::getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[2],
-                             map.GetMLIRContext()),
-      {group_index, group_index});
+  map.AddConstraint(CreateDimExpr(MlirKernelFusion::kIndexingMapBlockIdxDims[2],
+                                  map.GetMLIRContext()),
+                    {group_index, group_index});
 }
 
 }  // namespace gpu

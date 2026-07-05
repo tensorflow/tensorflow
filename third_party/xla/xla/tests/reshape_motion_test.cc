@@ -25,8 +25,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ReshapeMotionTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using ReshapeMotionTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(ReshapeMotionTest, ElementwiseOfReshapesWithNonSameInputShapes) {
   XlaBuilder builder(TestName());

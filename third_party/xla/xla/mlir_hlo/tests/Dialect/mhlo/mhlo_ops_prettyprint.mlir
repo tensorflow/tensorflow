@@ -146,8 +146,8 @@ func.func @no_attr_ops(%arg0 : tensor<4xf32>, %arg1 : !mhlo.token,
   // CHECK-NEXT: mhlo.clamp %arg0, %arg0, %arg0 : tensor<4xf32>
   // CHECK-NEXT: mhlo.complex %arg0, %arg0 : tensor<4xcomplex<f32>>
   // CHECK-NEXT: mhlo.copy %arg2 : tensor<4xi32>
-  // CHECK-NEXT: mhlo.uniform_quantize %arg0 : (tensor<4xf32>) -> tensor<4x!quant.uniform<u8:f32, 3.400000e+01:16>>
-  // CHECK-NEXT: mhlo.uniform_dequantize %[[_:[0-9]+]] : (tensor<4x!quant.uniform<u8:f32, 3.400000e+01:16>>) -> tensor<4xf32>
+  // CHECK-NEXT: mhlo.uniform_quantize %arg0 : (tensor<4xf32>) -> tensor<4x!quant.uniform<ui8:f32, 3.400000e+01:16>>
+  // CHECK-NEXT: mhlo.uniform_dequantize %[[_:[0-9]+]] : (tensor<4x!quant.uniform<ui8:f32, 3.400000e+01:16>>) -> tensor<4xf32>
   // CHECK-NEXT: mhlo.after_all %arg1, %arg1 : !mhlo.token
   // CHECK-NEXT: mhlo.after_all : !mhlo.token
   %0 = "mhlo.add_dependency"(%arg0, %arg1) : (tensor<4xf32>, !mhlo.token) -> tensor<4xf32>

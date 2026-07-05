@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/hash/hash.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -29,7 +30,7 @@ limitations under the License.
 namespace xla::cpu {
 
 bool CpuCliqueKey::IsSubsetOf(const CliqueKey& other) const {
-  auto* other_cpu = tsl::down_cast<const CpuCliqueKey*>(&other);
+  auto* other_cpu = absl::down_cast<const CpuCliqueKey*>(&other);
   if (other_cpu == nullptr) {
     return false;
   }

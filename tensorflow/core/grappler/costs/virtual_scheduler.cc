@@ -581,7 +581,7 @@ absl::Status SchedulerState::Init(const GrapplerItem* item,
   }
 
   if (initial_nodes->empty()) {
-    return errors::InvalidArgument("No ready nodes in the graph.");
+    return absl::InvalidArgumentError("No ready nodes in the graph.");
   }
 
   if (!feed_nodes.empty()) {

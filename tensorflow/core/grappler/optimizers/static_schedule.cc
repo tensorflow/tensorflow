@@ -84,7 +84,7 @@ absl::Status EstimateEarliestExecutionTimes(
       std::string node_name = NodeName(input);
       auto it = name_map.find(node_name);
       if (it == name_map.end()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             absl::StrCat("Unknown input node ", input));
       }
       const NodeDef* fanin = it->second;
@@ -147,7 +147,7 @@ absl::Status EstimateRequiredTimes(
       std::string node_name = NodeName(input);
       auto it = name_map.find(node_name);
       if (it == name_map.end()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             absl::StrCat("Unknown input node ", input));
       }
       const NodeDef* fanin = it->second;

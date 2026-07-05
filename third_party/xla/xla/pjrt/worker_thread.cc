@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "xla/tsl/platform/env.h"
 
 namespace xla {
@@ -42,6 +43,14 @@ void WorkerThread::Schedule(absl::AnyInvocable<void() &&> fn) {
   CHECK(fn != nullptr);
   absl::MutexLock lock(mu_);
   work_queue_.push(std::move(fn));
+}
+
+void WorkerThread::Drain() {
+  absl::Notification done;
+  // Schedule a sentinel closure after all currently-queued work. When the
+  // worker thread executes it, we know every prior closure has completed.
+  Schedule([&done]() { done.Notify(); });
+  done.WaitForNotification();
 }
 
 bool WorkerThread::WorkAvailable() { return !work_queue_.empty(); }

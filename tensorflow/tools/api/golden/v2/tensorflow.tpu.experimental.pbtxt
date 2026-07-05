@@ -2,7 +2,7 @@ path: "tensorflow.tpu.experimental"
 tf_module {
   member {
     name: "DeviceAssignment"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "DeviceOrderMode"
@@ -10,19 +10,19 @@ tf_module {
   }
   member {
     name: "HardwareFeature"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "TPUSystemMetadata"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "Topology"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "embedding"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member_method {
     name: "initialize_tpu_system"

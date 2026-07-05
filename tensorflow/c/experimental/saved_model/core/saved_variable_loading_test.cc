@@ -94,8 +94,9 @@ TEST_P(SavedVariableLoadingTest, LoadSavedVariableWithDevice) {
 
   std::unique_ptr<Variable> var;
   TF_ASSERT_OK(internal::LoadSavedVariable(context(), saved_variable, &var));
-  EXPECT_EQ(down_cast<TensorHandle*>(var->handle())->resource_device()->name(),
-            "/job:localhost/replica:0/task:0/device:CPU:1");
+  EXPECT_EQ(
+      absl::down_cast<TensorHandle*>(var->handle())->resource_device()->name(),
+      "/job:localhost/replica:0/task:0/device:CPU:1");
 }
 
 // Verify load failure if a non-existing device is specified.
@@ -126,7 +127,7 @@ TEST_P(SavedVariableLoadingTest, AssignAndReadVariableSuccesful) {
   absl::Status status;
   std::unique_ptr<Variable> var;
   TF_EXPECT_OK(Variable::CreateUninitialized(context(), dtype, shape,
-                                             absl::nullopt, nullptr, {}, &var));
+                                             std::nullopt, nullptr, {}, &var));
 
   // Create a TensorHandle
   ImmediateTensorHandlePtr expected_handle =

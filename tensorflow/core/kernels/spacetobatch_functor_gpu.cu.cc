@@ -116,17 +116,19 @@ struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, B2S> {
     args.space_tensor_batch = space_tensor.dimension(0);
     for (int block_dim = 0; block_dim < NUM_BLOCK_DIMS; ++block_dim) {
       if (block_shape[block_dim] > std::numeric_limits<int32_t>::max()) {
-        return errors::InvalidArgument("block_shape value exceeds 2^32-1");
+        return absl::InvalidArgumentError("block_shape value exceeds 2^32-1");
       }
       args.block_shape[block_dim] = block_shape[block_dim];
       if (space_tensor.dimension(block_dim + 1) >
           std::numeric_limits<int32_t>::max()) {
-        return errors::InvalidArgument("space_tensor dimension exceeds 2^32-1");
+        return absl::InvalidArgumentError(
+            "space_tensor dimension exceeds 2^32-1");
       }
       args.space_tensor_spatial_shape[block_dim] =
           space_tensor.dimension(block_dim + 1);
       if (paddings[block_dim * 2] > std::numeric_limits<int32_t>::max()) {
-        return errors::InvalidArgument("paddings/crops value exceeds 2^32-1");
+        return absl::InvalidArgumentError(
+            "paddings/crops value exceeds 2^32-1");
       }
       args.pad_start[block_dim] = paddings[block_dim * 2];
     }
@@ -136,7 +138,7 @@ struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, B2S> {
       total_count *= args.batch_tensor_shape[dim];
     }
     if (total_count > std::numeric_limits<int32_t>::max()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "number of batch_tensor elements exceeds 2^32-1");
     }
     GpuLaunchConfig config =
