@@ -206,6 +206,29 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       const Tensor& grad_tensor =
           MklGetInput(context, kInputTensorIndexInputGradient);
 
+      bool is_pool2d = (this->ksize_.size() == 4);
+      const int expected_dims = is_pool2d ? 4 : 5;
+
+      OP_REQUIRES(
+          context, orig_input_tensor.dims() == 1,
+          absl::InvalidArgumentError(
+              absl::StrCat("orig_input_shape must be 1-dimensional, but got ",
+                           orig_input_tensor.dims(), "-dimensional.")));
+
+      OP_REQUIRES(
+          context, orig_input_tensor.NumElements() == expected_dims,
+          absl::InvalidArgumentError(
+              absl::StrCat("orig_input_shape must have ", expected_dims,
+                           " elements, but got ", orig_input_tensor.NumElements(),
+                           " elements.")));
+
+      OP_REQUIRES(
+          context, grad_tensor.dims() == expected_dims,
+          absl::InvalidArgumentError(
+              absl::StrCat("grad_tensor must be ", expected_dims,
+                           "-dimensional, but got ", grad_tensor.dims(),
+                           "-dimensional.")));
+
       // For empty tensor, avg_pool_3d_grad in oneDNN doesn't handle this case.
       // Follow what native TF does in this case.
 
@@ -218,8 +241,6 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, output_shape, &output_tensor));
       output_tensor->flat<T>().setZero();
-
-      bool is_pool2d = (this->ksize_.size() == 4);
 
       // Validate grad tensor rank before accessing its dimensions.
       // For 2D pooling, grad must be 4D; for 3D pooling, grad must be 5D.
