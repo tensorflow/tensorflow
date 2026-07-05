@@ -1170,7 +1170,7 @@ class Huber(LossFunctionWrapper):
             more details.
       name: Optional name for the instance. Defaults to 'huber_loss'.
     """
-    if delta <= 0:
+    if not tensor_util.is_tf_type(delta) and delta <= 0:
       raise ValueError(
           f'delta must be greater than 0, got {delta}'
       )
