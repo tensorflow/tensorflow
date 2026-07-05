@@ -370,10 +370,12 @@ class _GraphTensorArray:
         lengths_64 = math_ops.cast(lengths, dtypes.int64)
         if not context.executing_eagerly():
           clengths = tensor_util.constant_value(lengths_64)
-          if value.shape.dims is not None and clengths is not None:
+          if (value.shape.rank is not None and value.shape.rank > 0 and
+              clengths is not None):
             sum_lengths = int(np.sum(clengths))
-            if value.shape.dims[0].value is not None:
-              if sum_lengths != value.shape.dims[0].value:
+            value_first_dim = value.shape.as_list()[0]
+            if value_first_dim is not None:
+              if sum_lengths != value_first_dim:
                 raise ValueError(
                     "Expected sum of lengths to be equal to values.shape[0], "
                     "but sum of lengths is %d and value's shape is: %s"
@@ -652,10 +654,12 @@ class _GraphTensorArrayV2:
       lengths_64 = math_ops.cast(lengths, dtypes.int64)
       if not context.executing_eagerly():
         clengths = tensor_util.constant_value(lengths_64)
-        if value.shape.dims is not None and clengths is not None:
+        if (value.shape.rank is not None and value.shape.rank > 0 and
+            clengths is not None):
           sum_lengths = int(np.sum(clengths))
-          if value.shape.dims[0].value is not None:
-            if sum_lengths != value.shape.dims[0].value:
+          value_first_dim = value.shape.as_list()[0]
+          if value_first_dim is not None:
+            if sum_lengths != value_first_dim:
               raise ValueError(
                   "Expected sum of lengths to be equal to values.shape[0], "
                   "but sum of lengths is %d and value's shape is: %s"
