@@ -677,41 +677,11 @@ def test_fold_non_square_parameters(self):
   expected = x * overlap_counts
   self.assertAllClose(reconstructed, expected)
 
-class ArrayOpsGpuDetectionTest(test.TestCase):
-
-  @test_util.run_v2_only
-  def testGpuBackendIsAvailableAndDetected(self):
-    """Verifies the binary was compiled with CUDA and detects the WSL2 GPU."""
-    # 1. Internal check for compile-time CUDA support
-    is_cuda_compiled = test.is_built_with_cuda()
-    self.assertTrue(
-        is_cuda_compiled,
-        msg="TensorFlow was built as a CPU-only binary. "
-            "Ensure you pass '--config=cuda' to your bazel build command."
-    )
-
-    # 2. Runtime check for visible physical GPU devices
-    gpu_devices = test.gpu_device_name()
-    print(config.list_physical_devices('GPU'))
-    
-    # Assert that at least one GPU device path (e.g., '/device:GPU:0') is found
-    self.assertTrue(
-        bool(gpu_devices),
-        msg="TensorFlow was compiled with CUDA, but no physical GPU was "
-            "detected at runtime. Verify your WSL2 NVIDIA drivers."
-    )
-    
-    print(f"\n[SUCCESS] Connected to GPU device: {gpu_devices}")
-
 class TestFoldDeterminism(test.TestCase):
 
   def setUp(self):
     super().setUp()
     random_seed.set_seed(42)
-    # config.disable_op_determinism()
-    # config.enable_op_determinism()
-    print(config.list_physical_devices())
-
 
   def _extract_patches(self, x, kernel, stride,
                        padding="VALID", dilation=1):
@@ -723,9 +693,8 @@ class TestFoldDeterminism(test.TestCase):
         padding=padding,
     )
   @test_util.run_gpu_only
-  # @test_util.run_in_graph_and_eager_modes
   def test_fold_gpu_deterministic(self):
-    """Keep this test"""
+    """To check if GPU output is deterministic if op determinism is turned off"""
     config.disable_op_determinism()
     x = random_ops.random_normal([4, 128, 128, 16],dtype=dtypes.float32)
     patches = self._extract_patches(
@@ -735,7 +704,6 @@ class TestFoldDeterminism(test.TestCase):
         padding="VALID")
     outputs = []
     for i in range(20):
-        # print("check")
         outputs.append(
           array_ops.fold(
             patches,
@@ -744,13 +712,12 @@ class TestFoldDeterminism(test.TestCase):
             stride=1,
             padding="VALID",
             dilation=1))
-        # print(outputs[i].device)
     reference = outputs[0]
     for output in outputs[1:]:
       self.assertAllEqual(reference,output)
 
-  # @test_util.run_in_graph_and_eager_modes
   def test_fold_cpu_deterministic(self):
+    """To check if CPU output is deterministic if op determinism is turned off"""
     config.disable_op_determinism()
     with ops.device("/CPU:0"):
       x = random_ops.random_normal([2, 32, 32, 4],dtype=dtypes.float32)
@@ -775,10 +742,8 @@ class TestFoldDeterminism(test.TestCase):
             kernel_size=5,
             stride=1,
             padding="VALID")
-        # print(result.device)
-      
+        
         self.assertAllEqual(reference, result)
-
 
 if __name__ == "__main__":
   test.main()
