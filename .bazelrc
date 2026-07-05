@@ -40,7 +40,6 @@
 #     cuda:         Build with CUDA support.
 #     cuda_clang    Build with CUDA Clang support.
 #     rocm:         Build with AMD GPU support (rocm)
-#     mkl:          Enable full mkl support.
 #     nogcp:        Disable GCS support.
 #     nonccl:       Disable nccl support.
 #
@@ -105,10 +104,10 @@ common --action_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb
 common --@rules_python//python/config_settings:precompile=force_disabled
 common --@rules_python//python/config_settings:bootstrap_impl=script --repo_env=RULES_PYTHON_ENABLE_PIPSTAR=0
 
-# Do not do this. If enabled protobuf's core internal target 
+# Do not do this. If enabled protobuf's core internal target
 # @com_google_protobuf//python:protobuf_python will start depending on a bunch
-# of cc_binary shared libraries artifacts, which will mess with how we link 
-# protobuf dependencies ourselves. By default this value is false, but some 
+# of cc_binary shared libraries artifacts, which will mess with how we link
+# protobuf dependencies ourselves. By default this value is false, but some
 # projects enable it, which we don't want here.
 # common --define=use_fast_cpp_protos=true
 
@@ -131,8 +130,6 @@ common --define=grpc_no_ares=true
 # TODO: Remove the following two lines once TF doesn't depend on Bazel wrapping
 # all library archives in -whole_archive -no_whole_archive.
 common --noincompatible_remove_legacy_whole_archive
-common --features=-force_no_whole_archive
-common --host_features=-force_no_whole_archive
 
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 common --enable_platform_specific_config
@@ -275,20 +272,6 @@ common:monolithic --define framework_shared_object=false
 common:monolithic --define tsl_protobuf_header_only=false
 common:monolithic --experimental_link_static_libraries_once=false  # b/229868128
 
-# Please note that MKL on MacOS is still not supported.
-# If you would like to use a local MKL instead of downloading, please set the
-# environment variable "TF_MKL_ROOT" every time before build.
-common:mkl --define=build_with_mkl=true --define=enable_mkl=true
-common:mkl --define=tensorflow_mkldnn_contraction_kernel=0
-common:mkl --define=build_with_openmp=true
-common:mkl -c opt
-
-# config to build OneDNN backend with a user specified threadpool.
-common:mkl_threadpool --define=build_with_mkl=true --define=enable_mkl=true
-common:mkl_threadpool --define=tensorflow_mkldnn_contraction_kernel=0
-common:mkl_threadpool --define=build_with_mkl_opensource=true
-common:mkl_threadpool -c opt
-
 # Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
 # with Eigen threadpool support
 common:mkl_aarch64_threadpool --define=build_with_mkl_aarch64=true
@@ -299,10 +282,19 @@ common:mkl_aarch64_threadpool -c opt
 common:mkl_aarch64 --config=mkl_aarch64_threadpool
 
 # Default CUDA, CUDNN, NCCL and NVSHMEM versions.
-common:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
-common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
-common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
-common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.27.7"
+common:cuda12_version --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
+common:cuda12_version --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
+common:cuda12_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
+common:cuda12_version --repo_env=HERMETIC_NCCL_VERSION="2.29.7"
+common:cuda12_version --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_80,sm_89,compute_90"
+
+common:cuda13_version --repo_env=HERMETIC_CUDA_VERSION="13.0.0"
+common:cuda13_version --repo_env=HERMETIC_CUDNN_VERSION="9.12.0"
+common:cuda13_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.3.20"
+common:cuda13_version --repo_env=HERMETIC_NCCL_VERSION="2.29.7"
+common:cuda13_version --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_75,sm_80,sm_90,sm_100,compute_120"
+
+common:cuda_version --config=cuda12_version
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 common:cuda --repo_env TF_NEED_CUDA=1
@@ -528,6 +520,9 @@ common:windows --features=compiler_param_file
 # Use old toolchains for Windows builds.
 common:windows --config=clang_local
 
+# Disable AVX512FP16 due to crashing the MSVC compiler.
+common:windows --define=xnn_enable_avx512fp16=false
+
 # Do not risk cache corruption. See:
 # https://github.com/bazelbuild/bazel/issues/3360
 common:linux --experimental_guard_against_concurrent_changes
@@ -668,11 +663,25 @@ common:rbe_linux_cuda --config=rbe_linux_cpu
 # For Remote build execution -- GPU configuration
 common:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
 # Update UMD version when RBE CUDA driver is updated.
-common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.0.2"
+common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.1.1"
 
 common:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 common:rbe_linux_cuda_nvcc --config=cuda_nvcc
 common:rbe_linux_cuda_nvcc --repo_env TF_NCCL_USE_STUB=1
+
+common:rbe_linux_cuda_13 --config=cuda_clang_official
+common:rbe_linux_cuda_13 --config=rbe_linux_cpu
+common:rbe_linux_cuda_13 --config=cuda13_version
+# For Remote build execution -- GPU configuration
+common:rbe_linux_cuda_13 --repo_env=REMOTE_GPU_TESTING=1
+# Update UMD version when RBE CUDA driver is updated.
+common:rbe_linux_cuda_13 --repo_env=HERMETIC_CUDA_UMD_VERSION="13.1.1"
+
+common:rbe_linux_cuda_13_nvcc --config=rbe_linux_cuda_nvcc
+common:rbe_linux_cuda_13_nvcc --config=cuda_nvcc
+common:rbe_linux_cuda_13_nvcc --config=cuda13_version
+common:rbe_linux_cuda_13_nvcc --repo_env TF_NCCL_USE_STUB=1
+
 
 common:rbe_win_base --config=rbe_base
 common:rbe_win_base --config=clang_local
@@ -695,6 +704,25 @@ common:rbe_windows_x86_cpu_2022 --bes_instance_name="ml-oss-rbe-general"
 common:rbe_windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_new"
 common:rbe_windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_new"
 common:rbe_windows_x86_cpu_2022 --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_new"
+
+# RBE configuration for ML Actions (hermetic toolchains, new pool)
+# Note: Using NCCL 2.28.9 to match the requirements of newer hermetic CUDA toolchains used in this environment.
+common:rbe_windows_x86_cpu_ml_actions --repo_env=HERMETIC_NCCL_VERSION="2.28.9"
+common:rbe_windows_x86_cpu_ml_actions --config=rbe_win_base
+common:rbe_windows_x86_cpu_ml_actions --config=win_clang_base
+common:rbe_windows_x86_cpu_ml_actions --copt=/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
+common:rbe_windows_x86_cpu_ml_actions --host_copt=/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
+common:rbe_windows_x86_cpu_ml_actions --jobs=200
+common:rbe_windows_x86_cpu_ml_actions --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+common:rbe_windows_x86_cpu_ml_actions --incompatible_enable_cc_toolchain_resolution
+common:rbe_windows_x86_cpu_ml_actions --remote_instance_name=projects/ml-oss-rbe-general/instances/default_instance
+common:rbe_windows_x86_cpu_ml_actions --bes_instance_name="ml-oss-rbe-general"
+common:rbe_windows_x86_cpu_ml_actions --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_ml_actions"
+common:rbe_windows_x86_cpu_ml_actions --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_ml_actions"
+common:rbe_windows_x86_cpu_ml_actions --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_ml_actions"
+common:rbe_windows_x86_cpu_ml_actions --extra_toolchains=@org_tensorflow//tensorflow/tools/toolchains/win2022/20260322:cc-toolchain-x64_windows-clang-cl
+common:rbe_windows_x86_ml_actions --config=rbe_windows_x86_cpu_ml_actions
+test:rbe_windows_x86_cpu_ml_actions --flaky_test_attempts=3
 
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
@@ -870,10 +898,17 @@ test:linux_cpu_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excl
 test:linux_cpu_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:linux_cpu_wheel_test --@xla//third_party/py:wheel_dependency=true --config=linux_cpu_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 # CUDA WHEEL
-test:linux_cuda_wheel_test_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_oss_py310,-no_oss_py313
-test:linux_cuda_wheel_test_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_oss_py310,-no_oss_py313
+test:linux_cuda_wheel_test_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_cuda13,-no_oss_py310,-no_oss_py313
+test:linux_cuda_wheel_test_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_cuda13,-no_oss_py310,-no_oss_py313
 test:linux_cuda_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
-test:linux_cuda_wheel_test --repo_env=HERMETIC_CUDA_UMD_VERSION=12.8.1 --@xla//third_party/py:wheel_dependency=true --config=linux_cuda_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_gpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+test:linux_cuda_wheel_test --repo_env=HERMETIC_CUDA_UMD_VERSION=13.1.1 --@xla//third_party/py:wheel_dependency=true --config=linux_cuda_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_gpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+
+test:linux_cuda_13_wheel_test_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_cuda12,-no_oss_py310,-no_oss_py313
+test:linux_cuda_13_wheel_test_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_cuda12,-no_oss_py310,-no_oss_py313
+test:linux_cuda_13_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
+test:linux_cuda_13_wheel_test --config=cuda13_version --repo_env=HERMETIC_CUDA_UMD_VERSION=13.1.1 --@local_config_cuda//cuda:override_include_cuda_libs=true --test_env=LD_LIBRARY_PATH=external/local_config_cuda/cuda/cuda/lib/:external/cuda_cupti/lib/:external/cuda_nvrtc/lib/ --@xla//third_party/py:wheel_dependency=true --config=linux_cuda_13_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_gpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/compiler/mlir/tools/kernel_gen/... -//tensorflow/core/kernels/mlir_generated/...
+test:linux_cuda_13_nvcc_wheel_test --config=linux_cuda_13_wheel_test
+
 # ARM64 WHEEL
 test:linux_arm64_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py310,-no_oss_py313
 test:linux_arm64_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py310,-no_oss_py313
@@ -908,6 +943,12 @@ test:linux_cuda_pycpp_test_filters --test_tag_filters=-no_oss,-no_oss_py313,-tf_
 test:linux_cuda_pycpp_test_filters --build_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
 test:linux_cuda_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:linux_cuda_pycpp_test --config=linux_cuda_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_gpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+
+test:linux_cuda_13_pycpp_test_filters --test_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
+test:linux_cuda_13_pycpp_test_filters --build_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
+test:linux_cuda_13_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
+test:linux_cuda_13_pycpp_test --config=cuda13_version --config=linux_cuda_13_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_gpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/compiler/mlir/tools/kernel_gen/... -//tensorflow/core/kernels/mlir_generated/...
+test:linux_cuda_13_nvcc_pycpp_test --config=linux_cuda_13_pycpp_test
 
 # LINUX ARM64 PYCPP
 # In Linux Arm64 presubmit/continuous build, we cross-compile the binaries on
@@ -949,6 +990,7 @@ common:windows_x86_cpu_2022_pycpp_test_filters --build_tag_filters=-no_windows,-
 test:windows_x86_cpu_2022_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --test_timeout="300,450,1200,3600"
 test:windows_x86_cpu_2022_pycpp_test_opts --config=windows_x86_cpu_2022_pycpp_test_build_opts --build_tests_only
 test:windows_x86_cpu_2022_pycpp_test --config=windows_x86_cpu_2022_pycpp_test_opts --config=windows_x86_cpu_2022_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_cpu -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/...
+test:windows_x86_ml_actions_pycpp_test --config=windows_x86_cpu_2022_pycpp_test
 
 # END TF TEST SUITE OPTIONS
 
@@ -962,6 +1004,7 @@ common:cross_compile_base --config=clang_local
 common:cross_compile_base --host_cpu=k8
 common:cross_compile_base --host_crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 common:cross_compile_base --extra_execution_platforms=//tensorflow/tools/toolchains/cross_compile/config:linux_x86_64
+common:cross_compile_base --extra_toolchains=//tensorflow/tools/toolchains/cross_compile/cc:linux_x86_toolchain
 
 common:rbe_cross_compile_base --config=rbe_base
 common:rbe_cross_compile_base --remote_instance_name=projects/tensorflow-testing/instances/default_instance
@@ -979,6 +1022,8 @@ common:cross_compile_linux_arm64 --config=cross_compile_base
 common:cross_compile_linux_arm64 --platforms=//tensorflow/tools/toolchains/cross_compile/config:linux_aarch64
 common:cross_compile_linux_arm64 --cpu=aarch64
 common:cross_compile_linux_arm64 --crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
+common:cross_compile_linux_arm64 --extra_toolchains=//tensorflow/tools/toolchains/cross_compile/cc:linux_aarch64_toolchain
+common:cross_compile_linux_arm64 --define=linux_arm64_cross_compile=true
 
 # RBE cross-compile configs for Linux Aarch64
 common:rbe_cross_compile_linux_arm64 --config=cross_compile_linux_arm64

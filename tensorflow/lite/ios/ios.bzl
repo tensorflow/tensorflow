@@ -1,8 +1,5 @@
 """TensorFlow Lite Build Configurations for iOS"""
 
-load("@build_bazel_rules_apple//apple:apple.bzl", "apple_static_xcframework")
-
-# Placeholder for Google-internal load statements.
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
 # copybara:uncomment_begin(google-only)
@@ -11,8 +8,11 @@ load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 load("//tensorflow/lite:build_def.bzl", "clean_dep")
 # copybara:comment_end
 
+# Placeholder for Google-internal load statements.
+load("//tools/build_defs/apple:apple_xcframework.bzl", "apple_static_xcframework")
+
 # LINT.IfChange
-TFL_MINIMUM_OS_VERSION = "12.0"
+TFL_MINIMUM_OS_VERSION = "15.0"
 # LINT.ThenChange(
 #   TensorFlowLiteC.podspec.template,
 #   TensorFlowLiteSelectTfOps.podspec.template,

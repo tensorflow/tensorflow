@@ -236,6 +236,12 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
               "Input must be rank ", expected_rank, " but got rank ",
               output_shape.dims())));
 
+      OP_REQUIRES(
+          context, grad_tensor.dims() == expected_rank,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Expected grad to be rank ", expected_rank, " but got rank ",
+              grad_tensor.dims())));
+
       Tensor* output_tensor = nullptr;
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, output_shape, &output_tensor));

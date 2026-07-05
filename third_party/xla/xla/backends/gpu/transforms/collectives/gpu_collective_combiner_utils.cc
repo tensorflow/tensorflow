@@ -16,9 +16,13 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 
 #include <cstdint>
+#include <string>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -26,6 +30,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/side_effect_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
@@ -38,8 +43,7 @@ absl::Status AppendPipelinedInstruction(HloInstruction* instr,
   if (!IsCollective(instr)) {
     return absl::OkStatus();
   }
-  TF_ASSIGN_OR_RETURN(auto config,
-                      instr->backend_config<gpu::GpuBackendConfig>());
+  ASSIGN_OR_RETURN(auto config, instr->backend_config<gpu::GpuBackendConfig>());
   config.mutable_collective_backend_config()->set_is_pipelined(true);
   return instr->set_backend_config(config);
 }
@@ -89,6 +93,40 @@ bool EnableHeuristicCollectiveCombining(
           << (config.num_partitions() * config.replica_count())
           << " > NVLink slice size " << nvlink_slice_size;
   return true;
+}
+
+absl::Status MergeCollectiveBackendConfig(
+    absl::Span<HloInstruction* const> to_combine, HloInstruction* combined) {
+  ASSIGN_OR_RETURN(auto config,
+                   combined->backend_config<gpu::GpuBackendConfig>());
+  bool any_pipelined = false;
+  bool any_spmd_generated = false;
+
+  for (const HloInstruction* inst : to_combine) {
+    auto src_config = inst->backend_config<GpuBackendConfig>();
+    if (src_config.ok()) {
+      any_pipelined |= src_config->collective_backend_config().is_pipelined();
+    }
+    // IsSpmdGenerated checks both the frontend attribute (set by the SPMD
+    // partitioner) and the backend config field (set on earlier combines).
+    any_spmd_generated |= IsSpmdGenerated(*inst);
+  }
+
+  config.mutable_collective_backend_config()->set_is_pipelined(any_pipelined);
+  config.mutable_collective_backend_config()->set_is_spmd_generated(
+      any_spmd_generated);
+
+  return combined->set_backend_config(config);
+}
+
+void AppendCombinerKeyFromFrontendAttr(const HloInstruction* instruction,
+                                       std::string& extra_args) {
+  if (instruction->has_frontend_attributes()) {
+    auto it = instruction->frontend_attributes().map().find(kCombinerKeyAttr);
+    if (it != instruction->frontend_attributes().map().end()) {
+      absl::StrAppend(&extra_args, " combiner_key=", it->second);
+    }
+  }
 }
 
 }  // namespace xla::gpu

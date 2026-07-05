@@ -107,7 +107,8 @@ void RpcCollectiveExecutorMgr::GetStepSequenceAsync(
     const StatusCallback& done) {
   if (!group_leader_.empty()) {
     LOG(ERROR) << "GetStepSequence called at non-group-leader";
-    done(errors::Internal("GetStepSequenceAsync called at non-group-leader"));
+    done(
+        absl::InternalError("GetStepSequenceAsync called at non-group-leader"));
   } else {
     mutex_lock l(sequence_mu_);
     for (int64_t graph_key : request->graph_key()) {

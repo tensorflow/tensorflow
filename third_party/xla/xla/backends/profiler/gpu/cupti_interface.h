@@ -19,8 +19,10 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_profiler_target.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_target.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 
@@ -58,6 +60,15 @@ struct CUpti_PmSampling_CounterData_GetSampleInfo_Params;
 namespace xla {
 namespace profiler {
 
+// CUPTI 13.2 V2 callback metadata parameters are intentionally erased to void*
+// so this common interface can compile with older CUPTI headers.
+using CuptiBuffersCallbackRequestFuncV2 =
+    void(CUPTIAPI*)(uint8_t** buffer, size_t* size, size_t* max_num_records,
+                    void* buffer_request_info);
+using CuptiBuffersCallbackCompleteFuncV2 =
+    void(CUPTIAPI*)(uint8_t* buffer, size_t size, size_t valid_size,
+                    void* buffer_complete_info);
+
 // Provides a wrapper interface to every single CUPTI API function. This class
 // is needed to create an easy mock object for CUPTI API calls. All member
 // functions are defined in the following order: activity related APIs, callback
@@ -65,9 +76,9 @@ namespace profiler {
 // the order in the original CUPTI documentation.
 class CuptiInterface {
  public:
-  CuptiInterface() {}
+  CuptiInterface() = default;
 
-  virtual ~CuptiInterface() {}
+  virtual ~CuptiInterface() = default;
 
   // CUPTI activity API
   virtual CUptiResult ActivityDisable(CUpti_ActivityKind kind) = 0;
@@ -90,6 +101,30 @@ class CuptiInterface {
   virtual CUptiResult ActivityRegisterCallbacks(
       CUpti_BuffersCallbackRequestFunc func_buffer_requested,
       CUpti_BuffersCallbackCompleteFunc func_buffer_completed) = 0;
+
+  // CUDA 13.2 CUPTI V2 multi-subscriber variants.
+  // These must be used alongside cuptiSubscribe_v2; mixing V1 and V2 activity
+  // APIs is unsupported and causes undefined behavior.
+  virtual CUptiResult ActivityRegisterCallbacksV2(
+      CUpti_SubscriberHandle subscriber,
+      CuptiBuffersCallbackRequestFuncV2 func_buffer_requested,
+      CuptiBuffersCallbackCompleteFuncV2 func_buffer_completed) = 0;
+
+  virtual CUptiResult ActivityEnableV2(CUpti_SubscriberHandle subscriber,
+                                       CUpti_ActivityKind kind, void* cfg) = 0;
+
+  virtual CUptiResult ActivityDisableV2(CUpti_SubscriberHandle subscriber,
+                                        CUpti_ActivityKind kind, void* cfg) = 0;
+
+  virtual CUptiResult ActivitySetAttributeV2(CUpti_SubscriberHandle subscriber,
+                                             CUpti_ActivityAttribute attr,
+                                             size_t* valueSize,
+                                             void* value) = 0;
+
+  virtual CUptiResult ActivityUseSystemThreadIdV2(
+      CUpti_SubscriberHandle subscriber) = 0;
+
+  virtual CUptiResult ActivityUsePerThreadBufferV2() = 0;
 
   virtual CUptiResult ActivityUsePerThreadBuffer() = 0;
 
@@ -114,6 +149,10 @@ class CuptiInterface {
   virtual CUptiResult Subscribe(CUpti_SubscriberHandle* subscriber,
                                 CUpti_CallbackFunc callback,
                                 void* userdata) = 0;
+
+  virtual CUptiResult SubscribeV2(CUpti_SubscriberHandle* subscriber,
+                                  CUpti_CallbackFunc callback,
+                                  void* userdata) = 0;
 
   virtual CUptiResult Unsubscribe(CUpti_SubscriberHandle subscriber) = 0;
 

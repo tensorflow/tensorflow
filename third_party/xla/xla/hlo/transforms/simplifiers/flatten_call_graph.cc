@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -80,12 +82,24 @@ absl::StatusOr<bool> FlattenCallGraph::RunImpl(
         }
       }
 
+      auto clone_callee = [&](HloComputation* callee) {
+        if (!module->has_schedule() ||
+            !module->schedule().is_computation_scheduled(callee)) {
+          return module->AddEmbeddedComputation(callee->Clone());
+        }
+
+        auto [clone, clone_sequence] = callee->CloneWithSchedule();
+        HloComputation* clone_ptr =
+            module->AddEmbeddedComputation(std::move(clone));
+        module->schedule().set_sequence(clone_ptr, clone_sequence);
+        return clone_ptr;
+      };
+
       changed = true;
       std::vector<HloComputation*> worklist;
       caller->ReplaceCalledComputations([&](HloComputation* callee) {
         if (callee == computation && !skip_cloning_handler_(*callee)) {
-          HloComputation* clone =
-              module->AddEmbeddedComputation(callee->Clone());
+          HloComputation* clone = clone_callee(callee);
           worklist.push_back(clone);
           return clone;
         }
@@ -101,8 +115,7 @@ absl::StatusOr<bool> FlattenCallGraph::RunImpl(
             if (skip_cloning_handler_(*callee)) {
               return callee;
             }
-            HloComputation* clone =
-                module->AddEmbeddedComputation(callee->Clone());
+            HloComputation* clone = clone_callee(callee);
             worklist.push_back(clone);
             return clone;
           });

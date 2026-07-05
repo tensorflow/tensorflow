@@ -173,8 +173,8 @@ absl::Status EnsureMemoryTypes(const DeviceType& device_type,
           edges.push_back({e, sm, dm});
           return absl::OkStatus();
         }
-        return errors::Internal("Unexpected memory type pair on an edge: ", sm,
-                                " vs. ", dm);
+        return absl::InternalError(absl::StrCat(
+            "Unexpected memory type pair on an edge: ", sm, " vs. ", dm));
       }));
 
   // edges contains edges in 'g' that memtype is not
@@ -224,9 +224,10 @@ absl::Status MemoryTypeForOutput(const DeviceType& device_type, const Graph* g,
   TF_RETURN_IF_ERROR(MemoryTypesForNode(g->op_registry(), device_type, n->def(),
                                         &inp_mvec, &out_mvec));
   if (out_mvec.size() <= index) {
-    return errors::Internal("Trying to get the memory type for ", index,
-                            "'th output of node ", FormatNodeForError(*n),
-                            " that has only ", out_mvec.size(), " outputs");
+    return absl::InternalError(
+        absl::StrCat("Trying to get the memory type for ", index,
+                     "'th output of node ", FormatNodeForError(*n),
+                     " that has only ", out_mvec.size(), " outputs"));
   }
   *memory_type = out_mvec[index];
   return absl::OkStatus();

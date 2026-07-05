@@ -80,6 +80,7 @@ cc_library(
     visibility = [
         "//tensorflow/c:__subpackages__",
         "//tensorflow/core/common_runtime/pluggable_device:__subpackages__",
+        "//tensorflow/core/kernels:__subpackages__",
     ],
     deps = [
         "//tensorflow/c:c_api_macros",
@@ -107,6 +108,7 @@ tf_cc_test(
         ":stream_executor",
         ":stream_executor_internal",
         ":stream_executor_test_util",
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",

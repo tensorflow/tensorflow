@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "xla/literal.h"
@@ -33,8 +34,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
 
 namespace tensorflow {
@@ -93,9 +92,9 @@ class TpuOutfeedDequeueTupleOp : public T {
       : T(ctx, "outfeed_dequeue", 1, std::move(transfer_op)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shapes", &shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &dtypes_));
-    OP_REQUIRES(
-        ctx, shapes_.size() == dtypes_.size(),
-        errors::InvalidArgument("shapes and dtypes must be the same length."));
+    OP_REQUIRES(ctx, shapes_.size() == dtypes_.size(),
+                absl::InvalidArgumentError(
+                    "shapes and dtypes must be the same length."));
     // The `dtypes` list is inferred from the supplied inputs, so it
     // is always the correct length.
     for (int i = 0; i < shapes_.size(); i++) {

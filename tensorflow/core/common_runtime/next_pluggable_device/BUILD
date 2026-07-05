@@ -101,7 +101,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@xla//xla/stream_executor/tpu:c_api_conversions",
+        "@xla//xla/tpu:c_api_conversions",
         "@xla//xla/tsl/framework:device_id_utils",
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:statusor",
@@ -170,6 +170,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:status",
     ],
 )

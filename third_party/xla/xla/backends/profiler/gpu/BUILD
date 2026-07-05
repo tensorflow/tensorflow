@@ -40,12 +40,14 @@ cc_library(
         ":cupti_tracer_options_utils",
         ":gpu_metadata",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cupti_headers",
         "@tsl//tsl/profiler/lib:profiler_factory",
         "@tsl//tsl/profiler/lib:profiler_interface",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
@@ -69,6 +71,8 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla/stream_executor/rocm:roctracer_wrapper",
         "//xla/tsl/platform:env_time",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -92,6 +96,7 @@ cc_library(
     deps = [
         "//xla/tsl/cuda:cupti",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cupti_headers",
         "@tsl//tsl/platform:macros",
         "@tsl//tsl/platform:types",
     ],
@@ -156,7 +161,10 @@ cc_library(
     ],
     deps = [
         ":cupti_interface",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_for_library",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cupti_headers",
         "@tsl//tsl/platform:test",
     ],
 )
@@ -176,6 +184,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cupti_headers",
         "@tsl//tsl/platform:logging",
         "@tsl//tsl/platform:thread_annotations",
     ],
@@ -200,7 +209,9 @@ xla_test(
         ":cupti_wrapper",
         ":mock_cupti",
         "//xla/tsl/profiler/utils:time_utils",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
+        "@local_config_cuda//cuda:cupti_headers",
     ],
 )
 
@@ -241,6 +252,7 @@ cc_library(
         ":cupti_interface",
         "//xla/tsl/cuda:cupti",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cupti_headers",
     ],
 )
 
@@ -256,6 +268,7 @@ cc_library(
         ":cupti_collector",
         ":cupti_tracer",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/profiler/utils:profiler_options_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
@@ -285,6 +298,7 @@ cc_library(
         ":cupti_utils",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "//xla/tsl/profiler/utils:lock_free_queue",
@@ -306,6 +320,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cupti_headers",
         "@tsl//tsl/platform:env",
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:logging",
@@ -331,15 +346,13 @@ cc_library(
     deps = [
         ":cupti_collector",
         ":cupti_interface",
+        ":cupti_pm_sampler_impl",
+        ":cupti_pm_sampler_stub",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/time",
         "@local_config_cuda//cuda:cupti_headers",
-    ] + if_cuda_newer_than(
-        "12_6",
-        [":cupti_pm_sampler_impl"],
-        [":cupti_pm_sampler_stub"],
-    ),
+    ],
 )
 
 cc_library(
@@ -377,35 +390,45 @@ cc_library(
 
 cc_library(
     name = "cupti_pm_sampler_impl",
-    srcs = ["cupti_pm_sampler_impl.cc"],
-    hdrs = [
-        "cupti_pm_sampler.h",
-        "cupti_pm_sampler_impl.h",
-    ],
+    srcs = if_cuda_newer_than(
+        "12_6",
+        ["cupti_pm_sampler_impl.cc"],
+    ),
+    hdrs = if_cuda_newer_than(
+        "12_6",
+        [
+            "cupti_pm_sampler.h",
+            "cupti_pm_sampler_impl.h",
+        ],
+    ),
     tags = [
         "cuda-only",
         "gpu",
         "manual",  # This target requires CUDA 12.6+, therefore we only built it if it was requested via a dependency.
     ],
-    deps = [
-        ":cupti_collector",
-        ":cupti_interface",
-        ":cupti_status",
-        ":cupti_utils",
-        "//xla/stream_executor/cuda:cuda_status",
-        "//xla/tsl/platform:errors",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@local_config_cuda//cuda:cupti_headers",
-        "@tsl//tsl/platform:errors",
-    ],
+    deps = if_cuda_newer_than(
+        "12_6",
+        [
+            ":cupti_collector",
+            ":cupti_interface",
+            ":cupti_status",
+            ":cupti_utils",
+            "//xla/stream_executor/cuda:cuda_status",
+            "//xla/tsl/platform:errors",
+            "@com_google_absl//absl/base",
+            "@com_google_absl//absl/base:core_headers",
+            "@com_google_absl//absl/cleanup",
+            "@com_google_absl//absl/log",
+            "@com_google_absl//absl/log:vlog_is_on",
+            "@com_google_absl//absl/status",
+            "@com_google_absl//absl/status:statusor",
+            "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/synchronization",
+            "@com_google_absl//absl/time",
+            "@local_config_cuda//cuda:cupti_headers",
+            "@tsl//tsl/platform:errors",
+        ],
+    ) + ["//xla/tsl/platform:status_macros"],
 )
 
 cc_library(
@@ -420,6 +443,11 @@ cc_library(
     deps = [
         ":cupti_interface",
         ":cupti_utils",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -447,12 +475,14 @@ cc_library(
     hdrs = ["rocm_tracer_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -484,8 +514,9 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@local_config_rocm//rocm:hip_runtime",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep
-        "@local_config_rocm//rocm:rocprofiler-sdk",  # buildcleaner: keep
+        "@local_config_rocm//rocm:rocprofiler_sdk",  # buildcleaner: keep
         "@tsl//tsl/platform:abi",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
@@ -498,23 +529,26 @@ cc_library(
     tags = [
         "gpu",
         "rocm-only",
-    ] + if_google([
-        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
-        "manual",
-    ]),
+    ],
     deps = [
         ":rocm_collector",
         ":rocm_tracer_utils",
         "//xla/stream_executor/rocm:roctracer_wrapper",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep
-        "@local_config_rocm//rocm:rocprofiler-sdk",  # buildcleaner: keep
+        "@local_config_rocm//rocm:rocprofiler_sdk",  # buildcleaner: keep
         "@tsl//tsl/platform:abi",
     ],
 )
@@ -534,11 +568,14 @@ xla_cc_test(
         ":rocm_collector",
         ":rocm_tracer",
         ":rocm_tracer_utils",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@local_config_rocm//rocm:hip",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocm_headers",
+        "@local_config_rocm//rocm:rocprofiler_sdk",  # buildcleaner: keep
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
@@ -557,6 +594,7 @@ xla_cc_test(
         # ":rocm_tracer",
         ":rocm_collector",
         ":rocm_tracer_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
         "//xla/tsl/profiler/utils:xplane_utils",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
@@ -580,7 +618,6 @@ cc_library(
         "gpu",
     ],
     deps = [
-        "//xla/tsl/cuda:cupti",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -674,6 +711,7 @@ cc_library(
         ":cupti_marker_data_parser",
         ":cupti_utils",
         "//xla/tsl/cuda:cupti",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/profiler/utils:buffer_pool",
         "//xla/tsl/profiler/utils:lock_free_queue",
         "@com_google_absl//absl/base:core_headers",
@@ -707,10 +745,7 @@ cc_library(
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:string_view",
-        "@tsl//tsl/platform:logging",
-        "@tsl//tsl/platform:stringpiece",
     ],
     alwayslink = 1,
 )
@@ -789,7 +824,6 @@ xla_cc_test(
         ":cupti_utils",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -808,6 +842,8 @@ xla_cc_test(
         ":cupti_utils",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings:string_view",

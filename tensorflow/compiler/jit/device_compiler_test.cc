@@ -488,7 +488,7 @@ TEST_F(DeviceCompilerTest, CompileStrictPersistentCacheFailedToPersist) {
   EXPECT_CALL(*persistor,
               TryToPersistExecutable(Signature::Hash()(signature),
                                      signature.HumanString(), _, _, _, _))
-      .WillOnce(Return(errors::FailedPrecondition("Random error.")));
+      .WillOnce(Return(absl::FailedPreconditionError("Random error.")));
 
   EXPECT_THAT(xla_device_compiler->CompileIfNeeded(
                   options, fn, args, XlaCompiler::CompileOptions{},

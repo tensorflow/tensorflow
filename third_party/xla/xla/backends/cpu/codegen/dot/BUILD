@@ -24,6 +24,7 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:dot_op_emitter",
         "//xla/service/llvm_ir:ir_array",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",

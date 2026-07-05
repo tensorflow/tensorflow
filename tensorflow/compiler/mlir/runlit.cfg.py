@@ -30,7 +30,7 @@ from lit.llvm.subst import ToolSubst
 # name: The name of this test suite.
 config.name = 'MLIR ' + os.path.basename(config.mlir_test_dir)
 
-config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+config.test_format = lit.formats.ShTest()
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = ['.cc', '.hlo', '.json', '.mlir', '.pbtxt', '.py']

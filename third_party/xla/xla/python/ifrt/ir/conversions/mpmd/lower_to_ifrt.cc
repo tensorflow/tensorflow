@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/LogicalResult.h"
@@ -57,76 +56,25 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/debug_options_flags.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/conversions/mpmd/utils.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
 #include "xla/python/ifrt/ir/transforms/debug.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
-#include "xla/service/compilation_environments.h"
-#include "xla/service/computation_placer.h"
-#include "xla/service/spmd/shardy/constants.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
-#include "xla/service/spmd/shardy/utils.h"
+#include "xla/python/ifrt/ir/transforms/utils.h"
 
 namespace xla::ifrt::mpmd {
 namespace {
 
-using llvm::DenseMap;
-using mlir::ArrayRef;
-using mlir::Attribute;
-using mlir::BlockArgument;
-using mlir::CallOpInterface;
-using mlir::ConversionPatternRewriter;
-using mlir::DenseSet;
-using mlir::failed;
-using mlir::failure;
-using mlir::FunctionType;
-using mlir::IntegerAttr;
-using mlir::LogicalResult;
-using mlir::MLIRContext;
-using mlir::ModuleOp;
-using mlir::OpConversionPattern;
-using mlir::Pass;
-using mlir::PassWrapper;
-using mlir::SmallVector;
-using mlir::StringAttr;
-using mlir::StringRef;
-using mlir::success;
-using mlir::SymbolTableCollection;
-using mlir::Type;
-using mlir::TypeConverter;
-using mlir::TypedValue;
-using mlir::ValueRange;
-using mlir::WalkResult;
-using mlir::func::FuncOp;
-using mlir::func::ReturnOp;
-using mlir::mpmd::FragmentCallOp;
-using mlir::mpmd::GetMainFunction;
-using mlir::mpmd::IsMainFunction;
-using mlir::mpmd::kAliasingAttrName;
-using mlir::mpmd::kBufferDonationAttrName;
-using mlir::mpmd::kReservedHbmBytes;
-using mlir::mpmd::MeshTensorType;
-using mlir::mpmd::MpmdDialect;
-using mlir::mpmd::RemoveMesh;
-using mlir::mpmd::TransferOp;
-using xla::ifrt::IfrtControlType;
-using xla::ifrt::IfrtDevicesAttr;
-using xla::ifrt::InitPassManager;
-using xla::ifrt::StatusScopedDiagnosticHandler;
-
 namespace mpmd = ::mlir::mpmd;
-namespace sdy = mlir::sdy;
 
-bool IsIfrtArray(Type t) { return mlir::isa<xla::ifrt::IfrtArrayType>(t); }
+bool IsIfrtArray(mlir::Type t) { return mlir::isa<IfrtArrayType>(t); }
 
 // Checks if a FuncOp is legal.
-bool IsFuncOpLegal(FuncOp op) {
-  if (IsMainFunction(op)) {
+bool IsFuncOpLegal(mlir::func::FuncOp op) {
+  if (mpmd::IsMainFunction(op)) {
     // All the inputs and results of the main func should be IFRT arrays.
     return absl::c_all_of(op.getFunctionType().getInputs(), IsIfrtArray) &&
            absl::c_all_of(op.getFunctionType().getResults(), IsIfrtArray);
@@ -135,95 +83,95 @@ bool IsFuncOpLegal(FuncOp op) {
   return !op->hasAttr(mpmd::kMeshShapeAttr);
 }
 
-// Converts a PartIR:MPMD MeshTensor to an IFRT Array.
+// Converts a Shardy MPMD MeshTensor to an IFRT Array.
 //
 // The conversion constructs an IFRT Array with the global shape of the
-// PartIR:MPMD MeshTensor, an IFRT Devices Attribute (i.e., list of IFRT devices
+// Shardy MPMD MeshTensor, an IFRT Devices Attribute (i.e., list of IFRT devices
 // corresponding to the MeshTensor's mesh), and an IFRT ShardingParam.
-Type MeshTensorToArray(
+mlir::Type MeshTensorToArray(
     const llvm::StringMap<IfrtDevicesAttr>& mesh_name_to_devices_attr,
-    MeshTensorType mesh_tensor_type, sdy::MeshAttr mesh_attr) {
-  MLIRContext& ctx = *mesh_tensor_type.getContext();
+    mpmd::MeshTensorType mesh_tensor_type, mlir::sdy::MeshAttr mesh_attr) {
+  mlir::MLIRContext* ctx = mesh_tensor_type.getContext();
   auto sharding_param =
       MeshTensorTypeToShardingParam(mesh_tensor_type, mesh_attr);
   CHECK_OK(sharding_param.status());
-  return xla::ifrt::IfrtArrayType::get(
-      &ctx, mesh_tensor_type.getGlobalTensorType(),
-      xla::ifrt::IfrtShardingParamAttr::get(&ctx, sharding_param.value()),
+  return IfrtArrayType::get(
+      ctx, mesh_tensor_type.getGlobalTensorType(),
+      IfrtShardingParamAttr::get(ctx, sharding_param.value()),
       mesh_name_to_devices_attr.at(mesh_tensor_type.getMeshName()),
       mesh_tensor_type.getMemoryKind(), /*layout_attr=*/nullptr);
 }
 
 // Converts an MPMD TransferOp into an IFRT ReshardOp.
-class TransferOpPattern final : public OpConversionPattern<TransferOp> {
+class TransferOpPattern final
+    : public mlir::OpConversionPattern<mpmd::TransferOp> {
  public:
-  TransferOpPattern(const TypeConverter& type_converter, MLIRContext* context)
+  TransferOpPattern(const mlir::TypeConverter& type_converter,
+                    mlir::MLIRContext* context)
       : OpConversionPattern(type_converter, context) {}
 
-  LogicalResult matchAndRewrite(
-      TransferOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    const TypeConverter& type_converter = *getTypeConverter();
-    Type converted_result_type = type_converter.convertType(op.getType());
-    auto ifrt_reshard_op = xla::ifrt::ReshardOp::create(
+  mlir::LogicalResult matchAndRewrite(
+      mpmd::TransferOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const final {
+    auto ifrt_reshard_op = ReshardOp::create(
         rewriter, op.getLoc(),
-        /*outputs=*/converted_result_type,
+        /*outputs=*/getTypeConverter()->convertType(op.getType()),
         /*control_output=*/
         IfrtControlType::get(rewriter.getContext()),
         /*inputs=*/adaptor.getTensor(),
         /*donated=*/false,
-        /*control_inputs=*/ValueRange());
+        /*control_inputs=*/mlir::ValueRange());
     rewriter.replaceOp(op, ifrt_reshard_op.getOutputs());
-    return success();
+    return mlir::success();
   }
 };
 
 // Converts an MPMD FragmentCallOp into an IFRT CallOp.
-class FragmentCallOpPattern final : public OpConversionPattern<FragmentCallOp> {
+class FragmentCallOpPattern final
+    : public mlir::OpConversionPattern<mpmd::FragmentCallOp> {
  public:
   FragmentCallOpPattern(
-      const TypeConverter& type_converter, MLIRContext* context,
+      const mlir::TypeConverter& type_converter, mlir::MLIRContext* context,
       const llvm::StringMap<IfrtDevicesAttr>& mesh_name_to_devices_attr)
       : OpConversionPattern(type_converter, context),
         mesh_name_to_devices_attr_(mesh_name_to_devices_attr) {}
 
-  LogicalResult matchAndRewrite(
-      FragmentCallOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    const TypeConverter& type_converter = *getTypeConverter();
+  mlir::LogicalResult matchAndRewrite(
+      mpmd::FragmentCallOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const final {
     // Convert the result types of the op.
-    SmallVector<Type> converted_result_types;
-    if (failed(type_converter.convertTypes(op->getResultTypes(),
-                                           converted_result_types))) {
-      return failure();
+    mlir::SmallVector<mlir::Type> converted_result_types;
+    if (failed(getTypeConverter()->convertTypes(op->getResultTypes(),
+                                                converted_result_types))) {
+      return mlir::failure();
     }
 
     // Get the aliased inputs from the callee in order to construct the
     // io_aliases required by the ifrt.CallOp.
-    std::vector<Attribute> io_aliases;
+    std::vector<mlir::Attribute> io_aliases;
     std::vector<int> donated_input_indices;
-    FuncOp callee =
-        mlir::cast<FuncOp>(mlir::cast<CallOpInterface>(*op).resolveCallable());
-    for (BlockArgument arg : callee.getArguments()) {
+    mlir::func::FuncOp callee = mlir::cast<mlir::func::FuncOp>(
+        mlir::cast<mlir::CallOpInterface>(*op).resolveCallable());
+    for (mlir::BlockArgument arg : callee.getArguments()) {
       if (auto donation_attr = callee.getArgAttrOfType<mlir::BoolAttr>(
               arg.getArgNumber(), kBufferDonationAttrName)) {
         donated_input_indices.push_back(arg.getArgNumber());
       }
       if (auto aliasing_attr = callee.getArgAttrOfType<mlir::IntegerAttr>(
-              arg.getArgNumber(), kAliasingAttrName)) {
+              arg.getArgNumber(), kAliasingOutputAttrName)) {
         io_aliases.push_back(rewriter.getDenseI32ArrayAttr(
             {static_cast<int32_t>(arg.getArgNumber()),
              static_cast<int32_t>(aliasing_attr.getInt())}));
       }
     }
 
-    StringRef mesh_name = op.getMeshName();
-    auto ifrt_call_op = xla::ifrt::CallOp::create(
+    mlir::StringRef mesh_name = op.getMeshName();
+    auto ifrt_call_op = CallOp::create(
         rewriter, op.getLoc(),
         /*outputs=*/converted_result_types,
         /*control_output=*/IfrtControlType::get(rewriter.getContext()),
         /*inputs=*/adaptor.getOperands(),
-        /*control_inputs=*/ValueRange{},
+        /*control_inputs=*/mlir::ValueRange{},
         /*arg_attrs=*/nullptr,
         /*res_attrs=*/nullptr,
         /*callee=*/op.getCalleeAttr(),
@@ -236,7 +184,7 @@ class FragmentCallOpPattern final : public OpConversionPattern<FragmentCallOp> {
     ifrt_call_op->setAttr(kIfrtMeshNameAttrName,
                           rewriter.getStringAttr(mesh_name));
     rewriter.replaceOp(op, ifrt_call_op.getOutputs());
-    return success();
+    return mlir::success();
   }
 
  private:
@@ -245,61 +193,64 @@ class FragmentCallOpPattern final : public OpConversionPattern<FragmentCallOp> {
 
 // Pattern for converting the types of ReturnOps. It is used to ensure that the
 // return of the main func is of type IFRT Array.
-class ReturnOpPattern : public OpConversionPattern<ReturnOp> {
+class ReturnOpPattern : public mlir::OpConversionPattern<mlir::func::ReturnOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(
-      ReturnOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
+  mlir::LogicalResult matchAndRewrite(
+      mlir::func::ReturnOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const final {
     rewriter.modifyOpInPlace(op,
                              [&] { op->setOperands(adaptor.getOperands()); });
-    return success();
+    return mlir::success();
   }
 };
 
 // Updates the main function signature from MeshTensor to IFRT Array, and
 // removes mesh shapes attributes from non-main functions.
-class FuncOpPattern final : public OpConversionPattern<FuncOp> {
+class FuncOpPattern final
+    : public mlir::OpConversionPattern<mlir::func::FuncOp> {
  public:
-  FuncOpPattern(const TypeConverter& type_converter, MLIRContext* context)
+  FuncOpPattern(const mlir::TypeConverter& type_converter,
+                mlir::MLIRContext* context)
       : OpConversionPattern(type_converter, context) {}
 
-  LogicalResult matchAndRewrite(
-      FuncOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    if (!IsMainFunction(op)) {
+  mlir::LogicalResult matchAndRewrite(
+      mlir::func::FuncOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const final {
+    if (!mpmd::IsMainFunction(op)) {
       // We only need to remove the mesh attributed for the non-main functions.
-      rewriter.modifyOpInPlace(op, [&] { RemoveMesh(op); });
-      return success();
+      rewriter.modifyOpInPlace(op, [&] { mpmd::RemoveMesh(op); });
+      return mlir::success();
     }
-    FunctionType func_type = op.getFunctionType();
+    mlir::FunctionType func_type = op.getFunctionType();
     // Convert the function signature.
-    TypeConverter::SignatureConversion converted_args(func_type.getNumInputs());
-    const TypeConverter& type_converter = *getTypeConverter();
+    mlir::TypeConverter::SignatureConversion converted_args(
+        func_type.getNumInputs());
+    const mlir::TypeConverter& type_converter = *getTypeConverter();
     if (failed(type_converter.convertSignatureArgs(func_type.getInputs(),
                                                    converted_args))) {
-      return failure();
+      return mlir::failure();
     }
     // Convert the function results.
-    SmallVector<Type> converted_results;
+    mlir::SmallVector<mlir::Type> converted_results;
     if (failed(type_converter.convertTypes(func_type.getResults(),
                                            converted_results))) {
-      return failure();
+      return mlir::failure();
     }
     // Replace the types of the region arguments as per the signature result.
     if (failed(rewriter.convertRegionTypes(&op.getBody(), type_converter,
                                            &converted_args))) {
-      return failure();
+      return mlir::failure();
     }
     // Update the function signature.
     rewriter.modifyOpInPlace(op, [&] {
-      op.setType(FunctionType::get(rewriter.getContext(),
-                                   converted_args.getConvertedTypes(),
-                                   converted_results));
+      op.setType(mlir::FunctionType::get(rewriter.getContext(),
+                                         converted_args.getConvertedTypes(),
+                                         converted_results));
       op->removeAttr(mpmd::kTopologyAttr);
-      op->setAttr(xla::ifrt::kIfrtFunctionAttrName, rewriter.getUnitAttr());
+      op->setAttr(kIfrtFunctionAttrName, rewriter.getUnitAttr());
     });
-    return success();
+    return mlir::success();
   }
 };
 
@@ -308,51 +259,52 @@ class FuncOpPattern final : public OpConversionPattern<FuncOp> {
 // implicitly during stable serialization (i.e., conversion to VIFRT), which
 // requires the attributes to be from the IFRT dialect. Thus, we replace them
 // with `ifrt.donated` unit attribute, which is supported by VIFRT.
-void ReplaceAliasingArgAttrsWithIfrtDonatedArgAttrs(FuncOp func) {
+void ReplaceAliasingArgAttrsWithIfrtDonatedArgAttrs(mlir::func::FuncOp func) {
   // Mark donated args with the IFRT donated unit attribute.
   for (int arg_num = 0; arg_num < func.getNumArguments(); arg_num++) {
     if (func.getArgAttrOfType<mlir::BoolAttr>(arg_num,
                                               kBufferDonationAttrName)) {
       func.removeArgAttr(arg_num, kBufferDonationAttrName);
-      func.setArgAttr(arg_num, xla::ifrt::kIfrtDonatedArgAttrName,
+      func.setArgAttr(arg_num, kIfrtDonatedArgAttrName,
                       mlir::UnitAttr::get(func.getContext()));
-    } else if (func.getArgAttrOfType<mlir::IntegerAttr>(arg_num,
-                                                        kAliasingAttrName)) {
-      func.removeArgAttr(arg_num, kAliasingAttrName);
-      func.setArgAttr(arg_num, xla::ifrt::kIfrtDonatedArgAttrName,
+    } else if (func.getArgAttrOfType<mlir::IntegerAttr>(
+                   arg_num, kAliasingOutputAttrName)) {
+      func.removeArgAttr(arg_num, kAliasingOutputAttrName);
+      func.setArgAttr(arg_num, kIfrtDonatedArgAttrName,
                       mlir::UnitAttr::get(func.getContext()));
     }
   }
 }
 
 class LowerToIfrtPass
-    : public PassWrapper<LowerToIfrtPass, mlir::OperationPass<ModuleOp>> {
+    : public mlir::PassWrapper<LowerToIfrtPass,
+                               mlir::OperationPass<mlir::ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerToIfrtPass)
 
  private:
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
-    registry.insert<xla::ifrt::IfrtDialect>();
-    xla::ifrt::AttachBuiltInSpmdExpansions(registry);
+    registry.insert<IfrtDialect>();
   }
 
   void runOnOperation() final {
-    ModuleOp module_op = getOperation();
-    MLIRContext& ctx = getContext();
-    FuncOp main_func = GetMainFunction(module_op);
+    mlir::ModuleOp module_op = getOperation();
+    mlir::MLIRContext& ctx = getContext();
+    mlir::func::FuncOp main_func = GetMainFunction(module_op);
 
     ReplaceAliasingArgAttrsWithIfrtDonatedArgAttrs(main_func);
 
     // Construct mapping from mesh name to IFRT Device Attributes.
     llvm::StringMap<IfrtDevicesAttr> mesh_name_to_devices_attr;
-    ArrayRef<mpmd::NamedMeshAttr> meshes = mpmd::GetTopologyMeshes(main_func);
+    mlir::ArrayRef<mpmd::NamedMeshAttr> meshes =
+        mpmd::GetTopologyMeshes(main_func);
     int total_devices = 0;
     for (const mpmd::NamedMeshAttr& mesh : meshes) {
       int num_mesh_devices = 1;
-      for (sdy::MeshAxisAttr axis : mesh.getMesh().getAxes()) {
+      for (mlir::sdy::MeshAxisAttr axis : mesh.getMesh().getAxes()) {
         num_mesh_devices *= axis.getSize();
       }
-      SmallVector<int> mesh_devices(num_mesh_devices);
+      mlir::SmallVector<int> mesh_devices(num_mesh_devices);
       absl::c_iota(mesh_devices, total_devices);
       total_devices += num_mesh_devices;
       mesh_name_to_devices_attr[mesh.getName()] =
@@ -360,23 +312,24 @@ class LowerToIfrtPass
     }
 
     mlir::ConversionTarget target(ctx);
-    target.addIllegalDialect<MpmdDialect>();
-    target.addLegalDialect<xla::ifrt::IfrtDialect,
-                           mlir::stablehlo::StablehloDialect,
-                           mlir::func::FuncDialect>();
+    target.addIllegalDialect<mpmd::MpmdDialect>();
+    target.addLegalDialect<IfrtDialect, mlir::stablehlo::StablehloDialect,
+                           mlir::func::FuncDialect, mlir::sdy::SdyDialect>();
     // The main func op should only have IFRT Array types, and the non-main
-    // func ops should not have PartIR mesh_shape attribute.
-    target.addDynamicallyLegalOp<FuncOp>(IsFuncOpLegal);
-    target.addDynamicallyLegalOp<ReturnOp>([](ReturnOp op) {
-      return absl::c_all_of(op.getOperandTypes(), [](Type t) {
-        return !mlir::isa<MeshTensorType>(t);
-      });
-    });
+    // func ops should not have mesh_shape attribute.
+    target.addDynamicallyLegalOp<mlir::func::FuncOp>(IsFuncOpLegal);
+    target.addDynamicallyLegalOp<mlir::func::ReturnOp>(
+        [](mlir::func::ReturnOp op) {
+          return absl::c_all_of(op.getOperandTypes(), [](mlir::Type t) {
+            return !mlir::isa<mpmd::MeshTensorType>(t);
+          });
+        });
 
     // Set conversion from MeshTensorType to IFRT Array.
-    TypeConverter type_converter;
+    mlir::TypeConverter type_converter;
     type_converter.addConversion([&meshes, &mesh_name_to_devices_attr](
-                                     MeshTensorType mesh_tensor_type) -> Type {
+                                     mpmd::MeshTensorType mesh_tensor_type)
+                                     -> mlir::Type {
       auto it = absl::c_find_if(
           meshes, [mesh_tensor_type](const mpmd::NamedMeshAttr& mesh) {
             return mesh.getName() == mesh_tensor_type.getMeshName();
@@ -384,88 +337,31 @@ class LowerToIfrtPass
       CHECK(it != meshes.end())
           << "Mesh `" << mesh_tensor_type.getMeshName().str()
           << "` not found in topology.";
-      sdy::MeshAttr mesh_attr = it->getMesh();
       return MeshTensorToArray(mesh_name_to_devices_attr, mesh_tensor_type,
-                               mesh_attr);
+                               it->getMesh());
     });
-    // Do not convert if an Array is already an IFRT Array.
-    type_converter.addConversion(
-        [](xla::ifrt::IfrtArrayType ifrt_array_type) -> Type {
-          return ifrt_array_type;
-        });
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<FuncOpPattern, TransferOpPattern>(type_converter, &ctx);
     patterns.add<ReturnOpPattern>(&ctx);
     patterns.add<FragmentCallOpPattern>(type_converter, &ctx,
                                         mesh_name_to_devices_attr);
-    if (failed(mlir::applyPartialConversion(module_op, target,
-                                            std::move(patterns)))) {
+    if (mlir::failed(mlir::applyPartialConversion(module_op, target,
+                                                  std::move(patterns)))) {
       signalPassFailure();
     }
-
-    // Convert the xla.sdy.meshes attribute to ifrt.sdy.meshes attribute so
-    // that the attribute is preserved during IFRT versioning. This is safe
-    // to do because the attribute if forward and backward compatible.
-    if (auto front_end_attr = xla::sdy::getFrontendAttrs(module_op)) {
-      if (auto meshes_round_trip_attr =
-              front_end_attr.get(xla::sdy::kMeshesRoundTripAttr)) {
-        module_op->setAttr(xla::ifrt::kIfrtSdyMeshesRoundTripAttr,
-                           meshes_round_trip_attr);
-      }
-    }
-
-    // Clean up the sdy meshes.
-    mlir::IRRewriter rewriter(&ctx);
-    auto sdy_mesh_op_s = module_op.getOps<sdy::MeshOp>();
-    for (auto it = sdy_mesh_op_s.begin(); it != sdy_mesh_op_s.end();) {
-      rewriter.eraseOp(*it++);
-    }
   }
 
-  StringRef getArgument() const override { return "mpmd-lower-to-ifrt"; }
+  mlir::StringRef getArgument() const override { return "mpmd-lower-to-ifrt"; }
 
-  StringRef getDescription() const override {
-    return "Lowers PartIR:MPMD to IFRT IR.";
-  }
-};
-
-class AddCtrlDependenciesPass
-    : public PassWrapper<AddCtrlDependenciesPass,
-                         mlir::OperationPass<mlir::func::FuncOp>> {
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AddCtrlDependenciesPass)
-
- private:
-  void runOnOperation() override {
-    FuncOp func_op = getOperation();
-    // Mapping between a hash of devices used by the CallOp and the control
-    // output of the last IFRT CallOp encountered that uses the same devices.
-    DenseMap<llvm::ArrayRef<int>, TypedValue<IfrtControlType>>
-        call_op_to_control_output;
-    func_op.walk([&](xla::ifrt::CallOp call_op) {
-      llvm::ArrayRef<int> devices = call_op.getDevices();
-      if (TypedValue<IfrtControlType> ctrl_input =
-              call_op_to_control_output.lookup(devices)) {
-        call_op.getControlInputsMutable().append(ctrl_input);
-      }
-      call_op_to_control_output[devices] = call_op.getControlOutput();
-      return WalkResult::skip();
-    });
-  }
-
-  StringRef getArgument() const override {
-    return "mpmd-ifrt-add-ctrl-dependencies";
-  }
-
-  StringRef getDescription() const override {
-    return "Adds IFRT IR control dependencies to IFRT CallOps.";
+  mlir::StringRef getDescription() const override {
+    return "Lowers Shardy MPMD to IFRT IR.";
   }
 };
 
 class BuildCompileOptionsPass
-    : public PassWrapper<BuildCompileOptionsPass,
-                         mlir::OperationPass<ModuleOp>> {
+    : public mlir::PassWrapper<BuildCompileOptionsPass,
+                               mlir::OperationPass<mlir::ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(BuildCompileOptionsPass)
 
@@ -490,87 +386,72 @@ class BuildCompileOptionsPass
       set_reserved_bytes_;
 
   void runOnOperation() override {
-    ModuleOp module = getOperation();
-    SymbolTableCollection symbol_table;
-    FuncOp func_op = GetMainFunction(module);
-    int threshold_for_argument_tupling = threshold_for_argument_tupling_;
-    bool is_sdy_partitioned =
-        module->hasAttr(xla::ifrt::kIfrtSdyMeshesRoundTripAttr);
-    auto walk_result = func_op.walk([&](xla::ifrt::CallOp call_op) {
-      xla::CompileOptions compile_options;
-      xla::ExecutableBuildOptions& exec_build_options =
-          compile_options.executable_build_options;
-      ArrayRef<int> logical_device_ids = call_op.getDevicesAttr().getIds();
-      exec_build_options.set_num_replicas(1);
-      exec_build_options.set_num_partitions(logical_device_ids.size());
-      xla::DeviceAssignment device_assignment(1, logical_device_ids.size());
-      // Build options use IFRT logical device ids.
-      for (const auto [i, device_id] : llvm::enumerate(logical_device_ids)) {
-        device_assignment(0, i) = device_id;
-      }
-      exec_build_options.set_device_assignment(device_assignment);
-      exec_build_options.set_use_spmd_partitioning(true);
-      if (is_sdy_partitioned) {
-        exec_build_options.set_use_shardy_partitioner(true);
-      }
-      FuncOp callee = call_op.getCalleeOp(symbol_table);
-      if (auto reserved_hbm_bytes =
-              callee->getAttrOfType<IntegerAttr>(kReservedHbmBytes)) {
-        set_reserved_bytes_(exec_build_options, reserved_hbm_bytes.getInt());
+    mlir::ModuleOp module = getOperation();
+    mlir::SymbolTableCollection symbol_table;
+    mlir::func::FuncOp func_op = GetMainFunction(module);
+
+    auto walk_result = func_op.walk([&](CallOp call_op) {
+      mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
+      mlir::ModuleOp callee_module = callee->getParentOfType<mlir::ModuleOp>();
+      std::string callee_name = callee_module.getSymName()->str();
+
+      xla::CompileOptions compile_options = GetDefaultCompileOptions(
+          call_op, /*enable_sharding_propagation=*/false,
+          /*enable_parameter_tupling=*/threshold_for_argument_tupling_ > 0 &&
+              callee.getNumArguments() > threshold_for_argument_tupling_);
+
+      if (auto reserved_hbm_bytes = callee->getAttrOfType<mlir::IntegerAttr>(
+              mpmd::kReservedHbmBytes)) {
+        set_reserved_bytes_(compile_options.executable_build_options,
+                            reserved_hbm_bytes.getInt());
       };
-      std::string callee_name =
-          callee->getParentOfType<mlir::ModuleOp>().getSymName()->str();
+
       auto mesh_name_attr =
-          call_op->getAttrOfType<StringAttr>(kIfrtMeshNameAttrName);
-      CHECK(mesh_name_attr != nullptr)
-          << "ifrt.CallOp `" << callee_name << "` is missing "
-          << kIfrtMeshNameAttrName.str() << " attribute.";
+          call_op->getAttrOfType<mlir::StringAttr>(kIfrtMeshNameAttrName);
+      if (mesh_name_attr == nullptr) {
+        call_op.emitError()
+            << " is missing " << kIfrtMeshNameAttrName.str() << " attribute";
+        return mlir::WalkResult::interrupt();
+      }
       // While the users provide per-mesh compilation options, we need to
       // include callee name in the key because fragments assigned to the same
-      // mesh might have different `xla_tpu_user_reserved_hbm_bytes`.
+      // mesh might have different `reserved_hbm_bytes`.
       const std::string compile_options_key =
           absl::StrCat(callee_name, "_mesh_", mesh_name_attr.str());
       call_op->setAttr(
-          xla::ifrt::kIfrtCompileOptionsKey,
-          StringAttr::get(call_op->getContext(), compile_options_key));
+          kIfrtCompileOptionsKey,
+          mlir::StringAttr::get(call_op->getContext(), compile_options_key));
       // Apply the user-provided per-mesh compile option overrides.
       if (auto option_overrides =
               compile_options_overrides_.find(mesh_name_attr.str());
           option_overrides != compile_options_overrides_.end()) {
         compile_options.env_option_overrides = option_overrides->second;
       }
-      if (threshold_for_argument_tupling > 0 &&
-          callee.getNumArguments() > threshold_for_argument_tupling) {
-        compile_options.parameter_is_tupled_arguments = true;
-      }
       compile_options_map_.emplace(compile_options_key, compile_options);
-      return WalkResult::skip();
+      return mlir::WalkResult::skip();
     });
+
     if (walk_result.wasInterrupted()) {
       signalPassFailure();
     }
   }
 
-  StringRef getArgument() const override {
+  mlir::StringRef getArgument() const override {
     return "mpmd-ifrt-build-compile-options";
   }
 
-  StringRef getDescription() const override {
+  mlir::StringRef getDescription() const override {
     return "Gets the compile options for each IFRT atom program.";
   }
 };
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateLowerToIfrtPass() {
+std::unique_ptr<mlir::Pass> CreateLowerToIfrtPass() {
   return std::make_unique<LowerToIfrtPass>();
 }
 
-std::unique_ptr<Pass> CreateAddCtrlDependenciesPass() {
-  return std::make_unique<AddCtrlDependenciesPass>();
-}
-
-std::unique_ptr<Pass> CreateBuildCompileOptionsPass(
+std::unique_ptr<mlir::Pass> CreateBuildCompileOptionsPass(
     CompileOptionsMap& compile_options_map,
     const absl::flat_hash_map<std::string, const EnvOptionsOverride>&
         compile_options_overrides,
@@ -582,34 +463,21 @@ std::unique_ptr<Pass> CreateBuildCompileOptionsPass(
       threshold_for_argument_tupling, set_reserved_bytes);
 }
 
-void AddLowerToIfrtPasses(mlir::OpPassManager& pm,
-                          bool add_control_dependencies) {
+void AddLowerToIfrtPasses(mlir::OpPassManager& pm) {
   pm.addPass(CreateLowerToIfrtPass());
-  // IfrtMergeReshardsPass doesn't handle control dependencies, so we need to
-  // run it before adding the control dependencies.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      xla::ifrt::createIfrtMergeReshardsPass());
-  if (add_control_dependencies) {
-    pm.addNestedPass<FuncOp>(CreateAddCtrlDependenciesPass());
-  }
-  // Outline the IFRT atom programs to modules.
-  xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm);
+  createIfrtToOutlinedAtomProgramsPipeline(pm);
 }
 
 void RegisterLowerToIfrtPasses() {
   mlir::registerPass(CreateLowerToIfrtPass);
-  mlir::registerPass(xla::ifrt::createIfrtMergeReshardsPass);
-  mlir::registerPass(CreateAddCtrlDependenciesPass);
 
   mlir::PassPipelineRegistration<> mpmd_lower_to_ifrt_pipeline(
       "ifrt-mpmd-lower-to-ifrt-pipeline", "Run the passes for lowering to ifrt",
-      [](mlir::OpPassManager& pm) {
-        AddLowerToIfrtPasses(pm, /*add_control_dependencies=*/true);
-      });
+      [](mlir::OpPassManager& pm) { AddLowerToIfrtPasses(pm); });
 }
 
-absl::Status LowerToIfrt(mlir::ModuleOp module, bool add_control_dependencies) {
-  FuncOp main_func = GetMainFunction(module);
+absl::Status LowerToIfrt(mlir::ModuleOp module) {
+  mlir::func::FuncOp main_func = GetMainFunction(module);
   if (!mpmd::IsMpmdFunction(main_func)) {
     return absl::InvalidArgumentError("MLIR module is not an MPMD module.");
   }
@@ -617,14 +485,7 @@ absl::Status LowerToIfrt(mlir::ModuleOp module, bool add_control_dependencies) {
   InitPassManager(pm, "mpmd-lower-to-ifrt");
   pm.enableVerifier();
 
-  // If we are lowered with SDY, we need to run the SDY round trip pipeline.
-  if (mlir::mpmd::IsLoweredWithSdy(module)) {
-    bool enable_hlo_sharding_v3 =
-        GetDebugOptionsFromFlags().xla_enable_hlo_sharding_v3();
-    xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/false,
-                                            enable_hlo_sharding_v3);
-  }
-  AddLowerToIfrtPasses(pm, add_control_dependencies);
+  AddLowerToIfrtPasses(pm);
   StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
   if (mlir::failed(pm.run(module))) {
     return diagnostic_handler.ConsumeStatus();
@@ -639,8 +500,8 @@ absl::StatusOr<CompileOptionsMap> GetCompileOptions(
     int threshold_for_argument_tupling,
     llvm::function_ref<void(xla::ExecutableBuildOptions&, int64_t)>
         set_reserved_bytes) {
-  FuncOp main_func = GetMainFunction(module);
-  if (!IsIfrtFunction(main_func)) {
+  mlir::func::FuncOp main_func = GetMainFunction(module);
+  if (!xla::ifrt::IsIfrtFunction(main_func)) {
     return absl::InvalidArgumentError("MLIR module is not an IFRT module.");
   }
   mlir::PassManager pm(module->getContext());

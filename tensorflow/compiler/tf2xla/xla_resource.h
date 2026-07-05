@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -115,7 +116,7 @@ class XlaResource {
 
   // Sets the representational shape of the resource on device.
   void SetRepresentationShape(const xla::Shape& shape) {
-    representation_shape_ = absl::make_optional(shape);
+    representation_shape_ = std::make_optional(shape);
   }
 
   // Looks up the gradient for `source`, or creates it if it does not already

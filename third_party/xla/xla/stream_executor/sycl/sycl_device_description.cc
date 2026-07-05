@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/sycl/oneapi_compute_capability.h"
@@ -153,8 +154,8 @@ SemanticVersion CompileTimeToolkitVersion() { return SemanticVersion{0, 0, 0}; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 CreateOneApiDeviceDescription(int device_ordinal) {
-  TF_ASSIGN_OR_RETURN(::sycl::device sycl_device,
-                      SyclDevicePool::GetDevice(device_ordinal));
+  ASSIGN_OR_RETURN(::sycl::device sycl_device,
+                   SyclDevicePool::GetDevice(device_ordinal));
   ze_device_handle_t lz_device =
       ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(sycl_device);
   ze_driver_handle_t lz_driver =

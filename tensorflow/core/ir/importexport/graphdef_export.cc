@@ -142,15 +142,15 @@ static absl::StatusOr<GraphOp> ValidateModuleForExport(ModuleOp module) {
     if (isa<GraphFuncOp>(op)) continue;
     if (auto new_graph_op = dyn_cast<GraphOp>(op)) {
       if (graph_op) {
-        return InvalidArgument(
+        return absl::InvalidArgumentError(
             "Can't export module with two different tfg.graph");
       }
       graph_op = new_graph_op;
       continue;
     }
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Can't export module with other ops than tfg.graph or tfg.func, has: ",
-        op.getName().getStringRef().str());
+        op.getName().getStringRef().str()));
   }
   return graph_op;
 }
@@ -270,12 +270,12 @@ absl::StatusOr<std::optional<GradientDef>> GraphDefExporter::ExportFunction(
   if (DenseIntElementsAttr keys = func.getResourceArgUniqueIdsKeysAttr()) {
     DenseIntElementsAttr values = func.getResourceArgUniqueIdsValuesAttr();
     if (!values) {
-      return InvalidArgument(
+      return absl::InvalidArgumentError(
           "'resource_arg_unique_ids_keys' is present but "
           "'resource_arg_unique_ids_values' is missing");
     }
     if (keys.size() != values.size()) {
-      return InvalidArgument(
+      return absl::InvalidArgumentError(
           "'resource_arg_unique_ids_keys' is not the same size as "
           "'resource_arg_unique_ids_values'");
     }
@@ -333,7 +333,7 @@ absl::StatusOr<std::optional<GradientDef>> GraphDefExporter::ExportFunction(
     // The control result attributes contain only the name.
     DictionaryAttr attrs = std::get<0>(it);
     if (attrs.empty())
-      return InvalidArgument("Control result is missing 'tfg.name'");
+      return absl::InvalidArgumentError("Control result is missing 'tfg.name'");
     assert(attrs.begin()->getName() == dialect_->getTfgNameAttrIdentifier());
     std::string name = mlir::cast<StringAttr>(attrs.begin()->getValue()).str();
     signature->add_control_output(name);
@@ -356,7 +356,8 @@ absl::StatusOr<OpDef::ArgDef> GraphDefExporter::ConvertArgumentAttributes(
     DictionaryAttr attrs) {
   OpDef::ArgDef arg;
   auto name = attrs.getAs<StringAttr>(dialect_->getTfgNameAttrIdentifier());
-  if (!name) return InvalidArgument("argument is missing 'tfg.name'");
+  if (!name)
+    return absl::InvalidArgumentError("argument is missing 'tfg.name'");
   arg.set_name(name.str());
   if (auto description =
           attrs.getAs<StringAttr>(dialect_->getTfgDescriptionAttrIdentifier()))
@@ -470,7 +471,8 @@ static absl::StatusOr<std::string> GetValueName(
   if (auto arg = mlir::dyn_cast<BlockArgument>(value)) {
     auto func = dyn_cast<GraphFuncOp>(arg.getOwner()->getParentOp());
     if (!func)
-      return InvalidArgument("Expected block argument owner to be tfg.func");
+      return absl::InvalidArgumentError(
+          "Expected block argument owner to be tfg.func");
     // If the block argument is a control token, use the attributes of the
     // associated data argument (which preceeds it).
     auto attrs = mlir::cast<DictionaryAttr>(
@@ -478,9 +480,9 @@ static absl::StatusOr<std::string> GetValueName(
     auto name_attr =
         attrs.getAs<StringAttr>(dialect->getTfgNameAttrIdentifier());
     if (!name_attr) {
-      return InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Can't export graph with missing op-name for function parameter #",
-          arg.getArgNumber());
+          arg.getArgNumber()));
     }
     name.reserve(name_attr.size() + 1);
     if (is_control) name.push_back('^');
@@ -492,7 +494,8 @@ static absl::StatusOr<std::string> GetValueName(
   auto name_attr = result.getOwner()->getAttrOfType<StringAttr>(
       dialect->getNameAttrIdentifier());
   if (!name_attr)
-    return InvalidArgument("Can't export graph with missing op-name");
+    return absl::InvalidArgumentError(
+        "Can't export graph with missing op-name");
 
   if (is_control) {
     name.reserve(1 + name_attr.size());
@@ -539,30 +542,34 @@ static absl::StatusOr<unsigned int> GetOutputSegmentSize(
   if (!arg.type_list_attr().empty()) {
     if (auto v = mlir::dyn_cast<ArrayAttr>(op->getAttr(arg.type_list_attr())))
       return v.size();
-    return InvalidArgument("Type attr not found: ", arg.type_list_attr());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Type attr not found: ", arg.type_list_attr()));
   }
   if (arg.number_attr().empty()) return 1;
   if (auto v = mlir::dyn_cast<IntegerAttr>(op->getAttr(arg.number_attr())))
     return v.getValue().getZExtValue();
-  return InvalidArgument("Type attr not found: ", arg.number_attr());
+  return absl::InvalidArgumentError(
+      absl::StrCat("Type attr not found: ", arg.number_attr()));
 }
 
 absl::StatusOr<StringRef> GraphDefExporter::GetFunctionOutputName(
     unsigned result_idx, const std::string &op_name, SymbolTable &table) {
   if (auto func = table.lookup<GraphFuncOp>(op_name)) {
     if (result_idx >= func.getNumResults()) {
-      return InvalidArgument("Result #", result_idx, " of function '", op_name,
-                             "' is out of range");
+      return absl::InvalidArgumentError(absl::StrCat("Result #", result_idx,
+                                                     " of function '", op_name,
+                                                     "' is out of range"));
     }
     if (auto name = func.getResultAttrOfType<StringAttr>(
             result_idx, dialect_->getTfgNameAttrIdentifier())) {
       return name.getValue();
     }
-    return InvalidArgument("Function '", op_name, "' result #", result_idx,
-                           "' is missing 'tfg.name'");
+    return absl::InvalidArgumentError(absl::StrCat("Function '", op_name,
+                                                   "' result #", result_idx,
+                                                   "' is missing 'tfg.name'"));
   }
-  return InvalidArgument("Op '", op_name,
-                         "' is neither registered nor a function");
+  return absl::InvalidArgumentError(
+      absl::StrCat("Op '", op_name, "' is neither registered nor a function"));
 }
 
 // Get the name of a function argument from a function in the library.
@@ -571,13 +578,14 @@ absl::StatusOr<StringRef> GraphDefExporter::GetFunctionOutputName(
     const FunctionLibraryDefinition &library) {
   if (const FunctionDef *function = library.Find(op_name)) {
     if (result_idx >= function->signature().output_arg_size()) {
-      return InvalidArgument("Result #", result_idx, " of function '", op_name,
-                             "' is out of range");
+      return absl::InvalidArgumentError(absl::StrCat("Result #", result_idx,
+                                                     " of function '", op_name,
+                                                     "' is out of range"));
     }
     return {function->signature().output_arg(result_idx).name()};
   }
-  return InvalidArgument("Op '", op_name,
-                         "' is neither registered nor a function");
+  return absl::InvalidArgumentError(
+      absl::StrCat("Op '", op_name, "' is neither registered nor a function"));
 }
 
 absl::StatusOr<std::pair<StringRef, unsigned int>>
@@ -597,8 +605,8 @@ GraphDefExporter::GetOutputSegment(OpResult result) {
         return std::pair<StringRef, unsigned>(arg.name(), result_idx);
       result_idx -= size;
     }
-    return InvalidArgument("Result #", result_idx, " of op '", op_name,
-                           "' is out of range");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Result #", result_idx, " of op '", op_name, "' is out of range"));
   }
   // Try to find a function for a legacy call. Function output segments have
   // exactly one element each.

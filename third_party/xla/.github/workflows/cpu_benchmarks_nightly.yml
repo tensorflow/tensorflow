@@ -46,7 +46,7 @@ jobs:
         ]
     name: ${{ matrix.job_info.pretty_name }}
     runs-on: ${{ matrix.job_info.pool }}
-    container: ${{ matrix.job_info.container }}
+    container: ${{ matrix.job_info.container }} # zizmor: ignore[unpinned-images]
     defaults:
       run:
         shell: bash
@@ -72,7 +72,7 @@ jobs:
             echo "Python 3 found."
           fi
       - name: Checkout OpenXLA
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Create results directory
@@ -83,7 +83,7 @@ jobs:
 
           ./configure.py --backend=CPU
       - name: Download and run Gemma HLO files and collect runtime and compile time stats
-        if: ${{ matrix.job_info.os != 'linux-arm64-t2a-48' }}
+        if: ${{ matrix.job_info.pool != 'linux-arm64-t2a-48' }}
         run: |
           mkdir -p "$OUTPUT_DIR/tmp_hlo"
           cd "$OUTPUT_DIR/tmp_hlo"
@@ -117,7 +117,7 @@ jobs:
           GITHUB_EVENT_PULL_REQUEST_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           GITHUB_EVENT_PULL_REQUEST_BASE_REF: ${{ github.event.pull_request.base.ref }}
       # Find the current PR number, if any, because github context doesn't have it for push events.
-      - uses: jwalton/gh-find-current-pr@89ee5799558265a1e0e31fab792ebb4ee91c016b # ratchet:jwalton/gh-find-current-pr@v1.3.3
+      - uses: jwalton/gh-find-current-pr@f3d61b485d2801773f7a07b2aaa3306bd8f8e653 # v1.3.5
         id: findPr
         with:
           # Can be "open", "closed", or "all".  Defaults to "open".
@@ -201,20 +201,20 @@ jobs:
 
           echo "Uploading $OUTPUT_DIR/$FILENAME_GEMMA to $GCS_BUCKET/$GEMMA_GCS_OBJECT_NAME"
           ls -l "$OUTPUT_DIR/$FILENAME_GEMMA" # Verify the file exists
-          gsutil cp "$OUTPUT_DIR/$FILENAME_GEMMA" "$GCS_BUCKET/$GEMMA_GCS_OBJECT_NAME"
+          gcloud storage cp "$OUTPUT_DIR/$FILENAME_GEMMA" "$GCS_BUCKET/$GEMMA_GCS_OBJECT_NAME"
 
           echo "Uploading $OUTPUT_DIR/$FILENAME_CPU to $GCS_BUCKET/$CPU_GCS_OBJECT_NAME"
           ls -l "$OUTPUT_DIR/$FILENAME_CPU" # Verify the file exists
-          gsutil cp "$OUTPUT_DIR/$FILENAME_CPU" "$GCS_BUCKET/$CPU_GCS_OBJECT_NAME"
+          gcloud storage cp "$OUTPUT_DIR/$FILENAME_CPU" "$GCS_BUCKET/$CPU_GCS_OBJECT_NAME"
 
           echo "Uploading $OUTPUT_DIR/$FILENAME_GEMMA3 to $GCS_BUCKET/$GEMMA3_GCS_OBJECT_NAME"
           ls -l "$OUTPUT_DIR/$FILENAME_GEMMA3" # Verify the file exists
-          gsutil cp "$OUTPUT_DIR/$FILENAME_GEMMA3" "$GCS_BUCKET/$GEMMA3_GCS_OBJECT_NAME"
+          gcloud storage cp "$OUTPUT_DIR/$FILENAME_GEMMA3" "$GCS_BUCKET/$GEMMA3_GCS_OBJECT_NAME"
         env:
           STEPS_FINDPR_OUTPUTS_PR: ${{ steps.findPr.outputs.pr }}
 
       - name: Upload XSpace artifacts
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # ratchet:actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
 
           name: cpu-xla-benchmarks-xspace-${{ matrix.job_info.pool }}

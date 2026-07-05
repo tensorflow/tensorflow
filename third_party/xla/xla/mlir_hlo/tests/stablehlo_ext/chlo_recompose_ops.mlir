@@ -123,6 +123,21 @@ func.func private @chlo.asinh.impl(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x2
 
 // -----
 
+// CHECK-LABEL: func @mulhi_recompose_composite
+func.func @mulhi_recompose_composite(%arg0: tensor<3x20x20xi32>, %arg1: tensor<3x20x20xi32>) -> tensor<?x20x20xi32> {
+  // CHECK-NEXT: chlo.mulhi
+  // CHECK-NOT: stablehlo.composite
+  %0 = stablehlo.composite "chlo.mulhi" %arg0, %arg1 {decomposition = @chlo.mulhi.impl, version = 1 : i32} : (tensor<3x20x20xi32>, tensor<3x20x20xi32>) -> tensor<?x20x20xi32>
+  return %0 : tensor<?x20x20xi32>
+}
+// CHECK-NOT: @chlo.mulhi.impl
+func.func private @chlo.mulhi.impl(%arg0: tensor<3x20x20xi32>, %arg1: tensor<3x20x20xi32>) -> tensor<?x20x20xi32> {
+  %0 = chlo.mulhi %arg0, %arg1 : tensor<3x20x20xi32>, tensor<3x20x20xi32> -> tensor<?x20x20xi32>
+  return %0 : tensor<?x20x20xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @ragged_dot_recompose_composite
 func.func @ragged_dot_recompose_composite(%arg0: tensor<2x11x5xf32>, %arg1: tensor<3x2x5x7xf32>, %arg2: tensor<3xi64>) -> tensor<2x11x7xf32> {
   // CHECK: "chlo.ragged_dot"(%arg0, %arg1, %arg2) <{precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>], ragged_dot_dimension_numbers = #chlo.ragged_dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [1], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [2], lhs_ragged_dimensions = [1], rhs_group_dimensions = [0]>}> : (tensor<2x11x5xf32>, tensor<3x2x5x7xf32>, tensor<3xi64>) -> tensor<2x11x7xf32>
@@ -148,6 +163,21 @@ func.func @topk_recompose_composite(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>
 // CHECK-NOT: @chlo.top_k.impl
 func.func private @chlo.top_k.impl(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
   %values, %indices = chlo.top_k(%arg0, k = 4) {largest = true} : tensor<5x16xf32> -> (tensor<?x?xf32>, tensor<?x?xi32>)
+  return %values, %indices : tensor<?x?xf32>, tensor<?x?xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @topk_recompose_composite_unstable
+func.func @topk_recompose_composite_unstable(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
+  // CHECK: %{{.*}}, %{{.*}} = chlo.top_k(%arg0, k = 4, is_stable = false) {largest = true}
+  // CHECK-NOT: stablehlo.composite
+  %0:2 = stablehlo.composite "chlo.top_k" %arg0 {composite_attributes = {is_stable = false, k = 4 : i64, largest = true}, decomposition = @chlo.top_k.unstable.impl, version = 1 : i32} : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
+  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
+}
+// CHECK-NOT: @chlo.top_k.unstable.impl
+func.func private @chlo.top_k.unstable.impl(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
+  %values, %indices = chlo.top_k(%arg0, k = 4, is_stable = false) {largest = true} : tensor<5x16xf32> -> (tensor<?x?xf32>, tensor<?x?xi32>)
   return %values, %indices : tensor<?x?xf32>, tensor<?x?xi32>
 }
 
@@ -289,6 +319,20 @@ func.func @asinh_recompose_cc(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf1
 
 // -----
 
+// CHECK-LABEL: @mulhi_recompose_cc
+func.func @mulhi_recompose_cc(%arg0: tensor<3x20x20xi32>, %arg1: tensor<3x20x20xi32>) -> tensor<?x20x20xi32> {
+  // CHECK: %0 = chlo.mulhi %arg0, %arg1 : tensor<3x20x20xi32>, tensor<3x20x20xi32> -> tensor<?x20x20xi32>
+  %0 = "stablehlo.custom_call"(%arg0, %arg1) {
+    backend_config = "",
+    call_target_name = "mhlo.mulhi",
+    mhlo.attributes = {},
+    mhlo.version = 1 : i64
+  } : (tensor<3x20x20xi32>, tensor<3x20x20xi32>) -> tensor<?x20x20xi32>
+  func.return %0 : tensor<?x20x20xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @ragged_dot_recompose_cc
 func.func @ragged_dot_recompose_cc(%arg0: tensor<2x11x5xf32>, %arg1: tensor<3x2x5x7xf32>, %arg2: tensor<3xi64>) -> tensor<2x11x7xf32> {
   // CHECK: "chlo.ragged_dot"(%arg0, %arg1, %arg2) <{precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>], ragged_dot_dimension_numbers = #chlo.ragged_dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [1], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [2], lhs_ragged_dimensions = [1], rhs_group_dimensions = [0]>}> : (tensor<2x11x5xf32>, tensor<3x2x5x7xf32>, tensor<3xi64>) -> tensor<2x11x7xf32>
@@ -317,6 +361,17 @@ func.func @topk_recompose_cc(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tenso
   // CHECK: %values, %indices = chlo.top_k(%arg0, k = 4) {largest = true} : tensor<5x16xf32> -> (tensor<?x?xf32>, tensor<?x?xi32>)
   %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
     mhlo.attributes = { k = 4 : i64, largest = true}
+  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
+  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @topk_recompose_cc_unstable
+func.func @topk_recompose_cc_unstable(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
+  // CHECK: %values, %indices = chlo.top_k(%arg0, k = 4, is_stable = false) {largest = true} : tensor<5x16xf32> -> (tensor<?x?xf32>, tensor<?x?xi32>)
+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
+    mhlo.attributes = { is_stable = false, k = 4 : i64, largest = true }
   } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
   return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
 }

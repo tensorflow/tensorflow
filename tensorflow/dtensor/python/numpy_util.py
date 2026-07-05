@@ -33,10 +33,24 @@ from tensorflow.python.types.core import Tensor, TensorLike  # pylint: disable=g
 def _split(value, splits, axis=0, split_fn=np.split, stack_fn=np.stack):
   """Split `value` into a sharded nparray/tf tensor based on the number of splits.
   """
+  # During graph tracing a dimension can be dynamic (`None`), so only run the
+  # divisibility check when the size is statically known. A raw modulo on a
+  # `None` dimension would otherwise raise a confusing TypeError.
+  dim_size = value.shape[axis]
+  if hasattr(dim_size, "value"):
+    dim_size = dim_size.value
+  if dim_size is not None and dim_size % splits[0] != 0:
+    raise ValueError(
+        f"Tensor shape along dimension {axis} ({dim_size}) is not evenly "
+        f"divisible by the number of splits ({splits[0]}) for that dimension."
+    )
+
   children = split_fn(value, splits[0], axis=axis)
+
   if len(splits) > 1:
     splits = splits[1:]
     children = [_split(child, splits, axis + 1) for child in children]
+
   return stack_fn(children)
 
 

@@ -27,12 +27,15 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/ExecutionEngine/Orc/DylibManager.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/InProcessMemoryAccess.h"
+#include "llvm/ExecutionEngine/Orc/MemoryAccess.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
 #include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
@@ -59,16 +62,13 @@ namespace xla::cpu {
 namespace {
 // TODO: move to ExecutorProcessControl-based APIs.
 class UnsupportedExecutorProcessControl
-    : public llvm::orc::ExecutorProcessControl,
-      private llvm::orc::InProcessMemoryAccess {
+    : public llvm::orc::ExecutorProcessControl {
  public:
   explicit UnsupportedExecutorProcessControl(
       std::unique_ptr<llvm::orc::TaskDispatcher> Dispatcher)
       : ExecutorProcessControl(std::make_shared<llvm::orc::SymbolStringPool>(),
-                               std::move(Dispatcher)),
-        InProcessMemoryAccess(llvm::Triple("").isArch64Bit()) {
+                               std::move(Dispatcher)) {
     this->TargetTriple = llvm::Triple("");
-    this->MemAccess = this;
   }
 
   llvm::Expected<int32_t> runAsMain(llvm::orc::ExecutorAddr MainFnAddr,
@@ -93,6 +93,22 @@ class UnsupportedExecutorProcessControl
   }
 
   llvm::Error disconnect() override { return llvm::Error::success(); }
+
+  llvm::Expected<std::unique_ptr<llvm::orc::DylibManager>>
+  createDefaultDylibMgr() override {
+    llvm_unreachable("Unsupported");
+  }
+
+  llvm::Expected<std::unique_ptr<llvm::jitlink::JITLinkMemoryManager>>
+  createDefaultMemoryManager() override {
+    llvm_unreachable("Unsupported");
+  }
+
+  llvm::Expected<std::unique_ptr<llvm::orc::MemoryAccess>>
+  createDefaultMemoryAccess() override {
+    return std::make_unique<llvm::orc::InProcessMemoryAccess>(
+        this->TargetTriple.isArch64Bit());
+  }
 };
 }  // namespace
 
@@ -102,8 +118,8 @@ using tsl::profiler::TraceMeEncode;
 absl::StatusOr<JitCompiler> JitCompiler::Create(
     Options options, std::unique_ptr<IrCompiler> ir_compiler,
     TaskRunner task_runner) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
-                      ir_compiler->build_target_machine());
+  ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
+                   ir_compiler->build_target_machine());
 
   // Dispatch compilation tasks using the provided task runner.
   auto task_dispatcher =
@@ -174,8 +190,8 @@ absl::Status JitCompiler::AddModule(llvm::orc::ThreadSafeModule module,
   });
 
   // Add module to the selected dynamic library.
-  TF_ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib,
-                      execution_engine_->dylib(dylib_index));
+  ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib,
+                   execution_engine_->dylib(dylib_index));
   if (auto err = compile_layer_->add(*dylib, std::move(module))) {
     return Internal("Failed to add module to dylib %d: %s", dylib_index,
                     llvm::toString(std::move(err)));
@@ -198,7 +214,7 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> JitCompiler::Compile(
   // the function, to make sure we don't get use-after-free errors.
   task_dispatcher_->shutdown();
 
-  TF_RETURN_IF_ERROR(symbol_map.status());
+  RETURN_IF_ERROR(symbol_map.status());
   return std::move(object_loader)
       .CreateFunctionLibrary(std::move(symbols), *symbol_map);
 }

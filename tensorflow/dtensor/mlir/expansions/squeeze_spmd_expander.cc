@@ -123,7 +123,7 @@ StatusOr<mlir::Operation*> SqueezeSPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto layout, ExtractSingleLayoutFromOp(op));
 
   if (!layout) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "layout of SqueezeOp must be known before SPMD expansion.");
   }
 

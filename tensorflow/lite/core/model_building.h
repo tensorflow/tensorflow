@@ -37,6 +37,8 @@ namespace model_builder {
 
 class InterpreterInfo;
 class Graph;
+class Tensor;
+class Helper;
 
 namespace internal {
 

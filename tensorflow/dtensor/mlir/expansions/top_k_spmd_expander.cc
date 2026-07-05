@@ -53,13 +53,13 @@ StatusOr<mlir::Operation*> TopKSPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto input_layout, ExtractLayoutFromOperand(input));
 
   if (!input_layout)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "layout of TopKV2Op must be known before SPMD expansion.");
 
   TF_ASSIGN_OR_RETURN(auto layouts, ExtractLayoutFromOp(op));
   for (const auto& layout : layouts) {
     if (layout.has_value() && !layout->IsLastDimReplicated()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "The last dimensions of TopKV2Op outputs should be UNSHARDED.");
     }
   }

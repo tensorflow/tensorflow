@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/execute_options.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
@@ -68,7 +69,10 @@ TEST_P(ExecuteOptionsSerDesTest, RoundTrip) {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, ExecuteOptionsSerDesTest,
-    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 }  // namespace ifrt
 }  // namespace xla

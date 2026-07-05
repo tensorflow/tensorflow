@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tsl/platform/protobuf.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+
 namespace tsl {
 
 const char* kProtobufInt64Typename = "::tensorflow::protobuf_int64";

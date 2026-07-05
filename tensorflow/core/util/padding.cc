@@ -30,7 +30,8 @@ absl::Status GetPaddingFromString(absl::string_view str_value, Padding* value) {
   } else if (str_value == "EXPLICIT") {
     *value = EXPLICIT;
   } else {
-    return errors::NotFound(str_value, " is not an allowed padding type");
+    return absl::NotFoundError(
+        absl::StrCat(str_value, " is not an allowed padding type"));
   }
   return absl::OkStatus();
 }
@@ -41,13 +42,13 @@ absl::Status CheckValidPadding(Padding padding_type,
   if (padding_type == Padding::EXPLICIT) {
     const int num_paddings = explicit_paddings.size();
     if (num_paddings != 2 * num_dims) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "explicit_paddings attribute must contain ", 2 * num_dims,
-          " values, but got: ", explicit_paddings.size());
+          " values, but got: ", explicit_paddings.size()));
     }
     for (int64_t padding_value : explicit_paddings) {
       if (padding_value < 0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "All elements of explicit_paddings must be nonnegative");
       }
     }
@@ -57,12 +58,12 @@ absl::Status CheckValidPadding(Padding padding_type,
         explicit_paddings[2 * batch_index + 1] != 0 ||
         explicit_paddings[2 * depth_index] != 0 ||
         explicit_paddings[2 * depth_index + 1] != 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Nonzero explicit padding in the batch or depth dimensions is not "
           "supported");
     }
   } else if (!explicit_paddings.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "explicit_paddings attribute must be empty if the padding attribute is "
         "not EXPLICIT");
   }

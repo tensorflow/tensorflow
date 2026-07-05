@@ -65,9 +65,9 @@ class GatherCommonSPMDExpander : public SPMDExpanderBase {
     const int indices_rank = ValueRank(indices);
 
     if (params_rank == -1)
-      return errors::InvalidArgument("Missing rank for params input.");
+      return absl::InvalidArgumentError("Missing rank for params input.");
     if (indices_rank == -1)
-      return errors::InvalidArgument("Missing rank for indices input.");
+      return absl::InvalidArgumentError("Missing rank for indices input.");
 
     // Handle the case of negative axis.
     if (axis < 0) axis += params_rank;
@@ -89,7 +89,7 @@ class GatherCommonSPMDExpander : public SPMDExpanderBase {
       for (int i = 0; i < axis; ++i) {
         const std::string& dim_name = params_layout.sharding_spec(i);
         if (dim_name != output_layout.sharding_spec(i)) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               llvm::formatv(
                   "input and output layout do not agree on non-axis dim {0}. "
                   "\n  params: {1}\n  output: {2}, axis: {3}",
@@ -109,7 +109,7 @@ class GatherCommonSPMDExpander : public SPMDExpanderBase {
         // the shifting is indices_rank - batch_dims - 1.
         if (dim_name !=
             output_layout.sharding_spec(i + indices_rank - batch_dims - 1)) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               llvm::formatv(
                   "input and output layout do not agree on non-axis dim {0}. "
                   "\n  params: {1}\n  output: {2}, axis: {3}",
@@ -121,10 +121,10 @@ class GatherCommonSPMDExpander : public SPMDExpanderBase {
 
       if (!Layout::IsUnshardedDimension(params_layout.sharding_spec(axis))) {
         if (llvm::isa<mlir::TF::ResourceGatherOp>(op)) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "DTensor does not support sharded 0th dimension for the resource "
               "tensor for ResourceGatherOp. Please unshard dimension ",
-              axis);
+              axis));
         }
         TF_ASSIGN_OR_RETURN(Layout tgt_params_layout,
                             Layout::GetLayout(params_layout.type(),

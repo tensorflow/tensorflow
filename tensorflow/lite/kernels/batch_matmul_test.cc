@@ -325,6 +325,34 @@ TEST(BatchMatMulOpTest, Float32Test_Broadcast2BothAdjoint) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 3, 3, 4}));
 }
 
+TEST(BatchMatMulOpTest, Float32Test_Broadcast3DAdjXOptimization) {
+  BatchMatMulOpModel<float> model({TensorType_FLOAT32, {4, 3, 2, 3, 2}},
+                                  {TensorType_FLOAT32, {4, 3, 1, 3, 2}},
+                                  /*adj_x=*/true, /*adj_y=*/false);
+  std::vector<float> lhs(288);
+  for (int i = 0; i < 288; ++i) {
+    lhs[i] = (i % 12) + 1;
+  }
+  std::vector<float> rhs(72);
+  for (int i = 0; i < 72; ++i) {
+    rhs[i] = (i % 6) + 1;
+  }
+
+  std::vector<float> res_block{
+      35, 44, 44, 56, 89, 116, 98, 128,
+  };
+  std::vector<float> res;
+  for (int i = 0; i < 12; ++i) {
+    res.insert(res.end(), res_block.begin(), res_block.end());
+  }
+
+  model.PopulateTensor<float>(model.lhs(), lhs);
+  model.PopulateTensor<float>(model.rhs(), rhs);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray(res));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({4, 3, 2, 2, 2}));
+}
+
 TEST(BatchMatMulOpTest, Float32Test_BroadcastFromRHS) {
   BatchMatMulOpModel<float> model({TensorType_FLOAT32, {4, 5}},
                                   {TensorType_FLOAT32, {3, 1, 5, 2}});

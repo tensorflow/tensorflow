@@ -132,7 +132,8 @@ cc_binary(
 
 config_setting(
     name = "windows",
-    values = {
-        "cpu": "x64_windows",
-    },
+    constraint_values = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+    ],
 )

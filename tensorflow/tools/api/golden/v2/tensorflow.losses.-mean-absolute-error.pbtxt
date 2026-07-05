@@ -3,7 +3,7 @@ tf_class {
   is_instance: "<class \'tf_keras.losses.MeanAbsoluteError\'>"
   is_instance: "<class \'tf_keras.losses.LossFunctionWrapper\'>"
   is_instance: "<class \'tf_keras.losses.Loss\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'reduction\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'mean_absolute_error\'], "

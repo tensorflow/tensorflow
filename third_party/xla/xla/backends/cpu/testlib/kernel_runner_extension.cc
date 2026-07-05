@@ -138,7 +138,7 @@ NB_MODULE(_extension, kernel_runner_module) {
              return std::move(buffer_assignment).value();
            })
       .def("create_hlo_schedule", [](const CpuCompiler& self,
-                                     const HloModule& hlo_module) {
+                                     HloModule& hlo_module) {
         absl::StatusOr<HloSchedule> schedule =
             self.CreateHloSchedule(hlo_module);
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -69,7 +70,7 @@ absl::StatusOr<bool> LiteralCanonicalizer::RunImpl(
   VLOG(3) << "Garbage collected " << num_erased << " expired literals";
 
   LiteralCanonicalizerVisitor visitor(literal_pool_, min_size_bytes_);
-  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&visitor));
+  RETURN_IF_ERROR(module->entry_computation()->Accept(&visitor));
   return visitor.changed();
 }
 

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-parallel-execute-to-islands=legacy-graph-export=false | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt %s -tf-parallel-execute-to-islands=legacy-graph-export=false | env FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: func @testEmptyRegions
 func.func @testEmptyRegions() {

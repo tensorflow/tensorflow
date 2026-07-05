@@ -36,7 +36,7 @@ namespace grappler {
 class DeviceSimple : public DeviceBase {
  public:
   DeviceSimple();
-  ~DeviceSimple();
+  ~DeviceSimple() override;
 
   absl::Status MakeTensorFromProto(const TensorProto& tensor_proto,
                                    const AllocatorAttributes alloc_attrs,

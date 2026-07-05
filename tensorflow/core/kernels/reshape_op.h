@@ -44,13 +44,13 @@ class ReshapeOp : public OpKernel {
         (TensorShapeUtils::IsVector(sizes.shape()) ||
          // TODO(rmlarsen): Disallow legacy use of scalars to represent shape.
          TensorShapeUtils::IsScalar(sizes.shape())),
-        errors::InvalidArgument("sizes input must be 1-D, not ",
-                                sizes.shape().DebugString()));
+        absl::InvalidArgumentError(absl::StrCat("sizes input must be 1-D, not ",
+                                                sizes.shape().DebugString())));
     OP_REQUIRES(
         context, sizes.NumElements() < TensorShape::MaxDimensions(),
-        errors::InvalidArgument("too many dimensions: must be < ",
-                                TensorShape::MaxDimensions(), ", but received ",
-                                sizes.NumElements()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "too many dimensions: must be < ", TensorShape::MaxDimensions(),
+            ", but received ", sizes.NumElements())));
 
     // Compute the output shape.  Determine product of specified
     // dimensions, and find the index of the unspecified one.
@@ -70,9 +70,9 @@ class ReshapeOp : public OpKernel {
                                               &shape, &sizes_has_zero_dim));
         break;
       default:
-        context->CtxFailure(errors::InvalidArgument(
+        context->CtxFailure(absl::InvalidArgumentError(absl::StrCat(
             "desired shape must be a DT_INT32 or DT_INT64 vector, not a ",
-            DataTypeString(sizes.dtype())));
+            DataTypeString(sizes.dtype()))));
         return;
     }
     if (unknown_index != -1) {
@@ -93,18 +93,18 @@ class ReshapeOp : public OpKernel {
       if (!input_has_zero_dim) {
         OP_REQUIRES(
             context, product * missing == input_num_elements,
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 "Input to reshape is a tensor with ", input_num_elements,
                 " values, but the requested shape requires a multiple of ",
-                product));
+                product)));
       }
       shape.set_dim(unknown_index, missing);
     }
-    OP_REQUIRES(context, shape.num_elements() == input.NumElements(),
-                errors::InvalidArgument("Input to reshape is a tensor with ",
-                                        input.NumElements(),
-                                        " values, but the requested shape has ",
-                                        shape.num_elements()));
+    OP_REQUIRES(
+        context, shape.num_elements() == input.NumElements(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Input to reshape is a tensor with ", input.NumElements(),
+            " values, but the requested shape has ", shape.num_elements())));
 
     // Actually produce the reshaped output.
     Tensor output(input.dtype());
@@ -128,9 +128,9 @@ class ReshapeOp : public OpKernel {
       const Tshape size = Svec(d);
       if (size == -1) {
         if (*unknown_index != -1) {
-          return errors::InvalidArgument(
-              "Only one input size may be -1, not both ", *unknown_index,
-              " and ", d);
+          return absl::InvalidArgumentError(
+              absl::StrCat("Only one input size may be -1, not both ",
+                           *unknown_index, " and ", d));
         }
         *unknown_index = d;
         TF_RETURN_IF_ERROR(shape->AddDimWithStatus(1));
@@ -152,8 +152,8 @@ class ReshapeOp : public OpKernel {
             }
             strings::StrAppend(&msg, Svec(ii));
           }
-          return errors::InvalidArgument("Shape [", msg,
-                                         "] has too many elements");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Shape [", msg, "] has too many elements"));
         }
         TF_RETURN_IF_ERROR(shape->AddDimWithStatus(size));
         (*product) *= size;

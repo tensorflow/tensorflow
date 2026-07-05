@@ -375,6 +375,33 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
         t,
     )
 
+  def testFloat8e4m3fnuzScalarRoundTrip(self):
+    test_type = dtypes.float8_e4m3fnuz.as_numpy_dtype
+    # A scalar stores the value in float8_val (a multi-element array would use
+    # tensor_content and hide the decode gap).
+    t = tensor_util.make_tensor_proto(np.array(10.0, dtype=test_type))
+    a = tensor_util.MakeNdarray(t)
+    self.assertEqual(test_type, a.dtype)
+    self.assertAllClose(np.array(10.0, dtype=test_type), a)
+
+  def testFloat8e4m3b11fnuzScalarRoundTrip(self):
+    test_type = dtypes.float8_e4m3b11fnuz.as_numpy_dtype
+    # A scalar stores the value in float8_val (a multi-element array would use
+    # tensor_content and hide the decode gap).
+    t = tensor_util.make_tensor_proto(np.array(10.0, dtype=test_type))
+    a = tensor_util.MakeNdarray(t)
+    self.assertEqual(test_type, a.dtype)
+    self.assertAllClose(np.array(10.0, dtype=test_type), a)
+
+  def testFloat8e5m2fnuzScalarRoundTrip(self):
+    test_type = dtypes.float8_e5m2fnuz.as_numpy_dtype
+    # A scalar stores the value in float8_val (a multi-element array would use
+    # tensor_content and hide the decode gap).
+    t = tensor_util.make_tensor_proto(np.array(10.0, dtype=test_type))
+    a = tensor_util.MakeNdarray(t)
+    self.assertEqual(test_type, a.dtype)
+    self.assertAllClose(np.array(10.0, dtype=test_type), a)
+
   def testFloat4e2m1fn(self):
     test_type = dtypes.float4_e2m1fn.as_numpy_dtype
     t = tensor_util.make_tensor_proto(np.array([6, 0.5], dtype=test_type))

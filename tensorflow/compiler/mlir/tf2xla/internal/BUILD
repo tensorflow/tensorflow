@@ -11,6 +11,7 @@ package(
         "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:__subpackages__",
+        "//tensorflow/core/tfrt/saved_model:__pkg__",
     ],
 )
 

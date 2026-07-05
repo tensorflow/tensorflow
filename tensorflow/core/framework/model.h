@@ -534,8 +534,9 @@ class Node {
     if (parameters_.contains(parameter_name)) {
       return parameters_.at(parameter_name)->value;
     }
-    return errors::NotFound("Parameter ", parameter_name,
-                            " was not found in model node ", long_name());
+    return absl::NotFoundError(absl::StrCat("Parameter ", parameter_name,
+                                            " was not found in model node ",
+                                            long_name()));
   }
 
   // Given the average time between events when the elements in the buffer are

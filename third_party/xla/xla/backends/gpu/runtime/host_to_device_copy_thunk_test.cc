@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -90,10 +91,7 @@ TEST(HostToDeviceCopyThunkTest, ToProto) {
 TEST(HostToDeviceCopyThunkTest, FromProto) {
   ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
-        thunk_info {
-          profile_annotation: "profile_annotation"
-          execution_stream_id: 123
-        }
+        thunk_info { profile_annotation: "profile_annotation" }
         host_to_device_copy_thunk {
           copy_thunk {
             source_buffer {

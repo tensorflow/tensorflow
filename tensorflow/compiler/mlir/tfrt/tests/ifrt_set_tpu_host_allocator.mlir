@@ -36,5 +36,21 @@ func.func @serving_default1(%arg0: tensor<3x1xf32>,  %arg1: tensor<1x3xf32>) -> 
     return %result: tensor<1x1xf32>
 }
 
+// -----
+// Async test: All arguments are non-variables
+//
+// CHECK-LABEL: func.func @serving_default_async
+// CHECK-NEXT:    "tf.MatMul"
+// CHECK-SAME:      tf_mlrt.custom_device = "tpu_host_device"
+// CHECK-NEXT:    "tf.MatMul"
+// CHECK-SAME:      tf_mlrt.custom_device = "tpu_host_device"
+// CHECK-NEXT:    "tf.AsyncIfrtCall"
+func.func @serving_default_async(%arg0: tensor<3x1xf32>,  %arg1: tensor<1x3xf32>) -> (tensor<1x1xf32>) {
+  %producer_0=  "tf.MatMul"(%arg1, %arg0) {transpose_a = false, transpose_b = false} : (tensor<1x3xf32>, tensor<3x1xf32>) -> tensor<1x1xf32>
+  %producer_1=  "tf.MatMul"(%arg1, %arg0) {transpose_a = false, transpose_b = false} : (tensor<1x3xf32>, tensor<3x1xf32>) -> tensor<1x1xf32>
+  %result = "tf.AsyncIfrtCall"(%producer_0, %producer_1) <{operandSegmentSizes = array<i32: 2, 0>, program_id = 6515870160938153680 : i64, variable_arg_indices = []}> : (tensor<1x1xf32>, tensor<1x1xf32>) -> (tensor<1x1xf32>)
+  return %result: tensor<1x1xf32>
+}
+
 
 

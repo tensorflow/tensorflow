@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "xla/stream_executor/tpu/c_api_conversions.h"
+#include "xla/tpu/c_api_conversions.h"
 #include "xla/tsl/framework/device_id_utils.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -133,10 +134,10 @@ namespace xla {
       // If the subshape is still a tuple, recurse and pass a new shape index
       // for the one level deeper.
       if (subshape.IsTuple()) {
-        TF_ASSIGN_OR_RETURN(tuple_args[i],
-                            ReplaceTupleWith(new_instruction, get_operand(),
-                                             ShapeIndex(shape_index.begin() + 1,
-                                                        shape_index.end())));
+        ASSIGN_OR_RETURN(tuple_args[i],
+                         ReplaceTupleWith(new_instruction, get_operand(),
+                                          ShapeIndex(shape_index.begin() + 1,
+                                                     shape_index.end())));
       } else {
         if (subshape != new_instruction->shape() &&
             insert_bitcast_if_different_shape) {

@@ -24,8 +24,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -74,7 +76,6 @@ class ConvUtilsTest : public HloHardwareIndependentTestBase {
     dnums_for_backward_input_.add_kernel_spatial_dimensions(1);
   }
 
-  using ConvKind = HloConvolutionInstruction::ConvKind;
   // A convolution window with stride 1 and zero padding. The size fields are
   // not set.
   Window default_conv_window_;
@@ -100,14 +101,14 @@ TEST_F(ConvUtilsTest, BackwardFilterConvolveWithPaddedActivations) {
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(F32, {3, 3, 32, 32}), activations, gradients,
       /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
-      dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
+      dnums_for_backward_filter_, DefaultPrecisionConfig(2),
+      /*sparsity_config=*/{}, CONVOLUTION_KIND_WGRAD));
 
   auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
   HloConvolutionInstruction* root_conv =
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction());
-  root_conv->set_conv_kind(ConvKind::WGRAD);
 
   const Window restored_conv_window =
       *RestoreWindowFromBackwardFilter(root_conv);
@@ -164,7 +165,8 @@ TEST_F(ConvUtilsTest, BackwardInputConvolveEvenPadding) {
       ShapeUtil::MakeShape(F32, {4, 3, 16, 16}), /*lhs=*/output,
       /*rhs=*/reverse_kernel, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window, conv_dnums,
-      DefaultPrecisionConfig(2)));
+      DefaultPrecisionConfig(2), /*sparsity_config=*/{},
+      CONVOLUTION_KIND_WGRAD));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
       conv->shape(), ShapeInference::InferConvolveShape(
@@ -179,7 +181,6 @@ TEST_F(ConvUtilsTest, BackwardInputConvolveEvenPadding) {
       module->AddEntryComputation(builder.Build());
   HloConvolutionInstruction* root_conv =
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction());
-  root_conv->set_conv_kind(ConvKind::WGRAD);
 
   const Window restored_conv_window =
       *RestoreWindowFromBackwardInput(root_conv);
@@ -220,7 +221,8 @@ TEST_F(ConvUtilsTest, BackwardInputConvolveUnevenPaddingOnGradients) {
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(F32, {20, 10, 10, 192}), output, reverse_kernel,
       /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
-      dnums_for_backward_input_, DefaultPrecisionConfig(2)));
+      dnums_for_backward_input_, DefaultPrecisionConfig(2),
+      /*sparsity_config=*/{}, CONVOLUTION_KIND_DGRAD));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
       conv->shape(),
@@ -236,7 +238,6 @@ TEST_F(ConvUtilsTest, BackwardInputConvolveUnevenPaddingOnGradients) {
       module->AddEntryComputation(builder.Build());
   HloConvolutionInstruction* root_conv =
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction());
-  root_conv->set_conv_kind(ConvKind::DGRAD);
   const Window restored_conv_window =
       *RestoreWindowFromBackwardInput(root_conv);
   const ConvolutionDimensionNumbers restored_dims =
@@ -274,7 +275,8 @@ TEST_F(ConvUtilsTest, BackwardInputConvolveUnevenPaddingOnActivations) {
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(F32, {1, 1, 14, 1}), output, reverse_kernel,
       /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
-      dnums_for_backward_input_, DefaultPrecisionConfig(2)));
+      dnums_for_backward_input_, DefaultPrecisionConfig(2),
+      /*sparsity_config=*/{}, CONVOLUTION_KIND_DGRAD));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
       conv->shape(),
@@ -290,7 +292,6 @@ TEST_F(ConvUtilsTest, BackwardInputConvolveUnevenPaddingOnActivations) {
       module->AddEntryComputation(builder.Build());
   HloConvolutionInstruction* root_conv =
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction());
-  root_conv->set_conv_kind(ConvKind::DGRAD);
   const WindowDimension backward_conv_col_dim =
       RestoreWindowFromBackwardInput(root_conv)->dimensions(1);
   const ConvolutionDimensionNumbers restored_dims =

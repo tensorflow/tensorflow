@@ -3,6 +3,8 @@
 #   matrices, and related algorithms.
 # This is the BUILD file used for the @eigen_archive external repository.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 licenses([
     "reciprocal",  # MPL2
     "notice",  # Portions BSD
