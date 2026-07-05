@@ -1330,6 +1330,33 @@ class TensorArrayTest(test.TestCase):
                   ta1.handle.op.get_attr("element_shape")).ndims, None)
 
   @test_util.deprecated_graph_mode_only
+  def testSplitStaticShapeMismatch(self):
+    with self.session():
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32,
+          size=0,
+          dynamic_size=True,
+          infer_shape=True)
+      value = constant_op.constant([[1.0, -1.0], [2.0, -2.0], [3.0, -3.0]])
+      with self.assertRaisesRegex(
+          ValueError,
+          r"Expected sum of lengths to be equal to values.shape\[0\]"):
+        ta.split(value, [1, 1])
+
+  @test_util.deprecated_graph_mode_only
+  def testSplitScalarValueDoesNotRaiseIndexError(self):
+    with self.session():
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32,
+          size=0,
+          dynamic_size=True,
+          infer_shape=True)
+      value = constant_op.constant(1.0)
+      with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+        split = ta.split(value, [1])
+        self.evaluate(split.flow)
+
+  @test_util.deprecated_graph_mode_only
   def testSkipEagerWriteUnknownShape(self):
     with self.session():
       ta = tensor_array_ops.TensorArray(
