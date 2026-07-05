@@ -31,7 +31,9 @@ int64_t GetCurrentTimeNanos() {
 void SleepForNanos(int64_t ns) { absl::SleepFor(absl::Nanoseconds(ns)); }
 
 void SpinForNanos(int64_t ns) {
-  if (ns <= 0) return;
+  if (ns <= 0) {
+    return;
+  }
   int64_t deadline = GetCurrentTimeNanos() + ns;
   while (GetCurrentTimeNanos() < deadline) {
   }

@@ -364,9 +364,9 @@ absl::Status DispatchToVectorized(int64_t max_vec_size, Args&&... args) {
   static_assert((sizeof(T) & (sizeof(T) - 1)) == 0,
                 "sizeof(T) must be a power of 2");
   if (max_vec_size <= 0) {
-    return errors::InvalidArgument("DispatchToVectorized: max_vec_size (",
-                                   max_vec_size,
-                                   ") must be greater than zero.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("DispatchToVectorized: max_vec_size (", max_vec_size,
+                     ") must be greater than zero."));
   }
   constexpr const int kOptimalVecSizeBytes = 16;
   // The optimal number of (aligned) elements of T to load/store in a

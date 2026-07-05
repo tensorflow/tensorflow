@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/gpu/context_map.h"
@@ -132,7 +133,7 @@ absl::StatusOr<CudaContext*> CudaContext::Create(int device_ordinal,
 
   unsigned int former_primary_context_flags;
   int former_primary_context_is_active;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
+  RETURN_IF_ERROR(cuda::ToStatus(
       cuDevicePrimaryCtxGetState(device, &former_primary_context_flags,
                                  &former_primary_context_is_active)));
   if (former_primary_context_flags != flags) {
@@ -142,14 +143,14 @@ absl::StatusOr<CudaContext*> CudaContext::Create(int device_ordinal,
           << former_primary_context_flags << ") than the desired flag set ("
           << flags << ").";
     } else {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           cuda::ToStatus(cuDevicePrimaryCtxSetFlags(device, flags)));
     }
   }
 
   CUcontext former_context = CurrentContextOrDie();
   CUcontext new_context;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       cuda::ToStatus(cuDevicePrimaryCtxRetain(&new_context, device)));
   if (former_context != nullptr) {
     CUdevice former_device;
@@ -172,7 +173,7 @@ absl::StatusOr<CudaContext*> CudaContext::Create(int device_ordinal,
                  << former_context;
     }
   }
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuCtxSetCurrent(former_context)));
+  RETURN_IF_ERROR(cuda::ToStatus(cuCtxSetCurrent(former_context)));
 
   context = GetContextMap()->Add(new_context, device_ordinal);
   CHECK(context != nullptr)

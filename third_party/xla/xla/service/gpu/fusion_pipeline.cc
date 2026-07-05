@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/conv_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/multi_output_fusion.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
+#include "xla/backends/gpu/transforms/ragged_dot_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/sort_iota_fusion.h"
 #include "xla/backends/gpu/transforms/variadic_op_splitter.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -49,7 +50,7 @@ HloPassPipeline FusionPipeline(
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
     const se::DeviceDescription& gpu_device_info,
     mlir::MLIRContext* mlir_context) {
-  HloPassFix<HloPassPipeline> fusion("fusion");
+  HloPassPipeline fusion("fusion");
   // We try to split variadic ops with many parameters into several such ops
   // to avoid exceeding the parameter space.
   fusion.AddPass<VariadicOpSplitter>();
@@ -84,13 +85,13 @@ HloPassPipeline FusionPipeline(
       /*should_eliminate_computation=*/&HloComputation::IsFusionComputation);
   fusion.AddPass<HloDCE>();
   fusion.AddPass<MultiOutputFusion>(gpu_device_info, alias_info,
-                                    shape_size_bytes_function, mlir_context);
+                                    shape_size_bytes_function);
   fusion.AddPass<HloCSE>(
       /*is_layout_sensitive=*/true, /*ignore_control_dependencies=*/false,
       /*should_eliminate_computation=*/&HloComputation::IsFusionComputation);
   fusion.AddPass<HloDCE>();
 
-  return std::move(fusion);
+  return fusion;
 }
 
 }  // namespace gpu

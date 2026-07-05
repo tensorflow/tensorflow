@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_compilation.pb.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_constants.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -101,8 +103,9 @@ absl::StatusOr<uint64_t> Tf2HloArg::Fingerprint() const {
         tsl::Fingerprint64(tensorflow::DataType_Name(dtype_and_shape.dtype)));
 
     std::string serialized_shape;
-    if (!tsl::SerializeToStringDeterministic(dtype_and_shape.shape.AsProto(),
-                                             &serialized_shape)) {
+    if (!tsl::SerializeToStringDeterministic(
+            dtype_and_shape.GetShapeForCompilation().AsProto(),
+            &serialized_shape)) {
       return absl::InternalError("Failed to serialize shape");
     }
 
@@ -178,7 +181,8 @@ absl::Status UpdateCompileMetadata(
     }
 
     // Update shape.
-    *metadata.mutable_args(i)->mutable_shape() = inputs[i].shape.AsProto();
+    *metadata.mutable_args(i)->mutable_shape() =
+        inputs[i].GetShapeForCompilation().AsProto();
   }
   return absl::OkStatus();
 }
@@ -240,13 +244,6 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   }
   VLOG(1) << "device_type: " << device_type;
 
-  tpu::MlirToHloArgs mlir_to_hlo_args;
-  std::string module_str = tensorflow::SerializeMlirModule(arg.module);
-  mlir_to_hlo_args.mlir_module = module_str;
-  // Use fallback bridge as other modes may get deprecated.
-  mlir_to_hlo_args.rollout_state =
-      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
-
   TF_ASSIGN_OR_RETURN(
       auto* platform,
       stream_executor::PlatformManager::PlatformWithName("Host"));
@@ -257,8 +254,23 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   std::vector<TensorShape> arg_shapes;
   arg_shapes.reserve(arg.input_dtypes_and_shapes.size());
   for (const auto& input : arg.input_dtypes_and_shapes) {
-    arg_shapes.push_back(input.shape);
+    arg_shapes.push_back(input.GetShapeForCompilation());
   }
+
+  llvm::SmallVector<tensorflow::TensorOrResourceShape>
+      arg_tensor_or_resource_shapes;
+  for (const auto& shape : arg_shapes) {
+    arg_tensor_or_resource_shapes.push_back({shape});
+  }
+
+  TF_RETURN_IF_ERROR(
+      tensorflow::RefineShapes(arg_tensor_or_resource_shapes, arg.module));
+  tpu::MlirToHloArgs mlir_to_hlo_args;
+  std::string module_str = tensorflow::SerializeMlirModule(arg.module);
+  mlir_to_hlo_args.mlir_module = module_str;
+  // Use fallback bridge as other modes may get deprecated.
+  mlir_to_hlo_args.rollout_state =
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
 
   bool use_tuple_args = false;
   std::vector<tpu::ShardingAndIndex> arg_core_mapping;

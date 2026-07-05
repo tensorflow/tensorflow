@@ -112,8 +112,8 @@ TEST_F(LlvmKernelBackendTest, GetDefaultConfigTest) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto config, backend_->GetDefaultConfig(
                        *module->entry_computation()->root_instruction()));
-  LlvmKernelBackend::Config llvm_kernel_config;
-  ASSERT_TRUE(config->UnpackTo(&llvm_kernel_config));
+  ASSERT_TRUE(config->has_llvm_kernel());
+  LlvmKernelBackend::Config llvm_kernel_config = config->llvm_kernel();
 
   EXPECT_FALSE(llvm_kernel_config.disable_loop_unrolling());
   EXPECT_FALSE(llvm_kernel_config.slp_vectorizer_disabled());
@@ -153,8 +153,8 @@ TEST_F(LlvmKernelBackendTest, EnsureConfigIsApplied) {
                           backend_->GetSupportedConfigs(*instruction));
 
   for (const auto& config : configs) {
-    LlvmKernelBackend::Config llvm_kernel_config;
-    ASSERT_TRUE(config->UnpackTo(&llvm_kernel_config));
+    ASSERT_TRUE(config->has_llvm_kernel());
+    LlvmKernelBackend::Config llvm_kernel_config = config->llvm_kernel();
     EXPECT_TRUE(backend_->ApplyConfig(*instruction, *config).ok());
 
     TF_ASSERT_OK_AND_ASSIGN(auto instruction_backend_config,

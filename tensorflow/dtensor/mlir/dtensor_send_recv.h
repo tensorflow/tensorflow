@@ -38,7 +38,7 @@ template <typename DTensorOp>
 StatusOr<mlir::Operation*> GetCorrespondingDTensorSendRecvOp(
     mlir::ModuleOp module, DTensorOp dtensor_op) {
   mlir::Operation* corresponding_op = nullptr;
-  if (std::is_same<DTensorOp, mlir::TF::DTensorSend>::value) {
+  if (std::is_same_v<DTensorOp, mlir::TF::DTensorSend>) {
     module.walk([&](mlir::Operation* op) {
       if (auto xla_recv_tpu = llvm::dyn_cast<mlir::TF::XlaRecvFromHostOp>(op)) {
         if (dtensor_op.getKey() == xla_recv_tpu.getKey()) {
@@ -66,7 +66,7 @@ StatusOr<mlir::Operation*> GetCorrespondingDTensorSendRecvOp(
       return mlir::WalkResult::advance();
     });
   } else {
-    const bool is_recv = std::is_same<DTensorOp, mlir::TF::DTensorRecv>::value;
+    const bool is_recv = std::is_same_v<DTensorOp, mlir::TF::DTensorRecv>;
     if (!is_recv) {
       return absl::InternalError(
           "Error checking if is same for DTensorOp and DTensorRecv.");

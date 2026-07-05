@@ -45,13 +45,13 @@ class Buffer : public ResourceBase {
 
     // Sanity check so that we don't block for ever below
     if (memory_limit_ > 0 && tuple_bytes > memory_limit_) {
-      return absl::Status(
-          errors::ResourceExhausted("Attempted to insert "
-                                    "tensors with combined size of '",
-                                    tuple_bytes,
-                                    "' bytes into "
-                                    "Staging Area with a memory limit of '",
-                                    memory_limit_, "'."));
+      return absl::Status(absl::ResourceExhaustedError(
+          absl::StrCat("Attempted to insert "
+                       "tensors with combined size of '",
+                       tuple_bytes,
+                       "' bytes into "
+                       "Staging Area with a memory limit of '",
+                       memory_limit_, "'.")));
     }
 
     // If buffer capacity is bounded wait until elements have been removed
@@ -233,10 +233,10 @@ class UnstageOp : public OpKernel {
 
     buf->Get(&tuple);
 
-    OP_REQUIRES(
-        ctx, tuple.size() == (size_t)ctx->num_outputs(),
-        errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
-                                " vs. ", ctx->num_outputs()));
+    OP_REQUIRES(ctx, tuple.size() == (size_t)ctx->num_outputs(),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Mismatch stage/unstage: ", tuple.size(),
+                                 " vs. ", ctx->num_outputs())));
 
     for (size_t i = 0; i < tuple.size(); ++i) {
       ctx->set_output(i, tuple[i]);
@@ -260,15 +260,15 @@ class StagePeekOp : public OpKernel {
     Buffer::Tuple tuple;
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
-                errors::InvalidArgument("index must be scalar"));
+                absl::InvalidArgumentError("index must be scalar"));
     std::size_t index = ctx->input(0).scalar<int>()();
 
     OP_REQUIRES_OK(ctx, buf->Peek(index, &tuple));
 
-    OP_REQUIRES(
-        ctx, tuple.size() == (size_t)ctx->num_outputs(),
-        errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
-                                " vs. ", ctx->num_outputs()));
+    OP_REQUIRES(ctx, tuple.size() == (size_t)ctx->num_outputs(),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Mismatch stage/unstage: ", tuple.size(),
+                                 " vs. ", ctx->num_outputs())));
 
     for (size_t i = 0; i < tuple.size(); ++i) {
       ctx->set_output(i, tuple[i]);

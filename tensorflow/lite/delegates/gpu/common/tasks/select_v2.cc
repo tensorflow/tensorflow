@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/select_v2.h"
 
 #include <string>
-#include <utility>
 
 namespace tflite {
 namespace gpu {
@@ -32,10 +31,19 @@ std::string GetSelectV2Code(const OperationDef& op_def,
     c += "  int linear_id = GLOBAL_ID_0;\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
-    c += "  args.cond_tensor.SetBatchRef(B);\n";
+    c += attr.scalar_cond
+             ? ""
+             : "  args.cond_tensor.SetBatchRef((args.cond_tensor.Batch() == 1 "
+               "? 0 : B));\n";
     c += "  args.dst_tensor.SetBatchRef(B);\n";
-    c += attr.broadcast_true ? "" : "  args.true_tensor.SetBatchRef(B);\n";
-    c += attr.broadcast_false ? "" : "  args.else_tensor.SetBatchRef(B);\n";
+    c += attr.broadcast_true
+             ? ""
+             : "  args.true_tensor.SetBatchRef((args.true_tensor.Batch() == 1 "
+               "? 0 : B));\n";
+    c += attr.broadcast_false
+             ? ""
+             : "  args.else_tensor.SetBatchRef((args.else_tensor.Batch() == 1 "
+               "? 0 : B));\n";
   } else {
     c += "  int X = GLOBAL_ID_0;\n";
   }
@@ -47,37 +55,44 @@ std::string GetSelectV2Code(const OperationDef& op_def,
   c += "  } \n";
   c += "  FLT4 true_val, else_val;\n";
   if (!attr.broadcast_true) {
-    c += "  true_val = args.true_tensor.Read(X, Y, Z);\n";
+    c += "  true_val = args.true_tensor.Read("
+         "(args.true_tensor.Width() == 1 ? 0 : X), "
+         "(args.true_tensor.Height() == 1 ? 0 : Y), "
+         "(args.true_tensor.Slices() == 1 ? 0 : Z));\n";
   } else {
     c += "  true_val = INIT_FLT4(args.true_tensor.Read(0, 0, 0, 0).x);\n";
   }
   if (!attr.broadcast_false) {
-    c += "  else_val = args.else_tensor.Read(X, Y, Z);\n";
+    c += "  else_val = args.else_tensor.Read("
+         "(args.else_tensor.Width() == 1 ? 0 : X), "
+         "(args.else_tensor.Height() == 1 ? 0 : Y), "
+         "(args.else_tensor.Slices() == 1 ? 0 : Z));\n";
   } else {
     c += "  else_val = INIT_FLT4(args.else_tensor.Read(0, 0, 0, 0).x);\n";
   }
-  c += "  bool should_gather_rows = \n";
-  if (attr.broadcast_true && attr.broadcast_false) {
-    c += "      true;\n";
-  } else {
-    c += "      args.dst_tensor.Slices() != args.cond_tensor.Slices();\n";
-  }
+  c += "  bool should_gather_rows = args.dst_tensor.Slices() != "
+       "args.cond_tensor.Slices();\n";
   c += "  FLT4 res;\n";
   if (attr.scalar_cond) {
-    c += "    bool cond = args.cond_tensor.Read<bool>(0, 0, 0).x;\n";
+    c += "    bool cond = args.cond_tensor.Read<bool>(0, 0, 0, 0).x;\n";
     c += "    res = cond ? true_val : else_val;\n";
   } else {
     c += "  if (should_gather_rows) {\n";
-    c += "    bool cond = args.cond_tensor.Read<bool>(X, 0, 0).x;\n";
+    c += "    bool cond = args.cond_tensor.Read<bool>("
+         "(args.cond_tensor.Width() == 1 ? 0 : X), "
+         "(args.cond_tensor.Height() == 1 ? 0 : Y), 0).x;\n";
     c += "    res = cond ? true_val : else_val;\n";
     c += "  } else {\n";
-    c += "    bool4 cond = args.cond_tensor.Read<bool>(0, Y, Z);\n";
+    c += "    bool4 cond = args.cond_tensor.Read<bool>("
+         "(args.cond_tensor.Width() == 1 ? 0 : X), "
+         "(args.cond_tensor.Height() == 1 ? 0 : Y), "
+         "(args.cond_tensor.Slices() == 1 ? 0 : Z));\n";
     c += "    res = true_val;\n";
     c += "    res.x = cond.x ? true_val.x : else_val.x;\n";
     c += "    res.y = cond.y ? true_val.y : else_val.y;\n";
     c += "    res.z = cond.z ? true_val.z : else_val.z;\n";
     c += "    res.w = cond.w ? true_val.w : else_val.w;\n";
-    c += "  }\n;";
+    c += "  }\n";
   }
   c += "  args.dst_tensor.Write(res, X, Y, Z);\n";
   c += "}\n";
@@ -89,8 +104,6 @@ GPUOperation CreateSelectV2(const OperationDef& definition,
   GPUOperation op(definition);
   op.code_ = GetSelectV2Code(definition, attr, &op);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
-  op.args_.AddInt("broadcast_true", attr.broadcast_true);
-  op.args_.AddInt("broadcast_else", attr.broadcast_false);
   return op;
 }
 

@@ -39,8 +39,8 @@ absl::Status CheckValidType(const DataType& dtype) {
     case DT_STRING:
       return absl::OkStatus();
     default:
-      return errors::InvalidArgument("Received input dtype: ",
-                                     DataTypeString(dtype));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Received input dtype: ", DataTypeString(dtype)));
   }
 }
 
@@ -57,8 +57,8 @@ absl::Status CheckTypesMatch(const Feature& feature, const DataType& dtype,
       *match = (feature.kind_case() == Feature::kBytesList);
       break;
     default:
-      return errors::InvalidArgument("Invalid input dtype: ",
-                                     DataTypeString(dtype));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid input dtype: ", DataTypeString(dtype)));
   }
   return absl::OkStatus();
 }
@@ -74,11 +74,11 @@ absl::Status FeatureDenseCopy(const std::size_t out_index,
     case DT_INT64: {
       const Int64List& values = feature.int64_list();
       if (static_cast<size_t>(values.value_size()) != num_elements) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Name: ", name, ", Key: ", key, ", Index: ", out_index,
             ".  Number of int64 values != expected.  "
             "values size: ",
-            values.value_size(), " but output shape: ", shape.DebugString());
+            values.value_size(), " but output shape: ", shape.DebugString()));
       }
       auto out_p = out->flat<int64_t>().data() + offset;
       std::copy_n(values.value().data(), num_elements, out_p);
@@ -87,11 +87,11 @@ absl::Status FeatureDenseCopy(const std::size_t out_index,
     case DT_FLOAT: {
       const FloatList& values = feature.float_list();
       if (static_cast<size_t>(values.value_size()) != num_elements) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Name: ", name, ", Key: ", key, ", Index: ", out_index,
             ".  Number of float values != expected.  "
             "values size: ",
-            values.value_size(), " but output shape: ", shape.DebugString());
+            values.value_size(), " but output shape: ", shape.DebugString()));
       }
       auto out_p = out->flat<float>().data() + offset;
       std::copy_n(values.value().data(), num_elements, out_p);
@@ -100,11 +100,11 @@ absl::Status FeatureDenseCopy(const std::size_t out_index,
     case DT_STRING: {
       const BytesList& values = feature.bytes_list();
       if (static_cast<size_t>(values.value_size()) != num_elements) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Name: ", name, ", Key ", key, ", Index: ", out_index,
             ".  Number of bytes values != expected.  "
             "Values size: ",
-            values.value_size(), " but output shape: ", shape.DebugString());
+            values.value_size(), " but output shape: ", shape.DebugString()));
       }
       auto out_p = out->flat<tstring>().data() + offset;
       std::transform(values.value().data(),
@@ -113,8 +113,8 @@ absl::Status FeatureDenseCopy(const std::size_t out_index,
       return absl::OkStatus();
     }
     default:
-      return errors::InvalidArgument("Invalid input dtype: ",
-                                     DataTypeString(dtype));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid input dtype: ", DataTypeString(dtype)));
   }
 }
 
@@ -245,8 +245,9 @@ absl::Status SingleExampleProtoToTensors(
 
     const bool required_ok = feature_has_data || !required;
     if (!required_ok) {
-      return errors::InvalidArgument("Name: ", example_name, ", Feature: ", key,
-                                     " is required but could not be found.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Name: ", example_name, ", Feature: ", key,
+                       " is required but could not be found."));
     }
 
     // Perform the FeatureDenseCopy into the output dense_values tensor (if
@@ -256,11 +257,10 @@ absl::Status SingleExampleProtoToTensors(
       bool types_match;
       TF_RETURN_IF_ERROR(CheckTypesMatch(f, dtype, &types_match));
       if (!types_match) {
-        return errors::InvalidArgument("Name: ", example_name,
-                                       ", Feature: ", key,
-                                       ".  Data types don't match. ",
-                                       "Expected type: ", DataTypeString(dtype),
-                                       "  Feature is: ", f.DebugString());
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Name: ", example_name, ", Feature: ", key,
+            ".  Data types don't match. ", "Expected type: ",
+            DataTypeString(dtype), "  Feature is: ", f.DebugString()));
       }
       TF_RETURN_IF_ERROR(FeatureDenseCopy(batch_index, example_name, key, dtype,
                                           shape, f,
@@ -288,11 +288,10 @@ absl::Status SingleExampleProtoToTensors(
       bool types_match;
       TF_RETURN_IF_ERROR(CheckTypesMatch(f, dtype, &types_match));
       if (!types_match) {
-        return errors::InvalidArgument("Name: ", example_name,
-                                       ", Feature: ", key,
-                                       ".  Data types don't match. ",
-                                       "Expected type: ", DataTypeString(dtype),
-                                       "  Feature is: ", f.DebugString());
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Name: ", example_name, ", Feature: ", key,
+            ".  Data types don't match. ", "Expected type: ",
+            DataTypeString(dtype), "  Feature is: ", f.DebugString()));
       }
       (*output_sparse_values_tmp)[d][batch_index] =
           FeatureSparseCopy(batch_index, key, dtype, f);
@@ -337,9 +336,9 @@ absl::Status BatchExampleProtoToTensors(
   const bool has_names = (!names.empty());
   if (has_names) {
     if (names.size() != examples.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Expected len(names) == len(examples), but got: ", names.size(),
-          " vs. ", examples.size());
+          " vs. ", examples.size()));
     }
   }
 
@@ -437,27 +436,28 @@ absl::Status ParseExampleAttrs::FinishInit(int op_version) {
       num_ragged = ragged_value_types.size();
       break;
     default:
-      return errors::InvalidArgument("Unexpected op_version", op_version);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unexpected op_version", op_version));
   }
   if (static_cast<size_t>(num_sparse) != sparse_types.size()) {
-    return errors::InvalidArgument("len(sparse_keys) != len(sparse_types)");
+    return absl::InvalidArgumentError("len(sparse_keys) != len(sparse_types)");
   }
   if (static_cast<size_t>(num_dense) != dense_types.size()) {
-    return errors::InvalidArgument("len(dense_keys) != len(dense_types)");
+    return absl::InvalidArgumentError("len(dense_keys) != len(dense_types)");
   }
   if (static_cast<size_t>(num_dense) != dense_shapes.size()) {
-    return errors::InvalidArgument("len(dense_keys) != len(dense_shapes)");
+    return absl::InvalidArgumentError("len(dense_keys) != len(dense_shapes)");
   }
   if (static_cast<size_t>(num_ragged) != ragged_value_types.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "len(ragged_keys) != len(ragged_value_types)");
   }
   if (static_cast<size_t>(num_ragged) != ragged_split_types.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "len(ragged_keys) != len(ragged_split_types)");
   }
   if (num_dense > std::numeric_limits<int32_t>::max()) {
-    return errors::InvalidArgument("num_dense_ too large");
+    return absl::InvalidArgumentError("num_dense_ too large");
   }
   for (const DataType& type : dense_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));
@@ -470,8 +470,8 @@ absl::Status ParseExampleAttrs::FinishInit(int op_version) {
   }
   for (const DataType& type : ragged_split_types) {
     if (!(type == DT_INT64 || type == DT_INT32)) {
-      return errors::InvalidArgument("Invalid ragged_split_type: ",
-                                     DataTypeString(type));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid ragged_split_type: ", DataTypeString(type)));
     }
   }
   return absl::OkStatus();
@@ -479,13 +479,13 @@ absl::Status ParseExampleAttrs::FinishInit(int op_version) {
 
 absl::Status ParseSingleExampleAttrs::FinishInit() {
   if (sparse_keys.size() != sparse_types.size()) {
-    return errors::InvalidArgument("len(sparse_keys) != len(sparse_types)");
+    return absl::InvalidArgumentError("len(sparse_keys) != len(sparse_types)");
   }
   if (dense_keys.size() != dense_types.size()) {
-    return errors::InvalidArgument("len(dense_keys) != len(dense_types)");
+    return absl::InvalidArgumentError("len(dense_keys) != len(dense_types)");
   }
   if (dense_keys.size() != dense_shapes.size()) {
-    return errors::InvalidArgument("len(dense_keys) != len(dense_shapes)");
+    return absl::InvalidArgumentError("len(dense_keys) != len(dense_shapes)");
   }
   for (const DataType& type : dense_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));
@@ -502,28 +502,28 @@ absl::Status ParseSequenceExampleAttrs::FinishInit(int op_version) {
       num_context_ragged = 0;
       num_feature_list_ragged = 0;
       if (num_context_sparse != context_sparse_keys.size()) {
-        return errors::InvalidArgument(
-            "num_context_sparse (", num_context_sparse,
-            ") must match the size of context_sparse_keys (",
-            context_sparse_keys.size(), ")");
+        return absl::InvalidArgumentError(
+            absl::StrCat("num_context_sparse (", num_context_sparse,
+                         ") must match the size of context_sparse_keys (",
+                         context_sparse_keys.size(), ")"));
       }
       if (num_context_dense != context_dense_keys.size()) {
-        return errors::InvalidArgument(
-            "num_context_dense (", num_context_dense,
-            ") must match the size of context_dense_keys (",
-            context_dense_keys.size(), ")");
+        return absl::InvalidArgumentError(
+            absl::StrCat("num_context_dense (", num_context_dense,
+                         ") must match the size of context_dense_keys (",
+                         context_dense_keys.size(), ")"));
       }
       if (num_feature_list_sparse != feature_list_sparse_keys.size()) {
-        return errors::InvalidArgument(
-            "num_feature_list_sparse (", num_feature_list_sparse,
-            ") must match the size of feature_list_sparse_keys (",
-            feature_list_sparse_keys.size(), ")");
+        return absl::InvalidArgumentError(
+            absl::StrCat("num_feature_list_sparse (", num_feature_list_sparse,
+                         ") must match the size of feature_list_sparse_keys (",
+                         feature_list_sparse_keys.size(), ")"));
       }
       if (num_feature_list_dense != feature_list_dense_keys.size()) {
-        return errors::InvalidArgument(
-            "num_feature_list_dense (", num_feature_list_dense,
-            ") must match the size of feature_list_dense_keys (",
-            feature_list_dense_keys.size(), ")");
+        return absl::InvalidArgumentError(
+            absl::StrCat("num_feature_list_dense (", num_feature_list_dense,
+                         ") must match the size of feature_list_dense_keys (",
+                         feature_list_dense_keys.size(), ")"));
       }
       break;
     case 2:
@@ -532,52 +532,53 @@ absl::Status ParseSequenceExampleAttrs::FinishInit(int op_version) {
       num_feature_list_ragged = feature_list_ragged_value_types.size();
       break;
     default:
-      return errors::InvalidArgument("Unexpected op_version", op_version);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unexpected op_version", op_version));
   }
   if (num_context_sparse != context_sparse_types.size()) {
-    return errors::InvalidArgument(
-        "num_context_sparse (", num_context_sparse,
-        ") must match the size of context_sparse_types (",
-        context_sparse_types.size(), ")");
+    return absl::InvalidArgumentError(
+        absl::StrCat("num_context_sparse (", num_context_sparse,
+                     ") must match the size of context_sparse_types (",
+                     context_sparse_types.size(), ")"));
   }
   if (num_context_dense != context_dense_types.size() ||
       num_context_dense != context_dense_shapes.size()) {
-    return errors::InvalidArgument(
-        "num_context_dense (", num_context_dense,
-        ") must match the size of context_dense_types (",
-        context_dense_types.size(), ") and context_dense_shapes (",
-        context_dense_shapes.size(), ")");
+    return absl::InvalidArgumentError(
+        absl::StrCat("num_context_dense (", num_context_dense,
+                     ") must match the size of context_dense_types (",
+                     context_dense_types.size(), ") and context_dense_shapes (",
+                     context_dense_shapes.size(), ")"));
   }
   if ((num_context_ragged != context_ragged_value_types.size()) ||
       (num_context_ragged != context_ragged_split_types.size())) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "num_context_ragged (", num_context_ragged,
         ") must match the size of context_ragged_value_types (",
         context_ragged_value_types.size(), ") and context_ragged_split_types (",
-        context_ragged_split_types.size(), ")");
+        context_ragged_split_types.size(), ")"));
   }
   if (num_feature_list_sparse != feature_list_sparse_types.size()) {
-    return errors::InvalidArgument(
-        "num_feature_list_sparse (", num_feature_list_sparse,
-        ") must match the size of feature_list_sparse_types (",
-        feature_list_sparse_types.size(), ")");
+    return absl::InvalidArgumentError(
+        absl::StrCat("num_feature_list_sparse (", num_feature_list_sparse,
+                     ") must match the size of feature_list_sparse_types (",
+                     feature_list_sparse_types.size(), ")"));
   }
   if (num_feature_list_dense != feature_list_dense_types.size() ||
       num_feature_list_dense != feature_list_dense_shapes.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "num_feature_list_dense (", num_feature_list_dense,
         ") must match the size of feature_list_dense_types (",
         feature_list_dense_types.size(), ") and feature_list_dense_shapes (",
-        feature_list_dense_shapes.size(), ")");
+        feature_list_dense_shapes.size(), ")"));
   }
   if ((num_feature_list_ragged != feature_list_ragged_value_types.size()) ||
       (num_feature_list_ragged != feature_list_ragged_split_types.size())) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "num_feature_list_ragged (", num_feature_list_ragged,
         ") must match the size of feature_list_ragged_value_types (",
         feature_list_ragged_value_types.size(),
         ") and feature_list_ragged_split_types (",
-        feature_list_ragged_split_types.size(), ")");
+        feature_list_ragged_split_types.size(), ")"));
   }
   for (const DataType& type : context_dense_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));
@@ -596,8 +597,8 @@ absl::Status ParseSequenceExampleAttrs::FinishInit(int op_version) {
   }
   for (const DataType& type : context_ragged_split_types) {
     if (!(type == DT_INT64 || type == DT_INT32)) {
-      return errors::InvalidArgument("Invalid context_ragged_split_type: ",
-                                     DataTypeString(type));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid context_ragged_split_type: ", DataTypeString(type)));
     }
   }
   for (const DataType& type : feature_list_ragged_value_types) {
@@ -605,8 +606,8 @@ absl::Status ParseSequenceExampleAttrs::FinishInit(int op_version) {
   }
   for (const DataType& type : feature_list_ragged_split_types) {
     if (!(type == DT_INT64 || type == DT_INT32)) {
-      return errors::InvalidArgument("Invalid feature_list_ragged_split_type: ",
-                                     DataTypeString(type));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid feature_list_ragged_split_type: ", DataTypeString(type)));
     }
   }
 
@@ -615,25 +616,25 @@ absl::Status ParseSequenceExampleAttrs::FinishInit(int op_version) {
 
 absl::Status ParseSingleSequenceExampleAttrs::FinishInit() {
   if (static_cast<size_t>(num_context_sparse) != context_sparse_types.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "len(context_sparse_keys) != len(context_sparse_types)");
   }
   if (static_cast<size_t>(num_context_dense) != context_dense_types.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "len(context_dense_keys) != len(context_dense_types)");
   }
   if (static_cast<size_t>(num_context_dense) != context_dense_shapes.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "len(context_dense_keys) != len(context_dense_shapes)");
   }
   if (static_cast<size_t>(num_feature_list_sparse) !=
       feature_list_sparse_types.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "len(feature_list_sparse_keys) != len(feature_list_sparse_types)");
   }
   if (static_cast<size_t>(num_feature_list_dense) !=
       feature_list_dense_types.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "len(feature_list_dense_keys) != "
         "len(feature_list_dense_types)");
   }
@@ -669,10 +670,10 @@ absl::Status GetDenseShapes(const std::vector<PartialTensorShape>& dense_shapes,
       }
     }
     if (!shape_ok) {
-      return errors::InvalidArgument(
-          "dense_shapes[", i,
-          "] has unknown rank or unknown inner dimensions: ",
-          dense_shapes[i].DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("dense_shapes[", i,
+                       "] has unknown rank or unknown inner dimensions: ",
+                       dense_shapes[i].DebugString()));
     }
     TensorShape dense_shape;
     if (dense_shapes[i].dims() > 0 && dense_shapes[i].dim_size(0) == -1) {

@@ -60,7 +60,7 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
     const bool already_cancelled = !cm->RegisterCallback(
         token, [call_opts, response, done]() { call_opts->StartCancel(); });
     if (already_cancelled) {
-      absl::Status s = errors::Cancelled("RemoteExecuteNode::RunAsync");
+      absl::Status s = absl::CancelledError("RemoteExecuteNode::RunAsync");
       for (size_t i = 0; i < retvals.size(); ++i) {
         retvals[i]->PoisonRemote(s, device, context_view_id_);
       }

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-promote-resources-to-args=functions="add_and_pack,read" | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-promote-resources-to-args=functions="add_and_pack,read" | env FILECHECK_OPTS="" FileCheck %s
 
 module {
 

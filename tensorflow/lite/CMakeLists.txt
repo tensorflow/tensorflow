@@ -576,6 +576,7 @@ if(TFLITE_ENABLE_XNNPACK)
   add_dependencies(xnnpack-delegate xnnpack_weight_cache_schema_cc_fbs)
   target_link_libraries(xnnpack-delegate
     Eigen3::Eigen
+    absl::span
     flatbuffers::flatbuffers
     gemmlowp::gemmlowp
     ruy::ruy
@@ -761,6 +762,7 @@ target_link_libraries(tensorflow-lite
     Eigen3::Eigen
     absl::flags
     absl::hash
+    absl::span
     absl::status
     absl::strings
     absl::synchronization

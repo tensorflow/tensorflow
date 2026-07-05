@@ -67,8 +67,7 @@ absl::Status ReadModelProto(const std::string& input_file, T& model_proto) {
                                      &model_proto);
   }
 
-  return tensorflow::errors::InvalidArgument(
-      "Expected either binary or text protobuf");
+  return absl::InvalidArgumentError("Expected either binary or text protobuf");
 }
 
 // Best effort to identify if the protobuf file `input_file` is

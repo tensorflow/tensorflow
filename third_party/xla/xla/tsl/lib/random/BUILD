@@ -96,14 +96,20 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "distribution_sampler.cc",
+        "simple_philox.cc",
+        "weighted_picker.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "distribution_sampler.h",
         "exact_uniform_int.h",
         "philox_random.h",
         "random_distributions.h",
         "random_distributions_utils.h",
-        "simple_philox.cc",
         "simple_philox.h",
-        "weighted_picker.cc",
         "weighted_picker.h",
     ],
 )

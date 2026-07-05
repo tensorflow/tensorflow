@@ -169,8 +169,8 @@ int TensorHandle::PackedTensorHandleData::NumPackedHandles() const {
 absl::Status TensorHandle::PackedTensorHandleData::ExtractPackedHandle(
     const int index, TensorHandle** handle) const {
   if (index < 0 || index >= handles_.size()) {
-    return errors::InvalidArgument("Expect an index within [0, ",
-                                   handles_.size(), "), but got ", index);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Expect an index within [0, ", handles_.size(), "), but got ", index));
   }
   *handle = handles_.at(index);
   return absl::OkStatus();
@@ -184,10 +184,10 @@ void TensorHandle::SetResourceHandleDtypeAndShape(
 absl::Status TensorHandle::GetResourceHandleDtypesAndShapes(
     std::vector<DtypeAndPartialTensorShape>* result) {
   if (dtype != DT_RESOURCE) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "TensorHandle::GetResourceDtypeAndShape should be called on tensor "
         "handles with data type DT_RESOURCE. Actual tensor: ",
-        dtype);
+        dtype));
   }
 
   if (Type() != LOCAL) {
@@ -312,7 +312,7 @@ absl::Status TensorHandle::CreatePackedHandle(
     const tensorflow::TensorShape& shape, const std::string& device_name,
     EagerContext* ctx, TensorHandle** packed_handle) {
   if (handles.empty()) {
-    return errors::InvalidArgument("Handles should not be empty.");
+    return absl::InvalidArgumentError("Handles should not be empty.");
   }
 
   std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
@@ -341,7 +341,7 @@ absl::Status TensorHandle::CreatePackedHandle(
     std::vector<TensorHandle*>&& handles, EagerContext* ctx,
     TensorHandle** packed_handle) {
   if (handles.empty()) {
-    return errors::InvalidArgument("Handles should not be empty.");
+    return absl::InvalidArgumentError("Handles should not be empty.");
   }
 
   // Get the dtype and shape from the first handle since all handles have the
@@ -696,12 +696,12 @@ absl::Status TensorHandle::AddEmptyLocalMirror(const Device* d) {
            << " device: " << d;
 
   if (d == device_) {
-    return errors::Internal("Cannot add mirror for primary device.");
+    return absl::InternalError("Cannot add mirror for primary device.");
   }
 
   mutex_lock l(mu_);
   if (local_mirrors_.find(d) != local_mirrors_.end()) {
-    return errors::AlreadyExists("Attempted to duplicate a local mirror.");
+    return absl::AlreadyExistsError("Attempted to duplicate a local mirror.");
   }
 
   local_mirrors_.emplace(std::piecewise_construct, std::forward_as_tuple(d),
@@ -727,7 +727,7 @@ absl::Status TensorHandle::RemoteAddress(const Device* d,
     if (mirror != remote_mirrors_.end()) {
       remote_data = &mirror->second;
     } else {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Could not find remote mirror for specified device");
     }
   }
@@ -736,7 +736,7 @@ absl::Status TensorHandle::RemoteAddress(const Device* d,
     auto status =
         remote_data->OpIdAndOutputNum(wait_until_ready, op_id, output_num);
     if (!status.ok()) {
-      return errors::Internal(
+      return absl::InternalError(
           absl::StrCat("Remote address looked up from remote mirrors found to "
                        "be poisoned with status ",
                        status.ToString()));
@@ -746,13 +746,13 @@ absl::Status TensorHandle::RemoteAddress(const Device* d,
   }
 
   if (Type() != REMOTE) {
-    return errors::InvalidArgument("Primary device is not remote");
+    return absl::InvalidArgumentError("Primary device is not remote");
   }
 
   auto& data = std::get<RemoteTensorHandleData>(data_);
   auto status = data.OpIdAndOutputNum(wait_until_ready, op_id, output_num);
   if (!status.ok()) {
-    return errors::Internal(
+    return absl::InternalError(
         "Remote address looked up from remote data found to be poisoned");
   } else {
     return absl::OkStatus();
@@ -805,7 +805,7 @@ absl::Status TensorHandle::AddUnshapedRemoteMirror(
   auto remote_mirror = remote_mirrors_.find(d->name());
   if (remote_mirror != remote_mirrors_.end()) {
     if (remote_mirror->second.context_view_id() > ctx->GetContextId()) {
-      return errors::Internal(
+      return absl::InternalError(
           "Attempted to duplicate a remote mirror with inconsistent "
           "arguments.");
     }
@@ -883,7 +883,7 @@ absl::Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
       }
       return status;
     } else if (mirror.context_view_id() < context_view_id) {
-      return errors::Internal(
+      return absl::InternalError(
           absl::Substitute("Unexpected context_view_id ($0) which should not "
                            "be newer than the "
                            "one ($1) associated to the remote mirror.",
@@ -896,7 +896,7 @@ absl::Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
   }
 
   if (Type() != REMOTE) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "SetRemoteShape should only be called on remote handles.");
   }
 
@@ -920,7 +920,7 @@ absl::Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
     return status;
   } else {
     if (!unknown_device_) {
-      return errors::Internal("Cannot reset known devices.");
+      return absl::InternalError("Cannot reset known devices.");
     }
     Device* device;
     TF_RETURN_IF_ERROR(ctx_->FindDeviceFromName(op_device.c_str(), &device));
@@ -931,9 +931,9 @@ absl::Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
         GetRemoteDeviceIncarnation(resource_device_);
     std::string remote_task;
     if (!DeviceNameUtils::GetTaskName(device->parsed_name(), &remote_task)) {
-      return errors::InvalidArgument(
-          "Unable to find remote task corresponding to device ",
-          device->name());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unable to find remote task corresponding to device ",
+                       device->name()));
     }
     auto status = data.SetShapeAndRemoteTask(shape, remote_task);
     if (!status.ok()) {
@@ -972,7 +972,7 @@ void TensorHandle::PoisonRemote(absl::Status status, const Device* d,
 absl::Status TensorHandle::AddLocalMirror(tensorflow::Tensor&& tensor,
                                           const Device* d) {
   if (d == device_) {
-    return errors::Internal(
+    return absl::InternalError(
         "Local mirror assign conflicts with primary device.");
   }
 
@@ -981,7 +981,7 @@ absl::Status TensorHandle::AddLocalMirror(tensorflow::Tensor&& tensor,
       local_mirrors_.emplace(std::piecewise_construct, std::forward_as_tuple(d),
                              std::forward_as_tuple(std::move(tensor)));
   if (!elem.second) {
-    return errors::AlreadyExists("Attempted to add existing mirror.");
+    return absl::AlreadyExistsError("Attempted to add existing mirror.");
   }
 
   return absl::OkStatus();
@@ -1003,7 +1003,7 @@ absl::Status TensorHandle::SetTensor(tensorflow::Tensor&& t, const Device* d) {
     tf_shared_lock l(mu_);
     auto elem = local_mirrors_.find(d);
     if (elem == local_mirrors_.end()) {
-      return errors::Internal(
+      return absl::InternalError(
           "Attempted to set tensor for non-existent local mirror.");
     }
 
@@ -1050,10 +1050,10 @@ absl::Status TensorHandle::CopyToDevice(const EagerContext& ctx,
   }
   if (!dst_cpu && (src->dtype() != tensorflow::DT_VARIANT &&
                    !tensorflow::DataTypeCanUseMemcpy(src->dtype()))) {
-    return tensorflow::errors::InvalidArgument(
-        "Can't copy Tensor with type ",
-        tensorflow::DataTypeString(src->dtype()), " to device ", dstd->name(),
-        ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't copy Tensor with type ",
+                     tensorflow::DataTypeString(src->dtype()), " to device ",
+                     dstd->name(), "."));
   }
   tensorflow::AllocatorAttributes attr;
   if (src->dtype() == tensorflow::DT_VARIANT) {

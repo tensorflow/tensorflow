@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/tsl/platform/errors.h"
@@ -364,20 +365,49 @@ std::ostream& operator<<(std::ostream& out, const NamedSharding& sharding) {
   return out << sharding.ToString();
 }
 
-std::vector<std::vector<std::string>> NamedSharding::JaxPartitions() const {
-  std::vector<std::vector<std::string>> partitions;
-  partitions.reserve(dim_shardings_.size());
-  for (const DimensionSharding& dim_sharding : dim_shardings_) {
-    CHECK(dim_sharding.is_closed()) << "JaxPartitions should only be "
-                                       "called for closed dimension shardings.";
-    std::vector<std::string>& partition = partitions.emplace_back();
-    for (const AxisRef& axis : dim_sharding.axes()) {
-      partition.emplace_back(mesh_.axis_names()[axis.mesh_axis_index()]);
-      CHECK(!axis.sub_axis_info().has_value())
-          << "JaxPartitions should only be called for full axis.";
+std::vector<AxisRef> NamedSharding::GetImplicitlyReplicatedAxes() const {
+  std::vector<AxisRef> implicitly_replicated_axes;
+
+  size_t total_axes =
+      replicated_axes_.size() + manual_axes_.size() + unreduced_axes_.size();
+  for (const DimensionSharding& ds : dim_shardings_) {
+    total_axes += ds.axes().size();
+  }
+
+  std::vector<AxisRef> used;
+  used.reserve(total_axes);
+  used.insert(used.end(), replicated_axes_.begin(), replicated_axes_.end());
+  used.insert(used.end(), manual_axes_.begin(), manual_axes_.end());
+  used.insert(used.end(), unreduced_axes_.begin(), unreduced_axes_.end());
+  for (const DimensionSharding& ds : dim_shardings_) {
+    used.insert(used.end(), ds.axes().begin(), ds.axes().end());
+  }
+
+  absl::c_sort(used);
+
+  auto it = used.begin();
+
+  for (int64_t i = 0; i < mesh_.num_axes(); ++i) {
+    int64_t pre = 1;
+    for (; it != used.end() && it->mesh_axis_index() == i; ++it) {
+      if (it->pre_size() > pre) {
+        implicitly_replicated_axes.push_back(
+            AxisRef(i, {pre, it->pre_size() / pre}));
+      }
+      pre = it->sub_axis_info() ? it->sub_axis_info()->next_pre_size()
+                                : mesh_.axis_size(i);
+    }
+    if (pre < mesh_.axis_size(i)) {
+      if (pre == 1) {
+        implicitly_replicated_axes.push_back(AxisRef(i));
+      } else {
+        implicitly_replicated_axes.push_back(
+            AxisRef(i, {pre, mesh_.axis_size(i) / pre}));
+      }
     }
   }
-  return partitions;
+
+  return implicitly_replicated_axes;
 }
 
 namespace test_utils {
@@ -483,7 +513,7 @@ namespace {
 absl::Status VerifyAndTrack(
     const AxisRef& axis, const Mesh& mesh,
     absl::flat_hash_map<int64_t, std::vector<AxisRef>>& seen_axes) {
-  TF_RETURN_IF_ERROR(axis.Validate(mesh));
+  RETURN_IF_ERROR(axis.Validate(mesh));
   auto& axes_on_dim = seen_axes[axis.mesh_axis_index()];
   for (const AxisRef& other : axes_on_dim) {
     if (!axis.CanCoexistWithoutOverlap(other)) {
@@ -504,7 +534,7 @@ absl::Status VerifySortedAxes(
                      "sub-axis pre-size."));
   }
   for (auto it = axes.begin(); it != axes.end(); ++it) {
-    TF_RETURN_IF_ERROR(VerifyAndTrack(*it, mesh, seen_axes));
+    RETURN_IF_ERROR(VerifyAndTrack(*it, mesh, seen_axes));
     if (it != axes.begin() && std::prev(it)->CanMerge(*it)) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Adjacent axes in ", name, " axes can be merged: ",
@@ -523,7 +553,7 @@ absl::Status VerifyDimShardings(
       continue;
     }
     for (auto it = ds.axes().begin(); it != ds.axes().end(); ++it) {
-      TF_RETURN_IF_ERROR(VerifyAndTrack(*it, mesh, seen_axes));
+      RETURN_IF_ERROR(VerifyAndTrack(*it, mesh, seen_axes));
       if (it != ds.axes().begin() && std::prev(it)->CanMerge(*it)) {
         return absl::InvalidArgumentError(absl::StrCat(
             "Adjacent axes in dimension sharding can be merged: ",
@@ -539,14 +569,14 @@ absl::Status VerifyDimShardings(
 absl::Status VerifyNamedSharding(const NamedSharding& named_sharding) {
   absl::flat_hash_map<int64_t, std::vector<AxisRef>> seen_axes;
   const Mesh& mesh = named_sharding.mesh();
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       VerifyDimShardings(named_sharding.dim_shardings(), mesh, seen_axes));
-  TF_RETURN_IF_ERROR(VerifySortedAxes(named_sharding.replicated_axes(),
-                                      "Replicated", mesh, seen_axes));
-  TF_RETURN_IF_ERROR(VerifySortedAxes(named_sharding.unreduced_axes(),
-                                      "Unreduced", mesh, seen_axes));
-  TF_RETURN_IF_ERROR(VerifySortedAxes(named_sharding.manual_axes(), "Manual",
-                                      mesh, seen_axes));
+  RETURN_IF_ERROR(VerifySortedAxes(named_sharding.replicated_axes(),
+                                   "Replicated", mesh, seen_axes));
+  RETURN_IF_ERROR(VerifySortedAxes(named_sharding.unreduced_axes(), "Unreduced",
+                                   mesh, seen_axes));
+  RETURN_IF_ERROR(VerifySortedAxes(named_sharding.manual_axes(), "Manual", mesh,
+                                   seen_axes));
   return absl::OkStatus();
 }
 

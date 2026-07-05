@@ -107,7 +107,6 @@ TaskState Task::Run() {
 
   if (std::optional<size_t> item = w.Pop(/*notify_work_stealing=*/false)) {
     SlinkyThreadPool::task_body body = body_;
-
     do {
       body(*item);
       ++num_processed_work_items;
@@ -146,6 +145,10 @@ bool Task::done() const {
 // We keep a stack of tasks that are currently being processed by current
 // thread, to avoid recursive calls.
 static thread_local std::vector<const Task*> task_stack;  // NOLINT
+
+// Thread-local rotor used to pick the starting shard for Enqueue/Dequeue,
+// spreading the load and reducing initial mutex contention.
+static thread_local size_t shard_rotor = 0;  // NOLINT
 
 class SlinkyThreadPool::Impl : public slinky::ref_counted<Impl> {
  public:
@@ -206,10 +209,23 @@ class SlinkyThreadPool::Impl : public slinky::ref_counted<Impl> {
   Eigen::ThreadPoolInterface* threadpool_;
   size_t thread_count_;
 
-  std::deque<slinky::ref_count<Task>> tasks_ ABSL_GUARDED_BY(tasks_mutex_);
+  // Sharded task queue. Splitting the queue into N independently-locked
+  // shards cuts contention on the Dequeue hot path. Power-of-two count
+  // lets shard indexing use a bitmask.
+  static constexpr size_t kNumShards = 8;
+  static_assert((kNumShards & (kNumShards - 1)) == 0,
+                "kNumShards must be a power of two");
+  static constexpr size_t kShardMask = kNumShards - 1;
 
-  // A mutex for guarding mutable state accessed concurrently.
-  ABSL_CACHELINE_ALIGNED absl::Mutex tasks_mutex_;
+  struct alignas(ABSL_CACHELINE_SIZE) Shard {
+    absl::Mutex mu;
+    std::deque<slinky::ref_count<Task>> tasks ABSL_GUARDED_BY(mu);
+  };
+  Shard shards_[kNumShards];
+
+  // Lock-free aggregate hint mirroring the total number of tasks.
+  // Used by WorkOnTasks to short-circuit when the queue is empty.
+  ABSL_CACHELINE_ALIGNED std::atomic<size_t> total_tasks_{0};
 
   // A mutex for signalling threads waiting on the tasks or conditions.
   ABSL_CACHELINE_ALIGNED absl::Mutex waiter_mutex_;
@@ -225,31 +241,53 @@ slinky::ref_count<Task> SlinkyThreadPool::Impl::Enqueue(
   slinky::ref_count<Task> task(
       new Task(std::move(body), num_work_items, num_partitions));
 
-  absl::MutexLock lock(tasks_mutex_);
-  return tasks_.emplace_back(std::move(task));
+  // Stick to the current shard if it's empty to allow a fast path of enqueue
+  // and dequeue on the same shard. Advance the rotor if the current shard
+  // is non-empty to spread the load.
+  Shard& shard = shards_[shard_rotor & kShardMask];
+  absl::MutexLock lock(shard.mu);
+  const bool advance_rotor = !shard.tasks.empty();
+  auto& slot = shard.tasks.emplace_back(std::move(task));
+  if (advance_rotor) {
+    shard_rotor++;
+  }
+  // Release: publishes the task's fields to readers of `total_tasks_`.
+  total_tasks_.fetch_add(1, std::memory_order_release);
+  // Wake up any threads that might be waiting in `Await` for new tasks.
+  SignalWaiters();
+  return slot;
 }
 
 slinky::ref_count<Task> SlinkyThreadPool::Impl::Dequeue() {
-  absl::MutexLock lock(tasks_mutex_);
+  // Start each Dequeue at the current shard. Update the thread-local rotor
+  // if we find a task on a different shard.
+  const size_t start = shard_rotor;
+  for (size_t offset = 0; offset < kNumShards; ++offset) {
+    const size_t current_index = (start + offset) & kShardMask;
+    Shard& shard = shards_[current_index];
 
-  for (auto i = tasks_.begin(); i != tasks_.end();) {
-    slinky::ref_count<Task>& task = *i;
+    absl::MutexLock lock(shard.mu);
+    auto i = shard.tasks.begin();
+    while (i != shard.tasks.end()) {
+      slinky::ref_count<Task>& task = *i;
 
-    // Task doesn't have any more work items to process.
-    if (ABSL_PREDICT_FALSE(task->IsEmptyWorkQueue())) {
-      i = tasks_.erase(i);
-      continue;
+      // Task doesn't have any more work items to process.
+      if (ABSL_PREDICT_FALSE(task->IsEmptyWorkQueue())) {
+        i = shard.tasks.erase(i);
+        total_tasks_.fetch_sub(1, std::memory_order_relaxed);
+        continue;
+      }
+
+      // Don't Run the same task multiple times on the same thread.
+      if (ABSL_PREDICT_FALSE(absl::c_contains(task_stack, &*task))) {
+        ++i;
+        continue;
+      }
+
+      shard_rotor = current_index;
+      return task;
     }
-
-    // Don't Run the same task multiple times on the same thread.
-    if (ABSL_PREDICT_FALSE(absl::c_contains(task_stack, &*task))) {
-      ++i;
-      continue;
-    }
-
-    return task;
   }
-
   return nullptr;
 }
 
@@ -272,9 +310,14 @@ TaskState SlinkyThreadPool::Impl::WorkOnTask(Task* task) {
 }
 
 void SlinkyThreadPool::Impl::WorkOnTasks(const absl::Condition& condition) {
-  while (slinky::ref_count<Task> task = Dequeue()) {
+  // Skip taking any shard mutex when we already know the queue is empty,
+  // preventing mutex-storms from workers draining an empty queue.
+  while (total_tasks_.load(std::memory_order_acquire) != 0) {
+    slinky::ref_count<Task> task = Dequeue();
+    if (ABSL_PREDICT_FALSE(task == nullptr)) {
+      return;
+    }
     WorkOnTask(&*task);
-
     if (ABSL_PREDICT_TRUE(condition.Eval())) {
       return;
     }
@@ -344,7 +387,9 @@ void SlinkyThreadPool::Impl::ScheduleWorkers(ScheduleState* context) {
         });
   }
 
-  // Keep processing tasks from the queue until we are out of tasks.
+  // Keep processing tasks from the queue until we are out of tasks. The
+  // lock-free `tasks_count_` hint inside WorkOnTasks short-circuits the
+  // mutex when the queue is known empty.
   static constexpr bool kFalse = false;
   state->impl->WorkOnTasks(absl::Condition(&kFalse));
 

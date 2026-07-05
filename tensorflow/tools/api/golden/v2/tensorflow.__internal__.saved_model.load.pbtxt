@@ -2,7 +2,7 @@ path: "tensorflow.__internal__.saved_model.load"
 tf_module {
   member {
     name: "VersionedTypeRegistration"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member_method {
     name: "get_setter"

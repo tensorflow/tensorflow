@@ -73,6 +73,9 @@ class StreamExecutorExecutable : public PjRtExecutable {
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override;
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override;
+
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override;
 
   absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>

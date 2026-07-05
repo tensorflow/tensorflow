@@ -137,10 +137,18 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
 // match ambiguous. It attempts to resolve ambiguity by comparing the sets of
 // already-mapped descendants for each potential pair.
 void MatchAmbiguousSubgraphs(
-    const std::vector<const HloInstructionNode*>& left_nodes,
-    const std::vector<const HloInstructionNode*>& right_nodes,
+    const std::vector<const HloInstructionNode*>& left_nodes_input,
+    const std::vector<const HloInstructionNode*>& right_nodes_input,
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
     HloGumgraphMappings& mappings, const MatcherType matcher_type) {
+  std::vector<const HloInstructionNode*> left_nodes = left_nodes_input;
+  std::vector<const HloInstructionNode*> right_nodes = right_nodes_input;
+  auto sort_fn = [](const HloInstructionNode* a, const HloInstructionNode* b) {
+    return a->unique_node_index < b->unique_node_index;
+  };
+  std::sort(left_nodes.begin(), left_nodes.end(), sort_fn);
+  std::sort(right_nodes.begin(), right_nodes.end(), sort_fn);
+
   // Precompute the set of mapped descendants for each ambiguous node.
   absl::flat_hash_map<const HloInstructionNode*,
                       absl::flat_hash_set<const HloInstructionNode*>>
@@ -234,7 +242,14 @@ void GreedySubGraphExactMatcher::Match(HloGumgraphMappings& mappings) const {
       }
     }
 
-    for (auto& [fingerprint, left_nodes] : left_nodes_by_fingerprint) {
+    std::vector<uint64_t> sorted_fingerprints;
+    for (const auto& [fingerprint, _] : left_nodes_by_fingerprint) {
+      sorted_fingerprints.push_back(fingerprint);
+    }
+    std::sort(sorted_fingerprints.begin(), sorted_fingerprints.end());
+
+    for (uint64_t fingerprint : sorted_fingerprints) {
+      const auto& left_nodes = left_nodes_by_fingerprint.at(fingerprint);
       if (auto it = right_nodes_by_fingerprint.find(fingerprint);
           it != right_nodes_by_fingerprint.end()) {
         auto& right_nodes = it->second;

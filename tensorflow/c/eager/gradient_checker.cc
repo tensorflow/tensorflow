@@ -16,9 +16,11 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_tensor.h"
 
 namespace tensorflow {
@@ -98,12 +100,19 @@ absl::Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
     theta_inputs[i] = inputs[i];
   }
 
+  if (input_index < 0 || input_index >= inputs.size()) {
+    return absl::InvalidArgumentError("input_index out of bounds");
+  }
   AbstractTensorHandle* theta =
       theta_inputs[input_index];  // parameter we are grad checking
 
   // Convert from AbstractTensor to TF_Tensor.
   TF_Tensor* theta_tensor;
   TF_RETURN_IF_ERROR(GetValue(theta, &theta_tensor));
+
+  if (TF_TensorType(theta_tensor) != TF_FLOAT) {
+    return absl::InvalidArgumentError("theta_tensor must be of type TF_FLOAT");
+  }
 
   // Get number of elements and fill data.
   int num_elems = TF_TensorElementCount(theta_tensor);
@@ -187,6 +196,12 @@ absl::Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
 
     TF_Tensor* grad_tensor;
     TF_RETURN_IF_ERROR(GetValue(diff_quotient.get(), &grad_tensor));
+    if (TF_TensorType(grad_tensor) != TF_FLOAT) {
+      return absl::InvalidArgumentError("grad_tensor must be of type TF_FLOAT");
+    }
+    if (TF_TensorElementCount(grad_tensor) != 1) {
+      return absl::InvalidArgumentError("grad_tensor must be a scalar");
+    }
     float grad_data[1];
     memcpy(&grad_data[0], TF_TensorData(grad_tensor),
            TF_TensorByteSize(grad_tensor));

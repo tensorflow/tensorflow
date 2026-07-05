@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <cstring>
 #include <functional>
-#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -73,6 +72,42 @@ struct TargetIntrinsics {
                std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>
       spir_intrinsic_or_function;
 };
+
+// Emits IR to call a device function named "callee_name" on the given
+// operand. Returns the IR value that represents the return value.
+// `output_type` is std::nullopt for void-returning callees (e.g. SPIR-V
+// OpControlBarrier), since PrimitiveType cannot represent void.
+llvm::CallInst* EmitDeviceFunctionCall(
+    const std::string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types,
+    std::optional<PrimitiveType> output_type,
+    const llvm::AttrBuilder& attributes, llvm::IRBuilderBase* b,
+    absl::string_view name = "") {
+  std::vector<llvm::Type*> ir_input_types;
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
+  for (PrimitiveType input_type : input_types) {
+    ir_input_types.push_back(
+        llvm_ir::PrimitiveTypeToIrType(input_type, b->getContext()));
+  }
+  llvm::Type* return_type =
+      output_type.has_value()
+          ? llvm_ir::PrimitiveTypeToIrType(*output_type, b->getContext())
+          : llvm::Type::getVoidTy(b->getContext());
+  llvm::FunctionType* callee_type =
+      llvm::FunctionType::get(return_type, ir_input_types, /*isVarArg=*/false);
+
+  // Declares the callee if it is not declared already.
+  llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
+      module->getOrInsertFunction(callee_name, callee_type).getCallee());
+
+  callee->addFnAttrs(attributes);
+  if (target_triple.isSPIROrSPIRV()) {
+    callee->setCallingConv(llvm::CallingConv::SPIR_FUNC);
+  }
+
+  return b->CreateCall(callee, llvm_ir::AsArrayRef(operands), name.data());
+}
 
 // Gets the llvm intrinsic ids on different platforms (NVPTX, AMDGPU)
 // corresponding to the give TargetIntrinsicID.
@@ -159,10 +194,10 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
               },
               llvm::Intrinsic::amdgcn_s_barrier,
               [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
+                // OpenCL barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+                // matches the MLIR emitter pipeline.
                 return EmitDeviceFunctionCall(
-                    "_Z22__spirv_ControlBarrierjjj",
-                    {b_->getInt32(2), b_->getInt32(2), b_->getInt32(272)},
-                    {U32, U32, U32}, U32,
+                    "_Z7barrierj", {b_->getInt32(3)}, {U32}, std::nullopt,
                     llvm::AttrBuilder(b_->getContext())
                         .addAttribute(llvm::Attribute::Convergent),
                     b_);
@@ -211,10 +246,10 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
       return {llvm::Intrinsic::nvvm_bar_warp_sync,
               llvm::Intrinsic::amdgcn_wave_barrier,
               [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
+                // OpenCL barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+                // matches the MLIR emitter pipeline.
                 return EmitDeviceFunctionCall(
-                    "_Z22__spirv_ControlBarrierjjj",
-                    {b_->getInt32(2), b_->getInt32(2), b_->getInt32(272)},
-                    {U32, U32, U32}, U32,
+                    "_Z7barrierj", {b_->getInt32(3)}, {U32}, std::nullopt,
                     llvm::AttrBuilder(b_->getContext())
                         .addAttribute(llvm::Attribute::Convergent),
                     b_);
@@ -304,61 +339,12 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kCbrt: {
       return {"__nv_cbrt", "__ocml_cbrt", "_Z16__spirv_ocl_cbrt"};
     }
+    case TargetDeviceFunctionID::kRint: {
+      return {"__nv_rint", "__ocml_rint", "_Z16__spirv_ocl_rint"};
+    }
   }
 }
 }  // namespace
-
-std::optional<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
-  switch (op) {
-    case HloOpcode::kAcos:
-      return TargetDeviceFunctionID::kAcos;
-    case HloOpcode::kAcosh:
-      return TargetDeviceFunctionID::kAcosh;
-    case HloOpcode::kAsin:
-      return TargetDeviceFunctionID::kAsin;
-    case HloOpcode::kAsinh:
-      return TargetDeviceFunctionID::kAsinh;
-    case HloOpcode::kAtan2:
-      return TargetDeviceFunctionID::kAtan2;
-    case HloOpcode::kAtanh:
-      return TargetDeviceFunctionID::kAtanh;
-    case HloOpcode::kCos:
-      return TargetDeviceFunctionID::kCos;
-    case HloOpcode::kCosh:
-      return TargetDeviceFunctionID::kCosh;
-    case HloOpcode::kExp:
-      return TargetDeviceFunctionID::kExp;
-    case HloOpcode::kErf:
-      return TargetDeviceFunctionID::kErf;
-    case HloOpcode::kExpm1:
-      return TargetDeviceFunctionID::kExpm1;
-    case HloOpcode::kLog:
-      return TargetDeviceFunctionID::kLog;
-    case HloOpcode::kLog1p:
-      return TargetDeviceFunctionID::kLog1p;
-    case HloOpcode::kPower:
-      return TargetDeviceFunctionID::kPow;
-    case HloOpcode::kRemainder:
-      return TargetDeviceFunctionID::kFmod;
-    case HloOpcode::kRsqrt:
-      return TargetDeviceFunctionID::kRsqrt;
-    case HloOpcode::kSin:
-      return TargetDeviceFunctionID::kSin;
-    case HloOpcode::kSinh:
-      return TargetDeviceFunctionID::kSinh;
-    case HloOpcode::kSqrt:
-      return TargetDeviceFunctionID::kSqrt;
-    case HloOpcode::kTan:
-      return TargetDeviceFunctionID::kTan;
-    case HloOpcode::kTanh:
-      return TargetDeviceFunctionID::kTanh;
-    case HloOpcode::kCbrt:
-      return TargetDeviceFunctionID::kCbrt;
-    default:
-      break;
-  }
-  return std::nullopt;
-}
 
 bool HasF16Implementation(TargetDeviceFunctionID func_id,
                           llvm::Triple target_triple) {
@@ -463,38 +449,6 @@ std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
   } else {
     LOG(FATAL) << "Invalid triple " << target_triple.str();
   }
-}
-
-llvm::CallInst* EmitDeviceFunctionCall(
-    const std::string& callee_name, absl::Span<llvm::Value* const> operands,
-    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
-    const llvm::AttrBuilder& attributes, llvm::IRBuilderBase* b,
-    absl::string_view name) {
-  std::vector<llvm::Type*> ir_input_types;
-  llvm::Module* module = b->GetInsertBlock()->getModule();
-  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
-  for (PrimitiveType input_type : input_types) {
-    ir_input_types.push_back(
-        llvm_ir::PrimitiveTypeToIrType(input_type, b->getContext()));
-  }
-  llvm::FunctionType* callee_type = llvm::FunctionType::get(
-      llvm_ir::PrimitiveTypeToIrType(output_type,
-                                     b->getContext()),  // Return type.
-      ir_input_types,                                   // Parameter types.
-      false);  // No variadic arguments.
-
-  // Declares the callee if it is not declared already.
-  llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
-      b->GetInsertBlock()
-          ->getModule()
-          ->getOrInsertFunction(callee_name, callee_type)
-          .getCallee());
-
-  callee->addFnAttrs(attributes);
-  if (target_triple.isSPIROrSPIRV())
-    callee->setCallingConv(llvm::CallingConv::SPIR_FUNC);
-
-  return b->CreateCall(callee, llvm_ir::AsArrayRef(operands), name.data());
 }
 
 llvm::CallInst* EmitCallToTargetIntrinsic(

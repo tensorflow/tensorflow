@@ -31,8 +31,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using DeconstructTupleTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using DeconstructTupleTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(DeconstructTupleTest, DeconstructTuple) {
   XlaBuilder builder(TestName());

@@ -14,7 +14,10 @@
 # ==============================================================================
 """Tests for bincount using the XLA JIT."""
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.compat import v2_compat
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import errors
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.platform import googletest
 
@@ -35,6 +38,37 @@ class BincountTest(xla_test.XLATestCase):
       ):
         self.evaluate(bincount)
 
+  def testNegativeInputConstant(self):
+    with self.session():
+      with self.test_scope():
+
+        @def_function.function(jit_compile=True)
+        def f():
+          return gen_math_ops.dense_bincount(
+              input=array_ops.constant([0, -1, 2]), size=3, weights=[]
+          )
+
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "Input arr must be non-negative!"
+        ):
+          self.evaluate(f())
+
+  def testNegativeInputConstantBincount(self):
+    with self.session():
+      with self.test_scope():
+
+        @def_function.function(jit_compile=True)
+        def f():
+          return gen_math_ops.bincount(
+              arr=array_ops.constant([0, -1, 2]), size=3, weights=[]
+          )
+
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "Input arr must be non-negative!"
+        ):
+          self.evaluate(f())
+
 
 if __name__ == "__main__":
+  v2_compat.enable_v2_behavior()
   googletest.main()

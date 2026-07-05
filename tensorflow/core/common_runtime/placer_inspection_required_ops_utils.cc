@@ -94,9 +94,9 @@ absl::Status GetFunctionDefAndAttrs(const FunctionLibraryDefinition& flib_def,
   const std::string& function_name = func->name();
   *fdef = flib_def.FindRecord(function_name);
   if (*fdef == nullptr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Failed to find function \"", function_name,
-        "\" in function library: ", flib_def.ToProto().DebugString());
+        "\" in function library: ", flib_def.ToProto().DebugString()));
   }
   return absl::OkStatus();
 }

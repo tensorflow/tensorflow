@@ -480,10 +480,10 @@ class EnsureShapeOp : public OpKernel {
     OP_REQUIRES_OK(ctx, shape_op_helpers::GetShape(ctx, 0, &shape));
 
     if (!expected_shape_.IsCompatibleWith(shape)) {
-      ctx->SetStatus(errors::InvalidArgument(
+      ctx->SetStatus(absl::InvalidArgumentError(absl::StrCat(
           "Shape of tensor ", this->def().input(0), " ", shape.DebugString(),
           " is not compatible with expected shape ",
-          expected_shape_.DebugString(), "."));
+          expected_shape_.DebugString(), ".")));
     }
 
     // If shape matches, outputs the tensor.

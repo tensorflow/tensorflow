@@ -211,7 +211,7 @@ TEST_F(BufRendezvousTest, AbortNonEmpty) {
         prod_note.Notify();
       },
       &cm_);
-  br_->StartAbort(errors::Internal("Falling sky detected"));
+  br_->StartAbort(absl::InternalError("Falling sky detected"));
   prod_note.WaitForNotification();
   cons_note.WaitForNotification();
   EXPECT_FALSE(prod_status.ok());
@@ -221,11 +221,11 @@ TEST_F(BufRendezvousTest, AbortNonEmpty) {
 }
 
 TEST_F(BufRendezvousTest, AbortEmpty) {
-  br_->StartAbort(errors::Internal("Falling sky detected"));
+  br_->StartAbort(absl::InternalError("Falling sky detected"));
 }
 
 TEST_F(BufRendezvousTest, UseAfterAbort) {
-  br_->StartAbort(errors::Internal("Falling sky detected"));
+  br_->StartAbort(absl::InternalError("Falling sky detected"));
   absl::Status cons_status;
   absl::Status prod_status;
   absl::Notification prod_note;

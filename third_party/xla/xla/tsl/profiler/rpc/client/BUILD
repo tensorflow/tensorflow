@@ -37,6 +37,7 @@ cc_library(
         ":save_profile",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/profiler/convert:trace_events_to_json",
         "//xla/tsl/profiler/convert:xplane_to_trace_events",
         "//xla/tsl/profiler/utils:session_manager",
@@ -66,18 +67,24 @@ cc_library(
         "//xla/tsl/profiler/rpc:__pkg__",
         "//learning/pathways/util/platform:__subpackages__",
         "//third_party/pathways/util/platform:__subpackages__",
+        "//third_party/py/torch_tpu:__subpackages__",
     ]),
     deps = [
         "//xla/tsl/lib/io:zlib_compression_options",
         "//xla/tsl/lib/io:zlib_outputbuffer",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:file_system_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/time",
+        "@riegeli//riegeli/bytes:cord_writer",
+        "@riegeli//riegeli/records:record_writer",
         "@tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
@@ -130,6 +137,7 @@ cc_library(
     deps = [
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/memory",
@@ -187,6 +195,22 @@ tsl_cc_test(
     ] + tf_protos_profiler_service(),
 )
 
+tsl_cc_test(
+    name = "save_profile_test",
+    srcs = ["save_profile_test.cc"],
+    deps = [
+        ":save_profile",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+        "@riegeli//riegeli/bytes:fd_reader",
+        "@riegeli//riegeli/records:record_reader",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
 cc_library(
     name = "remote_profiler_session_manager",
     srcs = ["remote_profiler_session_manager.cc"],
@@ -198,6 +222,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/memory",

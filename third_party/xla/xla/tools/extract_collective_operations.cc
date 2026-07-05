@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -44,7 +45,7 @@ to the separate module.
 
 Usage:
 bazel run extract_collective_operations -- --input=path/to/hlo_module
-  --output=path/to/hlo_module --operations=all-reduce,all-gather,reduce-scatter,collective-permute,all-to-all
+  --output=path/to/hlo_module --operations=all-reduce,all-gather,reduce-scatter,collective-permute,all-to-all,ragged-all-to-all
   --return_tuple=false
 )";
 }  // namespace
@@ -54,7 +55,7 @@ namespace xla {
 absl::Status ExtractCollectiveOperations(
     const std::string& input, const std::string& output,
     const absl::flat_hash_set<HloOpcode>& operation_types, bool return_tuple) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> test_module,
       LoadModuleFromFile(input, std::string(tsl::io::Extension(input)),
                          hlo_module_loader_details::Config(), nullptr));
@@ -105,6 +106,11 @@ absl::Status ExtractCollectiveOperations(
           HloPredicateIsOp<HloOpcode::kAllToAll>(instr)) {
         collective_instructions.push_back(instr);
       }
+
+      if (operation_types.contains(HloOpcode::kRaggedAllToAll) &&
+          HloPredicateIsOp<HloOpcode::kRaggedAllToAll>(instr)) {
+        collective_instructions.push_back(instr);
+      }
     }
   }
 
@@ -131,7 +137,8 @@ int main(int argc, char** argv) {
       tsl::Flag("output", &output, "output file"),
       tsl::Flag("operations", &operations,
                 "operations. possible values: all-reduce, all-gather, "
-                "reduce-scatter, collective-permute, all-to-all"),
+                "reduce-scatter, collective-permute, all-to-all, "
+                "ragged-all-to-all"),
       tsl::Flag("return_tuple", &return_tuple,
                 "return collectives results as tuple?")};
   xla::AppendDebugOptionsFlags(&flag_list);
@@ -160,6 +167,9 @@ int main(int argc, char** argv) {
   }
   if (absl::StrContains(operations, "all-to-all")) {
     operation_types.insert(xla::HloOpcode::kAllToAll);
+  }
+  if (absl::StrContains(operations, "ragged-all-to-all")) {
+    operation_types.insert(xla::HloOpcode::kRaggedAllToAll);
   }
 
   CHECK_OK(xla::ExtractCollectiveOperations(input, output, operation_types,

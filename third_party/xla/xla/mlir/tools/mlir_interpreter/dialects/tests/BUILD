@@ -9,5 +9,6 @@ lit_test_suite(
     tools = [
         "//xla/mlir/tools/mlir_interpreter:mlir-interpreter-runner",
         "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:not",
     ],
 )

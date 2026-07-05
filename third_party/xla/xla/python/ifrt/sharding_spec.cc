@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -567,7 +568,7 @@ bool ShardingParamShardingSpec::HasSamePartitioning(
 
 absl::StatusOr<std::vector<std::pair<Shape, ShardingSpecRef>>>
 ShardingParamShardingSpec::Disassemble(const Shape& shape) const {
-  TF_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
+  ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
   std::vector<std::pair<Shape, ShardingSpecRef>> result;
   result.reserve(num_shards_);
   for (int i = 0; i < num_shards_; ++i) {
@@ -588,7 +589,7 @@ ShardingParamShardingSpec::Disassemble(
 absl::StatusOr<std::vector<IndexDomain>>
 ShardingParamShardingSpec::IndexDomains(const Shape& shape) const {
   // Calculate the origins of tiles, ignoring device assignments.
-  TF_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
+  ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
   std::vector<Index> tile_indices =
       GetTileIndices(sharding_param_.dim_shards());
   std::vector<Index> origins;

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "tsl/platform/snappy.h"
@@ -62,7 +63,7 @@ absl::Status SnappyInputBuffer::ReadNBytes(int64_t bytes_to_read,
     DCHECK_EQ(avail_out_, 0);
 
     // Now that the cache is empty we need to inflate more data.
-    TF_RETURN_IF_ERROR(Inflate());
+    RETURN_IF_ERROR(Inflate());
 
     bytes_read = ReadBytesFromCache(bytes_to_read, result_ptr);
     bytes_to_read -= bytes_read;
@@ -98,11 +99,11 @@ size_t SnappyInputBuffer::ReadBytesFromCache(size_t bytes_to_read,
 absl::Status SnappyInputBuffer::Inflate() {
   // Read length of compressed block.
   uint32_t compressed_block_length;
-  TF_RETURN_IF_ERROR(ReadCompressedBlockLength(&compressed_block_length));
+  RETURN_IF_ERROR(ReadCompressedBlockLength(&compressed_block_length));
 
   // If the entire block is not in cache do a read from file.
   if (avail_in_ < compressed_block_length) {
-    TF_RETURN_IF_ERROR(ReadFromFile());
+    RETURN_IF_ERROR(ReadFromFile());
     if (avail_in_ < compressed_block_length) {
       if (compressed_block_length > input_buffer_capacity_) {
         return absl::ResourceExhaustedError(
@@ -146,7 +147,7 @@ absl::Status SnappyInputBuffer::ReadCompressedBlockLength(uint32_t* length) {
   size_t bytes_to_read = 4;
   while (bytes_to_read > 0) {
     if (avail_in_ == 0) {
-      TF_RETURN_IF_ERROR(ReadFromFile());
+      RETURN_IF_ERROR(ReadFromFile());
     }
     size_t readable = std::min(bytes_to_read, avail_in_);
 

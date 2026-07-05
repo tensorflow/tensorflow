@@ -33,10 +33,12 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -52,6 +54,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/util.h"
@@ -219,14 +222,14 @@ absl::StatusOr<bool> RunScheduler(
       /*convert_collective_permute=*/HloPredicateTrue};
   bool value = false;
   if (!skip_async_collective_creator) {
-    TF_ASSIGN_OR_RETURN(value,
-                        AsyncCollectiveCreator(std::move(config)).Run(module));
+    ASSIGN_OR_RETURN(value,
+                     AsyncCollectiveCreator(std::move(config)).Run(module));
   }
   if (!legalizer_config) {
     legalizer_config =
         std::make_unique<LegalizeSchedulingAnnotations::Config>();
   }
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       value,
       LegalizeSchedulingAnnotations(std::move(*legalizer_config)).Run(module));
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes =
@@ -253,9 +256,9 @@ absl::StatusOr<bool> RunScheduler(
           &alias_info, shape_size_bytes);
   auto scheduler_core =
       std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
-  TF_ASSIGN_OR_RETURN(value, LatencyHidingScheduler(scheduling_context,
-                                                    std::move(scheduler_core))
-                                 .Run(module));
+  ASSIGN_OR_RETURN(value, LatencyHidingScheduler(scheduling_context,
+                                                 std::move(scheduler_core))
+                              .Run(module));
 
   return value;
 }
@@ -282,21 +285,23 @@ class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
   }
 
  protected:
-  absl::StatusOr<std::unique_ptr<LatencyHidingScheduler>> SetupScheduler(
-      HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
-      std::unique_ptr<LatencyEstimator> latency_estimator =
-          std::make_unique<ApproximateLatencyEstimator>(),
-      std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
+  absl::StatusOr<std::pair<std::unique_ptr<LatencyHidingScheduler>,
+                           std::shared_ptr<SchedulerCore>>>
+  SetupScheduler(HloModule* module,
+                 SchedulerConfig sched_config = GetDefaultSchedConfig(),
+                 std::unique_ptr<LatencyEstimator> latency_estimator =
+                     std::make_unique<ApproximateLatencyEstimator>(),
+                 std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
     AsyncCollectiveCreator::CollectiveCreatorConfig config{
         /*convert_all_reduce=*/HloPredicateTrue,
         /*convert_all_gather=*/HloPredicateTrue,
         /*convert_collective_broadcast=*/HloPredicateTrue,
         /*convert_collective_permute=*/HloPredicateTrue};
-    TF_ASSIGN_OR_RETURN(bool value,
-                        AsyncCollectiveCreator(std::move(config)).Run(module));
-    TF_ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
-                                   LegalizeSchedulingAnnotations::Config())
-                                   .Run(module));
+    ASSIGN_OR_RETURN(bool value,
+                     AsyncCollectiveCreator(std::move(config)).Run(module));
+    ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
+                                LegalizeSchedulingAnnotations::Config())
+                                .Run(module));
 
     if (!async_tracker) {
       async_tracker = std::make_unique<AsyncTracker>(sched_config);
@@ -305,13 +310,25 @@ class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
         std::make_shared<const SchedulingContext>(
             module, std::move(latency_estimator), std::move(async_tracker),
             &alias_info_, ShapeSizeBytes);
-    auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
+    auto scheduler_core = std::make_shared<DefaultSchedulerCore>(
         scheduling_context, sched_config);
-    return std::make_unique<LatencyHidingScheduler>(scheduling_context,
-                                                    std::move(scheduler_core));
+    auto scheduler = std::make_unique<LatencyHidingScheduler>(
+        scheduling_context, scheduler_core);
+    return std::make_pair(std::move(scheduler), std::move(scheduler_core));
   }
   AliasInfo alias_info_;
 };
+
+class DirectionalLatencyHidingSchedulerTest
+    : public LatencyHidingSchedulerTest,
+      public ::testing::WithParamInterface<bool> {
+ protected:
+  bool IsTopDown() const { return GetParam(); }
+};
+
+INSTANTIATE_TEST_SUITE_P(DirectionalTests,
+                         DirectionalLatencyHidingSchedulerTest,
+                         ::testing::Bool());
 
 TEST_F(LatencyHidingSchedulerTest, AllGatherAsyncSimple) {
   absl::string_view hlo_string = R"(
@@ -694,6 +711,59 @@ ENTRY %module {
                                         new_instruction_sequence, "ag1"));
 }
 
+TEST_P(DirectionalLatencyHidingSchedulerTest,
+       DelayDoneOfForceDelayedAsyncStart) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY %module {
+  p0 = f32[8,256,256]{2,1,0} parameter(0)
+  p1 = f32[8,256,256]{2,1,0} parameter(1)
+  %after-all.1 = token[] after-all()
+  %after-all.2 = token[] after-all()
+  %send.1 = (f32[8,256,256]{2,1,0}, u32[], token[]) send(p1, %after-all.1), channel_id=1,
+    metadata={op_type="Send" op_name="s1"}
+  %send-done.1 = token[] send-done(%send.1), channel_id=1,
+    metadata={op_type="Send" op_name="s1"}
+  %send.2 = (f32[8,256,256]{2,1,0}, u32[], token[]) send(p0, %after-all.2), channel_id=2,
+    metadata={op_type="Send" op_name="s2"},
+    frontend_attributes={scheduler_hint="force_delay_async"}
+  %send-done.2 = token[] send-done(%send.2), channel_id=2,
+    metadata={op_type="Send" op_name="s2"}
+  ROOT root = (token[], token[]) tuple(%send-done.2, %send-done.1)
+}
+)";
+
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+    HloSchedule& module_schedule = hlo_module->schedule();
+    HloComputation* entry_computation = hlo_module->entry_computation();
+
+    auto sched_config = GetDefaultSchedConfig();
+    sched_config.schedule_send_recvs = true;
+
+    TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
+    std::vector<HloInstruction*> new_instruction_sequence =
+        module_schedule.sequence(entry_computation).instructions();
+    if (VLOG_IS_ON(1)) {
+      for (auto* new_i : new_instruction_sequence) {
+        VLOG(1) << new_i->ToString();
+      }
+    }
+
+    // `send-done.1` is after `send-done.2` because
+    // `kDelayDoneOfForceDelaySend`.
+    EXPECT_LT(GetOpcodeIndexUsingMetaData(HloOpcode::kSend,
+                                          new_instruction_sequence, "s2"),
+              GetOpcodeIndexUsingMetaData(HloOpcode::kSend,
+                                          new_instruction_sequence, "s1"));
+    EXPECT_LT(GetOpcodeIndexUsingMetaData(HloOpcode::kSendDone,
+                                          new_instruction_sequence, "s2"),
+              GetOpcodeIndexUsingMetaData(HloOpcode::kSendDone,
+                                          new_instruction_sequence, "s1"));
+  }
+}
+
 TEST_F(LatencyHidingSchedulerTest, AllReduceAsyncBalance) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -867,7 +937,7 @@ ENTRY %module {
   EXPECT_TRUE(result.value());
 }
 
-TEST_F(LatencyHidingSchedulerTest, ForceDelayAsyncAllGather) {
+TEST_P(DirectionalLatencyHidingSchedulerTest, ForceDelayAsyncAllGather) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -903,7 +973,10 @@ ENTRY %module {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
-  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.top_down_scheduling = IsTopDown();
+
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -927,7 +1000,8 @@ ENTRY %module {
                                         new_instruction_sequence, "ag1"));
 }
 
-TEST_F(LatencyHidingSchedulerTest, ForceDelayAsyncAllGatherWithPriority) {
+TEST_P(DirectionalLatencyHidingSchedulerTest,
+       ForceDelayAsyncAllGatherWithPriority) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -962,7 +1036,10 @@ ENTRY %module {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
 
-  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.top_down_scheduling = IsTopDown();
+
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -980,18 +1057,15 @@ ENTRY %module {
                                         new_instruction_sequence, "ag1"));
 }
 
-TEST_F(LatencyHidingSchedulerTest, ForceDelayAsyncForcesEarlyDone) {
+TEST_P(DirectionalLatencyHidingSchedulerTest, ForceDelayAsyncForcesEarlyDone) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
 ENTRY %module {
-  %constant.19 = u32[] constant(1)
   %replica_id = u32[]{:T(128)} replica-id()
-  %add.1 = u32[]{:T(128)} add(replica_id, constant.19)
   %convert = f32[]{:T(128)} convert(u32[]{:T(128)} %replica_id)
-  %convert.1 = f32[]{:T(128)} convert(u32[]{:T(128)} %add.1)
   %color_operand.1 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(f32[]{:T(128)} %convert), dimensions={}
-  %color_operand.2 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(f32[]{:T(128)} %convert.1), dimensions={}
+  %color_operand.2 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(f32[]{:T(128)} %convert), dimensions={}
   %ag-start.2 = (f32[8,256,256], f32[16,256,256]) all-gather-start(f32[8,256,256] %color_operand.2), replica_groups={{0,1}}, dimensions={0},
     metadata={op_type="AllGather" op_name="ag1"}
   %ag-start = (f32[8,256,256], f32[16,256,256]) all-gather-start(f32[8,256,256] %color_operand.1), replica_groups={{0,1}}, dimensions={0},
@@ -1014,7 +1088,10 @@ ENTRY %module {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
 
-  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.top_down_scheduling = IsTopDown();
+
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -3342,8 +3419,11 @@ TEST_F(LatencyHidingSchedulerTest, DepthPressureReduction) {
   }
 
   const HloInstruction* f = FindInstruction(hlo_module.get(), "f");
+  const HloInstruction* h = FindInstruction(hlo_module.get(), "h");
   const HloInstruction* g = FindInstruction(hlo_module.get(), "g");
   EXPECT_LT(PositionInVector(new_instruction_sequence, g),
+            PositionInVector(new_instruction_sequence, h));
+  EXPECT_LT(PositionInVector(new_instruction_sequence, h),
             PositionInVector(new_instruction_sequence, f));
 }
 
@@ -4898,8 +4978,7 @@ TEST_F(LatencyHidingSchedulerTest, ValidScheduleWithRandomPreferences) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
-  std::unique_ptr<LatencyHidingScheduler> scheduler =
-      SetupScheduler(hlo_module.get()).value();
+  auto [scheduler, scheduler_core] = SetupScheduler(hlo_module.get()).value();
 
   // Save the old schedule before running the LHS.
   HloComputation* computation = hlo_module->entry_computation();
@@ -4920,8 +4999,11 @@ TEST_F(LatencyHidingSchedulerTest, ValidScheduleWithRandomPreferences) {
   // Restore original order.
   hlo_module->schedule().set_sequence(computation, original_order);
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto sched_state,
+      scheduler_core->MakeSchedulingState(hlo_module->entry_computation()));
   auto result = scheduler->ScheduleWithPreferences(
-      hlo_module.get(), random_preferences, computation);
+      hlo_module.get(), random_preferences, computation, sched_state);
 
   // Set the new schedule.
   hlo_module->schedule().set_sequence(computation, result->first);
@@ -4930,6 +5012,79 @@ TEST_F(LatencyHidingSchedulerTest, ValidScheduleWithRandomPreferences) {
   // schedule.
   TF_EXPECT_OK(hlo_module->schedule().Verify());
 }
+
+TEST_F(LatencyHidingSchedulerTest, MultipleAttemptsConsistentResults) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module, is_scheduled=true
+    ENTRY %module {
+      %constant.19 = u32[] constant(1)
+      %replica_id = u32[]{:T(128)} replica-id()
+      %add.1 = u32[]{:T(128)} add(replica_id, constant.19)
+      %convert = f32[]{:T(128)} convert(u32[]{:T(128)} %replica_id)
+      %convert.1 = f32[]{:T(128)} convert(u32[]{:T(128)} %add.1)
+      %color_operand.1 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(f32[]{:T(128)} %convert), dimensions={}
+      %color_operand.2 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(f32[]{:T(128)} %convert.1), dimensions={}
+      %ag-start = (f32[8,256,256], f32[16,256,256]) all-gather-start(f32[8,256,256] %color_operand.1), replica_groups={{0,1}}, dimensions={0},
+        metadata={op_type="AllGather" op_name="ag0"}
+      %ag-start.2 = (f32[8,256,256], f32[16,256,256]) all-gather-start(f32[8,256,256] %color_operand.2), replica_groups={{0,1}}, dimensions={0},
+        metadata={op_type="AllGather" op_name="ag1"}
+      %ag-done = f32[16,256,256] all-gather-done((f32[8,256,256], f32[16,256,256]) %ag-start),
+        metadata={op_type="AllGather" op_name="ag0"}
+      %ag-done.2 = f32[16,256,256] all-gather-done((f32[8,256,256], f32[16,256,256]) %ag-start.2),
+        metadata={op_type="AllGather" op_name="ag1"}
+      p0 = f32[16,64,256]{2,1,0} parameter(0)
+      p1 = f32[16,64,256]{2,1,0} parameter(1)
+      p2 = f32[16,256,256]{2,1,0} parameter(2)
+      p3 = f32[16,256,256]{2,1,0} parameter(3)
+      c0 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+        window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+      c1 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+        window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+      ROOT a2 = f32[16,256,256]{2,1,0} add(%ag-done, %ag-done.2)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  auto [scheduler, scheduler_core] = SetupScheduler(hlo_module.get()).value();
+
+  HloComputation* computation = hlo_module->entry_computation();
+  uint64_t instruction_count = computation->instruction_count();
+
+  std::vector<HloInstruction*> original_order =
+      hlo_module->schedule().sequence(computation).instructions();
+
+  // We need to run the scheduler once to initialize some of the global state.
+  TF_EXPECT_OK(scheduler->Run(hlo_module.get()));
+
+  std::vector<double> random_preferences(instruction_count, 0.0);
+  std::srand(static_cast<unsigned int>(std::time(nullptr)));
+  for (size_t i = 0; i < instruction_count; ++i) {
+    random_preferences[i] = static_cast<double>(std::rand()) / RAND_MAX;
+  }
+
+  // Restore original order.
+  hlo_module->schedule().set_sequence(computation, original_order);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto sched_state,
+                          scheduler_core->MakeSchedulingState(computation));
+
+  // First attempt
+  auto result1 = scheduler->ScheduleWithPreferences(
+      hlo_module.get(), random_preferences, computation, sched_state);
+  TF_ASSERT_OK(result1.status());
+
+  // Second attempt with the SAME preferences and SAME sched_state
+  auto result2 = scheduler->ScheduleWithPreferences(
+      hlo_module.get(), random_preferences, computation, sched_state);
+  TF_ASSERT_OK(result2.status());
+
+  // Verify that both attempts produced identical schedules
+  EXPECT_EQ(result1->first, result2->first);
+  EXPECT_EQ(result1->second.peak_memory, result2->second.peak_memory);
+  EXPECT_EQ(result1->second.total_wasted_cycles,
+            result2->second.total_wasted_cycles);
+}
+
 // Check that "keep_original_sequence_order_in_group" frontend attribute takes
 // effect.
 TEST_F(LatencyHidingSchedulerTest, FlexibleSchedulingAnnotationScheduling) {
@@ -5411,6 +5566,394 @@ ENTRY %module {
   EXPECT_TRUE(c1_index > ag_start_index && ag_done_index > c1_index);
 }
 
+TEST_F(LatencyHidingSchedulerTest, ScheduleRecvAfterWhileInTopDownScheduling) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+while_cond {
+  param = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, pred[]) parameter(0)
+  ROOT gte = pred[] get-tuple-element(param), index=2
+}
+
+while_body {
+  param = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, pred[]) parameter(0)
+  gte0 = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} get-tuple-element(param), index=0
+  gte1 = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} get-tuple-element(param), index=1
+  add.0 = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} add(gte0, gte1)
+  gte2 = pred[] get-tuple-element(param), index=2
+  ROOT tuple = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, pred[]) tuple(add.0, gte1, gte2)
+}
+
+ENTRY %entry {
+  p0 = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} parameter(0)
+  p1 = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} parameter(1)
+  after-all = token[] after-all()
+  recv = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, u32[], token[]) recv(after-all), channel_id=1247
+  p2 = pred[] parameter(2)
+  tuple = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, pred[]) tuple(p0, p1, p2)
+  while = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, pred[]) while(tuple), condition=while_cond, body=while_body
+  gte = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} get-tuple-element(while), index=0
+  send = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, u32[], token[]) send(gte, after-all), channel_id=1246
+  send-done = token[] send-done(send), channel_id=1246
+  recv-done = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, token[]) recv-done(recv), channel_id=1247, control-predecessors={send-done, send}
+  ROOT gte0 = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} get-tuple-element(while), index=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.top_down_scheduling = true;
+  sched_config.aggressive_scheduling_policies = true;
+  sched_config.schedule_send_recvs = true;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  // Check that 'recv' is scheduled after 'while'.
+  EXPECT_GT(GetIndex(new_instruction_sequence, "recv"),
+            GetIndex(new_instruction_sequence, "while"));
+  VLOG(1) << "New instruction sequence:";
+  for (auto* instruction : new_instruction_sequence) {
+    VLOG(1) << instruction->ToString();
+  }
+}
+
+TEST_F(LatencyHidingSchedulerTest,
+       MemoryPressureTrackingWithChainedCallsNegate) {
+  absl::string_view hlo_string = R"(
+HloModule memory_pressure_test_negate, is_scheduled=true
+
+called_computation_1 {
+  param = (f32[1024], f32[1024]) parameter(0)
+  gte0 = f32[1024] get-tuple-element(param), index=0
+  gte1 = f32[1024] get-tuple-element(param), index=1
+  neg0 = f32[1024] negate(gte0)
+  neg1 = f32[1024] negate(gte1)
+  ROOT t = (f32[1024], f32[1024]) tuple(neg0, neg1)
+}
+
+called_computation_2 {
+  param = (f32[1024], f32[1024]) parameter(0)
+  gte0 = f32[1024] get-tuple-element(param), index=0
+  gte1 = f32[1024] get-tuple-element(param), index=1
+  neg0 = f32[1024] negate(gte0)
+  neg1 = f32[1024] negate(gte1)
+  ROOT t = (f32[1024], f32[1024]) tuple(neg0, neg1)
+}
+
+called_computation_3 {
+  param = (f32[1024], f32[1024]) parameter(0)
+  gte0 = f32[1024] get-tuple-element(param), index=0
+  gte1 = f32[1024] get-tuple-element(param), index=1
+  neg0 = f32[1024] negate(gte0)
+  neg1 = f32[1024] negate(gte1)
+  ROOT t = (f32[1024], f32[1024]) tuple(neg0, neg1)
+}
+
+ENTRY main {
+  p0 = (f32[1024], f32[1024]) parameter(0)
+  // Call 1
+  gte_in_0 = f32[1024] get-tuple-element(p0), index=0
+  gte_in_1 = f32[1024] get-tuple-element(p0), index=1
+  tuple.1 = (f32[1024], f32[1024]) tuple(gte_in_0, gte_in_1)
+  call.1 = (f32[1024], f32[1024]) call(tuple.1), to_apply=called_computation_1
+  // Call 2
+  gte_c1_0 = f32[1024] get-tuple-element(call.1), index=0
+  gte_c1_1 = f32[1024] get-tuple-element(call.1), index=1
+  tuple.2 = (f32[1024], f32[1024]) tuple(gte_c1_0, gte_c1_1)
+  call.2 = (f32[1024], f32[1024]) call(tuple.2), to_apply=called_computation_2
+  // Call 3
+  gte_c2_0 = f32[1024] get-tuple-element(call.2), index=0
+  gte_c2_1 = f32[1024] get-tuple-element(call.2), index=1
+  tuple.3 = (f32[1024], f32[1024]) tuple(gte_c2_0, gte_c2_1)
+  call.3 = (f32[1024], f32[1024]) call(tuple.3), to_apply=called_computation_3
+  gte_c3_0 = f32[1024] get-tuple-element(call.3), index=0
+  gte_c3_1 = f32[1024] get-tuple-element(call.3), index=1
+  // Dummy async op to force scheduling
+  c0 = f32[1] constant({0})
+  cp = f32[1] collective-permute(c0), source_target_pairs={{0,1},{1,0}}
+  ROOT root = (f32[1024], f32[1024], f32[1]) tuple(gte_c3_0, gte_c3_1, cp)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 40000;  // Increased limit to allow 32KB peak
+
+  TF_ASSERT_OK_AND_ASSIGN(auto scheduler_setup,
+                          SetupScheduler(hlo_module.get(), sched_config));
+  auto scheduler = std::move(scheduler_setup.first);
+  auto scheduler_core = std::move(scheduler_setup.second);
+
+  TF_EXPECT_OK(scheduler->Run(hlo_module.get()));
+
+  // Memory peak:
+  // - Data: (f32[1024], f32[1024]) -> 8KB.
+  // - Default ShapeSizeBytes double-counts: tuple pointer buffer (8KB) +
+  // elements (8KB) = 16KB total per call output.
+  // - At call.3, B3 (16KB) and B2 (16KB) are live simultaneously (B3 elements
+  // used by root, B2 allocated by call.3).
+  // - Peak = 16KB (B3) + 16KB (B2) = 32KB (32768 bytes).
+  // - Dummy collective-permute (16 bytes) may overlap, resulting in max 32784
+  // bytes.
+  EXPECT_LE(scheduler_core->GetMemoryPeak(), 32784);
+}
+
+TEST_F(LatencyHidingSchedulerTest, MemoryPressureTrackingWithDeepChainedCalls) {
+  absl::string_view hlo_string = R"(
+HloModule deep_chained_calls, is_scheduled=true
+
+comp_15 {
+  p15 = f32[100]{0} parameter(0)
+  ROOT neg15 = f32[100]{0} negate(p15)
+}
+comp_14 {
+  p14 = f32[100]{0} parameter(0)
+  c14_1 = f32[100]{0} call(p14), to_apply=comp_15
+  c14_2 = f32[100]{0} call(p14), to_apply=comp_15
+  ROOT add14 = f32[100]{0} add(c14_1, c14_2)
+}
+comp_13 {
+  p13 = f32[100]{0} parameter(0)
+  c13_1 = f32[100]{0} call(p13), to_apply=comp_14
+  c13_2 = f32[100]{0} call(p13), to_apply=comp_14
+  ROOT add13 = f32[100]{0} add(c13_1, c13_2)
+}
+comp_12 {
+  p12 = f32[100]{0} parameter(0)
+  c12_1 = f32[100]{0} call(p12), to_apply=comp_13
+  c12_2 = f32[100]{0} call(p12), to_apply=comp_13
+  ROOT add12 = f32[100]{0} add(c12_1, c12_2)
+}
+comp_11 {
+  p11 = f32[100]{0} parameter(0)
+  c11_1 = f32[100]{0} call(p11), to_apply=comp_12
+  c11_2 = f32[100]{0} call(p11), to_apply=comp_12
+  ROOT add11 = f32[100]{0} add(c11_1, c11_2)
+}
+comp_10 {
+  p10 = f32[100]{0} parameter(0)
+  c10_1 = f32[100]{0} call(p10), to_apply=comp_11
+  c10_2 = f32[100]{0} call(p10), to_apply=comp_11
+  ROOT add10 = f32[100]{0} add(c10_1, c10_2)
+}
+comp_9 {
+  p9 = f32[100]{0} parameter(0)
+  c9_1 = f32[100]{0} call(p9), to_apply=comp_10
+  c9_2 = f32[100]{0} call(p9), to_apply=comp_10
+  ROOT add9 = f32[100]{0} add(c9_1, c9_2)
+}
+comp_8 {
+  p8 = f32[100]{0} parameter(0)
+  c8_1 = f32[100]{0} call(p8), to_apply=comp_9
+  c8_2 = f32[100]{0} call(p8), to_apply=comp_9
+  ROOT add8 = f32[100]{0} add(c8_1, c8_2)
+}
+comp_7 {
+  p7 = f32[100]{0} parameter(0)
+  c7_1 = f32[100]{0} call(p7), to_apply=comp_8
+  c7_2 = f32[100]{0} call(p7), to_apply=comp_8
+  ROOT add7 = f32[100]{0} add(c7_1, c7_2)
+}
+comp_6 {
+  p6 = f32[100]{0} parameter(0)
+  c6_1 = f32[100]{0} call(p6), to_apply=comp_7
+  c6_2 = f32[100]{0} call(p6), to_apply=comp_7
+  ROOT add6 = f32[100]{0} add(c6_1, c6_2)
+}
+comp_5 {
+  p5 = f32[100]{0} parameter(0)
+  c5_1 = f32[100]{0} call(p5), to_apply=comp_6
+  c5_2 = f32[100]{0} call(p5), to_apply=comp_6
+  ROOT add5 = f32[100]{0} add(c5_1, c5_2)
+}
+comp_4 {
+  p4 = f32[100]{0} parameter(0)
+  c4_1 = f32[100]{0} call(p4), to_apply=comp_5
+  c4_2 = f32[100]{0} call(p4), to_apply=comp_5
+  ROOT add4 = f32[100]{0} add(c4_1, c4_2)
+}
+comp_3 {
+  p3 = f32[100]{0} parameter(0)
+  c3_1 = f32[100]{0} call(p3), to_apply=comp_4
+  c3_2 = f32[100]{0} call(p3), to_apply=comp_4
+  ROOT add3 = f32[100]{0} add(c3_1, c3_2)
+}
+comp_2 {
+  p2 = f32[100]{0} parameter(0)
+  c2_1 = f32[100]{0} call(p2), to_apply=comp_3
+  c2_2 = f32[100]{0} call(p2), to_apply=comp_3
+  ROOT add2 = f32[100]{0} add(c2_1, c2_2)
+}
+comp_1 {
+  p1 = f32[100]{0} parameter(0)
+  c1_1 = f32[100]{0} call(p1), to_apply=comp_2
+  c1_2 = f32[100]{0} call(p1), to_apply=comp_2
+  ROOT add1 = f32[100]{0} add(c1_1, c1_2)
+}
+
+ENTRY main {
+  p0 = f32[100]{0} parameter(0)
+  call.1 = f32[100]{0} call(p0), to_apply=comp_1
+  // Dummy async op to force scheduling
+  c0 = f32[1] constant({0})
+  cp = f32[1] collective-permute(c0), source_target_pairs={{0,1},{1,0}}
+  ROOT root = (f32[100], f32[1]) tuple(call.1, cp)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 100000;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto scheduler_setup,
+                          SetupScheduler(hlo_module.get(), sched_config));
+  auto scheduler = std::move(scheduler_setup.first);
+
+  // Reaching here compiles instantly due to visited-set pruning, preventing
+  // O(2^15) hang.
+  TF_EXPECT_OK(scheduler->Run(hlo_module.get()));
+}
+
+TEST_F(LatencyHidingSchedulerTest,
+       MemoryPressureTrackingWithFusedChainedCalls) {
+  absl::string_view hlo_string = R"(
+HloModule memory_pressure_test_fused, is_scheduled=true
+
+fused_callee_1 {
+  fp0 = f32[1024] parameter(0)
+  fp1 = f32[1024] parameter(1)
+  fneg0 = f32[1024] negate(fp0)
+  fneg1 = f32[1024] negate(fp1)
+  ROOT ft = (f32[1024], f32[1024]) tuple(fneg0, fneg1)
+}
+
+called_computation_1 {
+  param = (f32[1024], f32[1024]) parameter(0)
+  gte0 = f32[1024] get-tuple-element(param), index=0
+  gte1 = f32[1024] get-tuple-element(param), index=1
+  // Fusion inside callee!
+  fusion = (f32[1024], f32[1024]) fusion(gte0, gte1), kind=kLoop, calls=fused_callee_1
+  gte_f0 = f32[1024] get-tuple-element(fusion), index=0
+  gte_f1 = f32[1024] get-tuple-element(fusion), index=1
+  ROOT t = (f32[1024], f32[1024]) tuple(gte_f0, gte_f1)
+}
+
+fused_callee_2 {
+  fp0 = f32[1024] parameter(0)
+  fp1 = f32[1024] parameter(1)
+  fneg0 = f32[1024] negate(fp0)
+  fneg1 = f32[1024] negate(fp1)
+  ROOT ft = (f32[1024], f32[1024]) tuple(fneg0, fneg1)
+}
+
+called_computation_2 {
+  param = (f32[1024], f32[1024]) parameter(0)
+  gte0 = f32[1024] get-tuple-element(param), index=0
+  gte1 = f32[1024] get-tuple-element(param), index=1
+  // Fusion inside callee!
+  fusion = (f32[1024], f32[1024]) fusion(gte0, gte1), kind=kLoop, calls=fused_callee_2
+  gte_f0 = f32[1024] get-tuple-element(fusion), index=0
+  gte_f1 = f32[1024] get-tuple-element(fusion), index=1
+  ROOT t = (f32[1024], f32[1024]) tuple(gte_f0, gte_f1)
+}
+
+fused_main {
+  mp0 = f32[1] parameter(0)
+  ROOT mneg = f32[1] negate(mp0)
+}
+
+ENTRY main {
+  p0 = (f32[1024], f32[1024]) parameter(0)
+  // Call 1
+  gte_in_0 = f32[1024] get-tuple-element(p0), index=0
+  gte_in_1 = f32[1024] get-tuple-element(p0), index=1
+  tuple.1 = (f32[1024], f32[1024]) tuple(gte_in_0, gte_in_1)
+  call.1 = (f32[1024], f32[1024]) call(tuple.1), to_apply=called_computation_1
+  // Call 2
+  gte_c1_0 = f32[1024] get-tuple-element(call.1), index=0
+  gte_c1_1 = f32[1024] get-tuple-element(call.1), index=1
+  tuple.2 = (f32[1024], f32[1024]) tuple(gte_c1_0, gte_c1_1)
+  call.2 = (f32[1024], f32[1024]) call(tuple.2), to_apply=called_computation_2
+  gte_c2_0 = f32[1024] get-tuple-element(call.2), index=0
+  gte_c2_1 = f32[1024] get-tuple-element(call.2), index=1
+  // Dummy async op with fusion inside main!
+  c0 = f32[1] constant({0})
+  fusion_main = f32[1] fusion(c0), kind=kLoop, calls=fused_main
+  cp = f32[1] collective-permute(fusion_main), source_target_pairs={{0,1},{1,0}}
+  ROOT root = (f32[1024], f32[1024], f32[1]) tuple(gte_c2_0, gte_c2_1, cp)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 40000;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto scheduler_setup,
+                          SetupScheduler(hlo_module.get(), sched_config));
+  auto scheduler = std::move(scheduler_setup.first);
+  auto scheduler_core = std::move(scheduler_setup.second);
+
+  TF_EXPECT_OK(scheduler->Run(hlo_module.get()));
+
+  // Fusions are skipped in called computations transitively and successfully
+  // scheduled!
+  EXPECT_LE(scheduler_core->GetMemoryPeak(), 32784);
+}
+
+TEST_F(LatencyHidingSchedulerTest, MemoryPressureTrackingWithAsyncCollective) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+async_computation {
+  p = f32[1024] parameter(0)
+  ROOT ar = f32[1024] all-reduce(p), to_apply=sum
+}
+
+ENTRY entry {
+  p0 = f32[1024] parameter(0)
+  all-reduce.start = ((f32[1024]), f32[1024], u32[]) async-start(p0), calls=async_computation
+  c0 = f32[1024] negate(p0)
+  c1 = f32[1024] negate(c0)
+  all-reduce.done = f32[1024] async-done(all-reduce.start), calls=async_computation
+  ROOT root = f32[1024] add(c1, all-reduce.done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 20000;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto scheduler_setup,
+                          SetupScheduler(hlo_module.get(), sched_config));
+  auto scheduler = std::move(scheduler_setup.first);
+  auto scheduler_core = std::move(scheduler_setup.second);
+
+  TF_EXPECT_OK(scheduler->Run(hlo_module.get()));
+  // Peak memory at all-reduce.done for bottom-up scheduling:
+  // - all-reduce.start output are composed of 4 buffers:
+  //   1. all-reduce.start output tuple (size 8196) (tuple)
+  //   2. all-reduce.start nested input tuple (size 4096) (excluding input
+  //   buffer due to parameter passing)
+  //   3. all-reduce.start collective result  (size 4096)
+  //   4. all-reduce.start state (size 4)
+  //   Total Async Live = 16396 bytes.
+  // - 1 intermediate buffer is live at peak:
+  //   c1 output, size 4096.
+  // - 8 bytes of tuple pointer overhead.
+  // Total Peak = 16396 + 4096 + 8 = 20496 bytes.
+  //
+  EXPECT_EQ(scheduler_core->GetMemoryPeak(), 20496);
+}
+
 class LatencyHidingSchedulerBenchmark : public LatencyHidingSchedulerTest {
  public:
   void TestBody() override {}
@@ -5492,6 +6035,74 @@ BENCHMARK(BM_FindAndExtractBestNodeAvailable)
     ->Arg(1000)
     ->Arg(10000)
     ->Arg(40000);
+
+TEST_F(LatencyHidingSchedulerTest, NopBypassPreferenceInteraction) {
+  absl::string_view hlo_string = R"(
+    HloModule TestModule, is_scheduled=true
+
+    ENTRY entry {
+      p = f32[8] parameter(0)
+      ag-start = (f32[8], f32[16]) all-gather-start(p), replica_groups={{0,1}}, dimensions={0}
+      ag-done = f32[16] all-gather-done(ag-start)
+      negate.0 = f32[8] negate(p)
+      bitcast.0 = f32[8] bitcast(p)
+      add1 = f32[8] add(bitcast.0, negate.0)
+      slice = f32[8] slice(ag-done), slice={[0:8]}
+      ROOT r = f32[8] add(add1, slice)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+
+  auto graph_processing_hook = [](HloScheduleGraph* graph) {
+    HloGraphNode* n_node = nullptr;
+    HloGraphNode* a_node = nullptr;
+    for (const HloInstruction* instr : graph->GetOriginalInstrList()) {
+      if (instr->name() == "bitcast.0") {
+        n_node = graph->GetNodePtr(instr);
+      } else if (instr->name() == "negate.0") {
+        a_node = graph->GetNodePtr(instr);
+      }
+    }
+    EXPECT_NE(n_node, nullptr);
+    EXPECT_NE(a_node, nullptr);
+    n_node->SetPreference(-2.0);
+    a_node->SetPreference(-1.0);
+    return absl::OkStatus();
+  };
+
+  SchedulerConfig sched_config = GetDefaultSchedConfig();
+  std::unique_ptr<LatencyEstimator> latency_estimator =
+      std::make_unique<ApproximateLatencyEstimator>();
+  auto async_tracker = std::make_unique<AsyncTracker>(sched_config);
+  AliasInfo alias_info;
+  HloCostAnalysis::ShapeSizeFunction shape_size_bytes = ShapeSizeBytes;
+
+  std::shared_ptr<const SchedulingContext> scheduling_context =
+      std::make_shared<const SchedulingContext>(
+          hlo_module.get(), std::move(latency_estimator),
+          std::move(async_tracker), &alias_info, shape_size_bytes);
+
+  auto scheduler_core =
+      std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
+  TF_ASSERT_OK(scheduler_core->SetGraphProcessingHook(graph_processing_hook));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      LatencyHidingScheduler(scheduling_context, std::move(scheduler_core))
+          .Run(hlo_module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_TRUE(hlo_module->has_schedule());
+  const HloInstructionSequence& sequence =
+      hlo_module->schedule().sequence(hlo_module->entry_computation());
+
+  int n_pos = GetIndex(sequence.instructions(), "bitcast.0");
+  int a_pos = GetIndex(sequence.instructions(), "negate.0");
+
+  EXPECT_LT(n_pos, a_pos)
+      << "Expected bitcast.0 to be scheduled before negate.0";
+}
 
 }  // namespace
 }  // namespace xla

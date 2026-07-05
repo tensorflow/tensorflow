@@ -29,9 +29,9 @@ namespace grappler {
 // optimizations, such as removing nodes that are effectively noops.
 class DependencyOptimizer : public GraphOptimizer {
  public:
-  DependencyOptimizer() {}
+  DependencyOptimizer() = default;
   explicit DependencyOptimizer(RewriterConfig::Toggle opt_level) {}
-  ~DependencyOptimizer() override {}
+  ~DependencyOptimizer() override = default;
 
   std::string name() const override { return "dependency_optimizer"; };
 

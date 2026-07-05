@@ -66,7 +66,12 @@ struct LogSumExp {
         Eigen::internal::scalar_cmp_op<T, T, Eigen::internal::cmp_LT>();
 
     auto logsumexp = add(log1p(exp(sub(mi, ma))), ma);
-    return cmp_lt(ma, Eigen::NumTraits<T>::lowest()) ? ma : logsumexp;
+    // Return ma directly if it is -inf (all inputs -inf) or +inf
+    // (avoids inf - inf = NaN in the subtraction above).
+    return (cmp_lt(ma, Eigen::NumTraits<T>::lowest()) ||
+            cmp_lt(Eigen::NumTraits<T>::highest(), ma))
+               ? ma
+               : logsumexp;
   }
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T packetOp(const T& a,
                                                    const T& b) const {
@@ -76,6 +81,7 @@ struct LogSumExp {
     using Eigen::internal::pcmp_lt;
     using Eigen::internal::pexp;
     using Eigen::internal::plog1p;
+    using Eigen::internal::por;
     using Eigen::internal::pselect;
     using Eigen::internal::pset1;
     using Eigen::internal::psub;
@@ -84,8 +90,10 @@ struct LogSumExp {
     auto ma = Eigen::internal::pmax(a, b);
 
     auto logsumexp = padd(plog1p(pexp(psub(mi, ma))), ma);
-    auto result = pselect(pcmp_lt(ma, pset1(Eigen::NumTraits<T>::lowest())),
-                          ma, logsumexp);
+    // Select ma directly if it is -inf or +inf.
+    auto is_inf = por(pcmp_lt(ma, pset1(Eigen::NumTraits<T>::lowest())),
+                      pcmp_lt(pset1(Eigen::NumTraits<T>::highest()), ma));
+    auto result = pselect(is_inf, ma, logsumexp);
 
     // Propagate NaN: pcmp_eq(x, x) is false (all zeros) when x is NaN.
     auto neither_nan = pand(pcmp_eq(a, a), pcmp_eq(b, b));

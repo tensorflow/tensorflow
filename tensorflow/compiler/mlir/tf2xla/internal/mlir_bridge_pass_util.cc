@@ -68,7 +68,8 @@ LogicalResult HasAttr(
     // This is not expected to happen in practice
     if (!status.ok()) {
       LOG(ERROR) << "Failed to parse " << func_name << ": "
-                 << absl::StatusMessageAsCStr(status);
+                 << absl::StatusMessageAsCStr(status) << "; this can "
+                 << "happen if the function contains unregistered ops.";
       return failure();
     }
     if (predicate(*func_body->graph)) {

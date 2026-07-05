@@ -466,5 +466,18 @@ TEST(ArrayTest, UpdateSlice) {
   EXPECT_EQ(expected, arr.ToString());
 }
 
+TEST(ArrayTest, ReshapeWithLowerRank) {
+  Array<int64_t> arr({1, 1, 24});
+  EXPECT_EQ(arr.num_dimensions(), 3);
+  // Reshape to 1D using a sub-span of its own dimensions.
+  // The dropped dimensions are all 1, so the number of elements stays the same.
+  // This triggers reallocation of sizes_ (3 -> 1) while new_dimensions aliases
+  // it.
+  arr.Reshape(arr.dimensions().subspan(2, 1));
+  EXPECT_EQ(arr.num_dimensions(), 1);
+  EXPECT_EQ(arr.dim(0), 24);
+  EXPECT_EQ(arr.num_elements(), 24);
+}
+
 }  // namespace
 }  // namespace xla

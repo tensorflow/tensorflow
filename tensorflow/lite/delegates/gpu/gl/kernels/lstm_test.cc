@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/lstm.h"
 
 #include <cmath>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>

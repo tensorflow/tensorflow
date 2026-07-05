@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -87,21 +88,6 @@ TEST(CollectiveCliqueRequestsTest, RequestDevComms) {
   EXPECT_THAT(requests.GetDevicesRequiringBarrier(), UnorderedElementsAre());
 }
 
-TEST(CollectiveCliqueRequestsTest, DeviceGroupsNormalized) {
-  GlobalDeviceId d0 = GlobalDeviceId(0);
-  GlobalDeviceId d1 = GlobalDeviceId(1);
-
-  GpuCliqueKey k0({d0, d1}, 2);
-
-  // Check that the order of devices in replica groups doesn't matter.
-  std::vector<std::vector<GlobalDeviceId>> dg0a = {{d0, d1}};
-  std::vector<std::vector<GlobalDeviceId>> dg0b = {{d1, d0}};
-
-  CollectiveCliqueRequests requests;
-  TF_ASSERT_OK(requests.RequestClique(k0, dg0a));
-  TF_ASSERT_OK(requests.RequestClique(k0, dg0b));
-}
-
 TEST(CollectiveCliqueRequestsTest, DeviceGroupsMismatch) {
   GlobalDeviceId d0 = GlobalDeviceId(0);
   GlobalDeviceId d1 = GlobalDeviceId(1);
@@ -110,9 +96,9 @@ TEST(CollectiveCliqueRequestsTest, DeviceGroupsMismatch) {
 
   GpuCliqueKey k0({d0, d1}, 2);
 
-  // Check that the order of devices in replica groups doesn't matter.
+  // Callers must pass pre-sorted device groups.
   std::vector<std::vector<GlobalDeviceId>> dg0a = {{d0, d1}};
-  std::vector<std::vector<GlobalDeviceId>> dg0b = {{d1, d0}, {d2, d3}};
+  std::vector<std::vector<GlobalDeviceId>> dg0b = {{d0, d1}, {d2, d3}};
 
   CollectiveCliqueRequests requests;
   TF_ASSERT_OK(requests.RequestClique(k0, dg0a));
@@ -123,15 +109,40 @@ TEST(CollectiveCliqueRequestsTest, DeviceGroupsMismatch) {
                              testing::HasSubstr("different device groups")));
 }
 
+TEST(CollectiveCliqueRequestsTest, SingletonDeviceGroupsMismatchAllowed) {
+  GlobalDeviceId d0 = GlobalDeviceId(0);
+  GlobalDeviceId d1 = GlobalDeviceId(1);
+  GlobalDeviceId d2 = GlobalDeviceId(2);
+  GlobalDeviceId d3 = GlobalDeviceId(3);
+
+  // Singleton clique key (single device, no cross-device communication).
+  GpuCliqueKey k_singleton({d0}, /*num_local_participants=*/1);
+
+  // Same singleton key requested with different surrounding device groups, as
+  // produced by connected-component collective-permute on different
+  // instructions. This must be tolerated (regression test for the clique
+  // acquisition deadlock).
+  std::vector<std::vector<GlobalDeviceId>> dg_a = {{d0}, {d1, d2, d3}};
+  std::vector<std::vector<GlobalDeviceId>> dg_b = {{d0}, {d1}, {d2, d3}};
+
+  CollectiveCliqueRequests requests;
+  ASSERT_OK(requests.RequestClique(k_singleton, dg_a));
+  EXPECT_OK(requests.RequestClique(k_singleton, dg_b));
+
+  auto ordered_requests = requests.OrderedRequestedCliques();
+  ASSERT_EQ(ordered_requests.size(), 1);
+  EXPECT_EQ(ordered_requests[0].key, k_singleton);
+}
+
 TEST(CollectiveCliqueRequestsTest, BarrierAfterModuleExecutionRequested) {
   GlobalDeviceId d0 = GlobalDeviceId(0);
   GlobalDeviceId d1 = GlobalDeviceId(1);
 
   GpuCliqueKey k0({d0, d1}, 2);
 
-  // Check that the order of devices in replica groups doesn't matter.
+  // Callers must pass pre-sorted device groups.
   std::vector<std::vector<GlobalDeviceId>> dg0a = {{d0, d1}};
-  std::vector<std::vector<GlobalDeviceId>> dg0b = {{d1, d0}};
+  std::vector<std::vector<GlobalDeviceId>> dg0b = {{d0, d1}};
 
   CollectiveCliqueRequests requests;
   CollectiveCliqueRequests::CliqueRequirements requirements{
@@ -163,6 +174,22 @@ TEST(CollectiveCliqueRequestsTest,
 
   EXPECT_THAT(requests.GetDevicesRequiringBarrier(),
               UnorderedElementsAre(d0, d1, d2));
+}
+
+TEST(CollectiveCliqueRequestsTest, DeviceGroupsLexicographicSort) {
+  GlobalDeviceId d0(0), d1(1), d2(2), d3(3), d4(4), d5(5);
+
+  // Just a sanity check for our DCHECKs in clique requests.S
+  std::vector<std::vector<GlobalDeviceId>> groups = {
+      {d4, d5},
+      {d0, d1},
+      {d2, d3},
+  };
+  absl::c_sort(groups);
+
+  EXPECT_EQ(groups[0], (std::vector{d0, d1}));
+  EXPECT_EQ(groups[1], (std::vector{d2, d3}));
+  EXPECT_EQ(groups[2], (std::vector{d4, d5}));
 }
 
 }  // namespace

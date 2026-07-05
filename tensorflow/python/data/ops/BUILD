@@ -88,6 +88,7 @@ py_library(
         "window_op.py",
         "zip_op.py",
     ],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":debug_mode",
@@ -95,6 +96,8 @@ py_library(
         ":options",
         ":structured_function",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/framework:graph_proto_py_proto",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python:tf2",
         "//tensorflow/python/autograph/operators:control_flow",
         "//tensorflow/python/autograph/operators:py_builtins",

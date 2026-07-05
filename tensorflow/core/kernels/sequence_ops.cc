@@ -61,20 +61,23 @@ class RangeOp : public OpKernel {
                 TensorShapeUtils::IsScalar(start_in.shape()) ||
                     (TensorShapeUtils::IsVector(start_in.shape()) &&
                      start_in.shape().dim_size(0) == 1),
-                errors::InvalidArgument("start must be a scalar, not shape ",
-                                        start_in.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("start must be a scalar, not shape ",
+                                 start_in.shape().DebugString())));
     OP_REQUIRES(context,
                 TensorShapeUtils::IsScalar(limit_in.shape()) ||
                     (TensorShapeUtils::IsVector(limit_in.shape()) &&
                      limit_in.shape().dim_size(0) == 1),
-                errors::InvalidArgument("limit must be a scalar, not shape ",
-                                        limit_in.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("limit must be a scalar, not shape ",
+                                 limit_in.shape().DebugString())));
     OP_REQUIRES(context,
                 TensorShapeUtils::IsScalar(delta_in.shape()) ||
                     (TensorShapeUtils::IsVector(delta_in.shape()) &&
                      delta_in.shape().dim_size(0) == 1),
-                errors::InvalidArgument("delta must be a scalar, not shape ",
-                                        delta_in.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("delta must be a scalar, not shape ",
+                                 delta_in.shape().DebugString())));
     const T start = start_in.scalar<T>()();
     const T limit = limit_in.scalar<T>()();
     const T delta = delta_in.scalar<T>()();
@@ -103,18 +106,18 @@ class RangeOp : public OpKernel {
 
       uint64_t size_unsigned =
           Eigen::divup(range, static_cast<uint64_t>(Eigen::numext::abs(delta)));
-      OP_REQUIRES(
-          context, size_unsigned <= std::numeric_limits<int64_t>::max(),
-          errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
-                                  std::numeric_limits<int64_t>::max()));
+      OP_REQUIRES(context, size_unsigned <= std::numeric_limits<int64_t>::max(),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Requires ((limit - start) / delta) <= ",
+                                   std::numeric_limits<int64_t>::max())));
       size = static_cast<int64_t>(size_unsigned);
     } else {
       auto size_auto =
           Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
-      OP_REQUIRES(
-          context, size_auto <= std::numeric_limits<int64_t>::max(),
-          errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
-                                  std::numeric_limits<int64_t>::max()));
+      OP_REQUIRES(context, size_auto <= std::numeric_limits<int64_t>::max(),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Requires ((limit - start) / delta) <= ",
+                                   std::numeric_limits<int64_t>::max())));
       size = static_cast<int64_t>(size_auto);
     }
 
@@ -181,14 +184,17 @@ class LinSpaceOp : public OpKernel {
     const Tensor& stop_in = context->input(1);
     const Tensor& num_in = context->input(2);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(start_in.shape()),
-                errors::InvalidArgument("start must be a scalar, not shape ",
-                                        start_in.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("start must be a scalar, not shape ",
+                                 start_in.shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(stop_in.shape()),
-                errors::InvalidArgument("stop must be a scalar, not shape ",
-                                        stop_in.shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_in.shape()),
-                errors::InvalidArgument("num must be a scalar, not shape ",
-                                        num_in.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("stop must be a scalar, not shape ",
+                                 stop_in.shape().DebugString())));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(num_in.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "num must be a scalar, not shape ", num_in.shape().DebugString())));
     const T start = start_in.scalar<T>()();
     const T stop = stop_in.scalar<T>()();
     const Tnum num = num_in.scalar<Tnum>()();

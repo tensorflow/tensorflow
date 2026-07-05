@@ -1,4 +1,4 @@
-// RUN: litert-opt %s -canonicalize | FILECHECK_OPTS="" FileCheck %s
+// RUN: litert-opt %s -canonicalize | env FILECHECK_OPTS="" FileCheck %s
 // TODO(b/493282789): Enable DenseResourceElementsAttr constant folding with
 // more peformant folder implementations.
 

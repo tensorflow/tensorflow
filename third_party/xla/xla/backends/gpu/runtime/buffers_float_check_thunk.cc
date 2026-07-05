@@ -29,9 +29,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -47,6 +50,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
@@ -77,15 +81,11 @@ BuffersDebugFloatCheckThunk::BuffersDebugFloatCheckThunk(
 }
 absl::Status BuffersDebugFloatCheckThunk::Initialize(
     const InitializeParams& params) {
-  if (params.executor->GetPlatform()->id() != se::cuda::kCudaPlatformId) {
-    VLOG(1) << "Buffer float checking not supported on non-CUDA platforms, "
-               "skipping";
-    return absl::OkStatus();
-  }
-  if (!params.executor->GetDeviceDescription()
+  if (params.executor->GetPlatform()->id() == se::cuda::kCudaPlatformId &&
+      !params.executor->GetDeviceDescription()
            .cuda_compute_capability()
            .IsAtLeastPascal()) {
-    VLOG(1)
+    LOG_FIRST_N(WARNING, 1)
         << "Buffer float checking not supported on CUDA architectures older "
            "than Pascal due to missing atomic fetch_add with system scope, "
            "skipping";
@@ -97,26 +97,30 @@ absl::Status BuffersDebugFloatCheckThunk::Initialize(
     if (!kernels_.contains(params.executor)) {
       se::gpu::GpuKernelRegistry registry =
           se::gpu::GpuKernelRegistry::GetGlobalRegistry();
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           auto kernel_f32,
           registry.LoadKernel<se::gpu::BufferDebugFloatCheckF32Kernel>(
               params.executor));
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           auto kernel_bf16,
           registry.LoadKernel<se::gpu::BufferDebugFloatCheckBf16Kernel>(
               params.executor));
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
+          auto kernel_f16,
+          registry.LoadKernel<se::gpu::BufferDebugFloatCheckF16Kernel>(
+              params.executor));
+      ASSIGN_OR_RETURN(
           auto kernel_f64,
           registry.LoadKernel<se::gpu::BufferDebugFloatCheckF64Kernel>(
               params.executor));
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           auto kernel_reduce,
           registry.LoadKernel<
               se::gpu::BufferDebugAppendReducedFloatCheckResultsKernel>(
               params.executor));
-      kernels_[params.executor] = std::make_unique<Kernels>(
-          Kernels{std::move(kernel_f32), std::move(kernel_bf16),
-                  std::move(kernel_f64), std::move(kernel_reduce)});
+      kernels_[params.executor] = std::make_unique<Kernels>(Kernels{
+          std::move(kernel_f32), std::move(kernel_bf16), std::move(kernel_f16),
+          std::move(kernel_f64), std::move(kernel_reduce)});
       VLOG(1) << "NanCount kernels loaded";
     }
   }
@@ -142,6 +146,8 @@ constexpr const char* FloatTypeString() {
     return "F32";
   } else if constexpr (std::is_same_v<T, Eigen::bfloat16>) {
     return "BF16";
+  } else if constexpr (std::is_same_v<T, Eigen::half>) {
+    return "F16";
   } else if constexpr (std::is_same_v<T, double>) {
     return "F64";
   } else {
@@ -166,14 +172,14 @@ absl::Status CheckFloatsAndLog(
       GetBlockDimForBuffer<T>(stream, buffer, tmp_ptr.ElementCount());
   const size_t num_blocks = block_dim.x * block_dim.y * block_dim.z;
 
-  TF_RETURN_IF_ERROR(map_kernel.Launch(thread_dim, block_dim, stream, buffer,
-                                       buffer.ElementCount(), tmp_ptr,
-                                       tmp_ptr.ElementCount()));
+  RETURN_IF_ERROR(map_kernel.Launch(thread_dim, block_dim, stream, buffer,
+                                    buffer.ElementCount(), tmp_ptr,
+                                    tmp_ptr.ElementCount()));
   // Operations on the same stream perform in sequence, so at this point the
   // results of the previous FloatCheck operation are available.
-  TF_RETURN_IF_ERROR(reduce_append_kernel.Launch(
+  RETURN_IF_ERROR(reduce_append_kernel.Launch(
       thread_dim, se::BlockDim(1, 1, 1), stream, tmp_ptr,
-      std::min(tmp_ptr.ElementCount(), num_blocks), entry_id,
+      std::min<uint64_t>(tmp_ptr.ElementCount(), num_blocks), entry_id,
       buffer_debug_log.GetDeviceHeader(), buffer_debug_log.GetDeviceEntries()));
 
   return absl::OkStatus();
@@ -230,15 +236,19 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
         params.buffer_allocations->GetDeviceAddress(buffer);
 
     if (buffer_type == PrimitiveType::F32) {
-      TF_RETURN_IF_ERROR(CheckFloatsAndLog<float>(
+      RETURN_IF_ERROR(CheckFloatsAndLog<float>(
           params.stream, entry_id, buffer_debug_log, device_buffer, tmp_ptr,
           kernels->f32, kernels->reduce));
     } else if (buffer_type == PrimitiveType::BF16) {
-      TF_RETURN_IF_ERROR(CheckFloatsAndLog<Eigen::bfloat16>(
+      RETURN_IF_ERROR(CheckFloatsAndLog<Eigen::bfloat16>(
           params.stream, entry_id, buffer_debug_log, device_buffer, tmp_ptr,
           kernels->bf16, kernels->reduce));
+    } else if (buffer_type == PrimitiveType::F16) {
+      RETURN_IF_ERROR(CheckFloatsAndLog<Eigen::half>(
+          params.stream, entry_id, buffer_debug_log, device_buffer, tmp_ptr,
+          kernels->f16, kernels->reduce));
     } else if (buffer_type == PrimitiveType::F64) {
-      TF_RETURN_IF_ERROR(CheckFloatsAndLog<double>(
+      RETURN_IF_ERROR(CheckFloatsAndLog<double>(
           params.stream, entry_id, buffer_debug_log, device_buffer, tmp_ptr,
           kernels->f64, kernels->reduce));
     } else {
@@ -260,6 +270,10 @@ std::string BuffersDebugFloatCheckThunk::ToString(int indent) const {
                     ", buffer: ", buffer.ToString());
   }
   return result;
+}
+absl::StatusOr<ThunkProto> BuffersDebugFloatCheckThunk::ToProto() const {
+  return absl::InvalidArgumentError(
+      "BuffersDebugFloatCheckThunk can't be serialized.");
 }
 
 }  // namespace xla::gpu

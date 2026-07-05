@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/absl_check.h"
 #include "absl/types/span.h"
 
 namespace shlo_ref {
@@ -35,11 +36,14 @@ absl::Span<DimensionSize> Shape::MutableDimensions() {
 
 absl::InlinedVector<Axis, kMaxNumDimensions> Shape::Axes() const {
   absl::InlinedVector<Axis, kMaxNumDimensions> axes(dims_.size());
-  absl::c_iota(axes, 0);
+  absl::c_iota(axes, Axis{0});
   return axes;
 }
 
-DimensionSize Shape::Dim(Axis axis) const { return dims_[axis]; }
+DimensionSize Shape::Dim(Axis axis) const {
+  ABSL_CHECK_LT(axis, dims_.size());
+  return dims_[axis];
+}
 
 absl::InlinedVector<DimensionSize, kMaxNumDimensions> Shape::Dims(
     absl::Span<const Axis> axes) const {
@@ -57,9 +61,9 @@ size_t Shape::Rank() const { return dims_.size(); }
 
 DimensionSize Shape::NumElements() const {
   if (dims_.empty()) {
-    return 0;
+    return 1;
   }
-  return absl::c_accumulate(dims_, 1, std::multiplies<>());
+  return absl::c_accumulate(dims_, DimensionSize{1}, std::multiplies<>());
 }
 
 bool operator==(const Shape& lhs, const Shape& rhs) {

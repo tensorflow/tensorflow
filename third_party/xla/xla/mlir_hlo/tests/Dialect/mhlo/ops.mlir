@@ -6855,6 +6855,13 @@ func.func @top_k_nd(%arg0 : tensor<16x16xf32>) {
 
 // -----
 
+func.func @top_k_nd_unstable(%arg0 : tensor<16x16xf32>) {
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true, is_stable = false) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  return
+}
+
+// -----
+
 func.func @top_k_unbounded(%arg0 : tensor<?x16x?xf32>) {
   %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<?x16x?xf32> -> (tensor<?x16x8xf32>, tensor<?x16x8xi32>)
   return
@@ -7060,8 +7067,11 @@ func.func @composite_c4(%arg0: !mhlo.token) {
 
 // -----
 
+// CHECK-LABEL: func @scan
 func.func @scan(%input: tensor<10xf32>, %init: tensor<f32>) -> tensor<10xf32> {
-  %0:2 = mhlo.scan (%input) inits (%init) dimension=0 {
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=0 attributes {
+      scan_dim_size = 10 : i64, is_reverse = true, is_associative = true
+  } {
   ^bb0(%input0: tensor<f32>, %carry0: tensor<f32>):
     %1 = mhlo.add %input0, %carry0 : tensor<f32>
     mhlo.return %1, %1 : tensor<f32>, tensor<f32>
@@ -7400,3 +7410,39 @@ func.func @ragged_dot_zero_rhs_group_dims_for_ragged_noncontracting(%lhs : tenso
   } : (tensor<11x5xf32>, tensor<5x7xf32>, tensor<3xi64>) -> tensor<11x7xf32>
   func.return %0 : tensor<11x7xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func @mulhi_i32
+func.func @mulhi_i32(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+  %0 = "mhlo.mulhi"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  func.return %0: tensor<4xi32>
+}
+
+// CHECK-LABEL: func @mulhi_i16
+func.func @mulhi_i16(%arg0: tensor<4xi16>, %arg1: tensor<4xi16>) -> tensor<4xi16> {
+  %0 = "mhlo.mulhi"(%arg0, %arg1) : (tensor<4xi16>, tensor<4xi16>) -> tensor<4xi16>
+  func.return %0: tensor<4xi16>
+}
+
+// -----
+// CHECK-LABEL: module @testOriginalArray
+module @testOriginalArray attributes {
+  // CHECK: mhlo.attr = #mhlo.original_array<"my_inst", [0, 1, 2]>
+  "mhlo.attr" = #mhlo.original_array<"my_inst", [0, 1, 2]>
+} {}
+
+// CHECK-LABEL: module @testOriginalValueElement
+module @testOriginalValueElement attributes {
+  // CHECK: mhlo.attr = #mhlo.original_value_element<[0], <"source_op", []>>
+  "mhlo.attr" = #mhlo.original_value_element<[0], <"source_op", []>>
+} {}
+
+// CHECK-LABEL: module @testOriginalValue
+module @testOriginalValue attributes {
+  // CHECK: mhlo.attr = #mhlo.original_value<false, [<[0], <"first_instruction", [0, 1]>>, <[1], <"second_instruction", [2]>>]>
+  "mhlo.attr" = #mhlo.original_value<false, [
+    <[0], <"first_instruction", [0, 1]>>,
+    <[1], <"second_instruction", [2]>>
+  ]>
+} {}

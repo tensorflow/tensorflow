@@ -21,12 +21,13 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -95,7 +96,8 @@ std::string TestParamsToString(
       primitive_util::LowercasePrimitiveTypeName(params.rhs_storage_type),
       primitive_util::LowercasePrimitiveTypeName(params.output_storage_type),
       params.min_cuda_capability.major, params.min_cuda_capability.minor,
-      params.min_rocm_version.major(), params.min_rocm_version.minor(),
+      params.min_rocm_version.major_version(),
+      params.min_rocm_version.minor_version(),
       BackendRestrictionToString(params.backend_restriction),
       params.sizes.contracting_size, params.sizes.non_contracting_size);
 }
@@ -167,6 +169,17 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
   if (const auto* ccc = gpu_cc.cuda_compute_capability()) {
     is_algorithm_supported =
         ccc->SupportsAllFeaturesOf(params.min_cuda_capability);
+
+    // CublasLt does not support FP8 fast accumulation.
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    if (debug_options.xla_gpu_enable_cublaslt() &&
+        params.algorithm ==
+            PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM &&
+        params.lhs_storage_type == F8E4M3FN &&
+        params.rhs_storage_type == F8E4M3FN &&
+        params.output_storage_type == F8E5M2) {
+      is_algorithm_supported = false;
+    }
   } else if (const auto* rcc = gpu_cc.rocm_compute_capability()) {
     is_algorithm_supported = rcc->gfx9_mi100_or_later();
     if (GetDeviceDescription().runtime_version() < params.min_rocm_version &&
@@ -180,17 +193,12 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
     if (params.backend_restriction == BackendRestriction::kTritonOnly) {
       GTEST_SKIP() << "TODO: Triton unsupported in ROCm";
     }
-  }
-
-  // CublasLt does not support FP8 fast accumulation.
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  if (debug_options.xla_gpu_enable_cublaslt() &&
-      params.algorithm ==
-          PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM &&
-      params.lhs_storage_type == F8E4M3FN &&
-      params.rhs_storage_type == F8E4M3FN &&
-      params.output_storage_type == F8E5M2) {
-    is_algorithm_supported = false;
+    if (rcc->gfx9_mi200() &&
+        (params.algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
+         params.algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9)) {
+      GTEST_SKIP() << AlgorithmToString(params.algorithm)
+                   << " not supported on MI200.";
+    }
   }
 
   if (is_algorithm_supported) {
@@ -205,7 +213,12 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
     )");
     }
   } else {
-    EXPECT_THAT(Run(hlo_text).message(), HasSubstr("Unsupported algorithm"));
+    // Note: If the algorithm is not supported either the emitter will decline
+    // to emit it (for Cublas enabled) , or the autotuner will not find any
+    // supported configs (for CublasLt enabled).
+    EXPECT_THAT(Run(hlo_text).message(),
+                ::testing::AnyOf(HasSubstr("Unsupported algorithm"),
+                                 HasSubstr("No supported configs")));
   }
 }
 

@@ -15,6 +15,7 @@ cc_library(
     name = "simple_op",
     hdrs = ["simple_op.h"],
     deps = [
+        "//tensorflow/core/platform:tstring",
         "//tensorflow/lite/kernels/shim:op_kernel",
         "//tensorflow/lite/kernels/shim:status_macros",
         "@com_google_absl//absl/status",

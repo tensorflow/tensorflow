@@ -158,6 +158,14 @@ struct TfrtCompileOptions {
   // criticality.
   bool enable_priority_aware_batch_scheduler = false;
 
+  // If true, the queue implementation will resplit tasks for priority aware
+  // scheduling.
+  bool enable_priority_aware_batch_scheduler_resplit = false;
+
+  // If true, enable lazy cancellation filtering in the priority-aware batch
+  // scheduler.
+  bool enable_batching_task_lazy_cancellation = false;
+
   // The policy used by a BatchScheduler to pad (or split) batches.
   std::string batch_padding_policy;
 
@@ -191,6 +199,8 @@ struct TfrtCompileOptions {
   std::string aot_bef_file;
   // If true, use XLA:CPU for CPU computations.
   bool allow_xla_cpu = true;
+  // If true, enable asynchronous IFRT execution.
+  bool enable_async_ifrt = false;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

@@ -189,13 +189,13 @@ TEST_F(HipblasLtBackendTest, ApplyConfig) {
   HipblasLtBackendConfig config;
   config.set_algorithm(2);
   config.set_autotune_workspace_size(42);
-  google::protobuf::Any any;
-  any.PackFrom(config);
+  BackendConfig backend_config;
+  *backend_config.mutable_gemm() = config;
   TF_EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
                                          ->root_instruction()
                                          ->mutable_operands()
                                          .at(0),
-                                    any));
+                                    backend_config));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
                            R"(CHECK: (f32[100,100]{1,0}, s8[42]{0}) custom-call
                               CHECK: "selected_algorithm":"2")"),

@@ -1,5 +1,5 @@
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_combined_defs.bzl", "tf_xla_combined_py_test")
@@ -44,7 +44,7 @@ package_group(
 
 generate_backend_suites()
 
-py_strict_library(
+py_library(
     name = "xla_test",
     testonly = 1,
     srcs = ["xla_test.py"],
@@ -82,7 +82,7 @@ py_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "xla_test_test",
     size = "small",
     srcs = ["xla_test_test.py"],
@@ -2611,7 +2611,10 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/platform:test",
     ],

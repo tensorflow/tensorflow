@@ -88,7 +88,6 @@ py_library(
         ":errors",
         ":inspect_utils",
         "//tensorflow/python/util:tf_inspect",
-        "@pypi//astunparse",
         "@pypi//gast",
     ],
 )
@@ -172,7 +171,6 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":anno",
-        "@pypi//astunparse",
         "@pypi//gast",
     ],
 )
