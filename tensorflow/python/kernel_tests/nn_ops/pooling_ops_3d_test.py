@@ -667,6 +667,43 @@ class PoolingTest(test.TestCase):
             orig_in, orig_out, grad, ksize=[1, 1, 1, 1, 1],
             strides=[1, 1, 1, 1, 1], padding="VALID")
 
+  def testPool3DInvalidInputShape(self):
+    for pool_fn in [nn_ops.max_pool3d, nn_ops.avg_pool3d]:
+      with self.session():
+        with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+          input_tensor = constant_op.constant(
+              1.0, shape=[1, 3, 3, 3], dtype=dtypes.float32)
+          pool_3d = pool_fn(
+              input_tensor,
+              ksize=[1, 2, 2, 2, 1],
+              strides=[1, 1, 1, 1, 1],
+              padding="VALID")
+          self.evaluate(pool_3d)
+
+  def testPool3DGradInvalidInputShape(self):
+    with self.session():
+      orig_in = array_ops.ones((1, 1, 1, 1), dtype=dtypes.float32)
+      orig_out = array_ops.ones((1, 1, 1, 1, 1), dtype=dtypes.float32)
+      grad = array_ops.ones((1, 1, 1, 1, 1), dtype=dtypes.float32)
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        t = gen_nn_ops.max_pool3d_grad(
+            orig_in,
+            orig_out,
+            grad,
+            ksize=[1, 1, 1, 1, 1],
+            strides=[1, 1, 1, 1, 1],
+            padding="VALID")
+        self.evaluate(t)
+
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        t = gen_nn_ops.avg_pool3d_grad(
+            orig_input_shape=[1, 1, 1, 1],
+            grad=grad,
+            ksize=[1, 1, 1, 1, 1],
+            strides=[1, 1, 1, 1, 1],
+            padding="VALID")
+        self.evaluate(t)
+
 
 if __name__ == "__main__":
   test.main()

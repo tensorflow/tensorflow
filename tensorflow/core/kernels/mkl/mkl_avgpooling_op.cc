@@ -61,6 +61,19 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       MklPoolParameters pool_params;
       // Check whether pooling is 2D or 3D.
       bool is_pool2d = (this->ksize_.size() == 4);
+
+      // Validate that the input tensor rank matches the pooling type.
+      // This prevents a CHECK failure in TFShapeToMklDnnDimsInNCDHW when
+      // the input does not have the expected number of dimensions.
+      if (!dnn_shape_input.IsMklTensor()) {
+        int expected_rank = is_pool2d ? 4 : 5;
+        OP_REQUIRES(
+            context, input_tensor.dims() == expected_rank,
+            absl::InvalidArgumentError(absl::StrCat(
+                "Input must be rank ", expected_rank, " but got rank ",
+                input_tensor.dims())));
+      }
+
       // Get the input tensor and initialize the pooling parameters.
       TensorShape input_tensor_shape = input_tensor.shape();
       this->InitMklPoolParameters(context, &pool_params, dnn_shape_input,
@@ -214,12 +227,19 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       for (int64_t i = 0; i < orig_input_tensor.NumElements(); ++i) {
         OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
       }
+
+      bool is_pool2d = (this->ksize_.size() == 4);
+      int expected_rank = is_pool2d ? 4 : 5;
+      OP_REQUIRES(
+          context, output_shape.dims() == expected_rank,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Input must be rank ", expected_rank, " but got rank ",
+              output_shape.dims())));
+
       Tensor* output_tensor = nullptr;
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, output_shape, &output_tensor));
       output_tensor->flat<T>().setZero();
-
-      bool is_pool2d = (this->ksize_.size() == 4);
 
       // out-of-memory boundary index check for output_tensor in 2D case.
       const int depth_window = this->ksize_[3];
@@ -277,6 +297,13 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       GetMklShape(context, kInputTensorIndexInputGradient, &grad_mkl_shape,
                   this->native_format_);
       if (!context->status().ok()) return;
+      if (!grad_mkl_shape.IsMklTensor()) {
+        OP_REQUIRES(
+            context, grad_tensor.dims() == expected_rank,
+            absl::InvalidArgumentError(absl::StrCat(
+                "Grad must be rank ", expected_rank, " but got rank ",
+                grad_tensor.dims())));
+      }
 
       // Used to allocate output_diff_src/diff_src.
       MklDnnData<T> grad_dnn_data(&cpu_engine_);
