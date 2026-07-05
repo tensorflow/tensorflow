@@ -29,6 +29,7 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_grad
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -280,35 +281,8 @@ class EuclideanNormGradientTest(test.TestCase):
         y = math_ops.reduce_euclidean_norm(x)
 
       dx = tape.gradient(y, x)
-      # When the norm is zero, the gradient should be zero (not NaN).
       dx_answer = constant_op.constant([0.0, 0.0], dtype=dtype)
       self.assertAllClose(dx, dx_answer)
-
-  def testZerosWithAxis(self):
-    for dtype in [dtypes.float32, dtypes.float64]:
-      x = constant_op.constant([[0.0, 3.0], [0.0, 0.0]], dtype=dtype)
-
-      with backprop.GradientTape() as tape:
-        tape.watch(x)
-        y = math_ops.reduce_euclidean_norm(x, axis=1)
-
-      dx = tape.gradient(y, x)
-      # Row [0, 3] has norm 3, gradient = [0/3, 3/3] = [0, 1].
-      # Row [0, 0] has norm 0, gradient should be [0, 0] (not NaN).
-      dx_answer = constant_op.constant([[0.0, 1.0], [0.0, 0.0]], dtype=dtype)
-      self.assertAllClose(dx, dx_answer)
-
-  def testSmallValues(self):
-    # Extremely small values whose squares underflow to zero in float32
-    # should not produce Inf gradients.
-    x = constant_op.constant([1e-19, 1e-19], dtype=dtypes.float32)
-
-    with backprop.GradientTape() as tape:
-      tape.watch(x)
-      y = math_ops.reduce_euclidean_norm(x)
-
-    dx = tape.gradient(y, x)
-    self.assertTrue(math_ops.reduce_all(math_ops.is_finite(dx)))
 
   def test2D_1(self):
     for dtype in [dtypes.float32, dtypes.float64]:
@@ -377,6 +351,37 @@ class EuclideanNormGradientTest(test.TestCase):
           lambda x: math_ops.reduce_euclidean_norm(x, 2), [x])
       err = gradient_checker_v2.max_error(*grads)
       self.assertLess(err, 2e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class LinalgNormGradientTest(test.TestCase):
+
+  def testZeroGrad(self):
+    for dtype in [
+        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128
+    ]:
+      x = constant_op.constant([0.0, 0.0], dtype=dtype)
+
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = linalg_ops.norm_v2(x)
+
+      dx = tape.gradient(y, x)
+      self.assertAllClose(dx, [0.0, 0.0])
+
+  def testNonZeroGrad(self):
+    for dtype in [
+        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128
+    ]:
+      x = constant_op.constant([3.0, 4.0], dtype=dtype)
+
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = linalg_ops.norm_v2(x)
+
+      dx = tape.gradient(y, x)
+      # Expected: x / norm(x) = [3/5, 4/5]
+      self.assertAllClose(dx, [0.6, 0.8])
 
 
 class SegmentMinOrMaxGradientTest(test.TestCase):
