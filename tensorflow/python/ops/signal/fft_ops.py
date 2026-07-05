@@ -86,6 +86,20 @@ def _infer_fft_length_for_irfft(input_tensor, fft_rank):
   return _ops.convert_to_tensor(fft_length, _dtypes.int32)
 
 
+def _validate_static_irfft_fft_length(fft_length_static):
+  if fft_length_static is None:
+    return
+  fft_length_static = np.asarray(fft_length_static)
+  if fft_length_static.size == 0:
+    return
+  fft_length_last = (
+      fft_length_static.item()
+      if fft_length_static.ndim == 0 else fft_length_static[-1])
+  if fft_length_last <= 0:
+    raise ValueError("fft_length[-1] must be > 0, got %d" %
+                     fft_length_last)
+
+
 def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
   """Pads `input_tensor` to `fft_length` on its inner-most `fft_rank` dims."""
   fft_shape = _tensor_util.constant_value_as_shape(fft_length)
@@ -189,17 +203,10 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
         fft_length = _infer_fft_length_for_irfft(input_tensor, fft_rank)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
-      # Validate that fft_length does not contain zero or negative values,
-      # which would produce an empty or invalid output tensor.
-      fft_length_val = _tensor_util.constant_value(fft_length)
-      if fft_length_val is not None and fft_length_val[-1] <= 0:
-        raise ValueError(
-            "Input to IRFFT must have last dimension of at least 2 to "
-            "produce a non-empty output, but got shape: %s"
-            % input_tensor.shape)
+      fft_length_static = _tensor_util.constant_value(fft_length)
+      _validate_static_irfft_fft_length(fft_length_static)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length,
                                          is_reverse=True)
-      fft_length_static = _tensor_util.constant_value(fft_length)
       if fft_length_static is not None:
         fft_length = fft_length_static
       return ifft_fn(input_tensor, fft_length, Treal=real_dtype, name=name)
@@ -375,10 +382,11 @@ def _irfftn_wrapper(irfft_n, default_name):
         fft_length = _infer_fft_length_for_irfftn(input_tensor)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      fft_length_static = _tensor_util.constant_value(fft_length)
+      _validate_static_irfft_fft_length(fft_length_static)
       input_tensor = _maybe_pad_for_rfft(
           input_tensor, fft_rank, fft_length, is_reverse=True
       )
-      fft_length_static = _tensor_util.constant_value(fft_length)
       if fft_length_static is not None:
         fft_length = fft_length_static
 
