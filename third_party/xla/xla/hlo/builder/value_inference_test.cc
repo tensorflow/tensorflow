@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/prng.h"
@@ -51,17 +52,17 @@ class DynamismInferenceTest : public ValueInferenceTest {
  public:
   absl::StatusOr<Literal> ComputeDynamismLiteral(
       XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
-    TF_RETURN_IF_ERROR(builder->first_error());
+    RETURN_IF_ERROR(builder->first_error());
     ValueInference value_inference(builder);
-    TF_ASSIGN_OR_RETURN(auto literal_slice,
-                        value_inference.AnalyzeIsDynamic(operand));
+    ASSIGN_OR_RETURN(auto literal_slice,
+                     value_inference.AnalyzeIsDynamic(operand));
     return literal_slice.Clone();
   }
 
   absl::StatusOr<bool> ComputeDynamismScalar(XlaOp operand, XlaBuilder* builder,
                                              ShapeIndex index = {}) {
-    TF_ASSIGN_OR_RETURN(auto literal,
-                        ComputeDynamismLiteral(operand, builder, nullptr));
+    ASSIGN_OR_RETURN(auto literal,
+                     ComputeDynamismLiteral(operand, builder, nullptr));
     return literal.Get<bool>({}, index);
   }
 };
@@ -549,9 +550,9 @@ class UpperBoundInferenceTest : public ValueInferenceTest {
   absl::StatusOr<OptionalLiteral> ComputeUpperBoundLiteral(
       XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
     ValueInference value_inference(builder);
-    TF_ASSIGN_OR_RETURN(auto literal,
-                        value_inference.AnalyzeConstant(
-                            operand, ValueInferenceMode::kUpperBound));
+    ASSIGN_OR_RETURN(auto literal,
+                     value_inference.AnalyzeConstant(
+                         operand, ValueInferenceMode::kUpperBound));
     return literal;
   }
 };
@@ -701,8 +702,8 @@ class ConstValueInferenceTest : public ValueInferenceTest {
   absl::StatusOr<OptionalLiteral> ComputeConstantValueLiteral(
       XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
     ValueInference value_inference(builder);
-    TF_ASSIGN_OR_RETURN(auto literal, value_inference.AnalyzeConstant(
-                                          operand, ValueInferenceMode::kValue));
+    ASSIGN_OR_RETURN(auto literal, value_inference.AnalyzeConstant(
+                                       operand, ValueInferenceMode::kValue));
     return literal;
   }
 };
@@ -738,6 +739,22 @@ TEST_F(ConstValueInferenceTest, ParamaterValuePassThroughSetBound) {
       ComputeConstantValueLiteral(set_bound, &b).value().Get<int32_t>({});
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), 32);
+}
+
+
+// Regression test for github.com/tensorflow/tensorflow/issues/122050:
+// AnalyzeConstant previously fell through to AnalyzeConstantValueFallback for
+// kTan, which returned InvalidArgument("AnalyzeConstantValueFallback can't
+// handle opcode: tan"). kTan is now handled alongside kSin/kCos.
+TEST_F(ConstValueInferenceTest, TanOfConstant) {
+  XlaBuilder b(TestName());
+  auto c = ConstantR0<float>(&b, 1.0f);
+  auto result = Tan(c);
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().message();
+  auto value = ComputeConstantValueLiteral(result, &b);
+  ASSERT_TRUE(value.ok()) << value.status();
+  // The inferred value must be present (i.e., proven constant, not dynamic).
+  EXPECT_TRUE(value.value().Get<float>({}).has_value());
 }
 
 }  // namespace
