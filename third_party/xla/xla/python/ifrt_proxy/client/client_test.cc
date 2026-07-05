@@ -36,6 +36,7 @@
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -330,6 +331,48 @@ TEST_P(ClientTest, CopyArraysCustomLayoutSuccess) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_2,
                           copied_arrays[1].get()->pjrt_layout());
   EXPECT_EQ(layout_2->ToString(), layout_2_->ToString());
+}
+
+TEST_P(ClientTest, CopyArraysFailsWithNonProxyArray) {
+  auto mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
+  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays = {mock_array};
+
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client_->MakeDeviceList({device_}));
+
+  EXPECT_THAT(
+      client_->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
+                          MemoryKind("mock"), ArrayCopySemantics::kAlwaysCopy),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             testing::HasSubstr("only supports source arrays "
+                                                "that are instances of "
+                                                "xla::ifrt::proxy::Array")));
+}
+
+TEST_P(ClientTest, CopyArraysFailsWithNonProxyDeviceList) {
+  auto mock_device = std::make_unique<xla::ifrt::MockDevice>();
+  std::vector<xla::ifrt::Device*> devices = {mock_device.get()};
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client_->MakeDeviceList(devices));
+
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kDestructArrayRequest)))
+      .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
+
+  std::shared_ptr<xla::ifrt::SingleDeviceSharding> sharding =
+      xla::ifrt::SingleDeviceSharding::Create(device_, xla::ifrt::MemoryKind());
+  auto array = tsl::MakeRef<Array>(client_.get(), rpc_helper_,
+                                   DType(DType::kF64), Shape({1, 2, 3}),
+                                   sharding, ArrayHandle{1234}, layout_1_);
+  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays = {array};
+
+  EXPECT_THAT(
+      client_->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
+                          MemoryKind("mock"), ArrayCopySemantics::kAlwaysCopy),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             testing::HasSubstr("CopyArrays only supports "
+                                                "devices that are instances of "
+                                                "xla::ifrt::proxy::Device")));
 }
 
 TEST_P(ClientTest, GetDefaultDeviceAssignmentSuccess) {

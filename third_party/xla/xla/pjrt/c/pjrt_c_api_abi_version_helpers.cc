@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_abi_version_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
@@ -38,6 +39,14 @@ CApiRuntimeAbiVersionFromProto(const xla::PjRtRuntimeAbiVersionProto& proto,
   if (extension == nullptr) {
     return absl::UnimplementedError(
         "AbiVersion extension not implemented in this PJRT plugin.");
+  }
+  if (extension->base.struct_size <
+          PJRT_STRUCT_SIZE(PJRT_AbiVersion_Extension,
+                           runtime_abi_version_from_proto) ||
+      extension->runtime_abi_version_from_proto == nullptr) {
+    return absl::UnimplementedError(
+        "AbiVersion extension does not implement "
+        "runtime_abi_version_from_proto.");
   }
   std::string serialized_proto = proto.SerializeAsString();
   PJRT_RuntimeAbiVersion_FromProto_Args args;
@@ -59,6 +68,14 @@ CApiExecutableAbiVersionFromProto(
   if (extension == nullptr) {
     return absl::UnimplementedError(
         "AbiVersion extension not implemented in this PJRT plugin.");
+  }
+  if (extension->base.struct_size <
+          PJRT_STRUCT_SIZE(PJRT_AbiVersion_Extension,
+                           executable_abi_version_from_proto) ||
+      extension->executable_abi_version_from_proto == nullptr) {
+    return absl::UnimplementedError(
+        "AbiVersion extension does not implement "
+        "executable_abi_version_from_proto.");
   }
   std::string serialized_proto = proto.SerializeAsString();
   PJRT_ExecutableAbiVersion_FromProto_Args args;

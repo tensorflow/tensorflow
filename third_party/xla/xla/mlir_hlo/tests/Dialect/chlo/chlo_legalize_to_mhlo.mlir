@@ -2756,6 +2756,18 @@ func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32
 
 // -----
 
+// CHECK-LABEL: func.func @top_k_unstable
+// CHECK-HIGH-LEVEL-LABEL: func.func @top_k_unstable
+// CHECK-SAME: (%[[ARG:.*]]: tensor<16x16xf32>)
+func.func @top_k_unstable(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>) {
+  // CHECK-HIGH-LEVEL: mhlo.topk
+  // CHECK: %values, %indices = mhlo.topk(%[[ARG]], k = 8, is_stable = false) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  %1:2 = chlo.top_k(%arg, k=8, is_stable = false) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  func.return %1#0, %1#1 : tensor<16x8xf32>, tensor<16x8xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func.func @dyn_top_k
 // CHECK-HIGH-LEVEL-LABEL: func.func @dyn_top_k
 // CHECK-SAME: ([[ARG:%.*]]: tensor<?x5x?xi1>
@@ -3585,7 +3597,8 @@ func.func @ragged_dot_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<2x5x7
 // CHECK-LABEL: func.func @ragged_dot_batch
 // CHECK-HIGH-LEVEL-LABEL: func.func @ragged_dot_batch
 func.func @ragged_dot_batch(%lhs : tensor<19x17x11x5xf32>, %rhs : tensor<19x17x5x7xf32>, %group_sizes : tensor<19x3xi64>) -> tensor<19x17x11x7xf32> {
-  // CHECK-HIGH-LEVEL: mhlo.ragged_dot
+  // CHECK: "mhlo.dot_general"{{.*}}lhs_batching_dimensions = [0, 1], rhs_batching_dimensions = [0, 1], lhs_contracting_dimensions = [3], rhs_contracting_dimensions = [2]
+  // CHECK-HIGH-LEVEL: "mhlo.dot_general"{{.*}}lhs_batching_dimensions = [0, 1], rhs_batching_dimensions = [0, 1], lhs_contracting_dimensions = [3], rhs_contracting_dimensions = [2]
   %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #chlo.ragged_dot<
       lhs_batching_dimensions = [0,1],
@@ -3633,4 +3646,50 @@ func.func @scan(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32>
     stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
   } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
   func.return %0 : tensor<2x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @scan_with_size
+// CHECK-HIGH-LEVEL-LABEL: func.func @scan_with_size
+func.func @scan_with_size(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
+  // CHECK-HIGH-LEVEL: mhlo.scan
+  // CHECK-HIGH-LEVEL-SAME: scan_dim_size = 2
+  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 attributes {scan_dim_size = 2 : i64} {
+  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
+    %2 = stablehlo.add %input0, %carry0 : tensor<3xf32>
+    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
+  } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
+  func.return %0 : tensor<2x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @mulhi_s32(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<4xi32>, %[[ARG1:.*]]: tensor<4xi32>) -> tensor<4xi32>
+// CHECK:         %[[RESULT:.*]] = mhlo.mulhi %[[ARG0]], %[[ARG1]] : tensor<4xi32>
+// CHECK:         return %[[RESULT]] : tensor<4xi32>
+func.func @mulhi_s32(%arg0 : tensor<4xi32>, %arg1 : tensor<4xi32>) -> tensor<4xi32> {
+  %result = "chlo.mulhi"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  func.return %result : tensor<4xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @mulhi_u32(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<4xui32>, %[[ARG1:.*]]: tensor<4xui32>) -> tensor<4xui32>
+// CHECK:         %[[RESULT:.*]] = mhlo.mulhi %[[ARG0]], %[[ARG1]] : tensor<4xui32>
+// CHECK:         return %[[RESULT]] : tensor<4xui32>
+func.func @mulhi_u32(%arg0 : tensor<4xui32>, %arg1 : tensor<4xui32>) -> tensor<4xui32> {
+  %result = "chlo.mulhi"(%arg0, %arg1) : (tensor<4xui32>, tensor<4xui32>) -> tensor<4xui32>
+  func.return %result : tensor<4xui32>
+}
+
+// CHECK-LABEL: func.func @mulhi_i16(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<4xi16>, %[[ARG1:.*]]: tensor<4xi16>) -> tensor<4xi16>
+// CHECK:         %[[RESULT:.*]] = mhlo.mulhi %[[ARG0]], %[[ARG1]] : tensor<4xi16>
+// CHECK:         return %[[RESULT]] : tensor<4xi16>
+func.func @mulhi_i16(%arg0 : tensor<4xi16>, %arg1 : tensor<4xi16>) -> tensor<4xi16> {
+  %result = "chlo.mulhi"(%arg0, %arg1) : (tensor<4xi16>, tensor<4xi16>) -> tensor<4xi16>
+  func.return %result : tensor<4xi16>
 }

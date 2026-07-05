@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -151,7 +153,7 @@ absl::StatusOr<bool> TryRemoveUnusedConditionalOperands(
       }
       HloInstruction* new_tuple = conditional->parent()->AddInstruction(
           HloInstruction::CreateTuple(new_tuple_operands));
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           conditional->ReplaceOperandWithDifferentShape(branch + 1, new_tuple));
       CHECK(ShapeUtil::Compatible(conditional->operand(branch + 1)->shape(),
                                   conditional->branch_computation(branch)
@@ -460,7 +462,10 @@ absl::StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
   // Do not remove conditionals that contain side-effecting instructions or
   // have control predecessors/successors in either true/false computation.
   if (!conditional->parent()->IsSafelyRemovable(conditional) ||
-      conditional->HasSideEffect()) {
+      conditional->HasSideEffect() ||
+      (conditional->has_frontend_attributes() &&
+       conditional->frontend_attributes().map().contains(
+           kXlaSchedulingGroupIdAttr))) {
     VLOG(2) << "Not attempting to remove conditional as it is not removable or "
                "has side effect: "
             << conditional->ToShortString();
@@ -474,14 +479,18 @@ absl::StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
         conditional->shape(), {conditional->mutable_operand(1 + branch)},
         conditional->branch_computation(branch)));
     conditional->SetupDerivedInstruction(call);
+    // Copy frontend attributes to the new call instruction.
+    call->set_frontend_attributes(conditional->frontend_attributes());
     return call;
   };
 
   if (conditional->branch_count() == 1) {
     HloInstruction* call_op = create_call(0);
     call_op->set_original_value(conditional->original_value());
-    TF_RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, call_op));
-    TF_RETURN_IF_ERROR(CallInliner::Inline(call_op).status());
+    RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, call_op));
+    if (CallInliner::InlineInstructionAllowed(call_op)) {
+      RETURN_IF_ERROR(CallInliner::Inline(call_op).status());
+    }
     return true;
   }
 
@@ -497,8 +506,10 @@ absl::StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
     }
     HloInstruction* call_op = create_call(branch_index);
     call_op->set_original_value(conditional->original_value());
-    TF_RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, call_op));
-    TF_RETURN_IF_ERROR(CallInliner::Inline(call_op).status());
+    RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, call_op));
+    if (CallInliner::InlineInstructionAllowed(call_op)) {
+      RETURN_IF_ERROR(CallInliner::Inline(call_op).status());
+    }
 
     return true;
   }
@@ -583,11 +594,15 @@ absl::StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
             HloInstruction::CreateTuple(selects));
       };
 
-  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(
+  RETURN_IF_ERROR(computation->ReplaceInstruction(
       conditional, select(true_call_op, false_call_op)));
 
-  TF_RETURN_IF_ERROR(CallInliner::Inline(false_call_op).status());
-  TF_RETURN_IF_ERROR(CallInliner::Inline(true_call_op).status());
+  if (CallInliner::InlineInstructionAllowed(false_call_op)) {
+    RETURN_IF_ERROR(CallInliner::Inline(false_call_op).status());
+  }
+  if (CallInliner::InlineInstructionAllowed(true_call_op)) {
+    RETURN_IF_ERROR(CallInliner::Inline(true_call_op).status());
+  }
   return true;
 }
 
@@ -653,7 +668,7 @@ absl::StatusOr<bool> ConditionalSimplifier::RunImpl(
     changed |= MergeDuplicateTupleElements(conditional_op);
     changed |= RemoveUnusedTupleElements(conditional_op);
     changed |= ReplaceRootWithEmptyTupleIfNoUsers(conditional_op);
-    TF_ASSIGN_OR_RETURN(bool result, TryRemoveConditional(conditional_op));
+    ASSIGN_OR_RETURN(bool result, TryRemoveConditional(conditional_op));
     if (result) {
       removed_conditionals.insert(conditional_op);
       changed = true;
@@ -683,8 +698,8 @@ absl::StatusOr<bool> ConditionalSimplifier::RunImpl(
   for (auto* comp : calling_computationals_vector) {
     auto entry = calling_conditionals.find(comp);
     CHECK(entry != calling_conditionals.end());
-    TF_ASSIGN_OR_RETURN(bool result, TryRemoveUnusedConditionalOperands(
-                                         entry->first, entry->second));
+    ASSIGN_OR_RETURN(bool result, TryRemoveUnusedConditionalOperands(
+                                      entry->first, entry->second));
     changed |= result;
   }
 

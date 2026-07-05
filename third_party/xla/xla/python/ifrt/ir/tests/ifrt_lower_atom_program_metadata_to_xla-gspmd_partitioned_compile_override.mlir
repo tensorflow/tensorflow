@@ -44,12 +44,13 @@ module @arg_unspecified_sharding attributes {ifrt.num_devices = 2, ifrt.compile_
 
 // -----
 
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @result_metadata
 module @result_metadata attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
   // CHECK: -> (tensor<2x2xi32>
   // CHECK-SAME: {
   // CHECK-DAG:    mhlo.sharding = "{devices=[2,1]<=[2]}"
-  // CHECK-DAG:    ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:    ifrt.sharding = #sp
   // CHECK-DAG:    ifrt.memory_kind = "device"
   // CHECK-DAG:    mhlo.memory_kind = "device"
   // CHECK-SAME: }
@@ -64,12 +65,13 @@ module @result_metadata attributes {ifrt.num_devices = 2, ifrt.compile_options_k
 
 // -----
 
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @result_unspecified_sharding
 module @result_unspecified_sharding attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
   // CHECK: -> (tensor<2x2xi32>
   // CHECK-SAME: {
   // CHECK-DAG:    mhlo.sharding = "{devices=[2,1]<=[2]}"
-  // CHECK-DAG:    ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:    ifrt.sharding = #sp
   // CHECK-SAME: }
   // CHECK: tensor<2x2xi32> {ifrt.sharding = #ifrt.sharding_unspecified})
   func.func @main()

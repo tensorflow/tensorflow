@@ -39,6 +39,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_lib_hdrs",
     "tf_additional_tensor_coding_deps",
+    "tf_google_mobile_hdrs_only_runtime",
     "tf_google_mobile_srcs_only_runtime",
     "tf_platform_alias",
     "tf_platform_deps",
@@ -305,7 +306,6 @@ tf_cc_test(
     deps = [
         ":cord",
         ":env",
-        ":env_impl",
         ":null_file_system",
         ":path",
         ":protobuf",
@@ -315,7 +315,7 @@ tf_cc_test(
         ":test",
         ":test_main",
         "//tensorflow/core:protos_all_cc",
-        "@eigen_archive//:eigen3",
+        "@com_google_absl//absl/strings:string_view",
         "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
@@ -340,11 +340,9 @@ cc_library(
     deps = [
         ":logging",
         ":macros",
-        ":platform",
         ":status",
         ":str_util",
         ":strcat",
-        ":types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:errors",
@@ -1293,8 +1291,6 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/log",
@@ -1584,6 +1580,15 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
+        "tensor_coding.cc",
+        "@tsl//tsl/platform:mobile_srcs_no_runtime",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
         "abi.h",
         "bfloat16.h",
         "blocking_counter.h",
@@ -1634,7 +1639,6 @@ filegroup(
         "strcat.h",
         "stringpiece.h",
         "stringprintf.h",
-        "tensor_coding.cc",
         "tensor_coding.h",
         "thread_annotations.h",
         "threadpool.h",
@@ -1643,21 +1647,31 @@ filegroup(
         "tstring.h",
         "types.h",
         ":ctstring",
-        "@tsl//tsl/platform:mobile_srcs_no_runtime",
-    ] + tf_platform_alias("additional_mobile_srcs_no_runtime"),
+        "@tsl//tsl/platform:mobile_hdrs_no_runtime",
+    ] + tf_platform_alias("additional_mobile_hdrs_no_runtime"),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "base64.h",
         "cpu_feature_guard.cc",
+        "platform_strings.cc",
+        "@tsl//tsl/platform:mobile_srcs_only_runtime",
+        "@xla//xla/tsl/platform/default:mobile_srcs_only_runtime",
+    ] + tf_google_mobile_srcs_only_runtime(),
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "base64.h",
         "cpu_feature_guard.h",
         "error_logging.h",
         "fingerprint.h",
+        "jpeg.h",
         "notification.h",
-        "platform_strings.cc",
         "platform_strings.h",
         "platform_strings_computed.h",
         "png.h",
@@ -1669,11 +1683,11 @@ filegroup(
         "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
         "//tensorflow/core/platform/profile_utils:cpu_utils.h",
         "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
-        "@tsl//tsl/platform:mobile_srcs_only_runtime",
-        "@xla//xla/tsl/platform/default:mobile_srcs_only_runtime",
+        "@tsl//tsl/platform:mobile_hdrs_only_runtime",
+        "@xla//xla/tsl/platform/default:mobile_hdrs_only_runtime",
     ] + if_not_fuchsia([
         "subprocess.h",
-    ]) + tf_google_mobile_srcs_only_runtime(),
+    ]) + tf_google_mobile_hdrs_only_runtime(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 

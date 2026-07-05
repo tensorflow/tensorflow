@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/views/op_view.h"
 
+#include <string>
 #include <vector>
 
 #include "absl/log/check.h"

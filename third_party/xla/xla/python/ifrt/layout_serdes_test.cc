@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/serdes.h"
@@ -56,7 +57,10 @@ TEST_P(LayoutSerDesTest, CompactLayoutRoundTrip) {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, LayoutSerDesTest,
-    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 }  // namespace
 }  // namespace ifrt

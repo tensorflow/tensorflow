@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
 #include "mlir/Transforms/Passes.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -57,6 +58,12 @@ llvm::cl::opt<std::string> atom_program_version_option(
     llvm::cl::desc("Target version for atom program serialization"),
     llvm::cl::init("current"));
 
+// NOLINTNEXTLINE
+llvm::cl::opt<std::string> atom_program_sdy_version_option(
+    "atom_program_sdy_version",
+    llvm::cl::desc("Target version for atom program SDY serialization"),
+    llvm::cl::init("current"));
+
 mlir::TranslateFromMLIRRegistration serializeRegistration(
     "serialize", "Serialize IFRT IR program into a VIFRT artifact",
     [](mlir::ModuleOp module, llvm::raw_ostream& os) -> mlir::LogicalResult {
@@ -67,7 +74,13 @@ mlir::TranslateFromMLIRRegistration serializeRegistration(
       std::string atom_program_version = atom_program_version_option.getValue();
       if (atom_program_version == "current") {
         atom_program_version =
-            ::mlir::vhlo::Version::getCurrentVersion().toString();
+            mlir::vhlo::Version::getCurrentVersion().toString();
+      }
+      std::string atom_program_sdy_version =
+          atom_program_sdy_version_option.getValue();
+      if (atom_program_sdy_version == "current") {
+        atom_program_sdy_version =
+            mlir::sdy::SdyDialectVersion::getCurrentVersion().toString();
       }
       if (strip_debug_info_option) {
         mlir::PassManager pm(module->getContext());
@@ -78,9 +91,10 @@ mlir::TranslateFromMLIRRegistration serializeRegistration(
       }
 
       auto program = std::make_unique<IfrtIRProgram>(module);
-      auto serialized_or =
-          Serialize(*program, std::make_unique<SerializeIfrtIRProgramOptions>(
-                                  ifrt_version, atom_program_version));
+      auto serialized_or = Serialize(
+          *program,
+          std::make_unique<SerializeIfrtIRProgramOptions>(
+              ifrt_version, atom_program_version, atom_program_sdy_version));
       if (serialized_or.ok()) {
         os << serialized_or->SerializeAsString();
         return mlir::success();
@@ -122,7 +136,7 @@ mlir::TranslateToMLIRRegistration deserializeRegistration(
 }  // namespace ifrt
 }  // namespace xla
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   return mlir::failed(
       mlir::mlirTranslateMain(argc, argv, "IFRT IR translate driver\n"));
 }

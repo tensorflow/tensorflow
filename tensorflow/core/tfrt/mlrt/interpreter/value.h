@@ -40,7 +40,7 @@ template <typename T>
 using IsInPlaceStorage =
     std::integral_constant<bool, sizeof(T) <= sizeof(InPlaceStorageT) &&
                                      alignof(T) <= alignof(InPlaceStorageT) &&
-                                     std::is_move_constructible<T>::value>;
+                                     std::is_move_constructible_v<T>>;
 
 // Since we type-erase the value to be put in class Value, we need to an enum
 // value to select the operation that should be applied on the type-erased
@@ -93,13 +93,11 @@ class alignas(64) Value {
 
   // Construct Value and store `t` as the payload.
   template <typename T,
-            typename std::enable_if<!std::is_same_v<std::decay_t<T>, Value>,
-                                    int>::type = 0>
+            std::enable_if_t<!std::is_same_v<std::decay_t<T>, Value>, int> = 0>
   explicit Value(T&& t);
 
   template <typename T,
-            typename std::enable_if<!std::is_same_v<std::decay_t<T>, Value>,
-                                    int>::type = 0>
+            std::enable_if_t<!std::is_same_v<std::decay_t<T>, Value>, int> = 0>
   Value& operator=(T&& value) {
     Set(std::forward<T>(value));
     return *this;
@@ -226,15 +224,15 @@ struct InPlaceHandler {
     self->handler_ = nullptr;
   }
 
-  template <typename V, typename std::enable_if_t<
-                            std::is_copy_constructible<V>::value, int> = 0>
+  template <typename V,
+            typename std::enable_if_t<std::is_copy_constructible_v<V>, int> = 0>
   static void CopyInternal(Value* self, Value* dest) {
     DCHECK(self->HasValue() && !dest->HasValue());
     Construct(dest, *std::launder(reinterpret_cast<const V*>(&self->storage_)));
   }
 
   template <typename V, typename std::enable_if_t<
-                            !std::is_copy_constructible<V>::value, int> = 0>
+                            !std::is_copy_constructible_v<V>, int> = 0>
   static void CopyInternal(Value* self, Value* dest) {
     LOG(FATAL) << "Copying a mlrt::Value whose underlying type is "  // Crash Ok
                   "not copyable is a runtime error.";
@@ -287,15 +285,15 @@ struct OutOfPlaceHandler {
     self->handler_ = nullptr;
   }
 
-  template <typename V, typename std::enable_if_t<
-                            std::is_copy_constructible<V>::value, int> = 0>
+  template <typename V,
+            typename std::enable_if_t<std::is_copy_constructible_v<V>, int> = 0>
   static void CopyInternal(Value* self, Value* dest) {
     DCHECK(self->HasValue() && !dest->HasValue());
     Construct(dest, *static_cast<const V*>(self->value_));
   }
 
   template <typename V, typename std::enable_if_t<
-                            !std::is_copy_constructible<V>::value, int> = 0>
+                            !std::is_copy_constructible_v<V>, int> = 0>
   static void CopyInternal(Value* self, Value* dest) {
     LOG(FATAL) << "Copying a mlrt::Value whose underlying type is "  // Crash Ok
                   "not copyable is a runtime error.";
@@ -323,8 +321,8 @@ __attribute__((noinline)) TypeInfo* GetTypeInfo() {
 
 }  // namespace value_internal
 
-template <typename T, typename std::enable_if<
-                          !std::is_same_v<std::decay_t<T>, Value>, int>::type>
+template <typename T,
+          std::enable_if_t<!std::is_same_v<std::decay_t<T>, Value>, int>>
 Value::Value(T&& t) {
   Construct<std::decay_t<T>>(std::forward<T>(t));
 }

@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -86,7 +88,7 @@ struct SerializeIfrtIRProgramOptions
     : llvm::RTTIExtends<SerializeIfrtIRProgramOptions, SerializeOptions> {
   explicit SerializeIfrtIRProgramOptions(
       std::string ifrt_version, std::string atom_program_version,
-      bool version_in_place = true,
+      std::string atom_program_sdy_version, bool version_in_place = true,
       // Using a parameter name `serdes_version` avoids shadowing the base class
       // member variable `version`.
       SerDesVersion serdes_version = SerDesDefaultVersionAccessor::Get())
@@ -94,6 +96,7 @@ struct SerializeIfrtIRProgramOptions
             /*version=*/serdes_version),
         ifrt_version(std::move(ifrt_version)),
         atom_program_version(std::move(atom_program_version)),
+        atom_program_sdy_version(std::move(atom_program_sdy_version)),
         version_in_place(version_in_place) {}
 
   static char ID;  // NOLINT
@@ -104,6 +107,9 @@ struct SerializeIfrtIRProgramOptions
   // String of the form "major.minor.patch", representing the atom program
   // version (currently VHLO version).
   std::string atom_program_version;
+  // String of the form "major.minor.patch", representing the SDY version within
+  // the atom program version.
+  std::string atom_program_sdy_version;
   // Whether to version the IFRT IR ModuleOp in-place.
   bool version_in_place;
 };
@@ -118,10 +124,9 @@ struct DeserializeIfrtIRProgramOptions
                         DeserializeExecutableOptions> {
   explicit DeserializeIfrtIRProgramOptions(mlir::MLIRContext* context)
       : context(context) {}
-  DeserializeIfrtIRProgramOptions(
-      mlir::MLIRContext* context,
-      std::optional<xla::ifrt::DeviceListRef> device_list,
-      absl::Span<Device* const> device_assignments)
+  DeserializeIfrtIRProgramOptions(mlir::MLIRContext* context,
+                                  std::optional<DeviceListRef> device_list,
+                                  absl::Span<Device* const> device_assignments)
       : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions,
                           DeserializeExecutableOptions>(device_list),
         context(context),
@@ -142,15 +147,16 @@ struct IfrtIRCompileOptions
       std::vector<DeviceId> device_assignments,
       absl::flat_hash_map<std::string, LoadedExecutableRef>
           loaded_exec_binding = {},
-      std::shared_ptr<absl::flat_hash_map<
-          std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>
+      std::shared_ptr<
+          absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
           compile_options_overrides = {},
       std::string mlir_dump_to = "", std::string mlir_dump_pass_re = "",
       std::string mlir_dump_func_re = ".*", bool mlir_enable_timing = false,
       std::string dot_graph_dump_to = "",
       int64_t dot_graph_min_executable_peak_memory_bytes = 0,
       float dot_graph_min_executable_flops = 0.0,
-      int64_t dot_graph_min_per_device_transfer_size_bytes = 0)
+      int64_t dot_graph_min_per_device_transfer_size_bytes = 0,
+      bool strict_memory_reservation = false)
       : device_assignments(std::move(device_assignments)),
         loaded_exec_binding(std::move(loaded_exec_binding)),
         compile_options_overrides(std::move(compile_options_overrides)),
@@ -163,7 +169,8 @@ struct IfrtIRCompileOptions
             dot_graph_min_executable_peak_memory_bytes),
         dot_graph_min_executable_flops(dot_graph_min_executable_flops),
         dot_graph_min_per_device_transfer_size_bytes(
-            dot_graph_min_per_device_transfer_size_bytes) {}
+            dot_graph_min_per_device_transfer_size_bytes),
+        strict_memory_reservation(strict_memory_reservation) {}
 
   // Mapping from logical device ids in IFRT IR MLIR module to runtime device
   // ids obtained from IFRT client.
@@ -177,8 +184,8 @@ struct IfrtIRCompileOptions
   // Mapping from values of `ifrt.compile_option_key` attribute of a `CallOp` to
   // compile options. If a `CallOp` does not have have the attribute set or does
   // not have an entry in this map then default compile options are used.
-  std::shared_ptr<absl::flat_hash_map<
-      std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>
+  std::shared_ptr<
+      absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
       compile_options_overrides;
 
   // Constructs `IfrtIRCompileOptions` from `IfrtIrCompileOptionsProto`.
@@ -194,9 +201,15 @@ struct IfrtIRCompileOptions
   absl::StatusOr<IfrtIrCompileOptionsProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     IfrtIrCompileOptionsProto proto;
-    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
+
+  // Sets the compile options fields from the given map.
+  absl::Status SetOptionsFromMap(
+      const absl::flat_hash_map<
+          std::string, std::variant<std::string, bool, int64_t, double>>&
+          options);
 
   std::string mlir_dump_to;
   std::string mlir_dump_pass_re;
@@ -206,6 +219,7 @@ struct IfrtIRCompileOptions
   int64_t dot_graph_min_executable_peak_memory_bytes;
   float dot_graph_min_executable_flops;
   int64_t dot_graph_min_per_device_transfer_size_bytes;
+  bool strict_memory_reservation;
 
   static char ID;  // NOLINT
 };
@@ -216,7 +230,7 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
                               std::shared_ptr<IfrtIRCompileOptions> options);
 
-// Gets `xla::ifrt::IfrtIRCompileOptions` from `xla::ifrt::CompileOptions`.
+// Gets `IfrtIRCompileOptions` from `CompileOptions`.
 absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
     std::unique_ptr<CompileOptions> options);
 

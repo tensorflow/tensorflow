@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APFloat.h"
@@ -39,15 +40,13 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -55,6 +54,9 @@ limitations under the License.
 #include "xla/codegen/emitters/utils.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -86,15 +88,12 @@ using llvm::APFloat;
 using llvm::APInt;
 using llvm::ArrayRef;
 using llvm::SmallVector;
-using mlir::AffineExpr;
-using mlir::AffineMap;
 using mlir::DenseElementsAttr;
-using mlir::getAffineDimExpr;
-using mlir::getAffineSymbolExpr;
 using mlir::ImplicitLocOpBuilder;
 using mlir::Location;
 using mlir::MLIRContext;
 using mlir::OpBuilder;
+using mlir::TypeRange;
 using mlir::Value;
 using mlir::ValueRange;
 using mlir::VectorType;
@@ -102,6 +101,7 @@ using mlir::func::FuncOp;
 using mlir::func::ReturnOp;
 using primitive_util::IsUnsignedIntegralType;
 
+constexpr int64_t kGpuGridDims = 6;
 constexpr int64_t kNumWarpsPerBlock = 4;
 constexpr int64_t kMaxVectorizedBits = 128;
 constexpr int64_t kScatterOperandIndex = 0;
@@ -119,17 +119,18 @@ ValueRange EmitUpdateIf(
     ImplicitLocOpBuilder& b, Value condition, ValueRange values,
     llvm::function_ref<SmallVector<Value>(ImplicitLocOpBuilder&)>
         updated_values_fn) {
-  return scf::IfOp::create(
-             b, condition,
-             [&](OpBuilder& then_b, Location then_loc) -> void {
-               ImplicitLocOpBuilder implicit_then_b(then_loc, then_b);
-               scf::YieldOp::create(then_b, then_loc,
-                                    updated_values_fn(implicit_then_b));
-             },
-             [&](OpBuilder& else_b, Location else_loc) -> void {
-               scf::YieldOp::create(else_b, else_loc, values);
-             })
-      .getResults();
+  auto if_op = scf::IfOp::create(b, TypeRange(values), condition,
+                                 /*withElseRegion=*/true);
+
+  OpBuilder then_b = if_op.getThenBodyBuilder();
+  ImplicitLocOpBuilder implicit_then_b(b.getLoc(), then_b);
+  scf::YieldOp::create(implicit_then_b, updated_values_fn(implicit_then_b));
+
+  OpBuilder else_b = if_op.getElseBodyBuilder();
+  ImplicitLocOpBuilder implicit_else_b(b.getLoc(), else_b);
+  scf::YieldOp::create(implicit_else_b, values);
+
+  return if_op.getResults();
 }
 
 // Computes if the slice with the sizes `slice_shape` and the offsets `offsets`
@@ -228,16 +229,48 @@ class EmitterHelper {
         root_computation_(&computations->FindPartitionedComputation(
             fusion.fused_instructions_computation())) {}
 
-  Value GetOperandElement(ImplicitLocOpBuilder& b, ValueRange indices) const {
-    return GetElement(b, kScatterOperandIndex, indices);
+  SmallVector<Value> GetOperandElements(ImplicitLocOpBuilder& b,
+                                        ValueRange indices,
+                                        int num_outputs) const {
+    SmallVector<Value> output_elements;
+    output_elements.reserve(num_outputs);
+    for (int i = 0; i < num_outputs; ++i) {
+      output_elements.push_back(GetElement(b, i, indices));
+    }
+    return output_elements;
+  }
+
+  SmallVector<Value> WriteUpdatesToOperands(ImplicitLocOpBuilder& b,
+                                            ValueRange indices,
+                                            ValueRange reduced_values,
+                                            ValueRange output_tensors) const {
+    SmallVector<Value> output_tensor_elements;
+    output_tensor_elements.reserve(output_tensors.size());
+    for (int i = 0; i < output_tensors.size(); ++i) {
+      output_tensor_elements.push_back(tensor::InsertOp::create(
+          b, reduced_values[i], output_tensors[i], indices));
+    }
+    return output_tensor_elements;
   }
 
   Value GetIndicesElement(ImplicitLocOpBuilder& b, ValueRange indices) const {
-    return GetElement(b, kScatterIndicesIndex, indices);
+    return GetElement(b, description_->scatter->scatter_operand_count(),
+                      indices);
   }
 
   Value GetUpdateElement(ImplicitLocOpBuilder& b, ValueRange indices) const {
     return GetElement(b, kScatterUpdateIndex, indices);
+  }
+
+  SmallVector<Value> GetUpdateElements(ImplicitLocOpBuilder& b,
+                                       ValueRange indices,
+                                       int num_outputs) const {
+    SmallVector<Value> update_elements;
+    update_elements.reserve(num_outputs);
+    for (int i = 0; i < num_outputs; ++i) {
+      update_elements.push_back(GetElement(b, num_outputs + 1 + i, indices));
+    }
+    return update_elements;
   }
 
   FuncOp GetReducer() const {
@@ -248,21 +281,21 @@ class EmitterHelper {
   SmallVector<Value, 4> ExtractOffsets(ImplicitLocOpBuilder& b,
                                        Value slice_id) const;
 
-  Value EmitScatterComputation(ImplicitLocOpBuilder& b, ValueRange indices,
-                               Value update_elem, Value output_tensor) const;
+  SmallVector<Value> EmitScatterComputation(ImplicitLocOpBuilder& b,
+                                            ValueRange indices,
+                                            ValueRange update_elements,
+                                            ValueRange output_tensors) const;
 
-  SmallVector<Value> WriteAccumulatedElementToOutput(
-      ImplicitLocOpBuilder& b, Value accumulator,
+  SmallVector<Value> WriteAccumulatedElementsToOutput(
+      ImplicitLocOpBuilder& b, ValueRange accumulators,
       ValueRange accumulator_indices, ValueRange slice_indices,
-      ValueRange offsets, Value output_tensor) const;
+      ValueRange offsets, ValueRange output_tensors) const;
 
-  Value WriteAccumulatorToOutput(ImplicitLocOpBuilder& b,
-                                 Value write_to_output_required,
-                                 ValueRange thread_and_block_ids,
-                                 Value index_id,
-                                 const IndexingMap& slice_indexing,
-                                 ValueRange offsets, Value accumulator,
-                                 Value output_tensor) const;
+  SmallVector<Value> WriteAccumulatorsToOutput(
+      ImplicitLocOpBuilder& b, Value write_to_output_required,
+      ValueRange thread_and_block_ids, Value index_id,
+      const IndexingMap& slice_indexing, ValueRange offsets,
+      ValueRange accumulators, ValueRange output_tensors) const;
 
  private:
   Value GetElement(ImplicitLocOpBuilder& b, int operand_index,
@@ -293,61 +326,69 @@ SmallVector<Value, 4> EmitterHelper::ExtractOffsets(ImplicitLocOpBuilder& b,
   return offsets;
 }
 
-Value EmitterHelper::EmitScatterComputation(ImplicitLocOpBuilder& b,
-                                            ValueRange indices,
-                                            Value update_elem,
-                                            Value output_tensor) const {
+SmallVector<Value> EmitterHelper::EmitScatterComputation(
+    ImplicitLocOpBuilder& b, ValueRange indices, ValueRange update_elements,
+    ValueRange output_tensors) const {
   FuncOp reducer = GetReducer();
+  // Note: We only support unique indices for variadic scatter.
   if (description_->scatter->unique_indices()) {
-    auto operand_elem = GetOperandElement(b, indices);
-    auto reduced_val = emitters::InlineBlock(b, reducer.getBody().front(),
-                                             {operand_elem, update_elem})[0];
-    return tensor::InsertOp::create(b, reduced_val, output_tensor, indices);
+    SmallVector<Value> operand_elements =
+        GetOperandElements(b, indices, output_tensors.size());
+    SmallVector<Value> inline_arguments =
+        Pack({operand_elements, update_elements});
+    SmallVector<Value> reduced_values =
+        emitters::InlineBlock(b, reducer.getBody().front(), inline_arguments);
+    return WriteUpdatesToOperands(b, indices, reduced_values, output_tensors);
   }
-  auto atomic_rmw = AtomicRMWOp::create(b, output_tensor, indices);
+
+  auto atomic_rmw = AtomicRMWOp::create(b, output_tensors.front(), indices);
   OpBuilder body_b = atomic_rmw.getBodyBuilder();
-  auto reduced_val =
-      emitters::InlineBlock(body_b, reducer.getBody().front(),
-                            {atomic_rmw.getCurrentValue(), update_elem})[0];
+  auto reduced_val = emitters::InlineBlock(
+      body_b, reducer.getBody().front(),
+      {atomic_rmw.getCurrentValue(), update_elements.front()})[0];
   xla::YieldOp::create(body_b, reducer->getLoc(), reduced_val);
-  return atomic_rmw->getResult(0);
+  return {atomic_rmw->getResult(0)};
 }
 
-SmallVector<Value> EmitterHelper::WriteAccumulatedElementToOutput(
-    ImplicitLocOpBuilder& b, Value accumulator, ValueRange accumulator_indices,
-    ValueRange slice_indices, ValueRange offsets, Value output_tensor) const {
-  Value accumulator_elem = vector::ExtractOp::create(
-      b, accumulator, mlir::getAsOpFoldResult(accumulator_indices));
+SmallVector<Value> EmitterHelper::WriteAccumulatedElementsToOutput(
+    ImplicitLocOpBuilder& b, ValueRange accumulators,
+    ValueRange accumulator_indices, ValueRange slice_indices,
+    ValueRange offsets, ValueRange output_tensors) const {
+  SmallVector<Value> accumulator_elements;
+  accumulator_elements.reserve(accumulators.size());
+  for (int i = 0; i < accumulators.size(); ++i) {
+    accumulator_elements.push_back(vector::ExtractOp::create(
+        b, accumulators[i], mlir::getAsOpFoldResult(accumulator_indices)));
+  }
 
   SmallVector<Value, 4> output_indices(offsets.begin(), offsets.end());
   for (int i = 0; i < output_indices.size(); ++i) {
     output_indices[i] =
         arith::AddIOp::create(b, slice_indices[i + 1], output_indices[i]);
   }
-  return {EmitScatterComputation(b, output_indices, accumulator_elem,
-                                 output_tensor)};
+  return EmitScatterComputation(b, output_indices, accumulator_elements,
+                                output_tensors);
 }
 
-Value EmitterHelper::WriteAccumulatorToOutput(
+SmallVector<Value> EmitterHelper::WriteAccumulatorsToOutput(
     ImplicitLocOpBuilder& b, Value write_to_output_required,
     ValueRange thread_and_block_ids, Value index_id,
-    const IndexingMap& slice_indexing, ValueRange offsets, Value accumulator,
-    Value output_tensor) const {
+    const IndexingMap& slice_indexing, ValueRange offsets,
+    ValueRange accumulators, ValueRange output_tensors) const {
   SmallVector<Value> dims = Pack({thread_and_block_ids, index_id});
   return EmitUpdateIf(
-             b, write_to_output_required, output_tensor,
-             [&](ImplicitLocOpBuilder& if_builder) -> SmallVector<Value> {
-               return EmitXlaLoopOp(
-                   if_builder, dims, output_tensor, slice_indexing,
-                   [&](ImplicitLocOpBuilder& update_loop_b,
-                       ValueRange accumulator_indices, ValueRange slice_indices,
-                       ValueRange output_tensors) -> SmallVector<Value> {
-                     return WriteAccumulatedElementToOutput(
-                         update_loop_b, accumulator, accumulator_indices,
-                         slice_indices, offsets, output_tensors.front());
-                   });
-             })
-      .front();
+      b, write_to_output_required, output_tensors,
+      [&](ImplicitLocOpBuilder& if_builder) -> SmallVector<Value> {
+        return EmitXlaLoopOp(
+            if_builder, dims, output_tensors, slice_indexing,
+            [&](ImplicitLocOpBuilder& update_loop_b,
+                ValueRange accumulator_indices, ValueRange slice_indices,
+                ValueRange output_tensors) -> SmallVector<Value> {
+              return WriteAccumulatedElementsToOutput(
+                  update_loop_b, accumulators, accumulator_indices,
+                  slice_indices, offsets, output_tensors);
+            });
+      });
 }
 
 Value EmitterHelper::GetElement(ImplicitLocOpBuilder& b, int operand_index,
@@ -359,10 +400,9 @@ Value EmitterHelper::GetElement(ImplicitLocOpBuilder& b, int operand_index,
 
 ScatterFusion::ScatterFusion(const HloFusionAnalysis& analysis,
                              const ScatterDescription& description,
-                             int64_t vector_size, MLIRContext* mlir_context)
+                             int64_t vector_size)
     : analysis_(analysis),
       description_(description),
-      mlir_context_(mlir_context),
       warp_size_(WarpSize(analysis_.device_info())),
       vector_size_(vector_size) {}
 
@@ -403,13 +443,13 @@ std::vector<emitters::EpilogueSpecification> ScatterFusion::GetEpilogues(
 
 ScatterWithDistributedUpdates::ScatterWithDistributedUpdates(
     const HloFusionAnalysis& analysis, const ScatterDescription& description,
-    int64_t vector_size, MLIRContext* mlir_context)
-    : ScatterFusion(analysis, description, vector_size, mlir_context) {
+    int64_t vector_size)
+    : ScatterFusion(analysis, description, vector_size) {
   // We have to make sure that there is no thread that processes elements of
   // two different update slice.
   auto launch_dimensions = CalculateLaunchDimensions(
       description_.update_shape, analysis_.device_info(),
-      {static_cast<int>(vector_size_)});
+      static_cast<int>(vector_size_));
   num_blocks_ = launch_dimensions.num_blocks();
   num_warps_ = CeilOfRatio(
       static_cast<int64_t>(launch_dimensions.num_threads_per_block()),
@@ -429,10 +469,9 @@ void ScatterWithDistributedUpdates::ComputeIndexing(
   if (indices_map) {
     // Create a map from scatter update to scatter indices.
     *indices_map = IndexingMap{
-        AffineMap::get(6, 1,
-                       {scatter_update_map.GetAffineMap().getResult(0),
-                        getAffineSymbolExpr(0, mlir_context)},
-                       mlir_context),
+        SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/1,
+                         {scatter_update_map.GetSymbolicMap().GetResult(0),
+                          CreateSymbolExpr(0, kGpuGridDims, mlir_context)}),
         DimVarsFromGPUGrid({num_warps_ * warp_size_, 1, 1, num_blocks_, 1, 1}),
         RangeVarsFromTensorSizes({description_.index_vector_length}),
         /*rt_vars=*/{}};
@@ -447,6 +486,7 @@ absl::Status ScatterFusion::EmitEntryFunction(
     const PartitionedComputations& computations,
     const CallTargetProvider& call_targets, FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
+  mlir::MLIRContext* mlir_context = entry_function.getContext();
   EmitterHelper helper(description_, &computations, &call_targets,
                        entry_function, fusion);
 
@@ -454,11 +494,12 @@ absl::Status ScatterFusion::EmitEntryFunction(
   ImplicitLocOpBuilder b(entry_function.getLoc(), entry_function);
   b.setInsertionPointToStart(entry_function.addEntryBlock());
   auto thread_and_block_ids = EmitThreadAndBlockIds(b);
-  Value output_tensor = entry_function.getArguments().back();
+  int64_t num_outputs = description_.scatter->scatter_operand_count();
+  auto output_tensor = entry_function.getArguments().take_back(num_outputs);
 
   IndexingMap updates_map = IndexingMap::GetUndefined();
   IndexingMap indices_map = IndexingMap::GetUndefined();
-  ComputeIndexing(mlir_context_, &updates_map, &indices_map);
+  ComputeIndexing(mlir_context, &updates_map, &indices_map);
   updates_map.Simplify();
 
   return EmitEntryFunctionImpl(b, helper, updates_map, indices_map,
@@ -473,14 +514,14 @@ void EmitNaiveImplementation(ImplicitLocOpBuilder& b,
                              const IndexingMap& updates_map,
                              const IndexingMap& indices_map,
                              ValueRange thread_and_block_ids,
-                             Value output_tensor) {
+                             ValueRange output_tensors) {
   auto scatter_indices_to_operand_dim =
       description.scatter->scatter_dimension_numbers()
           .scatter_dims_to_operand_dims();
   MLIRContext* mlir_context = b.getContext();
   auto thread_id_to_update_id_map = IndexingMap(
-      AffineMap::get(6, 0, {updates_map.GetAffineMap().getResult(0)},
-                     mlir_context),
+      SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/0,
+                       {updates_map.GetSymbolicMap().GetResult(0)}),
       updates_map.GetDimVars(),
       /*range_vars = */ {}, /*rt vars = */ {});
   Value thread_id_to_index_id_value =
@@ -491,7 +532,7 @@ void EmitNaiveImplementation(ImplicitLocOpBuilder& b,
       arith::CmpIPredicate::ult, thread_id_to_index_id_value,
       arith::ConstantIndexOp::create(b, description.num_slices));
   auto result = EmitUpdateIf(
-      b, index_id_in_bounds, {output_tensor},
+      b, index_id_in_bounds, output_tensors,
       [&](ImplicitLocOpBuilder& outer_nested_b) -> SmallVector<Value> {
         SmallVector<Value, 4> update_offsets =
             helper.ExtractOffsets(outer_nested_b, thread_id_to_index_id_value);
@@ -505,37 +546,37 @@ void EmitNaiveImplementation(ImplicitLocOpBuilder& b,
                             description.output_shape, update_offsets);
 
         ValueRange predicated_update = EmitUpdateIf(
-            outer_nested_b, in_bounds, {output_tensor},
+            outer_nested_b, in_bounds, output_tensors,
             [&](ImplicitLocOpBuilder& nested_b) -> SmallVector<Value> {
               return EmitXlaLoopOp(
-                  nested_b, thread_and_block_ids, {output_tensor}, updates_map,
+                  nested_b, thread_and_block_ids, output_tensors, updates_map,
                   [&](ImplicitLocOpBuilder& update_loop_b,
                       ValueRange symbol_values, ValueRange map_results,
                       ValueRange output_tensors) -> SmallVector<Value> {
-                    // Extract update element.
-                    auto update_elem =
-                        helper.GetUpdateElement(update_loop_b, map_results);
+                    // Extract update elements.
+                    SmallVector<Value> update_elems = helper.GetUpdateElements(
+                        update_loop_b, map_results, output_tensors.size());
                     auto output_indices = std::move(update_offsets);
                     for (int i = 0; i < output_indices.size(); ++i) {
                       output_indices[i] = arith::AddIOp::create(
                           update_loop_b, map_results[i + 1], output_indices[i]);
                     }
-                    Value output_tensor = output_tensors.front();
-                    Value updated_output = helper.EmitScatterComputation(
-                        update_loop_b, output_indices, update_elem,
-                        output_tensor);
-                    return {updated_output};
+                    SmallVector<Value> updated_outputs =
+                        helper.EmitScatterComputation(
+                            update_loop_b, output_indices, update_elems,
+                            output_tensors);
+                    return updated_outputs;
                   });
             });
         return predicated_update;
       });
-  ReturnOp::create(b, result.front());
+  ReturnOp::create(b, result);
 }
 
 absl::Status ScatterWithDistributedUpdates::EmitEntryFunctionImpl(
     ImplicitLocOpBuilder& b, const EmitterHelper& helper,
     const IndexingMap& updates_map, const IndexingMap& indices_map,
-    ValueRange thread_and_block_ids, Value output_tensor) const {
+    ValueRange thread_and_block_ids, ValueRange output_tensors) const {
   if (VLOG_IS_ON(5)) {
     llvm::errs() << "Settings for ScatterWithDistributedUpdates: \n"
                  << "vector_size: " << vector_size_ << "\n"
@@ -543,16 +584,15 @@ absl::Status ScatterWithDistributedUpdates::EmitEntryFunctionImpl(
                  << "num_blocks: " << num_blocks_ << "\n";
   }
   EmitNaiveImplementation(b, description_, helper, updates_map, indices_map,
-                          thread_and_block_ids, output_tensor);
+                          thread_and_block_ids, output_tensors);
   return absl::OkStatus();
 }
 
 ScatterWithDistributedIndices::ScatterWithDistributedIndices(
     const HloFusionAnalysis& analysis, const ScatterDescription& description,
     int64_t vector_size, int64_t num_warps_per_slice,
-    int64_t num_indices_per_warp, int64_t indices_vector_size,
-    MLIRContext* mlir_context)
-    : ScatterFusion(analysis, description, vector_size, mlir_context),
+    int64_t num_indices_per_warp, int64_t indices_vector_size)
+    : ScatterFusion(analysis, description, vector_size),
       num_warps_per_slice_(num_warps_per_slice),
       num_indices_per_warp_(num_indices_per_warp),
       indices_vector_size_(indices_vector_size) {
@@ -565,18 +605,17 @@ void ScatterWithDistributedIndices::ComputeIndexing(
     MLIRContext* mlir_context, IndexingMap* updates_map,
     IndexingMap* indices_map) const {
   // Compute thread id mapping based on the first update operand.
-  auto thread_x = getAffineDimExpr(
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
-  auto block_x = getAffineDimExpr(
-      KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
-  auto warp_id = thread_x.floorDiv(warp_size_);
-  auto slice_id =
-      (block_x * num_warps_ + warp_id).floorDiv(num_warps_per_slice_);
+  auto thread_x = CreateDimExpr(MlirKernelFusion::kIndexingMapThreadIdxDims[0],
+                                mlir_context);
+  auto block_x = CreateDimExpr(MlirKernelFusion::kIndexingMapBlockIdxDims[0],
+                               mlir_context);
+  auto warp_id = thread_x / warp_size_;
+  auto slice_id = (block_x * num_warps_ + warp_id) / num_warps_per_slice_;
   auto warp_id_in_slice =
       (block_x * num_warps_ + warp_id) % num_warps_per_slice_;
   auto lane_id = thread_x % warp_size_;
-  auto index_id_loop = getAffineSymbolExpr(0, mlir_context);
-  auto index_vector_id = getAffineSymbolExpr(1, mlir_context);
+  auto index_id_loop = CreateSymbolExpr(0, kGpuGridDims, mlir_context);
+  auto index_vector_id = CreateSymbolExpr(1, kGpuGridDims, mlir_context);
 
   auto vectorized_index_id_expr = slice_id * num_indices_per_warp_ +
                                   index_id_loop * indices_vector_size_ +
@@ -585,10 +624,10 @@ void ScatterWithDistributedIndices::ComputeIndexing(
   auto grid_vars =
       DimVarsFromGPUGrid({num_warps_ * warp_size_, 1, 1, num_blocks_, 1, 1});
   if (indices_map) {
-    auto index_dim_loop = getAffineSymbolExpr(2, mlir_context);
+    auto index_dim_loop = CreateSymbolExpr(2, kGpuGridDims, mlir_context);
     *indices_map = IndexingMap{
-        AffineMap::get(6, 3, {vectorized_index_id_expr, index_dim_loop},
-                       mlir_context),
+        SymbolicMap::Get(mlir_context, kGpuGridDims, 3,
+                         {vectorized_index_id_expr, index_dim_loop}),
         grid_vars,
         {IndexingMap::Variable{
              {0, num_indices_per_warp_ / indices_vector_size_ - 1},
@@ -605,9 +644,9 @@ void ScatterWithDistributedIndices::ComputeIndexing(
   }
 
   if (updates_map) {
-    auto index_id = getAffineSymbolExpr(0, mlir_context);
-    auto update_dim_loop = getAffineSymbolExpr(1, mlir_context);
-    auto vector_id = getAffineSymbolExpr(2, mlir_context);
+    auto index_id = CreateSymbolExpr(0, kGpuGridDims, mlir_context);
+    auto update_dim_loop = CreateSymbolExpr(1, kGpuGridDims, mlir_context);
+    auto vector_id = CreateSymbolExpr(2, kGpuGridDims, mlir_context);
     auto num_elements_per_slice = Product(description_.slice_shape);
 
     auto index_id_expr = slice_id * num_indices_per_warp_ + index_id;
@@ -616,12 +655,13 @@ void ScatterWithDistributedIndices::ComputeIndexing(
         update_dim_loop * vector_size_ * warp_size_ * num_warps_per_slice_ +
         lane_id * vector_size_ + vector_id;
 
-    SmallVector<AffineExpr, 4> updates_indexing = {index_id_expr};
+    SmallVector<SymbolicExpr> updates_indexing = {index_id_expr};
     updates_indexing.append(
         DelinearizeInBoundsIndex(linear_slice_index, description_.slice_shape));
 
     *updates_map = IndexingMap{
-        AffineMap::get(6, 3, updates_indexing, mlir_context),
+        SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/3,
+                         updates_indexing),
         grid_vars,
         {IndexingMap::Variable{{0, num_indices_per_warp_ - 1}, "index_id_loop"},
          IndexingMap::Variable{
@@ -631,7 +671,7 @@ void ScatterWithDistributedIndices::ComputeIndexing(
              "update_loop"},
          IndexingMap::Variable{{0, vector_size_ - 1}, "vector_id"}},
         /*rt_vars=*/{},
-        std::vector<std::pair<AffineExpr, Interval>>{
+        std::vector<std::pair<SymbolicExpr, Interval>>{
             std::make_pair(index_id_expr,
                            Interval{0, description_.num_slices - 1}),
             std::make_pair(linear_slice_index,
@@ -657,7 +697,10 @@ Value ScatterWithDistributedIndices::InitializeAccumulator(
 absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
     ImplicitLocOpBuilder& b, const EmitterHelper& helper,
     const IndexingMap& updates_map, const IndexingMap& indices_map,
-    ValueRange thread_and_block_ids, Value output_tensor) const {
+    ValueRange thread_and_block_ids, ValueRange output_tensors) const {
+  CHECK_EQ(output_tensors.size(), 1) << "Variadic scatter is not supported.";
+  Value output_tensor = output_tensors.front();
+
   if (VLOG_IS_ON(5)) {
     llvm::errs() << "Settings for ScatterWithDistributedIndices: \n"
                  << "vector_size: " << vector_size_ << "\n"
@@ -669,19 +712,19 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
   }
   if (num_indices_per_warp_ == 1) {
     EmitNaiveImplementation(b, description_, helper, updates_map, indices_map,
-                            thread_and_block_ids, output_tensor);
+                            thread_and_block_ids, output_tensors);
     return absl::OkStatus();
   }
   MLIRContext* mlir_context = b.getContext();
 
   auto thread_id_to_update_id_map = IndexingMap(
-      AffineMap::get(6, 2, {indices_map.GetAffineMap().getResult(0)},
-                     mlir_context),
+      SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/2,
+                       {indices_map.GetSymbolicMap().GetResult(0)}),
       indices_map.GetDimVars(),
       /*range_vars = */
       {indices_map.GetRangeVars().begin(),
        indices_map.GetRangeVars().begin() + 2},
-      /*rt vars = */ {}, indices_map.GetConstraints());
+      /*rt vars = */ {}, indices_map.GetSymbolicConstraints());
 
   // Convert index_id_loop and index_vector_id to dimension variables.
   IndexingMap slice_indexing =
@@ -751,9 +794,12 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
     Value write_to_output_required = arith::AndIOp::create(
         b, is_not_first_iteration,
         arith::AndIOp::create(b, offsets_changed, iter_is_inbounds));
-    iter_output = helper.WriteAccumulatorToOutput(
-        b, write_to_output_required, thread_and_block_ids, iter_slice_id,
-        slice_indexing, offsets, iter_acc, iter_output);
+    iter_output = helper
+                      .WriteAccumulatorsToOutput(b, write_to_output_required,
+                                                 thread_and_block_ids,
+                                                 iter_slice_id, slice_indexing,
+                                                 offsets, iter_acc, iter_output)
+                      .front();
 
     // Update `is_inbounds` if the offsets changed.
     Value new_is_inbounds = UpdateIsInbounds(
@@ -811,7 +857,7 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
     auto updated_accumulator =
         EmitUpdateIf(nested_b, new_is_inbounds, {iter_acc},
                      [&](ImplicitLocOpBuilder& if_b) {
-                       return scf::IfOp::create(nested_b, offsets_changed,
+                       return scf::IfOp::create(if_b, offsets_changed,
                                                 emit_overwrite_accumulator_fn,
                                                 emit_combine_accumulator_fn)
                            .getResults();
@@ -837,9 +883,12 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
   Value result_is_inbounds = loop_over_indices_results_unpacked[2].front();
   Value result_acc = loop_over_indices_results_unpacked[3].front();
   Value result_output = loop_over_indices_results_unpacked[4].front();
-  result_output = helper.WriteAccumulatorToOutput(
-      b, result_is_inbounds, thread_and_block_ids, result_slice_id,
-      slice_indexing, result_offsets, result_acc, result_output);
+  result_output =
+      helper
+          .WriteAccumulatorsToOutput(
+              b, result_is_inbounds, thread_and_block_ids, result_slice_id,
+              slice_indexing, result_offsets, result_acc, result_output)
+          .front();
 
   ReturnOp::create(b, result_output);
   return absl::OkStatus();
@@ -893,7 +942,7 @@ int64_t GetNumPossibleValidIndices(absl::Span<const int64_t> slice_shape,
 }
 
 std::unique_ptr<ScatterFusion> CreateScatterFusion(
-    const HloFusionAnalysis& analysis, MLIRContext* mlir_context) {
+    const HloFusionAnalysis& analysis) {
   auto description = GetScatterDescription(analysis);
   int64_t warp_size = WarpSize(analysis.device_info());
   int64_t num_elements_per_slice = Product(description.slice_shape);
@@ -943,15 +992,14 @@ std::unique_ptr<ScatterFusion> CreateScatterFusion(
     }
     return std::make_unique<ScatterWithDistributedIndices>(
         analysis, description, vector_size, num_warps_per_slice,
-        num_indices_per_warp, indices_vector_size, mlir_context);
+        num_indices_per_warp, indices_vector_size);
   }
   // Otherwise, we distribute the linearized updates tensor.
   vector_size =
       std::gcd(num_elements_per_slice,
-               ComputeLoopFusionConfig(analysis, description.update_shape)
-                   .unroll_factor);
-  return std::make_unique<ScatterWithDistributedUpdates>(
-      analysis, description, vector_size, mlir_context);
+               ComputeLoopFusionConfig(analysis, description.update_shape));
+  return std::make_unique<ScatterWithDistributedUpdates>(analysis, description,
+                                                         vector_size);
 }
 
 }  // namespace gpu

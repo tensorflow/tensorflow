@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/execution_context.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
@@ -94,7 +96,7 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
 class CustomCallTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                           HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   std::string PlatformName() {
     if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuCuda)) {
@@ -394,9 +396,6 @@ TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
           HasSubstr(
               "No FFI handler registered for __xla_test$$unknown_target")));
 }
-
-// Memcpy and SubBuffers tests are already ported in
-// fusions/address_computation_fusion_test.cc
 
 std::string& kExpectedOpaque = *new std::string("abc\0def", 7);
 
@@ -1007,14 +1006,14 @@ static absl::Status AddOne(se::Stream* stream, ffi::AnyBuffer src,
 
   int32_t data[2];
   se::DeviceAddressBase buffer_mem = ret->device_memory();
-  TF_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   data[0] += 1;
   data[1] += 1;
 
-  TF_RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   return absl::OkStatus();
 }
@@ -1135,14 +1134,14 @@ absl::Status UpdateBufferImpl(se::Stream* stream, ffi::AnyBuffer src,
   }
   int32_t data[4];
   se::DeviceAddressBase buffer_mem = ret->device_memory();
-  TF_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   data[offset] += 1;
   data[offset + 1] += 1;
 
-  TF_RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   return absl::OkStatus();
 }
@@ -1276,12 +1275,12 @@ TEST_F(CustomCallHloTest, CustomCallConcurrentUpdateTwoBuffers) {
       frontend_attributes={_xla_stream_annotation="1"}
     b1_1 = b(s32[4]) async-done(b1_1_start),
       frontend_attributes={_xla_stream_annotation="1"},
-      backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+      backend_config={"operation_queue_id":"0","force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
     b2_1_start = ((b(s32[4])), b(s32[4])) async-start(b2_0), calls=async_comp2,
       frontend_attributes={_xla_stream_annotation="2"}
     b2_1 = b(s32[4]) async-done(b2_1_start),
       frontend_attributes={_xla_stream_annotation="2"},
-      backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+      backend_config={"operation_queue_id":"0","force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
 
     v_1 = s32[4] custom-call(b1_1), custom_call_target="Unpin",
       output_to_operand_aliasing={{}: (0, {})}

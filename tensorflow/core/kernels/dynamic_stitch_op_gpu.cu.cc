@@ -29,17 +29,17 @@ using GPUDevice = Eigen::GpuDevice;
 namespace {
 
 template <typename T>
-__global__ void DynamicStitchKernel(const int32 slice_size,
-                                    const int32 output_size,
-                                    GpuDeviceArrayStruct<int32> input_indices,
+__global__ void DynamicStitchKernel(const int32_t slice_size,
+                                    const int32_t output_size,
+                                    GpuDeviceArrayStruct<int32_t> input_indices,
                                     GpuDeviceArrayStruct<const T*> input_ptrs,
                                     T* output) {
-  int32* data_indices = GetGpuDeviceArrayOnDevice(&input_indices);
+  int32_t* data_indices = GetGpuDeviceArrayOnDevice(&input_indices);
   const T** data_ptrs = GetGpuDeviceArrayOnDevice(&input_ptrs);
   GPU_1D_KERNEL_LOOP(output_index, output_size) {
-    const int32 slice_id = output_index / slice_size;
-    const int32 slice_offset = output_index % slice_size;
-    const int32 input_index = data_indices[slice_id];
+    const int32_t slice_id = output_index / slice_size;
+    const int32_t slice_offset = output_index % slice_size;
+    const int32_t input_index = data_indices[slice_id];
     if (input_index != -1) {
       output[output_index] = ldg(data_ptrs[input_index] + slice_offset);
     }
@@ -50,11 +50,12 @@ __global__ void DynamicStitchKernel(const int32 slice_size,
 
 template <typename T>
 void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
-                          const int32 slice_size, const int32 first_dim_size,
+                          const int32_t slice_size,
+                          const int32_t first_dim_size,
                           const GpuDeviceArrayStruct<int>& input_indices,
                           const GpuDeviceArrayStruct<const T*>& input_ptrs,
                           T* output) {
-  const int32 output_size = first_dim_size * slice_size;
+  const int32_t output_size = first_dim_size * slice_size;
   auto config = GetGpuLaunchConfig(output_size, gpu_device);
 
   TF_CHECK_OK(GpuLaunchKernel(DynamicStitchKernel<T>, config.block_count,

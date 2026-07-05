@@ -367,8 +367,8 @@ Status GraphDefImporter::ConvertFunctionAttributes(
   // infratructure expectations.
   for (const auto &name_attr : function.attr()) {
     if (name_attr.first.empty()) {
-      return InvalidArgument("Function ", function.signature().name(),
-                             " has an empty attr name");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Function ", function.signature().name(), " has an empty attr name"));
     }
     // TODO(b/230143351): `ConvertAttributeValue` is a little slow due to
     // `ConvertTensorProto` and `ConvertTensorShapeProto`.
@@ -380,7 +380,7 @@ Status GraphDefImporter::ConvertFunctionAttributes(
   // Convert the first-class attributes.
   const tensorflow::OpDef &signature = function.signature();
   if (signature.name().empty())
-    return InvalidArgument("Function without a name");
+    return absl::InvalidArgumentError("Function without a name");
   attrs.append(op.getSymNameAttrName(), b_.getStringAttr(signature.name()));
 
   if (!signature.description().empty()) {
@@ -498,20 +498,23 @@ absl::StatusOr<Value> GraphDefImporter::ResolveDataResult(const ResultId &id,
                                                           ResultInfo *info) {
   if (id.output.empty()) {
     if (id.index >= info->data.size()) {
-      return InvalidArgument("Result #", id.index, " of node '", id.node.str(),
-                             "' is out of bounds");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Result #", id.index, " of node '", id.node.str(),
+                       "' is out of bounds"));
     }
     return info->data[id.index];
   }
 
   auto it = info->outputs.find({id.output.data(), id.output.size()});
   if (it == info->outputs.end()) {
-    return InvalidArgument("Node '", id.node.str(), "' has no output called '",
-                           id.output.str(), "'");
+    return absl::InvalidArgumentError(absl::StrCat("Node '", id.node.str(),
+                                                   "' has no output called '",
+                                                   id.output.str(), "'"));
   }
   if (id.index >= it->second.size()) {
-    return InvalidArgument("Result #", id.index, " of segment '", id.node.str(),
-                           ":", id.output.str(), "' is out of bounds");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Result #", id.index, " of segment '", id.node.str(), ":",
+                     id.output.str(), "' is out of bounds"));
   }
   return it->second[id.index];
 }
@@ -612,14 +615,16 @@ Status GraphDefImporter::ConvertFunctionDef(
 
     auto ret_it = function.ret().find(def.name());
     if (ret_it == function.ret().end()) {
-      return InvalidArgument("Output '", def.name(),
-                             "' was not found in 'ret'");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Output '", def.name(), "' was not found in 'ret'"));
     }
     TF_ASSIGN_OR_RETURN(Result result, GetResult(s, ret_it->second));
     if (result.info)
-      return InvalidArgument("Return '", ret_it->second, "' was not found");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Return '", ret_it->second, "' was not found"));
     if (result.control)
-      return InvalidArgument("Unexpected control result: ", ret_it->second);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unexpected control result: ", ret_it->second));
     return_operands.push_back(result.data);
   }
 
@@ -627,13 +632,13 @@ Status GraphDefImporter::ConvertFunctionDef(
   for (const std::string &control_ret : signature.control_output()) {
     auto ret_it = function.control_ret().find(control_ret);
     if (ret_it == function.control_ret().end()) {
-      return InvalidArgument("Control output '", control_ret,
-                             "' was not found in 'control_ret'");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Control output '", control_ret, "' was not found in 'control_ret'"));
     }
     std::unique_ptr<ResultInfo> &result = s[ret_it->second];
     if (!result || !result->resolved) {
-      return InvalidArgument("Control return ", ret_it->second,
-                             " was not found");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Control return ", ret_it->second, " was not found"));
     }
     return_operands.push_back(result->control);
     control_ret_attrs.push_back(b_.getDictionaryAttr(NamedAttribute(
@@ -696,7 +701,7 @@ Status GraphDefImporter::ConvertNodes(
              << edge.second;
         },
         "\n");
-    return InvalidArgument(std::move(os.str()));
+    return absl::InvalidArgumentError(os.str());
   }
   // The placeholder has no uses and should not acquire any more uses. Safely
   // delete it from the IR.
@@ -716,13 +721,15 @@ absl::StatusOr<unsigned int> GraphDefImporter::ArgNumType(
         if (auto dtype = mlir::dyn_cast<TypeAttr>(attr)) {
           types.push_back(UnrankedTensorType::get(dtype.getValue()));
         } else {
-          return InvalidArgument("Expected '", arg_def.type_list_attr(),
-                                 "' to be a list of types");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Expected '", arg_def.type_list_attr(),
+                           "' to be a list of types"));
         }
       }
       return v.size();
     }
-    return NotFound("Type attr not found: ", arg_def.type_list_attr());
+    return absl::NotFoundError(
+        absl::StrCat("Type attr not found: ", arg_def.type_list_attr()));
   }
 
   unsigned num = 1;
@@ -732,7 +739,8 @@ absl::StatusOr<unsigned int> GraphDefImporter::ArgNumType(
             attrs.get(arg_def.number_attr()))) {
       num = v.getValue().getZExtValue();
     } else {
-      return NotFound("Type attr not found: ", arg_def.number_attr());
+      return absl::NotFoundError(
+          absl::StrCat("Type attr not found: ", arg_def.number_attr()));
     }
   }
 
@@ -741,14 +749,15 @@ absl::StatusOr<unsigned int> GraphDefImporter::ArgNumType(
   if (arg_def.type() != DataType::DT_INVALID) {
     TF_RETURN_IF_ERROR(ConvertDataType(arg_def.type(), b_, &dtype));
   } else if (arg_def.type_attr().empty()) {
-    return InvalidArgument("Arg '", arg_def.name(),
-                           "' has invalid type and no type attribute");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Arg '", arg_def.name(), "' has invalid type and no type attribute"));
   } else {
     if (auto v =
             mlir::dyn_cast_or_null<TypeAttr>(attrs.get(arg_def.type_attr()))) {
       dtype = v.getValue();
     } else {
-      return NotFound("Type attr not found: ", arg_def.type_attr());
+      return absl::NotFoundError(
+          absl::StrCat("Type attr not found: ", arg_def.type_attr()));
     }
   }
   types.append(num, UnrankedTensorType::get(dtype));
@@ -759,7 +768,8 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
                                         const NodeDef &node) {
   VLOG(4) << "Importing: " << node.name();
   if (node.op().empty())
-    return InvalidArgument("Node ", node.name(), " has an empty op name");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Node ", node.name(), " has an empty op name"));
 
   OperationState state(ConvertLocation(node), absl::StrCat("tfg.", node.op()));
 
@@ -772,7 +782,8 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
   } else {
     auto it = function_op_defs_.find(node.op());
     if (it == function_op_defs_.end())
-      return InvalidArgument("Unable to find OpDef for ", node.op());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unable to find OpDef for ", node.op()));
     op_def = it->second;
   }
 
@@ -805,7 +816,8 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
 
   for (auto &name_attr : node.attr()) {
     if (name_attr.first.empty())
-      return InvalidArgument("Node ", node.name(), " has an empty attr name");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Node ", node.name(), " has an empty attr name"));
     TF_ASSIGN_OR_RETURN(Attribute attr,
                         ConvertAttributeValue(name_attr.second, b_));
     state.addAttribute(name_attr.first, attr);
@@ -826,7 +838,8 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
   SmallVector<std::pair<unsigned, unsigned>> result_segments;
 
   if (op_def->output_arg_size() < 0)
-    return InvalidArgument("Node ", node.name(), " output arg size < 0");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Node ", node.name(), " output arg size < 0"));
   result_segments.reserve(op_def->output_arg_size());
   state.types.reserve(op_def->output_arg_size() + 1);
   for (const OpDef::ArgDef &def : op_def->output_arg()) {

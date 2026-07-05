@@ -16,173 +16,187 @@ limitations under the License.
 #ifndef XLA_RUNTIME_OBJECT_POOL_H_
 #define XLA_RUNTIME_OBJECT_POOL_H_
 
-#include <atomic>
 #include <cstddef>
-#include <cstdint>
 #include <memory>
-#include <optional>
+#include <utility>
+#include <vector>
 
 #include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/util/safe_reinterpret_cast.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
-// A non-blocking pool of objects of type `T`. Objects in the pool are created
-// lazily when needed by calling the user-provided `builder` function.
-//
-// This object pool is intended to be used on a critical path and optimized for
-// zero-allocation in steady state.
+// A pool of heap-owned objects of type `T`. Objects are created lazily by
+// invoking the user-provided `builder`. `T` must be movable; use a movable
+// wrapper for non-movable resources. `Args...` are the argument types forwarded
+// from `GetOrCreate` to the builder when a new object has to be created.
 template <typename T, typename... Args>
 class ObjectPool {
-  struct Entry {
-    // Keep `object` as optional to allow using object pool for objects that
-    // cannot be default-constructed.
-    std::optional<T> object;
-    Entry* next = nullptr;
+  // Returns a borrowed object to its parent pool.
+  struct ReturnToPool {
+    void operator()(T* object) const;
+    ObjectPool* parent = nullptr;
   };
-
-  // We use pointer tagging for the logical deletion of entries from the linked
-  // list to avoid data races on the `entry->next` pointer and to avoid ABA
-  // problem. A thread that tries to pop an entry from the pool first tags the
-  // entry pointer to get an exclusive access to the entry, concurrent pop
-  // operations will wait in the spin loop.
-  static constexpr uintptr_t kMask = 0x1;
-
-  static bool IsMarked(Entry* entry) {
-    return (tsl::safe_reinterpret_cast<uintptr_t>(entry) & kMask) == kMask;
-  }
-
-  static Entry* Mark(Entry* entry) {
-    return tsl::safe_reinterpret_cast<Entry*>(
-        tsl::safe_reinterpret_cast<uintptr_t>(entry) | kMask);
-  }
 
  public:
   explicit ObjectPool(absl::AnyInvocable<absl::StatusOr<T>(Args...)> builder);
   ~ObjectPool();
 
-  class BorrowedObject {
-   public:
-    ~BorrowedObject();
+  // Creates a pool from a builder that cannot fail and eagerly creates
+  // `preallocate` available objects by calling the builder with `args`.
+  // Later GetOrCreate calls use the arguments passed to GetOrCreate.
+  ObjectPool(absl::AnyInvocable<T(Args...)> builder, size_t preallocate,
+             Args... args);
 
-    T& operator*() { return *entry_->object; }
-    T* operator->() { return &*entry_->object; }
+  // A move-only RAII handle for an object borrowed from the pool. The
+  // borrowed object is returned to the pool when this handle is destroyed or
+  // overwritten by move assignment.
+  using BorrowedObject = std::unique_ptr<T, ReturnToPool>;
 
-    BorrowedObject(BorrowedObject&&) = default;
-    BorrowedObject& operator=(BorrowedObject&&) = default;
+  // Creates `num_objects` additional objects with the builder and returns them
+  // to the pool as available objects. If the builder fails, returns the first
+  // error without adding any object from this call to the pool.
+  absl::Status Preallocate(size_t num_objects, Args... args);
 
-   private:
-    friend class ObjectPool;
+  // Borrows an object that is currently available in the pool. Does not invoke
+  // the builder; returns ResourceExhausted if the pool has no available object.
+  absl::StatusOr<BorrowedObject> Get();
 
-    BorrowedObject(ObjectPool* parent, std::unique_ptr<Entry> entry);
-
-    ObjectPool* parent_;
-    std::unique_ptr<Entry> entry_;
-  };
-
+  // Borrows an available object from the pool, or creates a new object with the
+  // builder if the pool is empty. Returns any error produced by the builder.
   absl::StatusOr<BorrowedObject> GetOrCreate(Args... args);
 
-  size_t num_created() const {
-    return num_created_.load(std::memory_order_relaxed);
-  }
+  // Returns the total number of objects created by the builder. This is
+  // `num_available()` plus the number of objects currently borrowed from the
+  // pool.
+  size_t num_created() const;
+
+  // Returns the number of objects that `Get()` can borrow without creating.
+  size_t num_available() const;
 
  private:
-  absl::StatusOr<std::unique_ptr<Entry>> CreateEntry(Args... args);
+  absl::StatusOr<std::unique_ptr<T>> CreateObject(Args... args);
 
-  std::unique_ptr<Entry> PopEntry();
-  void PushEntry(std::unique_ptr<Entry> entry);
+  std::unique_ptr<T> PopObject();
+  void PushObject(std::unique_ptr<T> object);
 
   absl::AnyInvocable<absl::StatusOr<T>(Args...)> builder_;
-  std::atomic<Entry*> head_;
-  std::atomic<size_t> num_created_;
+
+  mutable absl::Mutex mu_;
+  std::vector<std::unique_ptr<T>> available_ ABSL_GUARDED_BY(mu_);
+  size_t num_created_ ABSL_GUARDED_BY(mu_);
 };
+
+//===----------------------------------------------------------------------===//
+// ObjectPool implementation.
+//===----------------------------------------------------------------------===//
 
 template <typename T, typename... Args>
 ObjectPool<T, Args...>::ObjectPool(
     absl::AnyInvocable<absl::StatusOr<T>(Args...)> builder)
-    : builder_(std::move(builder)), head_(nullptr), num_created_(0) {}
+    : builder_(std::move(builder)), num_created_(0) {}
+
+template <typename T, typename... Args>
+ObjectPool<T, Args...>::ObjectPool(absl::AnyInvocable<T(Args...)> builder,
+                                   size_t preallocate, Args... args)
+    : ObjectPool([b = std::move(builder)](Args... args) mutable {
+        return b(std::forward<Args>(args)...);
+      }) {
+  Preallocate(preallocate, std::forward<Args>(args)...).IgnoreError();
+}
 
 template <typename T, typename... Args>
 ObjectPool<T, Args...>::~ObjectPool() {
-  while (Entry* entry = head_.load(std::memory_order_acquire)) {
-    head_.store(entry->next, std::memory_order_relaxed);
-    delete entry;
-  }
+  absl::MutexLock lock(mu_);
+  CHECK_EQ(available_.size(), num_created_);  // Crash OK
 }
 
 template <typename T, typename... Args>
-auto ObjectPool<T, Args...>::CreateEntry(Args... args)
-    -> absl::StatusOr<std::unique_ptr<Entry>> {
+size_t ObjectPool<T, Args...>::num_created() const {
+  absl::MutexLock lock(mu_);
+  return num_created_;
+}
+
+template <typename T, typename... Args>
+size_t ObjectPool<T, Args...>::num_available() const {
+  absl::MutexLock lock(mu_);
+  return available_.size();
+}
+
+template <typename T, typename... Args>
+auto ObjectPool<T, Args...>::CreateObject(Args... args)
+    -> absl::StatusOr<std::unique_ptr<T>> {
   DCHECK(builder_) << "ObjectPool builder is not initialized";
-  auto entry = std::make_unique<Entry>();
-  TF_ASSIGN_OR_RETURN(entry->object, builder_(std::forward<Args>(args)...));
-  num_created_.fetch_add(1, std::memory_order_relaxed);
-  return entry;
+  ASSIGN_OR_RETURN(T object, builder_(std::forward<Args>(args)...));
+  return std::make_unique<T>(std::move(object));
 }
 
 template <typename T, typename... Args>
-auto ObjectPool<T, Args...>::PopEntry() -> std::unique_ptr<Entry> {
-  Entry* head = head_.load(std::memory_order_relaxed);
-
-  // Try to mark the entry at head for deletion with a CAS operation.
-  while (head &&
-         (IsMarked(head) || !head_.compare_exchange_weak(
-                                head, Mark(head), std::memory_order_acquire,
-                                std::memory_order_relaxed))) {
-    if (ABSL_PREDICT_FALSE(IsMarked(head))) {
-      head = head_.load(std::memory_order_relaxed);
-    }
-  }
-
-  // Object pool is empty.
-  if (ABSL_PREDICT_FALSE(head == nullptr)) {
+auto ObjectPool<T, Args...>::PopObject() -> std::unique_ptr<T> {
+  absl::MutexLock lock(mu_);
+  if (available_.empty()) {
     return nullptr;
   }
-
-  // Update head pointer to the next entry.
-  head_.store(head->next, std::memory_order_relaxed);
-
-  return std::unique_ptr<Entry>(head);
+  std::unique_ptr<T> object = std::move(available_.back());
+  available_.pop_back();
+  return object;
 }
 
 template <typename T, typename... Args>
-void ObjectPool<T, Args...>::PushEntry(std::unique_ptr<Entry> entry) {
-  Entry* new_head = entry.release();
-  new_head->next = head_.load(std::memory_order_relaxed);
-  while (IsMarked(new_head->next) ||
-         !head_.compare_exchange_weak(new_head->next, new_head,
-                                      std::memory_order_release,
-                                      std::memory_order_relaxed)) {
-    if (ABSL_PREDICT_FALSE(IsMarked(new_head->next))) {
-      new_head->next = head_.load(std::memory_order_relaxed);
-    }
-  }
+void ObjectPool<T, Args...>::PushObject(std::unique_ptr<T> object) {
+  absl::MutexLock lock(mu_);
+  // Make sure that all followup `PushObject` calls will have space in a vector.
+  available_.reserve(num_created_);
+  available_.push_back(std::move(object));
 }
 
 template <typename T, typename... Args>
-ObjectPool<T, Args...>::BorrowedObject::BorrowedObject(
-    ObjectPool<T, Args...>* parent, std::unique_ptr<Entry> entry)
-    : parent_(parent), entry_(std::move(entry)) {}
+void ObjectPool<T, Args...>::ReturnToPool::operator()(T* object) const {
+  parent->PushObject(std::unique_ptr<T>(object));
+}
 
 template <typename T, typename... Args>
-ObjectPool<T, Args...>::BorrowedObject::~BorrowedObject() {
-  if (ABSL_PREDICT_TRUE(parent_ && entry_)) {
-    parent_->PushEntry(std::move(entry_));
+absl::Status ObjectPool<T, Args...>::Preallocate(size_t num_objects,
+                                                 Args... args) {
+  std::vector<std::unique_ptr<T>> objects(num_objects);
+  for (size_t i = 0; i < num_objects; ++i) {
+    ASSIGN_OR_RETURN(objects[i], CreateObject(args...));
   }
+
+  absl::MutexLock lock(mu_);
+  for (std::unique_ptr<T>& object : objects) {
+    available_.push_back(std::move(object));
+  }
+  num_created_ += objects.size();
+
+  return absl::OkStatus();
+}
+
+template <typename T, typename... Args>
+auto ObjectPool<T, Args...>::Get() -> absl::StatusOr<BorrowedObject> {
+  if (std::unique_ptr<T> object = PopObject(); ABSL_PREDICT_TRUE(object)) {
+    return BorrowedObject(object.release(), ReturnToPool{this});
+  }
+  return absl::ResourceExhaustedError("Object pool has no available object");
 }
 
 template <typename T, typename... Args>
 auto ObjectPool<T, Args...>::GetOrCreate(Args... args)
     -> absl::StatusOr<BorrowedObject> {
-  if (std::unique_ptr<Entry> entry = PopEntry(); ABSL_PREDICT_TRUE(entry)) {
-    return BorrowedObject(this, std::move(entry));
+  if (std::unique_ptr<T> object = PopObject(); ABSL_PREDICT_TRUE(object)) {
+    return BorrowedObject(object.release(), ReturnToPool{this});
   }
-  TF_ASSIGN_OR_RETURN(auto entry, CreateEntry(std::forward<Args>(args)...));
-  return BorrowedObject(this, std::move(entry));
+  ASSIGN_OR_RETURN(auto object, CreateObject(std::forward<Args>(args)...));
+
+  absl::MutexLock lock(mu_);
+  num_created_++;
+  return BorrowedObject(object.release(), ReturnToPool{this});
 }
 
 }  // namespace xla

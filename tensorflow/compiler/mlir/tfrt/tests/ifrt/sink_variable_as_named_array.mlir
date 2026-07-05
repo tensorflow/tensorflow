@@ -107,3 +107,24 @@ module {
     return %1: tensor<1x3xbf16>
   }
 }
+
+// -----
+// AsyncIfrtCall test: all variables tensors are for devices and sinked as named ifrt arrays
+//
+//
+// CHECK-LABEL:  func.func @serving_default_async(%arg0: tensor<1x3xf32>) -> tensor<1x1xf32> {
+// CHECK-NEXT:   [[HANDLE2:%.*]] = "tf.VarHandleOp"
+// CHECK-NEXT:   [[KEY:%.*]], [[FUTURE:%.*]] = "tf.IfrtLoadVariable"([[HANDLE2]])
+// CHECK-SAME:       used_by_host = false
+// CHECK-NEXT:   [[RES:%.*]] = "tf.AsyncIfrtCall"([[KEY]], %arg0) <{operandSegmentSizes = array<i32: 2, 0>, program_id = 6515870160938153680 : i64, variable_arg_indices = [0 : i32]}>
+// CHECK-SAME:    : (tensor<!tf_type.string>, tensor<1x3xf32>) -> tensor<1x1xf32>
+// CHECK-NEXT:    return [[RES]] : tensor<1x1xf32>
+//
+module {
+  func.func @serving_default_async(%arg0: tensor<1x3xf32>) -> tensor<1x1xf32> {
+    %0 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+    %2 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<3x1xf32>
+    %result = "tf.AsyncIfrtCall"(%2, %arg0) <{operandSegmentSizes = array<i32: 2, 0>, program_id = 6515870160938153680 : i64, variable_arg_indices = []}> : (tensor<3x1xf32>, tensor<1x3xf32>) -> (tensor<1x1xf32>)
+    return %result : tensor<1x1xf32>
+  }
+}

@@ -304,6 +304,37 @@ void AlignedSizedFree(void* aligned_memory, size_t size,
   Free(aligned_memory);
 }
 
+void* AlignedNew(size_t size, std::align_val_t minimum_alignment) {
+#if defined(__STDCPP_DEFAULT_NEW_ALIGNMENT__)
+  if (static_cast<size_t>(minimum_alignment) <=
+      __STDCPP_DEFAULT_NEW_ALIGNMENT__) {
+    return ::operator new(size, std::nothrow);
+  }
+#else
+  if (static_cast<size_t>(minimum_alignment) <= 16) {
+    return ::operator new(size, std::nothrow);
+  }
+#endif
+  return ::operator new(size, minimum_alignment, std::nothrow);
+}
+
+void AlignedDelete(void* aligned_memory, size_t size,
+                   std::align_val_t alignment) {
+  (void)size;
+#if defined(__STDCPP_DEFAULT_NEW_ALIGNMENT__)
+  if (static_cast<size_t>(alignment) <= __STDCPP_DEFAULT_NEW_ALIGNMENT__) {
+    ::operator delete(aligned_memory);
+    return;
+  }
+#else
+  if (static_cast<size_t>(alignment) <= 16) {
+    ::operator delete(aligned_memory);
+    return;
+  }
+#endif
+  ::operator delete(aligned_memory, alignment);
+}
+
 void* Malloc(size_t size) { return malloc(size); }
 
 void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }

@@ -184,6 +184,19 @@ TEST(MaximumOpTest, Int32WithBroadcastTest) {
                      data1, data2, {1, 0, -1, -2, 2, 2});
 }
 
+TEST(MaximumOpTest, Int32WithBroadcastRankSix) {
+  std::vector<float> data1 = {1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> data2 = {3, 4};
+  TestModel<int32_t>(
+      BuiltinOperator_MAXIMUM, {TensorType_INT32, {1, 2, 1, 1, 2, 2}},
+      {TensorType_INT32, {1, 1, 2}}, {TensorType_INT32, {1, 2, 1, 1, 2, 2}},
+      data1, data2, {3, 4, 3, 4, 5, 6, 7, 8});
+  TestModel<int32_t>(
+      BuiltinOperator_MINIMUM, {TensorType_INT32, {1, 2, 1, 1, 2, 2}},
+      {TensorType_INT32, {1, 1, 2}}, {TensorType_INT32, {1, 2, 1, 1, 2, 2}},
+      data1, data2, {1, 2, 3, 4, 3, 4, 3, 4});
+}
+
 TEST(MaximumOpTest, Int32WithBroadcastTest_ScalarY) {
   std::vector<float> data1 = {1, 0, -1, -2, 3, 11};
   std::vector<float> data2 = {2};

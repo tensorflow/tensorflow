@@ -16,8 +16,6 @@ limitations under the License.
 
 #include <fcntl.h>
 
-#include "tensorflow/lite/logger.h"
-#include "tensorflow/lite/minimal_logging.h"
 #if defined(_MSC_VER)
 #include <io.h>
 #define F_OK 0
@@ -33,6 +31,7 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -47,6 +46,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/macros.h"
 #include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
+#include "tensorflow/lite/logger.h"
+#include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite::xnnpack {
 
@@ -94,7 +95,8 @@ bool CheckFingerprints(const cache::schema::BufferList* buffer_list) {
       std::memcpy(&fingerprint, &cache_fingerprint, sizeof(fingerprint));
       XNNPACK_RETURN_CHECK(
           xnn_check_fingerprint(fingerprint) == xnn_status_success,
-          "fingerprint (id: 0x%x) could not be matched", fingerprint.id);
+          "fingerprint %s could not be matched",
+          xnn_fingerprint_id_to_string_u32(fingerprint.id));
     }
   }
   return true;
@@ -158,7 +160,7 @@ bool WeightCacheBuilder::Start(const char* path, const FileDescriptor& fd) {
 
 bool WeightCacheBuilder::StartBuildStep() {
   XNNPACK_RETURN_CHECK(IsStarted(),
-                       "Trying to start a build step in an invalid builder.")
+                       "Trying to start a build step in an invalid builder.");
   XNNPACK_RETURN_CHECK(!is_build_step_.exchange(true),
                        "Failed to start build step: already started. This may "
                        "be a concurrency issue.");
@@ -205,8 +207,12 @@ void* WeightCacheBuilder::Reserve(size_t size) {
 BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
                                           const void* data, uint64_t size,
                                           int32_t fingerprint_id) {
-  XNNPACK_ABORT_CHECK(is_build_step_,
-                      "cannot append data to an unstarted builder.");
+  if (!is_build_step_) {
+    TFLITE_LOG_PROD(
+        tflite::TFLITE_LOG_ERROR,
+        "XNNPack weight cache: cannot append data to an unstarted builder.");
+    return BufferLocation::Invalid();
+  }
   // Add some padding so that the cache file can be mmaped and the buffer
   // stays aligned correctly.
   const size_t offset = Align(fd_.GetPos(), kMinAlignment);
@@ -232,17 +238,20 @@ BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
   // in future runs that reuse the cache, to crashes that are impossible to
   // debug or outputs that are nonsensical without any chance of linking this
   // back to this error.
-  //
-  // We abort because we have no way of making that failure bubble up to the
-  // calling code to handle it gracefully...
-  XNNPACK_ABORT_CHECK(fingerprint_id != 0,
-                      "XNNPack weight cache: no fingerprint identifier was set "
-                      "when appending a buffer to the cache file.");
+  if (fingerprint_id == 0) {
+    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
+                    "XNNPack weight cache: no fingerprint identifier was set "
+                    "when appending a buffer to the cache file.");
+    return BufferLocation::Invalid();
+  }
   const xnn_fingerprint* fingerprint = xnn_get_fingerprint(fingerprint_id);
-  XNNPACK_ABORT_CHECK(fingerprint,
-                      "XNNPack weight cache: could not find a fingerprint with "
-                      "id 0x%x when appending a buffer to the cache file.",
-                      fingerprint_id);
+  if (!fingerprint) {
+    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
+                    "XNNPack weight cache: could not find a fingerprint with "
+                    "id %s when appending a buffer to the cache file.",
+                    xnn_fingerprint_id_to_string_u32(fingerprint_id));
+    return BufferLocation::Invalid();
+  }
   uint64_t fingerprint_value;
   static_assert(sizeof(fingerprint_value) == sizeof(*fingerprint));
   std::memcpy(&fingerprint_value, fingerprint, sizeof(*fingerprint));
@@ -331,9 +340,9 @@ void* CacheMissHandler::Reserve(size_t size) {
   return buffers_.back().ptr;
 }
 
-BufferLocation CacheMissHandler::Append(PackIdentifier pack_id,
-                                        const void* data, uint64_t size,
-                                        int fingerprint_id) {
+BufferLocation CacheMissHandler::Append(
+    PackIdentifier pack_id, const void* data, uint64_t size, int fingerprint_id,
+    std::map<size_t, void*>& offset_to_addr) {
   auto buf_it =
       std::find_if(buffers_.rbegin(), buffers_.rend(),
                    [data](const auto& buf) { return buf.ptr == data; });
@@ -344,6 +353,7 @@ BufferLocation CacheMissHandler::Append(PackIdentifier pack_id,
   }
   buf_it->used = true;
   ++append_count_;
+  offset_to_addr.insert({buf_it->loc.offset, static_cast<void*>(buf_it->ptr)});
   return buf_it->loc;
 }
 
@@ -393,16 +403,20 @@ bool MMapWeightCacheProvider::WriteCacheMissFlag() {
   if (cache_miss_handler_.HasCacheMisses()) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_WARNING,
                     "Cache file is stale. Setting stale flag.");
-    if (file_descriptor_.IsValid()) {
-      const decltype(XNNPackCacheHeader::stale) stale = 1;
-      const size_t stale_offset = offsetof(XNNPackCacheHeader, stale);
-      XNNPACK_RETURN_CHECK(
-          file_descriptor_.SetPos(stale_offset) == stale_offset,
-          "Could not move cursor to update stale flag.");
-      XNNPACK_RETURN_CHECK(
-          file_descriptor_.Write(&stale, sizeof(XNNPackCacheHeader::stale)),
-          "Cannot write stale flag to cache file.");
-    }
+    return WriteStaleFlag();
+  }
+  return true;
+}
+
+bool MMapWeightCacheProvider::WriteStaleFlag() {
+  if (file_descriptor_.IsValid()) {
+    constexpr decltype(XNNPackCacheHeader::stale) stale = 1;
+    constexpr size_t stale_offset = offsetof(XNNPackCacheHeader, stale);
+    XNNPACK_RETURN_CHECK(file_descriptor_.SetPos(stale_offset) == stale_offset,
+                         "Could not move file cursor to write stale flag.");
+    XNNPACK_RETURN_CHECK(
+        file_descriptor_.Write(&stale, sizeof(XNNPackCacheHeader::stale)),
+        "Cannot write stale flag to cache file.");
   }
   return true;
 }
@@ -479,8 +493,8 @@ bool MMapWeightCacheProvider::Load() {
     XNNPACK_RETURN_CHECK(
         mmap_handle.Map(file_descriptor_, /*offset=*/0, file_path_.c_str()));
   } else {
-    XNNPACK_ABORT_CHECK(!file_path_.empty(),
-                        "Path wasn't provided to weight cache provider.");
+    XNNPACK_RETURN_CHECK(!file_path_.empty(),
+                         "Path wasn't provided to weight cache provider.");
     if (!FileExists(file_path_.c_str())) {
       TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
                  "XNNPack weight cache: could not load '%s': %s.",
@@ -532,9 +546,18 @@ bool MMapWeightCacheProvider::Load() {
 
   size_t max_buffer_offset = 0;
   mmap_buffer_base_offset_ = buffer_list->base_offset();
+  XNNPACK_RETURN_CHECK(mmap_handle.size() >= mmap_buffer_base_offset_,
+                       "buffer base offset overflows the mapping size.");
   if (const auto buffers = buffer_list->buffers(); buffers) {
     for (auto* buffer : *buffers) {
       XNNPACK_RETURN_CHECK(buffer, "invalid buffer address in buffer list.");
+      XNNPACK_RETURN_CHECK(
+          mmap_handle.size() - mmap_buffer_base_offset_ >= buffer->offset(),
+          "buffer start is after the end of the mapping.");
+      XNNPACK_RETURN_CHECK(
+          mmap_handle.size() - mmap_buffer_base_offset_ - buffer->offset() >
+              buffer->size(),
+          "buffer end is after the end of the mapping.");
       cache_key_to_offset_.emplace(
           PackIdentifier{/*pack_algorithm_id=*/buffer->packing_algorithm_id(),
                          /*weights_id=*/buffer->weights_id(),
@@ -644,7 +667,7 @@ bool MMapWeightCacheProvider::StartBuildStep() {
 
 bool MMapWeightCacheProvider::StopBuildStep() {
   XNNPACK_RETURN_CHECK(builder_.StopBuildStep());
-#if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+#if defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
   if (!mmap_handles_.empty()) {
     // Sync mmap_handles_.data() with the content updated by
     // builder_.StopBuildStep().
@@ -656,14 +679,17 @@ bool MMapWeightCacheProvider::StopBuildStep() {
   return LoadLastBuildStep();
 }
 
-void MMapWeightCacheProvider::MapTensorIdentifiers(
+bool MMapWeightCacheProvider::MapTensorIdentifiers(
     const TfLiteTensor* tensors, const size_t size,
     const std::unordered_map<size_t, size_t>& tensor_index_to_identifier) {
   for (const auto [index, identifier] : tensor_index_to_identifier) {
-    XNNPACK_ABORT_CHECK(index < size,
-                        "Tensor index corresponds to a non existing tensor.");
-    buffer_address_to_identifier_[tensors[index].data.data] = identifier;
+    XNNPACK_RETURN_CHECK(index < size,
+                         "Tensor index corresponds to a non existing tensor.");
+    const TfLiteTensor& t = tensors[index];
+    buffer_address_to_identifier_.emplace(
+        t.data.data, OriginalBufferMetadata{identifier, t.bytes});
   }
+  return true;
 }
 
 void MMapWeightCacheProvider::RemapDataBuffer(const void* const buffer,
@@ -679,6 +705,8 @@ size_t MMapWeightCacheProvider::LookUp(
     return SIZE_MAX;
   }
   const PackIdentifier pack_id = BuildPackIdentifier(*cache_key);
+  // Note: we don't check if pack_id is valid here, the lookup in the map will
+  // fail in any case.
   if (auto offset_it = cache_key_to_offset_.find(pack_id);
       offset_it != cache_key_to_offset_.end()) {
     return offset_it->second.offset;
@@ -696,6 +724,8 @@ size_t MMapWeightCacheProvider::LookUpOrInsert(
   XNNPACK_ABORT_CHECK(cache_key, "A null cache key was provided.");
 
   const PackIdentifier pack_id = BuildPackIdentifier(*cache_key);
+  XNNPACK_ABORT_CHECK(pack_id.HasValidBufferIds(),
+                      "An invalid pack identifier was created.");
   if (auto offset_it = cache_key_to_offset_.find(pack_id);
       offset_it != cache_key_to_offset_.end()) {
     return offset_it->second.offset;
@@ -704,21 +734,37 @@ size_t MMapWeightCacheProvider::LookUpOrInsert(
   const BufferLocation location =
       builder_.IsBuilding()
           ? builder_.Append(pack_id, ptr, size, cache_key->fingerprint_id)
-          : cache_miss_handler_.Append(pack_id, ptr, size,
-                                       cache_key->fingerprint_id);
+          : cache_miss_handler_.Append(
+                pack_id, ptr, size, cache_key->fingerprint_id, offset_to_addr_);
   XNNPACK_ABORT_CHECK(!location.IsInvalid(),
                       "Inserting data in the cache failed.");
   cache_key_to_offset_.emplace(pack_id, location);
+
+  // Signals the system that the original weights are not needed anymore.
+  auto SignalDataNotNeeded = [&](const void* data) {
+    if (auto it = buffer_address_to_identifier_.find(data);
+        it != buffer_address_to_identifier_.end()) {
+      MarkMemoryNotNeeded(const_cast<void*>(data), it->second.size);
+    }
+  };
+
+  SignalDataNotNeeded(cache_key->kernel);
+  SignalDataNotNeeded(cache_key->bias);
+
   return location.offset;
 }
 
 void* MMapWeightCacheProvider::OffsetToAddr(const size_t offset) {
-  // While the cache is being built, the buffer could grow and need to be
-  // reallocated so we cannot ensure pointer stability.
   auto it = offset_to_addr_.find(offset);
-  XNNPACK_ABORT_CHECK(it != offset_to_addr_.end(),
-                      "Cannot get the address of a buffer in a cache before "
-                      "the build step that introduces it has finished.");
+  if (it == offset_to_addr_.end()) {
+    WriteStaleFlag();
+    XNNPACK_ABORT_CHECK(
+        false,  // The check for finding the offset if done above.
+        "No address is mapped to the given offset (%zu). This is a critical "
+        "error that should not happen. Check that the model hasn't changed "
+        "since the cache was created.",
+        offset);
+  }
   return it->second;
 }
 
@@ -760,31 +806,39 @@ enum xnn_status MMapWeightCacheProvider::delete_cache(void* context) {
   return xnn_status_success;
 }
 
+enum xnn_status MMapWeightCacheProvider::alias_data(void* context, void* alias,
+                                                    void* original) {
+  reinterpret_cast<MMapWeightCacheProvider*>(context)->RemapDataBuffer(original,
+                                                                       alias);
+  return xnn_status_success;
+}
+
 PackIdentifier MMapWeightCacheProvider::BuildPackIdentifier(
     const xnn_weights_cache_look_up_key& key) {
   const auto get_buffer_id = [&](const void* buffer) -> size_t {
-    if (buffer) {
-      const auto identifier_it = buffer_address_to_identifier_.find(buffer);
-      if (identifier_it != buffer_address_to_identifier_.end()) {
-        return identifier_it->second;
-      }
-      // We could have several layers of remapping. We look through
-      // buffer_remaps_ until we find a valid identifier or nothing is mapped to
-      // the current buffer pointer.
-      auto remapped_it = buffer_remaps_.find(buffer);
-      while (remapped_it != buffer_remaps_.end()) {
-        const auto remapped_identifier_it =
-            buffer_address_to_identifier_.find(remapped_it->second);
-        if (remapped_identifier_it != buffer_address_to_identifier_.end()) {
-          return remapped_identifier_it->second;
-        }
-        remapped_it = buffer_remaps_.find(remapped_it->second);
-      }
-      XNNPACK_ABORT_CHECK(
-          remapped_it != buffer_remaps_.end(),
-          "Unknown constant buffer passed to BuildPackIdentifier.");
+    if (!buffer) {
+      return PackIdentifier::kNoId;
     }
-    return PackIdentifier::kNoId;
+    // Look the buffer up in the primary map.
+    const auto identifier_it = buffer_address_to_identifier_.find(buffer);
+    if (identifier_it != buffer_address_to_identifier_.end()) {
+      return identifier_it->second.identifier;
+    }
+    // We could have several layers of remapping. We look through
+    // buffer_remaps_ until we find a valid identifier or nothing is mapped to
+    // the current buffer pointer.
+    for (auto remapped_it = buffer_remaps_.find(buffer);
+         remapped_it != buffer_remaps_.end();
+         remapped_it = buffer_remaps_.find(remapped_it->second)) {
+      const auto remapped_identifier_it =
+          buffer_address_to_identifier_.find(remapped_it->second);
+      if (remapped_identifier_it != buffer_address_to_identifier_.end()) {
+        return remapped_identifier_it->second.identifier;
+      }
+    }
+    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
+                    "Unknown constant buffer passed to BuildPackIdentifier.");
+    return PackIdentifier::kInvalidId;
   };
   return PackIdentifier{/*pack_algorithm_id=*/key.seed,
                         /*weights_id=*/get_buffer_id(key.kernel),

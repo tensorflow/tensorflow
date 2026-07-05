@@ -17,22 +17,48 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::memory_space_assignment {
 namespace {
 
-class AllocationTest : public HloHardwareIndependentTestBase {};
+class AllocationTest : public HloHardwareIndependentTestBase {
+ protected:
+  void RunAnalysis(HloModule* module,
+                   const std::vector<absl::string_view>& inst_names,
+                   std::unique_ptr<HloLiveRange>& live_range,
+                   std::unique_ptr<HloAliasAnalysis>& alias_analysis) {
+    HloSchedule schedule(module);
+    HloInstructionSequence sequence;
+    for (auto name : inst_names) {
+      sequence.push_back(FindInstruction(module, name));
+    }
+    schedule.set_sequence(module->entry_computation(), sequence);
+
+    AliasInfo alias_info;
+    TF_ASSERT_OK_AND_ASSIGN(alias_analysis,
+                            HloAliasAnalysis::Run(module, &alias_info));
+    TF_ASSERT_OK_AND_ASSIGN(live_range,
+                            HloLiveRange::Run(schedule, *alias_analysis,
+                                              module->entry_computation()));
+  }
+};
 
 TEST_F(AllocationTest, CopyAllocationProcessSimple) {
   absl::string_view hlo_string = R"(
@@ -48,6 +74,11 @@ ENTRY entry {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
+
+  std::unique_ptr<HloLiveRange> hlo_live_range;
+  std::unique_ptr<HloAliasAnalysis> alias_analysis;
+  RunAnalysis(module.get(), {"p0", "p1", "p1_negate", "add", "tuple"},
+              hlo_live_range, alias_analysis);
   // HloComputation* computation = module->entry_computation();
   HloInstruction* add = FindInstruction(module.get(), "add");
   HloInstruction* p1_negate = FindInstruction(module.get(), "p1_negate");
@@ -69,7 +100,8 @@ ENTRY entry {
   // Use the correct instruction and operand numbers for the add instruction
   copy_allocation.AddUse(HloUse{add, 1});  // Use of p1_negate in add
   BitcastSplitFn split_fn = nullptr;
-  TF_ASSERT_OK(copy_allocation.Process(split_fn));
+  TF_ASSERT_OK(
+      copy_allocation.Process(split_fn, *hlo_live_range, *alias_analysis));
 
   // Check copy_start and copy_done instructions.
   HloInstruction* copy_start = copy_allocation.copy_start();
@@ -103,6 +135,11 @@ ENTRY entry {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
+
+  std::unique_ptr<HloLiveRange> hlo_live_range;
+  std::unique_ptr<HloAliasAnalysis> alias_analysis;
+  RunAnalysis(module.get(), {"p0", "p1", "p1_negate", "add", "tuple"},
+              hlo_live_range, alias_analysis);
   // HloComputation* computation = module->entry_computation();
   HloInstruction* add = FindInstruction(module.get(), "add");
   HloInstruction* p1_negate = FindInstruction(module.get(), "p1_negate");
@@ -124,7 +161,8 @@ ENTRY entry {
   // Use the correct instruction and operand numbers for the add instruction
   copy_allocation.AddUse(HloUse{add, 1});  // Use of p1_negate in add
   BitcastSplitFn split_fn = nullptr;
-  TF_ASSERT_OK(copy_allocation.Process(split_fn));
+  TF_ASSERT_OK(
+      copy_allocation.Process(split_fn, *hlo_live_range, *alias_analysis));
 
   // Check copy_start and copy_done instructions.
   HloInstruction* copy_start = copy_allocation.copy_start();
@@ -160,6 +198,11 @@ ENTRY entry {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
+
+  std::unique_ptr<HloLiveRange> hlo_live_range;
+  std::unique_ptr<HloAliasAnalysis> alias_analysis;
+  RunAnalysis(module.get(), {"p0", "p1", "p1_negate", "slice", "add", "tuple"},
+              hlo_live_range, alias_analysis);
   // HloComputation* computation = module->entry_computation();
   HloInstruction* add = FindInstruction(module.get(), "add");
   HloInstruction* p1_negate = FindInstruction(module.get(), "p1_negate");
@@ -182,7 +225,8 @@ ENTRY entry {
   // Use the correct instruction and operand numbers for the add instruction
   copy_allocation.AddUse(HloUse{add, 1});  // Use of p1_negate in add
   BitcastSplitFn split_fn = nullptr;
-  TF_ASSERT_OK(copy_allocation.Process(split_fn));
+  TF_ASSERT_OK(
+      copy_allocation.Process(split_fn, *hlo_live_range, *alias_analysis));
 
   // Check copy_start and copy_done instructions.
   HloInstruction* slice_start = copy_allocation.copy_start();
@@ -203,6 +247,41 @@ ENTRY entry {
 
   // Check defining position
   EXPECT_EQ(copy_allocation.defining_position().instruction, slice_done);
+}
+
+TEST_F(AllocationTest, SkipTupleReconstructionForAsyncCollective) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  new_buffer = f32[2,3]{1,0} parameter(0)
+  cp-start = (f32[2,3]{1,0}, f32[2,3]{1,0}, u32[], u32[]) collective-permute-start(new_buffer), channel_id=1, source_target_pairs={{0,1}}
+  cp-done = f32[2,3]{1,0} collective-permute-done(cp-start)
+  ROOT tuple = tuple(cp-done)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  std::unique_ptr<HloLiveRange> hlo_live_range;
+  std::unique_ptr<HloAliasAnalysis> alias_analysis;
+  RunAnalysis(module.get(), {"new_buffer", "cp-start", "cp-done", "tuple"},
+              hlo_live_range, alias_analysis);
+
+  HloInstruction* cp_start = FindInstruction(module.get(), "cp-start");
+  HloInstruction* cp_done = FindInstruction(module.get(), "cp-done");
+  HloInstruction* new_buffer = FindInstruction(module.get(), "new_buffer");
+
+  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(0, 24);
+
+  PinnedAllocation pinned(HloPosition{new_buffer, {}}, MemorySpace::kAlternate,
+                          chunk, 0, 5);
+  pinned.AddUse(HloUse{cp_done, 0, {0}});
+
+  BitcastSplitFn split_fn = nullptr;
+  TF_ASSERT_OK(pinned.Process(split_fn, *hlo_live_range, *alias_analysis));
+
+  EXPECT_EQ(cp_done->operand(0), cp_start);
 }
 
 }  // namespace

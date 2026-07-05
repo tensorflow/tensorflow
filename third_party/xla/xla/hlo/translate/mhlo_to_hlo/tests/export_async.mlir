@@ -20,12 +20,12 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
 
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
-// CHECK: %[[OUTPUT:.*]] = f32[128,128] all-gather-start(%[[INPUT]])
+// CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,128]) all-gather-start(%[[INPUT]])
 // CHECK-SAME: channel_id=1
 // CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME: dimensions={1}
 // CHECK-SAME: use_global_device_ids=true
-// CHECK: ROOT {{.*}} f32[128,128] all-gather-done(%[[OUTPUT]]
+// CHECK: ROOT {{.*}} f32[128,128] all-gather-done(%[[OUTPUT]])
 
 // -----
 
@@ -125,10 +125,10 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
 
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
-// CHECK: %[[OUTPUT:.*]] = f32[128,32] collective-permute-start(%[[INPUT]])
+// CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,32]) collective-permute-start(%[[INPUT]])
 // CHECK-SAME:  channel_id=1
 // CHECK-SAME{LITERAL}:  source_target_pairs={{0,1},{1,2},{2,3}}
-// CHECK: ROOT {{.*}} f32[128,32] collective-permute-done(%[[OUTPUT]]
+// CHECK: ROOT {{.*}} f32[128,32] collective-permute-done(%[[OUTPUT]])
 
 // -----
 

@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/service/compiler.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -38,9 +39,11 @@ namespace gpu {
 // returned.
 struct GetCodegenBackends {
   using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
-      stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
+      stream_executor::StreamExecutor*,
+      stream_executor::DeviceAddressAllocator*, const DebugOptions*, Compiler*,
       const Compiler::GpuTargetConfig*, const AliasInfo* alias_info,
       mlir::MLIRContext* mlir_context,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn,
       absl::Span<const autotuner::Backend> backend_allowlist)>;
 };
 

@@ -48,17 +48,18 @@ class UnravelIndexOp : public OpKernel {
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsVector(indices_tensor.shape()) ||
                     TensorShapeUtils::IsScalar(indices_tensor.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "The indices can only be scalar or vector, got \"",
-                    indices_tensor.shape().DebugString(), "\""));
-    OP_REQUIRES(ctx, indices_tensor.NumElements() > 0,
-                errors::InvalidArgument("received empty tensor indices: ",
-                                        indices_tensor.DebugString()));
-    const Tensor& dims_tensor = ctx->input(1);
+                    indices_tensor.shape().DebugString(), "\"")));
     OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(dims_tensor.shape()),
-        errors::InvalidArgument("The indices can only be 1-D, got \"",
-                                dims_tensor.shape().DebugString(), "\""));
+        ctx, indices_tensor.NumElements() > 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "received empty tensor indices: ", indices_tensor.DebugString())));
+    const Tensor& dims_tensor = ctx->input(1);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(dims_tensor.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("The indices can only be 1-D, got \"",
+                                 dims_tensor.shape().DebugString(), "\"")));
 
     auto dims = dims_tensor.vec<Tidx>();
     // Make sure dims does not contain a zero
@@ -71,11 +72,11 @@ class UnravelIndexOp : public OpKernel {
     }
 
     for (int i = 0; i < dims.size(); i++) {
-      OP_REQUIRES(
-          ctx, dims(i) != 0,
-          errors::InvalidArgument("Input dims cannot contain a dim of zero, "
-                                  "but dims contains zero at index ",
-                                  i));
+      OP_REQUIRES(ctx, dims(i) != 0,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Input dims cannot contain a dim of zero, "
+                                   "but dims contains zero at index ",
+                                   i)));
       OP_REQUIRES(ctx, dims(i) > 0,
                   errors::InvalidArgument(
                       "Input dims cannot be negative. Got dim = ", dims(i),
@@ -96,8 +97,9 @@ class UnravelIndexOp : public OpKernel {
     int64_t size = indices_tensor.NumElements();
     bool check = std::all_of(indices, indices + size,
                              [&](Tidx index) { return index < dims_prod; });
-    OP_REQUIRES(ctx, check,
-                errors::InvalidArgument("index is out of bound as with dims"));
+    OP_REQUIRES(
+        ctx, check,
+        absl::InvalidArgumentError("index is out of bound as with dims"));
 
     Eigen::array<bool, 1> reverse{true};
 

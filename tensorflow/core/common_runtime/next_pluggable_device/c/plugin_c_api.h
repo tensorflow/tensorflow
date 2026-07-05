@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "xla/c/c_api_decl.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/tpu/c_api_decl.h"
 
 #define TFNPD_MAJOR 0
 #define TFNPD_MINOR 0

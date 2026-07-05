@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -51,8 +52,7 @@ absl::StatusOr<Literal> PackedLiteralReader::Read(const Shape& shape,
           << " layout: " << (layout == nullptr ? "<none>" : layout->ToString());
   Shape literal_shape = shape;
   if (layout != nullptr) {
-    TF_RETURN_IF_ERROR(
-        LayoutUtil::ValidateLayoutForShape(*layout, literal_shape));
+    RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(*layout, literal_shape));
     *literal_shape.mutable_layout() = *layout;
   }
 

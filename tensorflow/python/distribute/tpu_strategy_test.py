@@ -345,12 +345,6 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(self._dataset_fn_tracing_count, 1)
 
   def test_function_compile_with_xla(self, enable_packed_var):
-    if FLAGS.tpu_use_tfrt:
-      self.skipTest(
-          "This test triggers _XlaCompile and XlaLaunch which are not "
-          "supported in tfrt yet. We should avoid using these kernels on TPU. "
-          "However, it is a workaround to support b/129842431. We need more "
-          "discussion about how to support it in the long term.")
     strategy = get_tpu_strategy(enable_packed_var)
     with strategy.scope():
       v = variables.Variable(1.0)
@@ -1134,9 +1128,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
   def test_tpu_cancellation_does_not_close_chips(self, enable_packed_var):
     if tpu_lib.enable_batch_variable_initialization():
       self.skipTest("b/271767559")
-    if not FLAGS.tpu_use_tfrt:
-      self.skipTest(
-          "`tpu_cancellation_closes_chip only applies to TFRT TPU Runtime.")
+
     strategy = get_tpu_strategy(enable_packed_var)
     num_replicas = strategy.num_replicas_in_sync
     with strategy.scope():

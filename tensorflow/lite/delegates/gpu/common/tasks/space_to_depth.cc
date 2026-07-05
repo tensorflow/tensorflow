@@ -55,6 +55,9 @@ std::string GetSpaceToDepthCode(const OperationDef& op_def) {
   c += "  int block_exponent = (int)log2((float)args.block_size);\n";
   c += "  for (int i = 0; i < 4; ++i) {\n";
   c += "    int dst_c = 4 * S + i;\n";
+  c += "    if (dst_c >= args.dst_tensor.Channels()) {\n";
+  c += "      continue;\n";
+  c += "    }\n";
   c += "    int block_id = dst_c / args.src_tensor.Channels();\n";
   c += "    int src_x; int src_y; \n";
   c += "    if (block_is_power_of_2) {\n";
@@ -108,6 +111,9 @@ std::string GetDepthToSpaceCode(const OperationDef& op_def) {
   c += "  tmp[3] = INIT_FLT(0.0f);\n";
   c += "  for (int i = 0; i < 4; ++i) {\n";
   c += "    int dst_c = 4 * S + i;\n";
+  c += "    if (dst_c >= args.dst_tensor.Channels()) {\n";
+  c += "      continue;\n";
+  c += "    }\n";
   c += "    int block_x = X % args.block_size;\n";
   c += "    int src_x = X / args.block_size;\n";
   c += "    int block_y = Y % args.block_size;\n";

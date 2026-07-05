@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TESTS_PJRT_CLIENT_REGISTRY_H_
 #define XLA_TESTS_PJRT_CLIENT_REGISTRY_H_
 
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -23,7 +24,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/tests/aot_interception_pjrt_client.h"
 
 namespace xla {
 
@@ -93,7 +98,40 @@ class PjRtClientTestFactoryRegistry {
 
   std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> Get() const {
     absl::MutexLock lock(mu_);
-    return factory_;
+    auto factory = factory_;
+    return [factory]() -> absl::StatusOr<std::unique_ptr<PjRtClient>> {
+      ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client, factory());
+      const char* test_mode = std::getenv("AOT_TEST_MODE");
+      if (test_mode == nullptr) {
+        return client;
+      }
+
+      const char* artifact_path = std::getenv("AOT_ARTIFACT_PATH");
+      if (artifact_path == nullptr) {
+        return absl::InvalidArgumentError(
+            "AOT_ARTIFACT_PATH is required if test is running in "
+            "AOT_TEST_MODE.");
+      }
+
+      std::string mode_str = test_mode;
+      AOTTestMode mode;
+      if (mode_str == "golden")
+        mode = AOTTestMode::kGoldenVerification;
+      else if (mode_str == "backward_oldest")
+        mode = AOTTestMode::kBackwardOldest;
+      else if (mode_str == "backward_previous")
+        mode = AOTTestMode::kBackwardPrevious;
+      else if (mode_str == "forward_oldest")
+        mode = AOTTestMode::kForwardOldest;
+      else if (mode_str == "forward_previous")
+        mode = AOTTestMode::kForwardPrevious;
+      else
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unknown AOT test mode: ", mode_str));
+
+      return std::make_unique<AOTInterceptionPjrtClient>(std::move(client),
+                                                         mode, artifact_path);
+    };
   }
 
  private:

@@ -111,7 +111,9 @@ func.func @func_result_unknown_attr(%arg0: tensor<2x2xi32>) -> (tensor<2x2xi32> 
 // CHECK-SAME: layout = ""
 // CHECK-SAME: mhlo.frontend_attributes
 // CHECK-SAME: mhlo.literal
+// CHECK-SAME: mhlo.operand_memory_spaces
 // CHECK-SAME: mhlo.original_value
+// CHECK-SAME: mhlo.result_memory_spaces
 // CHECK-SAME: mhlo.sharding
 // CHECK-SAME: result_layout
 // CHECK-SAME: source_layout
@@ -121,7 +123,9 @@ func.func @op_known_attr(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     layout = "",
     mhlo.frontend_attributes = "",
     mhlo.literal = "",
+    mhlo.operand_memory_spaces = array<i64: 0>,
     mhlo.original_value = "",
+    mhlo.result_memory_spaces = array<i64: 0>,
     mhlo.sharding = "mhlo.sharding",
     result_layout = "",
     source_layout = "",

@@ -57,6 +57,12 @@ void IfrtCallOp::Compute(tensorflow::OpKernelContext* ctx) {
       executable_->Execute(inputs, absl::MakeSpan(variable_arg_indices_));
   OP_REQUIRES(ctx, results.ok(), results.status());
 
+  OP_REQUIRES(
+      ctx, results->size() == ctx->num_outputs(),
+      absl::InternalError(absl::StrCat(
+          "IFRT call result size mismatch. Expected ", ctx->num_outputs(),
+          ", got ", results->size(), " for program id ", program_id_)));
+
   tensorflow::OpOutputList outputs(ctx, 0, results->size());
   for (int i = 0; i < results->size(); ++i) {
     outputs.set(i, (*results)[i]);

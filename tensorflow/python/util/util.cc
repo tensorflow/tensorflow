@@ -16,17 +16,21 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <cstddef>
 #include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
-#include <vector>
+#include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/macros.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tsl/platform/thread_annotations.h"
 
@@ -217,24 +221,56 @@ class CachedTypeCheck {
  private:
   std::function<int(PyObject*)> ternary_predicate_;
   mutex type_to_sequence_map_mu_;
-  std::unordered_map<PyTypeObject*, bool> type_to_sequence_map_
+  absl::flat_hash_map<PyTypeObject*, bool> type_to_sequence_map_
       TF_GUARDED_BY(type_to_sequence_map_mu_);
 };
 
+// Imports a type from a module and caches it.
+// This function is thread-safe and returns a borrowed reference.
+// Caching avoids repeated imports and prevents leaking references,
+// as callers assume the returned object is borrowed and do not DECREF it.
 PyObject* ImportTypeFromModule(const char* module_name, const char* type_name) {
-  static PyObject* given_type;
-  given_type = [module_name, type_name]() {
-    PyObject* module = PyImport_ImportModule(module_name);
-    PyObject* attr =
-        module ? PyObject_GetAttrString(module, type_name) : nullptr;
-    if (attr == nullptr) {
-      PyErr_WriteUnraisable(nullptr);
-      PyErr_Clear();
+  static absl::Mutex* mu = new absl::Mutex();
+  static auto* cache = new std::unordered_map<std::string, PyObject*>();
+
+  std::string key = absl::StrCat(module_name, ".", type_name);
+
+  {
+    absl::MutexLock l(*mu);
+    auto it = cache->find(key);
+    if (it != cache->end()) {
+      return it->second;
     }
-    if (module) Py_DECREF(module);
+  }
+
+  PyObject* module = PyImport_ImportModule(module_name);
+  PyObject* attr = module ? PyObject_GetAttrString(module, type_name) : nullptr;
+  if (attr == nullptr) {
+    PyErr_WriteUnraisable(nullptr);
+    PyErr_Clear();
+  }
+  if (module) Py_DECREF(module);
+
+  if (attr) {
+    PyObject* to_decref = nullptr;
+    {
+      // Double-check cache in case another thread inserted it while we were
+      // not holding the lock during the expensive import operation.
+      absl::MutexLock l(*mu);
+      auto it = cache->find(key);
+      if (it != cache->end()) {
+        to_decref = attr;
+        attr = it->second;
+      } else {
+        (*cache)[key] = attr;
+      }
+    }
+    if (to_decref) {
+      Py_DECREF(to_decref);
+    }
     return attr;
-  }();
-  return given_type;
+  }
+  return nullptr;
 }
 
 // Returns true if 'obj' is an instance of 'type_name'
@@ -444,7 +480,7 @@ int IsDispatchableHelper(PyObject* o) {
 // ValueIterator interface
 class ValueIterator {
  public:
-  virtual ~ValueIterator() {}
+  virtual ~ValueIterator() = default;
   virtual Safe_PyObjectPtr next() = 0;
 
   bool valid() const { return is_valid_; }
@@ -536,18 +572,20 @@ class SequenceValueIterator : public ValueIterator {
  public:
   explicit SequenceValueIterator(PyObject* iterable)
       : seq_(PySequence_Fast(iterable, "")),
-        size_(seq_.get() ? PySequence_Fast_GET_SIZE(seq_.get()) : 0),
         index_(0) {}
 
   Safe_PyObjectPtr next() override {
     Safe_PyObjectPtr result;
-    if (index_ < size_) {
-      // PySequence_Fast_GET_ITEM returns a borrowed reference.
-      PyObject* elem = PySequence_Fast_GET_ITEM(seq_.get(), index_);
-      ++index_;
-      if (elem) {
-        Py_INCREF(elem);
-        result.reset(elem);
+    if (seq_) {
+      Py_ssize_t current_size = PySequence_Fast_GET_SIZE(seq_.get());
+      if (index_ < current_size) {
+        // PySequence_Fast_GET_ITEM returns a borrowed reference.
+        PyObject* elem = PySequence_Fast_GET_ITEM(seq_.get(), index_);
+        ++index_;
+        if (elem) {
+          Py_INCREF(elem);
+          result.reset(elem);
+        }
       }
     }
 
@@ -556,7 +594,6 @@ class SequenceValueIterator : public ValueIterator {
 
  private:
   Safe_PyObjectPtr seq_;
-  const Py_ssize_t size_;
   Py_ssize_t index_;
 };
 
@@ -575,7 +612,7 @@ class SingleValueIterator : public ValueIterator {
 // should have already called PyErr_SetString.
 class ErrorValueIterator : public ValueIterator {
  public:
-  ErrorValueIterator() {}
+  ErrorValueIterator() = default;
   Safe_PyObjectPtr next() override { return nullptr; }
 };
 
@@ -1187,7 +1224,7 @@ PyObject* SameNamedtuples(PyObject* o1, PyObject* o2) {
     Py_RETURN_FALSE;
   }
 
-  if (GetClassName(o1).compare(GetClassName(o2)) == 0) {
+  if (GetClassName(o1) == GetClassName(o2)) {
     Py_RETURN_TRUE;
   } else {
     Py_RETURN_FALSE;

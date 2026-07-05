@@ -18,13 +18,14 @@ limitations under the License.
 #include <cstddef>
 #include <functional>
 #include <initializer_list>
-#include <memory>
+#include <ostream>
 #include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "xla/tsl/lib/histogram/histogram.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
+#include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/lib/monitoring/types.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/histogram.pb.h"
@@ -179,6 +180,14 @@ inline auto HistogramEquals(const ::tsl::histogram::Histogram& expected) {
 }
 
 }  // namespace testing
+
+std::ostream& operator<<(std::ostream& os, ValueType value_type);
+std::ostream& operator<<(std::ostream& os, UnitOfMeasure unit_of_measure);
+std::ostream& operator<<(std::ostream& os, const PercentilePoint& point);
+std::ostream& operator<<(std::ostream& os, const Percentiles& percentiles);
+std::ostream& operator<<(std::ostream& os, const Point& point);
+std::ostream& operator<<(std::ostream& os, const Point::Label& label);
+
 }  // namespace monitoring
 }  // namespace tsl
 

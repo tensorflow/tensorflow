@@ -53,12 +53,12 @@ StatusOr<mlir::Operation*> MetadataSPMDExpander::ExpandOp(mlir::Operation* op) {
   for (auto operand : op->getOperands()) {
     TF_ASSIGN_OR_RETURN(auto input_layout, ExtractLayoutFromOperand(operand));
     if (!input_layout.has_value())
-      return errors::Internal(
+      return absl::InternalError(
           "All input layouts to Metadata op must be specified at SPMD "
           "expansion.");
 
     if (!input_layout->IsFullyReplicated())
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Metadata ops like tf.BroadcastGradientArgs op must have replicated "
           "input layouts.");
   }
@@ -66,12 +66,12 @@ StatusOr<mlir::Operation*> MetadataSPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto result_layouts, ExtractLayoutFromOp(op));
   for (const auto& layout : result_layouts) {
     if (!layout.has_value())
-      return errors::Internal(
+      return absl::InternalError(
           "All op result layouts of Metadata op must be specified for SPMD "
           "expansion.");
 
     if (!layout->IsFullyReplicated()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Metadata ops like tf.BroadcastGradientArgs op must have replicated "
           "output layouts.");
     }

@@ -779,7 +779,7 @@ TEST(H2DTransferExecutorTest, BatchTransfer) {
       .tensor = tensor1,
       .ifrt_dtype = dtype1,
       .ifrt_shape = shape1,
-      .input_xla_shape = &xla_shape1,
+      .input_xla_shape = std::make_shared<xla::Shape>(xla_shape1),
       .device_list = device_list,
       .ifrt_sharding = xla::ifrt::ShardingRef(xla::ifrt::HloSharding::Create(
           device_list, xla::ifrt::MemoryKind(), xla::HloSharding::Replicate())),
@@ -793,7 +793,7 @@ TEST(H2DTransferExecutorTest, BatchTransfer) {
       .tensor = tensor2,
       .ifrt_dtype = dtype2,
       .ifrt_shape = shape2,
-      .input_xla_shape = &xla_shape2,
+      .input_xla_shape = std::make_shared<xla::Shape>(xla_shape2),
       .device_list = device_list,
       .ifrt_sharding = xla::ifrt::ShardingRef(xla::ifrt::HloSharding::Create(
           device_list, xla::ifrt::MemoryKind(), xla::HloSharding::Replicate())),

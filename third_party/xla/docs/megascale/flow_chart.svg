@@ -66,7 +66,7 @@
 <!-- rapideye -->
 <g id="googleyellow" class="node">
 <title>rapideye</title>
-<g id="a_googleyellow"><a xlink:href="hangs.md" xlink:title=" " target="_blank">
+<g id="a_googleyellow"><a xlink:href="debugging_workflow.md#hangs" xlink:title=" " target="_parent">
 <path fill="none" stroke="black" d="M325,-1260C325,-1260 133,-1260 133,-1260 127,-1260 121,-1254 121,-1248 121,-1248 121,-1200 121,-1200 121,-1194 127,-1188 133,-1188 133,-1188 325,-1188 325,-1188 331,-1188 337,-1194 337,-1200 337,-1200 337,-1248 337,-1248 337,-1254 331,-1260 325,-1260"/>
 <text xml:space="preserve" text-anchor="middle" x="229" y="-1219.7" font-family="Times,serif" font-size="14.00">Use RapidEye</text>
 </a>
@@ -82,7 +82,7 @@
 <!-- check_straggler -->
 <g id="googleyellow" class="node">
 <title>check_straggler</title>
-<g id="a_googleyellow"><a xlink:href="straggler.md" xlink:title=" " target="_blank">
+<g id="a_googleyellow"><a xlink:href="debugging_workflow.md#straggler" xlink:title=" " target="_parent">
 <path fill="none" stroke="black" d="M585,-1260C585,-1260 393,-1260 393,-1260 387,-1260 381,-1254 381,-1248 381,-1248 381,-1200 381,-1200 381,-1194 387,-1188 393,-1188 393,-1188 585,-1188 585,-1188 591,-1188 597,-1194 597,-1200 597,-1200 597,-1248 597,-1248 597,-1254 591,-1260 585,-1260"/>
 <text xml:space="preserve" text-anchor="middle" x="489" y="-1219.7" font-family="Times,serif" font-size="14.00">Check for straggler</text>
 </a>
@@ -129,7 +129,7 @@
 <!-- has_dma_map -->
 <g id="googlegreen" class="node">
 <title>has_dma_map</title>
-<g id="a_googlegreen"><a xlink:href="performance.md#check_for_shortage_of_mapped_dma_buffers" xlink:title=" " target="_blank">
+<g id="a_googlegreen"><a xlink:href="debugging_workflow.md#check_for_shortage_of_mapped_dma_buffers" xlink:title=" " target="_parent">
 <polygon fill="lightgrey" stroke="black" points="380,-1044 272,-1008 380,-972 488,-1008 380,-1044"/>
 <text xml:space="preserve" text-anchor="middle" x="380" y="-1003.7" font-family="Times,serif" font-size="14.00">Has DMAMap in the trace?</text>
 </a>
@@ -222,7 +222,7 @@
 <!-- get_hlo_dump -->
 <g id="googleyellow" class="node">
 <title>get_hlo_dump</title>
-<g id="a_googleyellow"><a xlink:href="performance.md#hlo_dump" xlink:title=" " target="_blank">
+<g id="a_googleyellow"><a xlink:href="debugging_workflow.md#hlo_dump" xlink:title=" " target="_parent">
 <path fill="none" stroke="black" d="M506,-612C506,-612 314,-612 314,-612 308,-612 302,-606 302,-600 302,-600 302,-552 302,-552 302,-546 308,-540 314,-540 314,-540 506,-540 506,-540 512,-540 518,-546 518,-552 518,-552 518,-600 518,-600 518,-606 512,-612 506,-612"/>
 <text xml:space="preserve" text-anchor="middle" x="410" y="-571.7" font-family="Times,serif" font-size="14.00">Get HLO Dump</text>
 </a>
@@ -259,7 +259,7 @@
 <!-- has_memcpy -->
 <g id="googlegreen" class="node">
 <title>has_memcpy</title>
-<g id="a_googlegreen"><a xlink:href="performance.md#check_for_memory_copies_during_network_transfers" xlink:title=" " target="_blank">
+<g id="a_googlegreen"><a xlink:href="debugging_workflow.md#check_for_memory_copies_during_network_transfers" xlink:title=" " target="_parent">
 <polygon fill="lightgrey" stroke="black" points="244,-936 136,-900 244,-864 352,-900 244,-936"/>
 <text xml:space="preserve" text-anchor="middle" x="244" y="-895.7" font-family="Times,serif" font-size="14.00">Has 'Memory Copy' in the trace?</text>
 </a>
@@ -282,7 +282,7 @@
 <!-- no_slack_collectives -->
 <g id="googlegreen" class="node">
 <title>no_slack_collectives</title>
-<g id="a_googlegreen"><a xlink:href="performance.md#collective_slack_too_small" xlink:title=" " target="_blank">
+<g id="a_googlegreen"><a xlink:href="debugging_workflow.md#collective_slack_too_small" xlink:title=" " target="_parent">
 <polygon fill="lightgrey" stroke="black" points="214,-828 106,-792 214,-756 322,-792 214,-828"/>
 <text xml:space="preserve" text-anchor="middle" x="214" y="-787.7" font-family="Times,serif" font-size="14.00">Collective with small slack?</text>
 </a>
@@ -298,7 +298,7 @@
 <!-- high_bandwidth_demand -->
 <g id="googlegreen" class="node">
 <title>high_bandwidth_demand</title>
-<g id="a_googlegreen"><a xlink:href="performance.md#high_network_bandwidth_demand" xlink:title=" " target="_blank">
+<g id="a_googlegreen"><a xlink:href="debugging_workflow.md#high_network_bandwidth_demand" xlink:title=" " target="_parent">
 <polygon fill="lightgrey" stroke="black" points="214,-720 106,-684 214,-648 322,-684 214,-720"/>
 <text xml:space="preserve" text-anchor="middle" x="214" y="-679.7" font-family="Times,serif" font-size="14.00">High network bandwidth demand?</text>
 </a>
@@ -314,7 +314,7 @@
 <!-- high_network_latency -->
 <g id="googlegreen" class="node">
 <title>high_network_latency</title>
-<g id="a_googlegreen"><a xlink:href="performance.md#high_network_latency" xlink:title=" " target="_blank">
+<g id="a_googlegreen"><a xlink:href="debugging_workflow.md#high_network_latency" xlink:title=" " target="_parent">
 <polygon fill="lightgrey" stroke="black" points="176,-612 68,-576 176,-540 284,-576 176,-612"/>
 <text xml:space="preserve" text-anchor="middle" x="176" y="-571.7" font-family="Times,serif" font-size="14.00">High network latency?</text>
 </a>

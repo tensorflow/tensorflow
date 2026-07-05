@@ -21,8 +21,11 @@ ExtraArgs: [
   "-Wunused-private-field",
   "-Wuser-defined-warnings",
 ]
+# Get colors when outputting through `bazel build --config=clang-tidy`.
+UseColor: true
+# Necessary for using --config=clang-tidy to emit errors.
+WarningsAsErrors: "*"
 Checks: "-*,
-  abseil-duration-addition,
   abseil-duration-addition,
   abseil-duration-comparison,
   abseil-duration-conversion-cast,
@@ -42,7 +45,6 @@ Checks: "-*,
   bugprone-argument-comment,
   bugprone-assert-side-effect,
   bugprone-bool-pointer-implicit-conversion,
-  bugprone-dangling-handle,
   bugprone-fold-init-type,
   bugprone-forward-declaration-namespace,
   bugprone-inaccurate-erase,
@@ -56,11 +58,18 @@ Checks: "-*,
   bugprone-undelegated-constructor,
   bugprone-unused-raii,
   bugprone-use-after-move,
+  clang-analyzer-optin.cplusplus.VirtualCall,
+  clang-diagnostic-c++17-compat,
+  clang-diagnostic-c++17-compat-mangling,
   clang-diagnostic-deprecated-declarations,
+  clang-diagnostic-deprecated-increment-bool,
   clang-diagnostic-deprecated-register,
   clang-diagnostic-expansion-to-defined,
   clang-diagnostic-ignored-attributes,
+  clang-diagnostic-mismatched-tags,
   clang-diagnostic-non-pod-varargs,
+  clang-diagnostic-pre-c++20-compat,
+  clang-diagnostic-pre-c++20-compat-pedantic,
   clang-diagnostic-shadow-field,
   clang-diagnostic-shift-sign-overflow,
   clang-diagnostic-tautological-undefined-compare,
@@ -84,12 +93,14 @@ Checks: "-*,
   google-objc-avoid-nsobject-new,
   google-objc-function-naming,
   google-objc-global-variable-declaration,
+  google-readability-braces-around-statements,
   google-readability-function-size,
   google-readability-namespace-comments,
   google-runtime-int,
-  google-runtime-memset,
   google-runtime-operator,
+  misc-coroutine-hostile-raii,
   misc-definitions-in-headers,
+  misc-include-cleaner,
   misc-static-assert,
   misc-unconventional-assign-operator,
   misc-uniqueptr-reset-release,
@@ -119,7 +130,7 @@ Checks: "-*,
   readability-avoid-const-params-in-decls,
   readability-const-return-type,
   readability-container-size-empty,
-  readability-deleted-default,
+  readability-else-after-return,
   readability-inconsistent-declaration-parameter-name,
   readability-misleading-indentation,
   readability-redundant-control-flow,
@@ -130,8 +141,8 @@ CheckOptions:
     value: assert,DCHECK
   - key: 'bugprone-string-constructor.WarnOnLargeLength'
     value: 0
-  - key: 'bugprone-dangling-handle.HandleClasses'
-    value: '::std::string_view;::std::experimental::string_view;::absl::string_view;::absl::Span;::absl::FunctionRef;::llvm::StringRef;::llvm::ArrayRef;::absl::BitGenRef;::mlir::BlockRange;::mlir::OperandRange;::mlir::RegionRange;::mlir::ResultRange;::mlir::SuccessorRange;::mlir::TypeRange;::mlir::ValueRange'
+  - key: 'google-readability-braces-around-statements.ShortStatementLines'
+    value: 0
   - key: 'google-readability-function-size.ParameterThreshold'
     value: 100
   - key: 'modernize-make-unique.IncludeStyle'

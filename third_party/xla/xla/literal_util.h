@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -42,11 +43,11 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tests/constraint_state.h"
 #include "xla/tsl/lib/core/bitmap.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
@@ -607,7 +608,7 @@ template <PrimitiveType type, typename T>
   using NativeT = primitive_util::NativeTypeOf<type>;
   TF_RET_CHECK(shape.element_type() == type);
   Literal literal(shape);
-  TF_RETURN_IF_ERROR(literal.Populate<NativeT>(
+  RETURN_IF_ERROR(literal.Populate<NativeT>(
       [=](absl::Span<const int64_t> indexes) { return generator(indexes); }));
   return std::move(literal);
 }
@@ -671,7 +672,14 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     std::optional<int64_t> max_bits_of_precision,
     std::optional<int64_t> index_alignment = std::nullopt,
     std::optional<uint64_t> index_known_zeroes = std::nullopt,
-    std::function<double(std::minstd_rand0*)> float_generator = nullptr);
+    std::function<double(std::minstd_rand0*)> float_generator = nullptr,
+    std::optional<ConstraintInterval> interval = std::nullopt);
+
+// Materializes a dense literal from compressed sparse values and indices
+// using the provided sparsity configuration.
+absl::StatusOr<Literal> MaterializeSparseOperand(
+    const LiteralSlice& values, const LiteralSlice& indices,
+    const SparsityConfig::TensorSparsityConfig& config);
 
 }  // namespace xla
 

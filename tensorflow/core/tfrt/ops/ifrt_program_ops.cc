@@ -55,6 +55,42 @@ variable_arg_indices[k] in tpu program is already loaded as an ifrt array and
 the input `args[variable_arg_indices[k]]` is the key to look for this loaded array.
 )");
 
+REGISTER_OP("AsyncIfrtCall")
+    .Input("args: Tin")
+    .Input("static_shapes: Tstatic_shapes")
+    .Output("results: Tout")
+    .Attr("Tin: list(type) >= 0")
+    .Attr("Tstatic_shapes: list(type) >= 0 = []")
+    .Attr("Tout: list(type) >= 0")
+    .Attr("program_id: int")
+    .Attr("variable_arg_indices: list(int)")
+    .SetIsStateful()
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .Doc(R"(
+Calls an IFRT program identified by the given program id asynchronously.
+
+This op looks up a `ServingExecutable` from `ServingExecutableRegistry` using
+the program id, calls the executable with the op's inputs as arguments, and
+returns its results as the op's outputs.
+
+Note that this op is not part of a stable interface. Users must not use this op
+in their SavedModel and instead rely on Ifrt Serving's mechanism that
+automatically inserts this op with graph rewrite.
+
+static_shapes: A list of 1D tensors specifying static shapes for some arguments
+in `args`. This allows device buffer allocation based on static shapes,
+supporting host tensors with dynamic shapes that fit within these bounds.
+The mapping between `args` and `static_shapes` is defined by attributes in
+the `FuncOp` representing the IFRT program.
+
+program_id: int64 id that can be used to look up compiled programs from
+ServingExecutableRegistry`.
+
+variable_arg_indices: must be in sorted ascending order. The argument at position
+variable_arg_indices[k] in tpu program is already loaded as an ifrt array and
+the input `args[variable_arg_indices[k]]` is the key to look for this loaded array.
+)");
+
 REGISTER_OP("IfrtLoadVariable")
     .Input("variable: Tin")
     .Output("array_key: Tout")

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "riegeli/bytes/string_reader.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
@@ -38,10 +39,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -56,9 +60,10 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util/split_proto/split_proto_reader.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -130,7 +135,6 @@ class GpuAotCompilationResultTest : public ::testing::Test {
 
     GpuExecutable::Params params;
     params.debug_module = std::move(hlo_module);
-    params.asm_text = "test_asm_text";
     params.binary = {1, 2, 3};
     params.dnn_compiled_graphs = {{"test_dnn_compiled_graph", "test_json"}};
 
@@ -146,6 +150,18 @@ class GpuAotCompilationResultTest : public ::testing::Test {
         params.executable_abi_version,
         stream_executor::ExecutableAbiVersion::FromDeviceDescription(
             device_description_));
+
+    params.buffer_assignment_proto =
+        tsl::proto_testing::ParseTextProtoOrDie<BufferAssignmentProto>(R"pb(
+          buffer_allocations { size: 1024 }
+          logical_buffers { size: 1024 }
+          heap_simulator_traces {
+            events { kind: ALLOC }
+            events { kind: FREE }
+          }
+        )pb");
+    params.buffer_allocations_debug_summary = "dummy_summary";
+
     ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
                      GpuExecutable::Create(std::move(params)));
     return executable->ToProto();
@@ -175,15 +191,15 @@ class GpuAotCompilationResultTest : public ::testing::Test {
 };
 
 TEST_F(GpuAotCompilationResultTest, CreateAndSerialize) {
-  TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto reference_executable,
-                          CreateGpuExecutableProto());
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto reference_executable,
+                       CreateGpuExecutableProto());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuAotCompilationResult> result,
       GpuAotCompilationResult::FromProto(reference_executable));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_result,
-                          result->SerializeAsString());
+  ASSERT_OK_AND_ASSIGN(std::string serialized_result,
+                       result->SerializeAsString());
 
   GpuExecutableProto deserialized_executable;
   ASSERT_OK(ReadSplitProto(
@@ -201,14 +217,14 @@ TEST_F(GpuAotCompilationResultTest, CreateAndSerialize) {
 }
 
 TEST_F(GpuAotCompilationResultTest, LoadExecutable) {
-  TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto reference_executable,
-                          CreateGpuExecutableProto());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto reference_executable,
+                       CreateGpuExecutableProto());
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuAotCompilationResult> result,
       GpuAotCompilationResult::FromProto(reference_executable));
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         stream_executor::ExecutableAbiVersion executable_abi_version,
         result->GetExecutableAbiVersion());
     EXPECT_EQ(executable_abi_version.platform_name(), "CUDA");
@@ -220,12 +236,13 @@ TEST_F(GpuAotCompilationResultTest, LoadExecutable) {
 
   EnsureCudaSymbolIsRegistered();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          std::move(*result).LoadExecutable(
-                              platform_.id(), GetDeviceDescription()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      std::move(*result).LoadExecutable(platform_.id(), GetDeviceDescription(),
+                                        DebugOptions()));
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         stream_executor::ExecutableAbiVersion executable_abi_version,
         executable->GetExecutableAbiVersion());
     EXPECT_EQ(executable_abi_version.platform_name(), "CUDA");
@@ -238,8 +255,8 @@ TEST_F(GpuAotCompilationResultTest, LoadExecutable) {
   auto* gpu_executable = dynamic_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr) << "Executable is not a GpuExecutable.";
 
-  TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto executable_proto,
-                          gpu_executable->ToProto());
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto executable_proto,
+                       gpu_executable->ToProto());
   // HLO module is re-created from proto, and will have a new ID, so we clear
   // it for comparison purposes.
   executable_proto.mutable_hlo_module_with_config()
@@ -249,6 +266,20 @@ TEST_F(GpuAotCompilationResultTest, LoadExecutable) {
       ->mutable_hlo_module()
       ->clear_id();
   EXPECT_THAT(executable_proto, EqualsProto(reference_executable));
+}
+
+TEST_F(GpuAotCompilationResultTest, GetCompiledMemoryStats) {
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto reference_executable,
+                       CreateGpuExecutableProto());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuAotCompilationResult> result,
+      GpuAotCompilationResult::FromProto(reference_executable));
+
+  ASSERT_OK_AND_ASSIGN(CompiledMemoryStats memory_stats,
+                       result->GetCompiledMemoryStats());
+  EXPECT_EQ(memory_stats.peak_memory_in_bytes, 1024);
+  EXPECT_EQ(memory_stats.serialized_buffer_assignment,
+            reference_executable.buffer_assignment().SerializeAsString());
 }
 
 }  // namespace

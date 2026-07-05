@@ -72,9 +72,5 @@ void PropagateSliceIndicesPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass() {
-  return std::make_unique<PropagateSliceIndicesPass>();
-}
-
 }  // namespace emitters
 }  // namespace xla

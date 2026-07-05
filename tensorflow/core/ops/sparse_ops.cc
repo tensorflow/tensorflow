@@ -624,7 +624,7 @@ REGISTER_OP("SparseFillEmptyRows")
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(input_indices, 1),
                                   c->Dim(input_shape, 0), &unused_dim));
       if (c->Value(c->NumElements(input_shape)) == 0)
-        return errors::InvalidArgument("dense_shape must not be empty");
+        return absl::InvalidArgumentError("dense_shape must not be empty");
       ShapeHandle output_indices =
           c->Matrix(InferenceContext::kUnknownDim, c->NumElements(input_shape));
       ShapeHandle output_values = c->Vector(InferenceContext::kUnknownDim);

@@ -1,4 +1,4 @@
-// RUN: litert-opt -tfl-prepare-composite-funcs-tf %s -split-input-file -verify-diagnostics | FILECHECK_OPTS="" FileCheck %s
+// RUN: litert-opt -tfl-prepare-composite-funcs-tf %s -split-input-file -verify-diagnostics | env FILECHECK_OPTS="" FileCheck %s
 
 module{
 func.func @embedding(%arg0: tensor<*xf32>, %arg1: tensor<*xi32>) -> tensor<*xf32> attributes  {tf._implements = "embedding_matmul", tf._reference = "mlir"} {

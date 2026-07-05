@@ -48,7 +48,9 @@ TEST(GroupEventsTest, GroupGpuTraceLegacyRootTest) {
   constexpr int64_t kCorrelationId = 100;
 
   XSpace space;
-  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
+  XPlaneBuilder host_plane_builder(host_plane);
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -97,7 +99,9 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   constexpr int64_t kCorrelationId = 100;
 
   XSpace space;
-  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
+  XPlaneBuilder host_plane_builder(host_plane);
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -147,7 +151,9 @@ TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
   constexpr int64_t kRawValue = 10;
 
   XSpace space;
-  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
+  XPlaneBuilder host_plane_builder(host_plane);
   host_plane_builder.ReserveLines(1);
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
@@ -213,7 +219,9 @@ TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
   constexpr int64_t kSecondIterNumStart = 0;
 
   XSpace space;
-  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
+  XPlaneBuilder host_plane_builder(host_plane);
   host_plane_builder.ReserveLines(2);
 
   auto first_tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
@@ -266,6 +274,7 @@ TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
 TEST(GroupEventsTest, EagerOpTest) {
   XSpace space;
   XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
   XPlaneBuilder host_plane_builder(host_plane);
   host_plane_builder.ReserveLines(1);
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -389,6 +398,7 @@ TEST(GroupEventsTest, FunctionOpTest) {
 
   XSpace space;
   XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
   XPlaneBuilder host_plane_builder(host_plane);
   host_plane_builder.ReserveLines(2);
 
@@ -448,6 +458,7 @@ TEST(GroupEventsTest, SemanticArgTest) {
 
   XSpace raw_space;
   XPlane* raw_plane = raw_space.add_planes();
+  SetXPlanePidIfNotSet(*raw_plane, 1);
   XPlaneBuilder plane(raw_plane);
   plane.ReserveLines(2);
   auto root_producer = plane.GetOrCreateLine(0);
@@ -487,6 +498,7 @@ TEST(GroupEventsTest, SemanticIntArgNoMatchTest) {
 
   XSpace raw_space;
   XPlane* raw_plane = raw_space.add_planes();
+  SetXPlanePidIfNotSet(*raw_plane, 1);
   XPlaneBuilder plane(raw_plane);
   plane.ReserveLines(2);
   auto root_producer = plane.GetOrCreateLine(0);
@@ -530,6 +542,7 @@ TEST(GroupEventsTest, SemanticUintArgNoMatchTest) {
 
   XSpace raw_space;
   XPlane* raw_plane = raw_space.add_planes();
+  SetXPlanePidIfNotSet(*raw_plane, 1);
   XPlaneBuilder plane(raw_plane);
   plane.ReserveLines(2);
   auto root_producer = plane.GetOrCreateLine(0);
@@ -573,6 +586,7 @@ TEST(GroupEventsTest, AsyncEventTest) {
 
   XSpace raw_space;
   XPlane* raw_plane = raw_space.add_planes();
+  SetXPlanePidIfNotSet(*raw_plane, 1);
   XPlaneBuilder plane(raw_plane);
   plane.ReserveLines(1);
   auto line = plane.GetOrCreateLine(0);
@@ -610,6 +624,7 @@ TEST(GroupEventsTest, BatchingSessionTest) {
 
   XSpace raw_space;
   XPlane* raw_plane = raw_space.add_planes();
+  SetXPlanePidIfNotSet(*raw_plane, 1);
   XPlaneBuilder plane(raw_plane);
   plane.ReserveLines(2);
   auto request_thread = plane.GetOrCreateLine(0);
@@ -667,7 +682,9 @@ TEST(GroupEventsTest, BatchingSessionTest) {
 
 TEST(GroupTPUEventsTest, TpuExecuteOpTest) {
   tensorflow::profiler::XSpace space;
-  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
+  XPlaneBuilder host_plane_builder(host_plane);
   host_plane_builder.ReserveLines(1);
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   // When there is a TF loop, events are grouped per TF loop iteration.
@@ -689,7 +706,9 @@ TEST(GroupTPUEventsTest, TpuExecuteOpTest) {
 
 TEST(GroupTPUEventsTest, TpuRequestTest) {
   tensorflow::profiler::XSpace space;
-  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
+  XPlaneBuilder host_plane_builder(host_plane);
   host_plane_builder.ReserveLines(1);
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kSessionRun, 0,
@@ -713,7 +732,9 @@ TEST(GroupTPUEventsTest, TpuRequestTest) {
 
 TEST(GroupTPUEventsTest, TpuProgramCallbackTest) {
   tensorflow::profiler::XSpace space;
-  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
+  XPlaneBuilder host_plane_builder(host_plane);
   host_plane_builder.ReserveLines(1);
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kSessionRun, 0,
@@ -768,7 +789,9 @@ TEST(GroupTPUEventsTest, ModuleRootEventTest) {
 
 TEST(GroupTPUEventsTest, MergeHostStepsTest) {
   XSpace space;
-  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 123);
+  XPlaneBuilder host_plane_builder(host_plane);
   host_plane_builder.ReserveLines(1);
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   main_thread.SetName("main");
@@ -1070,6 +1093,7 @@ TEST(GroupTPUEventsTest, MergeOffloadedScSteps) {
 TEST(GroupTPUEventsTest, GroupOffloadedSparseCoreModulesHostLoopTest) {
   tensorflow::profiler::XSpace space;
   tensorflow::profiler::XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
   XPlaneBuilder host_plane_builder(host_plane);
   host_plane_builder.ReserveLines(1);
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -1200,6 +1224,7 @@ TEST(GroupTPUEventsTest, GroupOffloadedSparseCoreModulesHostLoopTest) {
 TEST(GroupTPUEventsTest, GroupOffloadedSparseCoreModulesDeviceLoopTest) {
   tensorflow::profiler::XSpace space;
   tensorflow::profiler::XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
   XPlaneBuilder host_plane_builder(host_plane);
   host_plane_builder.ReserveLines(2);
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -1340,6 +1365,148 @@ TEST(GroupTPUEventsTest, GroupOffloadedSparseCoreModulesDeviceLoopTest) {
       EXPECT_EQ(group_id_stat->IntValue(), 1);
     });
   });
+}
+
+TEST(GroupEventsTest, SubprocessGroupingTest) {
+  constexpr int64_t kContextType = 123;
+  constexpr uint64_t kContextId = 456;
+  constexpr int64_t kProducerPid = 1000;
+  constexpr int64_t kConsumerPid = 2000;
+
+  XSpace raw_space;
+
+  XPlane* producer_plane = raw_space.add_planes();
+  XPlaneBuilder producer_plane_builder(producer_plane);
+  producer_plane_builder.SetName(kHostCpusPlaneName);
+  producer_plane_builder.AddStatValue(
+      *producer_plane_builder.GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kProcessId)),
+      kProducerPid);
+  producer_plane_builder.ReserveLines(1);
+  auto producer_line = producer_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&producer_plane_builder, &producer_line, "root1", 0, 10,
+               {{StatType::kIsRoot, int64_t{1}}});
+  CreateXEvent(&producer_plane_builder, &producer_line, "root2", 10, 100,
+               {{StatType::kIsRoot, int64_t{1}}});
+  CreateXEvent(&producer_plane_builder, &producer_line, "producer", 10, 90,
+               {{StatType::kProducerType, kContextType},
+                {StatType::kProducerId, kContextId}});
+
+  XPlane* consumer_plane = raw_space.add_planes();
+  XPlaneBuilder consumer_plane_builder(consumer_plane);
+  consumer_plane_builder.SetName(
+      absl::StrCat(kHostCpusPlaneName, " [", kConsumerPid, "]"));
+  consumer_plane_builder.AddStatValue(
+      *consumer_plane_builder.GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kProcessId)),
+      kConsumerPid);
+  consumer_plane_builder.ReserveLines(1);
+  auto consumer_line = consumer_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&consumer_plane_builder, &consumer_line, "consumer", 20, 80,
+               {{StatType::kConsumerType, kContextType},
+                {StatType::kConsumerId, kContextId},
+                {StatType::kConsumerPid, kProducerPid}});
+
+  GroupTfEvents(&raw_space);
+
+  absl::flat_hash_map<absl::string_view, int32_t> event_name_to_group_id;
+  CreateTfXPlaneVisitor(producer_plane)
+      .ForEachLine([&](const XLineVisitor& line) {
+        line.ForEachEvent([&](const XEventVisitor& event) {
+          if (std::optional<XStatVisitor> stat =
+                  event.GetStat(StatType::kGroupId);
+              stat.has_value()) {
+            event_name_to_group_id[event.Name()] = stat->IntOrUintValue();
+          }
+        });
+      });
+
+  CreateTfXPlaneVisitor(consumer_plane)
+      .ForEachLine([&](const XLineVisitor& line) {
+        line.ForEachEvent([&](const XEventVisitor& event) {
+          if (std::optional<XStatVisitor> stat =
+                  event.GetStat(StatType::kGroupId)) {
+            event_name_to_group_id[event.Name()] = stat->IntOrUintValue();
+          }
+        });
+      });
+
+  EXPECT_THAT(event_name_to_group_id,
+              ::testing::UnorderedElementsAre(::testing::Pair("root1", 0),
+                                              ::testing::Pair("root2", 1),
+                                              ::testing::Pair("producer", 1),
+                                              ::testing::Pair("consumer", 1)));
+}
+
+TEST(GroupEventsTest, SubprocessGroupingNoMatchTest) {
+  constexpr int64_t kContextType = 123;
+  constexpr uint64_t kContextId = 456;
+  constexpr int64_t kProducerPid = 1000;
+  constexpr int64_t kConsumerPid = 2000;
+
+  XSpace raw_space;
+
+  XPlane* producer_plane = raw_space.add_planes();
+  XPlaneBuilder producer_plane_builder(producer_plane);
+  producer_plane_builder.SetName(kHostCpusPlaneName);
+  producer_plane_builder.AddStatValue(
+      *producer_plane_builder.GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kProcessId)),
+      kProducerPid);
+  producer_plane_builder.ReserveLines(1);
+  auto producer_line = producer_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&producer_plane_builder, &producer_line, "root1", 0, 10,
+               {{StatType::kIsRoot, int64_t{1}}});
+  CreateXEvent(&producer_plane_builder, &producer_line, "root2", 10, 100,
+               {{StatType::kIsRoot, int64_t{1}}});
+  CreateXEvent(&producer_plane_builder, &producer_line, "producer", 10, 90,
+               {{StatType::kProducerType, kContextType},
+                {StatType::kProducerId, kContextId}});
+
+  XPlane* consumer_plane = raw_space.add_planes();
+  XPlaneBuilder consumer_plane_builder(consumer_plane);
+  consumer_plane_builder.SetName(
+      absl::StrCat(kHostCpusPlaneName, " [", kConsumerPid, "]"));
+  consumer_plane_builder.AddStatValue(
+      *consumer_plane_builder.GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kProcessId)),
+      kConsumerPid);
+  consumer_plane_builder.ReserveLines(1);
+  auto consumer_line = consumer_plane_builder.GetOrCreateLine(0);
+  // Without kConsumerPid, the consumer will fall back to consumer_plane's
+  // kProcessId (kConsumerPid), which is 2000, mismatching kProducerPid (1000).
+  // Thus, no grouping.
+  CreateXEvent(&consumer_plane_builder, &consumer_line, "consumer", 20, 80,
+               {{StatType::kConsumerType, kContextType},
+                {StatType::kConsumerId, kContextId}});
+
+  GroupTfEvents(&raw_space);
+
+  absl::flat_hash_map<absl::string_view, int64_t> event_name_to_group_id;
+  CreateTfXPlaneVisitor(producer_plane)
+      .ForEachLine([&](const XLineVisitor& line) {
+        line.ForEachEvent([&](const XEventVisitor& event) {
+          if (std::optional<XStatVisitor> stat =
+                  event.GetStat(StatType::kGroupId)) {
+            event_name_to_group_id[event.Name()] = stat->IntOrUintValue();
+          }
+        });
+      });
+
+  CreateTfXPlaneVisitor(consumer_plane)
+      .ForEachLine([&](const XLineVisitor& line) {
+        line.ForEachEvent([&](const XEventVisitor& event) {
+          if (std::optional<XStatVisitor> stat =
+                  event.GetStat(StatType::kGroupId)) {
+            event_name_to_group_id[event.Name()] = stat->IntOrUintValue();
+          }
+        });
+      });
+
+  EXPECT_THAT(event_name_to_group_id,
+              ::testing::UnorderedElementsAre(::testing::Pair("root1", 0),
+                                              ::testing::Pair("root2", 1),
+                                              ::testing::Pair("producer", 1)));
 }
 
 }  // namespace

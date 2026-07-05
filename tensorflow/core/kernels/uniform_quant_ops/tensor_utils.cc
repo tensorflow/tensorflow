@@ -23,34 +23,34 @@ absl::Status QuantizationAxisAndShapeValid(const TensorShape& data_shape,
                                            const TensorShape& zero_points_shape,
                                            int quantization_axis) {
   if (!scales_shape.IsSameSize(zero_points_shape)) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "scales and zero_points shape must be same, but given scales shape ",
         scales_shape.DebugString(), " and zero_points shape ",
-        zero_points_shape.DebugString());
+        zero_points_shape.DebugString()));
   }
   if (quantization_axis < -1 || quantization_axis >= data_shape.dims()) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "quantization_axis must be -1 or in range [0, input.rank), but given ",
-        quantization_axis);
+        quantization_axis));
   }
 
   if (quantization_axis == -1) {
     if (scales_shape.dims() != 0) {
-      return InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "If quantization_axis is -1, scales and zero_points must be scalar "
           "tensors, but given scales shape ",
           scales_shape.DebugString(), " and zero_points shape ",
-          zero_points_shape.DebugString());
+          zero_points_shape.DebugString()));
     }
   } else {
     if (!(scales_shape.dims() == 1 &&
           scales_shape.dim_size(0) == data_shape.dim_size(quantization_axis))) {
-      return InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "If quantization_axis is not -1, scales and zero_points must be a "
           "tensor of rank 1 and the size must be equal to the "
           "input.dim_size(quantization_axis), but given quantization_axis ",
           quantization_axis, ", scales shape ", scales_shape.DebugString(),
-          " and zero_points shape ", zero_points_shape.DebugString());
+          " and zero_points shape ", zero_points_shape.DebugString()));
     }
   }
   return absl::OkStatus();

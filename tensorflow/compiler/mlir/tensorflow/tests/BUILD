@@ -19,7 +19,11 @@ glob_lit_tests(
     tags_override = {
         "optimize.mlir": ["no_rocm"],
         "tf_optimize.mlir": ["no_rocm"],
-        "tf-reduce-identity.mlir": ["no_windows"],
+        # TODO(b/495279482): Remove no_oss once the compiler crash is fixed.
+        "tf-reduce-identity.mlir": [
+            "no_windows",
+            "no_oss",
+        ],
     },
     test_file_exts = ["mlir"],
 )

@@ -49,8 +49,8 @@ limitations under the License.
 
 #include <Python.h>
 
-#include "numpy/arrayobject.h"
-#include "numpy/ufuncobject.h"
+#include "numpy/arrayobject.h"  // IWYU pragma: export
+#include "numpy/ufuncobject.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/string_util.h"
 

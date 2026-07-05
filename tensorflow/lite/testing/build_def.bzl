@@ -312,7 +312,7 @@ def max_number_of_test_models_in_merged_zip():
     Returns:
       Maximum number of merged test models in a zip file.
     """
-    return 15
+    return 5
 
 def number_of_merged_zip_file(conversion_mode, delegate):
     """Returns the number of merged zip file targets.
@@ -576,8 +576,10 @@ def gen_zipped_test_file(name, file, flags = ""):
     """
     native.genrule(
         name = file + ".files",
-        cmd = (("$(location //tensorflow/lite/testing:generate_examples) " +
-                " --zip_to_output {0} {1} $(@D)").format(file, flags)),
+        cmd = (("TF_FLAG_SAVED_MODEL_FINGERPRINTING=0 " +
+                "$(location //tensorflow/lite/testing:generate_examples) " +
+                "--enable_tensorflow_metrics_export=false " +
+                "--zip_to_output {0} {1} $(@D)").format(file, flags)),
         outs = [file],
         # `exec_tools` is required for PY3 compatibility in place of `tools`.
         tools = [

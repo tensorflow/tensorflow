@@ -215,6 +215,20 @@ TYPED_TEST(FloatDivTest, WithBroadcast5D) {
   }
 }
 
+TYPED_TEST(FloatDivTest, WithBroadcast6D) {
+  using T = TypeParam;
+  DivOpModel<T> m({GetTensorType<T>(), {1, 2, 1, 1, 2, 2}},
+                  {GetTensorType<T>(), {1, 1, 2}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), {2, 6, 4, 12, 6, 18, 8, 24});
+  m.template PopulateTensor<T>(m.input2(), {2, 3});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {1, 2, 2, 4, 3, 6, 4, 8},
+                  static_cast<float>(NumericLimits<T>::epsilon() * 10))));
+}
+
 TEST(IntegerDivOpTest, NoActivation) {
   IntegerDivOpModel m({TensorType_INT32, {1, 2, 2, 1}},
                       {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
@@ -395,6 +409,30 @@ TEST(QuantizedDivOpTest, QuantizedWithBroadcastInt8) {
 
 TEST(QuantizedDivOpTest, QuantizedWithBroadcastInt16) {
   QuantizedWithBroadcast<TensorType_INT16, int16_t>();
+}
+
+TEST(QuantizedDivOpTest, AsymmetricQuantizedDivisorZeroCheck) {
+  // Case 1: Divisor is real 0.0 (quantized to -128). This should FAIL.
+  {
+    QuantizedDivOpModel m({TensorType_INT8, {1, 1}, -1.0, 1.0},
+                          {TensorType_INT8, {1, 1}, 0.0, 2.0},
+                          {TensorType_INT8, {}, -1.0, 1.0},
+                          ActivationFunctionType_NONE);
+    m.QuantizeAndPopulate<int8_t>(m.input1(), {1.0});
+    m.QuantizeAndPopulate<int8_t>(m.input2(), {0.0});
+    ASSERT_NE(m.Invoke(), kTfLiteOk);
+  }
+
+  // Case 2: Divisor is real 1.0 (quantized to ~0). This should PASS.
+  {
+    QuantizedDivOpModel m({TensorType_INT8, {1, 1}, -1.0, 1.0},
+                          {TensorType_INT8, {1, 1}, 0.0, 2.0},
+                          {TensorType_INT8, {}, -1.0, 1.0},
+                          ActivationFunctionType_NONE);
+    m.QuantizeAndPopulate<int8_t>(m.input1(), {1.0});
+    m.QuantizeAndPopulate<int8_t>(m.input2(), {1.0});
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  }
 }
 
 }  // namespace

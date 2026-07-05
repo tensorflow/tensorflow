@@ -1833,7 +1833,7 @@ static Error EnumAttrsFunction(Enum0 e0, Enum1 e1, Enum2 e2, Enum3 e3,
 }
 
 template <typename F>
-void BM_EnumAttrs(benchmark::State& state, F&& f) {
+void BM_EnumAttrsImpl(benchmark::State& state, F&& f) {
   CallFrameBuilder::AttributesBuilder attrs;
   attrs.Insert("e0", int32_t{0});
   attrs.Insert("e1", int32_t{0});
@@ -1859,17 +1859,17 @@ void BM_EnumAttrs(benchmark::State& state, F&& f) {
 }
 
 static void BM_EnumAttrs(benchmark::State& state) {
-  BM_EnumAttrs(state, [](Enum0 e0, Enum1 e1, Enum2 e2, Enum3 e3, Enum4 e4) {
+  BM_EnumAttrsImpl(state, [](Enum0 e0, Enum1 e1, Enum2 e2, Enum3 e3, Enum4 e4) {
     return EnumAttrsFunction(e0, e1, e2, e3, e4);
   });
 }
 
 static void BM_EnumAttrsFunction(benchmark::State& state) {
-  BM_EnumAttrs(state, EnumAttrsFunction);
+  BM_EnumAttrsImpl(state, EnumAttrsFunction);
 }
 
 static void BM_EnumAttrsFunctionWrapper(benchmark::State& state) {
-  BM_EnumAttrs(state, Ffi::Wrapper<EnumAttrsFunction>());
+  BM_EnumAttrsImpl(state, Ffi::Wrapper<EnumAttrsFunction>());
 }
 
 BENCHMARK(BM_EnumAttrs);

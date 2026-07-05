@@ -129,6 +129,16 @@ func.func @asinh_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
 
 // -----
 
+// CHECK-LABEL: func @mulhi_preserve
+func.func @mulhi_preserve(%arg0: tensor<3x20x20xi32>, %arg1: tensor<3x20x20xi32>) -> tensor<?x20x20xi32> {
+  // CHECK: stablehlo.composite "chlo.mulhi" %arg0, %arg1 {decomposition = @chlo.mulhi.impl, version = 1 : i32}
+  %0 = chlo.mulhi %arg0, %arg1 : tensor<3x20x20xi32>, tensor<3x20x20xi32> -> tensor<?x20x20xi32>
+  return %0 : tensor<?x20x20xi32>
+}
+
+// -----
+
+
 // CHECK-LABEL: func @tan_no_preserve
 func.func @tan_no_preserve(%arg0: tensor<16xf32>) -> tensor<?xf32> {
   // CHECK: chlo.tan

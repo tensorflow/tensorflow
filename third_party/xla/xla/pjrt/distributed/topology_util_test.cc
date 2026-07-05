@@ -24,15 +24,19 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla {
 namespace {
+using ::tsl::proto_testing::EqualsProto;
 
 TEST(TopologyTest, GetNetworkNodes) {
   tsl::setenv("XLA_DISTRIBUTED_TOPOLOGY_NETWORK_NODES", "spine,pod,rack", true);
@@ -412,10 +416,22 @@ TEST(TopologyTest, BuildGpuTopology) {
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
                           /*assign_global_device_ids=*/true));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
+  TF_ASSERT_OK_AND_ASSIGN(
+      stream_executor::GpuTargetConfigProto target_config_proto,
+      gpu::GetGpuTargetConfig(gpu::GpuModel::H100_PCIE));
+  TF_ASSERT_OK_AND_ASSIGN(gpu::GpuTargetConfig target_config,
+                          gpu::GpuTargetConfig::FromProto(target_config_proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto gpu_topology,
+      BuildGpuTopology(global, target_config, cpu::TargetMachineOptions()));
   EXPECT_EQ(gpu_topology.num_partitions(), 2);
   EXPECT_EQ(gpu_topology.num_hosts_per_partition(), 1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), 2);
+  EXPECT_THAT(gpu_topology.gpu_target_config(),
+              EqualsProto(target_config.ToProto()));
+  EXPECT_THAT(gpu_topology.host_target_machine_options(),
+              EqualsProto(cpu::TargetMachineOptions().ToProto()));
 }
 
 TEST(TopologyTest, BuildGpuTopologyWithDifferentNumHostsPerSlice) {
@@ -441,10 +457,21 @@ TEST(TopologyTest, BuildGpuTopologyWithDifferentNumHostsPerSlice) {
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
                           /*assign_global_device_ids=*/true));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
+  TF_ASSERT_OK_AND_ASSIGN(
+      stream_executor::GpuTargetConfigProto target_config_proto,
+      gpu::GetGpuTargetConfig(gpu::GpuModel::H100_PCIE));
+  TF_ASSERT_OK_AND_ASSIGN(gpu::GpuTargetConfig target_config,
+                          gpu::GpuTargetConfig::FromProto(target_config_proto));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto gpu_topology,
+      BuildGpuTopology(global, target_config, cpu::TargetMachineOptions()));
   EXPECT_EQ(gpu_topology.num_partitions(), -1);
   EXPECT_EQ(gpu_topology.num_hosts_per_partition(), -1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), -1);
+  EXPECT_THAT(gpu_topology.gpu_target_config(),
+              EqualsProto(target_config.ToProto()));
+  EXPECT_THAT(gpu_topology.host_target_machine_options(),
+              EqualsProto(cpu::TargetMachineOptions().ToProto()));
 }
 
 TEST(TopologyTest, BuildGpuTopologyWithDifferentNumDevicesPerHost) {
@@ -468,10 +495,21 @@ TEST(TopologyTest, BuildGpuTopologyWithDifferentNumDevicesPerHost) {
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
                           /*assign_global_device_ids=*/true));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
+  TF_ASSERT_OK_AND_ASSIGN(
+      stream_executor::GpuTargetConfigProto target_config_proto,
+      gpu::GetGpuTargetConfig(gpu::GpuModel::H100_PCIE));
+  TF_ASSERT_OK_AND_ASSIGN(gpu::GpuTargetConfig target_config,
+                          gpu::GpuTargetConfig::FromProto(target_config_proto));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto gpu_topology,
+      BuildGpuTopology(global, target_config, cpu::TargetMachineOptions()));
   EXPECT_EQ(gpu_topology.num_partitions(), -1);
   EXPECT_EQ(gpu_topology.num_hosts_per_partition(), -1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), -1);
+  EXPECT_THAT(gpu_topology.gpu_target_config(),
+              EqualsProto(target_config.ToProto()));
+  EXPECT_THAT(gpu_topology.host_target_machine_options(),
+              EqualsProto(cpu::TargetMachineOptions().ToProto()));
 }
 }  // namespace
 }  // namespace xla

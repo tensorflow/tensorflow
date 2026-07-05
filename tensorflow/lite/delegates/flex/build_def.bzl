@@ -10,7 +10,6 @@ load(
     "tf_cc_binary",
     "tf_copts",
     "tf_defines_nortti_if_lite_protos",
-    "tf_features_nolayering_check_if_ios",
     "tf_features_nomodules_if_mobile",
     "tf_opts_nortti_if_lite_protos",
     "tf_portable_full_lite_protos",
@@ -23,7 +22,11 @@ load(
     "tflite_jni_binary",
     "tflite_jni_linkopts",
 )
-load("//tensorflow/lite:special_rules.bzl", "flex_portable_tensorflow_deps")
+load(
+    "//tensorflow/lite:special_rules.bzl",
+    "flex_portable_tensorflow_deps",
+    "flex_portable_tensorflow_hdrs",
+)
 
 def generate_flex_kernel_header(
         name,
@@ -124,10 +127,16 @@ def tflite_flex_cc_library(
         cc_library(
             name = "%s_tensorflow_lib" % name,
             srcs = if_mobile([
-                clean_dep("//tensorflow/core:portable_op_registrations_and_gradients"),
-                clean_dep("//tensorflow/core/kernels:portable_core_ops"),
+                clean_dep("//tensorflow/core/ops:mobile_srcs"),
+                clean_dep("//tensorflow/core/kernels:portable_core_ops_srcs"),
                 clean_dep("//tensorflow/core/kernels:portable_extended_ops"),
             ]) + [CUSTOM_KERNEL_HEADER.header],
+            hdrs = flex_portable_tensorflow_hdrs() + [
+                clean_dep("//tensorflow/core/ops:mobile_hdrs"),
+                clean_dep("//tensorflow/core/kernels:portable_core_ops_hdrs"),
+                clean_dep("//tensorflow/core/kernels:portable_extended_ops_headers"),
+                clean_dep("//tensorflow/core/kernels:portable_quantized_ops_hdrs"),
+            ],
             copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
             compatible_with = compatible_with,
             defines = [
@@ -138,7 +147,7 @@ def tflite_flex_cc_library(
                 full = [],
                 lite = ["TENSORFLOW_LITE_PROTOS"],
             ) + tf_defines_nortti_if_lite_protos(),
-            features = tf_features_nomodules_if_mobile() + tf_features_nolayering_check_if_ios() + if_android(["-layering_check"]),
+            features = tf_features_nomodules_if_mobile() + if_mobile(["-parse_headers"]),
             linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
             includes = [
                 CUSTOM_KERNEL_HEADER.include_path,
@@ -169,7 +178,6 @@ def tflite_flex_cc_library(
         hdrs = [
             clean_dep("//tensorflow/lite/delegates/flex:delegate.h"),
         ],
-        features = tf_features_nolayering_check_if_ios() + if_android(["-layering_check"]),
         compatible_with = compatible_with,
         visibility = visibility,
         deps = [
@@ -177,20 +185,15 @@ def tflite_flex_cc_library(
             clean_dep("//tensorflow/lite/delegates/flex:delegate_only_runtime"),
             clean_dep("//tensorflow/lite/delegates/utils:simple_delegate"),
         ] + select({
-            clean_dep("//tensorflow:android"): [
-                portable_tensorflow_lib,
-            ],
-            clean_dep("//tensorflow:ios"): [
-                portable_tensorflow_lib,
-            ],
-            clean_dep("//tensorflow:chromiumos"): [
+            clean_dep("//tensorflow:mobile"): [
                 portable_tensorflow_lib,
             ],
             "//conditions:default": [
                 clean_dep("//tensorflow/core:tensorflow"),
-                clean_dep("//tensorflow/lite/core/c:private_common"),
             ],
-        }) + additional_deps + delegate_symbol,
+        }) + [
+            clean_dep("//tensorflow/lite/core/c:private_common"),
+        ] + additional_deps + delegate_symbol,
         testonly = testonly,
         alwayslink = 1,
     )
@@ -280,12 +283,13 @@ def tflite_flex_jni_library(
     cc_library(
         name = "%s_flex_native" % name,
         srcs = [
-            clean_dep("//tensorflow/lite/testing:init_tensorflow.h"),
             clean_dep("//tensorflow/lite/testing:init_tensorflow.cc"),
             clean_dep("//tensorflow/lite/delegates/flex/java/src/main/native:flex_delegate_jni.cc"),
         ],
+        hdrs = [
+            clean_dep("//tensorflow/lite/testing:init_tensorflow.h"),
+        ],
         copts = tflite_copts(),
-        features = if_android(["-layering_check"]),
         testonly = testonly,
         visibility = visibility,
         deps = [
@@ -293,8 +297,9 @@ def tflite_flex_jni_library(
             clean_dep("//tensorflow/lite/java/jni"),
             clean_dep("//tensorflow/lite/delegates/utils:simple_delegate"),
         ] + select({
-            clean_dep("//tensorflow:android"): [],
-            clean_dep("//tensorflow:ios"): [],
+            clean_dep("//tensorflow:mobile"): [
+                clean_dep("//tensorflow/core:portable_tensorflow_lib_lite"),
+            ],
             "//conditions:default": [
                 clean_dep("//tensorflow/core:lib"),
             ],

@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -61,11 +62,11 @@ limitations under the License.
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -81,6 +82,7 @@ namespace {
 
 // Opaque handle that represents an array. Zero is reserved for null.
 using ArrayHandle = uintptr_t;
+static constexpr ArrayHandle kArrayNotUsed = 0;
 
 static MemoryKind kPinnedHostMemoryKind(xla::PinnedHostMemorySpace::kKind);
 
@@ -144,7 +146,7 @@ absl::StatusOr<std::unique_ptr<ProgramInterpreter>> ProgramInterpreter::Create(
     std::shared_ptr<AtomExecutableMap> atom_program_executables,
     DeviceListRef devices) {
   mlir::func::FuncOp main_func = GetMainFunction(mlir_module);
-  if (!main_func->hasAttr(kIfrtFunctionAttrName)) {
+  if (!IsIfrtFunction(main_func)) {
     return absl::InvalidArgumentError(
         absl::StrCat("`main` function of IFRT IR program: ", program_name,
                      " is not an IFRT function."));
@@ -215,12 +217,13 @@ struct ProgramInterpreterState {
       }
     }
 
+    std::vector<ValueRef> to_delete;
     for (int idx = 0; idx < input_handles.size(); ++idx) {
       // Add to the environment the arrays that are used.
       bool is_donated = donated_input_indices.contains(idx) &&
                         !options.non_donatable_input_indices.contains(idx);
       const ArrayHandle handle = input_handles[idx];
-      if (handle != 0) {
+      if (handle != kArrayNotUsed) {
         env.AssociateArray(handle, ArrayState{
                                        /*array=*/arrays[idx],
                                        /*can_be_donated=*/is_donated,
@@ -230,12 +233,18 @@ struct ProgramInterpreterState {
         }
       } else if (is_donated) {
         // If the argument is donated but not used, it can be deleted.
-        arrays[idx]->Delete();
+        to_delete.push_back(arrays[idx]);
       }
     }
 
+    // Delete the arrays that are donated and not used nor returned from the
+    // program.
+    if (!to_delete.empty()) {
+      client->DeleteValues(absl::MakeSpan(to_delete));
+    }
+
     for (const auto& op_fn : op_fns) {
-      TF_RETURN_IF_ERROR(op_fn(env));
+      RETURN_IF_ERROR(op_fn(env));
     }
 
     VLOG(2) << "Finished interpreting program: " << program_name;
@@ -263,10 +272,19 @@ ProgramInterpreter::BuildExecuteFn() {
 
   for (const auto [idx, arg] : llvm::enumerate(main_func.getArguments())) {
     // Add to the environment the arrays that are used.
-    const ArrayHandle handle = arg.use_empty() ? 0 : ToArrayHandle(arg);
+    const ArrayHandle handle =
+        arg.use_empty() ? kArrayNotUsed : ToArrayHandle(arg);
     state.input_handles.push_back(handle);
     if (main_func.getArgAttr(idx, kIfrtDonatedArgAttrName) != nullptr) {
       state.donated_input_indices.insert(idx);
+    }
+    if (handle != kArrayNotUsed) {
+      // Check that if input is not directly returned from the program.
+      // Aliasing scenarios should have a CopyArrays op with reuse semantics
+      // so that the input can be deleted while the output remains valid.
+      CHECK(llvm::none_of(arg.getUsers(), [](mlir::Operation* user) {
+        return mlir::isa<mlir::func::ReturnOp>(user);
+      }));
     }
   }
 
@@ -382,7 +400,7 @@ struct CallLoadedExecutableOpState {
       // TODO(b/401105456): Remove this CopyArrays call once non-donatable
       // pinned host inputs are supported.
       if (!non_donatable_pinned_host_inputs.empty()) {
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             std::vector<ArrayRef> copied_pinned_host_inputs,
             env.client->CopyArrays(
                 absl::MakeSpan(non_donatable_pinned_host_inputs),
@@ -406,9 +424,9 @@ struct CallLoadedExecutableOpState {
           env.handle_to_array.find(input_handles[idx])->second.array);
     }
 
-    TF_ASSIGN_OR_RETURN(ExecuteResult result,
-                        executable->Execute(absl::MakeSpan(inputs), options,
-                                            /*devices=*/std::nullopt));
+    ASSIGN_OR_RETURN(ExecuteResult result,
+                     executable->Execute(absl::MakeSpan(inputs), options,
+                                         /*devices=*/std::nullopt));
     TF_RET_CHECK(result.outputs.size() == output_handles.size())
         << "Got " << result.outputs.size() << " results, but atom program has "
         << output_handles.size() << ". " << pretty_print;
@@ -417,17 +435,21 @@ struct CallLoadedExecutableOpState {
     // created. This is because in situations such as `ifrt.Call(%0, %0)` the
     // liveness analysis will return that %0 is dead, but it's used for the
     // second argument.
+    std::vector<ValueRef> to_delete;
     for (const auto handle : arrays_to_remove) {
       if (env.deletable_program_arguments.erase(handle)) {
         // Explicitly delete donated program arguments that are not used later.
-        env.handle_to_array[handle].array->Delete();
+        to_delete.push_back(env.handle_to_array[handle].array);
       }
       env.handle_to_array.erase(handle);
+    }
+    if (!to_delete.empty()) {
+      env.client->DeleteValues(absl::MakeSpan(to_delete));
     }
 
     for (int i = 0; i < output_handles.size(); ++i) {
       const ArrayHandle handle = output_handles[i];
-      if (handle != 0) {
+      if (handle != kArrayNotUsed) {
         // The output array is kept only if it used later. This can happen if an
         // executable has multiple output arrays, but only some of them are
         // used.
@@ -484,13 +506,14 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
 
   state.is_leaf_op = true;
   for (const auto output : call_loaded_op.getOutputs()) {
-    const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
+    const ArrayHandle handle =
+        output.use_empty() ? kArrayNotUsed : ToArrayHandle(output);
     state.output_handles.push_back(handle);
 
     if (state.is_leaf_op) {
       for (mlir::OpOperand& use : output.getUses()) {
         // An ifrt.CallOp is not a leaf if any of its outputs are not returned.
-        if (llvm::dyn_cast<mlir::func::ReturnOp>(use.getOwner()) == nullptr) {
+        if (!llvm::isa<mlir::func::ReturnOp>(use.getOwner())) {
           state.is_leaf_op = false;
           break;
         }
@@ -555,7 +578,7 @@ struct RemapArraysOpState {
                "happens only if the array has been marked as non-donatable at "
                "runtime."
             << pretty_print;
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             std::vector<ArrayRef> copied_arrays,
             env.client->CopyArrays(
                 absl::MakeSpan(&array, 1), /*devices=*/std::nullopt,
@@ -571,12 +594,11 @@ struct RemapArraysOpState {
     }
 
     // Apply the remap arrays operation.
-    TF_ASSIGN_OR_RETURN(
-        auto out_arrays,
-        env.client->RemapArrays(remap_plan, absl::MakeSpan(inputs),
-                                remap_is_donated
-                                    ? ArrayCopySemantics::kDonateInput
-                                    : ArrayCopySemantics::kReuseInput));
+    ASSIGN_OR_RETURN(auto out_arrays,
+                     env.client->RemapArrays(
+                         remap_plan, absl::MakeSpan(inputs),
+                         remap_is_donated ? ArrayCopySemantics::kDonateInput
+                                          : ArrayCopySemantics::kReuseInput));
 
     for (const auto handle : arrays_to_remove) {
       // Donated remapped arrays are pro-actively deleted, and aliased arrays
@@ -592,7 +614,7 @@ struct RemapArraysOpState {
         << remap_plan.output_specs.size() << ". " << pretty_print;
     for (int i = 0; i < output_handles.size(); ++i) {
       const ArrayHandle handle = output_handles[i];
-      if (handle != 0) {
+      if (handle != kArrayNotUsed) {
         env.AssociateArray(handle, ArrayState{
                                        /*array=*/std::move(out_arrays[i]),
                                        /*can_be_donated=*/true,
@@ -638,9 +660,8 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   input_specs.reserve(remap_op.getInputs().size());
   for (const mlir::Value input : remap_op.getInputs()) {
     state.input_handles.push_back(ToArrayHandle(input));
-    TF_ASSIGN_OR_RETURN(
-        ArraySpec spec,
-        ArraySpecFromMlirType(input.getType(), client_, devices_));
+    ASSIGN_OR_RETURN(ArraySpec spec,
+                     ArraySpecFromMlirType(input.getType(), client_, devices_));
     input_specs.push_back(std::move(spec));
     if (liveness_.isDeadAfter(input, remap_op)) {
       state.dead_inputs.insert(ToArrayHandle(input));
@@ -651,9 +672,8 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   std::vector<ArraySpec> output_specs;
   output_specs.reserve(remap_op.getOutputs().size());
   for (const mlir::Value output : remap_op.getOutputs()) {
-    TF_ASSIGN_OR_RETURN(
-        ArraySpec spec,
-        ArraySpecFromMlirType(output.getType(), client_, devices_));
+    ASSIGN_OR_RETURN(ArraySpec spec, ArraySpecFromMlirType(output.getType(),
+                                                           client_, devices_));
     output_specs.push_back(std::move(spec));
   }
 
@@ -664,11 +684,12 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   };
   state.remap_is_donated = remap_op.getDonated();
 
-  TF_RETURN_IF_ERROR(state.remap_plan.ComputeInputDevicesForOutputMap(client_));
-  TF_RETURN_IF_ERROR(state.remap_plan.Validate());
+  RETURN_IF_ERROR(state.remap_plan.ComputeInputDevicesForOutputMap(client_));
+  RETURN_IF_ERROR(state.remap_plan.Validate());
 
   for (const auto output : remap_op.getOutputs()) {
-    const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
+    const ArrayHandle handle =
+        output.use_empty() ? kArrayNotUsed : ToArrayHandle(output);
     state.output_handles.push_back(handle);
   }
 
@@ -727,7 +748,7 @@ struct BitcastArraysOpState {
             << array->DebugString()
             << " (this warning is logged only at most 5 times)."
             << pretty_print;
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             std::vector<ArrayRef> copied_arrays,
             env.client->CopyArrays(
                 absl::MakeSpan(&array, 1), /*devices=*/std::nullopt,
@@ -742,12 +763,11 @@ struct BitcastArraysOpState {
       }
     }
 
-    TF_ASSIGN_OR_RETURN(
-        std::vector<ArrayRef> bitcast_arrays,
-        env.client->BitcastArrays(
-            absl::MakeSpan(inputs), absl::MakeSpan(output_specs),
-            bitcast_is_donated ? ArrayCopySemantics::kDonateInput
-                               : ArrayCopySemantics::kReuseInput));
+    ASSIGN_OR_RETURN(std::vector<ArrayRef> bitcast_arrays,
+                     env.client->BitcastArrays(
+                         absl::MakeSpan(inputs), absl::MakeSpan(output_specs),
+                         bitcast_is_donated ? ArrayCopySemantics::kDonateInput
+                                            : ArrayCopySemantics::kReuseInput));
 
     for (const auto handle : arrays_to_remove) {
       // Donated bitcast arrays are proactively deleted, and aliased arrays
@@ -762,7 +782,7 @@ struct BitcastArraysOpState {
         << inputs.size() << ". " << pretty_print;
     for (int i = 0; i < output_handles.size(); ++i) {
       const ArrayHandle handle = output_handles[i];
-      if (handle != 0) {
+      if (handle != kArrayNotUsed) {
         env.AssociateArray(handle, ArrayState{
                                        /*array=*/std::move(bitcast_arrays[i]),
                                        /*can_be_donated=*/true,
@@ -790,11 +810,11 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   state.bitcast_is_donated = bitcast_op.getDonated();
 
   for (const auto output : bitcast_op.getOutputs()) {
-    const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
+    const ArrayHandle handle =
+        output.use_empty() ? kArrayNotUsed : ToArrayHandle(output);
     state.output_handles.push_back(handle);
-    TF_ASSIGN_OR_RETURN(
-        ArraySpec spec,
-        ArraySpecFromMlirType(output.getType(), client_, devices_));
+    ASSIGN_OR_RETURN(ArraySpec spec, ArraySpecFromMlirType(output.getType(),
+                                                           client_, devices_));
     state.output_specs.push_back(std::move(spec));
   }
 
@@ -808,7 +828,7 @@ struct CopyArraysOpState {
 
   std::vector<ArrayHandle> input_handles;
   absl::flat_hash_set<ArrayHandle> dead_inputs;
-  bool copy_is_donated;
+  ArrayCopySemantics copy_semantics;
 
   std::vector<ArrayHandle> output_handles;
   ShardingRef new_sharding;
@@ -843,11 +863,13 @@ struct CopyArraysOpState {
       }
       inputs.push_back(array_it->second.array);
 
-      if (copy_is_donated && !array_it->second.can_be_donated) {
+      if (copy_semantics == ArrayCopySemantics::kDonateInput &&
+          !array_it->second.can_be_donated) {
         array_idxs_to_copy.push_back(idx);
         arrays_to_copy.push_back(array_it->second.array);
       }
-      if ((copy_is_donated && array_it->second.can_be_donated) ||
+      if ((copy_semantics == ArrayCopySemantics::kDonateInput &&
+           array_it->second.can_be_donated) ||
           dead_inputs.contains(handle)) {
         arrays_to_remove.push_back(handle);
       }
@@ -869,11 +891,11 @@ struct CopyArraysOpState {
                              absl::StrAppend(out, array->DebugString());
                            })
           << " (this warning is logged only at most 5 times)." << pretty_print;
-      TF_ASSIGN_OR_RETURN(
-          std::vector<ArrayRef> copied_arrays,
-          env.client->CopyArrays(
-              absl::MakeSpan(arrays_to_copy), /*devices=*/std::nullopt,
-              /*memory_kind=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy));
+      ASSIGN_OR_RETURN(std::vector<ArrayRef> copied_arrays,
+                       env.client->CopyArrays(absl::MakeSpan(arrays_to_copy),
+                                              /*devices=*/std::nullopt,
+                                              /*memory_kind=*/std::nullopt,
+                                              ArrayCopySemantics::kAlwaysCopy));
       for (int i = 0; i < array_idxs_to_copy.size(); ++i) {
         inputs[array_idxs_to_copy[i]] = std::move(copied_arrays[i]);
       }
@@ -881,19 +903,21 @@ struct CopyArraysOpState {
 
     // It is safe to get the devices and memory kind from the first output
     // because all outputs use the same devices and have the same memory kind.
-    TF_ASSIGN_OR_RETURN(auto copied_arrays,
-                        env.client->CopyArrays(
-                            absl::MakeSpan(inputs), new_sharding->devices(),
-                            new_sharding->memory_kind(),
-                            copy_is_donated ? ArrayCopySemantics::kDonateInput
-                                            : ArrayCopySemantics::kAlwaysCopy));
+    ASSIGN_OR_RETURN(
+        auto copied_arrays,
+        env.client->CopyArrays(absl::MakeSpan(inputs), new_sharding->devices(),
+                               new_sharding->memory_kind(), copy_semantics));
 
+    std::vector<ValueRef> to_delete;
     for (const auto handle : arrays_to_remove) {
       if (env.deletable_program_arguments.erase(handle)) {
         // Explicitly delete donated program arguments that are not used later.
-        env.handle_to_array[handle].array->Delete();
+        to_delete.push_back(env.handle_to_array[handle].array);
       }
       env.handle_to_array.erase(handle);
+    }
+    if (!to_delete.empty()) {
+      env.client->DeleteValues(absl::MakeSpan(to_delete));
     }
 
     TF_RET_CHECK(copied_arrays.size() == inputs.size())
@@ -901,7 +925,7 @@ struct CopyArraysOpState {
         << inputs.size() << ". " << pretty_print;
     for (int i = 0; i < output_handles.size(); ++i) {
       const ArrayHandle handle = output_handles[i];
-      if (handle != 0) {
+      if (handle != kArrayNotUsed) {
         env.AssociateArray(handle, ArrayState{
                                        /*array=*/std::move(copied_arrays[i]),
                                        /*can_be_donated=*/true,
@@ -926,19 +950,23 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
       state.dead_inputs.insert(ToArrayHandle(input));
     }
   }
-  state.copy_is_donated = copy_arrays_op.getDonated();
 
-  const auto out_array_type =
-      llvm::cast<IfrtArrayType>(copy_arrays_op.getOutputs().front().getType());
-  TF_RET_CHECK(out_array_type != nullptr)
-      << "Output array #0 is not of type `IfrtArrayType`. "
-      << state.pretty_print;
-  TF_ASSIGN_OR_RETURN(
-      state.new_sharding,
-      ShardingFromIfrtArrayType(out_array_type, client_, devices_));
+  if (copy_arrays_op.getDonated()) {
+    state.copy_semantics = ArrayCopySemantics::kDonateInput;
+  } else if (copy_arrays_op.getReuse()) {
+    state.copy_semantics = ArrayCopySemantics::kReuseInput;
+  } else {
+    state.copy_semantics = ArrayCopySemantics::kAlwaysCopy;
+  }
+
+  ASSIGN_OR_RETURN(state.new_sharding,
+                   ShardingFromIfrtArrayType(
+                       GetArrayType(copy_arrays_op.getOutputs().front()),
+                       client_, devices_));
 
   for (const auto output : copy_arrays_op.getOutputs()) {
-    const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
+    const ArrayHandle handle =
+        output.use_empty() ? kArrayNotUsed : ToArrayHandle(output);
     state.output_handles.push_back(handle);
   }
 

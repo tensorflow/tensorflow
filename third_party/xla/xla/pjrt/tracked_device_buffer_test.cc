@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/tracked_device_buffer.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -25,24 +26,23 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
-#include "xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/runtime/chip_id.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -86,10 +86,10 @@ class TestDevice : public PjRtDevice {
 absl::StatusOr<tsl::AsyncValueRef<RawSEDeviceMemory>> MakeArray(
     const Shape& shape, LocalClient* client) {
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> device_buffers;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
       [&](const Shape& subshape, const ShapeIndex&) -> absl::Status {
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             se::ScopedDeviceAddress<uint8_t> device_memory,
             client->backend().memory_allocator()->Allocate(
                 /*device_ordinal=*/0,
@@ -145,6 +145,93 @@ TEST(TrackedDeviceBufferTest, AsShapedBuffer) {
     ++expected_it;
   }
   EXPECT_TRUE(expected_it == expected_buffer_sequence.end());
+}
+
+TEST(TrackedDeviceBufferTest, AsyncSliceSuccess) {
+  // Create an unconstructed parent buffer holding ForeignRawSEDeviceMemory.
+  auto parent_ref =
+      tsl::MakeUnconstructedAsyncValueRef<ForeignRawSEDeviceMemory>();
+  tsl::AsyncValueRef<RawSEDeviceMemory> parent(parent_ref);
+
+  EXPECT_TRUE(parent.IsUnavailable());
+
+  // Create a slice immediately (parent is still unconstructed).
+  size_t offset = 16;
+  size_t size = 32;
+  tsl::AsyncValueRef<RawSEDeviceMemory> slice =
+      RawSEDeviceMemory::CreateSlice(parent, offset, size);
+
+  // The slice must be returned immediately in unconstructed (unavailable)
+  // state.
+  EXPECT_TRUE(slice.IsUnavailable());
+
+  // Construct the parent buffer (simulate computation completing successfully).
+  std::vector<char> dummy_data(128, 0xAB);
+  se::DeviceAddressBase parent_address(dummy_data.data(), dummy_data.size());
+  parent_ref.emplace(parent_address, [] {});
+
+  // The parent is now concrete.
+  EXPECT_TRUE(parent.IsConcrete());
+
+  // Block until slice is ready.
+  tsl::BlockUntilReady(slice);
+  EXPECT_TRUE(slice.IsConcrete());
+
+  // Verify slice address and size.
+  EXPECT_EQ(slice->mem().opaque(), dummy_data.data() + offset);
+  EXPECT_EQ(slice->mem().size(), size);
+}
+
+TEST(TrackedDeviceBufferTest, AsyncSliceFailure) {
+  // Create an unconstructed parent buffer holding ForeignRawSEDeviceMemory.
+  auto parent_ref =
+      tsl::MakeUnconstructedAsyncValueRef<ForeignRawSEDeviceMemory>();
+  tsl::AsyncValueRef<RawSEDeviceMemory> parent(parent_ref);
+
+  EXPECT_TRUE(parent.IsUnavailable());
+
+  // Create a slice immediately.
+  size_t offset = 16;
+  size_t size = 32;
+  tsl::AsyncValueRef<RawSEDeviceMemory> slice =
+      RawSEDeviceMemory::CreateSlice(parent, offset, size);
+
+  EXPECT_TRUE(slice.IsUnavailable());
+
+  // Transition the parent to an error state (simulating computation failure).
+  absl::Status failure_status =
+      absl::InternalError("Simulated GPU execution failure");
+  parent_ref.SetError(failure_status);
+
+  // Verify parent is in error state.
+  EXPECT_TRUE(parent.IsError());
+  EXPECT_EQ(parent.GetError(), failure_status);
+
+  // Verify that the slice also transitioned to the same error state
+  // gracefully.
+  tsl::BlockUntilReady(slice);
+  EXPECT_TRUE(slice.IsError());
+  EXPECT_EQ(slice.GetError(), failure_status);
+}
+
+TEST(TrackedDeviceBufferTest, SyncSliceSuccess) {
+  std::vector<char> dummy_data(128, 0xAB);
+  se::DeviceAddressBase parent_address(dummy_data.data(), dummy_data.size());
+  auto parent = tsl::MakeAvailableAsyncValueRef<ForeignRawSEDeviceMemory>(
+      parent_address, [] {});
+
+  EXPECT_TRUE(parent.IsConcrete());
+
+  size_t offset = 16;
+  size_t size = 32;
+  tsl::AsyncValueRef<RawSEDeviceMemory> slice =
+      RawSEDeviceMemory::CreateSlice(parent, offset, size);
+
+  // Since parent is already available, the slice should also be immediately
+  // available.
+  EXPECT_TRUE(slice.IsConcrete());
+  EXPECT_EQ(slice->mem().opaque(), dummy_data.data() + offset);
+  EXPECT_EQ(slice->mem().size(), size);
 }
 
 }  // namespace

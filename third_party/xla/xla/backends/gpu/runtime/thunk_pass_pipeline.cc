@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/device_description.h"
@@ -37,9 +38,9 @@ absl::StatusOr<bool> ThunkPassPipeline::Run(
   bool changed = false;
   for (const auto& pass : passes_) {
     VLOG(1) << "Running ThunkPass: " << pass->name();
-    TF_ASSIGN_OR_RETURN(bool pass_changed,
-                        pass->Run(thunk_sequence, debug_options, hlo_module,
-                                  device_info, allocator));
+    ASSIGN_OR_RETURN(bool pass_changed,
+                     pass->Run(thunk_sequence, debug_options, hlo_module,
+                               device_info, allocator));
     changed |= pass_changed;
   }
   return changed;

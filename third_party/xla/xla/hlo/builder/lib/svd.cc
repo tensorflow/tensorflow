@@ -15,15 +15,16 @@ limitations under the License.
 #include "xla/hlo/builder/lib/svd.h"
 
 #include <cstdint>
-#include <numeric>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/comparators.h"
 #include "xla/hlo/builder/lib/constants.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -114,7 +114,7 @@ absl::StatusOr<HouseHolderResult> HouseRow(
     XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
   const int64_t num_dims = a_shape.dimensions().size();
   const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
   XlaOp zero = ScalarLike(i, 0);
@@ -126,7 +126,7 @@ absl::StatusOr<HouseHolderResult> HouseRow(
     batch_dims[k] = ShapeUtil::GetDimension(a_shape, k);
   }
 
-  TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+  ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
   auto idx = Iota(builder, ShapeUtil::MakeShape(S32, x_shape.dimensions()),
                   num_dims - 1);
   auto zeros = ZerosLike(x);
@@ -140,7 +140,7 @@ absl::StatusOr<HouseHolderResult> HouseRow(
                   {num_dims - 1}));
 
   std::vector<int64_t> broadcast_dims(num_dims - 1);
-  std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
+  absl::c_iota(broadcast_dims, 0);
   auto x_0j = DynamicSliceInMinorDims(x, {zero, j}, {1, 1});
   auto mu = Mul(sigma, Sqrt(Square(Div(x_0j, sigma, broadcast_dims)) + one),
                 broadcast_dims);
@@ -180,7 +180,7 @@ absl::StatusOr<HouseHolderResult> HouseCol(
     XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
   const int64_t num_dims = a_shape.dimensions().size();
   const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
   XlaOp zero = ScalarLike(i, 0);
@@ -192,7 +192,7 @@ absl::StatusOr<HouseHolderResult> HouseCol(
     batch_dims[k] = ShapeUtil::GetDimension(a_shape, k);
   }
 
-  TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+  ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
   auto idx = Iota(builder, ShapeUtil::MakeShape(S32, x_shape.dimensions()),
                   num_dims - 2);
   auto zeros = ZerosLike(x);
@@ -206,7 +206,7 @@ absl::StatusOr<HouseHolderResult> HouseCol(
                   {num_dims - 2}));
 
   std::vector<int64_t> broadcast_dims(num_dims - 1);
-  std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
+  absl::c_iota(broadcast_dims, 0);
   broadcast_dims[num_dims - 2] = num_dims - 1;
   auto x_0i = DynamicSliceInMinorDims(x, {i, zero}, {1, 1});
   auto mu = Mul(sigma, Sqrt(Square(Div(x_0i, sigma, broadcast_dims)) + one),
@@ -258,7 +258,7 @@ absl::StatusOr<HouseHolderResult> HouseCol(
 absl::StatusOr<SVDResult> HouseHolderBidiagonalization(
     XlaOp a, XlaOp eps, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
   const int64_t num_dims = a_shape.dimensions().size();
   const int64_t num_batch_dims = num_dims - 2;
   std::vector<int64_t> batch_dims(num_batch_dims);
@@ -288,15 +288,15 @@ absl::StatusOr<SVDResult> HouseHolderBidiagonalization(
     auto a = values[3];
     auto eps = values[4];
 
-    TF_ASSIGN_OR_RETURN(HouseHolderResult house_col,
-                        HouseCol(a, i, i, eps, precision));
+    ASSIGN_OR_RETURN(HouseHolderResult house_col,
+                     HouseCol(a, i, i, eps, precision));
     u = Sub(u,
             Mul(house_col.beta, BatchDot(BatchDot(u, house_col.v, precision),
                                          false, house_col.v, true, precision)));
     a = house_col.a;
 
-    TF_ASSIGN_OR_RETURN(HouseHolderResult house_row,
-                        HouseRow(a, i, i + one, eps, precision));
+    ASSIGN_OR_RETURN(HouseHolderResult house_row,
+                     HouseRow(a, i, i + one, eps, precision));
     v = Sub(v, Mul(house_row.beta,
                    BatchDot(BatchDot(v, false, house_row.v, true, precision),
                             house_row.v, precision)));
@@ -320,15 +320,15 @@ absl::StatusOr<SVDResult> HouseHolderBidiagonalization(
   values[3] = a;
   values[4] = eps;
 
-  TF_ASSIGN_OR_RETURN(values,
-                      WhileLoopHelper(while_cond_fn, while_body_fn, values,
-                                      "HouseHolderBidiagonalization", builder));
+  ASSIGN_OR_RETURN(values,
+                   WhileLoopHelper(while_cond_fn, while_body_fn, values,
+                                   "HouseHolderBidiagonalization", builder));
 
   for (int k = 2; k > 0; --k) {
     if (n - k >= 0) {
       XlaOp index = ScalarLike(values[0], n - k);
-      TF_ASSIGN_OR_RETURN(HouseHolderResult house_col,
-                          HouseCol(values[3], index, index, eps, precision));
+      ASSIGN_OR_RETURN(HouseHolderResult house_col,
+                       HouseCol(values[3], index, index, eps, precision));
       values[1] = Sub(values[1],
                       Mul(house_col.beta,
                           BatchDot(BatchDot(values[1], house_col.v, precision),
@@ -447,8 +447,7 @@ absl::StatusOr<OneSidedJacobiRotation> GetOneSidedJacobiRotation(XlaOp a,
   XlaOp a_qq_new = rot.s * a_pq + rot.c * a_qq;
 
   OneSidedJacobiRotation rots;
-  TF_ASSIGN_OR_RETURN(rots.rot_r,
-                      MakeJacobi(a_pp_new, a_qq_new, a_pq_new, eps));
+  ASSIGN_OR_RETURN(rots.rot_r, MakeJacobi(a_pp_new, a_qq_new, a_pq_new, eps));
 
   rots.rot_l.c = rot.c * rots.rot_r.c - rot.s * rots.rot_r.s;
   rots.rot_l.s = rot.s * rots.rot_r.c + rot.c * rots.rot_r.s;
@@ -463,7 +462,7 @@ absl::StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p,
   XlaOp v = svd_result.v;
   XlaOp d = svd_result.d;
   XlaBuilder* builder = d.builder();
-  TF_ASSIGN_OR_RETURN(Shape d_shape, builder->GetShape(d));
+  ASSIGN_OR_RETURN(Shape d_shape, builder->GetShape(d));
   const int64_t num_dims = d_shape.dimensions().size();
   const int64_t num_batch_dims = num_dims - 2;
   std::vector<int64_t> batch_dims(num_batch_dims);
@@ -473,8 +472,8 @@ absl::StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p,
   const int64_t m = ShapeUtil::GetDimension(d_shape, -2);
   const int64_t n = ShapeUtil::GetDimension(d_shape, -1);
 
-  TF_ASSIGN_OR_RETURN(OneSidedJacobiRotation onesided_jacobi,
-                      GetOneSidedJacobiRotation(d, p, q, eps));
+  ASSIGN_OR_RETURN(OneSidedJacobiRotation onesided_jacobi,
+                   GetOneSidedJacobiRotation(d, p, q, eps));
 
   auto zero = ScalarLike(p, 0);
 
@@ -486,7 +485,7 @@ absl::StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p,
   auto pq_zeros = Broadcast(pq_zero, pq_dims);
 
   std::vector<int64_t> broadcast_dims(batch_dims.size());
-  std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
+  absl::c_iota(broadcast_dims, 0);
   broadcast_dims.push_back(num_dims - 1);
 
   // Apply Jacobi Rotation on the left.
@@ -573,7 +572,7 @@ absl::StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p,
 
 absl::StatusOr<XlaOp> ComputeToleranceComparison(XlaOp w, XlaOp epsilon) {
   XlaBuilder* builder = w.builder();
-  TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w));
+  ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w));
   auto num_dims = static_cast<int32_t>(shape.dimensions().size());
   int64_t n = shape.dimensions(num_dims - 1);
   shape.set_dimensions(num_dims - 2, n);
@@ -581,7 +580,7 @@ absl::StatusOr<XlaOp> ComputeToleranceComparison(XlaOp w, XlaOp epsilon) {
   auto diag = GetMatrixDiagonal(w_sliced);
   diag = Select(Lt(diag, ZerosLike(diag)), -diag, diag);
   std::vector<int64_t> broadcasted_dims(num_dims - 1);
-  std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
+  absl::c_iota(broadcasted_dims, 0);
   auto broadcast_to_rows =
       BroadcastInDim(diag, shape.dimensions(), broadcasted_dims);
   broadcasted_dims.back() = num_dims - 1;
@@ -620,8 +619,8 @@ absl::StatusOr<std::vector<XlaOp>> WhileLoopFn(
     auto max_sweeps = ScalarLike(k, max_sweep_updates);
     auto sweep_update_cond = Gt(max_sweeps, k);
 
-    TF_ASSIGN_OR_RETURN(auto tolerance_comparison,
-                        ComputeToleranceComparison(values[3], values[4]));
+    ASSIGN_OR_RETURN(auto tolerance_comparison,
+                     ComputeToleranceComparison(values[3], values[4]));
     auto tolerance_cond = ReduceAll(
         tolerance_comparison, xla::ConstantR0<bool>(cond_builder, false),
         CreateScalarOrComputation(PRED, cond_builder));
@@ -662,7 +661,7 @@ absl::StatusOr<std::vector<XlaOp>> WhileLoopFn(
 
         auto eps = values_innermost[5];
 
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             onesided_jacobi_update,
             OneSidedJacobiUpdate(onesided_jacobi_update, p, q, eps));
 
@@ -688,7 +687,7 @@ absl::StatusOr<std::vector<XlaOp>> WhileLoopFn(
       values_innermost[3] = values_inner[2];  // v.
       values_innermost[4] = values_inner[3];  // d.
       values_innermost[5] = values_inner[4];  // eps.
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           values_innermost,
           WhileLoopHelper(while_cond_fn_innermost, while_body_fn_innermost,
                           values_innermost, absl::StrCat(name, "-Innermost"),
@@ -713,7 +712,7 @@ absl::StatusOr<std::vector<XlaOp>> WhileLoopFn(
     values_inner[2] = values[2];         // v.
     values_inner[3] = values[3];         // d.
     values_inner[4] = values[4];         // eps.
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         values_inner,
         WhileLoopHelper(while_cond_fn_inner, while_body_fn_inner, values_inner,
                         absl::StrCat(name, "-Inner"), body_builder));
@@ -730,8 +729,8 @@ absl::StatusOr<std::vector<XlaOp>> WhileLoopFn(
     return updated_values;
   };
   std::vector<XlaOp> values;
-  TF_ASSIGN_OR_RETURN(values, WhileLoopHelper(while_cond_fn, while_body_fn,
-                                              initial_values, name, builder));
+  ASSIGN_OR_RETURN(values, WhileLoopHelper(while_cond_fn, while_body_fn,
+                                           initial_values, name, builder));
 
   return values;
 }
@@ -742,14 +741,14 @@ absl::StatusOr<std::vector<XlaOp>> WhileLoopFn(
 absl::StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(
     SVDResult result) {
   XlaBuilder* builder = result.d.builder();
-  TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(result.d));
+  ASSIGN_OR_RETURN(Shape shape, builder->GetShape(result.d));
   const int64_t num_dims = shape.dimensions().size();
   auto dimensions = shape.dimensions();
   const int64_t m = ShapeUtil::GetDimension(shape, -2);
   const int64_t n = ShapeUtil::GetDimension(shape, -1);
 
   std::vector<int64_t> broadcast_dims(num_dims - 1);
-  std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
+  absl::c_iota(broadcast_dims, 0);
   broadcast_dims[num_dims - 2] = num_dims - 1;
 
   auto d = GetMatrixDiagonal(result.d);

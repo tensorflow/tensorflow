@@ -15,11 +15,32 @@
 # ==============================================================================
 
 # This script builds and executes tests. It can be run only on a system that
-# has an Intel GPU with the appropriate driver and oneAPI tools installed.
-# Hermetic build is not currently fully supported for executing tests.
-./configure.py --backend=SYCL --host_compiler=CLANG --sycl_compiler=ICPX
+# has an Intel GPU with the appropriate driver installed.
+# TEST_TARGETS="//xla/stream_executor/sycl/..." build_tools/sycl/ci_test_xla.sh
+
+set -euo pipefail
+
+no_of_gpus=$(ls /dev/dri/ | fgrep render | wc -l)
+if [[ "${no_of_gpus}" -eq 0 ]]; then
+  echo "unknown number of gpus."
+  exit 1
+fi
+
+local_test_jobs=$((no_of_gpus * 8))
+
+if [[ ${local_test_jobs} -gt 64 ]]; then
+  local_test_jobs = 64
+  echo "local_test_jobs ${local_test_jobs} too high, using 64"
+fi
+
+TEST_TARGETS="${TEST_TARGETS:-//xla/stream_executor/...}"
+
+echo "TEST_TARGETS=${TEST_TARGETS}"
+
 bazel test \
-      --verbose_failures -c opt \
-      --build_tag_filters=gpu,oneapi-only,requires-gpu-intel,-requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-cuda-only,-rocm-only,-no-oneapi \
-      --test_tag_filters=gpu,oneapi-only,requires-gpu-intel,-requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-cuda-only,-rocm-only,-no-oneapi \
-      //xla/stream_executor/sycl/...
+  --config=sycl_hermetic --verbose_failures -c opt \
+  --test_timeout=60,300,900,3600 --flaky_test_attempts=2 --keep_going --test_keep_going \
+  --build_tag_filters=gpu,oneapi-only,requires-gpu-intel,-requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-cuda-only,-rocm-only,-no-oneapi \
+  --test_tag_filters=gpu,oneapi-only,requires-gpu-intel,-requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-cuda-only,-rocm-only,-no-oneapi \
+  -- \
+  ${TEST_TARGETS}

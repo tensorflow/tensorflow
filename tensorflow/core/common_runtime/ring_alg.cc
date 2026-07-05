@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -125,7 +126,7 @@ absl::Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
   }
 
   if (col_params->instance.shape.num_elements() == 0) {
-    return errors::Internal("shape in CollectiveParams should be non-empty");
+    return absl::InternalError("shape in CollectiveParams should be non-empty");
   }
   const int kAvgDevPerTask =
       col_params->group.group_size / col_params->group.num_tasks;
@@ -135,9 +136,9 @@ absl::Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
           : kMaxSubdivsPerDeviceDefault;
   const int kMaxNumSubdivs = max_subdivs_per_device * kAvgDevPerTask;
   if (kMaxNumSubdivs <= 0) {
-    return errors::Internal("Unexpected kMaxNumSubdivs ", kMaxNumSubdivs,
-                            " in ",
-                            col_params->instance.impl_details.collective_name);
+    return absl::InternalError(
+        absl::StrCat("Unexpected kMaxNumSubdivs ", kMaxNumSubdivs, " in ",
+                     col_params->instance.impl_details.collective_name));
   }
   // NOTE(ayushd): If no subdiv_offsets have been specified, dynamically add
   // as many offsets as needed so that the size of tensor chunks <=
@@ -155,8 +156,9 @@ absl::Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
             << " chunk_size " << chunk_size;
   } while (chunk_size > kMaxChunkSizeBytes && num_subdivs < kMaxNumSubdivs);
   if (num_subdivs <= 0) {
-    return errors::Internal("Unexpected num_subdivs ", num_subdivs, " in ",
-                            col_params->instance.impl_details.collective_name);
+    return absl::InternalError(
+        absl::StrCat("Unexpected num_subdivs ", num_subdivs, " in ",
+                     col_params->instance.impl_details.collective_name));
   }
 
   int subdiv_stride = kAvgDevPerTask / num_subdivs;
@@ -227,13 +229,13 @@ absl::Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
     std::vector<int>& perm =
         col_params->instance.impl_details.subdiv_permutations[sdi];
     DCHECK_EQ(perm.size(), 0);
-    int offset = col_params->instance.impl_details.subdiv_offsets[sdi];
+    int64_t offset = col_params->instance.impl_details.subdiv_offsets[sdi];
     // A negative subdivision offset is interpreted as follows:
     //  1. Reverse the local device ordering.
     //  2. Begin the subdivision at abs(offset) in the reversed ordering.
     bool reverse = false;
     if (offset < 0) {
-      offset = abs(offset);
+      offset = std::abs(offset);
       reverse = true;
     }
     int prior_dev_count = 0;  // sum over prior worker device counts

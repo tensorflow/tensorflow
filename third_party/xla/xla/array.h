@@ -542,10 +542,14 @@ class Array {
                         std::multiplies<int64_t>());
     CHECK_EQ(new_num_elements, num_elements());
     if (sizes_.size != new_dimensions.size()) {
-      sizes_ = OwnedBuffer<int64_t>(new_dimensions.size());
+      OwnedBuffer<int64_t> new_sizes(new_dimensions.size());
+      std::memcpy(new_sizes.data.get(), new_dimensions.data(),
+                  new_dimensions.size() * sizeof(int64_t));
+      sizes_ = std::move(new_sizes);
+    } else {
+      std::memmove(sizes_.data.get(), new_dimensions.data(),
+                   new_dimensions.size() * sizeof(int64_t));
     }
-    std::memcpy(sizes_.data.get(), new_dimensions.data(),
-                new_dimensions.size() * sizeof(int64_t));
   }
 
   // Performs a permutation of dimensions.
