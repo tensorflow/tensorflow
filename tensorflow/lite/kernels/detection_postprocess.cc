@@ -161,11 +161,23 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_box_encodings), 3);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_class_predictions), 3);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_anchors), 2);
+  TF_LITE_ENSURE_MSG(context, input_box_encodings->dims->data[2] >= 4,
+                     "box encodings dimension 2 must be at least 4");
   // Validate attacker-controlled parameters are non-negative.
   TF_LITE_ENSURE_MSG(context, op_data->max_detections >= 0,
                      "max_detections must be non-negative");
   TF_LITE_ENSURE_MSG(context, op_data->max_classes_per_detection >= 0,
                      "max_classes_per_detection must be non-negative");
+  TF_LITE_ENSURE_MSG(context, op_data->detections_per_class >= 0,
+                     "detections_per_class must be non-negative");
+  TF_LITE_ENSURE_MSG(context, op_data->num_classes > 0,
+                     "num_classes must be positive");
+  const int64_t total_regular_detections =
+      static_cast<int64_t>(op_data->max_detections) +
+      static_cast<int64_t>(op_data->detections_per_class);
+  TF_LITE_ENSURE_MSG(
+      context, total_regular_detections <= INT32_MAX,
+      "max_detections + detections_per_class overflows int32");
   // number of detected boxes
   // Guard against integer overflow: both values come from attacker-controlled
   // FlexBuffer custom options, so the product can wrap around.
