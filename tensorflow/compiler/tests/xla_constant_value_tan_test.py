@@ -42,6 +42,7 @@ class TanConstantValueInferenceTest(tf.test.TestCase):
     eager_out = model.python_function(x)
     xla_out = model(x)
     self.assertEqual(eager_out.shape, xla_out.shape)
+    self.assertAllEqual(eager_out, xla_out)
 
   def test_complex_tan_sequence_mask_jit_compile(self):
     """Exact repro from issue #122050: complex tan -> imag -> sequence_mask."""
@@ -61,6 +62,7 @@ class TanConstantValueInferenceTest(tf.test.TestCase):
     # Must not raise InvalidArgumentError about kTan.
     xla_out = model(t)
     self.assertEqual(eager_out.shape, xla_out.shape)
+    self.assertAllEqual(eager_out, xla_out)
 
   def test_tan_sin_cos_consistency(self):
     """kSin and kCos were already handled; kTan must behave identically."""
@@ -88,6 +90,10 @@ class TanConstantValueInferenceTest(tf.test.TestCase):
     # All three transcendentals must produce results of the same rank.
     self.assertEqual(sin_out.shape.rank, cos_out.shape.rank)
     self.assertEqual(cos_out.shape.rank, tan_out.shape.rank)
+    # All three transcendentals must produce correct results matching eager execution.
+    self.assertAllEqual(sin_out, model_sin.python_function(x))
+    self.assertAllEqual(cos_out, model_cos.python_function(x))
+    self.assertAllEqual(tan_out, model_tan.python_function(x))
 
 
 if __name__ == "__main__":

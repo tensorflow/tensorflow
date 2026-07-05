@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/builder/value_inference.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -753,8 +754,10 @@ TEST_F(ConstValueInferenceTest, TanOfConstant) {
   ASSERT_TRUE(b.first_error().ok()) << b.first_error().message();
   auto value = ComputeConstantValueLiteral(result, &b);
   ASSERT_TRUE(value.ok()) << value.status();
-  // The inferred value must be present (i.e., proven constant, not dynamic).
-  EXPECT_TRUE(value.value().Get<float>({}).has_value());
+  // The inferred value must be present and correct.
+  std::optional<float> val = value.value().Get<float>({});
+  ASSERT_TRUE(val.has_value());
+  EXPECT_NEAR(val.value(), 1.5574077f, 1e-5f);
 }
 
 }  // namespace
