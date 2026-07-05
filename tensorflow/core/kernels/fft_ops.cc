@@ -265,12 +265,43 @@ class FFTBase : public OpKernel {
       if (needs_padding) {
         OP_REQUIRES_OK(ctx,
                        ctx->allocate_temp(in.dtype(), padded_shape, &padded_in));
-        // Zero the entire padded tensor (IEEE 754: all-zero bytes = 0.0).
-        memset(padded_in.data(), 0, padded_in.TotalBytes());
-        // Copy input data into the padded tensor, row by row.
         const int elem_size = DataTypeSize(in.dtype());
         const char* src = static_cast<const char*>(in.data());
         char* dst = static_cast<char*>(padded_in.data());
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+        auto* stream = ctx->op_device_context() == nullptr
+                           ? nullptr
+                           : ctx->op_device_context()->stream();
+        if (stream != nullptr) {
+          stream_executor::DeviceAddressBase dst_addr(dst,
+                                                      padded_in.TotalBytes());
+          OP_REQUIRES_OK(ctx,
+                         stream->MemZero(&dst_addr, padded_in.TotalBytes()));
+        } else {
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+          // Zero the entire padded tensor (IEEE 754: all-zero bytes = 0.0).
+          memset(dst, 0, padded_in.TotalBytes());
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+        }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+        auto copy_bytes = [&](int64_t dst_offset, int64_t src_offset,
+                              int64_t byte_count) -> absl::Status {
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+          if (stream != nullptr) {
+            stream_executor::DeviceAddressBase dst_addr(dst + dst_offset,
+                                                        byte_count);
+            stream_executor::DeviceAddressBase src_addr(
+                const_cast<char*>(src + src_offset), byte_count);
+            return stream->MemcpyD2D(&dst_addr, src_addr, byte_count);
+          }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+          memcpy(dst + dst_offset, src + src_offset, byte_count);
+          return absl::OkStatus();
+        };
+        // Copy input data into the padded tensor, row by row.
         const int num_dims = input_shape.dims();
         int64_t batch_size = 1;
         for (int d = 0; d < num_dims - fft_rank; ++d) {
@@ -280,8 +311,9 @@ class FFTBase : public OpKernel {
           const int64_t in_n = input_shape.dim_size(num_dims - 1);
           const int64_t pad_n = padded_shape.dim_size(num_dims - 1);
           for (int64_t b = 0; b < batch_size; ++b) {
-            memcpy(dst + b * pad_n * elem_size, src + b * in_n * elem_size,
-                   in_n * elem_size);
+            OP_REQUIRES_OK(ctx,
+                           copy_bytes(b * pad_n * elem_size,
+                                      b * in_n * elem_size, in_n * elem_size));
           }
         } else if (fft_rank == 2) {
           const int64_t in_h = input_shape.dim_size(num_dims - 2);
@@ -290,10 +322,10 @@ class FFTBase : public OpKernel {
           const int64_t pad_w = padded_shape.dim_size(num_dims - 1);
           for (int64_t b = 0; b < batch_size; ++b) {
             for (int64_t h = 0; h < in_h; ++h) {
-              memcpy(
-                  dst + (b * pad_h * pad_w + h * pad_w) * elem_size,
-                  src + (b * in_h * in_w + h * in_w) * elem_size,
-                  in_w * elem_size);
+              OP_REQUIRES_OK(
+                  ctx, copy_bytes((b * pad_h * pad_w + h * pad_w) * elem_size,
+                                  (b * in_h * in_w + h * in_w) * elem_size,
+                                  in_w * elem_size));
             }
           }
         } else {
@@ -307,13 +339,14 @@ class FFTBase : public OpKernel {
           for (int64_t b = 0; b < batch_size; ++b) {
             for (int64_t d = 0; d < in_d; ++d) {
               for (int64_t h = 0; h < in_h; ++h) {
-                memcpy(dst + (b * pad_d * pad_h * pad_w + d * pad_h * pad_w +
-                              h * pad_w) *
-                                 elem_size,
-                       src + (b * in_d * in_h * in_w + d * in_h * in_w +
-                              h * in_w) *
-                                 elem_size,
-                       in_w * elem_size);
+                OP_REQUIRES_OK(
+                    ctx, copy_bytes((b * pad_d * pad_h * pad_w +
+                                     d * pad_h * pad_w + h * pad_w) *
+                                        elem_size,
+                                    (b * in_d * in_h * in_w + d * in_h * in_w +
+                                     h * in_w) *
+                                        elem_size,
+                                    in_w * elem_size));
               }
             }
           }
