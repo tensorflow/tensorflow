@@ -37,6 +37,12 @@ def _check_penalty_number(x):
         ).format(x)
     )
 
+  if x < 0:
+    raise ValueError(
+        ('Value: {} is not a valid regularization penalty number, '
+         'expected a non-negative value').format(x)
+    )
+
 
 def _none_to_default(inputs, default):
   return default if inputs is None else inputs
