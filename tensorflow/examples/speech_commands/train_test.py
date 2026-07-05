@@ -14,26 +14,14 @@
 # ==============================================================================
 """Tests for data input for speech commands."""
 
+import logging
 import os
-import unittest
 
 import tensorflow as tf
 
 from tensorflow.examples.speech_commands import train
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
-
-
-def requires_contrib(test_method):
-  try:
-    _ = tf.contrib
-  except AttributeError:
-    test_method = unittest.skip(
-        'This test requires tf.contrib:\n    `pip install tensorflow<=1.15`')(
-            test_method)
-
-  return test_method
 
 
 # Used to convert a dictionary into an object, for mocking parsed flags.
@@ -46,11 +34,9 @@ class DictStruct(object):
 class TrainTest(test.TestCase):
 
   def _getWavData(self):
-    with self.cached_session():
-      sample_data = tf.zeros([32000, 2])
-      wav_encoder = tf.audio.encode_wav(sample_data, 16000)
-      wav_data = self.evaluate(wav_encoder)
-    return wav_data
+    sample_data = tf.zeros([32000, 2])
+    wav_encoder = tf.audio.encode_wav(sample_data, 16000)
+    return wav_encoder.numpy()
 
   def _saveTestWavFile(self, filename, wav_data):
     with open(filename, 'wb') as f:
@@ -107,27 +93,19 @@ class TrainTest(test.TestCase):
         'background_frequency': 0.8,
         'eval_step_interval': 1,
         'save_step_interval': 1,
-        'verbosity': tf.compat.v1.logging.INFO,
+        'verbosity': logging.INFO,
         'optimizer': 'gradient_descent'
     }
     return DictStruct(**flags)
 
-  @test_util.run_deprecated_v1
   def testTrain(self):
     train.FLAGS = self._getDefaultFlags()
-    train.main('')
-    self.assertTrue(
-        gfile.Exists(
-            os.path.join(train.FLAGS.train_dir,
-                         train.FLAGS.model_architecture + '.pbtxt')))
+    train.main(None)
+    self.assertIsNotNone(tf.train.latest_checkpoint(train.FLAGS.train_dir))
     self.assertTrue(
         gfile.Exists(
             os.path.join(train.FLAGS.train_dir,
                          train.FLAGS.model_architecture + '_labels.txt')))
-    self.assertTrue(
-        gfile.Exists(
-            os.path.join(train.FLAGS.train_dir,
-                         train.FLAGS.model_architecture + '.ckpt-1.meta')))
 
 
 if __name__ == '__main__':

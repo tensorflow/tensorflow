@@ -60,7 +60,6 @@ bazel run tensorflow/examples/speech_commands:test_streaming_accuracy_py -- \
 """
 
 import argparse
-import sys
 
 import numpy
 import tensorflow as tf
@@ -96,12 +95,9 @@ def read_label_file(file_name):
 
 def read_wav_file(filename):
   """Load a wav file and return sample_rate and numpy data of float64 type."""
-  with tf.compat.v1.Session(graph=tf.Graph()) as sess:
-    wav_filename_placeholder = tf.compat.v1.placeholder(tf.string, [])
-    wav_loader = io_ops.read_file(wav_filename_placeholder)
-    wav_decoder = tf.audio.decode_wav(wav_loader, desired_channels=1)
-    res = sess.run(wav_decoder, feed_dict={wav_filename_placeholder: filename})
-  return res.sample_rate, res.audio.flatten()
+  wav_loader = io_ops.read_file(filename)
+  wav_decoder = tf.audio.decode_wav(wav_loader, desired_channels=1)
+  return wav_decoder.sample_rate.numpy(), wav_decoder.audio.numpy().flatten()
 
 
 def main(_):
@@ -153,7 +149,7 @@ def main(_):
           recognize_commands.process_latest_result(outputs, current_time_ms,
                                                    recognize_element)
         except ValueError as e:
-          tf.compat.v1.logging.error('Recognition processing failed: {}' % e)
+          tf.get_logger().error('Recognition processing failed: {}' % e)
           return
         if (recognize_element.is_new_command and
             recognize_element.founded_command != '_silence_'):
@@ -165,10 +161,10 @@ def main(_):
             try:
               recognition_state = stats.delta()
             except ValueError as e:
-              tf.compat.v1.logging.error(
+              tf.get_logger().error(
                   'Statistics delta computing failed: {}'.format(e))
             else:
-              tf.compat.v1.logging.info('{}ms {}:{}{}'.format(
+              tf.get_logger().info('{}ms {}:{}{}'.format(
                   current_time_ms, recognize_element.founded_command,
                   recognize_element.score, recognition_state))
               stats.print_accuracy_stats()
@@ -240,6 +236,6 @@ if __name__ == '__main__':
       default=False,
       help='Whether to print streaming accuracy on stdout.')
 
-  FLAGS, unparsed = parser.parse_known_args()
-  tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
-  tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  FLAGS, _ = parser.parse_known_args()
+  tf.get_logger().setLevel('INFO')
+  main(None)

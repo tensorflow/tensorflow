@@ -67,455 +67,408 @@ bazel run tensorflow/examples/speech_commands:train -- \
 """
 
 import argparse
-import os
+import logging
 import os.path
-import sys
+
+import numpy as np
+import tensorflow as tf
 
 import input_data
 import models
-import numpy as np
-
-import tensorflow as tf
 from tensorflow.python.platform import gfile
 
 FLAGS = None
 
 
 def main(_):
-    # Set the verbosity based on flags (default is INFO, so we see all messages)
-    tf.get_logger().setLevel(FLAGS.verbosity)
+  # Set the verbosity based on flags (default is INFO, so we see all messages).
+  tf.get_logger().setLevel(FLAGS.verbosity)
 
-    # Begin by making sure we have the training data we need. If you already have
-    # training data of your own, use `--data_url= ` on the command line to avoid
-    # downloading.
-    model_settings = models.prepare_model_settings(
-        len(input_data.prepare_words_list(FLAGS.wanted_words.split(","))),
-        FLAGS.sample_rate,
-        FLAGS.clip_duration_ms,
-        FLAGS.window_size_ms,
-        FLAGS.window_stride_ms,
-        FLAGS.feature_bin_count,
-        FLAGS.preprocess,
-    )
-    audio_processor = input_data.AudioProcessor(
-        FLAGS.data_url,
-        FLAGS.data_dir,
-        FLAGS.silence_percentage,
-        FLAGS.unknown_percentage,
-        FLAGS.wanted_words.split(","),
-        FLAGS.validation_percentage,
-        FLAGS.testing_percentage,
-        model_settings,
-        FLAGS.summaries_dir,
-    )
-    label_count = model_settings["label_count"]
-    time_shift_samples = int((FLAGS.time_shift_ms * FLAGS.sample_rate) / 1000)
-    # Figure out the learning rates for each training phase. Since it's often
-    # effective to have high learning rates at the start of training, followed by
-    # lower levels towards the end, the number of steps and learning rates can be
-    # specified as comma-separated lists to define the rate at each stage. For
-    # example --how_many_training_steps=10000,3000 --learning_rate=0.001,0.0001
-    # will run 13,000 training loops in total, with a rate of 0.001 for the first
-    # 10,000, and 0.0001 for the final 3,000.
-    training_steps_list = list(map(int, FLAGS.how_many_training_steps.split(",")))
-    learning_rates_list = list(map(float, FLAGS.learning_rate.split(",")))
-    if len(training_steps_list) != len(learning_rates_list):
-        raise Exception(
-            "--how_many_training_steps and --learning_rate must be equal length "
-            "lists, but are %d and %d long instead"
-            % (len(training_steps_list), len(learning_rates_list))
-        )
+  if FLAGS.check_nans:
+    tf.debugging.enable_check_numerics()
 
-    # In TF2, we can use a PiecewiseConstantDecay schedule directly in the optimizer
-    step_boundaries = np.cumsum(training_steps_list)[:-1].tolist()
-    lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
-        boundaries=step_boundaries, values=learning_rates_list
-    )
+  if FLAGS.quantize:
+    # TODO: Quantization-aware training doesn't have a TF2 story yet in this
+    # example. Since deployment targets TFLite, the intended follow-up is to
+    # train a float model as usual and then apply
+    # tf.lite.TFLiteConverter post-training quantization (or, if that isn't
+    # accurate enough, quantization-aware training via
+    # tensorflow_model_optimization) at export time -- see the matching TODO
+    # in freeze.py for where that conversion would happen.
+    raise Exception(
+        '--quantize is not yet supported for TF2 training. See the TODO '
+        'comment above main() in train.py for the intended follow-up '
+        '(TFLite post-training quantization).')
 
-    # 3. Instantiate the TF2 Model
-    model = models.create_model(model_settings, FLAGS.model_architecture)
+  # Begin by making sure we have the training data we need. If you already have
+  # training data of your own, use `--data_url= ` on the command line to avoid
+  # downloading.
+  model_settings = models.prepare_model_settings(
+      len(input_data.prepare_words_list(FLAGS.wanted_words.split(','))),
+      FLAGS.sample_rate, FLAGS.clip_duration_ms, FLAGS.window_size_ms,
+      FLAGS.window_stride_ms, FLAGS.feature_bin_count, FLAGS.preprocess)
+  audio_processor = input_data.AudioProcessor(
+      FLAGS.data_url, FLAGS.data_dir, FLAGS.silence_percentage,
+      FLAGS.unknown_percentage, FLAGS.wanted_words.split(','),
+      FLAGS.validation_percentage, FLAGS.testing_percentage, model_settings,
+      FLAGS.summaries_dir)
+  label_count = model_settings['label_count']
+  time_shift_samples = int((FLAGS.time_shift_ms * FLAGS.sample_rate) / 1000)
+  # Figure out the learning rates for each training phase. Since it's often
+  # effective to have high learning rates at the start of training, followed by
+  # lower levels towards the end, the number of steps and learning rates can be
+  # specified as comma-separated lists to define the rate at each stage. For
+  # example --how_many_training_steps=10000,3000 --learning_rate=0.001,0.0001
+  # will run 13,000 training loops in total, with a rate of 0.001 for the first
+  # 10,000, and 0.0001 for the final 3,000.
+  training_steps_list = list(map(int, FLAGS.how_many_training_steps.split(',')))
+  learning_rates_list = list(map(float, FLAGS.learning_rate.split(',')))
+  if len(training_steps_list) != len(learning_rates_list):
+    raise Exception(
+        '--how_many_training_steps and --learning_rate must be equal length '
+        'lists, but are %d and %d long instead' %
+        (len(training_steps_list), len(learning_rates_list)))
 
-    # 4. Define Optimizer, Loss, and Metrics
-    if FLAGS.optimizer == "gradient_descent":
-        optimizer = tf.keras.optimizers.SGD(learning_rate=lr_schedule)
-    elif FLAGS.optimizer == "momentum":
-        optimizer = tf.keras.optimizers.SGD(
-            learning_rate=lr_schedule, momentum=0.9, nesterov=True
-        )
-    else:
-        raise Exception("Invalid Optimizer")
+  # A PiecewiseConstantDecay schedule reproduces the staged learning rates
+  # directly in the optimizer.
+  step_boundaries = np.cumsum(training_steps_list)[:-1].tolist()
+  lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
+      boundaries=step_boundaries, values=learning_rates_list)
 
-    # Assuming your model outputs raw logits, we set from_logits=True
-    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+  model = models.create_model(model_settings, FLAGS.model_architecture)
 
-    train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name="train_accuracy")
-    val_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name="val_accuracy")
-    test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name="test_accuracy")
+  if FLAGS.optimizer == 'gradient_descent':
+    optimizer = tf.keras.optimizers.SGD(learning_rate=lr_schedule)
+  elif FLAGS.optimizer == 'momentum':
+    optimizer = tf.keras.optimizers.SGD(
+        learning_rate=lr_schedule, momentum=0.9, nesterov=True)
+  else:
+    raise Exception('Invalid Optimizer')
 
-    # 5. Setup TensorBoard Writers and Checkpoint Manager
-    train_writer = tf.summary.create_file_writer(
-        os.path.join(FLAGS.summaries_dir, "train")
-    )
-    val_writer = tf.summary.create_file_writer(
-        os.path.join(FLAGS.summaries_dir, "validation")
-    )
+  # The models output raw logits, so from_logits=True.
+  loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
-    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
-    checkpoint_manager = tf.train.CheckpointManager(
-        checkpoint, directory=FLAGS.train_dir, max_to_keep=5
-    )
+  train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(
+      name='train_accuracy')
+  val_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(
+      name='val_accuracy')
+  test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(
+      name='test_accuracy')
 
-    start_step = 1
-    if FLAGS.start_checkpoint:
-        checkpoint.restore(FLAGS.start_checkpoint)
-        # Calculate start step based on optimizer iterations if available
-        start_step = optimizer.iterations.numpy() + 1
-        tf.get_logger().info(
-            f"Restored from checkpoint. Training from step: {start_step}"
-        )
+  train_writer = tf.summary.create_file_writer(
+      os.path.join(FLAGS.summaries_dir, 'train'))
+  val_writer = tf.summary.create_file_writer(
+      os.path.join(FLAGS.summaries_dir, 'validation'))
 
-    # Save list of words
-    with gfile.GFile(
-        os.path.join(FLAGS.train_dir, FLAGS.model_architecture + "_labels.txt"), "w"
-    ) as f:
-        f.write("\n".join(audio_processor.words_list))
+  checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+  checkpoint_manager = tf.train.CheckpointManager(
+      checkpoint, directory=FLAGS.train_dir, max_to_keep=5)
 
-    # --- TF2 Custom Training & Validation Steps ---
+  start_step = 1
+  if FLAGS.start_checkpoint:
+    checkpoint.restore(FLAGS.start_checkpoint)
+    # The optimizer's iteration count tells us how many steps were already
+    # trained.
+    start_step = optimizer.iterations.numpy() + 1
+    tf.get_logger().info(
+        'Restored from checkpoint. Training from step: %d' % start_step)
 
-    @tf.function
-    def train_step(fingerprints, labels):
-        with tf.GradientTape() as tape:
-            # Pass training=True for layers like Dropout or BatchNorm
-            logits = model(fingerprints, training=True)
-            loss = loss_fn(labels, logits)
+  # Save list of words.
+  with gfile.GFile(
+      os.path.join(FLAGS.train_dir, FLAGS.model_architecture + '_labels.txt'),
+      'w') as f:
+    f.write('\n'.join(audio_processor.words_list))
 
-        # Calculate and apply gradients
-        gradients = tape.gradient(loss, model.trainable_variables)
-        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+  @tf.function
+  def train_step(fingerprints, ground_truth):
+    with tf.GradientTape() as tape:
+      # Pass training=True so layers like Dropout behave correctly.
+      logits = model(fingerprints, training=True)
+      loss = loss_fn(ground_truth, logits)
+    gradients = tape.gradient(loss, model.trainable_variables)
+    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+    train_accuracy.update_state(ground_truth, logits)
+    return loss
 
-        # Update metrics
-        train_accuracy.update_state(labels, logits)
-        return loss
+  @tf.function
+  def eval_step(fingerprints, ground_truth, accuracy_metric):
+    logits = model(fingerprints, training=False)
+    accuracy_metric.update_state(ground_truth, logits)
+    return tf.argmax(logits, axis=1)
 
-    @tf.function
-    def val_step(fingerprints, labels):
-        logits = model(fingerprints, training=False)
-        val_accuracy.update_state(labels, logits)
-        predicted_indices = tf.argmax(logits, axis=1)
-        return predicted_indices
+  # Training loop.
+  training_steps_max = np.sum(training_steps_list)
+  for training_step in range(start_step, training_steps_max + 1):
+    # Figure out what the current learning rate is, for logging purposes.
+    learning_rate_value = lr_schedule(optimizer.iterations)
 
-    # 6. Main Training Loop
-    training_steps_max = np.sum(training_steps_list)
+    # Pull the audio samples we'll use for training.
+    train_fingerprints, train_ground_truth = audio_processor.get_data(
+        FLAGS.batch_size, 0, model_settings, FLAGS.background_frequency,
+        FLAGS.background_volume, time_shift_samples, 'training',
+        step=training_step)
 
-    for training_step in range(start_step, training_steps_max + 1):
-        # Note: audio_processor needs to return raw numpy arrays here, not depend on a session
-        train_fingerprints, train_ground_truth = audio_processor.get_data(
-            FLAGS.batch_size,
-            0,
-            model_settings,
-            FLAGS.background_frequency,
-            FLAGS.background_volume,
-            time_shift_samples,
-            "training",
-        )
+    loss_value = train_step(train_fingerprints, train_ground_truth)
 
-        # Execute training step
-        loss_value = train_step(train_fingerprints, train_ground_truth)
+    with train_writer.as_default():
+      tf.summary.scalar('cross_entropy', loss_value, step=training_step)
+      tf.summary.scalar(
+          'accuracy', train_accuracy.result(), step=training_step)
+      tf.summary.scalar(
+          'learning_rate', learning_rate_value, step=training_step)
 
-        # Log to TensorBoard
-        with train_writer.as_default():
-            tf.summary.scalar("cross_entropy", loss_value, step=training_step)
-            tf.summary.scalar("accuracy", train_accuracy.result(), step=training_step)
-            tf.summary.scalar(
-                "learning_rate",
-                optimizer.learning_rate(optimizer.iterations),
-                step=training_step,
-            )
+    tf.get_logger().debug(
+        'Step #%d: rate %f, accuracy %.1f%%, cross entropy %f' %
+        (training_step, learning_rate_value, train_accuracy.result() * 100,
+         loss_value))
 
-        if training_step % 100 == 0:  # Debug logging interval
-            tf.get_logger().debug(
-                f"Step #{training_step}: accuracy {train_accuracy.result() * 100:.1f}%, cross entropy {loss_value:.4f}"
-            )
+    is_last_step = (training_step == training_steps_max)
+    if (training_step % FLAGS.eval_step_interval) == 0 or is_last_step:
+      tf.get_logger().info(
+          'Step #%d: rate %f, accuracy %.1f%%, cross entropy %f' %
+          (training_step, learning_rate_value, train_accuracy.result() * 100,
+           loss_value))
 
-        is_last_step = training_step == training_steps_max
-
-        # --- Validation Phase ---
-        if (training_step % FLAGS.eval_step_interval) == 0 or is_last_step:
-            val_accuracy.reset_states()
-            total_conf_matrix = np.zeros((label_count, label_count), dtype=np.int32)
-            set_size = audio_processor.set_size("validation")
-
-            for i in range(0, set_size, FLAGS.batch_size):
-                val_fingerprints, val_ground_truth = audio_processor.get_data(
-                    FLAGS.batch_size, i, model_settings, 0.0, 0.0, 0, "validation"
-                )
-
-                predictions = val_step(val_fingerprints, val_ground_truth)
-
-                # Compute confusion matrix for this batch
-                batch_conf_matrix = tf.math.confusion_matrix(
-                    labels=val_ground_truth,
-                    predictions=predictions,
-                    num_classes=label_count,
-                ).numpy()
-                total_conf_matrix += batch_conf_matrix
-
-            with val_writer.as_default():
-                tf.summary.scalar("accuracy", val_accuracy.result(), step=training_step)
-
-            tf.get_logger().info(f"Confusion Matrix:\n {total_conf_matrix}")
-            tf.get_logger().info(
-                f"Step {training_step}: Validation accuracy = {val_accuracy.result() * 100:.1f}% (N={set_size})"
-            )
-
-        # Save checkpoint periodically
-        if training_step % FLAGS.save_step_interval == 0 or is_last_step:
-            save_path = checkpoint_manager.save(checkpoint_number=training_step)
-            tf.get_logger().info(f"Saved checkpoint to {save_path}")
-
-        # Reset training metrics for the next interval
-        train_accuracy.reset_states()
-
-    # --- Final Testing Phase ---
-    set_size = audio_processor.set_size("testing")
-    tf.get_logger().info(f"set_size={set_size}")
-    test_accuracy.reset_states()
-    total_conf_matrix = np.zeros((label_count, label_count), dtype=np.int32)
-
-    for i in range(0, set_size, FLAGS.batch_size):
-        test_fingerprints, test_ground_truth = audio_processor.get_data(
-            FLAGS.batch_size, i, model_settings, 0.0, 0.0, 0, "testing"
-        )
-
-        logits = model(test_fingerprints, training=False)
-        test_accuracy.update_state(test_ground_truth, logits)
-        predictions = tf.argmax(logits, axis=1)
-
+      val_accuracy.reset_states()
+      set_size = audio_processor.set_size('validation')
+      total_conf_matrix = np.zeros((label_count, label_count), dtype=np.int32)
+      for i in range(0, set_size, FLAGS.batch_size):
+        val_fingerprints, val_ground_truth = audio_processor.get_data(
+            FLAGS.batch_size, i, model_settings, 0.0, 0.0, 0, 'validation')
+        predictions = eval_step(val_fingerprints, val_ground_truth,
+                                val_accuracy)
         batch_conf_matrix = tf.math.confusion_matrix(
-            labels=test_ground_truth, predictions=predictions, num_classes=label_count
-        ).numpy()
+            labels=val_ground_truth, predictions=predictions,
+            num_classes=label_count).numpy()
         total_conf_matrix += batch_conf_matrix
 
-    tf.get_logger().warning(f"Final Confusion Matrix:\n {total_conf_matrix}")
-    tf.get_logger().warning(
-        f"Final test accuracy = {test_accuracy.result() * 100:.1f}% (N={set_size})"
-    )
+      with val_writer.as_default():
+        tf.summary.scalar(
+            'accuracy', val_accuracy.result(), step=training_step)
+
+      tf.get_logger().info('Confusion Matrix:\n %s' % (total_conf_matrix,))
+      tf.get_logger().info(
+          'Step %d: Validation accuracy = %.1f%% (N=%d)' %
+          (training_step, val_accuracy.result() * 100, set_size))
+
+    # Save the model checkpoint periodically.
+    if (training_step % FLAGS.save_step_interval == 0 or
+        training_step == training_steps_max):
+      save_path = checkpoint_manager.save(checkpoint_number=training_step)
+      tf.get_logger().info('Saved checkpoint to "%s"' % save_path)
+
+    train_accuracy.reset_states()
+
+  set_size = audio_processor.set_size('testing')
+  tf.get_logger().info('set_size=%d' % set_size)
+  test_accuracy.reset_states()
+  total_conf_matrix = np.zeros((label_count, label_count), dtype=np.int32)
+  for i in range(0, set_size, FLAGS.batch_size):
+    test_fingerprints, test_ground_truth = audio_processor.get_data(
+        FLAGS.batch_size, i, model_settings, 0.0, 0.0, 0, 'testing')
+    predictions = eval_step(test_fingerprints, test_ground_truth,
+                            test_accuracy)
+    batch_conf_matrix = tf.math.confusion_matrix(
+        labels=test_ground_truth, predictions=predictions,
+        num_classes=label_count).numpy()
+    total_conf_matrix += batch_conf_matrix
+  tf.get_logger().warning('Confusion Matrix:\n %s' % (total_conf_matrix,))
+  tf.get_logger().warning(
+      'Final test accuracy = %.1f%% (N=%d)' %
+      (test_accuracy.result() * 100, set_size))
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--data_url",
-        type=str,
-        # pylint: disable=line-too-long
-        default="https://storage.googleapis.com/download.tensorflow.org/data/speech_commands_v0.02.tar.gz",
-        # pylint: enable=line-too-long
-        help="Location of speech training data archive on the web.",
-    )
-    parser.add_argument(
-        "--data_dir",
-        type=str,
-        default="/tmp/speech_dataset/",
-        help="""\
+if __name__ == '__main__':
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--data_url',
+      type=str,
+      # pylint: disable=line-too-long
+      default='https://storage.googleapis.com/download.tensorflow.org/data/speech_commands_v0.02.tar.gz',
+      # pylint: enable=line-too-long
+      help='Location of speech training data archive on the web.')
+  parser.add_argument(
+      '--data_dir',
+      type=str,
+      default='/tmp/speech_dataset/',
+      help="""\
       Where to download the speech training data to.
-      """,
-    )
-    parser.add_argument(
-        "--background_volume",
-        type=float,
-        default=0.1,
-        help="""\
+      """)
+  parser.add_argument(
+      '--background_volume',
+      type=float,
+      default=0.1,
+      help="""\
       How loud the background noise should be, between 0 and 1.
-      """,
-    )
-    parser.add_argument(
-        "--background_frequency",
-        type=float,
-        default=0.8,
-        help="""\
+      """)
+  parser.add_argument(
+      '--background_frequency',
+      type=float,
+      default=0.8,
+      help="""\
       How many of the training samples have background noise mixed in.
-      """,
-    )
-    parser.add_argument(
-        "--silence_percentage",
-        type=float,
-        default=10.0,
-        help="""\
+      """)
+  parser.add_argument(
+      '--silence_percentage',
+      type=float,
+      default=10.0,
+      help="""\
       How much of the training data should be silence.
-      """,
-    )
-    parser.add_argument(
-        "--unknown_percentage",
-        type=float,
-        default=10.0,
-        help="""\
+      """)
+  parser.add_argument(
+      '--unknown_percentage',
+      type=float,
+      default=10.0,
+      help="""\
       How much of the training data should be unknown words.
-      """,
-    )
-    parser.add_argument(
-        "--time_shift_ms",
-        type=float,
-        default=100.0,
-        help="""\
+      """)
+  parser.add_argument(
+      '--time_shift_ms',
+      type=float,
+      default=100.0,
+      help="""\
       Range to randomly shift the training audio by in time.
-      """,
-    )
-    parser.add_argument(
-        "--testing_percentage",
-        type=int,
-        default=10,
-        help="What percentage of wavs to use as a test set.",
-    )
-    parser.add_argument(
-        "--validation_percentage",
-        type=int,
-        default=10,
-        help="What percentage of wavs to use as a validation set.",
-    )
-    parser.add_argument(
-        "--sample_rate",
-        type=int,
-        default=16000,
-        help="Expected sample rate of the wavs",
-    )
-    parser.add_argument(
-        "--clip_duration_ms",
-        type=int,
-        default=1000,
-        help="Expected duration in milliseconds of the wavs",
-    )
-    parser.add_argument(
-        "--window_size_ms",
-        type=float,
-        default=30.0,
-        help="How long each spectrogram timeslice is.",
-    )
-    parser.add_argument(
-        "--window_stride_ms",
-        type=float,
-        default=10.0,
-        help="How far to move in time between spectrogram timeslices.",
-    )
-    parser.add_argument(
-        "--feature_bin_count",
-        type=int,
-        default=40,
-        help="How many bins to use for the MFCC fingerprint",
-    )
-    parser.add_argument(
-        "--how_many_training_steps",
-        type=str,
-        default="15000,3000",
-        help="How many training loops to run",
-    )
-    parser.add_argument(
-        "--eval_step_interval",
-        type=int,
-        default=400,
-        help="How often to evaluate the training results.",
-    )
-    parser.add_argument(
-        "--learning_rate",
-        type=str,
-        default="0.001,0.0001",
-        help="How large a learning rate to use when training.",
-    )
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=100,
-        help="How many items to train with at once",
-    )
-    parser.add_argument(
-        "--summaries_dir",
-        type=str,
-        default="/tmp/retrain_logs",
-        help="Where to save summary logs for TensorBoard.",
-    )
-    parser.add_argument(
-        "--wanted_words",
-        type=str,
-        default="yes,no,up,down,left,right,on,off,stop,go",
-        help="Words to use (others will be added to an unknown label)",
-    )
-    parser.add_argument(
-        "--train_dir",
-        type=str,
-        default="/tmp/speech_commands_train",
-        help="Directory to write event logs and checkpoint.",
-    )
-    parser.add_argument(
-        "--save_step_interval",
-        type=int,
-        default=100,
-        help="Save model checkpoint every save_steps.",
-    )
-    parser.add_argument(
-        "--start_checkpoint",
-        type=str,
-        default="",
-        help="If specified, restore this pretrained model before any training.",
-    )
-    parser.add_argument(
-        "--model_architecture",
-        type=str,
-        default="conv",
-        help="What model architecture to use",
-    )
-    parser.add_argument(
-        "--check_nans",
-        type=bool,
-        default=False,
-        help="Whether to check for invalid numbers during processing",
-    )
-    parser.add_argument(
-        "--quantize",
-        type=bool,
-        default=False,
-        help="Whether to train the model for eight-bit deployment",
-    )
-    parser.add_argument(
-        "--preprocess",
-        type=str,
-        default="mfcc",
-        help='Spectrogram processing mode. Can be "mfcc", "average", or "micro"',
-    )
+      """)
+  parser.add_argument(
+      '--testing_percentage',
+      type=int,
+      default=10,
+      help='What percentage of wavs to use as a test set.')
+  parser.add_argument(
+      '--validation_percentage',
+      type=int,
+      default=10,
+      help='What percentage of wavs to use as a validation set.')
+  parser.add_argument(
+      '--sample_rate',
+      type=int,
+      default=16000,
+      help='Expected sample rate of the wavs',)
+  parser.add_argument(
+      '--clip_duration_ms',
+      type=int,
+      default=1000,
+      help='Expected duration in milliseconds of the wavs',)
+  parser.add_argument(
+      '--window_size_ms',
+      type=float,
+      default=30.0,
+      help='How long each spectrogram timeslice is.',)
+  parser.add_argument(
+      '--window_stride_ms',
+      type=float,
+      default=10.0,
+      help='How far to move in time between spectrogram timeslices.',
+  )
+  parser.add_argument(
+      '--feature_bin_count',
+      type=int,
+      default=40,
+      help='How many bins to use for the MFCC fingerprint',
+  )
+  parser.add_argument(
+      '--how_many_training_steps',
+      type=str,
+      default='15000,3000',
+      help='How many training loops to run',)
+  parser.add_argument(
+      '--eval_step_interval',
+      type=int,
+      default=400,
+      help='How often to evaluate the training results.')
+  parser.add_argument(
+      '--learning_rate',
+      type=str,
+      default='0.001,0.0001',
+      help='How large a learning rate to use when training.')
+  parser.add_argument(
+      '--batch_size',
+      type=int,
+      default=100,
+      help='How many items to train with at once',)
+  parser.add_argument(
+      '--summaries_dir',
+      type=str,
+      default='/tmp/retrain_logs',
+      help='Where to save summary logs for TensorBoard.')
+  parser.add_argument(
+      '--wanted_words',
+      type=str,
+      default='yes,no,up,down,left,right,on,off,stop,go',
+      help='Words to use (others will be added to an unknown label)',)
+  parser.add_argument(
+      '--train_dir',
+      type=str,
+      default='/tmp/speech_commands_train',
+      help='Directory to write event logs and checkpoint.')
+  parser.add_argument(
+      '--save_step_interval',
+      type=int,
+      default=100,
+      help='Save model checkpoint every save_steps.')
+  parser.add_argument(
+      '--start_checkpoint',
+      type=str,
+      default='',
+      help='If specified, restore this pretrained model before any training.')
+  parser.add_argument(
+      '--model_architecture',
+      type=str,
+      default='conv',
+      help='What model architecture to use')
+  parser.add_argument(
+      '--check_nans',
+      type=bool,
+      default=False,
+      help='Whether to check for invalid numbers during processing')
+  parser.add_argument(
+      '--quantize',
+      type=bool,
+      default=False,
+      help='Whether to train the model for eight-bit deployment')
+  parser.add_argument(
+      '--preprocess',
+      type=str,
+      default='mfcc',
+      help='Spectrogram processing mode. Can be "mfcc", "average", or "micro"')
 
-    # Function used to parse --verbosity argument
-    def verbosity_arg(value):
-        """Parses verbosity argument.
+  # Function used to parse --verbosity argument.
+  def verbosity_arg(value):
+    """Parses verbosity argument.
 
-        Args:
-          value: A member of tf.logging.
-        Raises:
-          ArgumentTypeError: Not an expected value.
-        """
-        value = value.upper()
-        if value == "DEBUG":
-            return tf.compat.v1.logging.DEBUG
-        elif value == "INFO":
-            return tf.compat.v1.logging.INFO
-        elif value == "WARN":
-            return tf.compat.v1.logging.WARN
-        elif value == "ERROR":
-            return tf.compat.v1.logging.ERROR
-        elif value == "FATAL":
-            return tf.compat.v1.logging.FATAL
-        else:
-            raise argparse.ArgumentTypeError("Not an expected value")
+    Args:
+      value: A member of logging.
+    Raises:
+      ArgumentTypeError: Not an expected value.
+    """
+    value = value.upper()
+    if value == 'DEBUG':
+      return logging.DEBUG
+    elif value == 'INFO':
+      return logging.INFO
+    elif value == 'WARN':
+      return logging.WARN
+    elif value == 'ERROR':
+      return logging.ERROR
+    elif value == 'FATAL':
+      return logging.CRITICAL
+    else:
+      raise argparse.ArgumentTypeError('Not an expected value')
 
-    parser.add_argument(
-        "--verbosity",
-        type=verbosity_arg,
-        default=tf.compat.v1.logging.INFO,
-        help='Log verbosity. Can be "DEBUG", "INFO", "WARN", "ERROR", or "FATAL"',
-    )
-    parser.add_argument(
-        "--optimizer",
-        type=str,
-        default="gradient_descent",
-        help="Optimizer (gradient_descent or momentum)",
-    )
+  parser.add_argument(
+      '--verbosity',
+      type=verbosity_arg,
+      default=logging.INFO,
+      help='Log verbosity. Can be "DEBUG", "INFO", "WARN", "ERROR", or "FATAL"')
+  parser.add_argument(
+      '--optimizer',
+      type=str,
+      default='gradient_descent',
+      help='Optimizer (gradient_descent or momentum)')
 
-    FLAGS, unparsed = parser.parse_known_args()
-    tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  # parse_known_args (rather than parse_args) tolerates extra flags that test
+  # runners like bazel sometimes inject; main() doesn't look at argv, so any
+  # leftovers are simply unused, matching the previous tf.compat.v1.app.run
+  # behavior.
+  FLAGS, _ = parser.parse_known_args()
+  main(None)

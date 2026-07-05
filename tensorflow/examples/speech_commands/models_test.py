@@ -17,7 +17,6 @@
 import tensorflow as tf
 
 from tensorflow.examples.speech_commands import models
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -33,6 +32,14 @@ class ModelsTest(test.TestCase):
         feature_bin_count=40,
         preprocess="mfcc")
 
+  def _checkModel(self, model_settings, architecture):
+    model = models.create_model(model_settings, architecture)
+    self.assertIsInstance(model, tf.keras.Model)
+    fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
+    logits = model(fingerprint_input, training=False)
+    self.assertEqual([1, model_settings["label_count"]], logits.shape.as_list())
+    return model
+
   def testPrepareModelSettings(self):
     self.assertIsNotNone(
         models.prepare_model_settings(
@@ -44,72 +51,47 @@ class ModelsTest(test.TestCase):
             feature_bin_count=40,
             preprocess="mfcc"))
 
-  @test_util.run_deprecated_v1
-  def testCreateModelConvTraining(self):
-    model_settings = self._modelSettings()
-    with self.cached_session() as sess:
-      fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
-      logits, dropout_rate = models.create_model(
-          fingerprint_input, model_settings, "conv", True)
-      self.assertIsNotNone(logits)
-      self.assertIsNotNone(dropout_rate)
-      self.assertIsNotNone(sess.graph.get_tensor_by_name(logits.name))
-      self.assertIsNotNone(sess.graph.get_tensor_by_name(dropout_rate.name))
+  def testCreateModelConv(self):
+    self._checkModel(self._modelSettings(), "conv")
 
-  @test_util.run_deprecated_v1
-  def testCreateModelConvInference(self):
-    model_settings = self._modelSettings()
-    with self.cached_session() as sess:
-      fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
-      logits = models.create_model(fingerprint_input, model_settings, "conv",
-                                   False)
-      self.assertIsNotNone(logits)
-      self.assertIsNotNone(sess.graph.get_tensor_by_name(logits.name))
+  def testCreateModelLowLatencyConv(self):
+    self._checkModel(self._modelSettings(), "low_latency_conv")
 
-  @test_util.run_deprecated_v1
-  def testCreateModelLowLatencyConvTraining(self):
-    model_settings = self._modelSettings()
-    with self.cached_session() as sess:
-      fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
-      logits, dropout_rate = models.create_model(
-          fingerprint_input, model_settings, "low_latency_conv", True)
-      self.assertIsNotNone(logits)
-      self.assertIsNotNone(dropout_rate)
-      self.assertIsNotNone(sess.graph.get_tensor_by_name(logits.name))
-      self.assertIsNotNone(sess.graph.get_tensor_by_name(dropout_rate.name))
+  def testCreateModelLowLatencyConvHasNoExtraActivations(self):
+    # create_low_latency_conv_model's three fully-connected layers are
+    # intentionally linear (only the first conv layer has a ReLU) -- make
+    # sure a regression doesn't sneak an activation back onto them.
+    model = self._checkModel(self._modelSettings(), "low_latency_conv")
+    dense_layers = [
+        layer for layer in model.layers
+        if isinstance(layer, tf.keras.layers.Dense)
+    ]
+    # The final Dense layer produces logits for label_count classes; the two
+    # hidden Dense(128) layers before it must have no activation.
+    hidden_dense_layers = [
+        layer for layer in dense_layers if layer.units == 128
+    ]
+    self.assertLen(hidden_dense_layers, 2)
+    for layer in hidden_dense_layers:
+      self.assertEqual(tf.keras.activations.linear, layer.activation)
 
-  @test_util.run_deprecated_v1
-  def testCreateModelFullyConnectedTraining(self):
-    model_settings = self._modelSettings()
-    with self.cached_session() as sess:
-      fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
-      logits, dropout_rate = models.create_model(
-          fingerprint_input, model_settings, "single_fc", True)
-      self.assertIsNotNone(logits)
-      self.assertIsNotNone(dropout_rate)
-      self.assertIsNotNone(sess.graph.get_tensor_by_name(logits.name))
-      self.assertIsNotNone(sess.graph.get_tensor_by_name(dropout_rate.name))
+  def testCreateModelFullyConnected(self):
+    self._checkModel(self._modelSettings(), "single_fc")
+
+  def testCreateModelLowLatencySvdf(self):
+    self._checkModel(self._modelSettings(), "low_latency_svdf")
+
+  def testCreateModelTinyConv(self):
+    self._checkModel(self._modelSettings(), "tiny_conv")
+
+  def testCreateModelTinyEmbeddingConv(self):
+    self._checkModel(self._modelSettings(), "tiny_embedding_conv")
 
   def testCreateModelBadArchitecture(self):
     model_settings = self._modelSettings()
-    with self.cached_session():
-      fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
-      with self.assertRaises(Exception) as e:
-        models.create_model(fingerprint_input, model_settings,
-                            "bad_architecture", True)
-      self.assertIn("not recognized", str(e.exception))
-
-  @test_util.run_deprecated_v1
-  def testCreateModelTinyConvTraining(self):
-    model_settings = self._modelSettings()
-    with self.cached_session() as sess:
-      fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
-      logits, dropout_rate = models.create_model(
-          fingerprint_input, model_settings, "tiny_conv", True)
-      self.assertIsNotNone(logits)
-      self.assertIsNotNone(dropout_rate)
-      self.assertIsNotNone(sess.graph.get_tensor_by_name(logits.name))
-      self.assertIsNotNone(sess.graph.get_tensor_by_name(dropout_rate.name))
+    with self.assertRaises(Exception) as e:
+      models.create_model(model_settings, "bad_architecture")
+    self.assertIn("not recognized", str(e.exception))
 
 
 if __name__ == "__main__":

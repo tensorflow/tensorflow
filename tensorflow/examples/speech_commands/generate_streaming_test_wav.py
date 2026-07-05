@@ -37,7 +37,6 @@ test_streaming_accuracy tool to calculate accuracy metrics for a model.
 """
 import argparse
 import math
-import sys
 
 import numpy as np
 import tensorflow as tf
@@ -156,14 +155,14 @@ def main(_):
 
   input_data.save_wav_file(FLAGS.output_audio_file, output_audio,
                            FLAGS.sample_rate)
-  tf.compat.v1.logging.info('Saved streaming test wav to %s',
-                            FLAGS.output_audio_file)
+  tf.get_logger().info('Saved streaming test wav to %s',
+                       FLAGS.output_audio_file)
 
   with open(FLAGS.output_labels_file, 'w') as f:
     for output_label in output_labels:
       f.write('%s, %f\n' % (output_label['label'], output_label['time']))
-  tf.compat.v1.logging.info('Saved streaming test labels to %s',
-                            FLAGS.output_labels_file)
+  tf.get_logger().info('Saved streaming test labels to %s',
+                       FLAGS.output_labels_file)
 
 
 if __name__ == '__main__':
@@ -277,5 +276,5 @@ if __name__ == '__main__':
       default=30,
       help='What percentage of words should be unknown.')
 
-  FLAGS, unparsed = parser.parse_known_args()
-  tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  FLAGS, _ = parser.parse_known_args()
+  main(None)

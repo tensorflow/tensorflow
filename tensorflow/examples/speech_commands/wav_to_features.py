@@ -29,7 +29,6 @@ bazel run tensorflow/examples/speech_commands:wav_to_features -- \
 """
 import argparse
 import os.path
-import sys
 
 import tensorflow as tf
 
@@ -56,18 +55,13 @@ def wav_to_features(sample_rate, clip_duration_ms, window_size_ms,
     input_wav: Path to the audio WAV file to read.
     output_c_file: Where to save the generated C source file.
   """
-
-  # Start a new TensorFlow session.
-  sess = tf.compat.v1.InteractiveSession()
-
   model_settings = models.prepare_model_settings(
       0, sample_rate, clip_duration_ms, window_size_ms, window_stride_ms,
       feature_bin_count, preprocess)
   audio_processor = input_data.AudioProcessor(None, None, 0, 0, '', 0, 0,
                                               model_settings, None)
 
-  results = audio_processor.get_features_for_wav(input_wav, model_settings,
-                                                 sess)
+  results = audio_processor.get_features_for_wav(input_wav, model_settings)
   features = results[0]
 
   variable_base = os.path.splitext(os.path.basename(input_wav).lower())[0]
@@ -120,12 +114,12 @@ def wav_to_features(sample_rate, clip_duration_ms, window_size_ms,
 
 def main(_):
   # We want to see all the logging messages.
-  tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
+  tf.get_logger().setLevel('INFO')
   wav_to_features(FLAGS.sample_rate, FLAGS.clip_duration_ms,
                   FLAGS.window_size_ms, FLAGS.window_stride_ms,
                   FLAGS.feature_bin_count, FLAGS.quantize, FLAGS.preprocess,
                   FLAGS.input_wav, FLAGS.output_c_file)
-  tf.compat.v1.logging.info('Wrote to "%s"' % (FLAGS.output_c_file))
+  tf.get_logger().info('Wrote to "%s"' % (FLAGS.output_c_file))
 
 
 if __name__ == '__main__':
@@ -178,5 +172,5 @@ if __name__ == '__main__':
       default=None,
       help='Where to save the generated C source file containing the features')
 
-  FLAGS, unparsed = parser.parse_known_args()
-  tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  FLAGS, _ = parser.parse_known_args()
+  main(None)

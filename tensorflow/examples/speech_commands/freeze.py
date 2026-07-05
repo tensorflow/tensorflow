@@ -36,12 +36,12 @@ and the output is called 'labels_softmax'.
 """
 import argparse
 import os.path
-import sys
 
 import tensorflow as tf
 
 import input_data
 import models
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.ops import gen_audio_ops as audio_ops
 
 # If it's available, load the specialized feature generator. If this doesn't
@@ -58,10 +58,11 @@ FLAGS = None
 def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
                            clip_stride_ms, window_size_ms, window_stride_ms,
                            feature_bin_count, model_architecture, preprocess):
-  """Creates an audio model with the nodes needed for inference.
+  """Creates a model and a traced serving function wired up for inference.
 
-  Uses the supplied arguments to create a model, and inserts the input and
-  output nodes that are needed to use the graph for inference.
+  Builds the requested model, and a tf.function that takes WAV-encoded audio
+  data and returns softmax class probabilities, suitable for tracing and
+  freezing into a single self-contained inference graph.
 
   Args:
     wanted_words: Comma-separated list of the words we're trying to recognize.
@@ -76,81 +77,92 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
       example 'mfcc', 'average', or 'micro'.
 
   Returns:
-    Input and output tensor objects.
+    A tuple of (model, serve). `model` is the Keras model that does the
+    classification -- callers should restore trained weights onto it (e.g.
+    with tf.train.Checkpoint) before tracing/freezing `serve`. `serve` is an
+    (as yet untraced) tf.function that takes WAV-encoded bytes ('wav_data')
+    and returns class probabilities ('labels_softmax'); the intermediate
+    decoded-audio node is explicitly named 'decoded_sample_data' (outputs :0
+    audio, :1 sample_rate) so tools that feed pre-decoded samples directly
+    into the frozen graph (e.g. test_streaming_accuracy.py) keep working
+    unchanged.
 
   Raises:
     Exception: If the preprocessing mode isn't recognized.
   """
-
   words_list = input_data.prepare_words_list(wanted_words.split(','))
   model_settings = models.prepare_model_settings(
       len(words_list), sample_rate, clip_duration_ms, window_size_ms,
       window_stride_ms, feature_bin_count, preprocess)
-  runtime_settings = {'clip_stride_ms': clip_stride_ms}
-
-  wav_data_placeholder = tf.compat.v1.placeholder(tf.string, [],
-                                                  name='wav_data')
-  decoded_sample_data = tf.audio.decode_wav(
-      wav_data_placeholder,
-      desired_channels=1,
-      desired_samples=model_settings['desired_samples'],
-      name='decoded_sample_data')
-  spectrogram = audio_ops.audio_spectrogram(
-      decoded_sample_data.audio,
-      window_size=model_settings['window_size_samples'],
-      stride=model_settings['window_stride_samples'],
-      magnitude_squared=True)
-
-  if preprocess == 'average':
-    fingerprint_input = tf.nn.pool(
-        input=tf.expand_dims(spectrogram, -1),
-        window_shape=[1, model_settings['average_window_width']],
-        strides=[1, model_settings['average_window_width']],
-        pooling_type='AVG',
-        padding='SAME')
-  elif preprocess == 'mfcc':
-    fingerprint_input = audio_ops.mfcc(
-        spectrogram,
-        sample_rate,
-        dct_coefficient_count=model_settings['fingerprint_width'])
-  elif preprocess == 'micro':
-    if not frontend_op:
-      raise Exception(
-          'Micro frontend op is currently not available when running TensorFlow'
-          ' directly from Python, you need to build and run through Bazel, for'
-          ' example'
-          ' `bazel run tensorflow/examples/speech_commands:freeze_graph`')
-    sample_rate = model_settings['sample_rate']
-    window_size_ms = (model_settings['window_size_samples'] *
-                      1000) / sample_rate
-    window_step_ms = (model_settings['window_stride_samples'] *
-                      1000) / sample_rate
-    int16_input = tf.cast(
-        tf.multiply(decoded_sample_data.audio, 32767), tf.int16)
-    micro_frontend = frontend_op.audio_microfrontend(
-        int16_input,
-        sample_rate=sample_rate,
-        window_size=window_size_ms,
-        window_step=window_step_ms,
-        num_channels=model_settings['fingerprint_width'],
-        out_scale=1,
-        out_type=tf.float32)
-    fingerprint_input = tf.multiply(micro_frontend, (10.0 / 256.0))
-  else:
-    raise Exception('Unknown preprocess mode "%s" (should be "mfcc",'
-                    ' "average", or "micro")' % (preprocess))
-
   fingerprint_size = model_settings['fingerprint_size']
-  reshaped_input = tf.reshape(fingerprint_input, [-1, fingerprint_size])
 
-  logits = models.create_model(
-      reshaped_input, model_settings, model_architecture, is_training=False,
-      runtime_settings=runtime_settings)
+  model = models.create_model(model_settings, model_architecture)
+  # Keras layers build their weight variables lazily on first call. Building
+  # now (rather than waiting for `serve` to be traced) lets a caller restore a
+  # trained checkpoint onto `model` before `serve` gets traced/frozen below.
+  model.build(input_shape=(None, fingerprint_size))
 
-  # Create an output to use for inference.
-  softmax = tf.nn.softmax(logits, name='labels_softmax')
+  def _fingerprint_from_decoded(decoded_audio, decoded_sample_rate):
+    """Runs the spectrogram/mfcc/average/micro feature pipeline."""
+    spectrogram = audio_ops.audio_spectrogram(
+        decoded_audio,
+        window_size=model_settings['window_size_samples'],
+        stride=model_settings['window_stride_samples'],
+        magnitude_squared=True)
 
-  return reshaped_input, softmax
+    if preprocess == 'average':
+      fingerprint = tf.nn.pool(
+          input=tf.expand_dims(spectrogram, -1),
+          window_shape=[1, model_settings['average_window_width']],
+          strides=[1, model_settings['average_window_width']],
+          pooling_type='AVG',
+          padding='SAME')
+    elif preprocess == 'mfcc':
+      fingerprint = audio_ops.mfcc(
+          spectrogram,
+          decoded_sample_rate,
+          dct_coefficient_count=model_settings['fingerprint_width'])
+    elif preprocess == 'micro':
+      if not frontend_op:
+        raise Exception(
+            'Micro frontend op is currently not available when running'
+            ' TensorFlow directly from Python, you need to build and run'
+            ' through Bazel, for example'
+            ' `bazel run tensorflow/examples/speech_commands:freeze_graph`')
+      micro_sample_rate = model_settings['sample_rate']
+      micro_window_size_ms = (model_settings['window_size_samples'] *
+                              1000) / micro_sample_rate
+      micro_window_step_ms = (model_settings['window_stride_samples'] *
+                              1000) / micro_sample_rate
+      int16_input = tf.cast(tf.multiply(decoded_audio, 32767), tf.int16)
+      micro_frontend = frontend_op.audio_microfrontend(
+          int16_input,
+          sample_rate=micro_sample_rate,
+          window_size=micro_window_size_ms,
+          window_step=micro_window_step_ms,
+          num_channels=model_settings['fingerprint_width'],
+          out_scale=1,
+          out_type=tf.float32)
+      fingerprint = tf.multiply(micro_frontend, (10.0 / 256.0))
+    else:
+      raise Exception('Unknown preprocess mode "%s" (should be "mfcc",'
+                      ' "average", or "micro")' % (preprocess))
+
+    return tf.reshape(fingerprint, [-1, fingerprint_size])
+
+  @tf.function(input_signature=[tf.TensorSpec([], tf.string, name='wav_data')])
+  def serve(wav_data):
+    decoded_sample_data = tf.audio.decode_wav(
+        wav_data,
+        desired_channels=1,
+        desired_samples=model_settings['desired_samples'],
+        name='decoded_sample_data')
+    fingerprint_input = _fingerprint_from_decoded(
+        decoded_sample_data.audio, decoded_sample_data.sample_rate)
+    logits = model(fingerprint_input, training=False)
+    return tf.nn.softmax(logits, name='labels_softmax')
+
+  return model, serve
 
 
 def save_graph_def(file_name, frozen_graph_def):
@@ -165,74 +177,60 @@ def save_graph_def(file_name, frozen_graph_def):
       os.path.dirname(file_name),
       os.path.basename(file_name),
       as_text=False)
-  tf.compat.v1.logging.info('Saved frozen graph to %s', file_name)
+  tf.get_logger().info('Saved frozen graph to %s', file_name)
 
 
-def save_saved_model(file_name, sess, input_tensor, output_tensor):
+def save_saved_model(file_name, model, serve_concrete_fn):
   """Writes a SavedModel out to disk.
 
   Args:
-    file_name: Where to save the file.
-    sess: TensorFlow session containing the graph.
-    input_tensor: Tensor object defining the input's properties.
-    output_tensor: Tensor object defining the output's properties.
+    file_name: Where to save the SavedModel.
+    model: The Keras model whose trained weights should be saved alongside
+      the serving signature (also gives tf.saved_model.save an object graph
+      to walk for tracked variables).
+    serve_concrete_fn: The traced serving tf.function (wav_data in,
+      labels_softmax out) to expose as the default serving signature.
   """
-  # Store the frozen graph as a SavedModel for v2 compatibility.
-  builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(file_name)
-  tensor_info_inputs = {
-      'input': tf.compat.v1.saved_model.utils.build_tensor_info(input_tensor)
-  }
-  tensor_info_outputs = {
-      'output': tf.compat.v1.saved_model.utils.build_tensor_info(output_tensor)
-  }
-  signature = (
-      tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
-          inputs=tensor_info_inputs,
-          outputs=tensor_info_outputs,
-          method_name=tf.compat.v1.saved_model.signature_constants
-          .PREDICT_METHOD_NAME))
-  builder.add_meta_graph_and_variables(
-      sess,
-      [tf.compat.v1.saved_model.tag_constants.SERVING],
-      signature_def_map={
-          tf.compat.v1.saved_model.signature_constants
-          .DEFAULT_SERVING_SIGNATURE_DEF_KEY:
-              signature,
-      },
-  )
-  builder.save()
+  tf.saved_model.save(
+      model,
+      file_name,
+      signatures={
+          tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY: serve_concrete_fn
+      })
 
 
 def main(_):
   if FLAGS.quantize:
-    try:
-      _ = tf.contrib
-    except AttributeError as e:
-      msg = e.args[0]
-      msg += ('\n\n The --quantize option still requires contrib, which is not '
-              'part of TensorFlow 2.0. Please install a previous version:'
-              '\n    `pip install tensorflow<=1.15`')
-      e.args = (msg,)
-      raise e
+    # TODO: Quantization-aware export doesn't have a TF2 story yet in this
+    # example. Since deployment targets TFLite, the intended follow-up is to
+    # freeze the float model as usual (below) and then run it through
+    # tf.lite.TFLiteConverter's post-training quantization (or, if that isn't
+    # accurate enough, retrain with quantization-aware training via
+    # tensorflow_model_optimization and freeze that instead) -- see the
+    # matching TODO in train.py.
+    raise Exception(
+        '--quantize is not yet supported when exporting for TF2. See the '
+        'TODO comment in main() in freeze.py for the intended follow-up '
+        '(TFLite post-training quantization).')
 
-  # Create the model and load its weights.
-  sess = tf.compat.v1.InteractiveSession()
-  input_tensor, output_tensor = create_inference_graph(
+  # Create the model and load its trained weights.
+  model, serve_fn = create_inference_graph(
       FLAGS.wanted_words, FLAGS.sample_rate, FLAGS.clip_duration_ms,
       FLAGS.clip_stride_ms, FLAGS.window_size_ms, FLAGS.window_stride_ms,
       FLAGS.feature_bin_count, FLAGS.model_architecture, FLAGS.preprocess)
-  if FLAGS.quantize:
-    tf.contrib.quantize.create_eval_graph()
-  models.load_variables_from_checkpoint(sess, FLAGS.start_checkpoint)
+  checkpoint = tf.train.Checkpoint(model=model)
+  checkpoint.restore(FLAGS.start_checkpoint).expect_partial()
 
-  # Turn all the variables into inline constants inside the graph and save it.
-  frozen_graph_def = tf.compat.v1.graph_util.convert_variables_to_constants(
-      sess, sess.graph_def, ['labels_softmax'])
+  # Trace the serving function now that the trained weights are in place, and
+  # turn all the variables it references into inline constants.
+  concrete_fn = serve_fn.get_concrete_function()
+  frozen_func = convert_to_constants.convert_variables_to_constants_v2(
+      concrete_fn)
 
   if FLAGS.save_format == 'graph_def':
-    save_graph_def(FLAGS.output_file, frozen_graph_def)
+    save_graph_def(FLAGS.output_file, frozen_func.graph.as_graph_def())
   elif FLAGS.save_format == 'saved_model':
-    save_saved_model(FLAGS.output_file, sess, input_tensor, output_tensor)
+    save_saved_model(FLAGS.output_file, model, concrete_fn)
   else:
     raise Exception('Unknown save format "%s" (should be "graph_def" or'
                     ' "saved_model")' % (FLAGS.save_format))
@@ -303,5 +301,5 @@ if __name__ == '__main__':
       type=str,
       default='graph_def',
       help='How to save the result. Can be "graph_def" or "saved_model"')
-  FLAGS, unparsed = parser.parse_known_args()
-  tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  FLAGS, _ = parser.parse_known_args()
+  main(None)

@@ -29,7 +29,6 @@ python tensorflow/examples/speech_commands/label_wav_dir.py \
 """
 import argparse
 import glob
-import sys
 
 import tensorflow as tf
 
@@ -124,5 +123,5 @@ if __name__ == '__main__':
       default=3,
       help='Number of results to show.')
 
-  FLAGS, unparsed = parser.parse_known_args()
-  tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  FLAGS, _ = parser.parse_known_args()
+  main(None)

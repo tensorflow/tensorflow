@@ -19,18 +19,15 @@ import os
 import tensorflow as tf
 
 from tensorflow.examples.speech_commands import wav_to_features
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 class WavToFeaturesTest(test.TestCase):
 
   def _getWavData(self):
-    with self.cached_session():
-      sample_data = tf.zeros([32000, 2])
-      wav_encoder = tf.audio.encode_wav(sample_data, 16000)
-      wav_data = self.evaluate(wav_encoder)
-    return wav_data
+    sample_data = tf.zeros([32000, 2])
+    wav_encoder = tf.audio.encode_wav(sample_data, 16000)
+    return wav_encoder.numpy()
 
   def _saveTestWavFile(self, filename, wav_data):
     with open(filename, "wb") as f:
@@ -45,7 +42,6 @@ class WavToFeaturesTest(test.TestCase):
         file_path = os.path.join(dir_name, "some_audio_%d.wav" % i)
         self._saveTestWavFile(file_path, wav_data)
 
-  @test_util.run_deprecated_v1
   def testWavToFeatures(self):
     tmp_dir = self.get_temp_dir()
     wav_dir = os.path.join(tmp_dir, "wavs")
@@ -61,7 +57,6 @@ class WavToFeaturesTest(test.TestCase):
       content = f.read()
       self.assertIn(b"const unsigned char g_input_data", content)
 
-  @test_util.run_deprecated_v1
   def testWavToFeaturesMicro(self):
     tmp_dir = self.get_temp_dir()
     wav_dir = os.path.join(tmp_dir, "wavs")
