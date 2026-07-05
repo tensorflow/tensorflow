@@ -303,13 +303,6 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       GetMklShape(context, kInputTensorIndexInputGradient, &grad_mkl_shape,
                   this->native_format_);
       if (!context->status().ok()) return;
-      if (!grad_mkl_shape.IsMklTensor()) {
-        OP_REQUIRES(
-            context, grad_tensor.dims() == expected_rank,
-            absl::InvalidArgumentError(absl::StrCat(
-                "Grad must be rank ", expected_rank, " but got rank ",
-                grad_tensor.dims())));
-      }
 
       // Used to allocate output_diff_src/diff_src.
       MklDnnData<T> grad_dnn_data(&cpu_engine_);
