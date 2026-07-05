@@ -2075,13 +2075,11 @@ def conv1d(
       value_shape = value.shape
       filters_shape = filters.shape
       if value_shape.rank is not None and filters_shape.rank is not None:
-        if data_format == "NHWC":
-          in_width = value_shape[-2]
-        else:  # NCHW
-          in_width = value_shape[-1]
-        filter_width = filters_shape[0]
+        spatial_idx = -2 if data_format == "NHWC" else -1
+        in_width = tensor_shape.dimension_value(value_shape[spatial_idx])
+        filter_width = tensor_shape.dimension_value(filters_shape[0])
         if in_width is not None and filter_width is not None:
-          dilation_rate = dilations[channel_index]
+          dilation_rate = dilations[spatial_idx]
           effective_filter_width = filter_width + (filter_width - 1) * (
               dilation_rate - 1)
           if in_width - effective_filter_width < 0:
