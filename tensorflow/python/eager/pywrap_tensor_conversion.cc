@@ -62,24 +62,34 @@ void TFE_TensorHandleCache::Insert(PyObject* value, tensorflow::DataType dtype,
                                    TFE_TensorHandle* h) {
   Py_INCREF(value);
   tensorflow::unwrap(h)->Ref();
+  Cache old_cache;
 #ifdef Py_GIL_DISABLED
-  absl::MutexLock lock(&mu_);
+  {
+    absl::MutexLock lock(&mu_);
 #endif  // Py_GIL_DISABLED
-  // Prevent unbounded cache growth when many distinct scalar values are
-  // created (e.g. tf.constant(i) in a loop with varying i).
-  if (cache.size() >= kMaxCacheSize) {
-    DecrefUnrefAll();
-    cache.clear();
+    // Prevent unbounded cache growth when many distinct scalar values are
+    // created (e.g. tf.constant(i) in a loop with varying i).
+    if (cache.size() >= kMaxCacheSize) {
+      cache.swap(old_cache);
+    }
+    cache.emplace(Key{PyObjectPtr{value}, dtype, ctx, device_name}, h);
+#ifdef Py_GIL_DISABLED
   }
-  cache.emplace(Key{PyObjectPtr{value}, dtype, ctx, device_name}, h);
+#endif  // Py_GIL_DISABLED
+  DecrefUnrefAll(&old_cache);
 }
 
 void TFE_TensorHandleCache::Clear() {
+  Cache old_cache;
 #ifdef Py_GIL_DISABLED
-  absl::MutexLock lock(&mu_);
+  {
+    absl::MutexLock lock(&mu_);
 #endif  // Py_GIL_DISABLED
-  DecrefUnrefAll();
-  cache.clear();
+    cache.swap(old_cache);
+#ifdef Py_GIL_DISABLED
+  }
+#endif  // Py_GIL_DISABLED
+  DecrefUnrefAll(&old_cache);
 }
 
 }  // namespace tensorflow

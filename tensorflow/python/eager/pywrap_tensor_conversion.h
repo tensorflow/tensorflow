@@ -71,13 +71,7 @@ struct TFE_TensorHandleCache {
   static TFE_TensorHandleCache* Get();
 
   TFE_TensorHandleCache() { cache.reserve(64); }
-  ~TFE_TensorHandleCache() {
-#ifdef Py_GIL_DISABLED
-    absl::MutexLock lock(&mu_);
-#endif  // Py_GIL_DISABLED
-
-    DecrefUnrefAll();
-  }
+  ~TFE_TensorHandleCache() { Clear(); }
 
   TFE_TensorHandle* Lookup(PyObject* value, tensorflow::DataType dtype,
                            TFE_Context* ctx,
@@ -98,12 +92,14 @@ struct TFE_TensorHandleCache {
   // object is backed by C++ data structure. b/169790439
   using Key = std::tuple<PyObjectPtr, tensorflow::DataType, TFE_Context*,
                          absl::string_view>;
+  using Cache = absl::flat_hash_map<Key, TFE_TensorHandle*>;
 
-  void DecrefUnrefAll() {
-    for (const auto& p : cache) {
+  static void DecrefUnrefAll(Cache* cache) {
+    for (const auto& p : *cache) {
       Py_DECREF(static_cast<PyObject*>(std::get<0>(p.first)));
       TFE_DeleteTensorHandle(p.second);
     }
+    cache->clear();
   }
 
 #ifdef Py_GIL_DISABLED
@@ -112,7 +108,7 @@ struct TFE_TensorHandleCache {
 
   // Under a GIL-enabled Python, guarded by the GIL. Under a no-GIL Python,
   // guarded by mu_.
-  absl::flat_hash_map<Key, TFE_TensorHandle*> cache;
+  Cache cache;
 };
 
 }  // namespace tensorflow
