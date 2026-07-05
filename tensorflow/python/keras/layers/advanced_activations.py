@@ -70,6 +70,9 @@ class LeakyReLU(Layer):
       raise ValueError('The alpha value of a Leaky ReLU layer '
                        'cannot be None, needs a float. '
                        'Got %s' % alpha)
+    if alpha < 0:
+      raise ValueError('The alpha value of a Leaky ReLU layer '
+                       'should be >= 0, got %s' % alpha)
     self.supports_masking = True
     self.alpha = backend.cast_to_floatx(alpha)
 
