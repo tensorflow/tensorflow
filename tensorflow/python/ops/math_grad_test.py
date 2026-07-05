@@ -28,8 +28,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
-from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
