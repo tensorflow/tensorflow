@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -93,6 +94,25 @@ class LogdetTest(test.TestCase):
         with self.session():
           logdet_tf = linalg.logdet(matrix)
           self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
+
+  def test_works_with_non_spd_positive_determinant_matrix(self):
+    matrix = np.array([[-1.0, 0.0], [0.0, -1.0]], dtype=np.float64)
+    _, logdet_np = np.linalg.slogdet(matrix)
+    with self.session():
+      logdet_tf = linalg.logdet(matrix)
+      self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=1e-5)
+
+  def test_negative_determinant_returns_nan(self):
+    matrix = np.array([[1.0, 0.0], [0.0, -1.0]], dtype=np.float64)
+    with self.session():
+      logdet_tf = linalg.logdet(matrix)
+      self.assertTrue(np.isnan(self.evaluate(logdet_tf)))
+
+  def test_gradient_non_spd_positive_determinant_matrix(self):
+    matrix = np.array([[-1.0, 0.5], [0.0, -2.0]], dtype=np.float64)
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        linalg.logdet, [matrix])
+    self.assertAllClose(theoretical, numerical, atol=1e-5, rtol=1e-5)
 
 
 class SlogdetTest(test.TestCase):
