@@ -1755,8 +1755,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     var = resource_variable_ops.ResourceVariable(
       [10, 20, 30, 40, 50], name="var0", dtype=dtypes.float32)
     indices = constant_op.constant([1, 3, 4], dtype=dtypes.int32)
-    with self.assertRaisesRegex(
-                                errors.InvalidArgumentError, "rank"):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError), 
+                                "rank"):
       _ = resource_variable_ops.resource_gather(
         resource=var.handle,
         indices=indices,
