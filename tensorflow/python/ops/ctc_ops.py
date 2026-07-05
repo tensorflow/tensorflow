@@ -783,6 +783,28 @@ def _ctc_loss_shape(op):
   return [op.inputs[2].get_shape(), op.inputs[0].get_shape()]
 
 
+def _validate_ctc_loss_logits(logits, blank_index):
+  rank = logits.shape.rank
+  if rank is not None and rank < 3:
+    raise ValueError(
+        "Argument `logits` must be a tensor of rank at least 3, "
+        f"got shape {logits.shape}.")
+
+  num_classes = None if rank is None else tensor_shape.dimension_value(
+      logits.shape[2])
+  if num_classes is None:
+    return
+  if num_classes == 0:
+    raise ValueError(
+        "Logits must have at least 1 class, got 0 classes "
+        f"(logits shape: {logits.shape}).")
+  if blank_index is not None and (blank_index < -num_classes or
+                                  blank_index >= num_classes):
+    raise ValueError(
+        f"Argument `blank_index` ({blank_index}) must be in range "
+        f"[-{num_classes}, {num_classes}) (logits shape: {logits.shape}).")
+
+
 # pylint: disable=protected-access, invalid-name
 @tf_export(v1=["nn.ctc_loss_v2"])
 @dispatch.add_dispatch_support
@@ -840,18 +862,7 @@ def ctc_loss_v2(labels,
         ([pdf](http://www.cs.toronto.edu/~graves/icml_2006.pdf))
   """
   logits = ops.convert_to_tensor(logits, name="logits")
-  num_classes = tensor_shape.dimension_value(logits.shape[2])
-  if num_classes is not None:
-    if num_classes == 0:
-      raise ValueError(
-          "Logits must have at least 1 class, got 0 classes "
-          f"(logits shape: {logits.shape}).")
-    if (blank_index is not None and blank_index >= 0
-        and blank_index >= num_classes):
-      raise ValueError(
-          f"Argument `blank_index` ({blank_index}) must be less than "
-          f"the number of classes ({num_classes}) "
-          f"(logits shape: {logits.shape}).")
+  _validate_ctc_loss_logits(logits, blank_index)
 
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
@@ -995,18 +1006,7 @@ def ctc_loss_v3(labels,
       https://en.wikipedia.org/wiki/Connectionist_temporal_classification
   """
   logits = ops.convert_to_tensor(logits, name="logits")
-  num_classes = tensor_shape.dimension_value(logits.shape[2])
-  if num_classes is not None:
-    if num_classes == 0:
-      raise ValueError(
-          "Logits must have at least 1 class, got 0 classes "
-          f"(logits shape: {logits.shape}).")
-    if (blank_index is not None and blank_index >= 0
-        and blank_index >= num_classes):
-      raise ValueError(
-          f"Argument `blank_index` ({blank_index}) must be less than "
-          f"the number of classes ({num_classes}) "
-          f"(logits shape: {logits.shape}).")
+  _validate_ctc_loss_logits(logits, blank_index)
 
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
