@@ -18,6 +18,7 @@ from tensorflow.core.config import flags
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -675,7 +676,108 @@ def test_fold_non_square_parameters(self):
 
   expected = x * overlap_counts
   self.assertAllClose(reconstructed, expected)
-  
+
+class ArrayOpsGpuDetectionTest(test.TestCase):
+
+  @test_util.run_v2_only
+  def testGpuBackendIsAvailableAndDetected(self):
+    """Verifies the binary was compiled with CUDA and detects the WSL2 GPU."""
+    # 1. Internal check for compile-time CUDA support
+    is_cuda_compiled = test.is_built_with_cuda()
+    self.assertTrue(
+        is_cuda_compiled,
+        msg="TensorFlow was built as a CPU-only binary. "
+            "Ensure you pass '--config=cuda' to your bazel build command."
+    )
+
+    # 2. Runtime check for visible physical GPU devices
+    gpu_devices = test.gpu_device_name()
+    print(config.list_physical_devices('GPU'))
+    
+    # Assert that at least one GPU device path (e.g., '/device:GPU:0') is found
+    self.assertTrue(
+        bool(gpu_devices),
+        msg="TensorFlow was compiled with CUDA, but no physical GPU was "
+            "detected at runtime. Verify your WSL2 NVIDIA drivers."
+    )
+    
+    print(f"\n[SUCCESS] Connected to GPU device: {gpu_devices}")
+
+class TestFoldDeterminism(test.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    random_seed.set_seed(42)
+    # config.disable_op_determinism()
+    # config.enable_op_determinism()
+    print(config.list_physical_devices())
+
+
+  def _extract_patches(self, x, kernel, stride,
+                       padding="VALID", dilation=1):
+    return array_ops.extract_image_patches_v2(
+        images=x,
+        sizes=[1, kernel, kernel, 1],
+        strides=[1, stride, stride, 1],
+        rates=[1, dilation, dilation, 1],
+        padding=padding,
+    )
+  @test_util.run_gpu_only
+  # @test_util.run_in_graph_and_eager_modes
+  def test_fold_gpu_deterministic(self):
+    """Keep this test"""
+    config.disable_op_determinism()
+    x = random_ops.random_normal([4, 128, 128, 16],dtype=dtypes.float32)
+    patches = self._extract_patches(
+        x,
+        kernel=15,
+        stride=1,
+        padding="VALID")
+    outputs = []
+    for i in range(20):
+        # print("check")
+        outputs.append(
+          array_ops.fold(
+            patches,
+            output_size=(128, 128),
+            kernel_size=15,
+            stride=1,
+            padding="VALID",
+            dilation=1))
+        # print(outputs[i].device)
+    reference = outputs[0]
+    for output in outputs[1:]:
+      self.assertAllEqual(reference,output)
+
+  # @test_util.run_in_graph_and_eager_modes
+  def test_fold_cpu_deterministic(self):
+    config.disable_op_determinism()
+    with ops.device("/CPU:0"):
+      x = random_ops.random_normal([2, 32, 32, 4],dtype=dtypes.float32)
+
+      patches = self._extract_patches(
+          x,
+          kernel=5,
+          stride=1,
+          padding="VALID")
+
+      reference = array_ops.fold(
+          patches,
+          output_size=(32, 32),
+          kernel_size=5,
+          stride=1,
+          padding="VALID")
+
+      for i in range(10):
+        result = array_ops.fold(
+            patches,
+            output_size=(32, 32),
+            kernel_size=5,
+            stride=1,
+            padding="VALID")
+        # print(result.device)
+      
+        self.assertAllEqual(reference, result)
 
 
 if __name__ == "__main__":
