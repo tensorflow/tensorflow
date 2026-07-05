@@ -1487,6 +1487,10 @@ def batch_normalization(x,
       [Ioffe et al., 2015](http://arxiv.org/abs/1502.03167)
       ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
+  if variance_epsilon <= 0:
+    raise ValueError(
+        f'variance_epsilon must be greater than 0, got {variance_epsilon}'
+    )
   with ops.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):
     inv = math_ops.rsqrt(variance + variance_epsilon)
     if scale is not None:
