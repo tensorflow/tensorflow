@@ -206,6 +206,9 @@ class ELU(Layer):
     if alpha is None:
       raise ValueError('Alpha of an ELU layer cannot be None, '
                        'requires a float. Got %s' % alpha)
+    if alpha < 0:
+      raise ValueError('The alpha value of an ELU layer '
+                       'should be >= 0, got %s' % alpha)
     self.supports_masking = True
     self.alpha = backend.cast_to_floatx(alpha)
 
