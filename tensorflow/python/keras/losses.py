@@ -1156,6 +1156,9 @@ class Huber(LossFunctionWrapper):
     Args:
       delta: A float, the point where the Huber loss function changes from a
         quadratic to linear.
+
+    Raises:
+      ValueError: If `delta` is not greater than 0.
       reduction: Type of `tf.keras.losses.Reduction` to apply to
         loss. Default value is `AUTO`. `AUTO` indicates that the reduction
         option will be determined by the usage context. For almost all cases
@@ -1167,6 +1170,10 @@ class Huber(LossFunctionWrapper):
             more details.
       name: Optional name for the instance. Defaults to 'huber_loss'.
     """
+    if delta <= 0:
+      raise ValueError(
+          f'delta must be greater than 0, got {delta}'
+      )
     super().__init__(huber, name=name, reduction=reduction, delta=delta)
 
 
