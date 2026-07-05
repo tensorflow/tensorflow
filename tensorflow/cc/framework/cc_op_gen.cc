@@ -260,7 +260,7 @@ void WriteClassDef(const OpInfo& op_info, WritableFile* cc) {
   std::string class_def;
   absl::StrAppend(
       &class_def,
-      GetConstructorDecl(op_info, strings::StrCat(op_info.op_name, "::"),
+      GetConstructorDecl(op_info, absl::StrCat(op_info.op_name, "::"),
                          /* include_attr */ true),
       " {\n");
   absl::StrAppend(&class_def, GetConstructorBody(op_info));
@@ -269,7 +269,7 @@ void WriteClassDef(const OpInfo& op_info, WritableFile* cc) {
   if (op_info.has_optional_attrs) {
     absl::StrAppend(
         &class_def,
-        GetConstructorDecl(op_info, strings::StrCat(op_info.op_name, "::"),
+        GetConstructorDecl(op_info, absl::StrCat(op_info.op_name, "::"),
                            /* include_attr */ false));
     absl::StrAppend(&class_def, "\n  : ", op_info.op_name, "(");
     int i = 0;

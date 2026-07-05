@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/cpu/target_machine_options.h"
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -137,6 +138,16 @@ TargetMachineOptions::TargetMachineOptions(absl::string_view triple,
   EnableFeaturesIfAVX512(enabled_features_);
 }
 
+TargetMachineOptions TargetMachineOptions::Native() {
+  DetectedMachineAttributes detected_machine_attributes =
+      DetectMachineAttributes(std::nullopt);
+  auto [enabled_features, disabled_features] =
+      GetEnabledAndDisabledFeatures(detected_machine_attributes.features);
+  return TargetMachineOptions(
+      llvm::sys::getDefaultTargetTriple(), llvm::sys::getHostCPUName().str(),
+      std::move(enabled_features), std::move(disabled_features));
+}
+
 bool TargetMachineOptions::operator==(const TargetMachineOptions& other) const {
   return triple_ == other.triple_ && cpu_ == other.cpu_ &&
          enabled_features_ == other.enabled_features_ &&
@@ -156,6 +167,15 @@ std::vector<std::string> TargetMachineOptions::GetTargetMachineFeaturesVector()
 
   return all_features;
 }
+
+TargetMachineOptions::TargetMachineOptions(
+    std::string triple, std::string cpu,
+    std::vector<std::string> enabled_features,
+    std::vector<std::string> disabled_features)
+    : triple_(std::move(triple)),
+      cpu_(std::move(cpu)),
+      enabled_features_(std::move(enabled_features)),
+      disabled_features_(std::move(disabled_features)) {}
 
 std::string TargetMachineOptions::GetTargetMachineFeatures() const {
   return absl::StrJoin(GetTargetMachineFeaturesVector(), ",");

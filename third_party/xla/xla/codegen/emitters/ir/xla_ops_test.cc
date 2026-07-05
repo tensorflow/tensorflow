@@ -68,9 +68,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
   return std::move(module);
 }
 
-class XLAOpsTest : public HloPjRtTestBase {
+class XLAOpsTest : public HloTestBase {
  public:
-  XLAOpsTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+  XLAOpsTest() { mlir_context_.loadDialect<xla::XlaDialect>(); }
   mlir::MLIRContext mlir_context_;
 };
 
@@ -88,7 +88,7 @@ std::string VariableConstraintsToString(const IndexingMap& map) {
     constraint_strings.reserve(dim_constraints.size());
     for (const auto& [expr, range] : dim_constraints) {
       constraint_strings.push_back(absl::StrCat(
-          ToString(expr, dim_names, symbol_names), " in ", range.ToString()));
+          expr.ToString(dim_names, symbol_names), " in ", range.ToString()));
     }
     std::sort(constraint_strings.begin(), constraint_strings.end());
     if (constraint_strings.empty()) {
@@ -104,7 +104,7 @@ std::string VariableConstraintsToString(const IndexingMap& map) {
     constraint_strings.reserve(symbol_constraints.size());
     for (const auto& [expr, range] : symbol_constraints) {
       constraint_strings.push_back(absl::StrCat(
-          ToString(expr, dim_names, symbol_names), " in ", range.ToString()));
+          expr.ToString(dim_names, symbol_names), " in ", range.ToString()));
     }
     std::sort(constraint_strings.begin(), constraint_strings.end());
     if (constraint_strings.empty()) {

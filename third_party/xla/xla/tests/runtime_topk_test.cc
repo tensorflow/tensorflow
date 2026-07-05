@@ -27,7 +27,7 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-class TopkTest : public HloPjRtTestBase {};
+class TopkTest : public HloTestBase {};
 
 TEST_F(TopkTest, CustomCallTarget) {
   absl::string_view hlo_text_module = R"(

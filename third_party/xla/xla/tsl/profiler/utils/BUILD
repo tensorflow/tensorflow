@@ -192,6 +192,20 @@ tsl_cc_test(
     ],
 )
 
+tsl_cc_test(
+    name = "xplane_visitor_test",
+    size = "small",
+    srcs = ["xplane_visitor_test.cc"],
+    deps = [
+        ":xplane_builder",
+        ":xplane_visitor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
 cc_library(
     name = "trace_utils",
     hdrs = ["trace_utils.h"],
@@ -226,6 +240,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:fingerprint",
@@ -316,6 +331,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@tsl//tsl/profiler/lib:context_types_hdrs",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
@@ -448,9 +464,9 @@ cc_library(
         ":xplane_builder",
         ":xplane_mutators",
         ":xplane_schema",
+        ":xplane_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/profiler/lib:context_types",
@@ -469,10 +485,8 @@ tsl_cc_test(
         ":xplane_test_utils",
         ":xplane_visitor",
         "//xla/tsl/platform:test",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/profiler/lib:connected_traceme",
+        "@tsl//tsl/profiler/lib:context_types_hdrs",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
@@ -484,6 +498,7 @@ cc_library(
     deps = [
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -531,7 +546,7 @@ tsl_cc_test(
 )
 
 filegroup(
-    name = "mobile_srcs_no_runtime",
+    name = "mobile_hdrs_no_runtime",
     srcs = [
         "no_init.h",
         "trace_filter_utils.h",
@@ -546,6 +561,18 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
     ],
+)
+
+cc_library(
+    name = "traceme_global_flags",
+    srcs = ["traceme_global_flags.cc"],
+    hdrs = ["traceme_global_flags.h"],
+    copts = tf_profiler_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/tsl/platform:macros",
+    ],
+    alwayslink = True,
 )
 
 cc_library(

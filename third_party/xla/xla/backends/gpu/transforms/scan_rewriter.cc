@@ -18,42 +18,49 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
 absl::StatusOr<bool> ScanRewriter::RunOnComputation(
     HloComputation* computation) {
-  bool changed = false;
   std::vector<HloScanInstruction*> scans;
   for (HloInstruction* inst : computation->instructions()) {
-    if (inst->opcode() == HloOpcode::kScan) {
+    if (hlo_query::IsStandardAssociativeScan(inst)) {
       scans.push_back(xla::Cast<HloScanInstruction>(inst));
     }
   }
 
+  bool changed = false;
   for (HloScanInstruction* scan : scans) {
-    // Skip if not a plain inclusive sum.
-    if (scan->is_reverse()) {
+    // Find single-element constant zero init value.
+    const HloInstruction* init = scan->inits().front();
+    while (init->opcode() == HloOpcode::kBroadcast) {
+      init = init->operand(0);
+    }
+    if (!init->IsConstant() || ShapeUtil::ElementsIn(init->shape()) != 1) {
       continue;
     }
-    if (scan->operand_count() != 2) {
+    std::vector<int64_t> zero_indices(init->shape().dimensions().size(), 0);
+    if (!init->literal().IsZero(zero_indices)) {
       continue;
     }
-    HloInstruction* root = scan->to_apply()->root_instruction();
+    // Check that the applied op is an inclusive add.
+    const HloInstruction* root = scan->to_apply()->root_instruction();
     if (root->opcode() != HloOpcode::kTuple || root->operand_count() != 2 ||
         root->operand(0) != root->operand(1)) {
       continue;
@@ -62,8 +69,11 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
     if (binary_op != HloOpcode::kAdd) {
       continue;
     }
-    const Shape& shape = scan->shape().tuple_shapes(0);
-    if (!shape.IsArray()) {
+
+    // Check same shape/layout for input and output.
+    HloInstruction* input = scan->mutable_operand(0);
+    const Shape& shape = input->shape();
+    if (shape != scan->shape().tuple_shapes(0)) {
       continue;
     }
 
@@ -75,10 +85,10 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
     for (int64_t dim : shape.layout().minor_to_major()) {
       if (dim == scan_dim) {
         found_scan_dim = true;
-      } else if (!found_scan_dim) {
-        vector_length *= shape.dimensions(dim);
-      } else {
+      } else if (found_scan_dim) {
         column_length *= shape.dimensions(dim);
+      } else {
+        vector_length *= shape.dimensions(dim);
       }
     }
 
@@ -90,13 +100,13 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
     // Create the custom call.
     Shape scratch_shape =
         ShapeUtil::MakeShape(U8, {0});  // Empty shape, assigned later.
-    Shape new_result_shape =
-        ShapeUtil::MakeTupleShape({scan->shape(), scratch_shape});
+    Shape result_shape = ShapeUtil::MakeTupleShape({shape, scratch_shape});
 
+    // Create a layout-constrained custom call.
     HloInstruction* custom_call =
         computation->AddInstruction(HloInstruction::CreateCustomCall(
-            new_result_shape, absl::MakeSpan(scan->operands()),
-            kCubDeviceScanUnassignedScratchSizeTarget));
+            result_shape, {input}, kCubDeviceScanUnassignedScratchSizeTarget,
+            {shape}));
 
     CubScanOptions::Kind kind = [&]() {
       switch (binary_op) {
@@ -114,13 +124,12 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
     options.set_column_length(column_length);
     options.set_kind(kind);
     options.set_is_reverse(scan->is_reverse());
-    TF_RETURN_IF_ERROR(custom_call->set_backend_config(options));
+    RETURN_IF_ERROR(custom_call->set_backend_config(options));
 
-    HloInstruction* get_tuple_element = computation->AddInstruction(
-        HloInstruction::CreateGetTupleElement(scan->shape(), custom_call, 0));
-
-    TF_RETURN_IF_ERROR(scan->ReplaceAllUsesWith(get_tuple_element));
-    TF_RETURN_IF_ERROR(computation->RemoveInstruction(scan));
+    // The second tuple element is the scratch buffer instead of the final
+    // carry, but all users of it are dead (see IsStandardAssociativeScan).
+    RETURN_IF_ERROR(
+        computation->ReplaceInstructionWithDifferentShape(scan, custom_call));
     changed = true;
   }
   return changed;
@@ -132,7 +141,7 @@ absl::StatusOr<bool> ScanRewriter::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
   return changed;

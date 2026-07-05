@@ -13,6 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <ostream>
+
+#include "absl/memory/memory.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/tsl/protobuf/bfc_memory_map.pb.h"
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 

@@ -19,12 +19,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
 
@@ -43,8 +45,8 @@ PjRtClient* TfPjRtExecutable::client() const { return client_; }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtBuffer::CopyToMemorySpace(
     PjRtMemorySpace* dst_memory_space) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> result,
-                      wrapped_->CopyToMemorySpace(dst_memory_space));
+  ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> result,
+                   wrapped_->CopyToMemorySpace(dst_memory_space));
   return std::unique_ptr<PjRtBuffer>(
       std::make_unique<TfPjRtBuffer>(client_, std::move(result)));
 }
@@ -66,11 +68,11 @@ TfPjRtExecutable::Execute(
     unwrapped_handles.reserve(handles.size());
     for (PjRtBuffer* buffer : handles) {
       unwrapped_handles.push_back(
-          tensorflow::down_cast<TfPjRtBuffer*>(buffer)->wrapped());
+          absl::down_cast<TfPjRtBuffer*>(buffer)->wrapped());
     }
   }
-  TF_ASSIGN_OR_RETURN(auto out, wrapped_->Execute(unwrapped_argument_handles,
-                                                  options, returned_futures));
+  ASSIGN_OR_RETURN(auto out, wrapped_->Execute(unwrapped_argument_handles,
+                                               options, returned_futures));
   for (auto& buffer_list : out) {
     for (std::unique_ptr<PjRtBuffer>& buffer : buffer_list) {
       buffer = std::make_unique<TfPjRtBuffer>(client_, std::move(buffer));
@@ -89,11 +91,11 @@ TfPjRtExecutable::ExecuteSharded(absl::Span<PjRtBuffer* const> argument_handles,
   unwrapped_argument_handles.reserve(argument_handles.size());
   for (PjRtBuffer* buffer : argument_handles) {
     unwrapped_argument_handles.push_back(
-        tensorflow::down_cast<TfPjRtBuffer*>(buffer)->wrapped());
+        absl::down_cast<TfPjRtBuffer*>(buffer)->wrapped());
   }
-  TF_ASSIGN_OR_RETURN(auto out, wrapped_->ExecuteSharded(
-                                    unwrapped_argument_handles, device, options,
-                                    returned_future, fill_future));
+  ASSIGN_OR_RETURN(auto out, wrapped_->ExecuteSharded(
+                                 unwrapped_argument_handles, device, options,
+                                 returned_future, fill_future));
   for (std::unique_ptr<PjRtBuffer>& buffer : out) {
     buffer = std::make_unique<TfPjRtBuffer>(client_, std::move(buffer));
   }
@@ -108,11 +110,11 @@ TfPjRtExecutable::ExecutePortable(
   unwrapped_argument_handles.reserve(argument_handles.size());
   for (PjRtBuffer* buffer : argument_handles) {
     unwrapped_argument_handles.push_back(
-        tensorflow::down_cast<TfPjRtBuffer*>(buffer)->wrapped());
+        absl::down_cast<TfPjRtBuffer*>(buffer)->wrapped());
   }
-  TF_ASSIGN_OR_RETURN(auto out, wrapped_->ExecutePortable(
-                                    unwrapped_argument_handles, device, options,
-                                    returned_future, fill_future));
+  ASSIGN_OR_RETURN(auto out, wrapped_->ExecutePortable(
+                                 unwrapped_argument_handles, device, options,
+                                 returned_future, fill_future));
   for (std::unique_ptr<PjRtBuffer>& buffer : out) {
     buffer = std::make_unique<TfPjRtBuffer>(client_, std::move(buffer));
   }
@@ -134,7 +136,7 @@ TfPjRtClient::~TfPjRtClient() { LOG(INFO) << "TfPjRtClient destroyed."; }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtClient::WrapBuffer(
     absl::StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
+  ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
   return std::unique_ptr<PjRtBuffer>(
       std::make_unique<TfPjRtBuffer>(this, std::move(buffer)));
 }
@@ -142,8 +144,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtClient::WrapBuffer(
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 TfPjRtClient::WrapExecutable(
     absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> to_wrap) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                      std::move(to_wrap));
+  ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                   std::move(to_wrap));
   return std::unique_ptr<PjRtLoadedExecutable>(
       std::make_unique<TfPjRtExecutable>(this, std::move(executable)));
 }

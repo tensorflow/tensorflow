@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -124,29 +125,28 @@ HloSharding::HloSharding(DeviceListRef devices, MemoryKind memory_kind,
       xla_hlo_sharding_.IsReplicated() ||
       ((xla_hlo_sharding_.IsTiled() || xla_hlo_sharding_.IsSingleDevice()) &&
        devices_->size() == 1);
+  if (xla_hlo_sharding_.IsTiled()) {
+    CHECK_EQ(xla_hlo_sharding_.TotalNumTiles(), devices_->size())
+        << "sharding's tile count and device count does not match: "
+        << xla_hlo_sharding_.TotalNumTiles() << " vs. " << devices_->size()
+        << "; sharding=" << xla_hlo_sharding_.ToString();
+    tile_information_ =
+        TileInformation{/*tiled_data_rank=*/xla_hlo_sharding_.TiledDataRank(),
+                        /*dimensions=*/xla_hlo_sharding_.dimensions()};
+  }
 }
 
 absl::StatusOr<Shape> HloSharding::GetShardShape(const Shape& shape) const {
-  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice() ||
-      xla_hlo_sharding_.IsManual() || xla_hlo_sharding_.IsUnreduced() ||
-      xla_hlo_sharding_.IsUnknown()) {
+  if (!tile_information_.has_value()) {
     return shape;
   }
-  if (xla_hlo_sharding_.TotalNumTiles() != devices_->size()) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("sharding's tile count and device count does not "
-                        "match: %d vs. %d; shape=%v, sharding=%s",
-                        xla_hlo_sharding_.TotalNumTiles(), devices_->size(),
-                        shape, xla_hlo_sharding_.ToString()));
-  }
-  if (shape.dims().size() != xla_hlo_sharding_.TiledDataRank()) {
+  if (shape.dims().size() != tile_information_->tiled_data_rank) {
     return InvalidArgument(
         "Numbers of dimensions don't match. From Shape %d vs from "
         "HloSharding %d",
-        shape.dims().size(), xla_hlo_sharding_.TiledDataRank());
+        shape.dims().size(), tile_information_->tiled_data_rank);
   }
-  const absl::Span<const int64_t> sharding_dims =
-      xla_hlo_sharding_.dimensions();
+  const absl::Span<const int64_t> sharding_dims = tile_information_->dimensions;
   Shape::Dimensions tile_shape;
   tile_shape.reserve(shape.dims().size());
   for (int64_t i = 0; i < shape.dims().size(); ++i) {
@@ -223,7 +223,7 @@ HloSharding::DisassembleEven(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   // Fast path for even sharding.
-  TF_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape, GetShardShape(shape));
+  ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape, GetShardShape(shape));
   std::vector<std::pair<Shape, ShardingRef>> result;
   DeviceList* device_list;
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
@@ -246,9 +246,8 @@ HloSharding::DisassembleUneven(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   // Slow path that uses `IndexDomains()` to handle uneven sharding.
-  TF_ASSIGN_OR_RETURN(
-      std::vector<IndexDomain> index_domains,
-      IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
+  ASSIGN_OR_RETURN(std::vector<IndexDomain> index_domains,
+                   IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
   CHECK_EQ(index_domains.size(), devices_->size());
   std::vector<std::pair<Shape, ShardingRef>> result;
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
@@ -331,11 +330,11 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
                         xla_hlo_sharding_.ToString()));
   }
 
-  TF_ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));
+  ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));
 
   const absl::Span<const int64_t> shape_dims = shape.dims();
   std::vector<std::optional<IndexDomain>> all(num_devices);
-  TF_RETURN_IF_ERROR(xla_hlo_sharding_.EachTile(
+  RETURN_IF_ERROR(xla_hlo_sharding_.EachTile(
       shape_dims, [shape_dims, &all](int device_index,
                                      absl::Span<const int64_t> tile_offset,
                                      absl::Span<const int64_t> tile_limit) {

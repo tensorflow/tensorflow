@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
@@ -240,6 +241,39 @@ TEST_P(RemapPlanTest, InvalidLayout) {
                   HasSubstr("Input and output must have the same layout")));
 }
 
+TEST_P(RemapPlanTest, ValidLayoutFromDifferentLayoutObjects) {
+  RemapPlan plan;
+  plan.input_specs.push_back(ArraySpec{
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/
+      std::make_shared<xla::PjRtLayout>(
+          xla::LayoutUtil::MakeAscendingLayout(2)),
+  });
+  plan.output_specs.push_back(ArraySpec{
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/
+      std::make_shared<xla::PjRtLayout>(
+          xla::LayoutUtil::MakeAscendingLayout(2)),  // same layout
+  });
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/0,
+                         /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+  EXPECT_OK(plan.Validate());
+}
+
 TEST_P(RemapPlanTest, InvalidInputArrayIndex) {
   RemapPlan plan;
   plan.input_specs.push_back(
@@ -407,6 +441,23 @@ TEST_P(RemapPlanTest, InvalidShardIndex) {
       run(RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{0, 1, -1}),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                              HasSubstr("step must be positive, but is -1")));
+
+  // The `end` bound is necessary but not sufficient: a large `step` can leave
+  // the last stepped index at or beyond `num_shards` even when `end` is in
+  // range. Validate() must reject that for both `from` and `to`, so the
+  // executor never indexes an out-of-range shard.
+  EXPECT_THAT(run(RemapPlan::Interval{0, 3, 2}, RemapPlan::Interval{0, 2, 1},
+                  /*shape=*/{4, 3}, /*shard_shape=*/{2, 3}),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("interval addresses shard 2, which is out of "
+                            "range [0, 2)")));
+  EXPECT_THAT(run(RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{0, 3, 2},
+                  /*shape=*/{4, 3}, /*shard_shape=*/{2, 3}),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("interval addresses shard 2, which is out of "
+                            "range [0, 2)")));
 }
 
 TEST_P(RemapPlanTest, AlreadyUsedInputShard) {
@@ -755,7 +806,14 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
                      testing::Values(test_util::DeviceTestParam{
                          /*num_devices=*/4,
-                         /*num_addressable_devices=*/4})));
+                         /*num_addressable_devices=*/4})),
+    [](const testing::TestParamInfo<RemapPlanSerDesTestParam>& info) {
+      return absl::StrCat("version_",
+                          std::get<0>(info.param).version_number().value(),
+                          "_num_devices_", std::get<1>(info.param).num_devices,
+                          "_num_addressable_devices_",
+                          std::get<1>(info.param).num_addressable_devices);
+    });
 
 }  // namespace
 }  // namespace ifrt

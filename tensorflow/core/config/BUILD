@@ -39,8 +39,15 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "flag_defs.cc",
-        "flag_defs.h",
         "flags.cc",
+    ],
+    visibility = ["//tensorflow:internal"],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "flag_defs.h",
         "flags.h",
     ],
     visibility = ["//tensorflow:internal"],

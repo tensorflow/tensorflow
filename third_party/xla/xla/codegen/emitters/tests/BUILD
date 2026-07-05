@@ -1,5 +1,6 @@
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("//xla:lit.bzl", "lit_test_suite")
+load("//xla/backends/gpu/tests:helper.bzl", "get_canonical_repo_name")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -16,6 +17,7 @@ copy_file(
     testonly = True,
     src = "//xla/backends/cpu/codegen/tools:fusion_to_mlir",
     out = "cpu_fusion_to_mlir",
+    allow_symlink = True,
     is_executable = True,
 )
 
@@ -24,6 +26,7 @@ copy_file(
     testonly = True,
     src = "//xla/backends/gpu/codegen/tools:fusion_to_mlir",
     out = "gpu_fusion_to_mlir",
+    allow_symlink = True,
     is_executable = True,
 )
 
@@ -33,7 +36,7 @@ lit_test_suite(
     cfg = "//xla:lit.cfg.py",
     default_tags = tf_cuda_tests_tags(),
     exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
-    hermetic_cuda_data_dir = "%S/../../../../../../cuda_nvcc",
+    hermetic_cuda_data_dir = "%S/../../../../../../" + get_canonical_repo_name("cuda_nvcc"),
     tools = [
         ":cpu_fusion_to_mlir_copy",
         ":gpu_fusion_to_mlir_copy",

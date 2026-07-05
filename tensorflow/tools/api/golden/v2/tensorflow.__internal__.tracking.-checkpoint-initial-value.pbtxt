@@ -1,10 +1,10 @@
 path: "tensorflow.__internal__.tracking.CheckpointInitialValue"
 tf_class {
   is_instance: "<class \'tensorflow.python.trackable.base.CheckpointInitialValue\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "checkpoint_position"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

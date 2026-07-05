@@ -77,10 +77,12 @@ cc_library(
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -101,7 +103,9 @@ tf_cc_test(
         "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

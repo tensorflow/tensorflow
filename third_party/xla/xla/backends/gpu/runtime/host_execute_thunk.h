@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/host_async_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/host_offloading/host_offloading_allocator.h"
@@ -75,7 +76,7 @@ using HostExecuteAsyncEventsMap =
     absl::flat_hash_map<AsyncEventsUniqueId,
                         std::shared_ptr<HostExecuteAsyncEvents>>;
 
-class HostExecuteStartThunk : public Thunk {
+class HostExecuteStartThunk : public HostAsyncThunk {
  public:
   struct SliceAndShape {
     BufferAllocation::Slice slice;
@@ -112,6 +113,10 @@ class HostExecuteStartThunk : public Thunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  // TODO(b/527907619): Implement this properly once we have figured out how
+  // buffer uses should look like for async thunks.
+  BufferUses buffer_uses() const override { return {}; }
+
   // Returns the async events for the host offloading execution. This is
   // intended to be shared with the corresponding HostExecuteDoneThunk.
   std::shared_ptr<HostExecuteAsyncEvents> async_events() const {
@@ -147,7 +152,7 @@ class HostExecuteStartThunk : public Thunk {
   std::shared_ptr<HostExecuteAsyncEvents> async_events_;
 };
 
-class HostExecuteDoneThunk : public Thunk {
+class HostExecuteDoneThunk : public HostAsyncThunk {
  public:
   explicit HostExecuteDoneThunk(
       Thunk::ThunkInfo thunk_info,
@@ -166,6 +171,10 @@ class HostExecuteDoneThunk : public Thunk {
 
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  // TODO(b/527907619): Implement this properly once we have figured out how
+  // buffer uses should look like for async thunks.
+  BufferUses buffer_uses() const override { return {}; }
 
   std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
 

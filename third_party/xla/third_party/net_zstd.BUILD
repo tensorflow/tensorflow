@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(
     default_visibility = ["//visibility:public"],
     features = ["header_modules"],
@@ -28,6 +30,7 @@ cc_library(
     hdrs = glob([
         "*.h",
     ]),
+    includes = ["."],
 )
 
 alias(

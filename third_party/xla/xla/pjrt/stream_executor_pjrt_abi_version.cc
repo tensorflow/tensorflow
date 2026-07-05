@@ -20,9 +20,11 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/pjrt/pjrt_common.h"
-#include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/proto/pjrt_abi_version.pb.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
+#include "xla/stream_executor/abi/executable_abi_version.pb.h"
 
 namespace xla {
 PjRtPlatformId StreamExecutorPjRtExecutableAbiVersion::platform_id() const {

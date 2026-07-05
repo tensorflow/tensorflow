@@ -70,6 +70,7 @@ py_library(
     srcs = [
         "data_service_ops.py",
     ],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":compression_ops",

@@ -16,15 +16,17 @@ limitations under the License.
 #ifndef XLA_CODEGEN_TILING_CONSTRAINT_EXPRESSION_H_
 #define XLA_CODEGEN_TILING_CONSTRAINT_EXPRESSION_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <ostream>
 #include <string>
 
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 
@@ -46,12 +48,12 @@ namespace xla {
 class ConstraintExpression {
  public:
   struct Constraint {
-    mlir::AffineExpr expr;
+    SymbolicExpr expr;
     Interval interval;
 
     bool operator==(const Constraint& other) const {
-      CHECK_EQ(expr.getContext(), other.expr.getContext())
-          << "AffineExpr should be from the same MLIRContext.";
+      CHECK_EQ(expr.GetContext(), other.expr.GetContext())
+          << "SymbolicExpr should be from the same MLIRContext.";
       return expr == other.expr && interval == other.interval;
     }
   };
@@ -104,9 +106,10 @@ class ConstraintExpression {
   void PrintUnsatisfiedConstraints(absl::Span<const int64_t> dim_values,
                                    std::ostream& out) const;
 
-  std::string ToString() const;
+  std::string ToString(std::optional<int64_t> num_dims = std::nullopt) const;
 
-  void Print(std::ostream& out) const;
+  void Print(std::ostream& out,
+             std::optional<int64_t> num_dims = std::nullopt) const;
 
   // Simplifies the constraint expression.
   //
@@ -129,9 +132,8 @@ class ConstraintExpression {
 
   template <typename H>
   friend H AbslHashValue(H h, const Constraint& constraint) {
-    llvm::hash_code expr_hash = mlir::hash_value(constraint.expr);
-    return H::combine(std::move(h), static_cast<size_t>(expr_hash),
-                      constraint.interval);
+    size_t expr_hash = hash_value(constraint.expr);
+    return H::combine(std::move(h), expr_hash, constraint.interval);
   }
 
   template <typename H>

@@ -180,8 +180,8 @@ absl::Status GetScalarConstNodeValueHelper(
     const NodeDef& node, DataType dtype,
     const std::function<void(const Tensor&)>& get_value) {
   if (node.op() != kConstOpName)
-    return errors::InvalidArgument("Node ", node.name(),
-                                   " is not a Const node. Op: ", node.op());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Node ", node.name(), " is not a Const node. Op: ", node.op()));
 
   Tensor tensor;
   TF_RETURN_IF_ERROR(GetNodeAttr(node, "value", &tensor));
@@ -192,9 +192,9 @@ absl::Status GetScalarConstNodeValueHelper(
   }
 
   if (tensor.dtype() != dtype) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Node ", node.name(), " should have type ", DataTypeString(dtype),
-        " but has type: ", DataTypeString(tensor.dtype()));
+        " but has type: ", DataTypeString(tensor.dtype())));
   }
 
   get_value(tensor);
@@ -306,8 +306,9 @@ absl::Status GetDatasetOutputTypesAttr(const NodeDef& node,
       return GetNodeAttr(node, attr_name, output_types);
     }
   }
-  return errors::InvalidArgument("Could not find output_types attr for node: ",
-                                 node.name(), " with op: ", node.op());
+  return absl::InvalidArgumentError(
+      absl::StrCat("Could not find output_types attr for node: ", node.name(),
+                   " with op: ", node.op()));
 }
 
 void SetUniqueGraphNodeName(absl::string_view prefix, GraphDef* graph,
@@ -377,9 +378,9 @@ absl::Status EnsureNodeNamesUnique(Graph* g) {
 absl::Status GetFetchNode(const MutableGraphView& graph,
                           const GrapplerItem& item, NodeDef** fetch_node) {
   if (item.fetch.size() != 1) {
-    return errors::InvalidArgument(
-        "Expected only one fetch node but there were ", item.fetch.size(), ": ",
-        absl::StrJoin(item.fetch, ", "));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected only one fetch node but there were ",
+                     item.fetch.size(), ": ", absl::StrJoin(item.fetch, ", ")));
   }
 
   *fetch_node = graph.GetNode(item.fetch.at(0));
@@ -473,9 +474,9 @@ absl::Status SetMetadataName(const std::string& name, NodeDef* node) {
     metadata.ParseFromString(node->attr().at("metadata").s());
   }
   if (!metadata.name().empty()) {
-    return errors::InvalidArgument("Node ", node->name(),
-                                   " already has a metadata name \"",
-                                   metadata.name(), "\".");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Node ", node->name(), " already has a metadata name \"",
+                     metadata.name(), "\"."));
   }
   *metadata.mutable_name() = name;
   metadata.SerializeToString((*node->mutable_attr())["metadata"].mutable_s());

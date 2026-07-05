@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/runtime/resource_use.h"
@@ -34,7 +35,7 @@ absl::Status SerializeSliceShapeIntoProto(
     const BufferAllocation::Slice& slice, const Shape& shape,
     ShapeBufferAllocationSliceProto* proto) {
   *proto->mutable_shape() = shape.ToProto();
-  TF_ASSIGN_OR_RETURN(*proto->mutable_slice(), slice.ToProto());
+  ASSIGN_OR_RETURN(*proto->mutable_slice(), slice.ToProto());
   return absl::OkStatus();
 }
 
@@ -42,10 +43,10 @@ absl::StatusOr<std::pair<BufferAllocation::Slice, Shape>>
 DeserializeSliceShapeFromProto(
     const ShapeBufferAllocationSliceProto& proto,
     const std::vector<BufferAllocation>& buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       BufferAllocation::Slice slice,
       BufferAllocation::Slice::FromProto(proto.slice(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   return std::make_pair(slice, shape);
 }
 

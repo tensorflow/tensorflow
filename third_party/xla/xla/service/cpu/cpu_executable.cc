@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/constant_allocation.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
@@ -88,18 +89,18 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
     std::vector<ConstantAllocation> constants,
-    TargetMachineOptions target_machine_options) {
+    TargetMachineOptions target_machine_options, std::string data_layout) {
   VLOG(2) << "Create CpuExecutable from a thunk sequence; module="
           << hlo_module->name() << ", constants=" << constants.size();
 
-  std::unique_ptr<CpuExecutable> executable(
-      new CpuExecutable(std::move(hlo_module), std::move(assignment),
-                        std::move(target_machine_options)));
+  std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
+      std::move(hlo_module), std::move(assignment),
+      std::move(target_machine_options), std::move(data_layout)));
   executable->function_library_ = std::move(function_library);
 
   ThunkExecutor::Options thunk_executor_options;
   thunk_executor_options.is_nested_executor = false;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       executable->thunks_,
       ThunkExecutor::Create(std::move(thunks), thunk_executor_options));
 
@@ -122,12 +123,15 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
 
 CpuExecutable::CpuExecutable(std::unique_ptr<HloModule> hlo_module,
                              std::unique_ptr<BufferAssignment> assignment,
-                             TargetMachineOptions target_machine_options)
+                             TargetMachineOptions target_machine_options,
+                             std::string data_layout)
     : Executable(std::move(hlo_module)),
       assignment_(std::move(assignment)),
-      target_machine_options_(std::move(target_machine_options)) {
+      target_machine_options_(std::move(target_machine_options)),
+      data_layout_(std::move(data_layout)) {
   if (assignment_ && has_module()) {
-    XlaDebugInfoManager::Get()->RegisterModule(shared_module(), assignment_);
+    XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
+                                               assignment_->ToProto());
   }
 
   if (assignment_) {
@@ -178,8 +182,8 @@ static absl::StatusOr<MaybeOwningDeviceAddress> MemoryForAllocation(
   }
 
   int64_t buffer_size = allocation.size();
-  TF_ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> out,
-                      memory_allocator->Allocate(device_ordinal, buffer_size));
+  ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> out,
+                   memory_allocator->Allocate(device_ordinal, buffer_size));
   VLOG(3) << "buffer allocated " << buffer_size << " bytes [" << out->opaque()
           << "]";
 
@@ -202,14 +206,14 @@ CpuExecutable::CreateBufferTable(se::DeviceAddressAllocator* memory_allocator,
   for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
        ++i) {
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
-    TF_ASSIGN_OR_RETURN(buffers[i],
-                        MemoryForAllocation(allocation, arguments, constants_,
-                                            memory_allocator, device_ordinal));
+    ASSIGN_OR_RETURN(buffers[i],
+                     MemoryForAllocation(allocation, arguments, constants_,
+                                         memory_allocator, device_ordinal));
   }
 
   if (VLOG_IS_ON(3)) {
-    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
-                        assignment_->GetUniqueTopLevelOutputSlice());
+    ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                     assignment_->GetUniqueTopLevelOutputSlice());
     VLOG(3) << "result index: " << result_slice.index();
   }
   return std::move(buffers);
@@ -228,60 +232,73 @@ static int32_t GetDeviceOrdinal(const ExecutableRunOptions* run_options) {
 absl::Status CpuExecutable::ExecuteThunks(
     const ExecutableRunOptions* run_options,
     absl::Span<MaybeOwningDeviceAddress const> buffers) {
-  uint64_t start_ns = tsl::Env::Default()->NowNanos();
+  // NowNanos is otherwise dead work when no execution_profile is set.
+  uint64_t start_ns = 0;
+  if (ABSL_PREDICT_FALSE(run_options->execution_profile() != nullptr)) {
+    start_ns = tsl::Env::Default()->NowNanos();
+  }
 
   size_t profile_counters_size = 0;
   int64_t* profile_counters = nullptr;
 
   BufferAllocations allocations(buffers);
 
-  VLOG(3) << "Executing XLA:CPU thunks:";
-  VLOG(3) << absl::StrFormat("  Number of buffer allocations: %u",
-                             buffers.size());
-  auto mem_printer = [](std::string* out, const MaybeOwningDeviceAddress& mem) {
-    absl::StrAppend(out, absl::StrFormat("%p", mem.AsDeviceAddress().opaque()));
-  };
-  VLOG(3) << absl::StrFormat("  Buffer allocations: [%s]",
-                             absl::StrJoin(buffers, ", ", mem_printer));
-  VLOG(3) << absl::StrFormat("  Number of profile counters: %u",
-                             profile_counters_size);
-  VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
+  // StrJoin + StrFormat operands to operator<< allocate even when VLOG off.
+  if (ABSL_PREDICT_FALSE(VLOG_IS_ON(3))) {
+    VLOG(3) << "Executing XLA:CPU thunks:";
+    VLOG(3) << absl::StrFormat("  Number of buffer allocations: %u",
+                               buffers.size());
+    auto mem_printer = [](std::string* out,
+                          const MaybeOwningDeviceAddress& mem) {
+      absl::StrAppend(out,
+                      absl::StrFormat("%p", mem.AsDeviceAddress().opaque()));
+    };
+    VLOG(3) << absl::StrFormat("  Buffer allocations: [%s]",
+                               absl::StrJoin(buffers, ", ", mem_printer));
+    VLOG(3) << absl::StrFormat("  Number of profile counters: %u",
+                               profile_counters_size);
+    VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
+  }
 
   // Prepare for executing XLA program collectively.
-  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_execute_params,
-                      Thunk::CollectiveExecuteParams::Create(run_options));
+  ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_execute_params,
+                   Thunk::CollectiveExecuteParams::Create(run_options));
 
   // Prepare for executing XLA custom calls.
-  TF_ASSIGN_OR_RETURN(Thunk::CustomCallExecuteParams custom_call_execute_params,
-                      Thunk::CustomCallExecuteParams::Create(run_options));
+  ASSIGN_OR_RETURN(Thunk::CustomCallExecuteParams custom_call_execute_params,
+                   Thunk::CustomCallExecuteParams::Create(run_options));
 
   // Prepare for executing YNNPACK fusions.
   std::optional<Thunk::YnnParams> ynn_params;
   if (has_ynn_fusions()) {
-    TF_ASSIGN_OR_RETURN(ynn_params, Thunk::YnnParams::Create(run_options));
+    ASSIGN_OR_RETURN(ynn_params, Thunk::YnnParams::Create(run_options));
   }
 
   // Use the intra-op thread pool to offload thunk executor tasks.
-  auto* intra_op_thread_pool = run_options->intra_op_thread_pool();
+  auto* intra_op_thread_pool =
+      run_options ? run_options->intra_op_thread_pool() : nullptr;
   ThreadPoolTaskRunner task_runner(
       intra_op_thread_pool ? intra_op_thread_pool->getPool() : nullptr);
 
   Thunk::ExecuteParams execute_params = {
-      &*function_library_,
-      &allocations,
-      GetXfeedManager(GetDeviceOrdinal(run_options)),
-      intra_op_thread_pool,
-      &task_runner,
-      &collective_execute_params,
-      &custom_call_execute_params,
-      ynn_params ? &*ynn_params : nullptr};
+      &*function_library_, &allocations,
+      GetXfeedManager(GetDeviceOrdinal(run_options)), intra_op_thread_pool,
+      &task_runner, &collective_execute_params, &custom_call_execute_params,
+      ynn_params ? &*ynn_params : nullptr,
+      /*run_id=*/-1,
+      /*device_ordinal=*/GetDeviceOrdinal(run_options),
+      /*session=*/
+      Thunk::ExecuteSession(Thunk::ExecuteSession::kMaxWorkers,
+                            Thunk::ExecuteSession::kSplitThreshold),
+      /*rng_seed=*/
+      run_options ? static_cast<uint64_t>(run_options->rng_seed()) : 0};
 
   auto executed_event = thunks_->Execute(execute_params);
 
   tsl::profiler::TraceMe trace("BlockUntilReady");
   tsl::BlockUntilReady(executed_event);
 
-  if (run_options->execution_profile()) {
+  if (run_options && run_options->execution_profile()) {
     uint64_t end_ns = tsl::Env::Default()->NowNanos();
     run_options->execution_profile()->set_compute_time_ns(
         std::max<int64_t>(end_ns - start_ns, 1));
@@ -320,7 +337,7 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
 
     // The source for this result buffer can be a nested buffer such as
     // a tuple element.
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         const BufferAllocation::Slice slice,
         this->assignment_->GetUniqueSlice(src, value_source->index()));
     const BufferAllocation::Index buffer_index = slice.index();
@@ -362,7 +379,7 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
                    "buffer is not donated; allocating a fresh buffer";
         int64_t allocation_size =
             ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(root_shape, index));
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             se::ScopedDeviceAddress<uint8_t> allocated_buffer,
             run_options->allocator()->Allocate(
                 stream->parent()->device_ordinal(), allocation_size));
@@ -422,12 +439,12 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
 
   se::Stream* stream = run_options->stream();
   se::DeviceAddressAllocator* memory_allocator = run_options->allocator();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<MaybeOwningDeviceAddress> buffers,
       CreateBufferTable(memory_allocator, stream->parent()->device_ordinal(),
                         arguments));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ExecutionOutput result,
       CreateResultShapedBuffer(run_options, absl::MakeSpan(buffers),
                                absl::MakeSpan(arguments)));
@@ -457,7 +474,7 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   tsl::port::ScopedSetRound round(FE_TONEAREST);
 
   DCHECK(has_thunks());
-  TF_RETURN_IF_ERROR(ExecuteThunks(&run_options->run_options(), buffers));
+  RETURN_IF_ERROR(ExecuteThunks(&run_options->run_options(), buffers));
 
   MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
   return std::move(result);

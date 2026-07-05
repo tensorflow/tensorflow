@@ -34,6 +34,8 @@ struct GlobalClientFlags {
   int grpc_max_ongoing_host_buffer_lookups;
 
   int64_t grpc_large_transfer_optimization_threshold_bytes;
+
+  bool crash_on_disconnect;
 };
 
 GlobalClientFlags* GetGlobalClientFlags();
@@ -45,7 +47,8 @@ inline std::ostream& operator<<(std::ostream& os, GlobalClientFlags flags) {
             << "grpc_max_ongoing_host_buffer_lookups="
             << flags.grpc_max_ongoing_host_buffer_lookups << ","
             << "grpc_large_transfer_optimization_threshold_bytes="
-            << flags.grpc_large_transfer_optimization_threshold_bytes << "}";
+            << flags.grpc_large_transfer_optimization_threshold_bytes << ","
+            << "crash_on_disconnect=" << flags.crash_on_disconnect << "}";
 }
 
 }  // namespace proxy

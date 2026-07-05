@@ -18,6 +18,15 @@ permissions:
   contents: read
 on:
   workflow_dispatch: # Allows manual triggering
+    inputs:
+      halt-for-connection:
+        description: 'Should this workflow run wait for a remote connection?'
+        type: choice
+        required: true
+        default: 'no'
+        options:
+          - 'yes'
+          - 'no'
   schedule:
     - cron: "0 0 * * *" # Run at midnight every day
 
@@ -98,11 +107,13 @@ jobs:
           echo "Current PWD: $(pwd)"
           echo "---------------------------------------"
           # Make resolved paths available to subsequent steps via GITHUB_ENV
-          echo "RESOLVED_OUTPUT_DIR=$FULL_OUTPUT_DIR_PATH" >> $GITHUB_ENV
-          echo "RESOLVED_SCRIPT_DIR=$RESOLVED_SCRIPT_DIR_PATH" >> $GITHUB_ENV
-          echo "RESOLVED_BASELINE_YAML=$RESOLVED_BASELINE_YAML_PATH" >> $GITHUB_ENV
-          echo "RESOLVED_COMPARISON_SCRIPT=$RESOLVED_COMPARISON_SCRIPT_PATH" >> $GITHUB_ENV
-          echo "RESOLVED_RUN_COMPARISON_SCRIPT=$RESOLVED_RUN_COMPARISON_SCRIPT_PATH" >> $GITHUB_ENV
+          {
+            echo "RESOLVED_OUTPUT_DIR=$FULL_OUTPUT_DIR_PATH"
+            echo "RESOLVED_SCRIPT_DIR=$RESOLVED_SCRIPT_DIR_PATH"
+            echo "RESOLVED_BASELINE_YAML=$RESOLVED_BASELINE_YAML_PATH"
+            echo "RESOLVED_COMPARISON_SCRIPT=$RESOLVED_COMPARISON_SCRIPT_PATH"
+            echo "RESOLVED_RUN_COMPARISON_SCRIPT=$RESOLVED_RUN_COMPARISON_SCRIPT_PATH"
+          } >> "$GITHUB_ENV"
           # Create the output directory; scripts will assume it exists
           mkdir -p "$FULL_OUTPUT_DIR_PATH"
           if [ ! -d "$FULL_OUTPUT_DIR_PATH" ]; then
@@ -110,7 +121,7 @@ jobs:
             exit 1
           fi
       - name: Checkout OpenXLA Repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ env.CHECKOUT_REF }}
           persist-credentials: false
@@ -180,10 +191,10 @@ jobs:
           GCS_OBJECT_NAME="${BENCHMARK_NAME}/${DATE_FOLDER}/${TIMESTAMP}_run_${WORKFLOW_RUN_ID}_commit_${COMMIT_SHA_SHORT}.json"
 
           echo "Uploading $RESULTS_JSON_FILE_PATH to $GCS_BUCKET/$GCS_OBJECT_NAME"
-          gsutil cp "$RESULTS_JSON_FILE_PATH" "$GCS_BUCKET/$GCS_OBJECT_NAME"
+          gcloud storage cp "$RESULTS_JSON_FILE_PATH" "$GCS_BUCKET/$GCS_OBJECT_NAME"
       - name: Upload Benchmark Artifacts
         if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: results-${{ env.CONFIG_ID }}
           path: ${{ env.RESOLVED_OUTPUT_DIR }}

@@ -114,8 +114,8 @@ func.func @for_loop(%t0: tensor<32x1024xf32>, %t1: tensor<64x8x4xf32>)
 
 // -----
 
-#map = #xla.indexing_map<"(d0, d1) -> ((d1 * 128 + d0) floordiv 36), domain: d0 in [0, 127], d1 in [0, 393749]">
-#map1 = #xla.indexing_map<"(d0, d1) -> (((d1 * 128 + d0) floordiv 9) mod 4), domain: d0 in [0, 127], d1 in [0, 393749]">
+#map = #xla.indexing_map<"(d0, d1) -> ((d1 * 128 + d0) / 36), domain: d0 in [0, 127], d1 in [0, 393749]">
+#map1 = #xla.indexing_map<"(d0, d1) -> (((d1 * 128 + d0) / 9) mod 4), domain: d0 in [0, 127], d1 in [0, 393749]">
 #map2 = #xla.indexing_map<"(d0, d1) -> ((d1 * 128 + d0) mod 9), domain: d0 in [0, 127], d1 in [0, 393749]">
 func.func @if_op(%arg0: tensor<4000x4x9xf32>, %arg1: tensor<1400x1xi32>,
     %arg2: tensor<1400x1x4x9xf32>, %arg3: tensor<4000x4x9xf32>)

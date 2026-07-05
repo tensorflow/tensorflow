@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/composite_compilation_provider.h"
@@ -135,7 +136,7 @@ absl::StatusOr<std::unique_ptr<CompilationProvider>>
 AssembleCompilationProvider(const CompilationProviderOptions& options) {
   // TODO(b/381059098): Simplify this logic
 
-  TF_RETURN_IF_ERROR(CheckIncompatibleFlagSettings(options));
+  RETURN_IF_ERROR(CheckIncompatibleFlagSettings(options));
 
   std::string decision_log;
   const auto append_to_decision_log = [&](absl::string_view decision) {
@@ -151,8 +152,7 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
   append_to_decision_log(
       absl::StrCat("Has NvPtxCompiler support: ", has_nvptxcompiler.message()));
 
-  const bool parallel_compilation_support_is_desired =
-      options.enable_llvm_module_compilation_parallelism();
+  const bool parallel_compilation_support_is_desired = false;
   append_to_decision_log(
       absl::StrCat("Parallel compilation support is desired: ",
                    parallel_compilation_support_is_desired));
@@ -164,24 +164,6 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
   append_to_decision_log(
       absl::StrCat("Stream executor provided: ",
                    static_cast<bool>(options.stream_executor())));
-
-#ifdef PLATFORM_GOOGLE
-  if (parallel_compilation_support_is_desired && has_nvptxcompiler.ok() &&
-      has_driver_compilation_support) {
-    // It's possible to use libnvptxcompiler for compilation and the driver for
-    // linking. This setup supports parallel compilation but is less desired
-    // because we don't control the driver version. A too old driver might lead
-    // to linking errors.
-    VLOG(3) << "Using libnvptxcompiler for compilation and the driver for "
-               "linking.";
-    std::vector<std::unique_ptr<CompilationProvider>> providers;
-    providers.reserve(2);
-    providers.push_back(std::make_unique<NvptxcompilerCompilationProvider>());
-    providers.push_back(
-        std::make_unique<DriverCompilationProvider>(options.stream_executor()));
-    return CompositeCompilationProvider::Create(std::move(providers));
-  }
-#endif
 
   // During parallel compilation, Nvjitlink leaks memory for all CUDA
   // versions(at least up to 13.1)

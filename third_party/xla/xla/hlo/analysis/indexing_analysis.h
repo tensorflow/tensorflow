@@ -30,12 +30,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
@@ -240,9 +239,9 @@ llvm::SmallVector<IndexingMap, 4> MapLogicalToLinearizedPhysicalShape(
     mlir::MLIRContext* mlir_context);
 
 // Optimizes a runtime variable if it's possible to replace it with a constant.
-std::optional<mlir::AffineExpr> OptimizeRTVar(const RuntimeVarIndexing& rt_var,
-                                              const Interval& feasible_values,
-                                              mlir::MLIRContext* mlir_context);
+std::optional<SymbolicExpr> OptimizeRTVar(const RuntimeVarIndexing& rt_var,
+                                          const Interval& feasible_values,
+                                          mlir::MLIRContext* mlir_context);
 
 // Computes the indexing map from logical to linearized physical shape for each
 // operand and adds them to `result`. `result` may be non-empty when this
@@ -289,15 +288,14 @@ IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(
 const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);
 
 // Computes 1D index given a shape and N-d indexing expressions.
-mlir::AffineExpr LinearizeShape(
-    absl::Span<const int64_t> dims,
-    absl::Span<const mlir::AffineExpr> dimension_exprs,
-    mlir::MLIRContext* mlir_context);
+SymbolicExpr LinearizeShape(absl::Span<const int64_t> dims,
+                            absl::Span<const SymbolicExpr> dimension_exprs,
+                            mlir::MLIRContext* mlir_context);
 
 // Computes N-d indexing expressions given a linear index and a shape.
-std::vector<mlir::AffineExpr> DelinearizeIndex(absl::Span<const int64_t> dims,
-                                               mlir::AffineExpr linear_index,
-                                               mlir::MLIRContext* mlir_context);
+llvm::SmallVector<SymbolicExpr, 4> DelinearizeIndex(
+    absl::Span<const int64_t> dims, SymbolicExpr linear_index,
+    mlir::MLIRContext* mlir_context);
 
 // Creates an identity indexing map corresponding to the parameter shape.
 IndexingMap CreateIdentityMap(const Shape& shape,
@@ -305,8 +303,8 @@ IndexingMap CreateIdentityMap(const Shape& shape,
 IndexingMap CreateIdentityMap(absl::Span<const int64_t> dimensions,
                               mlir::MLIRContext* mlir_context);
 
-llvm::SmallVector<mlir::AffineExpr, 4> DelinearizeInBoundsIndex(
-    mlir::AffineExpr linear, absl::Span<const int64_t> sizes);
+llvm::SmallVector<SymbolicExpr, 4> DelinearizeInBoundsIndex(
+    SymbolicExpr linear, absl::Span<const int64_t> sizes);
 
 }  // namespace xla
 

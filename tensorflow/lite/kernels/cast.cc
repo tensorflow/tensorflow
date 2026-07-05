@@ -238,7 +238,9 @@ TfLiteStatus castInt4ToFloat(TfLiteContext* context, const TfLiteTensor* in,
     int32_t lower = static_cast<int8_t>(byte << 4) >> 4;
     int32_t higher = byte >> 4;
     out_data[2 * i] = (float)lower;
-    out_data[2 * i + 1] = (float)higher;
+    if (2 * i + 1 < num_elements) {
+      out_data[2 * i + 1] = (float)higher;
+    }
   }
   return kTfLiteOk;
 }

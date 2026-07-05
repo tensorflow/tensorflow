@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 
+#include <cstddef>
+#include <cstring>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -109,10 +114,10 @@ absl::Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
   TF_RETURN_IF_ERROR(
       DataTypeToPrimitiveType(host_tensor->dtype(), &primitive_type));
   if (literal.shape().element_type() != primitive_type) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Cannot convert literal of type ",
         xla::PrimitiveType_Name(literal.shape().element_type()),
-        " to tensor of type ", DataTypeString(host_tensor->dtype()));
+        " to tensor of type ", DataTypeString(host_tensor->dtype())));
   }
   size_t total_bytes = host_tensor->TotalBytes();
   if (total_bytes > 0) {

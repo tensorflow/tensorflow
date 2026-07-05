@@ -159,6 +159,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateStateThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitRngSeedThunk(
+      const HloInstruction* instruction);
+
   absl::StatusOr<ThunkSequence> EmitStochasticConvertThunk(
       const HloInstruction* instruction);
 

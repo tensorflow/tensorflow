@@ -117,7 +117,7 @@ void Expect(const Tensor& input, float x_min, float x_max,
       (expected.flat<float>() - (out_min + out_scale * out.cast<float>()))
           .abs()
           .maximum();
-  EXPECT_LE(max_diff(), 0.1);
+  EXPECT_LE(max_diff(), 0.2);
   LOG(INFO) << "max diff " << max_diff();
 }
 

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-embedding-pipelining | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-embedding-pipelining | env FILECHECK_OPTS="" FileCheck %s
 
 // This test verifies the handling of TPU replicated inputs and outputs as well as the extraction of the four main functions.
 module {

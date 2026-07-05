@@ -42,7 +42,7 @@ absl::Status SetUpKernelFallbackCompatRequestContext(
     tfrt_stub::OpKernelRunnerTable* runner_table,
     tensorflow::EagerContext* eager_context,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<SessionMetadata>& model_metadata) {
+    const std::optional<SessionMetadata>& model_metadata) {
   auto* resource_array =
       builder->resource_context()->GetOrCreateResource<FallbackResourceArray>(
           kFallbackResourceArray);

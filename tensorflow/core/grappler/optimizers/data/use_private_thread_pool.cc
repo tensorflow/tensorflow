@@ -47,9 +47,9 @@ absl::Status UsePrivateThreadPool::OptimizeAndCollectStats(
     return absl::OkStatus();
 
   if (item.fetch.size() != 1) {
-    return errors::InvalidArgument(
-        "Expected only one fetch node but there were ", item.fetch.size(), ": ",
-        absl::StrJoin(item.fetch, ", "));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected only one fetch node but there were ",
+                     item.fetch.size(), ": ", absl::StrJoin(item.fetch, ", ")));
   }
 
   for (const NodeDef& node : item.graph.node()) {

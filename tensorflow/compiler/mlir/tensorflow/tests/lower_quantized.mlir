@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -test-tf-lower-tf | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt %s -test-tf-lower-tf | env FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: dequantize
 func.func @dequantize(%arg0: tensor<2x3x!tf_type.qint8>, %min_range: tensor<f32>, %max_range: tensor<f32>) -> tensor<2x3xf32> {

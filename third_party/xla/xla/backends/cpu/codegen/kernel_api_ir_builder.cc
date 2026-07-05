@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
@@ -235,9 +236,9 @@ absl::Status VerifyKernelParameters(
   // memory (or aliased memory). We conservatively do not emit noalias metadata
   // for buffers coming from parameter allocations.
 
-  TF_RETURN_IF_ERROR(VerifyKernelArgumentsNonOverlapping(arguments));
-  TF_RETURN_IF_ERROR(VerifyKernelResultsNonOverlapping(results));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(VerifyKernelArgumentsNonOverlapping(arguments));
+  RETURN_IF_ERROR(VerifyKernelResultsNonOverlapping(results));
+  RETURN_IF_ERROR(
       VerifyKernelResultsNonOverlappingWithArguments(arguments, results));
 
   return absl::OkStatus();
@@ -281,7 +282,7 @@ KernelApiIrBuilder::GetKernelArgumentsParameters(
 
   for (HloInstruction* operand : instruction->operands()) {
     for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           BufferAllocation::Slice slice,
           GetUniqueSlice(buffer_assignment, operand, indexed.index));
       arguments.push_back(KernelParameter{indexed.shape, slice});
@@ -296,7 +297,7 @@ KernelApiIrBuilder::GetKernelResultsParameters(
     const BufferAssignment* buffer_assignment) {
   std::vector<KernelParameter> results;
   for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         GetUniqueSlice(buffer_assignment, instruction, indexed.index));
     results.push_back(KernelParameter{indexed.shape, slice});
@@ -331,12 +332,12 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
     const BufferAssignment* buffer_assignment,
     absl::string_view generating_emitter_name, absl::string_view suffix)
     -> absl::StatusOr<KernelPrototype> {
-  TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> arguments,
-                      GetKernelArgumentsParameters(instr, buffer_assignment));
-  TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> results,
-                      GetKernelResultsParameters(instr, buffer_assignment));
+  ASSIGN_OR_RETURN(std::vector<KernelParameter> arguments,
+                   GetKernelArgumentsParameters(instr, buffer_assignment));
+  ASSIGN_OR_RETURN(std::vector<KernelParameter> results,
+                   GetKernelResultsParameters(instr, buffer_assignment));
 
-  TF_ASSIGN_OR_RETURN(std::string name, GetKernelName(instr, suffix));
+  ASSIGN_OR_RETURN(std::string name, GetKernelName(instr, suffix));
 
   return EmitKernelPrototype(
       module, name, arguments, results,
@@ -366,7 +367,7 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   }
 
   if (buffer_validation_ == BufferValidation::kDisjoint) {
-    TF_RETURN_IF_ERROR(VerifyKernelParameters(arguments, results));
+    RETURN_IF_ERROR(VerifyKernelParameters(arguments, results));
   }
 
   MemoryDependencyAnalyzer memory_dependency_analyzer(context_, name, results);

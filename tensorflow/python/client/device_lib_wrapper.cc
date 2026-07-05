@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -47,7 +48,7 @@ PYBIND11_MODULE(_pywrap_device_lib, m) {
     std::string serialized_attr;
     for (const auto& device : devices) {
       if (!device->attributes().SerializeToString(&serialized_attr)) {
-        tensorflow::MaybeRaiseFromStatus(tensorflow::errors::Internal(
+        tensorflow::MaybeRaiseFromStatus(absl::InternalError(
             "Could not serialize DeviceAttributes to bytes"));
       }
 

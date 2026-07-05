@@ -25,18 +25,18 @@ else
   export TF_VER_FULL="$(tfrun bazel run //tensorflow/tools/ci_build:calculate_full_version -- --wheel-type release)"
 fi
 
-# Note on gsutil commands:
-# "gsutil cp" always "copies into". It cannot act on the contents of a directory
+# Note on gcloud storage commands:
+# "gcloud storage cp" always "copies into". It cannot act on the contents of a directory
 # and it does not seem possible to e.g. copy "gs://foo/bar" as anything other than
-# "/path/bar". This script uses "gsutil rsync" instead, which acts on directory
-# contents. About arguments to gsutil:
-# "gsutil -m rsync" runs in parallel.
-# "gsutil rsync -r" is recursive and makes directories work.
-# "gsutil rsync -d" is "sync and delete files from destination if not present in source"
+# "/path/bar". This script uses "gcloud storage rsync" instead, which acts on directory
+# contents. About arguments to gcloud storage:
+# "gcloud storage rsync" runs in parallel.
+# "gcloud storage rsync --recursive" is recursive and makes directories work.
+# "gcloud storage rsync --delete-unmatched-destination-objects" is "sync and delete files from destination if not present in source"
 
 DOWNLOADS="$(mktemp -d)"
 mkdir -p "$DOWNLOADS"
-gsutil -m rsync -r "$TFCI_ARTIFACT_STAGING_GCS_URI" "$DOWNLOADS"
+gcloud storage rsync --recursive "$TFCI_ARTIFACT_STAGING_GCS_URI" "$DOWNLOADS"
 ls "$DOWNLOADS"
 
 # Upload all build artifacts to e.g. gs://tensorflow/versions/2.16.0-rc1 (releases) or
@@ -48,11 +48,11 @@ if [[ "$TFCI_ARTIFACT_FINAL_GCS_ENABLE" == 1 ]]; then
   # from get_versions.sh, which must be run *after* update_version.py, FINAL_URI
   # can't be set inside the rest of the _upload envs.
   FINAL_URI="$TFCI_ARTIFACT_FINAL_GCS_URI/$TF_VER_FULL"
-  gsutil -m rsync -d -r "$DOWNLOADS" "$FINAL_URI"
+  gcloud storage rsync --delete-unmatched-destination-objects --recursive "$DOWNLOADS" "$FINAL_URI"
 
   # Also mirror the latest-uploaded folder to the "latest" directory.
   # GCS does not support symlinks.
-  gsutil -m rsync -d -r "$FINAL_URI" "$TFCI_ARTIFACT_LATEST_GCS_URI"
+  gcloud storage rsync --delete-unmatched-destination-objects --recursive "$FINAL_URI" "$TFCI_ARTIFACT_LATEST_GCS_URI"
 fi
 
 if [[ "$TFCI_ARTIFACT_FINAL_PYPI_ENABLE" == 1 ]]; then

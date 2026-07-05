@@ -749,9 +749,9 @@ absl::Status BuildSwapPair(
   std::string task, device;
   if (!DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) ||
       !absl::StrContains(device, DEVICE_GPU)) {
-    return errors::InvalidArgument("Can't swap input ", input_to_swap,
-                                   " of node ", node->name(),
-                                   " since it is not on GPU");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't swap input ", input_to_swap, " of node ",
+                     node->name(), " since it is not on GPU"));
   }
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node->op(), &op_def));
@@ -759,9 +759,9 @@ absl::Status BuildSwapPair(
   TF_RETURN_IF_ERROR(
       InputTypeForNode(*node, *op_def, input_to_swap, &input_type));
   if (IsRefType(input_type)) {
-    return errors::InvalidArgument("Can't swap input ", input_to_swap,
-                                   " of node ", node->name(),
-                                   " since it expects a reference");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't swap input ", input_to_swap, " of node ",
+                     node->name(), " since it expects a reference"));
   }
 
   std::string tensor_to_swap = absl::StrCat(node->name(), "_", input_to_swap);
@@ -769,8 +769,9 @@ absl::Status BuildSwapPair(
   std::string swap_in_name = absl::StrCat("swap_in_", tensor_to_swap);
   if (name_map.find(swap_out_name) != name_map.end() ||
       name_map.find(swap_in_name) != name_map.end()) {
-    return errors::InvalidArgument("Input ", input_to_swap, " of node ",
-                                   node->name(), " is already swapped");
+    return absl::InvalidArgumentError(absl::StrCat("Input ", input_to_swap,
+                                                   " of node ", node->name(),
+                                                   " is already swapped"));
   }
 
   // Force the tensor to be copied to cpu.
@@ -1393,7 +1394,7 @@ absl::Status MemoryOptimizer::Optimize(Cluster* cluster,
        optimization_level_ == RewriterConfig::HEURISTICS ||
        optimization_level_ == RewriterConfig::MANUAL);
   if (!run_recomputation_pass && nodes_to_relax.empty() && item.fetch.empty()) {
-    return errors::Aborted("Nothing to do.");
+    return absl::AbortedError("Nothing to do.");
   }
 
   GrapplerItem optimized_item(item);

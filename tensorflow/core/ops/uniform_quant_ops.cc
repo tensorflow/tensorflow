@@ -36,7 +36,7 @@ absl::StatusOr<TensorShape> ToTensorShape(ShapeHandle shape_handle,
     int64_t dim_size = shape_inference::InferenceContext::Value(
         shape_inference::InferenceContext::DimKnownRank(shape_handle, i));
     if (dim_size == shape_inference::InferenceContext::kUnknownDim) {
-      return Unknown("Dim size unknown.");
+      return absl::UnknownError("Dim size unknown.");
     }
     shape.AddDim(dim_size);
   }
@@ -57,7 +57,8 @@ absl::Status ScalesZeroPointsShapeValid(
   }
 
   if (scales_rank != zero_points_rank) {
-    return InvalidArgument("scales and zero_points must have same rank.");
+    return absl::InvalidArgumentError(
+        "scales and zero_points must have same rank.");
   }
   if (scales_rank == 0) {
     return absl::OkStatus();
@@ -196,7 +197,7 @@ absl::Status ConvolutionShapeCommon(shape_inference::InferenceContext* context,
                    : lhs_rank));
     return absl::OkStatus();
   } else if (lhs_rank != rhs_rank) {
-    return InvalidArgument("lhs and rhs must have same rank.");
+    return absl::InvalidArgumentError("lhs and rhs must have same rank.");
   }
 
   auto lhs_shape = ToTensorShape(params.lhs, lhs_rank);

@@ -409,6 +409,7 @@ cc_library(
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader",
         "//tensorflow/lite/tools:logging",
         "@com_google_absl//absl/memory",
+        "@flatbuffers//:runtime_cc",
     ],
     alwayslink = 1,  # For registration to always run.
 )

@@ -1,4 +1,4 @@
-// RUN: LOWER_DTENSOR_GATHER_TO_COLLECTIVE_GATHER_V2=1 dtensor-opt %s -split-input-file -dtensor-all-gather-lowering -verify-diagnostics | FileCheck %s --dump-input=fail
+// RUN: env LOWER_DTENSOR_GATHER_TO_COLLECTIVE_GATHER_V2=1 dtensor-opt %s -split-input-file -dtensor-all-gather-lowering -verify-diagnostics | FileCheck %s --dump-input=fail
 
 // CHECK-LABEL: func @lower_allgather_tpu_mesh
 func.func @lower_allgather_tpu_mesh(%arg0: tensor<i32>,

@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/simple_memory_arena.h"
 
+#include <cstddef>
+#include <limits>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/common.h"
 
@@ -40,6 +43,23 @@ TEST(SimpleMemoryArenaTest, BasicArenaOperations) {
   EXPECT_EQ(allocs[3].offset, 0);
   EXPECT_EQ(allocs[4].offset, 6144);
   EXPECT_EQ(allocs[5].offset, 2048);
+}
+
+TEST(ResizableAlignedBufferTest, FailedResizePreservesOriginalBuffer) {
+  ResizableAlignedBuffer buffer(/*alignment=*/64, /*subgraph_index=*/0);
+
+  bool reallocated = false;
+  ASSERT_EQ(buffer.Resize(/*new_size=*/128, &reallocated), kTfLiteOk);
+  ASSERT_TRUE(reallocated);
+  char* const original_ptr = buffer.GetPtr();
+  const size_t original_size = buffer.GetSize();
+
+  reallocated = true;
+  EXPECT_EQ(buffer.Resize(std::numeric_limits<size_t>::max(), &reallocated),
+            kTfLiteError);
+  EXPECT_FALSE(reallocated);
+  EXPECT_EQ(buffer.GetPtr(), original_ptr);
+  EXPECT_EQ(buffer.GetSize(), original_size);
 }
 
 TEST(SimpleMemoryArenaTest, BasicZeroAlloc) {
@@ -319,6 +339,25 @@ TEST(SimpleMemoryArenaTest, TestClearBuffer) {
   resolved_ptr = nullptr;
   ASSERT_EQ(arena.ResolveAlloc(&context, allocs[1], &resolved_ptr), kTfLiteOk);
   EXPECT_NE(resolved_ptr, nullptr);
+}
+
+TEST(SimpleMemoryArenaTest, FailedCommitLeavesArenaUncommitted) {
+  TfLiteContext context;
+  context.ReportError = ReportError;
+  SimpleMemoryArena arena(64);
+  ArenaAllocWithUsageInterval alloc;
+
+  ASSERT_EQ(
+      arena.Allocate(&context, /*alignment=*/32,
+                     /*size=*/std::numeric_limits<size_t>::max(),
+                     /*tensor=*/0, /*first_node=*/0, /*last_node=*/0, &alloc),
+      kTfLiteOk);
+
+  bool reallocated = true;
+  EXPECT_EQ(arena.Commit(&reallocated), kTfLiteError);
+
+  char* resolved_ptr = nullptr;
+  EXPECT_NE(arena.ResolveAlloc(&context, alloc, &resolved_ptr), kTfLiteOk);
 }
 
 // Test parameterized by whether ClearBuffer() is called before ClearPlan(), or

@@ -1112,18 +1112,6 @@ TEST_F(InstructionFusionTest, SkipScatterComputationsIfFusionEmitters) {
   EXPECT_FALSE(changed);
 }
 
-TEST_F(InstructionFusionTest, NoSkipScatterComputationsIfNoFusionEmitters) {
-  auto mod_config = GetModuleConfigForTest();
-  auto debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_cpu_use_fusion_emitters(false);
-  mod_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           kScatterModuleString, mod_config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          CpuInstructionFusion(&alias_info_).Run(module.get()));
-  EXPECT_TRUE(changed);
-}
-
 static constexpr absl::string_view kReduceModuleString = R"(
   HloModule module
 
@@ -1150,19 +1138,6 @@ TEST_F(InstructionFusionTest, SkipReduceComputationsIfFusionEmitters) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           CpuInstructionFusion(&alias_info_).Run(module.get()));
   EXPECT_FALSE(changed);
-}
-
-TEST_F(InstructionFusionTest, NoSkipReduceComputationsIfNoFusionEmitters) {
-  auto mod_config = GetModuleConfigForTest();
-  auto debug_options = GetDebugOptionsForTest();
-  (*debug_options.mutable_xla_backend_extra_options())
-      [options::kDisableNewFusionEmitters] = "true";
-  mod_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           kReduceModuleString, mod_config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          CpuInstructionFusion(&alias_info_).Run(module.get()));
-  EXPECT_TRUE(changed);
 }
 
 }  // namespace

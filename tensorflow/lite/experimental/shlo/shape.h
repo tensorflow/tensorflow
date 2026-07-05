@@ -37,11 +37,6 @@ using Strides = absl::InlinedVector<DimensionSize, kMaxNumDimensions>;
 class Shape {
  public:
   Shape() = default;
-  ~Shape() = default;
-  Shape(const Shape&) = default;
-  Shape& operator=(const Shape&) = default;
-  Shape(Shape&&) = default;
-  Shape& operator=(Shape&&) = default;
 
   explicit Shape(absl::Span<const DimensionSize> dims);
 
@@ -54,7 +49,8 @@ class Shape {
   // shape(x)[axis]
   DimensionSize Dim(Axis axis) const;
 
-  // list(map(lambda axis: dim(x, axis), axes))
+  // list(map(lambda axis: dim(x, axis), filter(lambda axis: axis < rank(x),
+  // axes)))
   absl::InlinedVector<DimensionSize, kMaxNumDimensions> Dims(
       absl::Span<const Axis> axes) const;
 
@@ -64,14 +60,15 @@ class Shape {
   // reduce(lambda x, y: x * y, shape(x))
   // Note: in the SHLO spec, this is called size. We've diverged for readability
   // and possible confusion with C++ container's usage of size().
+  // Precondition: shape(x) is static (does not contain kDynamicDimension).
   DimensionSize NumElements() const;
 
   // The following members are provided for compatibility with the standard
   // library.
   using value_type = DimensionSize;
 
-  const value_type& operator[](int dim) const { return dims_[dim]; }
-  value_type& operator[](int dim) { return dims_[dim]; }
+  const value_type& operator[](Axis dim) const { return dims_[dim]; }
+  value_type& operator[](Axis dim) { return dims_[dim]; }
 
   auto cbegin() const { return dims_.begin(); }
   auto begin() const { return dims_.begin(); }
@@ -93,8 +90,9 @@ bool operator!=(const Shape& lhs, const Shape& rhs);
 
 Strides ComputeStrides(const Shape& shape);
 
+// Precondition: shape is static (does not contain kDynamicDimension).
 template <class T>
-Strides ComputeStrides(const absl::Span<const T> shape) {
+Strides ComputeStrides(absl::Span<const T> shape) {
   absl::InlinedVector<DimensionSize, kMaxNumDimensions> strides(shape.size());
   if (!shape.empty()) {
     strides[shape.size() - 1] = 1;

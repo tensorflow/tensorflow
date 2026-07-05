@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -60,10 +59,6 @@ PjRtTopology::DeviceDescriptions() const {
 absl::StatusOr<xla::Layout> PjRtTopology::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) const {
   return description_->GetDefaultLayout(element_type, dims);
-}
-
-absl::StatusOr<std::string> PjRtTopology::Serialize() const {
-  return description_->Serialize();
 }
 
 absl::StatusOr<uint64_t> PjRtTopology::Fingerprint() const {

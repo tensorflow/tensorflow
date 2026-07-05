@@ -37,6 +37,7 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -91,6 +92,7 @@ cc_library(
         "//xla/stream_executor/cuda:subprocess_compilation",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -126,10 +128,10 @@ py_binary(
 
 genrule(
     name = "generate_amdgpu_device_lib_data",
-    srcs = [
+    srcs = if_oss([
         "@rocm_device_libs//:ockl",
         "@rocm_device_libs//:ocml",
-    ],
+    ]),
     outs = ["amdgpu_device_lib_data.h"],
     cmd = "$(location {}) --llvm_link_bin $(location {}) $(SRCS) -o $@ --cpp_identifier=kAMDGPUDeviceLibData".format(
         ":generate_amdgpu_device_lib_data_tool",
@@ -187,8 +189,8 @@ cc_library(
         "//xla/stream_executor:kernel_stats",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:rocm_rocdl_path",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/algorithm:container",
@@ -199,6 +201,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:AMDGPUAsmParser",  # buildcleaner: keep
         "@llvm-project//llvm:Analysis",
@@ -309,7 +312,6 @@ xla_cc_test(
         ":amdgpu_backend",
         ":load_ir_module",
         "//xla:debug_options_flags",
-        "//xla/tsl/platform:rocm_rocdl_path",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ir_headers",
@@ -404,18 +406,24 @@ cc_library(
     deps = [
         ":llvm_gpu_backend",
         "//xla:xla_proto_cc",
+        "//xla/service/gpu:gpu_constants",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/status:statusor",
-        "@llvm-project//llvm:SPIRVCodeGen",
+        "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:CodeGen",
         "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//llvm:ir_headers",
         "@tsl//tsl/platform:errors",
-    ],
+    ] + if_oss([
+        "@llvm-project//llvm:SPIRVCodeGen",
+    ]),
 )
 
 xla_cc_test(

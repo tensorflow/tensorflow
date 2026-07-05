@@ -34,6 +34,9 @@ stream_executor::GpuAsmOpts PtxOptsFromDebugOptions(
   if (debug_options.xla_gpu_generate_debug_info()) {
     extra_flags.emplace_back("--device-debug");
   }
+  extra_flags.insert(extra_flags.end(),
+                     debug_options.xla_gpu_ptx_compiler_extra_flags().begin(),
+                     debug_options.xla_gpu_ptx_compiler_extra_flags().end());
   return stream_executor::GpuAsmOpts(
       debug_options.xla_gpu_disable_gpuasm_optimizations(),
       debug_options.xla_gpu_cuda_data_dir(), std::move(extra_flags));

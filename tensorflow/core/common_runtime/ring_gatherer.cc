@@ -17,7 +17,9 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -57,7 +59,7 @@ absl::Status RingGatherer::InitializeCollectiveParams(
   if (!col_params->instance.impl_details.subdiv_offsets.empty() &&
       (col_params->instance.impl_details.subdiv_offsets.size() > 1 ||
        col_params->instance.impl_details.subdiv_offsets[0] != 0)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "RingGather cannot take any subdiv offset other than 0.");
   }
   if (col_params->instance.impl_details.subdiv_offsets.empty()) {
@@ -74,6 +76,18 @@ void RingGatherer::Run(StatusCallback done) {
   num_subdivs_ = static_cast<int>(
       col_params_->instance.impl_details.subdiv_permutations.size());
   DCHECK_GT(num_subdivs_, 0);
+  if (static_cast<int64_t>(group_size_) * static_cast<int64_t>(num_subdivs_) >
+      std::numeric_limits<int32_t>::max()) {
+    // The collective parameters, including group_size and subdivision details,
+    // originate from the user's graph and device placement. If their product
+    // exceeds a reasonable limit, it indicates an issue with the provided
+    // configuration.
+    done_(absl::InvalidArgumentError(
+        "group_size * num_subdivs exceeds int32 limit, which is required "
+        "because this value is used to size internal vectors or buffers that "
+        "use 32-bit indices."));
+    return;
+  }
 
   if (VLOG_IS_ON(1)) {
     std::string buf;
@@ -161,7 +175,7 @@ bool RingGatherer::RunAsyncParts() {
     } else {
       mutex_lock l(status_mu_);
       status_ =
-          errors::Internal("Failed to dispatch ThenExecute in RingGatherer");
+          absl::InternalError("Failed to dispatch ThenExecute in RingGatherer");
       return false;
     }
   }

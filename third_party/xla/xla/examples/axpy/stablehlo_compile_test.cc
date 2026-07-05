@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
@@ -85,7 +86,7 @@ class StableHloAxpyTest : public ::testing::Test {
 
     // Read StableHLO program to string.
     std::string program_string;
-    TF_RETURN_IF_ERROR(tsl::ReadFileToString(
+    RETURN_IF_ERROR(tsl::ReadFileToString(
         tsl::Env::Default(), std::string(program_path), &program_string));
 
     std::cerr << "Loaded StableHLO program from " << program_path << ":\n"

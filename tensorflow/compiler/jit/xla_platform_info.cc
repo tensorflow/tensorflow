@@ -137,8 +137,8 @@ absl::Status GetCompilationDeviceTypeAndPjRtClient(
 
   const XlaOpRegistry::DeviceRegistration* registration;
   if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
-    return errors::InvalidArgument("No JIT device registered for ",
-                                   device_type.type());
+    return absl::InvalidArgumentError(
+        absl::StrCat("No JIT device registered for ", device_type.type()));
   }
   *compilation_device_type = DeviceType(registration->compilation_device_name);
 
@@ -181,10 +181,10 @@ absl::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
   for (const std::string& platform_device_id_str : visible_devices) {
     int32_t platform_device_id;
     if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
-      return errors::InvalidArgument(
-          "Could not parse entry in 'visible_device_list': '",
-          platform_device_id_str,
-          "'. visible_device_list = ", visible_device_list);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Could not parse entry in 'visible_device_list': '",
+                       platform_device_id_str,
+                       "'. visible_device_list = ", visible_device_list));
     }
     gpu_ids.insert(platform_device_id);
   }
@@ -197,8 +197,8 @@ absl::StatusOr<DeviceType> GetCompilationDeviceType(
   const XlaOpRegistry::DeviceRegistration* registration = nullptr;
   if (!XlaOpRegistry::GetCompilationDevice(platform_device_type.type(),
                                            &registration)) {
-    return errors::InvalidArgument("No JIT device registered for ",
-                                   platform_device_type.type());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "No JIT device registered for ", platform_device_type.type()));
   }
   compilation_device_type = DeviceType(registration->compilation_device_name);
   return compilation_device_type;
@@ -247,7 +247,7 @@ absl::Status BuildXlaDeviceCompiler(DeviceBase* device,
   }
 
   if (platform_info.platform_id() == nullptr) {
-    return errors::InvalidArgument("platform_id is null.");
+    return absl::InvalidArgumentError("platform_id is null.");
   }
   auto platform =
       se::PlatformManager::PlatformWithId(platform_info.platform_id());
@@ -270,9 +270,9 @@ absl::Status BuildXlaDeviceCompiler(DeviceBase* device,
     // the situation for us.
     const absl::Status& status = compiler_for_platform.status();
     if (status.code() == error::NOT_FOUND) {
-      return errors::Unimplemented("Could not find compiler for platform ",
-                                   platform.value()->Name(), ": ",
-                                   status.ToString());
+      return absl::UnimplementedError(
+          absl::StrCat("Could not find compiler for platform ",
+                       platform.value()->Name(), ": ", status.ToString()));
     }
   }
 
