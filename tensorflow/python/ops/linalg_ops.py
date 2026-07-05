@@ -768,8 +768,16 @@ def norm(tensor,
         # Use a safe sqrt to avoid NaN/inf gradients when sum_squares is zero.
         # maximum(sum_squares, tiny) ensures the sqrt gradient denominator is
         # never zero, and the where mask preserves exact zero forward output.
-        tiny = np.finfo(tensor.dtype.real_dtype.as_numpy_dtype).tiny
-        safe_sum = math_ops.maximum(sum_squares, tiny)
+        real_dtype = tensor.dtype.real_dtype
+        tiny_dtype = np.float32 if real_dtype == dtypes.bfloat16 else (
+            real_dtype.as_numpy_dtype)
+        tiny = np.finfo(tiny_dtype).tiny
+        if tensor.dtype.is_complex:
+          real_sum = math_ops.real(sum_squares)
+          safe_sum = math_ops.complex(
+              math_ops.maximum(real_sum, tiny), array_ops.zeros_like(real_sum))
+        else:
+          safe_sum = math_ops.maximum(sum_squares, tiny)
         result = array_ops.where(
             math_ops.equal(sum_squares, 0),
             array_ops.zeros_like(safe_sum),

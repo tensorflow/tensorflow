@@ -357,7 +357,9 @@ class EuclideanNormGradientTest(test.TestCase):
 class LinalgNormGradientTest(test.TestCase):
 
   def testZeroGrad(self):
-    for dtype in [dtypes.float32, dtypes.float64]:
+    for dtype in [
+        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128
+    ]:
       x = constant_op.constant([0.0, 0.0], dtype=dtype)
 
       with backprop.GradientTape() as tape:
@@ -368,7 +370,9 @@ class LinalgNormGradientTest(test.TestCase):
       self.assertAllClose(dx, [0.0, 0.0])
 
   def testNonZeroGrad(self):
-    for dtype in [dtypes.float32, dtypes.float64]:
+    for dtype in [
+        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128
+    ]:
       x = constant_op.constant([3.0, 4.0], dtype=dtype)
 
       with backprop.GradientTape() as tape:
