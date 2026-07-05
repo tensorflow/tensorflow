@@ -219,14 +219,17 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
 
 
   @parameterized.parameters(itertools.product(
-      [2, 3, 4],
+      [1, 2, 3, 4],
       [None, "ortho"],
       [np.float32, np.float64]))
   def test_idct_n_truncation(self, dct_type, norm, dtype):
     """idct with n < signal length uses only the first n elements."""
+    # "ortho" normalization is not implemented for type I.
+    if dct_type == 1 and norm == "ortho":
+      return
     with self.session():
       tol = 5e-4 if dtype == np.float32 else 1e-7
-      signals = np.random.rand(20).astype(dtype)
+      signals = np.linspace(0.0, 1.0, 20, endpoint=False).astype(dtype)
       n = 8
       np_idct = NP_IDCT[dct_type](signals, n=n, norm=norm)
       tf_idct = dct_ops.idct(signals, type=dct_type, n=n, norm=norm)
@@ -234,14 +237,17 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
       self.assertAllClose(np_idct, tf_idct, atol=tol, rtol=tol)
 
   @parameterized.parameters(itertools.product(
-      [2, 3, 4],
+      [1, 2, 3, 4],
       [None, "ortho"],
       [np.float32, np.float64]))
   def test_idct_n_padding(self, dct_type, norm, dtype):
     """idct with n > signal length zero-pads the input before the transform."""
+    # "ortho" normalization is not implemented for type I.
+    if dct_type == 1 and norm == "ortho":
+      return
     with self.session():
       tol = 5e-4 if dtype == np.float32 else 1e-7
-      signals = np.random.rand(10).astype(dtype)
+      signals = np.linspace(0.0, 1.0, 10, endpoint=False).astype(dtype)
       n = 20
       np_idct = NP_IDCT[dct_type](signals, n=n, norm=norm)
       tf_idct = dct_ops.idct(signals, type=dct_type, n=n, norm=norm)
