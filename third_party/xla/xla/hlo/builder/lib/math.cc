@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -968,7 +969,7 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
-    if (a_shape != x_shape) {
+    if (!ShapeUtil::Compatible(a_shape, x_shape)) {
       return InvalidArgument(
           "Arguments to Igamma must have equal shapes and types; got %s and %s",
           a_shape.ToString(), x_shape.ToString());
@@ -1022,7 +1023,7 @@ XlaOp IgammaGradA(XlaOp a, XlaOp x) {
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
-    if (a_shape != x_shape) {
+    if (!ShapeUtil::Compatible(a_shape, x_shape)) {
       return InvalidArgument(
           "Arguments to IgammaGradA must have equal shapes and types; got %s "
           "and %s",
@@ -1076,7 +1077,7 @@ XlaOp RandomGammaGrad(XlaOp a, XlaOp x) {
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
-    if (a_shape != x_shape) {
+    if (!ShapeUtil::Compatible(a_shape, x_shape)) {
       return InvalidArgument(
           "Arguments to RandomGammaGrad must have equal shapes and types; got "
           "%s and %s",
@@ -1121,7 +1122,7 @@ XlaOp Igammac(XlaOp a, XlaOp x) {
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
-    if (a_shape != x_shape) {
+    if (!ShapeUtil::Compatible(a_shape, x_shape)) {
       return InvalidArgument(
           "Arguments to Igammac must have equal shapes and types; "
           "got %s and %s",
@@ -2170,7 +2171,7 @@ XlaOp Zeta(XlaOp x, XlaOp q) {
   return builder.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ASSIGN_OR_RETURN(auto x_shape, builder.GetShape(x));
     ASSIGN_OR_RETURN(auto q_shape, builder.GetShape(q));
-    if (x_shape != q_shape) {
+    if (!ShapeUtil::Compatible(x_shape, q_shape)) {
       return InvalidArgument(
           "Arguments to Zeta must have equal shapes and types; got %s and %s",
           x_shape.ToString(), q_shape.ToString());

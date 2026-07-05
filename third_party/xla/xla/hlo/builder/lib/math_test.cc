@@ -550,6 +550,52 @@ TEST_F(MathTest, Igamma) {
   ComputeAndCompareR3<float>(&builder, expected, {}, kErrorSpec);
 }
 
+TEST_F(MathTest, IgammaDynamicShapeMismatch) {
+  XlaBuilder builder(TestName());
+  Shape shape_a = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_a.set_dynamic_dimension(0, true);
+  
+  XlaOp a = Parameter(&builder, 0, shape_a, "a");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  
+  Igamma(a, x);
+  
+  auto status = builder.Build().status();
+  ASSERT_TRUE(status.ok());
+}
+
+
+TEST_F(MathTest, IgammacDynamicShapeMismatch) {
+  XlaBuilder builder(TestName());
+  Shape shape_a = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_a.set_dynamic_dimension(0, true);
+  
+  XlaOp a = Parameter(&builder, 0, shape_a, "a");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  
+  Igammac(a, x);
+  
+  auto status = builder.Build().status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(MathTest, ZetaDynamicShapeMismatch) {
+  XlaBuilder builder(TestName());
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_q = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  
+  XlaOp x = Parameter(&builder, 0, shape_x, "x");
+  XlaOp q = Parameter(&builder, 1, shape_q, "q");
+  
+  Zeta(x, q);
+  
+  auto status = builder.Build().status();
+  ASSERT_TRUE(status.ok());
+}
+
 TEST_F(MathTest, IgammaSpecialValues) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());

@@ -22,6 +22,7 @@ from absl.testing import parameterized
 
 import numpy as np
 import scipy.special as sps
+import tensorflow as tf
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
@@ -618,6 +619,41 @@ class IgammacTest(xla_test.XLATestCase, parameterized.TestCase):
         actual = sess.run(_igammac(a, x))
     self.assertAllClose(expected_values, actual, atol=atol, rtol=rtol)
 
+
+class DynamicShapeEqualityTest(xla_test.XLATestCase, parameterized.TestCase):
+
+  def _test_op_with_dynamic_shapes(self, op_fn, dtype):
+    tf.random.set_seed(3994)
+    t = tf.random.normal([1, 32], dtype=dtype)
+
+    def model(t):
+      a = tf.experimental.numpy.logaddexp(t, t)
+      b = tf.linspace(a, a, 6)
+      c = tf.linalg.lstsq(t, b)
+      d = tf.experimental.numpy.power(b, t)
+      return op_fn(a=c, x=d)
+
+    eager_out = model(t)
+    xla_out = def_function.function(model, jit_compile=True)(t)
+    self.assertAllClose(eager_out, xla_out, rtol=1e-5, atol=1e-5)
+
+  @parameterized.parameters(tf.float32, tf.float64)
+  def testIgammaDynamicShape(self, dtype):
+    if self.device not in ['XLA_GPU', 'XLA_CPU'] and dtype == tf.float64:
+      self.skipTest('Skipping test because some F64 operations not supported on TPU.')
+    self._test_op_with_dynamic_shapes(tf.raw_ops.Igamma, dtype)
+
+  @parameterized.parameters(tf.float32, tf.float64)
+  def testIgammacDynamicShape(self, dtype):
+    if self.device not in ['XLA_GPU', 'XLA_CPU'] and dtype == tf.float64:
+      self.skipTest('Skipping test because some F64 operations not supported on TPU.')
+    self._test_op_with_dynamic_shapes(tf.raw_ops.Igammac, dtype)
+
+  @parameterized.parameters(tf.float32, tf.float64)
+  def testZetaDynamicShape(self, dtype):
+    if self.device not in ['XLA_GPU', 'XLA_CPU'] and dtype == tf.float64:
+      self.skipTest('Skipping test because some F64 operations not supported on TPU.')
+    self._test_op_with_dynamic_shapes(lambda a, x: tf.raw_ops.Zeta(x=a, q=x), dtype)
 
 if __name__ == '__main__':
   os.environ['XLA_FLAGS'] = '--xla_cpu_enable_fast_math=false'
