@@ -32,9 +32,10 @@ limitations under the License.
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/gpu/runtime/command.h"
-#include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
+#include "xla/backends/gpu/runtime/cudnn_thunk.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -78,7 +79,7 @@ se::StreamExecutor* GpuExecutor() {
 
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
-    CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
+    CommandExecutor::SynchronizationMode::kSerialize;
 
 }  // namespace
 
@@ -120,11 +121,14 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
     return graph;
   }());
   int64_t workspace_size = graph.Graph().get_workspace_size();
-  TF_ASSERT_OK(graph.Prepare(
-      dnn_support, se::EngineOptions{/*require_determinism=*/false,
-                                     /*allow_tf32=*/true,
-                                     /*require_command_buffer=*/true}));
-  TF_ASSERT_OK(graph.Build(dnn_support, /*plan_id=*/std::nullopt));
+  TF_ASSERT_OK(
+      graph.Prepare(&dnn_support, stream_executor->GetDeviceDescription(),
+                    se::EngineOptions{/*require_determinism=*/false,
+                                      /*allow_tf32=*/true,
+                                      /*require_command_buffer=*/true}));
+  TF_ASSERT_OK(graph.Build(&dnn_support,
+                           stream_executor->GetDeviceDescription(),
+                           /*plan_id=*/std::nullopt));
   EXPECT_THAT(graph.SupportsExplicitCommandBufferConstruction(),
               absl_testing::IsOkAndHolds(true));
 
@@ -153,16 +157,32 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
         {slice_workspace, ShapeUtil::MakeShape(U8, {workspace_size})});
   }
 
+  // Build a CuDnnThunk that owns the prebuilt graph. CuDnnThunk is both a
+  // Thunk and a Command (via TracedCommand), so it can be borrowed directly
+  // into the CommandSequence. Its Initialize() short-circuits when the graph
+  // is already populated, so the fingerprint deserialization path is skipped.
+  std::vector<bool> output_args(args.size(), false);
+  output_args.back() = true;
+  auto cudnn_thunk = std::make_unique<CuDnnThunk>(
+      /*fingerprint=*/"", Thunk::ThunkInfo(), args, std::move(output_args));
   auto dnn_graph = std::make_unique<se::gpu::CudnnGraph>(std::move(graph));
-  CommandSequence commands;
-  commands.Emplace<CuDnnCmd>(
-      args, std::make_shared<se::dnn::LazyDnnGraph>(std::move(dnn_graph)));
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+  se::dnn::LazyDnnGraph prebuilt(std::move(dnn_graph));
+  cudnn_thunk->graph()->swap(prebuilt);
 
-  // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
+  CommandSequence commands;
+  commands.Append(cudnn_thunk.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
+
+  // Construct a thunk with command sequence. A SequentialThunk owns the
+  // CuDnnThunk so it outlives the borrowed pointer in CommandSequence.
+  ThunkSequence thunk_sequence;
+  thunk_sequence.push_back(std::move(cudnn_thunk));
+  auto sequential_thunk = std::make_unique<SequentialThunk>(
+      Thunk::ThunkInfo(), std::move(thunk_sequence));
+  CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo(),
+                           std::move(sequential_thunk));
 
   std::vector<se::DeviceAddressBase> operands;
   operands.reserve(3);
@@ -188,8 +208,9 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations(operands, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk.Initialize(

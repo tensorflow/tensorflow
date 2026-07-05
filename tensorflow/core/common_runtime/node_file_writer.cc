@@ -109,7 +109,7 @@ tensorflow::NodeFileWriter::GetNodeFileWriterIfEnabled(
 
     // Put the device name in the filename for debugging purposes. Also append
     // random number in case multiple processes write out nodes concurrently.
-    std::string filename = strings::StrCat(
+    std::string filename = absl::StrCat(
         "node_defs", absl::StrReplaceAll(device_name, {{"/", "_"}, {":", "_"}}),
         "_", random::New64());
 
@@ -150,7 +150,7 @@ absl::Status NodeFileWriter::RecordNodeExecution(OpKernel* op_kernel,
     if (input.NumElements() <= kMaxInt32Elems && input.dtype() == DT_INT32 &&
         context->input_memory_type(i) == HOST_MEMORY) {
       AttrValue& input_tensor =
-          (*def.mutable_attr())[strings::StrCat("_input_tensor_", i)];
+          (*def.mutable_attr())[absl::StrCat("_input_tensor_", i)];
       input.AsProtoField(input_tensor.mutable_tensor());
     } else if (!DataTypeIsFloating(input.dtype())) {
       // Skip ops with non-floating-point inputs, since these are not useful
@@ -163,7 +163,7 @@ absl::Status NodeFileWriter::RecordNodeExecution(OpKernel* op_kernel,
 
 absl::Status NodeFileWriter::MaybeWriteNodeDefToFile(const NodeDef& def) {
   std::string def_str = def.SerializeAsString();
-  uint64 size = def_str.size();
+  uint64_t size = def_str.size();
   std::string size_as_str;
   // The file consists of a series of records, each consisting of a 64-bit
   // little endian integer representing the size of the serialized NodeDef,
@@ -174,7 +174,7 @@ absl::Status NodeFileWriter::MaybeWriteNodeDefToFile(const NodeDef& def) {
 
   EqualGraphDefOptions options;
   options.ignore_internal_attrs = false;
-  uint64 hash = NodeDefHash(def, options);
+  uint64_t hash = NodeDefHash(def, options);
 
   mutex_lock l{mu_};
   if (written_hashes_.count(hash) == 0) {

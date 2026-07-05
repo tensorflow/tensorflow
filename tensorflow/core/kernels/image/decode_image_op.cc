@@ -710,12 +710,13 @@ class DecodeImageV2Op : public OpKernel {
       DecodeBMP(bmp_pixels, row_size, output->flat<uint8_t>().data(), width,
                 abs_height, requested_channels, img_channels, top_down);
     } else {
-      std::unique_ptr<uint8_t[]> buffer(
-          new uint8_t[height * width * requested_channels]);
+      const int64_t buffer_size =
+          static_cast<int64_t>(abs_height) * width * requested_channels;
+      std::unique_ptr<uint8_t[]> buffer(new uint8_t[buffer_size]);
       DecodeBMP(bmp_pixels, row_size, buffer.get(), width, abs_height,
                 requested_channels, img_channels, top_down);
-      TTypes<uint8_t, 3>::UnalignedConstTensor buf(buffer.get(), height, width,
-                                                   requested_channels);
+      TTypes<uint8_t, 3>::UnalignedConstTensor buf(buffer.get(), abs_height,
+                                                   width, requested_channels);
       // Convert the raw uint8 buffer to desired dtype.
       // Use eigen threadpooling to speed up the copy operation.
       const auto& device = context->eigen_device<Eigen::ThreadPoolDevice>();
@@ -756,6 +757,19 @@ class DecodeImageV2Op : public OpKernel {
                 absl::InvalidArgumentError(
                     "Number of channels requested does not match input"));
 
+    // Check width, height, and overflow for width x height.
+    OP_REQUIRES(context, width > 0 && height > 0,
+                absl::InvalidArgumentError("Got negative width or height."));
+
+    // Check for overflow
+    const size_t total_pixels =
+        static_cast<size_t>(width) * static_cast<size_t>(height);
+    OP_REQUIRES(
+        context,
+        // Both the 32-bit and 64-bit values should be the same.
+        static_cast<int>(total_pixels) == static_cast<int64_t>(total_pixels),
+        absl::InvalidArgumentError("Width x Height > 32-bits"));
+
     // Indicate in traces what the input image dimensions are.
     tsl::profiler::TraceMe activity([&] {
       return tsl::profiler::TraceMeEncode(
@@ -780,9 +794,13 @@ class DecodeImageV2Op : public OpKernel {
       }
 
       // Actually decode the image into the output buffer.
+      // Use multi-threaded decoding for images larger than 1 megapixel.
+      // TODO(boulos): Add an attribute to DecodeImage to allow manually
+      // controlling this.
+      const bool use_threads = (width * height > 1024 * 1024);
       OP_REQUIRES(context,
                   webp::DecodeWebPImage(input, output->flat<uint8_t>().data(),
-                                        width, height, channels),
+                                        width, height, channels, use_threads),
                   absl::InvalidArgumentError("Failed to decode WebP image."));
       // Note: Here we could also perform casting to other dtypes, but users can
       // also just convert in their own code.
@@ -797,9 +815,10 @@ class DecodeImageV2Op : public OpKernel {
     Tensor* output = nullptr;
     std::string error_string;
 
+    const bool use_threads = (width * height > 1024 * 1024);
     uint8_t* buffer = webp::DecodeWebPAnimation(
         input,
-        [&](int num_frames, int width, int height, int channls) -> uint8_t* {
+        [&](int num_frames, int width, int height, int channels) -> uint8_t* {
           // If expand_animations is false, we want {height, width, channels}
           // otherwise, we want {num_frames, height, width, channels} even if
           // it's a single frame.
@@ -821,7 +840,7 @@ class DecodeImageV2Op : public OpKernel {
 
           return output->flat<uint8_t>().data();
         },
-        &error_string, expand_animations_);
+        &error_string, expand_animations_, use_threads);
 
     OP_REQUIRES(context, buffer != nullptr,
                 absl::InvalidArgumentError(absl::StrCat(
@@ -852,10 +871,11 @@ class DecodeImageV2Op : public OpKernel {
                    context->allocate_output(
                        0, TensorShape({height, width, channels}), &output));
 
-    OP_REQUIRES(context,
-                jxl::DecodeImage(input, channels, output->flat<uint8>().data(),
-                                 output->flat<uint8>().size()),
-                absl::InvalidArgumentError("Failed to decode JXL image"));
+    OP_REQUIRES(
+        context,
+        jxl::DecodeImage(input, channels, output->flat<uint8_t>().data(),
+                         output->flat<uint8_t>().size()),
+        absl::InvalidArgumentError("Failed to decode JXL image"));
   }
 
  private:

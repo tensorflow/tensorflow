@@ -16,13 +16,21 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_LOWERING_UTIL_H_
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_LOWERING_UTIL_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -40,6 +48,53 @@ absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
 // Extracts NVVM annotations from the Triton module.
 std::vector<llvm::Metadata*> ExtractNvvmAnnotations(
     llvm::Module* ll_triton_module);
+
+// Returns the set of not-reduced dimensions.
+llvm::SmallVector<unsigned> GetRetainedDims(
+    llvm::ArrayRef<unsigned> reduced_dims, size_t rank);
+
+// Compute the strides of a dense tensor given its shape and layout.
+llvm::SmallVector<int64_t> ComputeStrides(llvm::ArrayRef<int64_t> shape,
+                                          llvm::ArrayRef<int64_t> layout);
+
+// Inserts arith::IndexCastOp for each value in values.
+llvm::SmallVector<mlir::Value> IndexCast(mlir::ImplicitLocOpBuilder& builder,
+                                         mlir::Type type,
+                                         mlir::ValueRange values);
+
+// Expands the value in all dimensions except `dim` and broadcasts the result
+// to the provided tile shape.
+mlir::Value ExpandAndBroadcastValue(mlir::ImplicitLocOpBuilder& builder,
+                                    mlir::Value value, int dim,
+                                    mlir::RankedTensorType tile_type);
+
+// Returns true if 'value' is guaranteed to be divisible by 'divisor'.
+// This assumes that 'value' is a constant or an apply indexing op.
+bool IsGuaranteedDivisible(mlir::Value value, int64_t divisor);
+
+// Creates a tensor of pointers and a tensor of masks for loading and
+// storing tiles. Reduced dimensions are the dimensions that are reduced by
+// the tile.
+//
+// Pre: original_shape.size() == layout.size()
+//      original_shape.size() == offsets.size()
+//      original_shape.size() == sizes.size()
+//      original_shape.size() == strides.size()
+//      original_shape.size() == reduced_dims.size() + tile_shape.size()
+//
+// Returns a pair of tensors:
+// - The first tensor is a tensor of pointers to load/store.
+// - The second tensor is a tensor of in-bounds predicates.
+std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
+    mlir::ImplicitLocOpBuilder& builder,     //
+    mlir::Value base_ptr,                    //
+    llvm::ArrayRef<int64_t> original_shape,  //
+    llvm::ArrayRef<int64_t> layout,          //
+    mlir::ValueRange offsets,                //
+    llvm::ArrayRef<int64_t> sizes,           //
+    llvm::ArrayRef<int64_t> strides,         //
+    llvm::ArrayRef<unsigned> reduced_dims,   //
+    llvm::ArrayRef<int64_t> tile_shape);
 
 }  // namespace xla::gpu::triton
 

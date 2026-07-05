@@ -5,7 +5,6 @@
 module @ifrt_attributes_are_removed attributes {
         ifrt.num_devices = 2,
         ifrt.compile_options_key = "test_override",
-        ifrt.is_sdy_partitioned,
         ifrt.local_view} {
   func.func @main(
       %arg0: tensor<2x2xi32> {

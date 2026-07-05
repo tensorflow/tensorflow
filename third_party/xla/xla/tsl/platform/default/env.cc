@@ -28,6 +28,10 @@ limitations under the License.
 #include <unistd.h>
 
 #include <cstdint>
+#include <string>
+
+#include "absl/strings/string_view.h"
+#include "tsl/platform/numa.h"
 
 #ifdef __FreeBSD__
 #include <pthread_np.h>
@@ -35,6 +39,7 @@ limitations under the License.
 
 #include <map>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -70,7 +75,11 @@ class PThread : public Thread {
       : detached_(detached) {
     ThreadParams* params = new ThreadParams;
     params->name = name;
-    params->fn = std::move(fn);
+    params->fn = [fn = std::move(fn),
+                  numa_node = thread_options.numa_node]() mutable {
+      tsl::port::NUMASetThreadNodeAffinity(numa_node);
+      std::move(fn)();
+    };
     pthread_attr_t attributes;
     pthread_attr_init(&attributes);
     if (thread_options.stack_size != 0) {
@@ -125,8 +134,9 @@ class PosixEnv : public Env {
 
   ~PosixEnv() override { LOG(FATAL) << "Env::Default() must not be destroyed"; }
 
-  bool MatchPath(const std::string& path, const std::string& pattern) override {
-    return fnmatch(pattern.c_str(), path.c_str(), FNM_PATHNAME) == 0;
+  bool MatchPath(absl::string_view path, absl::string_view pattern) override {
+    return fnmatch(std::string(pattern).c_str(), std::string(path).c_str(),
+                   FNM_PATHNAME) == 0;
   }
 
   void SleepForMicroseconds(int64_t micros) override {

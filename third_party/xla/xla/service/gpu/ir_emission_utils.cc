@@ -17,12 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <queue>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -32,13 +30,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
@@ -53,26 +52,40 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/literal.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/regexp.h"
 
 namespace xla {
 namespace gpu {
+
+bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kRaggedDot) {
+    switch (instr.shape().element_type()) {
+      // Only float 16 and bf 16 are supported by HipBlasLt GroupGemm
+      case F16:
+      case BF16:
+        return (((instr.operand(0)->shape().element_type() == F16) ||
+                 (instr.operand(0)->shape().element_type() == BF16)) &&
+                ((instr.operand(1)->shape().element_type() == F16) ||
+                 (instr.operand(1)->shape().element_type() == BF16)));
+      default:
+        return false;
+    }
+  }
+  return false;
+}
 
 absl::StatusOr<bool> IsCublasSupportedMatMul(
     const HloInstruction& dot, bool allow_matrix_vector_multiplication) {
@@ -83,21 +96,20 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
   // Number of operands that have non-trivial non-contracting dimension.
   int num_matrix_operands = 0;
   for (int operand : {0, 1}) {
-    TF_ASSIGN_OR_RETURN(DotOperandDims dims,
-                        DotOperandDims::FromDotOperand(&dot, operand));
+    ASSIGN_OR_RETURN(DotOperandDims dims,
+                     DotOperandDims::FromDotOperand(&dot, operand));
     // cuBLAS only supports single contracting dimension.
-    if (dims.DimensionCount(DotOperandDims::kContracting) != 1) {
+    if (dims.Rank(DotOperandDims::kContracting) != 1) {
       return false;
     }
     // cuBLAS doesn't support minor batch dimension.
-    if (absl::c_any_of(dims.DimensionIndices(DotOperandDims::kBatch),
-                       [&](int64_t dim) {
-                         return dim == dims.shape().dimensions().size() - 1;
-                       })) {
+    if (absl::c_any_of(dims.Indices(DotOperandDims::kBatch), [&](int64_t dim) {
+          return dim == dims.shape().dimensions().size() - 1;
+        })) {
       return false;
     }
     // cuBLAS supports up to one non-contracting dimension.
-    const auto& nc_dims = dims.DimensionSizes(DotOperandDims::kNonContracting);
+    const auto& nc_dims = dims.Sizes(DotOperandDims::kNonContracting);
     if (nc_dims.size() > 1) {
       return false;
     }
@@ -146,11 +158,27 @@ bool IsCustomCallToPtxKernel(const HloInstruction& hlo) {
          hlo.custom_call_target() == "__gpu$xla.gpu.ptx";
 }
 
-bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
+bool IsCustomCallToMosaicGpu(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          (hlo.custom_call_target() == "mosaic_gpu" ||
-          hlo.custom_call_target() == "mosaic_gpu_v2") &&
-         absl::StrContains(hlo.raw_backend_config_string(), "nvshmem");
+          hlo.custom_call_target() == "mosaic_gpu_v2");
+}
+
+
+bool IsMosaicWithMultimem(const HloInstruction& hlo) {
+  return IsCustomCallToMosaicGpu(hlo) &&
+         absl::StrContains(hlo.raw_backend_config_string(),
+                           "multimem_parameters");
+}
+
+bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo) {
+  return IsCustomCallToMosaicGpu(hlo) &&
+         RE2::PartialMatch(hlo.raw_backend_config_string(),
+                           "uses_xla_collective_metadata\\s*=\\s*[tT]rue");
+}
+
+bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
+  return IsMosaicWithMultimem(hlo);
 }
 
 static bool IsContiguousSlice(
@@ -204,13 +232,18 @@ bool IsContiguousSlice(const HloInstruction& instr) {
 }
 
 llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b) {
-  llvm::Value* is_thread0 = b->CreateICmpEQ(
-      b->getInt32(0),
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b));
+  // On Intel GPUs, intrinsics may return a non-i32 integer type, so we first
+  // emit the intrinsic call to get the correct type for the compare
+  // instruction.
+  llvm::Value* tid =
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b);
+  llvm::Value* is_thread0 =
+      b->CreateICmpEQ(llvm::ConstantInt::get(tid->getType(), 0), tid);
 
-  llvm::Value* is_block0 = b->CreateICmpEQ(
-      b->getInt32(0),
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b));
+  llvm::Value* bid =
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b);
+  llvm::Value* is_block0 =
+      b->CreateICmpEQ(llvm::ConstantInt::get(bid->getType(), 0), bid);
   return b->CreateAnd(is_thread0, is_block0);
 }
 
@@ -481,31 +514,6 @@ llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
   return b->getInt32Ty();
 }
 
-absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
-    const Literal& literal) {
-  PrimitiveType element_type = literal.shape().element_type();
-  if (!primitive_util::IsArrayType(element_type)) {
-    return Internal("Unsupported type in LiteralToXlaFormat");
-  }
-
-  int64_t byte_size = literal.size_bytes();
-  if (primitive_util::IsSubByteNonPredType(element_type)) {
-    auto bit_width = primitive_util::BitWidth(element_type);
-    std::vector<uint8_t> output(CeilOfRatio<int64_t>(byte_size, 8 / bit_width));
-    absl::Span<char> output_span =
-        absl::MakeSpan(reinterpret_cast<char*>(output.data()), output.size());
-    PackIntN(
-        bit_width,
-        absl::MakeSpan(reinterpret_cast<const char*>(literal.untyped_data()),
-                       byte_size),
-        output_span);
-    return DenseDataIntermediate::Own(std::move(output));
-  }
-
-  return DenseDataIntermediate::Alias(absl::MakeSpan(
-      reinterpret_cast<const uint8_t*>(literal.untyped_data()), byte_size));
-}
-
 absl::StatusOr<std::string> GetProtoFingerprint(
     const tsl::protobuf::MessageLite& proto) {
   std::string result;
@@ -530,12 +538,6 @@ std::optional<std::string> GetCustomFusionConfigName(
     return std::nullopt;
   }
   return fusion_backend_config.custom_fusion_config().name();
-}
-
-bool IsDynamicSliceFusion(const HloInstruction* instr) {
-  std::optional<std::string> name = GetCustomFusionConfigName(instr);
-  return name == kDynamicSliceFusionWithStaticAddressComputationConfigName ||
-         name == kDynamicSliceFusionWithDynamicAddressComputationConfigName;
 }
 
 namespace {
@@ -578,6 +580,8 @@ std::optional<Dependencies> GetLeafDependencies(const HloInstruction* root) {
     queue.pop();
 
     if (instruction->opcode() == HloOpcode::kCustomCall ||
+        instruction->opcode() == HloOpcode::kPartitionId ||
+        instruction->opcode() == HloOpcode::kReplicaId ||
         instruction->HasSideEffect()) {
       VLOG(5) << "Found an unsafe operation.";
       return std::nullopt;
@@ -657,8 +661,8 @@ bool IsDynamicVariable(const HloInstruction* variable,
   }
 
   int64_t tuple_idx = variable->tuple_index();
-  for (int64_t dynamic_idx : config->dynamic_variable_tuple_indices()) {
-    if (dynamic_idx == tuple_idx) {
+  for (const auto& dv : config->dynamic_variables()) {
+    if (dv.tuple_index() == tuple_idx) {
       return true;
     }
   }
@@ -683,8 +687,8 @@ std::optional<const HloInstruction*> VerifyInductionVariable(
         induction_var = gte;
       } else if (IsDynamicVariable(gte, loop)) {
         // Dynamic variables are also acceptable because they represent tuple
-        // indices used in DS/DUS that can be optimized by
-        // FusionDynamicMemcpyRewriter.
+        // indices used in DS/DUS copy fusions that can be emitted as
+        // specialized D2D copy thunk sequences.
         if (induction_var) {
           // This should never happen.
           VLOG(5) << "Found non-unique GTEs for the dynamic variable. Did "
@@ -764,19 +768,6 @@ ResolveFunctionalDependencyOnInductionVariable(const HloInstruction* instr) {
 
   VLOG(5) << "While loop for " << instr->name() << ": " << result.loop->name();
   return result;
-}
-
-DenseDataIntermediateProto DenseDataIntermediate::ToProto() const {
-  DenseDataIntermediateProto proto;
-  absl::Span<const uint8_t> data = span();
-  proto.mutable_data()->assign(data.begin(), data.end());
-  return proto;
-}
-DenseDataIntermediate DenseDataIntermediate::FromProto(
-    const DenseDataIntermediateProto& proto) {
-  const std::string& data = proto.data();
-  return DenseDataIntermediate::Own(
-      std::vector<uint8_t>(data.begin(), data.end()));
 }
 
 }  // namespace gpu

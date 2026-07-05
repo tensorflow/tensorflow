@@ -52,38 +52,40 @@ absl::Status CheckSparseToDenseShapes(const Tensor& indices,
                                       const Tensor& default_value) {
   // sparse_indices
   if (indices.dims() > 2) {
-    return errors::InvalidArgument(
-        "sparse_indices should be a scalar, vector, or matrix, "
-        "got shape ",
-        indices.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("sparse_indices should be a scalar, vector, or matrix, "
+                     "got shape ",
+                     indices.shape().DebugString()));
   }
   const int64_t num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
   const int64_t num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
 
   // output_shape
   if (!TensorShapeUtils::IsVector(output_shape.shape())) {
-    return errors::InvalidArgument("output_shape must be rank 1, got shape ",
-                                   output_shape.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("output_shape must be rank 1, got shape ",
+                     output_shape.shape().DebugString()));
   }
 
   if (output_shape.NumElements() != num_dims) {
-    return errors::InvalidArgument(
-        "output_shape has incorrect number of elements: ",
-        output_shape.NumElements(), " should be: ", num_dims);
+    return absl::InvalidArgumentError(
+        absl::StrCat("output_shape has incorrect number of elements: ",
+                     output_shape.NumElements(), " should be: ", num_dims));
   }
 
   // sparse_values
   const int64_t num_values = sparse_values.NumElements();
   if (sparse_values.dims() != 0 &&
       (sparse_values.dims() != 1 || num_values != num_elems)) {
-    return errors::InvalidArgument("sparse_values has incorrect shape ",
-                                   sparse_values.shape().DebugString(),
-                                   ", should be [] or [", num_elems, "]");
+    return absl::InvalidArgumentError(
+        absl::StrCat("sparse_values has incorrect shape ",
+                     sparse_values.shape().DebugString(), ", should be [] or [",
+                     num_elems, "]"));
   }
 
   // default_value
   if (!TensorShapeUtils::IsScalar(default_value.shape())) {
-    return errors::InvalidArgument("default_value should be a scalar.");
+    return absl::InvalidArgumentError("default_value should be a scalar.");
   }
   return absl::OkStatus();
 }
@@ -163,9 +165,9 @@ class SparseToDense : public OpKernel {
 
     output->flat<T>().setConstant(default_value.scalar<T>()());
     OP_REQUIRES(c, st.template ToDense<T>(output, false /* initialize */),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Indices are not valid (out of bounds).  Shape: ",
-                    output->shape().DebugString()));
+                    output->shape().DebugString())));
   }
 
  private:
@@ -208,8 +210,8 @@ class SparseToDenseGPU : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
     auto* stream = c->op_device_context()->stream();
-    OP_REQUIRES_ASYNC(c, stream, errors::Internal("No GPU stream available."),
-                      done);
+    OP_REQUIRES_ASYNC(c, stream,
+                      absl::InternalError("No GPU stream available."), done);
 
     const Tensor& indices = c->input(0);
     const Tensor& output_shape = c->input(1);

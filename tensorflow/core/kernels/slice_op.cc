@@ -41,7 +41,7 @@ void IntTensorToInt64Vec(const Tensor& tensor,
   out->resize(tensor.NumElements());
   int64_t* out_ptr = out->data();
   if (tensor.dtype() == DT_INT32) {
-    const int32* tensor_ptr = tensor.flat<int32>().data();
+    const int32_t* tensor_ptr = tensor.flat<int32_t>().data();
     for (int64_t i = 0; i < tensor.NumElements(); ++i) {
       out_ptr[i] = tensor_ptr[i];
     }
@@ -74,10 +74,10 @@ void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
           TensorShapeUtils::IsVector(size_tensor.shape()) &&
           begin_tensor.NumElements() == input.dims() &&
           size_tensor.NumElements() == input.dims(),
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(absl::StrCat(
           "Expected begin and size arguments to be 1-D tensors of size ",
           input.dims(), ", but got shapes ", begin_tensor.shape().DebugString(),
-          " and ", size_tensor.shape().DebugString(), " instead."));
+          " and ", size_tensor.shape().DebugString(), " instead.")));
 
   const int input_dims = input.dims();
   IntTensorToInt64Vec(begin_tensor, begin);
@@ -102,12 +102,13 @@ void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
                                   ") when ", "input.dim_size(", i, ") == 0"));
     } else {
       OP_REQUIRES(context, 0 <= b && b <= input.dim_size(i),
-                  errors::InvalidArgument("Expected begin[", i, "] in [0, ",
-                                          input.dim_size(i), "], but got ", b));
-      OP_REQUIRES(
-          context, 0 <= s && b + s <= input.dim_size(i),
-          errors::InvalidArgument("Expected size[", i, "] in [0, ",
-                                  input.dim_size(i) - b, "], but ", "got ", s));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Expected begin[", i, "] in [0, ",
+                                   input.dim_size(i), "], but got ", b)));
+      OP_REQUIRES(context, 0 <= s && b + s <= input.dim_size(i),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Expected size[", i, "] in [0, ", input.dim_size(i) - b,
+                      "], but ", "got ", s)));
     }
     OP_REQUIRES_OK(context, output_shape->AddDimWithStatus(s));
     const bool take_all = (b == 0) && (s == input.dim_size(i));
@@ -121,8 +122,8 @@ void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
 template <typename T>
 static void SharedSliceCommonCases(OpKernelContext* context,
                                    const Tensor& input,
-                                   absl::InlinedVector<int64, 4>* begin,
-                                   absl::InlinedVector<int64, 4>* size,
+                                   absl::InlinedVector<int64_t, 4>* begin,
+                                   absl::InlinedVector<int64_t, 4>* size,
                                    Tensor** result, bool* done) {
   bool is_identity = true;
   bool slice_dim0 = true;
@@ -210,7 +211,7 @@ class SliceOp : public OpKernel {
 
       OP_REQUIRES(
           context, false,
-          errors::Unimplemented("SliceOp : Unhandled input dimensions"));
+          absl::UnimplementedError("SliceOp : Unhandled input dimensions"));
     }
   }
 
@@ -328,11 +329,11 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Slice")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("input")
                             .HostMemory("begin")
                             .HostMemory("size")
                             .HostMemory("output"),
-                        SliceOp<CPUDevice, int32>);
+                        SliceOp<CPUDevice, int32_t>);
 
 }  // namespace tensorflow

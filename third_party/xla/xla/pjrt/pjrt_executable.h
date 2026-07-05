@@ -34,10 +34,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "google/protobuf/descriptor.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
+#include "xla/literal.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
@@ -46,8 +49,6 @@ limitations under the License.
 #include "xla/pjrt/proto/executable_metadata.pb.h"
 #include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/buffer_assignment.h"
-#include "xla/service/compiler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -165,6 +166,7 @@ struct LoadOptions {
 class ExecuteContext {
  public:
   virtual ~ExecuteContext() = default;
+  virtual absl::string_view kind() const { return "base"; }
 
   ffi::ExecutionContext& ffi_context() { return ffi_context_; }
   const ffi::ExecutionContext& ffi_context() const { return ffi_context_; }
@@ -221,6 +223,22 @@ struct RecvCallback {
       callback;
 };
 
+struct HloOutputCallback {
+  int64_t callback_id;
+  int num_operands;
+  // The callback for receiving reconstructed HLO output literals.
+  //
+  // Arguments:
+  // - replica_id: The ID of the replica this output corresponds to.
+  // - partition_id: The ID of the manual partition.
+  // - literals: The reconstructed tensor values produced by the HLO
+  // instruction.
+  //             Missing operands are represented by nullptr.
+  std::function<void(int64_t replica_id, int64_t partition_id,
+                     absl::Span<std::shared_ptr<const Literal> const> literals)>
+      callback;
+};
+
 struct ExecuteOptions {
   // If non-zero, identifies this execution as part of a potentially
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
@@ -234,7 +252,7 @@ struct ExecuteOptions {
   const ExecuteContext* context = nullptr;
   // If true, check that the PjRtBuffer argument shapes match the compiled
   // shapes. Otherwise, any shape with the right size on device may be passed.
-  bool strict_shape_checking = true;
+  bool strict_shape_checking = false;
 
   // Set multi_slice_config when the computation spans multiple slices. The
   // config should match what was used during compilation to generate this
@@ -248,6 +266,13 @@ struct ExecuteOptions {
   // These callbacks must outlive the execution.
   absl::Span<const std::vector<SendCallback>> send_callbacks;
   absl::Span<const std::vector<RecvCallback>> recv_callbacks;
+  // The HLO output callbacks for PjRt execution. These callbacks are used to
+  // receive reconstructed HLO instruction output literals. Unlike send/recv
+  // callbacks, this is a flat span since a single callback instance handles
+  // invocations across all replicas and partitions, with the `replica_id` and
+  // `partition_id` passed directly as arguments. These callbacks must outlive
+  // the execution.
+  absl::Span<const HloOutputCallback> hlo_output_callbacks;
 
   // If true, send callbacks are passed PjRtChunks in major-to-minor layout, and
   // recv functions should pass major-to-minor chunks to
@@ -298,44 +323,28 @@ struct ExecuteOptions {
   // The latest known incarnation ids for all alive tasks, keyed by task id.
   absl::flat_hash_map<int, IncarnationId> incarnations;
 
+  // The PRNG seed to use for execution. A seed of 0 means that the seed is not
+  // set and that the default seed (usually random) should be used.
+  int64_t seed = 0;
+
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);
-};
 
-// Static memory usage for a compiled program.
-// The on-device memory needed to run an executable is at least
-//   generated_code_size_in_bytes
-//   + argument_size_in_bytes + output_size_in_bytes - alias_size_in_bytes
-//   + temp_size_in_bytes.
-struct CompiledMemoryStats {
-  // Device default memory (e.g., HBM for GPU/TPU) usage stats.
-  int64_t generated_code_size_in_bytes = 0;
-  int64_t argument_size_in_bytes = 0;
-  int64_t output_size_in_bytes = 0;
-  int64_t peak_memory_in_bytes = 0;
-  // How much argument is reused for output.
-  int64_t alias_size_in_bytes = 0;
-  int64_t temp_size_in_bytes = 0;
-  int64_t total_size_in_bytes = 0;
-
-  // Host memory usage stats.
-  int64_t host_generated_code_size_in_bytes = 0;
-  int64_t host_argument_size_in_bytes = 0;
-  int64_t host_output_size_in_bytes = 0;
-  int64_t host_alias_size_in_bytes = 0;
-  int64_t host_temp_size_in_bytes = 0;
-
-  std::string serialized_buffer_assignment;
-
-  std::string DebugString() const;
-
-  CompiledMemoryStatsProto ToProto() const;
-
-  static CompiledMemoryStats FromProto(const CompiledMemoryStatsProto& proto);
-
-  void PopulateBufferStatsFromAllocations(
-      absl::Span<const BufferAllocation* const> allocs);
+  // Pretty-printing for ExecutionMode enum.
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const ExecutionMode& mode) {
+    absl::Format(&sink, "%s", [&] {
+      switch (mode) {
+        case ExecutionMode::kDefault:
+          return "default";
+        case ExecutionMode::kSynchronous:
+          return "synchronous";
+        case ExecutionMode::kAsynchronous:
+          return "asynchronous";
+      }
+    }());
+  }
 };
 
 class PjRtExecutable {
@@ -376,6 +385,13 @@ class PjRtExecutable {
   // Returns the layout of each output.
   virtual absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetOutputLayouts() const;
+
+  // Returns a list of lists of memory kind strings for parameter. The returned
+  // value is `[num_programs, num_parameters]`. The size of the outer list
+  // should be equal to `GetHloModules()`. Under SPMD, one can use
+  // `GetParameterMemoryKinds().front()`.
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const = 0;
 
   // Returns a list of lists of memory kind strings for output. The returned
   // value is `[num_programs, num_output]`. The size of the outer list should be

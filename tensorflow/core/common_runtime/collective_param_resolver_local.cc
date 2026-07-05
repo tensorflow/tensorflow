@@ -46,7 +46,7 @@ namespace tensorflow {
 CollectiveParamResolverLocal::CollectiveParamResolverLocal(
     const ConfigProto& config, const DeviceMgr* dev_mgr,
     DeviceResolverInterface* dev_resolver,
-    NcclCommunicatorInterface* nccl_communicator, const string& task_name)
+    NcclCommunicatorInterface* nccl_communicator, const std::string& task_name)
     : nccl_(config.experimental().collective_nccl()),
       dev_mgr_(dev_mgr),
       dev_resolver_(dev_resolver),
@@ -87,10 +87,10 @@ const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
   }
 }
 
-string TaskNameFromDeviceName(const string& device_name) {
+std::string TaskNameFromDeviceName(const std::string& device_name) {
   DeviceNameUtils::ParsedName parsed_device;
   CHECK(DeviceNameUtils::ParseFullName(device_name, &parsed_device));
-  string task_name;
+  std::string task_name;
   CHECK(DeviceNameUtils::GetTaskName(parsed_device, &task_name));
   return task_name;
 }
@@ -117,16 +117,16 @@ absl::Status CheckUserSpecifiedRanks(
 
   auto received_ranks = absl::StrJoin(members, ",", RankFormatter());
   if (at_least_one_member_with_no_rank && at_least_one_member_with_user_rank) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Only part of the group members have user given rank specified.",
-        "Received ranks: ", received_ranks);
+        "Received ranks: ", received_ranks));
   }
 
   if (at_least_one_member_with_user_rank &&
       user_ranks.size() < members.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Duplicate ranks specified for group members. Received ranks: ",
-        received_ranks);
+        received_ranks));
   }
   return absl::OkStatus();
 }
@@ -179,7 +179,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
         token, std::bind(&CollectiveParamResolverLocal::CancelGroup, this,
                          group_params->group_key));
     if (is_cancelled) {
-      done(errors::Cancelled("CompleteGroup is cancelled before it starts"));
+      done(absl::CancelledError("CompleteGroup is cancelled before it starts"));
       return;
     }
     done = [cancel_mgr, token,
@@ -200,16 +200,16 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     if (gr->status.ok()) {
       // Check for consistency with existing GroupRec.
       if (group_params->device_type != gr->group.device_type) {
-        gr->status = errors::Internal(
-            "Device ", device.name(),
-            " is joining a group with incompatible device type",
-            gr->group.device_type.type_string(),
-            " (group_key=", gr->group.group_key, ")");
+        gr->status = absl::InternalError(
+            absl::StrCat("Device ", device.name(),
+                         " is joining a group with incompatible device type",
+                         gr->group.device_type.type_string(),
+                         " (group_key=", gr->group.group_key, ")"));
       } else if (group_params->group_size != gr->group.group_size) {
-        gr->status = errors::Internal(
+        gr->status = absl::InternalError(absl::StrCat(
             "Device ", device.name(), " is joining a group with size",
             group_params->group_size, ", but that group has size ",
-            gr->group.group_size, " (group_key=", gr->group.group_key, ")");
+            gr->group.group_size, " (group_key=", gr->group.group_key, ")"));
       }
     }
     bool new_device = false;
@@ -219,10 +219,10 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       if (it == gr->incarnations_by_device_name.end()) {
         if (gr->group.members.size() == gr->group.group_size) {
           // The group is already full.
-          gr->status =
-              errors::Internal("Device ", device.name(),
-                               " is joining a group that is already full",
-                               " (group_key=", gr->group.group_key, ")");
+          gr->status = absl::InternalError(
+              absl::StrCat("Device ", device.name(),
+                           " is joining a group that is already full",
+                           " (group_key=", gr->group.group_key, ")"));
         } else {
           // This is a new device that has not yet joined the group.
           gr->incarnations_by_device_name[device.name()] = device.incarnation();
@@ -233,14 +233,14 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
                group_params->user_specified_rank < gr->group.group_size)) {
             member.rank = group_params->user_specified_rank;
           } else {
-            gr->status = errors::InvalidArgument(
+            gr->status = absl::InvalidArgumentError(
                 "User Provided rank is invalid. It should be between [0, "
                 "group_size)");
           }
           gr->group.members.push_back(std::move(member));
           new_device = true;
           if (VLOG_IS_ON(1)) {
-            string dev_buf;
+            std::string dev_buf;
             for (const auto& m : gr->group.members) {
               absl::StrAppend(&dev_buf, ",", m.device.name());
             }
@@ -254,11 +254,11 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       } else {
         // If the device already exists, check if the incarnation matches.
         if (it->second != device.incarnation()) {
-          gr->status = errors::FailedPrecondition(
+          gr->status = absl::FailedPreconditionError(absl::StrCat(
               "Device ", device.name(),
               " current incarnation doesn't match with one in the group. This "
               "usually means this worker has restarted but the collective "
-              "leader hasn't, or this worker connects to a wrong cluster.");
+              "leader hasn't, or this worker connects to a wrong cluster."));
         }
       }
     }
@@ -302,15 +302,15 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
 
 namespace {
 struct DevRec {
-  string task;
-  string device;
+  std::string task;
+  std::string device;
   int original_rank;
   int local_rank;
   int global_rank;
   const DeviceLocality* locality;
 };
-typedef std::unordered_map<string, DevRec> TaskDeviceMap;
-typedef std::unordered_map<string, TaskDeviceMap> GlobalDeviceMap;
+typedef std::unordered_map<std::string, DevRec> TaskDeviceMap;
+typedef std::unordered_map<std::string, TaskDeviceMap> GlobalDeviceMap;
 
 // Create a populated GlobalDeviceMap from CollInstanceParams and localities.
 GlobalDeviceMap BuildDevRecs(const CollGroupParams& gp) {
@@ -329,15 +329,15 @@ GlobalDeviceMap BuildDevRecs(const CollGroupParams& gp) {
   return gdm;
 }
 
-bool ParseRingOrder(const string& gpu_ring_order_str, TaskDeviceMap* tdm) {
-  std::vector<string> split_gpu_ring_order_str =
+bool ParseRingOrder(const std::string& gpu_ring_order_str, TaskDeviceMap* tdm) {
+  std::vector<std::string> split_gpu_ring_order_str =
       str_util::Split(gpu_ring_order_str, ',');
   if (split_gpu_ring_order_str.size() != tdm->size()) return false;
 
   // gpu id -> local rank
-  gtl::FlatMap<int32, int32> gpu_ranks;
+  gtl::FlatMap<int32_t, int32_t> gpu_ranks;
   for (int32_t rank = 0;
-       rank < static_cast<int32>(split_gpu_ring_order_str.size()); ++rank) {
+       rank < static_cast<int32_t>(split_gpu_ring_order_str.size()); ++rank) {
     int32_t tmp;
     if (absl::SimpleAtoi(split_gpu_ring_order_str[rank], &tmp)) {
       gpu_ranks[tmp] = rank;
@@ -360,7 +360,7 @@ bool ParseRingOrder(const string& gpu_ring_order_str, TaskDeviceMap* tdm) {
   return true;
 }
 
-void OrderTaskDeviceMap(const string& gpu_ring_order, TaskDeviceMap* tdm) {
+void OrderTaskDeviceMap(const std::string& gpu_ring_order, TaskDeviceMap* tdm) {
   CHECK_GT(tdm->size(), 0);  // Should never be called with 0 devices
 
   // If a valid ring order has been passed in via ConfigProto, use that.
@@ -370,8 +370,8 @@ void OrderTaskDeviceMap(const string& gpu_ring_order, TaskDeviceMap* tdm) {
   // We now assign a ring order based on link strengths.  Note that this
   // algorithm is not optimal and may not always find the best ring order.
   int least_rank = -1;
-  string next_device;
-  std::set<string> selected;
+  std::string next_device;
+  std::set<std::string> selected;
   // Starting device is one with the least initial rank.
   for (const auto& it : *tdm) {
     if (least_rank < 0 || it.second.original_rank < least_rank) {
@@ -403,7 +403,7 @@ void OrderTaskDeviceMap(const string& gpu_ring_order, TaskDeviceMap* tdm) {
     if (parsed_name.type == "GPU") {
       for (const InterconnectLink& il : dr->locality->links().link()) {
         parsed_name.id = il.device_id();
-        string endpoint_device =
+        std::string endpoint_device =
             DeviceNameUtils::ParsedNameToString(parsed_name);
         // Skip the device if we've already seen it.
         if (selected.find(endpoint_device) != selected.end()) {
@@ -445,7 +445,7 @@ void OrderTaskDeviceMap(const string& gpu_ring_order, TaskDeviceMap* tdm) {
 // rank order for all the devices in the group, that is appropriate for a ring
 // algorithm.
 GlobalDeviceMap EstablishGlobalRank(const CollGroupParams& gp,
-                                    const string& gpu_ring_order) {
+                                    const std::string& gpu_ring_order) {
   VLOG(1) << "EstablishGlobalRank";
   GlobalDeviceMap gdm = BuildDevRecs(gp);
   for (auto& iter : gdm) {
@@ -453,12 +453,12 @@ GlobalDeviceMap EstablishGlobalRank(const CollGroupParams& gp,
     OrderTaskDeviceMap(gpu_ring_order, &tdm);
   }
   // Connect the global rank order by the lexicographical order of the tasks.
-  std::set<string> tasks;
+  std::set<std::string> tasks;
   for (const CollGroupMember& member : gp.members) {
     tasks.insert(member.task);
   }
   int next_rank = 0;
-  for (const string& task : tasks) {
+  for (const std::string& task : tasks) {
     TaskDeviceMap* tdm = &gdm[task];
     for (auto& it : *tdm) {
       it.second.global_rank = it.second.local_rank + next_rank;
@@ -501,10 +501,10 @@ void CollectiveParamResolverLocal::FinishGroup(GroupRec* gr) {
   CompleteDefaultRanking(&gr->group);
   SetDevPerTask(&gr->group);
   gr->group.num_tasks =
-      static_cast<int32>(gr->group.num_devices_per_task.size());
+      static_cast<int32_t>(gr->group.num_devices_per_task.size());
 }
 
-void CollectiveParamResolverLocal::CancelGroup(int32 group_key) {
+void CollectiveParamResolverLocal::CancelGroup(int32_t group_key) {
   std::vector<StatusCallback> pending_done;
   GroupRec* gr = nullptr;
   {
@@ -521,16 +521,16 @@ void CollectiveParamResolverLocal::CancelGroup(int32 group_key) {
       // The group is already complete. There's no need to cancel.
       return;
     }
-    gr->status = errors::Cancelled("group is cancelled");
+    gr->status = absl::CancelledError("group is cancelled");
     pending_done.swap(gr->pending_done);
     gr->pending_params.clear();
   }
   for (const StatusCallback& done : pending_done) {
-    done(errors::Cancelled("group is cancelled"));
+    done(absl::CancelledError("group is cancelled"));
   }
 }
 
-void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
+void CollectiveParamResolverLocal::SetDefaultRank(const std::string& device,
                                                   CollectiveParams* cp) {
   CHECK_EQ(cp->group.group_size, cp->group.members.size()) << cp->ToString();
   for (int i = 0; i < cp->group.group_size; ++i) {
@@ -576,7 +576,7 @@ void CollectiveParamResolverLocal::CompleteDefaultRanking(CollGroupParams* gp) {
   }
 
   if (VLOG_IS_ON(2)) {
-    string buf;
+    std::string buf;
     for (const auto& m : new_members)
       absl::StrAppend(&buf, "\n", m.device.name());
     VLOG(2) << "Optimized device order for group " << gp->group_key << ": "
@@ -630,19 +630,20 @@ absl::Status CollectiveParamResolverLocal::LookupGroup(int32_t group_key,
   mutex_lock l(group_mu_);
   auto group_rec = group_table_.find(group_key);
   if (group_rec == group_table_.end()) {
-    return errors::InvalidArgument("Group ", group_key,
-                                   " is not "
-                                   "initialized. Please call group "
-                                   "initialization op first before invoking "
-                                   "collective op.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Group ", group_key,
+                     " is not "
+                     "initialized. Please call group "
+                     "initialization op first before invoking "
+                     "collective op."));
   }
   mutex_lock lock(group_rec->second->mu);
   if (!group_rec->second->status.ok()) {
-    return errors::FailedPrecondition(
-        "Failed to run collective due to "
-        "unsuccessful group initialization. "
-        "Group initialization failed with error ",
-        group_rec->second->status.ToString());
+    return absl::FailedPreconditionError(
+        absl::StrCat("Failed to run collective due to "
+                     "unsuccessful group initialization. "
+                     "Group initialization failed with error ",
+                     group_rec->second->status.ToString()));
   }
   *group = group_rec->second->group;
   return absl::OkStatus();
@@ -678,9 +679,9 @@ void CollectiveParamResolverLocal::CompleteInstanceAsync(
     const CompleteInstanceRequest* request, CompleteInstanceResponse* response,
     CancellationManager* cancel_mgr, const StatusCallback& done) {
   done(
-      errors::Internal("CompleteInstance is not implemented by "
-                       "CollectiveParamResolverLocal which is "
-                       "intended only for non-distributed deployment."));
+      absl::InternalError("CompleteInstance is not implemented by "
+                          "CollectiveParamResolverLocal which is "
+                          "intended only for non-distributed deployment."));
 }
 
 // TODO(b/111897089): we need a better way to pick the collective
@@ -705,7 +706,8 @@ void CollectiveParamResolverLocal::AssignCollectiveType(CollectiveParams* cp) {
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceLocal(
-    const string& device, CollectiveParams* cp, const StatusCallback& done) {
+    const std::string& device, CollectiveParams* cp,
+    const StatusCallback& done) {
   VLOG(1) << "CompleteInstanceLocal " << device
           << " instance_key: " << cp->instance.instance_key << " group_key "
           << cp->group.group_key;
@@ -717,11 +719,11 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
     // this invocation.
     if (ir->shared->instance.type != cp->instance.type ||
         ir->shared->instance.data_type != cp->instance.data_type) {
-      done(errors::Internal("Collective instance ", cp->instance.instance_key,
-                            " expected type ", ir->shared->instance.type,
-                            " and data_type ", ir->shared->instance.data_type,
-                            " but got type ", cp->instance.type,
-                            " and data_type ", cp->instance.data_type));
+      done(absl::InternalError(absl::StrCat(
+          "Collective instance ", cp->instance.instance_key, " expected type ",
+          ir->shared->instance.type, " and data_type ",
+          ir->shared->instance.data_type, " but got type ", cp->instance.type,
+          " and data_type ", cp->instance.data_type)));
       return;
     }
   }
@@ -729,7 +731,7 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
-    const string& device, CollectiveParams* cp, InstanceRec* ir,
+    const std::string& device, CollectiveParams* cp, InstanceRec* ir,
     const StatusCallback& done) {
   auto expected_shape = cp->instance.shape;
   absl::Status status;
@@ -808,10 +810,10 @@ void CollectiveParamResolverLocal::WaitForGroup(InstanceRec* ir,
       if (cp->is_source) {
         // Initialize source rank.
         if (ir->source_rank >= 0) {
-          ir->status = errors::Internal("Instance ", cp->instance.instance_key,
-                                        " already has source ", ir->source_rank,
-                                        ", received second claim from ",
-                                        cp->default_rank);
+          ir->status = absl::InternalError(
+              absl::StrCat("Instance ", cp->instance.instance_key,
+                           " already has source ", ir->source_rank,
+                           ", received second claim from ", cp->default_rank));
         } else {
           ir->source_rank = cp->default_rank;
         }
@@ -826,11 +828,11 @@ void CollectiveParamResolverLocal::WaitForGroup(InstanceRec* ir,
       // NOTE(ayushd): changing the error message below would also require
       // updating CompleteParamsBroadcastForgotSend test in
       // CollectiveParamResolverLocalTest.
-      ir->status =
-          errors::Internal("Instance ", cp->instance.instance_key,
-                           " found no source for broadcast.  This "
-                           "could mean that there were group_size=",
-                           ir->known_count, " BcastRecvs but no BcastSend.");
+      ir->status = absl::InternalError(
+          absl::StrCat("Instance ", cp->instance.instance_key,
+                       " found no source for broadcast.  This "
+                       "could mean that there were group_size=",
+                       ir->known_count, " BcastRecvs but no BcastSend."));
     }
     if (!ir->known_waiters.empty()) {
       ready_waiters = std::move(ir->known_waiters);

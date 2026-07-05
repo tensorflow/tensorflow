@@ -29,8 +29,8 @@ namespace tensorflow {
 
 namespace functor {
 
-template struct SwapDimension1And2InTensor3<Eigen::GpuDevice, uint64>;
-template struct SwapDimension0And2InTensor3<Eigen::GpuDevice, uint64>;
+template struct SwapDimension1And2InTensor3<Eigen::GpuDevice, uint64_t>;
+template struct SwapDimension0And2InTensor3<Eigen::GpuDevice, uint64_t>;
 
 }  // namespace functor
 }  // namespace tensorflow

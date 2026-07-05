@@ -91,6 +91,10 @@ bool IsSupportedDotAlgorithmOnGpu(
     PrimitiveType lhs_storage_type, PrimitiveType rhs_storage_type,
     PrimitiveType output_storage_type);
 
+// Checks if the instruction requests ALG_DOT_BF16_BF16_F32 and has F32 operands
+// and output.
+bool IsBf16ToF32AlgorithmRequested(const HloInstruction* instr);
+
 }  // namespace algorithm_util
 }  // namespace xla
 

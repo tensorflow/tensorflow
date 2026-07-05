@@ -54,22 +54,22 @@ struct TypeRegistry::SerDes<MyString> : public std::true_type {
 namespace {
 using ::testing::HasSubstr;
 
-TEST(TypeRegistryTest, RegisterExternalTypeId) {
+TEST(TypeRegistryTest, RegisterTypeId) {
   TypeRegistry::TypeInfo type_info = {+[](void* state) {}};
 
   TF_ASSERT_OK_AND_ASSIGN(auto foo_id,
-                          TypeRegistry::AssignExternalTypeId("foo", type_info));
+                          TypeRegistry::AssignTypeId("foo", type_info));
   EXPECT_GE(foo_id.value(), 0);
 
-  auto duplicate_foo_id = TypeRegistry::AssignExternalTypeId("foo", type_info);
+  auto duplicate_foo_id = TypeRegistry::AssignTypeId("foo", type_info);
   EXPECT_THAT(duplicate_foo_id.status().message(),
               HasSubstr("Type name foo already registered with type id"));
 
   // It's ok to register the same type with same type id.
-  TF_ASSERT_OK(TypeRegistry::RegisterExternalTypeId("foo", foo_id, type_info));
+  TF_ASSERT_OK(TypeRegistry::RegisterTypeId("foo", foo_id, type_info));
 
   // It's an error to register the same type with a different type id.
-  auto wrong_foo_id = TypeRegistry::RegisterExternalTypeId(
+  auto wrong_foo_id = TypeRegistry::RegisterTypeId(
       "foo", TypeRegistry::TypeId(std::numeric_limits<int64_t>::max()),
       type_info);
   EXPECT_THAT(wrong_foo_id.message(),
@@ -82,7 +82,7 @@ TEST(TypeRegistryTest, RegisterExternalTypeId) {
 
   // It's ok to register a new type with a user-provided type id.
   auto bar_id = TypeRegistry::TypeId(std::numeric_limits<int64_t>::max());
-  TF_ASSERT_OK(TypeRegistry::RegisterExternalTypeId(
+  TF_ASSERT_OK(TypeRegistry::RegisterTypeId(
       "bar", TypeRegistry::TypeId(std::numeric_limits<int64_t>::max()),
       type_info));
 
@@ -92,7 +92,30 @@ TEST(TypeRegistryTest, RegisterExternalTypeId) {
   EXPECT_EQ(bar_info.deleter, type_info.deleter);
 }
 
-TEST(TypeRegistryTest, RegisterInternalTypeId) {
+TEST(TypeRegistryTest, GetOrAssignTypeId) {
+  internal::TypeRegistrationMap registry;
+
+  TypeRegistry::TypeInfo type_info0 = {+[](void* state) {}};
+  TypeRegistry::TypeInfo type_info1 = {+[](void* state) {}};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto assigned_id, TypeRegistry::GetOrAssignTypeId(
+                                                registry, "foo", type_info0));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto got_id, TypeRegistry::GetOrAssignTypeId(
+                                           registry, "foo", type_info0));
+  EXPECT_EQ(got_id, assigned_id);
+
+  auto err = TypeRegistry::GetOrAssignTypeId(registry, "foo", type_info1);
+  EXPECT_THAT(err.status().message(), HasSubstr("different `TypeInfo`"));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto int32_id,
+                          TypeRegistry::GetOrAssignTypeId<int32_t>(registry));
+  TF_ASSERT_OK_AND_ASSIGN(auto int64_id,
+                          TypeRegistry::GetOrAssignTypeId<int64_t>(registry));
+  EXPECT_NE(int32_id, int64_id);
+}
+
+TEST(TypeRegistryTest, GetTypeId) {
   auto int32_id = TypeRegistry::GetTypeId<int32_t>();
   auto int64_id = TypeRegistry::GetTypeId<int64_t>();
   EXPECT_NE(int32_id, int64_id);
@@ -103,7 +126,7 @@ TEST(TypeRegistryTest, RegisterInternalTypeId) {
   EXPECT_EQ(*TypeRegistry::GetTypeId(int64_name), int64_id);
 }
 
-TEST(TypeRegistryTest, InternalTypeInfo) {
+TEST(TypeRegistryTest, GetTypeInfo) {
   int32_t* ptr = new int32_t{42};
 
   TypeRegistry::TypeInfo type_info = TypeRegistry::GetTypeInfo<int32_t>();

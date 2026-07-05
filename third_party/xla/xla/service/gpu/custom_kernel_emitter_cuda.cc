@@ -19,6 +19,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
+#include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -26,8 +29,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_call.h"
-#include "xla/service/gpu/kernels/custom_kernel.h"
-#include "xla/service/gpu/kernels/ptx_custom_kernel.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -41,9 +42,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> EmitPtxCustomKernelThunk(
         "PTX custom call backend config is empty");
   }
 
-  TF_ASSIGN_OR_RETURN(
-      KernelCall call,
-      KernelCall::Parse(backend_config_str, context->mlir_context()));
+  ASSIGN_OR_RETURN(KernelCall call, KernelCall::Parse(backend_config_str,
+                                                      context->mlir_context()));
   if (call.kernel_type != KernelCall::KernelType::kPtxSource) {
     return absl::InvalidArgumentError(
         "PTX custom call backend config is not a PTX source");
@@ -51,12 +51,12 @@ absl::StatusOr<std::unique_ptr<Thunk>> EmitPtxCustomKernelThunk(
 
   emitters::KernelArguments::BufferAlignment buffer_alignment =
       GetDefaultBufferAlignment();
-  TF_ASSIGN_OR_RETURN(emitters::KernelArguments kernel_arguments,
-                      emitters::KernelArguments::Create(
-                          context->buffer_assignment(), buffer_alignment, instr,
-                          call.output_indices));
+  ASSIGN_OR_RETURN(emitters::KernelArguments kernel_arguments,
+                   emitters::KernelArguments::Create(
+                       context->buffer_assignment(), buffer_alignment, instr,
+                       call.output_indices));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       CustomKernel ptx_custom_kernel,
       kernel::GetOwnedPtxCustomKernel(
           call.name, call.kernel_data, kernel_arguments.args().size(),

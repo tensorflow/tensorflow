@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,7 +26,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tsl/platform/thread_annotations.h"
@@ -114,7 +114,7 @@ class DeviceThread {
                     std::vector<TFE_TensorHandle*> inputs,
                     const TFE_OpAttrs* attributes, int expected_max_outputs,
                     CancellationManager& cancellation_manager,
-                    absl::optional<int64_t> step_id = absl::nullopt);
+                    std::optional<int64_t> step_id = std::nullopt);
   // Block until the previous `StartExecute` operation has executed. Forwards
   // the status from `TFE_Execute` and returns outputs if the status is OK.
   std::vector<TensorHandlePtr> Join(TF_Status* status);
@@ -154,8 +154,8 @@ class DeviceThread {
   //   are expected to live at least until `Join` finishes:
   TFE_Context* context_ TF_GUARDED_BY(execution_mutex_);
   const char* operation_name_ TF_GUARDED_BY(execution_mutex_);
-  absl::optional<int64_t> step_id_ TF_GUARDED_BY(execution_mutex_) =
-      absl::nullopt;
+  std::optional<int64_t> step_id_ TF_GUARDED_BY(execution_mutex_) =
+      std::nullopt;
   std::vector<TFE_TensorHandle*> op_inputs_ TF_GUARDED_BY(execution_mutex_);
   const TFE_OpAttrs* attributes_ TF_GUARDED_BY(execution_mutex_);
   int expected_max_outputs_ TF_GUARDED_BY(execution_mutex_);
@@ -215,7 +215,7 @@ void DeviceThread::StartExecute(TFE_Context* context,
                                 const TFE_OpAttrs* attributes,
                                 int expected_max_outputs,
                                 CancellationManager& cancellation_manager,
-                                absl::optional<int64_t> step_id) {
+                                std::optional<int64_t> step_id) {
   {
     tensorflow::mutex_lock l(execution_mutex_);
     while (execution_state_ != ExecutionState::kIdle) {
@@ -339,7 +339,7 @@ std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
   return ScalarsFromSequence<int32_t>(ids, context, status);
 }
 
-absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
+std::optional<std::vector<std::unique_ptr<ParallelTensor>>>
 ParallelDevice::Execute(TFE_Context* context,
                         const std::vector<ParallelTensor*>& inputs,
                         const char* operation_name,
@@ -369,7 +369,7 @@ void ParallelDevice::StartExecute(TFE_Context* context,
                                   const TFE_OpAttrs* attributes,
                                   int expected_max_outputs,
                                   CancellationManager& cancellation_manager,
-                                  absl::optional<int64_t> step_id) const {
+                                  std::optional<int64_t> step_id) const {
   for (int device_index = 0; device_index < underlying_devices_.size();
        ++device_index) {
     DeviceThread* device_thread = device_threads_[device_index].get();
@@ -390,7 +390,7 @@ void ParallelDevice::StartExecute(
     const std::vector<std::vector<TFE_TensorHandle*>>& inputs,
     const char* operation_name, const TFE_OpAttrs* attributes,
     int expected_max_outputs, CancellationManager& cancellation_manager,
-    absl::optional<int64_t> step_id) const {
+    std::optional<int64_t> step_id) const {
   for (int device_index = 0; device_index < underlying_devices_.size();
        ++device_index) {
     DeviceThread* device_thread = device_threads_[device_index].get();
@@ -428,11 +428,11 @@ void ParallelDevice::AsyncWait(TFE_Context* context, TF_Status* status) const {
   }
 }
 
-absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
+std::optional<std::vector<std::unique_ptr<ParallelTensor>>>
 ParallelDevice::Join(
     const std::vector<PartialTensorShape>& expected_output_shapes,
     TF_Status* status) const {
-  absl::optional<std::vector<std::unique_ptr<ParallelTensor>>> result;
+  std::optional<std::vector<std::unique_ptr<ParallelTensor>>> result;
   // Compute per-device per-output tensors
   std::vector<std::vector<TensorHandlePtr>> per_device_output_tensors;
   per_device_output_tensors.reserve(underlying_devices_.size());
@@ -586,6 +586,7 @@ std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
 }
 
 absl::Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
+  absl::MutexLock l(mu_);
   if (!shape_.has_value()) {
     TF_Status status;
     PartialTensorShape combined_shape;
@@ -598,7 +599,7 @@ absl::Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
           combined_shape.dims() != component_shape.dims()) {
         PartialTensorShape first_shape;
         TF_RETURN_IF_ERROR(unwrap(tensors_[0].get())->Shape(&first_shape));
-        return errors::Unimplemented(absl::StrCat(
+        return absl::UnimplementedError(absl::StrCat(
             "Computing the shape of a ParallelTensor when the components do "
             "not all have the same rank is not supported. One tensor had "
             "shape ",
@@ -640,7 +641,7 @@ absl::Status ParallelTensor::SummarizeValue(std::string& summary) {
                     summarized_devices[component_index],
                     "\": ", component_summary);
   }
-  summary += "}";
+  absl::StrAppend(&summary, "}");
   return absl::OkStatus();
 }
 

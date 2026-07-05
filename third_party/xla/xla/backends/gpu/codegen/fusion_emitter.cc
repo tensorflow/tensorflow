@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Argument.h"
@@ -37,9 +38,11 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -52,6 +55,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -111,15 +115,13 @@ absl::Status AnnotateKernelLaunchDimensions(
     const se::DeviceDescription& device_info,
     const LaunchDimensions& launch_dims, llvm::Function* kernel,
     llvm::Module* llvm_module) {
-  TF_RET_CHECK(
-      (device_info.block_dim_limit().x == 0 ||
-       launch_dims.block_counts().x < device_info.block_dim_limit().x) &&
-      (device_info.block_dim_limit().y == 0 ||
-       launch_dims.block_counts().y < device_info.block_dim_limit().y))
+  const se::BlockDim &limit = device_info.block_dim_limit(),
+                     &block_count = launch_dims.block_counts();
+  TF_RET_CHECK((limit.x == 0 || block_count.x <= limit.x) &&
+               (limit.y == 0 || block_count.y <= limit.y))
       << "Kernel '" << kernel->getName().str() << "' launch needs more blocks ("
-      << launch_dims.block_counts().x << ", " << launch_dims.block_counts().y
-      << ") than allowed by hardware (" << device_info.block_dim_limit().x
-      << ", " << device_info.block_dim_limit().y << ").";
+      << block_count.x << ", " << block_count.y
+      << ") than allowed by hardware (" << limit.x << ", " << limit.y << ").";
   // Add __launch_bounds__ to metadata. This limits registers per thread to
   // avoid out-of-resources launching errors.
 
@@ -140,22 +142,11 @@ absl::Status AnnotateKernelLaunchDimensions(
                       absl::StrJoin({launch_dims.num_threads_per_block(),
                                      launch_dims.num_threads_per_block()},
                                     ","));
-    kernel->addFnAttr("amdgpu-max-num-workgroups",
-                      absl::StrJoin({launch_dims.block_counts().x,
-                                     launch_dims.block_counts().y,
-                                     launch_dims.block_counts().z},
-                                    ","));
+    kernel->addFnAttr(
+        "amdgpu-max-num-workgroups",
+        absl::StrJoin({block_count.x, block_count.y, block_count.z}, ","));
   }
   return absl::OkStatus();
-}
-
-IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
-    const LaunchDimensions& launch_dims, int unroll_factor, const Shape& shape,
-    mlir::MLIRContext* mlir_context) {
-  WorkDimensions work_dimensions = launch_dims.AsWorkDimensions();
-  work_dimensions.work_tile_size.dimensions.push_back(unroll_factor);
-  return emitters::GetDefaultWorkItemIndexingMap(work_dimensions, shape,
-                                                 mlir_context);
 }
 
 absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
@@ -195,7 +186,7 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
                              unique_kernel_name, llvm_module);
 
   AnnotateFunctionAsGpuKernel(llvm_module, kernel, builder);
-  TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
+  RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
       gpu_device_info, launch_dimensions, kernel, llvm_module));
 
   // Update the insert point to the entry basic block.
@@ -225,20 +216,12 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototype(
       launch_dimensions, builder);
 }
 
-// Triton's kernel ABI expects additional scratchpad global memory for
-// TMA and profiling information.
-// For now it is only used for on-device creation of TMA descriptors, which
-// we do not use yet, so we are just replacing this argument with a null
-// pointer.
-// TODO: b/381242007 - Allocate a proper buffer if we want to use
-// device-side TMA APIs.
 absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
-    llvm::Module* llvm_module, IrEmitterContext& ir_emitter_context,
-    const std::string& sanitized_kernel_name) {
+    llvm::Module* llvm_module, const std::string& sanitized_kernel_name,
+    const std::string& sanitized_kernel_impl_name, bool keep_scratch) {
   llvm::Function* impl_fn = llvm_module->getFunction(sanitized_kernel_name);
   TF_RET_CHECK(impl_fn);
-  impl_fn->setName(ir_emitter_context.GetSanitizedUniqueName(
-      sanitized_kernel_name + "_impl"));
+  impl_fn->setName(sanitized_kernel_impl_name);
 
   constexpr int arg_to_remove = 2;
 
@@ -246,8 +229,18 @@ absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
   llvm::SmallVector<llvm::Type*, 8> arg_types;
 
   for (uint32_t i = 0; i < impl_fn->arg_size(); i++) {
-    if (i < impl_fn->arg_size() - arg_to_remove) {
+    bool is_scratch = (i == impl_fn->arg_size() - 2);
+    bool should_keep = (i < impl_fn->arg_size() - arg_to_remove) ||
+                       (is_scratch && keep_scratch);
+
+    if (should_keep) {
       arg_types.push_back(impl_fn->getArg(i)->getType());
+      if (is_scratch) {
+        fn_attrs = fn_attrs.addParamAttribute(
+            llvm_module->getContext(), i,
+            llvm::Attribute::getWithAlignment(llvm_module->getContext(),
+                                              llvm::Align(128)));
+      }
     } else {
       fn_attrs = fn_attrs.removeParamAttributes(llvm_module->getContext(), i);
 

@@ -201,6 +201,9 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::LLVMContext& context) {
   switch (element_type) {
+    case S1:
+    case U1:
+      return llvm::Type::getIntNTy(context, 1);
     case S2:
     case U2:
       return llvm::Type::getIntNTy(context, 2);
@@ -488,7 +491,7 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
                 : nullptr;
 
   // Add a terminator to the if block, if necessary.
-  if (if_data.if_block->getTerminator() == nullptr) {
+  if (!if_data.if_block->hasTerminator()) {
     b->SetInsertPoint(if_data.if_block);
     if_data.after_block =
         CreateBasicBlock(nullptr, absl::StrCat(name, "-after"), b);
@@ -580,17 +583,22 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
 llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
                                     llvm::Instruction* inst,
                                     llvm::Module* module) {
-  if (llvm::Triple(module->getTargetTriple()).isSPIR()) {
-    return inst;
-  }
   llvm::LLVMContext& context = inst->getParent()->getContext();
-  llvm::IntegerType* i32 = llvm::Type::getInt32Ty(context);
+  llvm::IntegerType* int_type = llvm::Type::getInt32Ty(context);
+  if (llvm::Triple(module->getTargetTriple()).isSPIROrSPIRV()) {
+    // SPIRV builtins might return int of varying widths
+    int_type = llvm::dyn_cast<llvm::IntegerType>(inst->getType());
+    if (!int_type) {
+      return inst;
+    }
+  }
   inst->setMetadata(
       llvm::LLVMContext::MD_range,
-      llvm::MDNode::get(
-          context,
-          {llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(i32, lower)),
-           llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(i32, upper))}));
+      llvm::MDNode::get(context,
+                        {llvm::ConstantAsMetadata::get(
+                             llvm::ConstantInt::get(int_type, lower)),
+                         llvm::ConstantAsMetadata::get(
+                             llvm::ConstantInt::get(int_type, upper))}));
   return inst;
 }
 
@@ -658,7 +666,7 @@ void SetToFirstInsertPoint(llvm::BasicBlock* blk,
 }
 
 void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder) {
-  if (llvm::Instruction* terminator = blk->getTerminator()) {
+  if (llvm::Instruction* terminator = blk->getTerminatorOrNull()) {
     builder->SetInsertPoint(terminator);
   } else {
     builder->SetInsertPoint(blk);
@@ -768,10 +776,11 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   // created by the JIT compiled code.
   function->setUWTableKind(llvm::UWTableKind::Default);
 
-  // Tensorflow always flushes denormals to zero, let LLVM know that flushing
-  // denormals is safe. This allows vectorization using ARM's neon instruction
-  // set.
-  function->addFnAttr("denormal-fp-math", "preserve-sign");
+  // Optionally flush denormals to zero. This allows vectorization using ARM's
+  // NEON instruction set. Controlled by the xla_cpu_ftz flag.
+  if (module_config.debug_options().xla_cpu_ftz()) {
+    function->addFnAttr("denormal-fp-math", "preserve-sign");
+  }
 
   // Add the optimize attribute to the function if optimizing for size. This
   // controls internal behavior of some optimization passes (e.g. loop
@@ -846,7 +855,7 @@ void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
   llvm::BasicBlock* continued;
 
   // Implicitly check whtether we are already at the end of unterminated block.
-  if (b->GetInsertBlock()->getTerminator() == nullptr) {
+  if (!b->GetInsertBlock()->hasTerminator()) {
     // If we are generating code into an incomplete basic block we can just
     // create a new basic block to jump to after our conditional branch.
     continued = llvm_ir::CreateBasicBlock(/*insert_before=*/nullptr,

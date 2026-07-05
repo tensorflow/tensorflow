@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_DEVICE_H_
 
 #include <cstdint>
-#include <optional>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"

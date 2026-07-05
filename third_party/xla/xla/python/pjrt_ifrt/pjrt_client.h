@@ -41,12 +41,12 @@ limitations under the License.
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -252,14 +252,30 @@ class PjRtClient final
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> BitcastArrays(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArraySpec> specs,
+      xla::ifrt::ArrayCopySemantics semantics) override;
+
+  tsl::Future<std::vector<uint64_t>> HashValues(
+      absl::Span<const ValueRef> values, HashMode mode) override;
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) override;
 
   tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
+  tsl::Future<> DeleteValues(absl::Span<ValueRef> values) override;
+
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<ValueRef> values) override;
+
+  absl::StatusOr<BundleRef> Bundle(absl::Span<ValueRef> values,
+                                   ArrayCopySemantics semantics) override;
+
+  absl::StatusOr<BundleRef> ConcatBundles(
+      absl::Span<BundleRef> bundles, ArrayCopySemantics semantics) override;
 
   void CancelExecution(
       xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,
@@ -349,7 +365,7 @@ class PjRtClient final
   // Note that it does not yet support non-addressable IFRT device IDs created
   // by PjRt-IFRT with the global device mapping because there is no well-agreed
   // PjRt device ID allocation that PjRt-IFRT can assume.
-  absl::StatusOr<xla::PjRtGlobalDeviceId> GetPjRtGlobalDeviceId(
+  absl::StatusOr<xla::GlobalDeviceId> GetGlobalDeviceId(
       DeviceId device_id) const;
 
   // Transfer the given literal to the infeed queue.
@@ -384,7 +400,7 @@ class PjRtClient final
   int my_process_index_;
   // Mapping from IFRT device ID to PjRt global device ID. Made for the devices
   // that are accessible via `pjrt_client_->devices()`.
-  absl::flat_hash_map<DeviceId, xla::PjRtGlobalDeviceId>
+  absl::flat_hash_map<DeviceId, xla::GlobalDeviceId>
       ifrt_device_id_to_pjrt_global_device_id_;
 
   AttributeMap attributes_;

@@ -1,0 +1,21 @@
+diff --git a/include/tfrt/basic_kernels/opdefs/basic_kernels.td b/include/tfrt/basic_kernels/opdefs/basic_kernels.td
+index 80dacbf2..b42004a9 100644
+--- a/include/tfrt/basic_kernels/opdefs/basic_kernels.td
++++ b/include/tfrt/basic_kernels/opdefs/basic_kernels.td
+@@ -85,16 +85,6 @@ class ConstantOp<string suffix, Type baseType, Attr attr>
+   let hasVerifier = 0;
+ }
+ 
+-// MLIR's OpBase.td defines F32Attr and F64Attr, but no F16Attr or BF16Attr
+-def F16Attr : FloatAttrBase<F16, "16-bit float attribute">;
+-def BF16Attr : TypedAttrBase<
+-  BF16, "FloatAttr",
+-  And<[CPred<"llvm::isa<::mlir::FloatAttr>($_self)">,
+-       CPred<"llvm::cast<::mlir::FloatAttr>($_self).getType().isBF16()">]>,
+-  "bfloat16 attribute"> {
+-  let returnType = [{ ::llvm::APFloat }];
+-}
+-
+ def ConstantI1Op  : ConstantOp<"i1", I1, I1Attr>;
+ def ConstantI32Op : ConstantOp<"i32", I32, I32Attr>;
+ def ConstantI64Op : ConstantOp<"i64", I64, I64Attr>;

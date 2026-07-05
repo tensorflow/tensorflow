@@ -58,6 +58,14 @@ TEST(MlirConvertType, ConvertToMlirTensorType) {
   // Unranked shapes.
   EXPECT_EQ("tensor<*xf32>",
             ConvertToMlirString({}, /*unknown_rank=*/true, DataType::DT_FLOAT));
+
+  // int2 and uint2.
+  EXPECT_EQ(
+      "tensor<1x2xi2>",
+      ConvertToMlirString({1, 2}, /*unknown_rank=*/false, DataType::DT_INT2));
+  EXPECT_EQ(
+      "tensor<1x2xui2>",
+      ConvertToMlirString({1, 2}, /*unknown_rank=*/false, DataType::DT_UINT2));
 }
 
 }  // namespace

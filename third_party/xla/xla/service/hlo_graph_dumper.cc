@@ -29,25 +29,24 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/viewer_html.h"
 #include "xla/shape.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_system.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
-#include <algorithm>
-#include <atomic>
 #include <deque>
 #include <functional>
-#include <map>
-#include <memory>
 #include <optional>
-#include <queue>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -61,30 +60,22 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
-#include "xla/types.h"
 #include "xla/util.h"
-#include "xla/window_util.h"
 #include "tsl/platform/base64.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/numbers.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/regexp.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -1133,7 +1124,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     if (it != sharding_colors_.end()) {
       return it->second;
     }
-    ColorScheme color = static_cast<ColorScheme>(
+    auto color = static_cast<ColorScheme>(
         kBlue + (next_shard_color_++ % (kDashedBorder - kBlue)));
     sharding_colors_.emplace(instr->sharding(), color);
     return color;
@@ -1190,6 +1181,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kPopulationCount:
@@ -1368,8 +1360,8 @@ std::string HloDotDumper::GetInstructionNodeMetadata(
   }
   if (instr->metadata().stack_frame_id() != 0) {
     auto hlo_module = instr->parent()->parent();
-    int frame_id = instr->metadata().stack_frame_id();
-    while (frame_id != 0) {
+    StackFrameId frame_id{instr->metadata().stack_frame_id()};
+    while (frame_id.valid()) {
       HloModule::StackFrame frame = hlo_module->get_stack_frame(frame_id);
       if (frame.empty()) {
         break;
@@ -1456,7 +1448,7 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
       props = ExtractCudnnConvBackendConfigProps(
           config->cudnn_conv_backend_config());
     }
-  } else if (gpu::IsCublasGemm(*instr)) {
+  } else if (gpu::IsCublasLtGemm(*instr)) {
     absl::StatusOr<gpu::GpuBackendConfig> config =
         instr->backend_config<gpu::GpuBackendConfig>();
     if (config.ok()) {
@@ -2012,12 +2004,12 @@ static absl::StatusOr<std::string> CompressAndEncode(absl::string_view input) {
   auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
   tsl::io::ZlibOutputBuffer gz_file(&f, gz_opts.input_buffer_size,
                                     gz_opts.output_buffer_size, gz_opts);
-  TF_RETURN_IF_ERROR(gz_file.Init());
-  TF_RETURN_IF_ERROR(gz_file.Append(input));
-  TF_RETURN_IF_ERROR(gz_file.Close());
+  RETURN_IF_ERROR(gz_file.Init());
+  RETURN_IF_ERROR(gz_file.Append(input));
+  RETURN_IF_ERROR(gz_file.Close());
 
   std::string encoded;
-  TF_RETURN_IF_ERROR(tsl::Base64Encode(compressed, &encoded));
+  RETURN_IF_ERROR(tsl::Base64Encode(compressed, &encoded));
   return absl::StrReplaceAll(encoded, {{"_", "/"}, {"-", "+"}});
 }
 
@@ -2048,200 +2040,12 @@ absl::StatusOr<std::string> WrapFusionExplorer(
                                  EscapeJSONString(p.to_highlight)));
       });
 
-  TF_ASSIGN_OR_RETURN(std::string dot_graphs_compressed,
-                      CompressAndEncode(dot_graphs));
+  ASSIGN_OR_RETURN(std::string dot_graphs_compressed,
+                   CompressAndEncode(dot_graphs));
 
-  return absl::StrReplaceAll(
-      R"wrapper(
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    html, body {height: 100%; text-align: center;}
-    #rendered {height: 70%; width: 80%; border:1px solid black; margin: auto; }
-    #label {width: 80%; margin: auto;}
-    #performance_note { font-size: small; color: gray; }
-    #frames_list {
-      list-style: none; text-align: left; height: 20%; overflow: scroll;
-    }
-    #frames_list   li { padding: 0.2em; margin: 0.2em; }
-    .selected { background-color: #e0e0e0; }
-    .selected a { color: black; text-decoration: none; }
-    #rendered svg { height: 100% !important; width: 100% !important; }
-  </style>
-</head>
-<body>
-  <script src="https://www.gstatic.com/external_hosted/hpcc_js_wasm/index.min.js"
-      integrity="sha384-LigJPbR3TOfU/Xbb+PjiN1dGJYPweLk7kiGnaMgmxnUmKWaCFKbb5tH6iLlyVhPZ"
-      crossorigin="anonymous"></script>
-  <script src="https://www.gstatic.com/external_hosted/svg_pan_zoom/svg-pan-zoom.js">
-  </script>
-
-  <title>Fusion Explorer: $TITLE</title>
-  <div id='rendered'><center>Loading...</center></div>
-  <ul id='frames_list'></ul>
-  <p>Use j/k for keyboard navigation.</p>
-  <p id='performance_note'>Loading data...</p>
-  <script>
-  <!--
-  const renderCache = {};
-
-  const cssregex = new RegExp('stylesheet=<([^]*)\n>\n', 'gm');
-  const hpccWasm = window["@hpcc-js/wasm"];
-
-  const getIdFromHash = () => {
-    let hash = window.location.hash;
-    if (hash.indexOf('frame') == -1) {
-      return 0;
-    }
-    return parseInt(window.location.hash.substring('#frame'.length, window.location.hash.length));
-  }
-
-  const renderCurrentFrame = () => {
-    if (!window.loaded) { return; }
-    const frames_list = document.getElementById('frames_list');
-    const currId = getIdFromHash();
-
-    for (let selected of frames_list.getElementsByClassName('selected')) {
-        selected.classList.remove('selected');
-    }
-
-    const selected = frames_list.children[currId];
-    selected.classList.add('selected');
-    selected.scrollIntoView();
-
-    const frame = frames[currId];
-    const dot_ptr = frame[0];
-    let dot_txt = window.dots[dot_ptr];
-    const label = frame[1];
-    document.getElementById('performance_note').innerText = "Rendering...";
-    const results = cssregex.exec(dot_txt)
-    let css_data = ''
-    if (results !== null) {
-        css_data = results[1].replace(/\s*data:.*\s*,/,''); // Strip content-type field.
-        // CSS inside DOT is URL-escaped, so we must unescape it
-        // before we can insert it into SVG.
-        css_data = unescape(css_data);
-        dot_txt = dot_txt.replace(cssregex, ''); // Remove the stylesheet
-    }
-
-    let render_start = performance.now();
-    const render_callback = svg => {
-      renderCache[dot_ptr] = svg;
-      var area = document.getElementById('rendered');
-      area.innerHTML = `${svg}<style>${css_data}</style>`;
-      var panzoom = svgPanZoom(area.children[0], {
-          zoomEnabled: true, controlIconsEnabled: true, maxZoom: 200, });
-      var to_highlight = frame[2].length ?
-        document.querySelector(`${frame[2]}`) : null;
-      if (to_highlight) {
-        to_highlight.style.setProperty('fill', 'red');
-      }
-      document.getElementById('performance_note').innerText =
-        `Rendering took ${(performance.now() - render_start).toFixed(2)}ms`;
-
-      // Change cursor.
-      let text_nodes = document.getElementsByTagName("text");
-      for (var el of text_nodes) {
-        if (title_to_id.has(el.innerHTML)) {
-          el.style.cursor = "pointer";
-        }
-      }
-    };
-    if (renderCache[dot_ptr]) {
-      render_callback(renderCache[dot_ptr]);
-    } else {
-      hpccWasm.graphviz.layout(dot_txt, "svg", "dot").then(render_callback);
-    }
-  };
-
-  const update = (delta) => {
-    let currId = getIdFromHash();
-    currId = (currId + delta + frames.length) % frames.length;
-    window.location.hash = `#frame${currId}`
-  };
-
-  const renderFrameList = () => {
-    const currId = getIdFromHash();
-    const frames_list = document.getElementById('frames_list');
-    for (let i=0; i<frames.length; i++) {
-      const f = frames[i];
-      let frame_descr = f[1];
-      const rendered = document.createElement("li");
-      if (frame_descr == "") {
-        frame_descr = "Unnamed state";
-      }
-      rendered.innerHTML = `<a href="#frame${i}">${frame_descr}</a>`;
-      if (i == currId) {
-        rendered.classList.add('selected');
-      }
-      frames_list.appendChild(rendered);
-    }
-  };
-
-  const decompress = async function(compressed) {
-    const ds = new DecompressionStream('gzip');
-    const in_fetch = await fetch(`data:application/octet-stream;base64,${compressed}`);
-    const in_blob = await in_fetch.blob();
-    const out_stream = in_blob.stream().pipeThrough(ds);
-    const out_blob = await new Response(out_stream).blob();
-    return await out_blob.text();
-  }
-
-  const dots_compressed = "$DOTS";
-  const frames = [$FRAMES];
-  let loaded = false;
-
-  window.addEventListener('hashchange', () => {
-    renderCurrentFrame();
-  });
-
-  window.addEventListener("keydown", (event) => {
-    if (event.defaultPrevented) {
-      return;
-    }
-    if (event.key == "j") {
-      update(1);
-    } else if (event.key == "k") {
-      update(-1);
-    } else {
-      return;
-    }
-    event.preventDefault();
-  }, true);
-
-  document.addEventListener("DOMContentLoaded", () => {
-    decompress(dots_compressed).then(text => {
-      window.dots = JSON.parse(text);
-      window.loaded = true;
-      renderFrameList();
-      renderCurrentFrame();
-    });
-
-    window.title_to_id = new Map();
-    for (let i=0; i < frames.length; i++) {
-       title_to_id.set(frames[i][1], i);
-     }
-
-    // Navigate to next elements on click.
-    document.addEventListener("click", (event) => {
-      let txt = event.target.innerHTML;
-      if (title_to_id.has(txt)) {
-        let id = title_to_id.get(txt);
-        window.location.hash = `#frame${id}`;
-      }
-    });
-  });
-
-  //-->
-  </script>
-  </body>
-</html>
-  )wrapper",
-      {{"$DOTS", dot_graphs_compressed},
-       {"$FRAMES", frames},
-       {"$TITLE", graph_title}});
+  return absl::StrReplaceAll(kViewerHtmlCode, {{"$DOTS", dot_graphs_compressed},
+                                               {"$FRAMES", frames},
+                                               {"$TITLE", graph_title}});
 }
 
 static std::string GraphTitle(const HloComputation& computation) {

@@ -1,11 +1,11 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_features_nolayering_check_if_ios")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "nonportable_visibility_allowlist")
 
 # Kernel for custom parse_example
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -23,9 +23,7 @@ cc_library(
         "parse_example.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    features = tf_features_nolayering_check_if_ios(),
     deps = [
-        "//tensorflow/core/platform:hash",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:common",
@@ -54,6 +52,7 @@ cc_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/platform:hash",
         ],
     }),
 )
@@ -61,7 +60,6 @@ cc_library(
 tf_cc_test(
     name = "parse_example_test",
     srcs = ["parse_example_test.cc"],
-    features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":parse_example",
         "//tensorflow/lite:framework",
@@ -73,6 +71,7 @@ tf_cc_test(
         "//tensorflow/lite/kernels:test_main",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ] + select({
         "//tensorflow:android": [
@@ -104,7 +103,6 @@ cc_library(
     ],
     visibility = nonportable_visibility_allowlist(),
     deps = [
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:feature_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -146,6 +144,7 @@ tf_cc_test(
         "//tensorflow/lite/kernels:test_main",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )

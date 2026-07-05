@@ -17,19 +17,23 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -63,11 +67,11 @@ absl::StatusOr<std::unique_ptr<xla::PjRtClient>>
 CreatePjRtCpuClientFromTopology(
     const xla::PjRtTopologyDescription& topology_description) {
   xla::CpuClientOptions options;
-  TF_ASSIGN_OR_RETURN(options.cpu_device_count,
-                      topology_description.CoreCountOfDefaultTypePerProcess());
+  ASSIGN_OR_RETURN(options.cpu_device_count,
+                   topology_description.CoreCountOfDefaultTypePerProcess());
   CHECK_GE(*options.cpu_device_count, 1);
   auto cpu_topology_description =
-      tsl::down_cast<const xla::CpuTopologyDescription*>(&topology_description);
+      absl::down_cast<const CpuTopologyDescription*>(&topology_description);
   if (cpu_topology_description == nullptr) {
     return absl::InvalidArgumentError(
         "Topology description is not a CpuTopologyDescription");
@@ -84,8 +88,7 @@ template <typename T>
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
     const T& computation, CompileOptions options,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  TF_ASSIGN_OR_RETURN(auto cpu_client,
-                      CreatePjRtCpuClientFromTopology(topology));
+  ASSIGN_OR_RETURN(auto cpu_client, CreatePjRtCpuClientFromTopology(topology));
 
   return cpu_client->Compile(computation, options);
 }
@@ -99,9 +102,21 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
-    CompileOptions options, mlir::ModuleOp module,
+    CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  return CompileInternal(module, options, topology, client);
+  ASSIGN_OR_RETURN(auto cpu_client, CreatePjRtCpuClientFromTopology(topology));
+  return cpu_client->Compile(std::move(module), options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+CpuPjRtCompiler::DeserializePjRtTopologyDescription(
+    const std::string& serialized_topology) {
+  xla::PjRtTopologyDescriptionProto proto;
+  if (!proto.ParseFromString(serialized_topology)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse CpuTopologyDescription from string.");
+  }
+  return CpuTopologyDescription::FromProto(proto);
 }
 
 }  // namespace xla::cpu

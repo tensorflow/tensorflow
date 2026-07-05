@@ -21,7 +21,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes.pb.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -34,8 +36,8 @@ absl::StatusOr<std::string> XlaExecutableAbiVersion::Serialize(
   if (options == nullptr) {
     options = std::make_unique<SerializeOptions>();
   }
-  TF_ASSIGN_OR_RETURN(xla::ifrt::Serialized proto,
-                      xla::ifrt::Serialize(*this, std::move(options)));
+  ASSIGN_OR_RETURN(xla::ifrt::Serialized proto,
+                   xla::ifrt::Serialize(*this, std::move(options)));
   std::string result;
   if (!proto.SerializeToString(&result)) {
     return absl::InternalError(

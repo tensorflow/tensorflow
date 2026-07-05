@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "tsl/platform/errors.h"
@@ -103,9 +104,10 @@ absl::StatusOr<bool> DuplicateConstantExpressionPerUser(
     }
     HloInstruction* cloned_instr = computation->AddInstruction(
         i->CloneWithNewOperands(i->shape(), new_operand_vector));
+    cloned_instr->clear_sharding();
     cloned_instructions_map[i] = cloned_instr;
     if (i == to_clone) {
-      TF_RETURN_IF_ERROR(to_clone->ReplaceUseWith(user, cloned_instr));
+      RETURN_IF_ERROR(to_clone->ReplaceUseWith(user, cloned_instr));
       changed = true;
     }
   }
@@ -206,8 +208,8 @@ absl::StatusOr<bool> HloConstantSplitter::RunImpl(
         }
       }
       for (auto* u : users) {
-        TF_ASSIGN_OR_RETURN(bool duplicated, DuplicateConstantExpressionPerUser(
-                                                 computation, instruction, u));
+        ASSIGN_OR_RETURN(bool duplicated, DuplicateConstantExpressionPerUser(
+                                              computation, instruction, u));
         changed |= duplicated;
       }
     }

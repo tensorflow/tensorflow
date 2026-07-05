@@ -37,7 +37,7 @@ ENTRY entry {
 }
 )";
 
-class BatchNormTrainingTest : public HloPjRtTestBase {};
+class BatchNormTrainingTest : public HloTestBase {};
 
 TEST_F(BatchNormTrainingTest, CorrectComputation) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,

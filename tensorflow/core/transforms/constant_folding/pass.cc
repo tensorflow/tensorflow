@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <numeric>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -3718,7 +3717,7 @@ void ConstantFolding::runOnOperation() {
     bool changed = false;
     GreedyRewriteConfig config;
     config.setStrictness(GreedyRewriteStrictness::ExistingAndNewOps);
-    (void)applyOpPatternsAndFold(ops, final_patterns_, config, &changed);
+    (void)applyOpPatternsGreedily(ops, final_patterns_, config, &changed);
     if (!changed) break;
   } while (iteration++ < max_iterations);
 

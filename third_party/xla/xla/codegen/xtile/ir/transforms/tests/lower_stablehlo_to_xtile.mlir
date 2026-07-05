@@ -276,3 +276,76 @@ func.func @lower_compare_ge_ui32(%arg0: tensor<2x4xui32>, %arg1: tensor<2x4xui32
   %0 = stablehlo.compare GE, %arg0, %arg1 : (tensor<2x4xui32>, tensor<2x4xui32>) -> tensor<2x4xi1>
   return %0 : tensor<2x4xi1>
 }
+
+// -----
+
+func.func @lower_convert_ui8_to_i32(%arg0: tensor<2x4xui8>) -> tensor<2x4xi32> {
+  // CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<2x4xui8> to tensor<2x4xi8>
+  // CHECK: %[[RES:.*]] = arith.extui %[[CAST]] : tensor<2x4xi8> to tensor<2x4xi32>
+  // CHECK: return %[[RES]] : tensor<2x4xi32>
+  %0 = stablehlo.convert %arg0 : (tensor<2x4xui8>) -> tensor<2x4xi32>
+  return %0 : tensor<2x4xi32>
+}
+
+// -----
+
+func.func @lower_convert_i8_to_ui32(%arg0: tensor<2x4xi8>) -> tensor<2x4xui32> {
+  // CHECK: %[[EXT:.*]] = arith.extsi %arg0 : tensor<2x4xi8> to tensor<2x4xi32>
+  // CHECK: %[[RES:.*]] = builtin.unrealized_conversion_cast %[[EXT]] : tensor<2x4xi32> to tensor<2x4xui32>
+  // CHECK: return %[[RES]] : tensor<2x4xui32>
+  %0 = stablehlo.convert %arg0 : (tensor<2x4xi8>) -> tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
+}
+
+// -----
+
+func.func @lower_convert_ui32_to_ui8(%arg0: tensor<2x4xui32>) -> tensor<2x4xui8> {
+  // CHECK: %[[CAST0:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: %[[TRUNC:.*]] = arith.trunci %[[CAST0]] : tensor<2x4xi32> to tensor<2x4xi8>
+  // CHECK: %[[RES:.*]] = builtin.unrealized_conversion_cast %[[TRUNC]] : tensor<2x4xi8> to tensor<2x4xui8>
+  // CHECK: return %[[RES]] : tensor<2x4xui8>
+  %0 = stablehlo.convert %arg0 : (tensor<2x4xui32>) -> tensor<2x4xui8>
+  return %0 : tensor<2x4xui8>
+}
+
+// -----
+
+func.func @lower_convert_ui32_to_i1(%arg0: tensor<2x4xui32>) -> tensor<2x4xi1> {
+  // CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: %[[ZERO:.*]] = arith.constant dense<0> : tensor<2x4xi32>
+  // CHECK: %[[RES:.*]] = arith.cmpi ne, %[[CAST]], %[[ZERO]] : tensor<2x4xi32>
+  // CHECK: return %[[RES]] : tensor<2x4xi1>
+  %0 = stablehlo.convert %arg0 : (tensor<2x4xui32>) -> tensor<2x4xi1>
+  return %0 : tensor<2x4xi1>
+}
+
+// -----
+
+func.func @lower_convert_f32_to_ui32(%arg0: tensor<2x4xf32>) -> tensor<2x4xui32> {
+  // CHECK-DAG: %[[ZERO_INT:.*]] = arith.constant dense<0> : tensor<2x4xi32>
+  // CHECK-DAG: %[[ZERO_FLOAT:.*]] = arith.constant dense<0.000000e+00> : tensor<2x4xf32>
+  // CHECK-DAG: %[[MAX_INT:.*]] = arith.constant dense<-1> : tensor<2x4xi32>
+  // CHECK-DAG: %[[MAX_FLOAT:.*]] = arith.constant dense<4.2949673E+9> : tensor<2x4xf32>
+  // CHECK: %[[FP2UI:.*]] = arith.fptoui %arg0 : tensor<2x4xf32> to tensor<2x4xi32>
+  // CHECK: %[[CMP_MIN:.*]] = arith.cmpf ole, %arg0, %[[ZERO_FLOAT]] : tensor<2x4xf32>
+  // CHECK: %[[CLAMPED_MIN:.*]] = arith.select %[[CMP_MIN]], %[[ZERO_INT]], %[[FP2UI]] : tensor<2x4xi1>, tensor<2x4xi32>
+  // CHECK: %[[CMP_MAX:.*]] = arith.cmpf oge, %arg0, %[[MAX_FLOAT]] : tensor<2x4xf32>
+  // CHECK: %[[CLAMPED_MAX:.*]] = arith.select %[[CMP_MAX]], %[[MAX_INT]], %[[CLAMPED_MIN]] : tensor<2x4xi1>, tensor<2x4xi32>
+  // CHECK: %[[NAN_CMP:.*]] = arith.cmpf uno, %arg0, %arg0 : tensor<2x4xf32>
+  // CHECK: %[[RES_SIGNLESS:.*]] = arith.select %[[NAN_CMP]], %[[ZERO_INT]], %[[CLAMPED_MAX]] : tensor<2x4xi1>, tensor<2x4xi32>
+  // CHECK: %[[RES:.*]] = builtin.unrealized_conversion_cast %[[RES_SIGNLESS]] : tensor<2x4xi32> to tensor<2x4xui32>
+  // CHECK: return %[[RES]] : tensor<2x4xui32>
+  %0 = stablehlo.convert %arg0 : (tensor<2x4xf32>) -> tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
+}
+
+// -----
+
+func.func @lower_convert_ui32_to_f32(%arg0: tensor<2x4xui32>) -> tensor<2x4xf32> {
+  // CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: %[[RES:.*]] = arith.uitofp %[[CAST]] : tensor<2x4xi32> to tensor<2x4xf32>
+  // CHECK: return %[[RES]] : tensor<2x4xf32>
+  %0 = stablehlo.convert %arg0 : (tensor<2x4xui32>) -> tensor<2x4xf32>
+  return %0 : tensor<2x4xf32>
+}
+

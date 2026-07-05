@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_bundle/naming.h"
 
 #include <cstdint>
+#include <string>
 
 #include "absl/log/check.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"

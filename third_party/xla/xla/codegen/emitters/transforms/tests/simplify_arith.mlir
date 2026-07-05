@@ -264,7 +264,7 @@ func.func @refine_constraints(%tensor: tensor<100xf32>) -> tensor<100xf32> {
 // -----
 
 #map = #xla.indexing_map<
-  "(d0, d1)[s0, s1] -> (((d0 * 4 + d1 * 512 + s1) floordiv 9 + s0 * 32768) mod 2400000),"
+  "(d0, d1)[s0, s1] -> (((d0 * 4 + d1 * 512 + s1) / 9 + s0 * 32768) mod 2400000),"
   "domain: d0 in [0, 127], d1 in [0, 575], s0 in [0, 73], s1 in [0, 3]">
 #map1 = #xla.indexing_map<"(d0, d1)[s0] -> ((d0 * 4 + d1 * 512 + s0) mod 9),"
   "domain: d0 in [0, 127], d1 in [0, 575], s0 in [0, 3]">
@@ -291,13 +291,13 @@ func.func @refine_constraints_for_symbol(%arg0: tensor<2400000x9xf32>,
   }
   return %0 : tensor<2400000x9xf32>
 }
-// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0, d1, d2, d3) -> (d2 * 32768 + (d0 * 4 + d1 * 512 + d3) floordiv 9),
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0, d1, d2, d3) -> (d2 * 32768 + (d0 * 4 + d1 * 512 + d3) / 9),
 // CHECK-LABEL: func.func @refine_constraints_for_symbol
 
 // -----
 
 #map = #xla.indexing_map<
-  "(d0, d1, d2, d3, d4, d5)[s0] -> ((d0 * 4 + s0) floordiv 6, (d0 * 4 + s0) mod 6),"
+  "(d0, d1, d2, d3, d4, d5)[s0] -> ((d0 * 4 + s0) / 6, (d0 * 4 + s0) mod 6),"
   "domain:"
   "d0 in [0, 29],"
   "d1 in [0, 0],"

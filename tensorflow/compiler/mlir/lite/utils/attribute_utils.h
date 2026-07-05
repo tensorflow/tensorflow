@@ -19,7 +19,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_ATTRIBUTE_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_ATTRIBUTE_UTILS_H_
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include <sys/stat.h>
+
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <type_traits>
+
+#include "llvm/ADT/STLExtras.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/DialectResourceBlobManager.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {
@@ -43,6 +56,70 @@ FloatAttr GetSingleElementAsFloatOrSelf(Attribute attr);
 // attribute if the number of elements in the attribute is not 1 or the
 // element isn't a integer attribute.
 IntegerAttr ExtractSingleElementAsInteger(ElementsAttr attr);
+
+/// Check the information for a C++ data type, check if this type is valid for
+/// the current attribute. This method is used to verify specific type
+/// invariants that the templatized 'getValues' method cannot.
+bool IsValidIntOrFloat(Type type, int64_t data_elt_size, bool is_int,
+                       bool is_signed);
+
+/// Type trait used to check if the given type T is a potentially valid C++
+/// floating point type that can be used to access the underlying element
+/// types of a DenseElementsAttr.
+template <typename T>
+struct is_valid_cpp_fp_type {
+  /// The type is a valid floating point type if it is a builtin floating
+  /// point type, or is a potentially user defined floating point type. The
+  /// latter allows for supporting users that have custom types defined for
+  /// bfloat16/half/etc.
+  static constexpr bool value = llvm::is_one_of<T, float, double>::value ||
+                                (std::numeric_limits<T>::is_specialized &&
+                                 !std::numeric_limits<T>::is_integer);
+};
+
+/// Return the bit width which ElementsAttr should use for this type.
+size_t GetDenseElementBitWidth(Type elt_type);
+
+// Returns the values of the given ElementsAttr as a ArrayRef of ElementType.
+// Returns {std::nullopt} if the attribute is empty.
+// TODO(b/707702324): Add support for type like IntergAttr and APInt, etc. This
+// is a temporary solution to unblock the LiteRT. Ideally MLIR should provide
+// a common API to access the values of an DenseResourceElementsAttr.
+template <typename ElementType>
+using IntFloatValueTemplateCheckT =
+    std::enable_if_t<(!std::is_same<ElementType, bool>::value &&
+                      std::numeric_limits<ElementType>::is_integer) ||
+                     is_valid_cpp_fp_type<ElementType>::value>;
+template <typename ElementType,
+          typename = IntFloatValueTemplateCheckT<ElementType>>
+inline ArrayRef<ElementType> GetValues(ElementsAttr attr) {
+  Type element_type = attr.getElementType();
+
+  // Check if the element type is not valid for the given ElementType, return
+  // empty ArrayRef.
+  if (!IsValidIntOrFloat(element_type, sizeof(ElementType),
+                         std::numeric_limits<ElementType>::is_integer,
+                         std::numeric_limits<ElementType>::is_signed)) {
+    assert(false && "Incompatible dtype expected from the given ElementsAttr");
+  }
+
+  if (auto dense_elements_attr = dyn_cast<DenseElementsAttr>(attr)) {
+    auto raw_data = dense_elements_attr.getRawData();
+    if (raw_data.empty()) {
+      return {};
+    }
+    return llvm::ArrayRef<ElementType>(
+        reinterpret_cast<const ElementType*>(raw_data.data()),
+        raw_data.size() / sizeof(ElementType));
+  } else if (auto dense_resource_elements_attr =
+                 dyn_cast<DenseResourceElementsAttr>(attr)) {
+    if (AsmResourceBlob* blob =
+            dense_resource_elements_attr.getRawHandle().getBlob())
+      return blob->getDataAs<ElementType>();
+    return {};
+  }
+  return {};
+}
 
 }  // end namespace TFL
 }  // end namespace mlir

@@ -274,6 +274,8 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
       time.sleep(0.1)
       streams = get_streams()
     self.assertCountEqual([stream.index for stream in streams], range(n))
+    wait_for_snapshot(snapshot_dir.full_path)
+    self.assertTrue(snapshot_is_done(snapshot_dir.full_path))
 
   @combinations.generate(
       combinations.times(

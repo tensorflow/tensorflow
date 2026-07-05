@@ -93,11 +93,11 @@ class RemoveNodesTest : public ::testing::Test {
     TransformFuncContext context;
     context.input_names = {};
     context.output_names = {"add_node1"};
-    context.params.insert(
-        std::pair<string, std::vector<string>>({"op", {string("Identity")}}));
+    context.params.insert(std::pair<std::string, std::vector<std::string>>(
+        {"op", {std::string("Identity")}}));
     TF_ASSERT_OK(RemoveNodes(graph_def, context, &result));
 
-    std::map<string, const NodeDef*> node_lookup;
+    std::map<std::string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
     EXPECT_EQ(1, node_lookup.count("add_node1"));
     EXPECT_EQ("add_node2", node_lookup.at("add_node1")->input(0));
@@ -148,11 +148,11 @@ class RemoveNodesTest : public ::testing::Test {
     TransformFuncContext context;
     context.input_names = {};
     context.output_names = {"identity_node"};
-    context.params.insert(
-        std::pair<string, std::vector<string>>({"op", {string("Identity")}}));
+    context.params.insert(std::pair<std::string, std::vector<std::string>>(
+        {"op", {std::string("Identity")}}));
     TF_ASSERT_OK(RemoveNodes(graph_def, context, &result));
 
-    std::map<string, const NodeDef*> node_lookup;
+    std::map<std::string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
     EXPECT_EQ(1, node_lookup.count("add_node"));
     EXPECT_EQ("const_node1", node_lookup.at("add_node")->input(0));
@@ -197,11 +197,11 @@ class RemoveNodesTest : public ::testing::Test {
     TransformFuncContext context;
     context.input_names = {};
     context.output_names = {"identity_node"};
-    context.params.insert(
-        std::pair<string, std::vector<string>>({"op", {string("Identity")}}));
+    context.params.insert(std::pair<std::string, std::vector<std::string>>(
+        {"op", {std::string("Identity")}}));
     TF_ASSERT_OK(RemoveNodes(graph_def, context, &result));
 
-    std::map<string, const NodeDef*> node_lookup;
+    std::map<std::string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
     EXPECT_EQ(1, node_lookup.count("add_node"));
     EXPECT_EQ("const_node1", node_lookup.at("add_node")->input(0));
@@ -247,13 +247,13 @@ class RemoveNodesTest : public ::testing::Test {
     TransformFuncContext context;
     context.input_names = {};
     context.output_names = {"add_node"};
-    context.params.insert(std::pair<string, std::vector<string>>(
-        {"op", {string("FakeQuantWithMinMaxVars")}}));
-    context.params.insert(
-        std::pair<string, std::vector<string>>({"max_inputs", {string("3")}}));
+    context.params.insert(std::pair<std::string, std::vector<std::string>>(
+        {"op", {std::string("FakeQuantWithMinMaxVars")}}));
+    context.params.insert(std::pair<std::string, std::vector<std::string>>(
+        {"max_inputs", {std::string("3")}}));
     TF_ASSERT_OK(RemoveNodes(graph_def, context, &result));
 
-    std::map<string, const NodeDef*> node_lookup;
+    std::map<std::string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
     ASSERT_EQ(1, node_lookup.count("const_node1"));
     ASSERT_EQ(1, node_lookup.count("const_node4"));

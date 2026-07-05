@@ -40,12 +40,13 @@ def build_graph(device, input_shape, output_sizes, axis):
     An array of tensors to run()
   """
   with ops.device("/%s:0" % device):
-    inp = array_ops.zeros(input_shape)
+    # Use a variable to prevent constant folding.
+    inp = variables.Variable(array_ops.zeros(input_shape, dtype="float32"))
 
     outputs = []
     for _ in range(100):
       outputs.extend(array_ops.split(inp, output_sizes, axis))
-    return control_flow_ops.group(*outputs)
+    return outputs
 
 
 class SplitBenchmark(test.Benchmark):
@@ -64,6 +65,10 @@ class SplitBenchmark(test.Benchmark):
     Returns:
       The duration of the run in seconds.
     """
+    # Fallback to CPU if GPU is requested but not available.
+    if device == "gpu" and not test.is_gpu_available():
+      device = "cpu"
+
     graph = ops.Graph()
     with graph.as_default():
       if not variable:
@@ -95,12 +100,22 @@ class SplitBenchmark(test.Benchmark):
       bench.run_op_benchmark(
           session,
           outputs,
-          mbs=input_shape[0] * input_shape[1] * 4 * 2 * 100 / 1e6,
+          mbs=input_shape[0] * input_shape[1] * 4 * 100 / 1e6,
           extras={
               "input_shape": input_shape,
               "variable": variable,
-              "axis": axis
-          })
+              "axis": axis,
+          },
+      )
+
+  def _get_name(self, device, input_shape, variable, num_outputs, axis):
+    return "split_%s_%s_%s_%d_%d" % (
+        device,
+        str(input_shape).replace(" ", ""),
+        str(variable),
+        num_outputs,
+        axis,
+    )
 
   def benchmark_split(self):
     print("Forward vs backward concat")
@@ -113,6 +128,20 @@ class SplitBenchmark(test.Benchmark):
       for axis in axis_:
         for v in variable:
           self._run_graph("gpu", shape, v, num_outputs, axis)
+
+  def benchmark_many_splits(self):
+    """Benchmark SplitV with large spatial dimensions and many outputs."""
+    h, w = 1234, 456
+    # Scenario 1: Many small splits.
+    # Total channels = 25.
+    self._run_graph("cpu", [h * w, 1], False, 25, axis=1)
+
+  def benchmark_few_large_splits(self):
+    """Benchmark SplitV with large spatial dimensions and few large outputs."""
+    h, w = 1234, 456
+    # Scenario 2: Few large splits (same total elements)
+    # Total channels = 25, split into 5 pieces of 5 channels each.
+    self._run_graph("cpu", [h * w, 5], False, 5, axis=1)
 
 
 if __name__ == "__main__":

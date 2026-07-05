@@ -28,12 +28,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -48,7 +48,10 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/emitters/type_util.h"
 #include "xla/codegen/kernel_spec.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
@@ -147,7 +150,7 @@ absl::StatusOr<mlir::func::FuncOp> EmitKernelApi(
   llvm::SmallVector<mlir::Type> param_types;
   std::optional<KernelArguments> args;
   if (buffer_assignment != nullptr) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         args, KernelArguments::Create(*buffer_assignment, buffer_alignment,
                                       &hlo_instruction));
   }
@@ -170,8 +173,13 @@ absl::StatusOr<mlir::func::FuncOp> EmitKernelApi(
         mlir::LLVM::LLVMDialect::getDereferenceableAttrName(),
         builder.getIndexAttr(arg.slice().size())));
     if (!arg.written()) {
-      attrs.push_back(
-          builder.getNamedAttr(kXlaInvariantAttr, builder.getUnitAttr()));
+      if (arg.invariant()) {
+        attrs.push_back(
+            builder.getNamedAttr(kXlaInvariantAttr, builder.getUnitAttr()));
+      } else {
+        attrs.push_back(
+            builder.getNamedAttr(kXlaNotInvariantAttr, builder.getUnitAttr()));
+      }
     }
     return builder.getDictionaryAttr(attrs);
   };
@@ -222,7 +230,7 @@ void SetIndexDataLayout(mlir::ModuleOp module,
 IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
                                           const Shape& shape,
                                           mlir::MLIRContext* mlir_context) {
-  std::vector<mlir::AffineExpr> output_dims(shape.dimensions().size());
+  llvm::SmallVector<SymbolicExpr> output_dims(shape.dimensions().size());
 
   const NumWorkItems& num_work_items = work_dimensions.num_work_items;
   const NumWorkGroups& num_work_groups = work_dimensions.num_work_groups;
@@ -236,13 +244,14 @@ IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
       num_work_items.y * num_work_groups.y,
       num_work_items.z * num_work_groups.z};
 
-  mlir::AffineExpr c0 = mlir::getAffineConstantExpr(0, mlir_context);
+  SymbolicExpr c0 = CreateSymbolicConstant(0, mlir_context);
   uint64_t stride = 1;
-  mlir::AffineExpr linear_index = c0;
+  SymbolicExpr linear_index = c0;
   // Reverse to get minor to major order.
   for (auto [idx, dim] : llvm::enumerate(llvm::reverse(work_tile_dimensions))) {
     uint64_t symbol_index = work_tile_dimensions.size() - idx;
-    auto tile_coord = mlir::getAffineSymbolExpr(symbol_index, mlir_context);
+    auto tile_coord =
+        CreateSymbolExpr(symbol_index, /*num_dims=*/6, mlir_context);
     auto tile_component = tile_coord * stride;
 
     linear_index = linear_index + tile_component;
@@ -259,10 +268,9 @@ IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
   // loop emitter doesn't support. This is safe, since the latter CHECK fails
   // if its assumptions are not fulfilled.
   for (int i = 0; i < 3; ++i) {
-    auto coord =
-        mlir::getAffineDimExpr(kIndexingMapWorkItemDims[i], mlir_context) +
-        mlir::getAffineDimExpr(kIndexingMapWorkGroupDims[i], mlir_context) *
-            work_item_array[i];
+    auto coord = CreateDimExpr(kIndexingMapWorkItemDims[i], mlir_context) +
+                 CreateDimExpr(kIndexingMapWorkGroupDims[i], mlir_context) *
+                     work_item_array[i];
     auto linear_component = coord * stride;
     linear_index = linear_index + linear_component;
     stride *= total_item_array[i];
@@ -272,7 +280,7 @@ IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
   // chunk.
   uint64_t items_per_chunk = stride;
 
-  mlir::AffineExpr chunk_id = mlir::getAffineSymbolExpr(0, mlir_context);
+  SymbolicExpr chunk_id = CreateSymbolExpr(0, /*num_dims=*/6, mlir_context);
   linear_index = chunk_id * items_per_chunk + linear_index;
 
   // See IndexUtil::LinearIndexToMultidimensionalIndex.
@@ -296,11 +304,11 @@ IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
 
   size_t range_vars_size = range_vars.size();
 
-  IndexingMap indexing_map(mlir::AffineMap::get(/*dimCount=*/6,
-                                                /*symbolCount=*/range_vars_size,
-                                                output_dims, mlir_context),
-                           std::move(dim_vars), std::move(range_vars),
-                           /*rt_vars=*/{});
+  IndexingMap indexing_map(
+      SymbolicMap::Get(mlir_context, /*num_dimensions=*/6,
+                       /*num_symbols=*/range_vars_size, output_dims),
+      std::move(dim_vars), std::move(range_vars),
+      /*rt_vars=*/{});
   indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
   indexing_map.Simplify();
   indexing_map.RemoveUnusedSymbols();
@@ -365,7 +373,7 @@ absl::StatusOr<CallTargetProvider> EmitPartitionedComputations(
   for (const auto& comp : computations.partitioned_computations()) {
     for (const auto& subgraph : comp.subgraphs()) {
       if (subgraph_to_mlir_fn.contains(&subgraph)) {
-        TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
+        RETURN_IF_ERROR(SubgraphToMlirFunction(
             comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets,
             computations.mlir_context()));
       }
@@ -377,7 +385,7 @@ absl::StatusOr<CallTargetProvider> EmitPartitionedComputations(
     if (epilogue.roots.empty()) {
       continue;
     }
-    TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
+    RETURN_IF_ERROR(SubgraphToMlirFunction(
         computations.FindPartitionedComputation(fused_computation), epilogue,
         subgraph_to_mlir_fn[&epilogue], call_targets,
         computations.mlir_context()));
@@ -399,7 +407,7 @@ absl::StatusOr<KernelSpec> GetKernelSpec(
 
   KernelSpec::Buffers result_buffers;
   for (auto& indexed : ShapeUtil::GetLeafShapes(hlo_instruction.shape())) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         buffer_assignment->GetUniqueSlice(&hlo_instruction, indexed.index));
     result_buffers.push_back({slice, indexed.shape});
@@ -407,10 +415,12 @@ absl::StatusOr<KernelSpec> GetKernelSpec(
 
   KernelSpec::Buffers argument_buffers;
   absl::flat_hash_set<int64_t> invariant_arguments;
+  absl::flat_hash_set<int> no_invariant_operands =
+      NonInvariantOperands(hlo_instruction);
   int64_t operand_index = 0;
   for (HloInstruction* operand : hlo_instruction.operands()) {
     for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           BufferAllocation::Slice slice,
           buffer_assignment->GetUniqueSlice(operand, indexed.index));
 
@@ -418,6 +428,10 @@ absl::StatusOr<KernelSpec> GetKernelSpec(
           result_buffers, [&slice](const ShapedSlice& result_slice) {
             return result_slice.slice.OverlapsWith(slice);
           });
+      // Allow overriding invariant attribute via frontend attribute
+      if (no_invariant_operands.contains(operand_index)) {
+        invariant = false;
+      }
       if (invariant) {
         invariant_arguments.insert(operand_index);
       }

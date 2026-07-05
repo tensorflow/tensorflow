@@ -30,14 +30,14 @@ typedef Eigen::GpuDevice GPUDevice;
 CastFunctorType GetCpuCastFromUint4(DataType dst_dtype) {
   // Only allow casts to integer types.
   CAST_CASE(CPUDevice, uint4, int4);
-  CAST_CASE(CPUDevice, uint4, int8);
-  CAST_CASE(CPUDevice, uint4, int16);
-  CAST_CASE(CPUDevice, uint4, int32);
+  CAST_CASE(CPUDevice, uint4, int8_t);
+  CAST_CASE(CPUDevice, uint4, int16_t);
+  CAST_CASE(CPUDevice, uint4, int32_t);
   CAST_CASE(CPUDevice, uint4, int64_t);
   CAST_CASE(CPUDevice, uint4, uint4);
-  CAST_CASE(CPUDevice, uint4, uint8);
-  CAST_CASE(CPUDevice, uint4, uint16);
-  CAST_CASE(CPUDevice, uint4, uint32);
+  CAST_CASE(CPUDevice, uint4, uint8_t);
+  CAST_CASE(CPUDevice, uint4, uint16_t);
+  CAST_CASE(CPUDevice, uint4, uint32_t);
   CAST_CASE(CPUDevice, uint4, uint64_t);
   return nullptr;
 }
@@ -47,14 +47,14 @@ CastFunctorType GetCpuCastFromUint4(DataType dst_dtype) {
 CastFunctorType GetGpuCastFromUint4(DataType dst_dtype) {
   // Only allow casts to integer types.
   CAST_CASE(GPUDevice, uint4, int4);
-  CAST_CASE(GPUDevice, uint4, int8);
-  CAST_CASE(GPUDevice, uint4, int16);
-  CAST_CASE(GPUDevice, uint4, int32);
+  CAST_CASE(GPUDevice, uint4, int8_t);
+  CAST_CASE(GPUDevice, uint4, int16_t);
+  CAST_CASE(GPUDevice, uint4, int32_t);
   CAST_CASE(GPUDevice, uint4, int64_t);
   CAST_CASE(GPUDevice, uint4, uint4);
-  CAST_CASE(GPUDevice, uint4, uint8);
-  CAST_CASE(GPUDevice, uint4, uint16);
-  CAST_CASE(GPUDevice, uint4, uint32);
+  CAST_CASE(GPUDevice, uint4, uint8_t);
+  CAST_CASE(GPUDevice, uint4, uint16_t);
+  CAST_CASE(GPUDevice, uint4, uint32_t);
   CAST_CASE(GPUDevice, uint4, uint64_t);
   return nullptr;
 }

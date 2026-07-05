@@ -9,12 +9,19 @@ def tf_ops_fuzz_target_lib(name):
         deps = [
             "//tensorflow/core/kernels/fuzzing:fuzz_session",
             "//tensorflow/cc:cc_ops",
+            "//tensorflow/cc:ops",
+            "//tensorflow/cc:scope",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:protos_all_cc",
+            "//third_party/absl/log",
         ],
         tags = [
             "manual",
             "no_windows",
         ],
         alwayslink = 1,
+        visibility = ["//visibility:public"],
     )
 
 def tf_oss_fuzz_corpus(name):

@@ -109,9 +109,13 @@ class LoadedExecutable final
   absl::StatusOr<ExecuteResult> Execute(
       absl::Span<xla::ifrt::ArrayRef> args, const ExecuteOptions& options,
       std::optional<xla::ifrt::DeviceListRef> devices) override;
+  absl::StatusOr<ExecuteBundleResult> ExecuteBundle(
+      absl::Span<BundleRef> args, const ExecuteOptions& options) override;
 
   std::optional<DeviceListRef> devices() const override;
   absl::Span<xla::ifrt::Device* const> addressable_devices() const override;
+
+  void SetDeleteOptions(const DeleteOptions& options) override;
 
   static char ID;  // NOLINT
 
@@ -176,6 +180,10 @@ class LoadedExecutable final
   mutable std::optional<absl::StatusOr<std::string>>
       human_readable_program_text_
           ABSL_GUARDED_BY(human_readable_program_text_mu_);
+
+  absl::Mutex delete_options_mu_;
+  std::optional<DeleteOptions> delete_options_
+      ABSL_GUARDED_BY(delete_options_mu_);
 };
 
 }  // namespace proxy

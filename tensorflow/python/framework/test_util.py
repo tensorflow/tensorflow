@@ -3165,9 +3165,7 @@ class TensorFlowTestCase(googletest.TestCase):
       err: a float value.
       msg: Optional message to report on failure.
     """
-    self.assertEqual(len(farray1), len(farray2), msg=msg)
-    for f1, f2 in zip(farray1, farray2):
-      self.assertNear(float(f1), float(f2), err, msg=msg)
+    self.assertAllClose(farray1, farray2, rtol=0, atol=err, msg=msg)
 
   def _NDArrayNear(self, ndarray1, ndarray2, err):
     return np.linalg.norm(ndarray1 - ndarray2) < err
@@ -3226,11 +3224,15 @@ class TensorFlowTestCase(googletest.TestCase):
     # implemented using inefficient recursion so prints can cause tests to
     # time out.
     if a.shape != b.shape and (b.ndim <= 3 or b.size < 500):
-      shape_mismatch_msg = ("Shape mismatch: expected %s, got %s with contents "
-                            "%s.") % (a.shape, b.shape, b)
+      shape_mismatch_msg = (
+          "%sShape mismatch: expected %s, got %s with contents %s."
+      ) % (msg, a.shape, b.shape, b)
     else:
-      shape_mismatch_msg = "Shape mismatch: expected %s, got %s." % (a.shape,
-                                                                     b.shape)
+      shape_mismatch_msg = "%sShape mismatch: expected %s, got %s." % (
+          msg,
+          a.shape,
+          b.shape,
+      )
     self.assertEqual(a.shape, b.shape, shape_mismatch_msg)
 
     msgs = [msg]

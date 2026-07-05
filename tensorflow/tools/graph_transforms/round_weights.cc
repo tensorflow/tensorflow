@@ -37,23 +37,24 @@ absl::Status RoundWeights(const GraphDef& input_graph_def,
       context.GetOneInt32Parameter("num_steps", 256, &num_steps));
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def, {"Const"},
-      [num_steps](const NodeMatch& match, const std::set<string>& input_nodes,
-                  const std::set<string>& output_nodes,
+      [num_steps](const NodeMatch& match,
+                  const std::set<std::string>& input_nodes,
+                  const std::set<std::string>& output_nodes,
                   std::vector<NodeDef>* new_nodes) {
         const NodeDef& old_const_node = match.node;
         if (!old_const_node.attr().count("dtype")) {
-          return errors::InvalidArgument("No 'dtype' attribute for Const node ",
-                                         old_const_node.name());
+          return absl::InvalidArgumentError(absl::StrCat(
+              "No 'dtype' attribute for Const node ", old_const_node.name()));
         }
         if (!old_const_node.attr().count("value")) {
-          return errors::InvalidArgument("No 'value' attribute for Const node ",
-                                         old_const_node.name());
+          return absl::InvalidArgumentError(absl::StrCat(
+              "No 'value' attribute for Const node ", old_const_node.name()));
         }
         const DataType old_dtype = old_const_node.attr().at("dtype").type();
         Tensor old_tensor;
         if (!old_tensor.FromProto(old_const_node.attr().at("value").tensor())) {
-          return errors::InvalidArgument("Decoding Tensor failed for node",
-                                         old_const_node.name());
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Decoding Tensor failed for node", old_const_node.name()));
         }
         const size_t num_elements = old_tensor.NumElements();
         // If this isn't a float constant, or it's too small, then reuse the

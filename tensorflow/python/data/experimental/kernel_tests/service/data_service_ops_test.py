@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.data service ops."""
+
+import tempfile
 import time
 
 from absl.testing import parameterized
@@ -46,6 +48,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 
 TMP_WORK_DIR = data_service_test_base.TMP_WORK_DIR
@@ -624,16 +627,22 @@ class DataServiceOpsTest(
       time.sleep(3)
       self.getIteratorOutput(get_next)
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testKeepClientAliveBeforeReading(self):
-    dispatcher = server_lib.DispatchServer(
-        service_config_pb2.DispatcherConfig(
-            protocol="grpc",
-            job_gc_check_interval_ms=50,
-            job_gc_timeout_ms=20,
-            client_timeout_ms=1000,
-        )
+  @combinations.generate(
+      combinations.times(
+          test_base.eager_only_combinations(),
+          combinations.combine(restart_dispatcher=[True, False]),
+      )
+  )
+  def testKeepClientAliveBeforeReading(self, restart_dispatcher):
+    dispatcher_config = service_config_pb2.DispatcherConfig(
+        protocol="grpc",
+        work_dir=tempfile.mkdtemp(dir=googletest.GetTempDir()),
+        fault_tolerant_mode=True,
+        job_gc_check_interval_ms=50,
+        job_gc_timeout_ms=20,
+        client_timeout_ms=1000,
     )
+    dispatcher = server_lib.DispatchServer(dispatcher_config)
     dispatcher_address = dispatcher.target.split("://")[1]
     _ = server_lib.WorkerServer(
         server_lib.WorkerConfig(
@@ -651,6 +660,12 @@ class DataServiceOpsTest(
         )
     )
     get_next = self.getNext(dataset)
+
+    time.sleep(1)
+    if restart_dispatcher:
+      dispatcher_config.port = int(dispatcher.target.split(":")[2])
+      dispatcher.stop()
+      dispatcher = server_lib.DispatchServer(dispatcher_config)
 
     # The client regularly heartbeats in 100 milliseconds. It should not be
     # garbage-collected even if it does not start reading in 3 seconds.

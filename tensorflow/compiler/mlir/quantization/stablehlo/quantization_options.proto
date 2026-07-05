@@ -32,7 +32,7 @@ message PresetQuantizationMethod {
   // NEXT ID: 5
   enum PresetMethod {
     // TODO(b/266173150): Update preset methods after redefining quantization
-    // pattern matching in DarwiNN.
+    // pattern matching.
     // This should never be used. Using this will generally result in an error.
     METHOD_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
 

@@ -58,9 +58,16 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
   // Check that input has one or more dimensions.
   TF_LITE_ENSURE_MSG(context, input->dims->size >= 1,
                      "TopK k input must have 1 or more dimensions.");
-  // Check that k is less or equal the internal dimension.
-  TF_LITE_ENSURE_MSG(context, k <= input->dims->data[num_dimensions - 1],
-                     "TopK k is higher than the internal dimension.");
+
+  // Calculate the size of the last dimension for the output tensors.
+  // It should be 0 if k is not positive.
+  const int32 output_last_dim = std::max(0, k);
+
+  // Check that k is less or equal the internal dimension *if k is positive*.
+  if (k > 0) {
+    TF_LITE_ENSURE_MSG(context, k <= input->dims->data[num_dimensions - 1],
+                       "TopK k is higher than the internal dimension.");
+  }
 
   TfLiteIntArray* output_indexes_shape = TfLiteIntArrayCreate(num_dimensions);
   TfLiteIntArray* output_values_shape = TfLiteIntArrayCreate(num_dimensions);
@@ -68,8 +75,10 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
     output_indexes_shape->data[i] = input->dims->data[i];
     output_values_shape->data[i] = input->dims->data[i];
   }
-  output_indexes_shape->data[num_dimensions - 1] = k;
-  output_values_shape->data[num_dimensions - 1] = k;
+  // Use the sanitized dimension size.
+  output_indexes_shape->data[num_dimensions - 1] = output_last_dim;
+  output_values_shape->data[num_dimensions - 1] = output_last_dim;
+
   TfLiteTensor* output_indexes;
   TF_LITE_ENSURE_OK(
       context, GetOutputSafe(context, node, kOutputIndexes, &output_indexes));
@@ -184,6 +193,12 @@ class TopContainer {
 template <typename T, typename Tidx = int32>
 void TopK(int32 row_size, int32 num_rows, const T* data, int32 k,
           Tidx* output_indexes, T* output_values) {
+  if (k <= 0) {
+    // If k is 0 or negative, there are no top elements to find.
+    // The output tensors should already be sized with the last dimension as 0
+    // by the Prepare/ResizeOutput functions.
+    return;
+  }
   TopContainer<T, Tidx> topc(k, row_size);
   for (int row = 0; row < num_rows; ++row) {
     const T* values_row = data + row * row_size;

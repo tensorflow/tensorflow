@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -31,6 +32,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
+
+class TiledHloInstruction;
+
+// A region is a collection of instructions grouped to represent a nested
+// control flow (e.g., loops) or a distinct computation branch.
+class TiledHloRegion
+    : public std::vector<std::unique_ptr<TiledHloInstruction>> {};
 
 // A wrapper around HloInstruction that represents a tiled HLO instruction.
 //
@@ -59,7 +67,8 @@ class TiledHloInstruction {
       llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
       llvm::SmallVector<int64_t> tile_sizes,
       llvm::SmallVector<int64_t> tile_strides,
-      std::optional<IndexingMap> tile_offsets_indexing);
+      std::optional<IndexingMap> tile_offsets_indexing,
+      llvm::SmallVector<TiledHloRegion> regions = {});
 
   // Returns the original HLO instruction.
   const HloInstruction* hlo() const { return hlo_; }
@@ -100,12 +109,21 @@ class TiledHloInstruction {
       return absl::FailedPreconditionError(
           "tile_offsets_indexing was not computed. It is likely that "
           "`compute_all_tile_offset_indexing_maps` should be set to true in "
-          "`SymbolicTileAnalysis::ComputeTiledHloInstructions`.");
+          "`SymbolicTileAnalysis::ComputeTiledComputation`.");
     }
     return *tile_offsets_indexing_;
   }
 
-  std::string ToString() const;
+  // List of "regions" (i.e. loop bodies or conditional branches) that are
+  // part of this instruction. Regions represent control flow that will be used
+  // later by the emitter. Interpretation of the contents depends on the HLO
+  // opcode.
+  // - dot has a single region for the entire dot loop body (including all its
+  //   operands);
+  // - concatenation has a region per operand.
+  absl::Span<const TiledHloRegion> hlo_regions() const { return regions_; }
+
+  std::string ToString(int64_t indent = 0) const;
 
   // This allows GUnit to print TiledHloInstruction.
   template <typename Sink>
@@ -120,13 +138,15 @@ class TiledHloInstruction {
       llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
       llvm::SmallVector<int64_t> tile_sizes,
       llvm::SmallVector<int64_t> tile_strides,
-      std::optional<IndexingMap> tile_offsets_indexing)
+      std::optional<IndexingMap> tile_offsets_indexing,
+      llvm::SmallVector<TiledHloRegion> regions = {})
       : hlo_(hlo),
         operands_(std::move(operands)),
         runtime_variables_(std::move(runtime_variables)),
         tile_sizes_(std::move(tile_sizes)),
         tile_strides_(std::move(tile_strides)),
-        tile_offsets_indexing_(std::move(tile_offsets_indexing)) {
+        tile_offsets_indexing_(std::move(tile_offsets_indexing)),
+        regions_(std::move(regions)) {
     if (tile_offsets_indexing_.has_value()) {
       CHECK_EQ(tile_offsets_indexing_->GetDimVarsCount(), 1);
       CHECK_EQ(tile_offsets_indexing_->GetRTVarsCount(),
@@ -148,6 +168,8 @@ class TiledHloInstruction {
 
   // See comment for `tile_offsets_indexing()`.
   std::optional<IndexingMap> tile_offsets_indexing_;
+
+  llvm::SmallVector<TiledHloRegion> regions_;
 };
 
 inline bool operator==(const TiledHloInstruction& lhs,

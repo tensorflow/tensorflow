@@ -44,13 +44,14 @@ class CrossOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& in0 = context->input(0);
     const Tensor& in1 = context->input(1);
-    OP_REQUIRES(context, in0.shape() == in1.shape(),
-                errors::InvalidArgument("Both inputs must be of same shape: ",
-                                        in0.shape().DebugString(), " vs. ",
-                                        in1.shape().DebugString()));
+    OP_REQUIRES(
+        context, in0.shape() == in1.shape(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Both inputs must be of same shape: ", in0.shape().DebugString(),
+            " vs. ", in1.shape().DebugString())));
     OP_REQUIRES(context, in0.dims() >= 1,
-                errors::InvalidArgument("Input must be at least 1D",
-                                        in0.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Input must be at least 1D", in0.shape().DebugString())));
 
     // Cross-products only really make sense for three and
     // seven dimensions, and the latter is very obscure. If there is
@@ -59,7 +60,7 @@ class CrossOp : public OpKernel {
     // that all are 3D.
     auto inner_dim = in0.dim_size(in0.dims() - 1);
     OP_REQUIRES(context, inner_dim == 3,
-                errors::FailedPrecondition(
+                absl::FailedPreconditionError(
                     "Cross-products are only defined for 3-element vectors."));
 
     // Create the output Tensor with the same dimensions as the input Tensors.

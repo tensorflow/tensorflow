@@ -61,7 +61,9 @@ struct Tf2HloResult {
   tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
   tf2xla::HostComputeMetadata host_compute_metadata;
   // `xla_input_shapes[i]` corresponds to the input shape of the i-th argument
-  // in the original `Tf2HloArg`.
+  // in the original `Tf2HloArg`. It will be empty if
+  // `populate_layout_in_xla_input_shapes` is false or there is no input in
+  // `module`.
   std::vector<xla::Shape> xla_input_shapes;
 
   absl::StatusOr<Tf2HLOResultProto> ToProto() const;

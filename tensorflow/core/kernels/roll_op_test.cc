@@ -55,8 +55,8 @@ TEST_F(RollOpTest, ScalarIndices) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5}), {0, 1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({}), {3});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {3});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -70,8 +70,8 @@ TEST_F(RollOpTest, ScalarIndices_NoMemcpy) {
 
   // Feed and run
   AddInputFromArray<tstring>(TensorShape({5}), {"a", "b", "c", "d", "e"});
-  AddInputFromArray<int32>(TensorShape({}), {3});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {3});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -88,8 +88,8 @@ TEST_F(RollOpTest, ScalarIndices_Complex) {
       TensorShape({5}), {std::complex<float>(0, 10), std::complex<float>(1, 11),
                          std::complex<float>(2, 12), std::complex<float>(3, 13),
                          std::complex<float>(4, 14)});
-  AddInputFromArray<int32>(TensorShape({}), {3});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {3});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -107,8 +107,8 @@ TEST_F(RollOpTest, Simple_TwoD32) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({3, 5}),
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
-  AddInputFromArray<int32>(TensorShape({2}), {2, -1});
-  AddInputFromArray<int32>(TensorShape({2}), {0, 1});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, -1});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -125,8 +125,8 @@ TEST_F(RollOpTest, Simple_TwoD32_NoMemcpy) {
   AddInputFromArray<tstring>(TensorShape({3, 5}),
                              {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
                               "k", "l", "m", "n", "o"});
-  AddInputFromArray<int32>(TensorShape({2}), {2, -1});
-  AddInputFromArray<int32>(TensorShape({2}), {0, 1});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, -1});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -142,8 +142,8 @@ TEST_F(RollOpTest, Simple_ThreeD32) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({2, 2, 3}),
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
-  AddInputFromArray<int32>(TensorShape({3}), {1, -1, -1});
-  AddInputFromArray<int32>(TensorShape({3}), {0, 1, 2});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, -1, -1});
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 1, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -159,8 +159,8 @@ TEST_F(RollOpTest, Simple_ThreeD32_NoMemcpy) {
   AddInputFromArray<tstring>(
       TensorShape({2, 2, 3}),
       {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"});
-  AddInputFromArray<int32>(TensorShape({3}), {1, -1, -1});
-  AddInputFromArray<int32>(TensorShape({3}), {0, 1, 2});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, -1, -1});
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 1, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -245,8 +245,8 @@ TEST_F(RollOpTest, ZeroShift_ThreeD32) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({2, 2, 3}),
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
-  AddInputFromArray<int32>(TensorShape({3}), {0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({3}), {0, 1, 2});
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 1, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -262,8 +262,8 @@ TEST_F(RollOpTest, ZeroShift_ThreeD32_NoMemcpy) {
   AddInputFromArray<tstring>(
       TensorShape({2, 2, 3}),
       {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"});
-  AddInputFromArray<int32>(TensorShape({3}), {0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({3}), {0, 1, 2});
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 1, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -278,8 +278,8 @@ TEST_F(RollOpTest, ZeroSize_ThreeD32) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 0, 0}), {});
-  AddInputFromArray<int32>(TensorShape({}), {1});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -292,8 +292,8 @@ TEST_F(RollOpTest, ZeroSize_ThreeD32_NoMemcpy) {
 
   // Feed and run
   AddInputFromArray<tstring>(TensorShape({5, 0, 0}), {});
-  AddInputFromArray<int32>(TensorShape({}), {1});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -306,8 +306,8 @@ TEST_F(RollOpTest, OneSize_ThreeD32) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({1, 1, 1}), {5});
-  AddInputFromArray<int32>(TensorShape({}), {1});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -321,8 +321,8 @@ TEST_F(RollOpTest, OneSize_ThreeD32_NoMemcpy) {
 
   // Feed and run
   AddInputFromArray<tstring>(TensorShape({1, 1, 1}), {"a"});
-  AddInputFromArray<int32>(TensorShape({}), {1});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -337,8 +337,8 @@ TEST_F(RollOpTest, MultiShifts_TwoD32) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({3, 5}),
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
-  AddInputFromArray<int32>(TensorShape({4}), {-2, 2, -1, 1});
-  AddInputFromArray<int32>(TensorShape({4}), {1, 0, 0, 1});
+  AddInputFromArray<int32_t>(TensorShape({4}), {-2, 2, -1, 1});
+  AddInputFromArray<int32_t>(TensorShape({4}), {1, 0, 0, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -355,8 +355,8 @@ TEST_F(RollOpTest, MultiShifts_TwoD32_NoMemcpy) {
   AddInputFromArray<tstring>(TensorShape({3, 5}),
                              {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
                               "k", "l", "m", "n", "o"});
-  AddInputFromArray<int32>(TensorShape({4}), {-2, 2, -1, 1});
-  AddInputFromArray<int32>(TensorShape({4}), {1, 0, 0, 1});
+  AddInputFromArray<int32_t>(TensorShape({4}), {-2, 2, -1, 1});
+  AddInputFromArray<int32_t>(TensorShape({4}), {1, 0, 0, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -371,8 +371,8 @@ TEST_F(RollOpTest, Error_InputMustBeVectorOrHigher) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({}), {7});
-  AddInputFromArray<int32>(TensorShape({}), {1});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(s.ToString(), "input must be 1-D or higher"))
       << s;
@@ -383,8 +383,8 @@ TEST_F(RollOpTest, Error_AxisMustBeScalarOrVector) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({2, 2}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({}), {1});
-  AddInputFromArray<int32>(TensorShape({1, 2}), {0, 1});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
+  AddInputFromArray<int32_t>(TensorShape({1, 2}), {0, 1});
   absl::Status s = RunOpKernel();
   EXPECT_TRUE(
       absl::StrContains(s.ToString(), "axis must be a scalar or a 1-D vector"))
@@ -396,8 +396,8 @@ TEST_F(RollOpTest, Error_ShiftMustBeScalarOrVector) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({2, 2}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({1, 2}), {0, 1});
-  AddInputFromArray<int32>(TensorShape({}), {1});
+  AddInputFromArray<int32_t>(TensorShape({1, 2}), {0, 1});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
   absl::Status s = RunOpKernel();
   EXPECT_TRUE(
       absl::StrContains(s.ToString(), "shift must be a scalar or a 1-D vector"))
@@ -409,8 +409,8 @@ TEST_F(RollOpTest, Error_ShiftAndAxisMustBeSameSize) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({2, 2}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({1}), {1});
-  AddInputFromArray<int32>(TensorShape({2}), {0, 1});
+  AddInputFromArray<int32_t>(TensorShape({1}), {1});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 1});
   absl::Status s = RunOpKernel();
   EXPECT_TRUE(
       absl::StrContains(s.ToString(), "shift and axis must have the same size"))
@@ -422,8 +422,8 @@ TEST_F(RollOpTest, Error_AxisOutOfRange) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({4}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({}), {1});
-  AddInputFromArray<int32>(TensorShape({}), {1});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
   absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(s.ToString(), "is out of range")) << s;
 }
@@ -438,11 +438,11 @@ static Graph* RollGraph(const TensorShape& shape, int isd) {
   Tensor shift(DT_INT32, TensorShape({dims}));
   for (int i = 0; i < dims; i++) {
     // shift the inner shift dimension and all outer dimensions
-    shift.flat<int32>()(i) = (i <= isd) ? 2 : 0;
+    shift.flat<int32_t>()(i) = (i <= isd) ? 2 : 0;
   }
   Tensor axis(DT_INT32, TensorShape({dims}));
   for (int i = 0; i < dims; i++) {
-    axis.flat<int32>()(i) = i;
+    axis.flat<int32_t>()(i) = i;
   }
   test::graph::Roll(g, test::graph::Constant(g, input),
                     test::graph::Constant(g, shift),

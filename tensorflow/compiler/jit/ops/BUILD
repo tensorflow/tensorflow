@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -27,13 +27,14 @@ tf_gen_op_wrapper_py(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
-    py_lib_rule = py_strict_library,
+    py_lib_rule = py_library,
     deps = ["//tensorflow/compiler/jit/ops:xla_ops"],
 )
 
-py_strict_library(
+py_library(
     name = "xla_ops_grad",
     srcs = ["xla_ops_grad.py"],
+    strict_deps = True,
     visibility = [
         "//tensorflow/compiler/tf2xla:internal",
         "//tensorflow/python/ops:__pkg__",

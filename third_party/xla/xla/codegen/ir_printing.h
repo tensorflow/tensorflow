@@ -43,6 +43,9 @@ void EnableIRPrintingIfRequested(mlir::PassManager& pass_manager,
                                  absl::string_view kernel_name,
                                  absl::string_view pass_manager_name);
 
+// Returns true if the MLIR IR should be printed for the given HLO module.
+bool ShouldLogMLIRFusionPasses(const HloModule* hlo_module);
+
 }  // namespace xla
 
 #endif  // XLA_CODEGEN_IR_PRINTING_H_

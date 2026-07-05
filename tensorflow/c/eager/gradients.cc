@@ -14,13 +14,30 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/eager/gradients.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients_internal.h"
+#include "tensorflow/c/eager/tape.h"
+#include "tensorflow/c/tensor_interface.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace gradients {
@@ -33,30 +50,15 @@ int64_t ToId(const AbstractTensorHandle* t) {
   return static_cast<int64_t>(reinterpret_cast<uintptr_t>(t));
 }
 
-absl::Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* t,
-                       AbstractTensorHandle** result) {
-  AbstractOperationPtr op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op->Reset("ZerosLike", /*raw_device_name=*/nullptr));
-  if (isa<tracing::TracingOperation>(op.get())) {
-    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(op.get())->SetOpName(
-        absl::StrCat("ZerosLike", ToId(t)).c_str()));
-  }
-  TF_RETURN_IF_ERROR(op->AddInput(t));
-  int num_outputs = 1;
-  std::vector<AbstractTensorHandle*> outputs(num_outputs);
-  TF_RETURN_IF_ERROR(
-      op->Execute(absl::Span<AbstractTensorHandle*>(outputs), &num_outputs));
-  *result = outputs[0];
-  return absl::OkStatus();
-}
 }  // namespace
 
 absl::Status GradientRegistry::Register(
-    const string& op_name, GradientFunctionFactory gradient_function_factory) {
+    const std::string& op_name,
+    GradientFunctionFactory gradient_function_factory) {
   auto iter = registry_.find(op_name);
   if (iter != registry_.end()) {
-    const string error_msg = "Gradient already exists for op: " + op_name + ".";
-    return errors::AlreadyExists(error_msg);
+    return absl::AlreadyExistsError(
+        absl::StrCat("Gradient already exists for op: ", op_name, "."));
   }
   registry_.insert({op_name, gradient_function_factory});
   return absl::OkStatus();
@@ -66,25 +68,61 @@ absl::Status GradientRegistry::Lookup(
     std::unique_ptr<GradientFunction>* gradient_function) const {
   auto iter = registry_.find(op.op_name);
   if (iter == registry_.end()) {
-    const string error_msg = "No gradient defined for op: " + op.op_name + ".";
-    return errors::NotFound(error_msg);
+    return absl::NotFoundError(
+        absl::StrCat("No gradient defined for op: ", op.op_name, "."));
   }
   gradient_function->reset(iter->second(op));
   return absl::OkStatus();
 }
 
 TapeTensor::TapeTensor(AbstractTensorHandle* handle) : handle_(handle) {
-  handle_->Ref();
+  if (handle_) {
+    handle_->Ref();
+  }
 }
 TapeTensor::TapeTensor(const TapeTensor& other) {
   handle_ = other.handle_;
-  handle_->Ref();
+  if (handle_) {
+    handle_->Ref();
+  }
 }
-TapeTensor::~TapeTensor() { handle_->Unref(); }
+TapeTensor& TapeTensor::operator=(const TapeTensor& other) {
+  if (this != &other) {
+    if (other.handle_) {
+      other.handle_->Ref();
+    }
+    if (handle_) {
+      handle_->Unref();
+    }
+    handle_ = other.handle_;
+  }
+  return *this;
+}
+TapeTensor::TapeTensor(TapeTensor&& other) noexcept : handle_(other.handle_) {
+  other.handle_ = nullptr;
+}
+TapeTensor& TapeTensor::operator=(TapeTensor&& other) noexcept {
+  if (this != &other) {
+    if (handle_) {
+      handle_->Unref();
+    }
+    handle_ = other.handle_;
+    other.handle_ = nullptr;
+  }
+  return *this;
+}
+TapeTensor::~TapeTensor() {
+  if (handle_) {
+    handle_->Unref();
+  }
+}
 
 int64_t TapeTensor::GetID() const { return ToId(handle_); }
 
 tensorflow::DataType TapeTensor::GetDType() const {
+  if (handle_ == nullptr) {
+    return DT_INVALID;
+  }
   return handle_->DataType();
 }
 AbstractTensorHandle* TapeTensor::GetHandle() const { return handle_; }
@@ -95,7 +133,7 @@ class TapeVSpace
     : public eager::VSpace<AbstractTensorHandle, GradientFunction, TapeTensor> {
  public:
   explicit TapeVSpace(AbstractContext* ctx) : ctx_(ctx) {}
-  ~TapeVSpace() override {}
+  ~TapeVSpace() override = default;
 
   // Returns the number of elements in the gradient tensor.
   int64_t NumElements(AbstractTensorHandle* tensor) const override;
@@ -108,7 +146,7 @@ class TapeVSpace
   // Calls the passed-in backward function.
   // op_type is the op's name provided in RecordOperation.
   absl::Status CallBackwardFunction(
-      const string& op_type, GradientFunction* gradient_function,
+      const std::string& op_type, GradientFunction* gradient_function,
       const std::vector<int64_t>& unneeded_gradients,
       absl::Span<AbstractTensorHandle* const> output_gradients,
       absl::Span<AbstractTensorHandle*> result) const override;
@@ -172,16 +210,16 @@ AbstractTensorHandle* TapeVSpace::AggregateGradients(
 // Calls the passed-in backward function.
 // op_type is the op's name provided in RecordOperation.
 absl::Status TapeVSpace::CallBackwardFunction(
-    const string& op_type, GradientFunction* gradient_function,
+    const std::string& op_type, GradientFunction* gradient_function,
     const std::vector<int64_t>& unneeded_gradients,
     absl::Span<AbstractTensorHandle* const> output_gradients,
     absl::Span<AbstractTensorHandle*> result) const {
   if (gradient_function == nullptr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Provided null gradient_function for '", op_type, "'.\n",
-        "If the intent is to treat this op as non-differentiable consider "
-        "using RegisterNotDifferentiable or "
-        "NotDifferentiableGradientFunction.");
+        "If the intent is to treat this op as non-differentiable consider ",
+        "using RegisterNotDifferentiable or ",
+        "NotDifferentiableGradientFunction."));
   }
   return gradient_function->Compute(ctx_, output_gradients, result);
 }
@@ -225,7 +263,7 @@ void Tape::Watch(const AbstractTensorHandle* t) {
 void Tape::RecordOperation(absl::Span<AbstractTensorHandle* const> inputs,
                            absl::Span<AbstractTensorHandle* const> outputs,
                            GradientFunction* gradient_function,
-                           const string& op_name) {
+                           const std::string& op_name) {
   std::vector<int64_t> input_ids(inputs.size());
   std::vector<tensorflow::DataType> input_dtypes(inputs.size());
   for (int i = 0; i < inputs.size(); i++) {
@@ -351,10 +389,10 @@ absl::Status SetAttrShape(AbstractOperation* op_, const char* attr_name,
                           const int64_t* dims, const int num_dims,
                           ForwardOperation* forward_op_) {
   if (num_dims > TensorShape::MaxDimensions()) {
-    return errors::InvalidArgument("Value specified for `", attr_name, "` has ",
-                                   num_dims,
-                                   " dimensions which is over the limit of ",
-                                   TensorShape::MaxDimensions(), ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Value specified for `", attr_name, "` has ", num_dims,
+                     " dimensions which is over the limit of ",
+                     TensorShape::MaxDimensions(), "."));
   }
   TensorShapeProto proto;
   if (num_dims < 0) {
@@ -371,20 +409,20 @@ absl::Status SetAttrShape(AbstractOperation* op_, const char* attr_name,
 absl::Status SetAttrFunction(AbstractOperation* op_, const char* attr_name,
                              const AbstractOperation* value,
                              ForwardOperation* forward_op_) {
-  return tensorflow::errors::Unimplemented(
+  return absl::UnimplementedError(
       "SetAttrFunction has not been implemented yet.");
 }
 absl::Status SetAttrFunctionName(AbstractOperation* op_, const char* attr_name,
                                  const char* value, size_t length,
                                  ForwardOperation* forward_op_) {
-  return tensorflow::errors::Unimplemented(
+  return absl::UnimplementedError(
       "SetAttrFunctionName has not been implemented "
       "yet.");
 }
 absl::Status SetAttrTensor(AbstractOperation* op_, const char* attr_name,
                            AbstractTensorInterface* tensor,
                            ForwardOperation* forward_op_) {
-  return tensorflow::errors::Unimplemented(
+  return absl::UnimplementedError(
       "SetAttrTensor has not been implemented yet.");
 }
 absl::Status SetAttrStringList(AbstractOperation* op_, const char* attr_name,
@@ -438,10 +476,10 @@ absl::Status SetAttrShapeList(AbstractOperation* op_, const char* attr_name,
     const auto num_dims_i = num_dims[i];
 
     if (num_dims_i > TensorShape::MaxDimensions()) {
-      return errors::InvalidArgument(
-          strings::StrCat("Value specified for `", attr_name, "` has ",
-                          num_dims_i, " dimensions which is over the limit of ",
-                          TensorShape::MaxDimensions(), "."));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Value specified for `", attr_name, "` has ", num_dims_i,
+                       " dimensions which is over the limit of ",
+                       TensorShape::MaxDimensions(), "."));
     }
     if (num_dims_i < 0) {
       proto[i].set_unknown_rank(true);
@@ -460,7 +498,7 @@ absl::Status SetAttrShapeList(AbstractOperation* op_, const char* attr_name,
 absl::Status SetAttrFunctionList(AbstractOperation* op_, const char* attr_name,
                                  absl::Span<const AbstractOperation*> values,
                                  ForwardOperation* forward_op_) {
-  return tensorflow::errors::Unimplemented(
+  return absl::UnimplementedError(
       "SetAttrFunctionList has not been "
       "implemented yet.");
 }
@@ -480,8 +518,8 @@ absl::Status Execute(AbstractOperation* op_, AbstractContext* ctx,
   forward_op_->attrs.BuildNodeDef();
   std::unique_ptr<GradientFunction> gradient_fn;
   TF_RETURN_IF_ERROR(registry.Lookup(*forward_op_, &gradient_fn));
-  tape->RecordOperation(forward_op_->inputs, retvals, gradient_fn.release(),
-                        op_->Name());
+  tape->RecordOperation(forward_op_->inputs, retvals.subspan(0, *num_retvals),
+                        gradient_fn.release(), op_->Name());
   return absl::OkStatus();
 }
 }  // namespace internal

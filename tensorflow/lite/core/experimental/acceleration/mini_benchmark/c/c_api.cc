@@ -157,8 +157,10 @@ void TfLiteBlockingValidatorRunnerTriggerValidationImpl(
   }
 
   std::vector<const tflite::TFLiteSettings*> tflite_settings;
-  for (auto tflite_setting : *minibenchmark_settings->settings_to_test()) {
-    tflite_settings.push_back(tflite_setting);
+  if (minibenchmark_settings->settings_to_test()) {
+    for (auto tflite_setting : *minibenchmark_settings->settings_to_test()) {
+      tflite_settings.push_back(tflite_setting);
+    }
   }
 
   CreateData(runner.TriggerValidation(tflite_settings), result);
@@ -211,7 +213,7 @@ TfLiteMiniBenchmarkSettingsCustomValidationInfo(
 }
 
 void TfLiteMiniBenchmarkSettingsSetFlatBufferData(
-    TfLiteMiniBenchmarkSettings* settings, uint8_t* flatbuffer_data,
+    TfLiteMiniBenchmarkSettings* settings, const uint8_t* flatbuffer_data,
     size_t flatbuffer_data_size) {
   settings->flatbuffer_data = flatbuffer_data;
   settings->flatbuffer_data_size = flatbuffer_data_size;

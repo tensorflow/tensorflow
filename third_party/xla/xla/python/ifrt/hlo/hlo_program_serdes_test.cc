@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -85,7 +86,7 @@ module {
 
   // Verify that the deserialized program has no MHLO ops.
   bool has_unsupported_dialect = false;
-  xla_program->mlir_module()->walk([&](mlir::Operation *op) {
+  xla_program->mlir_module()->walk([&](mlir::Operation* op) {
     if (!llvm::isa<mlir::BuiltinDialect, mlir::func::FuncDialect,
                    mlir::stablehlo::StablehloDialect>(op->getDialect())) {
       LOG(ERROR) << "Found an op with an unsupported dialect: "
@@ -94,6 +95,48 @@ module {
     }
   });
   EXPECT_FALSE(has_unsupported_dialect);
+}
+
+TEST_P(HloProgramSerDesTest, MixedSerializationPreservesSdyDialectSinceV3) {
+  static constexpr absl::string_view kMlirModuleWithSdyStr =
+      R"(
+    module {
+      sdy.mesh @mesh = <["x"=2]>
+      func.func @main(%arg0: tensor<2x3xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<2x3xf32> {
+        %0 = stablehlo.add %arg0, %arg0 : tensor<2x3xf32>
+        return %0 : tensor<2x3xf32>
+      }
+  })";
+
+  Serialized serialized;
+  {
+    auto context = std::make_unique<mlir::MLIRContext>();
+    TF_ASSERT_OK_AND_ASSIGN(
+        mlir::OwningOpRef<mlir::ModuleOp> module,
+        xla::ParseMlirModuleString(kMlirModuleWithSdyStr, *context));
+    auto program =
+        std::make_unique<HloProgram>(std::move(context), std::move(module));
+    auto options = std::make_unique<SerializeOptions>(version());
+    TF_ASSERT_OK_AND_ASSIGN(serialized,
+                            Serialize(*program, std::move(options)));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloProgram> xla_program,
+      Deserialize<HloProgram>(serialized, /*options=*/nullptr));
+
+  bool has_sdy_dialect = false;
+  xla_program->mlir_module()->walk([&has_sdy_dialect](mlir::Operation* op) {
+    if (op->getDialect()->getNamespace() == "sdy") {
+      has_sdy_dialect = true;
+    }
+  });
+
+  if (version().version_number() >= SerDesVersionNumber(3)) {
+    EXPECT_TRUE(has_sdy_dialect);
+  } else {
+    EXPECT_FALSE(has_sdy_dialect);
+  }
 }
 
 TEST_P(HloProgramSerDesTest, SerializationError) {
@@ -153,7 +196,10 @@ module {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, HloProgramSerDesTest,
-    testing::ValuesIn(test_util::Week4OldOrLaterSerDesVersions()));
+    testing::ValuesIn(test_util::Week4OldOrLaterSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 }  // namespace
 }  // namespace ifrt

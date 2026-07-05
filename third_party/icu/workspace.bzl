@@ -7,10 +7,17 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def repo():
     tf_http_archive(
         name = "icu",
-        strip_prefix = "icu-release-69-1",
-        sha256 = "3144e17a612dda145aa0e4acb3caa27a5dae4e26edced64bc351c43d5004af53",
-        urls = tf_mirror_urls("https://github.com/unicode-org/icu/archive/release-69-1.zip"),
+        strip_prefix = "icu",
+        sha256 = "588e431f77327c39031ffbb8843c0e3bc122c211374485fa87dc5f3faff24061",
+        urls = tf_mirror_urls("https://github.com/unicode-org/icu/releases/download/release-77-1/icu4c-77_1-src.tgz"),
         build_file = "//third_party/icu:icu.BUILD",
-        system_build_file = "//third_party/icu:BUILD.system",
         patch_file = ["//third_party/icu:udata.patch"],
+        patch_cmds = [
+            "rm -f source/common/BUILD.bazel",
+            "rm -f source/stubdata/BUILD.bazel",
+            "rm -f source/i18n/BUILD.bazel",
+            "rm -f source/tools/gennorm2/BUILD.bazel",
+            "rm -f source/tools/toolutil/BUILD.bazel",
+            "rm -f source/data/unidata/norm2/BUILD.bazel",
+        ],
     )

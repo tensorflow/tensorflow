@@ -1017,7 +1017,7 @@ class ProfilerHook(session_run_hook.SessionRunHook):
   Trace format.
 
   For more information see:
-  https://github.com/catapult-project/catapult/blob/master/tracing/README.md
+  https://chromium.googlesource.com/catapult/+/refs/heads/main/tracing/README.md
   """
 
   def __init__(self,

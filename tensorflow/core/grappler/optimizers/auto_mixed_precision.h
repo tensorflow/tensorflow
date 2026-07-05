@@ -42,7 +42,7 @@ class AutoMixedPrecision : public GraphOptimizer {
 
   ~AutoMixedPrecision() override {}
 
-  string name() const override {
+  std::string name() const override {
     switch (mode_) {
       case AutoMixedPrecisionMode::CUDA:
         return "auto_mixed_precision";

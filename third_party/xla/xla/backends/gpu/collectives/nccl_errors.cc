@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/nccl_errors.h"
 
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"

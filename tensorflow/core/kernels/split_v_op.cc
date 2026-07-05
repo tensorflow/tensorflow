@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/split_lib_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
@@ -65,20 +66,21 @@ class SplitVOpBase : public OpKernel {
     const Tensor& split_dim_tensor = context->input(2);
 
     OP_REQUIRES(context, split_dim_tensor.NumElements() == 1,
-                errors::InvalidArgument("split_dim_tensor must have "
-                                        "exactly one element."));
+                absl::InvalidArgumentError("split_dim_tensor must have "
+                                           "exactly one element."));
 
-    const int32_t split_dim_orig = split_dim_tensor.flat<int32>()(0);
+    const int32_t split_dim_orig = split_dim_tensor.flat<int32_t>()(0);
     const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
     OP_REQUIRES(
         context,
         split_tensor.dims() == 1 && split_tensor.NumElements() == num_split,
-        errors::InvalidArgument("size of the split_tensor must be 1-D and have "
-                                "the same elements as outputs got ",
-                                split_tensor.dims(), " -D and ",
-                                split_tensor.NumElements(), " elements"));
+        absl::InvalidArgumentError(
+            absl::StrCat("size of the split_tensor must be 1-D and have "
+                         "the same elements as outputs got ",
+                         split_tensor.dims(), " -D and ",
+                         split_tensor.NumElements(), " elements")));
 
     auto split_sizes_d = split_tensor.vec<Tlen>();
 
@@ -89,14 +91,14 @@ class SplitVOpBase : public OpKernel {
 
     OP_REQUIRES(
         context, num_split > 0,
-        errors::InvalidArgument(
-            "Number of ways to split should be > 0, but got ", num_split));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Number of ways to split should be > 0, but got ", num_split)));
 
     OP_REQUIRES(
         context, 0 <= split_dim && split_dim < input.dims(),
-        errors::InvalidArgument("-input rank(-", input.dims(),
-                                ") <= split_dim < input rank (", input.dims(),
-                                "), but got ", split_dim_orig));
+        absl::InvalidArgumentError(absl::StrCat(
+            "-input rank(-", input.dims(), ") <= split_dim < input rank (",
+            input.dims(), "), but got ", split_dim_orig)));
 
     Tlen input_size_split_dim = input_shape.dim_size(split_dim);
 
@@ -120,9 +122,10 @@ class SplitVOpBase : public OpKernel {
       Tlen size = (*split_sizes_vec)[d];
 
       if (size == -1) {
-        OP_REQUIRES(context, neg_one_dim == -1,
-                    errors::InvalidArgument("There can only be one -1 in the "
-                                            "input."));
+        OP_REQUIRES(
+            context, neg_one_dim == -1,
+            absl::InvalidArgumentError("There can only be one -1 in the "
+                                       "input."));
         neg_one_dim = d;
       } else {
         determined_size += size;
@@ -231,7 +234,7 @@ class SplitVOpCPUImpl {
                   std::vector<Tlen>& split_sizes_vec,
                   const MakeSizesType& make_sizes,
                   const ReshapeResultType& reshape_result) const {
-    constexpr uint64 kMinimumSplitNum = 4;
+    constexpr uint64_t kMinimumSplitNum = 4;
 
     Eigen::DSizes<Eigen::DenseIndex, NDims> indices;
     for (int i = 0; i < NDims; ++i) {
@@ -242,10 +245,13 @@ class SplitVOpCPUImpl {
     // TODO(jewillco): Tune heuristic further.
     const auto input_element_count = input_shape.num_elements();
     const int num_split = split_start_points.size();
+    // Use parallelism between outputs if we have enough splits and enough
+    // elements per split to justify a thread, OR if we have many splits even
+    // for large tensors (to avoid the overhead of many small sharded copies).
     const bool use_parallelism_between_outputs =
         (num_split >= kMinimumSplitNum &&
          input_element_count >= std::min(num_threads, num_split) * 4096 &&
-         input_element_count < num_split * 180 * 1024);
+         (input_element_count < num_split * 180 * 1024 || num_split >= 16));
 
     auto range_output_func =
         [&indices, context, &input_shape, split_dim, &split_sizes_vec,
@@ -308,17 +314,24 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
     const int32_t num_split = Base::num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
-    const int32_t split_dim_orig = context->input(2).flat<int32>()(0);
+    const int32_t split_dim_orig = context->input(2).flat<int32_t>()(0);
     const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
+    tsl::profiler::TraceMe activity([&] {
+      return tsl::profiler::TraceMeEncode(
+          "SplitVOp", {{"input_shape", input_shape.DebugString()},
+                       {"split_dim", split_dim},
+                       {"num_split", num_split}});
+    });
+
     // Android also uses int32 indexing, so check here also.
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input.NumElements(),
-                        std::numeric_limits<Eigen::DenseIndex>::max()),
-        errors::InvalidArgument("Split requires input size < ",
-                                std::numeric_limits<Eigen::DenseIndex>::max()));
+    OP_REQUIRES(context,
+                FastBoundsCheck(input.NumElements(),
+                                std::numeric_limits<Eigen::DenseIndex>::max()),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Split requires input size < ",
+                    std::numeric_limits<Eigen::DenseIndex>::max())));
 
     Eigen::DenseIndex prefix_dim_size;
     Eigen::DenseIndex split_dim_size;
@@ -387,20 +400,28 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
     const int32_t num_split = Base::num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
-    const int32_t split_dim_orig = context->input(2).flat<int32>()(0);
+    const int32_t split_dim_orig = context->input(2).flat<int32_t>()(0);
     const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input.NumElements(), std::numeric_limits<int32>::max()),
-        errors::InvalidArgument("Split on GPU requires input size "
-                                "< max int32"));
+
+    tsl::profiler::TraceMe activity([&] {
+      return tsl::profiler::TraceMeEncode(
+          "SplitVOp", {{"input_shape", input_shape.DebugString()},
+                       {"split_dim", split_dim},
+                       {"num_split", num_split}});
+    });
+
+    OP_REQUIRES(context,
+                FastBoundsCheck(input.NumElements(),
+                                std::numeric_limits<int32_t>::max()),
+                absl::InvalidArgumentError("Split on GPU requires input size "
+                                           "< max int32"));
 
     int32_t prefix_dim_size;
     int32_t split_dim_size;
     int32_t suffix_dim_size;
     std::tie(prefix_dim_size, split_dim_size, suffix_dim_size) =
-        Base::template SetDims<int32>(input_shape, split_dim);
+        Base::template SetDims<int32_t>(input_shape, split_dim);
 
     // use the same approach as concat (see documentation there)
     // reshape to 2D
@@ -439,7 +460,7 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
             input.NumElements() / prefix_dim_size, offsets.data(), ptrs.data());
         OP_REQUIRES(
             context, context->op_device_context()->stream()->ok(),
-            errors::Internal("Launch of gpu kernel for SplitVOp failed"));
+            absl::InternalError("Launch of gpu kernel for SplitVOp failed"));
       }
     } else {
       Eigen::DenseIndex prefix_dim_size;
@@ -536,7 +557,7 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU_LEN);
                               .HostMemory("output"),            \
                           SplitVOpCPU<int32, len_type>);
 
-REGISTER_GPU_int32(int32);
+REGISTER_GPU_int32(int32_t);
 REGISTER_GPU_int32(int64_t);
 
 #undef REGISTER_GPU_int32

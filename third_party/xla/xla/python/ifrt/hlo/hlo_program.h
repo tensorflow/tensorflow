@@ -18,15 +18,19 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/python/ifrt/program.h"
 
 namespace xla {
@@ -36,15 +40,24 @@ class HloProgram : public llvm::RTTIExtends<HloProgram, Program> {
  public:
   HloProgram() = default;
 
-  explicit HloProgram(mlir::ModuleOp module) : mlir_module_(module) {}
+  explicit HloProgram(mlir::ModuleOp module)
+      : mlir_module_(module), module_name_(GetModuleName(module)) {}
 
-  HloProgram(std::unique_ptr<mlir::MLIRContext> context,
+  explicit HloProgram(mlir::OwningOpRef<mlir::ModuleOp> module)
+      : owning_mlir_module_(std::move(module)),
+        mlir_module_(*owning_mlir_module_),
+        module_name_(GetModuleName(mlir_module_)) {}
+
+  HloProgram(std::shared_ptr<mlir::MLIRContext> context,
              mlir::OwningOpRef<mlir::ModuleOp> module)
       : mlir_context_(std::move(context)),
         owning_mlir_module_(std::move(module)),
-        mlir_module_(*owning_mlir_module_) {}
+        mlir_module_(*owning_mlir_module_),
+        module_name_(GetModuleName(mlir_module_)) {}
 
   mlir::ModuleOp mlir_module() const { return mlir_module_; }
+
+  absl::string_view name() const { return module_name_; }
 
   // Serializes the HloProgram into bytes such that deserialization via
   // `HloProgram::FromBytes()` results in the exact same program when
@@ -59,18 +72,36 @@ class HloProgram : public llvm::RTTIExtends<HloProgram, Program> {
   // provided, the method creates a new MLIR context just for this program.
   static absl::StatusOr<std::unique_ptr<HloProgram>> FromBytes(
       absl::string_view bytes,
-      std::unique_ptr<mlir::MLIRContext> context = nullptr);
+      std::shared_ptr<mlir::MLIRContext> context = nullptr);
 
   // Returns a fingerprint of the HLO program. Two HLO programs are equivalent
   // if their fingerprints are the same. May ignore debug info.
-  uint64_t Fingerprint() const;
+  absl::StatusOr<uint64_t> Fingerprint() const;
+
+  // Destructively converts this HloProgram into a MaybeOwningMlirModule.
+  xla::MaybeOwningMlirModule ToMaybeOwningMlirModule() &&;
 
   static char ID;  // NOLINT
 
  private:
-  std::unique_ptr<mlir::MLIRContext> mlir_context_;
+  // Returns the name of the module. Returns "unnamed" if the module does not
+  // have a symbol name. The method should only be called by the constructors
+  // to ensure that MLIR API is only used at construction time.
+  static std::string GetModuleName(mlir::ModuleOp module) {
+    const std::optional<llvm::StringRef> name = module.getSymName();
+    if (name.has_value()) {
+      return std::string(*name);
+    }
+
+    // Generate a unique and stable computation name to help debugging.
+    return absl::StrFormat("unnamed_%x",
+                           reinterpret_cast<uintptr_t>(module.getOperation()));
+  }
+
+  std::shared_ptr<mlir::MLIRContext> mlir_context_;
   mlir::OwningOpRef<mlir::ModuleOp> owning_mlir_module_;
   mlir::ModuleOp mlir_module_;
+  std::string module_name_;
 };
 
 }  // namespace ifrt

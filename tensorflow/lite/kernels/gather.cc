@@ -186,12 +186,22 @@ TfLiteStatus GatherStrings(TfLiteContext* context, const TfLiteTensor* input,
   }
   TF_LITE_ENSURE(context, indices_has_only_positive_elements);
 
-  const PositionT num_strings = GetStringCount(input);
+  TF_LITE_ENSURE(context, input->bytes >= sizeof(int32_t));
+  const int num_strings = GetStringCount(input);
+  TF_LITE_ENSURE(context, num_strings >= 0);
+  TF_LITE_ENSURE(context, input->bytes / sizeof(int32_t) >=
+                              static_cast<size_t>(num_strings) + 2);
   const int num_indexes = NumElements(positions);
 
   for (int i = 0; i < num_indexes; ++i) {
     const PositionT pos = indexes[i];
     TF_LITE_ENSURE(context, pos < num_strings);
+    const int32_t* offsets = reinterpret_cast<const int32_t*>(input->data.raw);
+    const int32_t start_offset = offsets[pos + 1];
+    const int32_t end_offset = offsets[pos + 2];
+    TF_LITE_ENSURE(context, start_offset >= 0);
+    TF_LITE_ENSURE(context, end_offset >= start_offset);
+    TF_LITE_ENSURE(context, end_offset <= input->bytes);
     const auto string_ref = GetString(input, pos);
     buffer.AddString(string_ref.str, string_ref.len);
   }
@@ -214,31 +224,22 @@ TfLiteStatus DispatchEvalInputType(TfLiteContext* const context,
                                    const TfLiteTensor* const input,
                                    const TfLiteTensor* const positions,
                                    TfLiteTensor* const output) {
-  switch (input->type) {
-    case kTfLiteFloat32:
-      return Gather<float, PosT>(context, *params, input, positions, output);
-    case kTfLiteFloat16:
-      return Gather<Eigen::half, PosT>(context, *params, input, positions,
-                                       output);
-    case kTfLiteBFloat16:
-      return Gather<Eigen::bfloat16, PosT>(context, *params, input, positions,
-                                           output);
-    case kTfLiteUInt8:
-      return Gather<uint8_t, PosT>(context, *params, input, positions, output);
-    case kTfLiteInt4:
-      // fallthrough
-    case kTfLiteInt8:
+  if (input->type == kTfLiteString) {
+    return GatherStrings<PosT>(context, input, positions, output);
+  }
+  if (input->type == kTfLiteInt4) {
+    return Gather<int8_t, PosT>(context, *params, input, positions, output);
+  }
+
+  switch (TfLiteTypeGetSizeBits(input->type)) {
+    case 8:
       return Gather<int8_t, PosT>(context, *params, input, positions, output);
-    case kTfLiteInt16:
+    case 16:
       return Gather<int16_t, PosT>(context, *params, input, positions, output);
-    case kTfLiteInt32:
+    case 32:
       return Gather<int32_t, PosT>(context, *params, input, positions, output);
-    case kTfLiteInt64:
+    case 64:
       return Gather<int64_t, PosT>(context, *params, input, positions, output);
-    case kTfLiteBool:
-      return Gather<bool, PosT>(context, *params, input, positions, output);
-    case kTfLiteString:
-      return GatherStrings<PosT>(context, input, positions, output);
     default:
       TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by gather.",
                          TfLiteTypeGetName(input->type));

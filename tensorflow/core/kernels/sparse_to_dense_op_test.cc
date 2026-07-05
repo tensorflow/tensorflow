@@ -55,9 +55,9 @@ TEST_F(SparseToDenseTest, OneD_OneValue) {
   MakeOp(1, DT_INT32, DT_FLOAT);
 
   // sparse_indices
-  AddInputFromArray<int32>(TensorShape({3}), {1, 3, 4});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, 3, 4});
   // output_shape
-  AddInputFromArray<int32>(TensorShape({1}), {5});
+  AddInputFromArray<int32_t>(TensorShape({1}), {5});
   // sparse_values
   AddInputFromArray<float>(TensorShape({}), {2});
   // default_value
@@ -93,9 +93,9 @@ TEST_F(SparseToDenseTest, OneD_MultValues) {
   MakeOp(1, DT_INT32, DT_FLOAT);
 
   // sparse_indices
-  AddInputFromArray<int32>({3}, {1, 3, 4});
+  AddInputFromArray<int32_t>({3}, {1, 3, 4});
   // output_shape
-  AddInputFromArray<int32>({1}, {5});
+  AddInputFromArray<int32_t>({1}, {5});
   // sparse_values
   AddInputFromArray<float>({3}, {3, 4, 5});
   // default_value
@@ -112,9 +112,9 @@ TEST_F(SparseToDenseTest, TwoD_OneValue) {
   MakeOp(2, DT_INT32, DT_FLOAT);
 
   // sparse_indices
-  AddInputFromArray<int32>(TensorShape({3, 2}), {0, 1, 0, 2, 2, 3});
+  AddInputFromArray<int32_t>(TensorShape({3, 2}), {0, 1, 0, 2, 2, 3});
   // output_shape
-  AddInputFromArray<int32>(TensorShape({2}), {3, 4});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 4});
   // sparse_values
   AddInputFromArray<float>(TensorShape({}), {2});
   // default_value
@@ -134,9 +134,9 @@ TEST_F(SparseToDenseTest, TwoD_MultValues) {
   MakeOp(2, DT_INT32, DT_FLOAT);
 
   // sparse_indices
-  AddInputFromArray<int32>(TensorShape({3, 2}), {0, 1, 0, 2, 2, 3});
+  AddInputFromArray<int32_t>(TensorShape({3, 2}), {0, 1, 0, 2, 2, 3});
   // output_shape
-  AddInputFromArray<int32>(TensorShape({2}), {3, 4});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 4});
   // sparse_values
   AddInputFromArray<float>(TensorShape({3}), {3, 4, 5});
   // default_value
@@ -156,9 +156,9 @@ TEST_F(SparseToDenseTest, ThreeD_OneValue) {
   MakeOp(3, DT_INT32, DT_FLOAT);
 
   // sparse_indices
-  AddInputFromArray<int32>(TensorShape({3, 3}), {0, 1, 1, 0, 2, 0, 2, 3, 1});
+  AddInputFromArray<int32_t>(TensorShape({3, 3}), {0, 1, 1, 0, 2, 0, 2, 3, 1});
   // output_shape
-  AddInputFromArray<int32>(TensorShape({3}), {3, 4, 2});
+  AddInputFromArray<int32_t>(TensorShape({3}), {3, 4, 2});
   // sparse_values
   AddInputFromArray<float>(TensorShape({}), {2});
   // default_value
@@ -178,9 +178,9 @@ TEST_F(SparseToDenseTest, ThreeD_MultValues) {
   MakeOp(3, DT_INT32, DT_FLOAT);
 
   // sparse_indices
-  AddInputFromArray<int32>(TensorShape({3, 3}), {0, 1, 1, 0, 2, 0, 2, 3, 1});
+  AddInputFromArray<int32_t>(TensorShape({3, 3}), {0, 1, 1, 0, 2, 0, 2, 3, 1});
   // output_shape
-  AddInputFromArray<int32>(TensorShape({3}), {3, 4, 2});
+  AddInputFromArray<int32_t>(TensorShape({3}), {3, 4, 2});
   // sparse_values
   AddInputFromArray<float>(TensorShape({3}), {3, 4, 5});
   // default_value
@@ -216,7 +216,7 @@ static void BM_SparseToDense(::testing::benchmark::State& state) {
   Tensor sparse_indices(DT_INT64, TensorShape({N, NDIM}));
   Tensor sparse_values(DT_FLOAT, TensorShape({N}));
   Tensor default_value(DT_FLOAT, TensorShape({}));
-  auto output_shape_t = output_shape.vec<int32>();
+  auto output_shape_t = output_shape.vec<int32_t>();
   for (int d = 0; d < NDIM; ++d) {
     output_shape_t(d) = (d == IndexDim) ? N : 3;
   }

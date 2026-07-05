@@ -333,7 +333,7 @@ void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWC, T>& src) {
 template <DataType T>
 void TensorDescriptor::DownloadData(tflite::gpu::Tensor<BHWC, T>* dst) {
   dst->shape = BHWC(shape_.b, shape_.h, shape_.w, shape_.c);
-  dst->data.resize(dst->shape.DimensionsProduct(), 0.0f);
+  dst->data.resize(dst->shape.DimensionsProduct());
   DownloadData(dst->data.data());
 }
 
@@ -346,7 +346,7 @@ void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWDC, T>& src) {
 template <DataType T>
 void TensorDescriptor::DownloadData(tflite::gpu::Tensor<BHWDC, T>* dst) {
   dst->shape = shape_;
-  dst->data.resize(dst->shape.DimensionsProduct(), 0.0f);
+  dst->data.resize(dst->shape.DimensionsProduct());
   DownloadData(dst->data.data());
 }
 

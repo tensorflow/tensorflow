@@ -21,9 +21,10 @@ namespace gpu {
 
 #define RETURN_IF_CUDNN_FRONTEND_ERROR(expr)                                \
   do {                                                                      \
-    if (ABSL_PREDICT_TRUE((expr).is_bad())) {                               \
+    auto status = (expr);                                                   \
+    if (ABSL_PREDICT_TRUE(status.is_bad())) {                               \
       std::ostringstream oss;                                               \
-      oss << (expr).get_message() << "\nin " << __FILE__ << "(" << __LINE__ \
+      oss << status.get_message() << "\nin " << __FILE__ << "(" << __LINE__ \
           << "): '" << #expr << "' ";                                       \
       return absl::InternalError(oss.str());                                \
     }                                                                       \

@@ -28,15 +28,19 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/sycl/sycl_event.h"
 #include "xla/stream_executor/sycl/sycl_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
-#include "xla/tests/llvm_irgen_test_base.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -51,7 +55,7 @@ using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::UnorderedElementsAreArray;
 
-class SyclStreamTest : public xla::LlvmIrGenTestBase {
+class SyclStreamTest : public xla::gpu::HloPjRtGpuTestBase {
  public:
   std::optional<SyclExecutor> executor_;
 
@@ -109,6 +113,7 @@ TEST_F(SyclStreamTest, Memset32) {
 
   EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
+  executor_->Deallocate(&device_buffer);
 }
 
 TEST_F(SyclStreamTest, MemZero) {
@@ -145,6 +150,7 @@ TEST_F(SyclStreamTest, MemZero) {
   // And it shouldn't have touched the second half.
   EXPECT_THAT(absl::MakeConstSpan(host_buffer).subspan(kBufferNumElements / 2),
               Each(0xDEADBEEF));
+  executor_->Deallocate(&device_buffer);
 }
 
 TEST_F(SyclStreamTest, MemcpyHostToDeviceAndBack) {
@@ -174,6 +180,7 @@ TEST_F(SyclStreamTest, MemcpyHostToDeviceAndBack) {
 
   EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_THAT(host_buffer, ElementsAreArray(src_buffer));
+  executor_->Deallocate(&device_buffer);
 }
 
 TEST_F(SyclStreamTest, MemcpyDeviceToDevice) {
@@ -203,6 +210,8 @@ TEST_F(SyclStreamTest, MemcpyDeviceToDevice) {
 
   EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
+  executor_->Deallocate(&device_buffer1);
+  executor_->Deallocate(&device_buffer2);
 }
 
 TEST_F(SyclStreamTest, DoHostCallbackAndBlockHostUntilDone) {
@@ -243,32 +252,33 @@ TEST_F(SyclStreamTest, LaunchKernel) {
                           xla::ParseAndReturnUnverifiedModule(hlo_ir, config));
 
   TF_ASSERT_OK_AND_ASSIGN(
+      hlo_module,
+      compiler()->RunHloPasses(std::move(hlo_module), &executor_.value(),
+                               /*device_allocator=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::Executable> exec,
-      CompileToExecutable(std::move(hlo_module),
-                          /*run_optimization_passes=*/true));
+      compiler()->RunBackend(std::move(hlo_module), &executor_.value(),
+                             /*device_allocator=*/nullptr));
 
   auto* gpu_exec = static_cast<xla::gpu::GpuExecutable*>(exec.get());
   ASSERT_NE(gpu_exec, nullptr);
 
-  const xla::gpu::SequentialThunk& seq_thunk = gpu_exec->GetThunk();
-  EXPECT_EQ(seq_thunk.thunks().size(), 1);
+  const xla::gpu::ThunkExecutor& thunk_exec = gpu_exec->thunk_executor();
+  EXPECT_EQ(thunk_exec.thunks().size(), 1);
 
-  const xla::gpu::Thunk* thunk = seq_thunk.thunks().at(0).get();
+  const xla::gpu::Thunk* thunk = thunk_exec.thunks().at(0).get();
   ASSERT_NE(thunk, nullptr);
-  EXPECT_EQ(thunk->kind(), xla::gpu::Thunk::Kind::kKernel);
+  EXPECT_EQ(thunk->kind(), xla::gpu::Thunk::Kind::kCustomKernel);
 
-  const auto* kernel_thunk = dynamic_cast<const xla::gpu::KernelThunk*>(thunk);
+  const auto* kernel_thunk =
+      dynamic_cast<const xla::gpu::CustomKernelThunk*>(thunk);
   ASSERT_NE(kernel_thunk, nullptr);
 
-  std::string kernel_name = kernel_thunk->kernel_name();
-
-  std::vector<uint8_t> spirv_binary(gpu_exec->binary());
-
-  KernelLoaderSpec spec = KernelLoaderSpec::CreateCudaCubinInMemorySpec(
-      spirv_binary, kernel_name, 3);
+  const KernelLoaderSpec& kernel_spec =
+      kernel_thunk->custom_kernel().kernel_spec();
 
   TF_ASSERT_OK_AND_ASSIGN(auto add,
-                          AddKernel::Create(&executor_.value(), spec));
+                          AddKernel::Create(&executor_.value(), kernel_spec));
 
   constexpr int64_t kLength = 4;
   constexpr int64_t kByteLength = sizeof(int32_t) * kLength;
@@ -290,6 +300,9 @@ TEST_F(SyclStreamTest, LaunchKernel) {
   EXPECT_THAT(stream->Memcpy(host_buffer.data(), c, kByteLength),
               absl_testing::IsOk());
   EXPECT_THAT(host_buffer, Each(5));
+  executor_->Deallocate(&a);
+  executor_->Deallocate(&b);
+  executor_->Deallocate(&c);
 }
 
 TEST_F(SyclStreamTest, SetName) {
@@ -355,6 +368,43 @@ TEST_F(SyclStreamTest, MultipleStreams) {
   // Callbacks may run concurrently or in any order since the streams are
   // independent.
   EXPECT_THAT(host_buffer, UnorderedElementsAreArray(expected));
+}
+
+TEST_F(SyclStreamTest, RecordEvent) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream1,
+                       SyclStream::Create(&executor_.value(),
+                                          /*enable_multiple_streams=*/true,
+                                          /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream2,
+                       SyclStream::Create(&executor_.value(),
+                                          /*enable_multiple_streams=*/true,
+                                          /*priority=*/std::nullopt));
+
+  ASSERT_OK_AND_ASSIGN(SyclEvent event, SyclEvent::Create(&executor_.value()));
+
+  constexpr int kBufferNumElements = 32;
+  DeviceAddress<uint32_t> device_buffer =
+      executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
+  constexpr uint64_t kBufferSizeBytes = kBufferNumElements * sizeof(uint32_t);
+
+  EXPECT_THAT(stream1->Memset32(&device_buffer, 0xDEADBEEF, kBufferSizeBytes),
+              absl_testing::IsOk());
+
+  ::sycl::event default_event = event.GetEvent();
+  EXPECT_THAT(stream1->RecordEvent(&event), absl_testing::IsOk());
+  // RecordEvent must update the event to reflect stream1's most recent work.
+  EXPECT_NE(event.GetEvent(), default_event);
+
+  EXPECT_THAT(stream2->WaitFor(&event), absl_testing::IsOk());
+
+  std::array<uint32_t, kBufferNumElements> host_buffer;
+  EXPECT_THAT(
+      stream2->Memcpy(host_buffer.data(), device_buffer, kBufferSizeBytes),
+      absl_testing::IsOk());
+  EXPECT_THAT(stream2->BlockHostUntilDone(), absl_testing::IsOk());
+  // Ensures stream2 reads the value written by stream1.
+  EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
+  executor_->Deallocate(&device_buffer);
 }
 
 }  // namespace

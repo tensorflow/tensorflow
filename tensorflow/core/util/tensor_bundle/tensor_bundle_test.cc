@@ -177,7 +177,7 @@ absl::Status FlipEndiannessBit(const std::string& prefix) {
     iter->Seek(kHeaderEntryKey);
     CHECK(iter->Valid());
     BundleHeaderProto header;
-    CHECK(header.ParseFromArray(iter->value().data(), iter->value().size()));
+    CHECK(header.ParseFromString(iter->value()));
     // Flips the endianness.
     if (header.endianness() == BundleHeaderProto::LITTLE) {
       header.set_endianness(BundleHeaderProto::BIG);

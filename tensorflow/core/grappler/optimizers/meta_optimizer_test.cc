@@ -48,7 +48,7 @@ class TestOptimizer : public CustomGraphOptimizer {
   static bool IsOptimized() { return optimized_; }
 
   TestOptimizer() {}
-  string name() const override { return "test_optimizer"; }
+  std::string name() const override { return "test_optimizer"; }
   bool UsesFunctionLibrary() const override { return false; }
 
   absl::Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer*
@@ -73,7 +73,7 @@ REGISTER_GRAPH_OPTIMIZER(TestOptimizer);
 
 class TestGraphOptimizer : public TestOptimizer {
  public:
-  string name() const override { return "test_graph_optimizer"; }
+  std::string name() const override { return "test_graph_optimizer"; }
 };
 
 REGISTER_GRAPH_OPTIMIZER(TestGraphOptimizer);
@@ -93,14 +93,14 @@ REGISTER_GRAPH_OPTIMIZER(TestOptimizerWithParams);
 class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
  public:
   static void SetOptimizationOptions(
-      gtl::FlatMap<string, GrapplerItem::OptimizationOptions>*
+      gtl::FlatMap<std::string, GrapplerItem::OptimizationOptions>*
           optimization_options) {
     optimization_options_ = optimization_options;
   }
   static void ResetOptimizationOptions() { optimization_options_ = nullptr; }
 
   GrapplerItemPropertiesAccumulator() {}
-  string name() const override {
+  std::string name() const override {
     return "grappler_item_properties_accumulator";
   }
   bool UsesFunctionLibrary() const override { return false; }
@@ -120,11 +120,11 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
   }
 
  private:
-  static gtl::FlatMap<string, GrapplerItem::OptimizationOptions>*
+  static gtl::FlatMap<std::string, GrapplerItem::OptimizationOptions>*
       optimization_options_;
 };
 
-gtl::FlatMap<string, GrapplerItem::OptimizationOptions>*
+gtl::FlatMap<std::string, GrapplerItem::OptimizationOptions>*
     GrapplerItemPropertiesAccumulator::optimization_options_;
 
 REGISTER_GRAPH_OPTIMIZER(GrapplerItemPropertiesAccumulator);
@@ -330,14 +330,15 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   EXPECT_EQ(3, optimized_flib.num_functions());
 
   // Get a specialized function name.
-  const auto specialized_name = [](const string& fn, const string& node,
-                                   const string& id) {
+  const auto specialized_name = [](const std::string& fn,
+                                   const std::string& node,
+                                   const std::string& id) {
     return absl::Substitute("$0_specialized_for_$1_at_$2", fn, node, id);
   };
 
   // MyQuadratic should be specialized once:
   //   0. 'quadratic' node in the main graph
-  const string optimized_0 =
+  const std::string optimized_0 =
       specialized_name("MyQuadratic", "quadratic", "tf_graph");
 
   // MySquare should be specialized and optimized for 3 instantiations:
@@ -346,8 +347,9 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   //   3*. 'quadratic' node in the MyQuadratic specialization
   //        has identical instantiation context to #2
 
-  const string optimized_1 = specialized_name("MySquare", "square", "tf_graph");
-  const string optimized_2 =
+  const std::string optimized_1 =
+      specialized_name("MySquare", "square", "tf_graph");
+  const std::string optimized_2 =
       specialized_name("MySquare", "square", optimized_0);
 
   const FunctionDef* optimized_func_0 = optimized_flib.Find(optimized_0);
@@ -474,8 +476,8 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryPruneUnusedOutputs) {
   EXPECT_EQ(2, optimized_flib.num_functions());
 
   // Expected names of the specialized functions.
-  const string specialized_my_fwd = "Fwd_specialized_for_fwd_at_tf_graph";
-  const string specialized_my_mul =
+  const std::string specialized_my_fwd = "Fwd_specialized_for_fwd_at_tf_graph";
+  const std::string specialized_my_mul =
       absl::StrCat("MyMul_specialized_for_output_at_", specialized_my_fwd);
 
   // Specialized MyMul should have just one output argument.
@@ -570,8 +572,8 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryPruneFunctionBody) {
   EXPECT_EQ(2, optimized_flib.num_functions());
 
   // Expected names of the specialized and optimized functions.
-  const string optimized_fn1 = "MyFunc_specialized_for_fn1_at_tf_graph";
-  const string optimized_fn2 = "MyFunc_specialized_for_fn2_at_tf_graph";
+  const std::string optimized_fn1 = "MyFunc_specialized_for_fn1_at_tf_graph";
+  const std::string optimized_fn2 = "MyFunc_specialized_for_fn2_at_tf_graph";
 
   const FunctionDef* optimized_func_fn1 = optimized_flib.Find(optimized_fn1);
   const FunctionDef* optimized_func_fn2 = optimized_flib.Find(optimized_fn2);
@@ -623,7 +625,8 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryWithRestrictions) {
 
   // We will record what type of optimizations meta optimizer allows for each
   // GrapplerItem (main graph and graphs for each function).
-  gtl::FlatMap<string, GrapplerItem::OptimizationOptions> optimization_options;
+  gtl::FlatMap<std::string, GrapplerItem::OptimizationOptions>
+      optimization_options;
   GrapplerItemPropertiesAccumulator::SetOptimizationOptions(
       &optimization_options);
 
@@ -706,7 +709,7 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryWithRestrictions) {
 class SleepingOptimizer : public CustomGraphOptimizer {
  public:
   SleepingOptimizer() {}
-  string name() const override { return "test_optimizer"; }
+  std::string name() const override { return "test_optimizer"; }
   bool UsesFunctionLibrary() const override { return false; }
 
   absl::Status Init(
@@ -832,7 +835,8 @@ TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnInvalidGraph) {
   using test::function::NDef;
   using FDH = FunctionDefHelper;
 
-  gtl::FlatMap<string, GrapplerItem::OptimizationOptions> optimization_options;
+  gtl::FlatMap<std::string, GrapplerItem::OptimizationOptions>
+      optimization_options;
   GrapplerItemPropertiesAccumulator::SetOptimizationOptions(
       &optimization_options);
 
@@ -906,7 +910,8 @@ TEST_F(MetaOptimizerTest, RunInterOptimizerVerifiersOnInvalidGraph) {
   using test::function::NDef;
   using FDH = FunctionDefHelper;
 
-  gtl::FlatMap<string, GrapplerItem::OptimizationOptions> optimization_options;
+  gtl::FlatMap<std::string, GrapplerItem::OptimizationOptions>
+      optimization_options;
   GrapplerItemPropertiesAccumulator::SetOptimizationOptions(
       &optimization_options);
 
@@ -1036,7 +1041,8 @@ TEST_F(MetaOptimizerTest, CompressConstants) {
 TEST_F(MetaOptimizerTest, TestTFGRemoveDeadArguments) {
   using test::function::NDef;
 
-  gtl::FlatMap<string, GrapplerItem::OptimizationOptions> optimization_options;
+  gtl::FlatMap<std::string, GrapplerItem::OptimizationOptions>
+      optimization_options;
   GrapplerItemPropertiesAccumulator::SetOptimizationOptions(
       &optimization_options);
 
@@ -1100,7 +1106,8 @@ TEST_F(MetaOptimizerTest, TestTFGRemoveDeadArguments) {
 TEST_F(MetaOptimizerTest, TestTFGControlFlowSink) {
   using test::function::NDef;
 
-  gtl::FlatMap<string, GrapplerItem::OptimizationOptions> optimization_options;
+  gtl::FlatMap<std::string, GrapplerItem::OptimizationOptions>
+      optimization_options;
   GrapplerItemPropertiesAccumulator::SetOptimizationOptions(
       &optimization_options);
 

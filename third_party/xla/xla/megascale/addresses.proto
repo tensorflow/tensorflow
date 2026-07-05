@@ -8,6 +8,7 @@ option java_outer_classname = "Runtime";
 message HostNetworkAddress {
   string address = 1;
   string interface_name = 2;
+  int32 numa_node = 4;
   // The host name used for debugging only, and is supplied by pathways or MXLA
   // coordinator. Do not use this for creating connection to other peers, use
   // the address above.

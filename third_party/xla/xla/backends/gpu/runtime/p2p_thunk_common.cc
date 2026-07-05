@@ -18,55 +18,55 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/sorted_range.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 
-absl::Status ExecutionCounters::Initialize(se::StreamExecutor* executor,
-                                           RunId run_id) {
-  absl::MutexLock lock(mu_);
-  CounterKey key = {executor, run_id};
-  if (counters_.contains(key)) {
-    return absl::OkStatus();
-  }
-  counters_.emplace(key, 0);
-  return absl::OkStatus();
-}
+std::vector<SourceTarget> GetSortedSourceTargetPairs(
+    const P2PConfig::IdToSourceTargetMap& id_to_source_target) {
+  std::vector<SourceTarget> source_target_pairs;
+  source_target_pairs.reserve(id_to_source_target.size() / 2);
+  auto cmp = [](const auto& a, const auto& b) {
+    return std::tie(a.second.source, a.first) <
+           std::tie(b.second.source, b.first);
+  };
 
-absl::StatusOr<int64_t*> ExecutionCounters::GetCounter(
-    se::StreamExecutor* executor, RunId run_id) {
-  absl::MutexLock lock(mu_);
-  CounterKey key = {executor, run_id};
-  auto counter = counters_.find(key);
-  if (counter == counters_.end()) {
-    return absl::InternalError("Execution counter not initialized");
+  for (const auto& [current_id, entry] :
+       tsl::SortedRange(id_to_source_target, cmp)) {
+    // Each link `source <-> target` is represented twice in the map.
+    // We only process the entry where `source` is populated (the first case)
+    // to avoid adding duplicate pairs.
+    if (entry.source.has_value()) {
+      SourceTarget pair;
+      pair.set_source(*entry.source);
+      pair.set_target(current_id);
+      source_target_pairs.push_back(pair);
+    }
   }
-
-  return &counter->second;
+  return source_target_pairs;
 }
 
 absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
@@ -78,8 +78,8 @@ absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
         absl::StrCat("expecting send/recv op with string attribute ",
                      kSendRecvSourceTargetPairsAttr));
   }
-  TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> replica_groups,
-                      ParseReplicaGroupsOnly(src_dst_string.str()));
+  ASSIGN_OR_RETURN(std::vector<ReplicaGroup> replica_groups,
+                   ParseReplicaGroupsOnly(src_dst_string.str()));
   std::vector<std::pair<int64_t, int64_t>> source_target_pairs;
   source_target_pairs.reserve(replica_groups.size());
   for (const ReplicaGroup& replica_group : replica_groups) {
@@ -128,7 +128,6 @@ P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
   }
 
   std::vector<ReplicaGroup> replica_groups = statusor.value();
-  p2p_config.validation_kind = P2PConfig::ValidationKind::kValid;
   for (const ReplicaGroup& replica_group : replica_groups) {
     int64_t source = replica_group.replica_ids(0);
     int64_t target = replica_group.replica_ids(1);
@@ -142,31 +141,12 @@ P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
   return p2p_config;
 }
 
-AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr) {
-  const auto& fe_map = instr->frontend_attributes().map();
-
-  // kCollectiveStreamAttrName takes precedence over kSendRecvPipelineAttr.
-  {
-    const auto it = fe_map.find(kCollectiveStreamAttrName);
-    if (it != fe_map.end() && it->second == kCollectiveStreamP2P) {
-      // Use any of the two p2p streams.
-      return AsyncStreamKind::ASYNC_STREAM_KIND_P2P0;
-    }
-  }
-
-  const auto it = fe_map.find(kSendRecvPipelineAttr);
-  if (it != fe_map.end() && it->second == "1") {
-    return AsyncStreamKind::ASYNC_STREAM_KIND_P2P1;
-  }
-  return AsyncStreamKind::ASYNC_STREAM_KIND_P2P0;
-}
-
 // Retrieves the current collective ID (replica or partition ID) for the
 // executing device.
 absl::StatusOr<const int64_t> GetCollectiveCurrentId(
     CollectiveParams* collective_params, const P2PConfig& config) {
   GlobalDeviceId global_device_id = collective_params->global_device_id;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       const DeviceAssignment::LogicalID current_logical_id,
       collective_params->device_assn->LogicalIdForDevice(global_device_id));
   const int64_t current_id =
@@ -175,6 +155,43 @@ absl::StatusOr<const int64_t> GetCollectiveCurrentId(
           ? current_logical_id.replica_id
           : current_logical_id.computation_id;
   return current_id;
+}
+
+P2PConfigProto P2PConfigToProto(const P2PConfig& config) {
+  P2PConfigProto proto;
+  *proto.mutable_config() = config.config.ToProto();
+
+  auto* mutable_id_map = proto.mutable_id_to_source_target();
+  // We are writing to a proto map, so the iterating order doesn't matter.
+  for (const auto& [id, source_target] : config.id_to_source_target) {
+    P2PConfigProto::SourceTargetMapEntry& entry = (*mutable_id_map)[id];
+    if (source_target.source.has_value()) {
+      entry.set_source(*source_target.source);
+    }
+    if (source_target.target.has_value()) {
+      entry.set_target(*source_target.target);
+    }
+  }
+
+  return proto;
+}
+
+absl::StatusOr<P2PConfig> P2PConfigFromProto(const P2PConfigProto& proto) {
+  P2PConfig config;
+  config.config = CollectiveConfig::FromProto(proto.config());
+
+  // We are writing into a hash map, so the iterating order doesn't matter.
+  for (const auto& [id, entry] : proto.id_to_source_target()) {
+    P2PConfig::SourceTargetMapEntry& map_entry = config.id_to_source_target[id];
+    if (entry.has_source()) {
+      map_entry.source = entry.source();
+    }
+    if (entry.has_target()) {
+      map_entry.target = entry.target();
+    }
+  }
+
+  return config;
 }
 
 }  // namespace gpu

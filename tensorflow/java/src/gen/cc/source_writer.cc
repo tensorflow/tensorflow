@@ -61,20 +61,20 @@ SourceWriter& SourceWriter::Write(const absl::string_view& str) {
   do {
     size_t start_pos = line_pos;
     line_pos = str.find('\n', start_pos);
-    if (line_pos != string::npos) {
+    if (line_pos != std::string::npos) {
       ++line_pos;
       Append(str.substr(start_pos, line_pos - start_pos));
       newline_ = true;
     } else {
       Append(str.substr(start_pos, str.size() - start_pos));
     }
-  } while (line_pos != string::npos && line_pos < str.size());
+  } while (line_pos != std::string::npos && line_pos < str.size());
 
   return *this;
 }
 
-SourceWriter& SourceWriter::WriteFromFile(const string& fname, Env* env) {
-  string data_;
+SourceWriter& SourceWriter::WriteFromFile(const std::string& fname, Env* env) {
+  std::string data_;
   TF_CHECK_OK(ReadFileToString(env, fname, &data_));
   return Write(data_);
 }
@@ -117,7 +117,7 @@ SourceWriter& SourceWriter::EndLine() {
   return *this;
 }
 
-SourceWriter& SourceWriter::BeginBlock(const string& expression) {
+SourceWriter& SourceWriter::BeginBlock(const std::string& expression) {
   if (!expression.empty()) {
     Append(expression + " {");
   } else {
@@ -187,7 +187,7 @@ SourceWriter& SourceWriter::BeginType(const Type& type, int modifiers,
   }
   if (!type_importer.imports().empty()) {
     EndLine();
-    for (const string& s : type_importer.imports()) {
+    for (const std::string& s : type_importer.imports()) {
       Append("import ").Append(s).Append(";").EndLine();
     }
   }

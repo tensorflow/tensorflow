@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/data/metric_utils.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/cross_trainer_cache.h"
@@ -54,11 +55,19 @@ constexpr size_t kDefaultCrossTrainerCacheSizeBytes =
 StandaloneTaskIterator::StandaloneTaskIterator(
     std::unique_ptr<standalone::Dataset> dataset,
     std::unique_ptr<standalone::Iterator> iterator)
-    : dataset_(std::move(dataset)), iterator_(std::move(iterator)) {}
+    : dataset_(std::move(dataset)),
+      iterator_(std::move(iterator)),
+      metrics_collector_(std::make_unique<IteratorMetricsCollector>(
+          "DEVICE_CPU", *Env::Default())) {}
+
+StandaloneTaskIterator::~StandaloneTaskIterator() = default;
 
 absl::Status StandaloneTaskIterator::GetNext(std::vector<Tensor>& element,
                                              bool& end_of_sequence) {
-  return iterator_->GetNext(&element, &end_of_sequence);
+  const absl::Time start_time = metrics_collector_->RecordStart();
+  absl::Status s = iterator_->GetNext(&element, &end_of_sequence);
+  metrics_collector_->RecordStop(start_time, element);
+  return s;
 }
 
 int64_t StandaloneTaskIterator::Cardinality() const {
@@ -78,6 +87,12 @@ std::shared_ptr<model::Model> StandaloneTaskIterator::model() const {
   return iterator_->model();
 }
 
+void StandaloneTaskIterator::Cancel() {
+  if (iterator_) {
+    iterator_->Cancel();
+  }
+}
+
 absl::Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
                                 const TaskDef& task_def,
                                 std::unique_ptr<TaskIterator> iterator,
@@ -86,11 +101,11 @@ absl::Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
     int64_t cardinality = iterator->Cardinality();
     if (cardinality != kInfiniteCardinality &&
         cardinality != kUnknownCardinality) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Round robin reads require that the input dataset has infinite "
           "cardinality, but the dataset has cardinality ",
           cardinality,
-          ". Consider adding a `.repeat()` transformation to the dataset.");
+          ". Consider adding a `.repeat()` transformation to the dataset."));
     }
     out = std::make_unique<RoundRobinTaskRunner>(std::move(iterator),
                                                  task_def.num_consumers(),
@@ -170,7 +185,12 @@ FirstComeFirstServedTaskRunner::GetNextFromInputIterator()
 
 void FirstComeFirstServedTaskRunner::Cancel() {
   VLOG(2) << "Cancelling tf.data service FCFS task.";
-  buffer_.Cancel(errors::Cancelled("tf.data service FCFS task is cancelled."));
+  buffer_.Cancel(
+      absl::CancelledError("tf.data service FCFS task is cancelled."));
+  mutex_lock l(mu_);
+  if (iterator_) {
+    iterator_->Cancel();
+  }
 }
 
 std::shared_ptr<model::Model> FirstComeFirstServedTaskRunner::model() const {
@@ -205,7 +225,7 @@ CachingTaskRunner::GetElementResultSequence::GetNext() {
   GetElementResult result;
   TF_RETURN_IF_ERROR(fcfs_task_runner_.GetNext(result));
   if (result.end_of_sequence) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Cross-trainer caching requires the input dataset to be infinite. "
         "However, it reached the end of sequence.");
   }
@@ -220,7 +240,7 @@ size_t CachingTaskRunner::GetElementResultSequence::GetElementSizeBytes(
 void CachingTaskRunner::Cancel() {
   VLOG(2) << "Cancelling tf.data service cross-trainer cache task.";
   if (!cache_.IsCancelled()) {
-    cache_.Cancel(errors::Cancelled(
+    cache_.Cancel(absl::CancelledError(
         "tf.data service cross-trainer cache task is cancelled."));
   }
   fcfs_task_runner_.Cancel();
@@ -244,14 +264,15 @@ RoundRobinTaskRunner::RoundRobinTaskRunner(
 absl::Status RoundRobinTaskRunner::ValidateRequest(
     const GetElementRequest& req) {
   if (req.consumer_index() < 0 || req.round_index() < 0) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "RoundRobinTaskRunner needs to know the consumer index and element "
         "index of each request.");
   }
   if (req.consumer_index() >= num_consumers_) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "Requesting data for consumer index ", req.consumer_index(),
-        ", but the task is configured for only ", num_consumers_, " consumers");
+        ", but the task is configured for only ", num_consumers_,
+        " consumers"));
   }
   return absl::OkStatus();
 }
@@ -312,16 +333,16 @@ absl::Status RoundRobinTaskRunner::PrepareRound(const GetElementRequest& req) {
     new_round_cv_.wait(l);
   }
   if (current_round_ < req.round_index() && cancelled_) {
-    return errors::Cancelled("Worker is shutting down.");
+    return absl::CancelledError("Worker is shutting down.");
   }
   if (current_round_ != req.round_index()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "Consumer ", req.consumer_index(), " requested data for round ",
         req.round_index(), ", but the current round has already reached ",
         current_round_,
         ". This may indicate that the consumer was restarted with the same "
         "iteration "
-        "name.`");
+        "name.`"));
   }
   return prefetch_thread_.GetStatus();
 }
@@ -377,9 +398,14 @@ PrefetchThread::PrefetchThread(std::unique_ptr<TaskIterator> iterator,
 }
 
 PrefetchThread::~PrefetchThread() {
-  mutex_lock l(mu_);
-  cancelled_ = true;
-  cv_.notify_all();
+  {
+    mutex_lock l(mu_);
+    cancelled_ = true;
+    cv_.notify_all();
+  }
+  if (iterator_) {
+    iterator_->Cancel();
+  }
 }
 
 void PrefetchThread::Run() {
@@ -404,7 +430,7 @@ void PrefetchThread::Run() {
     }
     if (end_of_sequence) {
       mutex_lock l(mu_);
-      status_ = errors::FailedPrecondition(
+      status_ = absl::FailedPreconditionError(
           "Encountered end of sequence on a round-robin read iterator. "
           "Please ensure that the dataset used for round-robin reading has "
           "infinite cardinality, e.g. by adding a .repeat() transformation "
@@ -432,7 +458,7 @@ absl::Status PrefetchThread::FillBuffer(
   }
   TF_RETURN_IF_ERROR(status_);
   if (cancelled_) {
-    return errors::Cancelled("Prefetch thread cancelled");
+    return absl::CancelledError("Prefetch thread cancelled");
   }
   if (buffer_.size() < round_size_) {
     DCHECK_GE(wait_us, 0);

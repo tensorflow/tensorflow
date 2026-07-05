@@ -48,6 +48,13 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "crc32c.cc",
+    ],
+    visibility = internal_visibility(["//tensorflow/core/lib/hash:__pkg__"]),
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "crc32c.h",
     ],
     visibility = internal_visibility(["//tensorflow/core/lib/hash:__pkg__"]),

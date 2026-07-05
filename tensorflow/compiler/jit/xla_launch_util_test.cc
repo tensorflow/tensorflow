@@ -212,7 +212,7 @@ class PjRtExecutionUtilTest : public OpsTestBase {
       xla::PjRtLoadedExecutable* executable) {
     TF_ASSIGN_OR_RETURN(auto pjrt_device,
                         pjrt_client_->LookupAddressableDevice(
-                            xla::PjRtLocalDeviceId(device_->parsed_name().id)));
+                            xla::LocalDeviceId(device_->parsed_name().id)));
 
     std::vector<xla::PjRtBuffer*> executable_args;
     executable_args.reserve(result->input_mapping.size());
@@ -693,7 +693,7 @@ TEST_F(PjRtExecutionUtilTest, RunPjRtExecutableWithoutCtx) {
       tsl::GetDeviceIdFromDeviceParsedName(context_->device()->parsed_name());
   TF_ASSERT_OK_AND_ASSIGN(xla::PjRtDevice * pjrt_device,
                           pjrt_client_->LookupAddressableDevice(
-                              xla::PjRtLocalDeviceId(pjrt_device_id)));
+                              xla::LocalDeviceId(pjrt_device_id)));
 
   absl::flat_hash_map<int, const Tensor*> variable_snapshots;
   for (int i = 0; i < variables.size(); i++) {

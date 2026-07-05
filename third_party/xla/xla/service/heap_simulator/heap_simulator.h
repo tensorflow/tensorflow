@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/log/log.h"
 
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
 #if defined(__GNUC__) || defined(__clang__)
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
+#include "xla/service/heap_simulator/free_chunks_manager.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
@@ -541,12 +543,19 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   using FreeChunks = std::map<int64_t, int64_t, std::greater<int64_t>>;
 #endif
 
-  enum Type {
+  // The packing strategy used by the algorithm to sort buffers for allocation.
+  enum PackingStrategy {
+    // Sort buffers by spatial size (decreasing).
     kSpatial = 0,
+    // Sort buffers by temporal live range (decreasing).
     kTemporal,
-    // Custom uses a custom BufferIntervalCompare function provided in the
-    // constructor.
-    kCustom
+    // Uses a custom BufferIntervalCompare function provided in the constructor.
+    kCustom,
+    // Faster variant that merges the live range of colocations.
+    kFastMerge,
+    // Faster variant that splits the memory space for buffers with colocations
+    // and buffers without colocations.
+    kFastSplit
   };
 
   // BufferInterval stores a buffer's size and time interval.
@@ -567,6 +576,11 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     // True if this buffer needs an allocation. False if it is collocated with
     // other buffer.
     bool need_allocation = false;
+
+    // The fields below are used to cache properties of colocated buffers for
+    // sorting.
+    int64_t min_colocation_start_time = -1;
+    int64_t max_colocation_end_time = -1;
   };
 
   // Comparison function that is used to store buffer intervals.
@@ -860,7 +874,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   };
 
   explicit GlobalDecreasingSizeBestFitHeap(
-      int64_t alignment, Type type = kSpatial,
+      int64_t alignment, PackingStrategy type = kSpatial,
       BufferIntervalCompare buffer_interval_compare = nullptr,
       SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type =
           SliceTimePermutationIterator::Ty::kAll);
@@ -921,8 +935,8 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // each BufferInterval, after calling GetSortedBufferIntervals. If a
   // non-negative preferred_offset is provided, FindChunkCandidate attempts
   // finding a chunk at this offset. The Finish() method can then call
-  // CommitChunk to associate the chunk with the BufferInterval, if the final
-  // heap size is within the limits.
+  // CommitChunkAndInterval to associate the chunk with the BufferInterval, if
+  // the final heap size is within the limits.
   Chunk FindChunkCandidate(const BufferInterval& buffer_interval,
                            int64_t preferred_offset = -1) const;
   // FindChunkCandidates is the same as FindChunkCandidate, except it finds
@@ -952,7 +966,20 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
       const SlicedBufferInterval& sliced_interval,
       std::vector<Chunk> chunks) const;
 
-  void CommitChunk(const BufferInterval& buffer_interval, Chunk chunk);
+  // Assigns the chunk to the result_.chunk_map and updates the heap size,
+  // but does not update interval_tree_. This method should be used when chunk
+  // placement decisions are NOT made using interval_tree_
+  // (e.g., when using FreeChunksManager), as there is no need to update
+  // interval_tree_ in that case.
+  void CommitChunkOnly(const BufferInterval& buffer_interval, Chunk chunk);
+
+  // Assigns the chunk to the result_.chunk_map, updates the heap size, and
+  // updates interval_tree_. This method should be used when chunk placement
+  // decisions are made using interval_tree_ (e.g., via MakeFreeChunks), as
+  // interval_tree_ must be updated to reflect newly allocated chunks for
+  // subsequent placement decisions.
+  void CommitChunkAndInterval(const BufferInterval& buffer_interval,
+                              Chunk chunk);
 
   // Adds the buffer and the chunk to the result chunk map.
   virtual void AddToChunkMap(const BufferType* buffer, Chunk chunk);
@@ -963,6 +990,10 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // ranges of each co-located buffers, but in this heuristics we think they are
   // contiguous.
   BufferIntervalCompare GetTemporalBufferIntervalCompare() const;
+
+  // Return a BufferIntervalCompare function that sorts by starting time of the
+  // live range. Live range is defined as in GetTemporalBufferIntervalCompare.
+  BufferIntervalCompare GetColocationStartTimeBufferIntervalCompare() const;
 
   SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type() const;
 
@@ -980,6 +1011,10 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
 
   SliceTimePermutationIterator::Ty slice_time_permutation_iteration_type_ =
       SliceTimePermutationIterator::Ty::kAll;
+
+  // Temporary buffers used by MakeFreeChunks to avoid reallocating memory.
+  mutable std::vector<Chunk> used_chunks_;
+  mutable std::vector<std::pair<int64_t, int64_t>> free_chunks_list_;
 
  protected:
   // Returns all transitive colocated buffers of this buffer interval. I.e., If
@@ -1016,17 +1051,42 @@ class ConstrainedGlobalDecreasingSizeBestFitHeap
     : public GlobalDecreasingSizeBestFitHeap<HloValue> {
  public:
   explicit ConstrainedGlobalDecreasingSizeBestFitHeap(
-      uint64_t size_limit_per_heap, int64_t alignment, Type type = kSpatial,
+      uint64_t size_limit_per_heap, int64_t alignment,
+      PackingStrategy packing_strategy = kSpatial,
       BufferIntervalCompare buffer_interval_compare = nullptr)
-      : GlobalDecreasingSizeBestFitHeap<HloValue>(alignment, type,
+      : GlobalDecreasingSizeBestFitHeap<HloValue>(alignment, packing_strategy,
                                                   buffer_interval_compare),
-        size_limit_per_heap_(size_limit_per_heap) {}
+        size_limit_per_heap_(size_limit_per_heap),
+        packing_strategy_(packing_strategy) {}
   ~ConstrainedGlobalDecreasingSizeBestFitHeap() override {}
 
   absl::StatusOr<Result> Finish() override;
 
  private:
+  // Allocate buffers for a single heap, processing them one by one in the
+  // given order, keeping the ones that did not fit in the list.
+  int64_t AllocateBuffersInSingleHeap(
+      std::list<BufferInterval>& buffer_intervals_in_order);
+
+  // Same as AllocateBuffersInSingleHeap, but optimized for the case where the
+  // buffers are ordered by start time.
+  absl::Status AllocateBuffersSortedByTimeInSingleHeap(
+      std::list<BufferInterval>& buffer_intervals_in_order,
+      FreeChunksManager& chunks_manager);
+
+  // Checks if the buffer interval requires an allocation attempt. Returns
+  // false if the buffer doesn't need allocation, and returns true if space
+  // needs to be found for it in the heap. Also logs a warning if the size
+  // exceeds the heap limit.
+  bool RequiresAllocation(const BufferInterval& buffer_interval) const;
+
+  // Finish() implementation for various packing strategies.
+  absl::StatusOr<Result> FinishBestOfSpatialTemporal();
+  absl::StatusOr<Result> FinishFastMerge();
+  absl::StatusOr<Result> FinishFastSplit();
+
   uint64_t size_limit_per_heap_;
+  PackingStrategy packing_strategy_;
 };
 
 // A heap algorithm that chooses the best results from other algorithms added to
@@ -1036,7 +1096,7 @@ class ChooseBestHeapAlgorithm : public HeapAlgorithm<BufferType> {
  public:
   using Result = HeapSimulator::Result<BufferType>;
 
-  ChooseBestHeapAlgorithm(
+  explicit ChooseBestHeapAlgorithm(
       std::unique_ptr<std::vector<std::unique_ptr<HeapAlgorithm<BufferType>>>>
           algorithms)
       : algorithms_(std::move(*algorithms)) {}
@@ -1065,6 +1125,93 @@ class ChooseBestHeapAlgorithm : public HeapAlgorithm<BufferType> {
 
  private:
   std::vector<std::unique_ptr<HeapAlgorithm<BufferType>>> algorithms_;
+};
+
+// A heap algorithm that runs a primary algorithm, and if it results in OOM or
+// exceeds a provided memory limit, safely runs a fallback algorithm instead
+// using lazy replay.
+template <typename BufferType>
+class HeapAlgorithmWithFallback : public HeapAlgorithm<BufferType> {
+ public:
+  using Result = HeapSimulator::Result<BufferType>;
+
+  HeapAlgorithmWithFallback(
+      std::unique_ptr<HeapAlgorithm<BufferType>> primary_algorithm,
+      std::function<std::unique_ptr<HeapAlgorithm<BufferType>>()>
+          fallback_factory,
+      int64_t memory_limit)
+      : primary_algorithm_(std::move(primary_algorithm)),
+        fallback_factory_(std::move(fallback_factory)),
+        memory_limit_(memory_limit) {}
+  ~HeapAlgorithmWithFallback() override = default;
+
+  void Alloc(const BufferType* buffer, int64_t size) override {
+    primary_algorithm_->Alloc(buffer, size);
+    calls_.push_back({CallType::kAlloc, buffer, nullptr, size});
+  }
+
+  void ShareWith(const BufferType* buffer, const BufferType* share_with,
+                 int64_t size) override {
+    primary_algorithm_->ShareWith(buffer, share_with, size);
+    calls_.push_back({CallType::kShareWith, buffer, share_with, size});
+  }
+
+  void Free(const BufferType* buffer, int64_t size) override {
+    primary_algorithm_->Free(buffer, size);
+    calls_.push_back({CallType::kFree, buffer, nullptr, size});
+  }
+
+  absl::StatusOr<Result> Finish() override {
+    absl::StatusOr<Result> primary_result = primary_algorithm_->Finish();
+    if (absl::IsResourceExhausted(primary_result.status()) ||
+        (primary_result.ok() && memory_limit_ > 0 &&
+         primary_result->heap_size > memory_limit_)) {
+      LOG(INFO) << "Primary algorithm failed or exceeded limit ("
+                << (primary_result.ok() ? primary_result->heap_size : -1)
+                << " vs " << memory_limit_
+                << "). Running fallback algorithm via lazy replay.";
+      auto fallback_algorithm = fallback_factory_();
+      for (const auto& call : calls_) {
+        switch (call.type) {
+          case CallType::kAlloc:
+            fallback_algorithm->Alloc(call.buffer, call.size);
+            break;
+          case CallType::kShareWith:
+            fallback_algorithm->ShareWith(call.buffer, call.share_with,
+                                          call.size);
+            break;
+          case CallType::kFree:
+            fallback_algorithm->Free(call.buffer, call.size);
+            break;
+        }
+      }
+      auto fallback_result = fallback_algorithm->Finish();
+      if (fallback_result.ok()) {
+        LOG(INFO) << "Fallback algorithm finished with size: "
+                  << fallback_result->heap_size;
+      }
+      return fallback_result;
+    }
+    if (primary_result.ok()) {
+      LOG(INFO) << "Primary algorithm finished with size: "
+                << primary_result->heap_size;
+    }
+    return primary_result;
+  }
+
+ private:
+  enum class CallType { kAlloc, kShareWith, kFree };
+  struct RecordedCall {
+    CallType type;
+    const BufferType* buffer;
+    const BufferType* share_with;
+    int64_t size;
+  };
+
+  std::unique_ptr<HeapAlgorithm<BufferType>> primary_algorithm_;
+  std::function<std::unique_ptr<HeapAlgorithm<BufferType>>()> fallback_factory_;
+  int64_t memory_limit_;
+  std::vector<RecordedCall> calls_;
 };
 
 // An iterator that produces every integer in [start, end], starting with the

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -44,9 +45,13 @@ namespace xla {
 // increased to a larger value.
 class TreeReductionRewriter : public HloModulePass {
  public:
-  explicit TreeReductionRewriter(int64_t reduce_window_size = 32,
-                                 HloPredicate filter = nullptr)
-      : reduce_window_size_(reduce_window_size), filter_(std::move(filter)) {}
+  explicit TreeReductionRewriter(
+      int64_t reduce_window_size = 32,
+      HloPredicate filter = nullptr)
+      : reduce_window_size_(reduce_window_size),
+        filter_(std::move(filter)) {}
+  explicit TreeReductionRewriter(HloPredicate filter)
+      : TreeReductionRewriter(32, std::move(filter)) {}
   ~TreeReductionRewriter() override = default;
   absl::string_view name() const override { return "tree_reduction_rewriter"; }
 

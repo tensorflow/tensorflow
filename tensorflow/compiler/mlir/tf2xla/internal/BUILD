@@ -11,6 +11,7 @@ package(
         "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:__subpackages__",
+        "//tensorflow/core/tfrt/saved_model:__pkg__",
     ],
 )
 
@@ -318,7 +319,7 @@ tf_cc_test(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
-        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/platform:types",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -415,10 +416,10 @@ tf_cc_test(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
-        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/platform:enable_tf2_utils",
+        "//tensorflow/core/platform:types",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

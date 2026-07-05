@@ -51,8 +51,8 @@ class SaveV2OpTest : public OpsTestBase {
 };
 
 TEST_F(SaveV2OpTest, Simple) {
-  const string prefix = io::JoinPath(testing::TmpDir(), "tensor_simple");
-  const string tensornames[] = {
+  const std::string prefix = io::JoinPath(testing::TmpDir(), "tensor_simple");
+  const std::string tensornames[] = {
       "tensor_bool",  "tensor_int",    "tensor_float",     "tensor_double",
       "tensor_qint8", "tensor_qint32", "tensor_uint8",     "tensor_int8",
       "tensor_int16", "tensor_int64",  "tensor_complex64", "tensor_complex128",
@@ -76,7 +76,7 @@ TEST_F(SaveV2OpTest, Simple) {
   AddInput<bool>(TensorShape({2}), [](int x) -> bool { return x != 0; });
 
   // Add a 1-d integer tensor
-  AddInput<int32>(TensorShape({10}), [](int x) -> int32 { return x + 1; });
+  AddInput<int32_t>(TensorShape({10}), [](int x) -> int32_t { return x + 1; });
 
   // Add a 2-d float tensor
   AddInput<float>(TensorShape({2, 4}),
@@ -96,16 +96,16 @@ TEST_F(SaveV2OpTest, Simple) {
   });
 
   // Add a 1-d uint8 tensor
-  AddInput<uint8>(TensorShape({11}), [](int x) -> uint8 { return x + 1; });
+  AddInput<uint8_t>(TensorShape({11}), [](int x) -> uint8_t { return x + 1; });
 
   // Add a 1-d int8 tensor
-  AddInput<int8>(TensorShape({7}), [](int x) -> int8 { return x - 7; });
+  AddInput<int8_t>(TensorShape({7}), [](int x) -> int8_t { return x - 7; });
 
   // Add a 1-d int16 tensor
-  AddInput<int16>(TensorShape({7}), [](int x) -> int16 { return x - 8; });
+  AddInput<int16_t>(TensorShape({7}), [](int x) -> int16_t { return x - 8; });
 
   // Add a 1-d int64 tensor
-  AddInput<int64_t>(TensorShape({9}), [](int x) -> int64 { return x - 9; });
+  AddInput<int64_t>(TensorShape({9}), [](int x) -> int64_t { return x - 9; });
 
   // Add a 2-d complex64 tensor
   AddInput<complex64>(TensorShape({2, 3}), [](int x) -> complex64 {
@@ -237,7 +237,7 @@ TEST_F(SaveV2OpTest, Simple) {
     TF_EXPECT_OK(reader.Lookup("tensor_uint8", &val));
     EXPECT_EQ(DT_UINT8, val.dtype());
     for (int i = 0; i < 11; ++i) {
-      EXPECT_EQ(i + 1, val.template flat<uint8>()(i));
+      EXPECT_EQ(i + 1, val.template flat<uint8_t>()(i));
     }
   }
 
@@ -253,7 +253,7 @@ TEST_F(SaveV2OpTest, Simple) {
     TF_EXPECT_OK(reader.Lookup("tensor_int8", &val));
     EXPECT_EQ(DT_INT8, val.dtype());
     for (int i = 0; i < 7; ++i) {
-      EXPECT_EQ(i - 7, val.template flat<int8>()(i));
+      EXPECT_EQ(i - 7, val.template flat<int8_t>()(i));
     }
   }
 
@@ -269,7 +269,7 @@ TEST_F(SaveV2OpTest, Simple) {
     TF_EXPECT_OK(reader.Lookup("tensor_int16", &val));
     EXPECT_EQ(DT_INT16, val.dtype());
     for (int i = 0; i < 7; ++i) {
-      EXPECT_EQ(i - 8, val.template flat<int16>()(i));
+      EXPECT_EQ(i - 8, val.template flat<int16_t>()(i));
     }
   }
 

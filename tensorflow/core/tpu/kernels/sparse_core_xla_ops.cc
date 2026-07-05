@@ -41,9 +41,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
@@ -147,7 +147,7 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
             /*tpu_core_type=*/TpuCoreTypeEnum::kEmbeddingV2);
 
     OP_REQUIRES(ctx, num_physical_replica > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "No SparseCore is available in the tpu system."));
 
     // TODO(pineapplejuice233): Add error checking logic.
@@ -275,12 +275,13 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
     }
     device_name_ = ctx->device()->name();
     // Check for incomplete quantization config.
-    OP_REQUIRES(ctx,
-                quantization_config_low_.has_value() ==
-                        quantization_config_high_.has_value() &&
-                    quantization_config_low_.has_value() ==
-                        quantization_config_num_buckets_.has_value(),
-                errors::InvalidArgument("Quantization config is incomplete."));
+    OP_REQUIRES(
+        ctx,
+        quantization_config_low_.has_value() ==
+                quantization_config_high_.has_value() &&
+            quantization_config_low_.has_value() ==
+                quantization_config_num_buckets_.has_value(),
+        absl::InvalidArgumentError("Quantization config is incomplete."));
   }
 
   ~XlaSparseDenseMatmulWithCsrInputOp() override = default;
@@ -333,7 +334,7 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(ctx->InputShape(
                     "num_minibatches_per_physical_sparse_core")),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "num_minibatches_per_physical_sparse_core must be scalar"));
 
     xla::XlaOp num_minibatches_per_physical_sparse_core =
@@ -543,6 +544,9 @@ class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
          absl::StrCat(max_unique_ids_per_partition)});
 
     sc_frontend_attributes.mutable_map()->insert(
+        {"_xla_table_name", table_name_});
+
+    sc_frontend_attributes.mutable_map()->insert(
         {"_xla_max_valency", absl::StrCat(max_valency_)});
 
     if (quantization_config_low_.has_value()) {
@@ -674,15 +678,15 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
     OP_REQUIRES(ctx,
                 activation_shape.is_static() &&
                     activation_shape.dimensions().size() == 2,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "activations input has non static or non-rank 2 shape: ",
-                    activation_shape.ToString()));
+                    activation_shape.ToString())));
     int64_t num_samples_per_chip = activation_shape.dimensions(0);
     OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_device_ == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "num_samples_per_chip ", num_samples_per_chip,
                     " not divisible by the number of sparsecores per chip ",
-                    num_sparsecores_per_device_));
+                    num_sparsecores_per_device_)));
     int64_t per_sparse_core_batch_size =
         num_samples_per_chip / num_sparsecores_per_device_;
     int64_t max_ids_per_partition = 0;
@@ -736,6 +740,9 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
     custom_call_frontend_attributes.mutable_map()->insert(
         {"_xla_max_unique_ids_per_partition",
          absl::StrCat(max_unique_ids_per_partition)});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_table_name", table_name_});
 
     builder->SetFrontendAttributes(custom_call_frontend_attributes);
 
@@ -953,6 +960,9 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
     custom_call_frontend_attributes.mutable_map()->insert(
         {"_xla_max_unique_ids_per_partition",
          absl::StrCat(max_unique_ids_per_partition)});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_table_name", table_name_});
 
     builder->SetFrontendAttributes(custom_call_frontend_attributes);
 
@@ -1278,6 +1288,9 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
     custom_call_frontend_attributes.mutable_map()->insert(
         {"_xla_max_unique_ids_per_partition",
          absl::StrCat(max_unique_ids_per_partition)});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_table_name", table_name_});
 
     builder->SetFrontendAttributes(custom_call_frontend_attributes);
 

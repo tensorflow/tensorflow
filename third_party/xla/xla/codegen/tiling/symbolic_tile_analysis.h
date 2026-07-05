@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
@@ -123,23 +124,18 @@ class SymbolicTileAnalysis {
   //
   // If `emitter_specific_constraints_builder` is provided, it will be used to
   // construct emitter-specific constraints for the analysis.
-  //
-  // Nested fusions are analyzed recursively, but operands of nested fusions
-  // (which are parameter ops) are not analyzed. This is because the symbolic
-  // tiles of these operands may contain expressions with symbols which would
-  // fail to be tiled.
   static SymbolicTileAnalysisOrError AnalyzeComputation(
       const HloComputation& computation, mlir::MLIRContext* mlir_context,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =
           nullptr);
   static SymbolicTileAnalysisOrError AnalyzeFusion(
-      const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx,
+      const HloFusionAdaptor& fusion, mlir::MLIRContext* mlir_context,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =
           nullptr);
 
   // Returns a graph of HLO instructions tiled with the given tiling parameters.
   // The provided tiling parameters must satisfy the analysis's constraints.
-  // By default, `ComputeTiledHloInstructions` performs a check that the
+  // By default, `ComputeTiledComputation` performs a check that the
   // constraints are satisfied by the chosen tiling parameters. Setting
   // `constraints_are_known_satisfied` to true bypasses this check.
   //
@@ -151,7 +147,7 @@ class SymbolicTileAnalysis {
   //   `tile_offset_indexing_map`s are necessary to deduplicate operations.
   // In either case, the iteration pattern for the `TiledHloInstruction`s will
   // be dictated by the schedule derived from the provided schedule builder.
-  absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructions(
+  absl::StatusOr<TiledHloComputation> ComputeTiledComputation(
       const Tiling& tiling,
       const TiledHloScheduleBuilder& schedule_builder =
           CreateMajorToMinorTiledHloSchedule,
@@ -240,14 +236,21 @@ class SymbolicTileAnalysis {
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
       std::vector<SymbolicTiledHloInstruction*> root_runtime_variables);
 
-  // Helper for `AnalyzeFusion` to handle nested fusions.
-  static SymbolicTileAnalysisOrError AnalyzeNestedFusion(
+  // Takes a tiled instruction and returns a list of symbolically tiled
+  // instructions - a subgraph of HLO instructions within the fusion that are
+  // needed to compute `instruction`. The instructions are ordered in
+  // def-before-use order. It is guaranteed that the returned list will contain
+  // initial `instruction` as is at the end of the list.
+  static std::variant<std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>,
+                      FusionDecision>
+  AnalyzeFromInstruction(
+      std::unique_ptr<SymbolicTiledHloInstruction> instruction,
       const HloFusionAdaptor& fusion,
       const TilingSpecification::ParameterMapping& parameter_mapping,
-      mlir::MLIRContext* mlir_context, const IndexingMap& indexing_map,
+      mlir::MLIRContext* mlir_context,
       IndexingMap::SimplifyPointDimensions simplification_mode,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
-      std::vector<SymbolicTiledHloInstruction*> root_runtime_variables);
+      ConstraintExpression& constraints);
 
   // The tiled HLO instructions in def-before-use order.
   std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>

@@ -32,8 +32,8 @@ absl::Status CreatePoolFromSet(
   *out_pool = absl::make_unique<protobuf::DescriptorPool>();
   for (const auto& file : set.file()) {
     if ((*out_pool)->BuildFile(file) == nullptr) {
-      return errors::InvalidArgument("Failed to load FileDescriptorProto: ",
-                                     file.DebugString());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Failed to load FileDescriptorProto: ", file.DebugString()));
     }
   }
   return absl::OkStatus();
@@ -59,8 +59,8 @@ absl::Status GetDescriptorPoolFromFile(
     return st;
   }
   if (!descs.ParseFromArray(buf->data(), buf->length())) {
-    return errors::InvalidArgument(
-        "descriptor_source contains invalid FileDescriptorSet: ", filename);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "descriptor_source contains invalid FileDescriptorSet: ", filename));
   }
   return CreatePoolFromSet(descs, owned_desc_pool);
 }
@@ -69,7 +69,7 @@ absl::Status GetDescriptorPoolFromBinary(
     const std::string& source,
     std::unique_ptr<protobuf::DescriptorPool>* owned_desc_pool) {
   if (!absl::StartsWith(source, "bytes://")) {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Source does not represent serialized file descriptor set proto. ",
         "This may be due to a missing dependency on the file containing ",
         "REGISTER_DESCRIPTOR_POOL(\"", source, "\", ...);"));
@@ -77,7 +77,7 @@ absl::Status GetDescriptorPoolFromBinary(
   // Parse the FileDescriptorSet.
   protobuf::FileDescriptorSet proto;
   if (!proto.ParseFromString(absl::StripPrefix(source, "bytes://"))) {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Source does not represent serialized file descriptor set proto. ",
         "This may be due to a missing dependency on the file containing ",
         "REGISTER_DESCRIPTOR_POOL(\"", source, "\", ...);"));

@@ -78,10 +78,10 @@ StatusCallback AllToAll::CheckCounterAndCallDone() {
 absl::Status AllToAll::InitializeCollectiveContext(
     std::shared_ptr<CollectiveContext> col_ctx) {
   if (col_ctx->input->dim_size(0) != col_ctx->col_params->group.group_size) {
-    return errors::InvalidArgument("input to all-to-all first dimension size (",
-                                   col_ctx->input->dim_size(0),
-                                   ") must be the same as the group size (",
-                                   col_ctx->col_params->group.group_size, ")");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "input to all-to-all first dimension size (",
+        col_ctx->input->dim_size(0), ") must be the same as the group size (",
+        col_ctx->col_params->group.group_size, ")"));
   }
   DCHECK(col_ctx->dev_mgr);
   col_ctx_ = col_ctx;
@@ -122,7 +122,8 @@ void AllToAll::Run(StatusCallback done) {
 
 void AllToAll::DispatchSend(int src_rank, int target_rank, const Tensor* tensor,
                             const StatusCallback& done) {
-  string send_buf_key = absl::StrCat(col_ctx_->exec_key, src_rank, target_rank);
+  std::string send_buf_key =
+      absl::StrCat(col_ctx_->exec_key, src_rank, target_rank);
   col_ctx_->col_exec->remote_access()->PostToPeer(
       col_params_->group.members[target_rank].device.name(),
       col_params_->group.members[target_rank].task, send_buf_key,
@@ -133,7 +134,8 @@ void AllToAll::DispatchSend(int src_rank, int target_rank, const Tensor* tensor,
 
 void AllToAll::DispatchRecv(int src_rank, int target_rank, Tensor* tensor,
                             const StatusCallback& done) {
-  string recv_buf_key = absl::StrCat(col_ctx_->exec_key, src_rank, target_rank);
+  std::string recv_buf_key =
+      absl::StrCat(col_ctx_->exec_key, src_rank, target_rank);
   col_ctx_->col_exec->remote_access()->RecvFromPeer(
       col_params_->group.members[src_rank].device.name(),
       col_params_->group.members[src_rank].task,

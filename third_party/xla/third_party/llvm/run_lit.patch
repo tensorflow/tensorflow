@@ -1,0 +1,12 @@
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -33,6 +33,8 @@
+     "utils/textmate/mlir.json",
+ ])
+ 
++exports_files(["run_lit.sh"])
++
+ filegroup(
+     name = "gdb-scripts",
+     srcs = glob(["utils/gdb-scripts/*"]),

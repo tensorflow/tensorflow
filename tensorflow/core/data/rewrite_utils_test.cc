@@ -101,11 +101,11 @@ TEST(GraphUtilTest, GetFetchNodeDef) {
 }
 
 struct SelectOptimizationsTestCase {
-  absl::flat_hash_set<string> experiments;
+  absl::flat_hash_set<std::string> experiments;
   absl::flat_hash_set<tstring> optimizations_enabled;
   absl::flat_hash_set<tstring> optimizations_disabled;
   absl::flat_hash_set<tstring> optimizations_default;
-  std::vector<string> expected;
+  std::vector<std::string> expected;
 };
 
 class SelectOptimizationsTest
@@ -116,8 +116,9 @@ TEST_P(SelectOptimizationsTest, DatasetUtils) {
   auto optimizations = SelectOptimizations(
       test_case.experiments, test_case.optimizations_enabled,
       test_case.optimizations_disabled, test_case.optimizations_default);
-  EXPECT_THAT(std::vector<string>(optimizations.begin(), optimizations.end()),
-              ::testing::UnorderedElementsAreArray(test_case.expected));
+  EXPECT_THAT(
+      std::vector<std::string>(optimizations.begin(), optimizations.end()),
+      ::testing::UnorderedElementsAreArray(test_case.expected));
 }
 
 INSTANTIATE_TEST_SUITE_P(

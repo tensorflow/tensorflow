@@ -210,6 +210,15 @@ bool IsEffectiveParameter(const HloInstruction& instr) {
           IsEffectiveParameter(*instr.operand(0)));
 }
 
+const HloInstruction* StripCastLike(const HloInstruction* instr) {
+  while (instr->opcode() == HloOpcode::kCopy ||
+         instr->opcode() == HloOpcode::kConvert ||
+         instr->opcode() == HloOpcode::kBitcast) {
+    instr = instr->operand(0);
+  }
+  return instr;
+}
+
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               const HloOpcode opcode) {
   auto instructions = computation.instructions();
@@ -296,7 +305,7 @@ bool HasX64TransformedHostTransfer(const HloModule& module) {
 HloInstruction* GetUniqueGteInstruction(const HloInstruction* operand,
                                         int64_t index) {
   HloInstruction* gte = nullptr;
-  for (HloInstruction* instr : operand->parent()->MakeInstructionPostOrder()) {
+  for (HloInstruction* instr : operand->users()) {
     if (!Match(instr, match::GetTupleElement().WithTupleIndex(index))) {
       continue;
     }
@@ -370,6 +379,29 @@ bool IsChangeTilingCopyFusion(const HloInstruction* instr) {
          Layout::Equal().IgnoreTiles().IgnoreMemorySpace()(operand_layout,
                                                            output_layout) &&
          operand_tiles != output_tiles;
+}
+
+bool IsStandardAssociativeScan(const HloInstruction* instruction) {
+  auto* scan = DynCast<HloScanInstruction>(instruction);
+  if (scan == nullptr || scan->IsRoot() ||
+      scan->is_associative() != TRI_STATE_TRUE || scan->is_reverse() ||
+      scan->num_carries() != 1 || scan->operand_count() != 2 ||
+      !scan->shape().IsTuple() || scan->shape().tuple_shapes().size() != 2 ||
+      !scan->shape().tuple_shapes(0).IsArray()) {
+    return false;
+  }
+
+  for (const HloInstruction* user : scan->users()) {
+    if (user->user_count() == 0 && !user->IsRoot()) {
+      continue;
+    }
+    if (user->opcode() != HloOpcode::kGetTupleElement ||
+        user->tuple_index() != 0) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 }  // namespace hlo_query

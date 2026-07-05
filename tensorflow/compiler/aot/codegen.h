@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/aot/compile.h"
-#include "tensorflow/compiler/aot/embedded_constant_buffers.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
+#include "xla/util/embedded_constant_buffers.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -86,7 +86,7 @@ struct MetadataResult {
 };
 
 // Generates a set of constant buffers embedded into an object file.
-absl::StatusOr<EmbeddedConstantBuffers> GenerateConstantBuffersData(
+absl::StatusOr<xla::EmbeddedConstantBuffers> GenerateConstantBuffersData(
     const CodegenOpts& opts, const CompileResult& compile_result);
 
 // Generates a metadata object file according to `opts` and
@@ -105,7 +105,7 @@ absl::Status GenerateMetadata(const CodegenOpts& opts,
 absl::Status GenerateHeader(
     const CodegenOpts& opts, const tf2xla::Config& config,
     const CompileResult& compile_result, const MetadataResult& metadata_result,
-    const EmbeddedConstantBuffers& embedded_constant_buffers,
+    const xla::EmbeddedConstantBuffers& embedded_constant_buffers,
     std::string* header);
 
 // ParseCppClass parses `cpp_class` into its `class_name` and `namespaces`

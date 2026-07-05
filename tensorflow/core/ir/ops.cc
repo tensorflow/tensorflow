@@ -1214,7 +1214,7 @@ void GetIfLikeRegionOpSuccessorRegions(
     SmallVectorImpl<RegionSuccessor>& regions) {
   if (!point.isParent()) {
     // Ignore the control token.
-    regions.emplace_back(RegionSuccessor::parent());
+    regions.emplace_back(op.getOperation());
   } else {
     // Unknown successor.
     regions.emplace_back(&op.getThenRegion());
@@ -1289,7 +1289,7 @@ void GetCaseLikeRegionOpSuccessorRegions(
   // All branch regions branch back to the parent op.
   if (!point.isParent()) {
     // Ignore the control token.
-    regions.emplace_back(RegionSuccessor::parent());
+    regions.emplace_back(op.getOperation());
   } else {
     // Unknown successor. Add all of them.
     for (Region& branch : op.getBranches()) regions.emplace_back(&branch);
@@ -1394,7 +1394,7 @@ static void GetWhileLikeRegionOpSuccessorRegions(
   }
   if (!cond || !*cond) {
     // Drop the control token.
-    regions.emplace_back(mlir::RegionSuccessor::parent());
+    regions.emplace_back(op.getOperation());
   }
 }
 
@@ -1433,12 +1433,12 @@ void ForRegionOp::getSuccessorRegions(
   regions.emplace_back(&getBodyRegion());
   if (point.isParent()) return;
   // The body might branch back to the parent. Drop the control token.
-  regions.emplace_back(mlir::RegionSuccessor::parent());
+  regions.emplace_back(getOperation());
 }
 
 ::mlir::ValueRange ForRegionOp::getSuccessorInputs(
     ::mlir::RegionSuccessor successor) {
-  if (successor.isParent()) return getOuts();
+  if (successor.isOperation()) return getOuts();
   // Skip the loop index (first arg) - it's not provided by the parent.
   return GetLoopRegionDataArgs(*successor.getSuccessor()).drop_front();
 }

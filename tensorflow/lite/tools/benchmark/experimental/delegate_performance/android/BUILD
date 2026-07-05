@@ -6,7 +6,7 @@ load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_binary_with_tflite", "android_library_with_tflite")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:__subpackages__"],
     licenses = ["notice"],
 )
@@ -224,7 +224,6 @@ android_binary_with_tflite(
     assets_dir = "assets",
     custom_package = "org.tensorflow.lite.benchmark.delegateperformance",
     manifest = "AndroidManifest.xml",
-    multidex = "native",
     nocompress_extensions = [".tflite"],
     # In some platforms we don't have an Android SDK/NDK and this target
     # can't be built. We need to prevent the build system from trying to

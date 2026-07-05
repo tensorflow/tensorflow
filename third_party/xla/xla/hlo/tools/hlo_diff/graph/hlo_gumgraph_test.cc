@@ -605,6 +605,33 @@ ENTRY entry {
   EXPECT_FALSE(FingerprintEqualTo(*first_graph, *second_graph));
 }
 
+TEST_F(HloGumgraphTest, CreateWithTwoOperandCollectivePermuteStartWorks) {
+  // This test ensures that HloValueTracing (called via HloGumgraph::Create)
+  // correctly handles collective-permute-start instructions with 2 operands.
+  const char* const kModuleStr = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = (s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0}) parameter(0)
+  p1 = (s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0}) parameter(1)
+
+  cp-start = (
+      ((s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0}), (s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0})),
+      ((s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0}), (s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0}))
+    )
+    collective-permute-start(p0, p1), channel_id=395,
+    source_target_pairs={{4,2},{5,3},{7,4}}
+
+  ROOT cp-done = ((s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0}), (s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0}))
+    collective-permute-done(cp-start)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_OK(HloGumgraph::Create(module.get()).status());
+}
+
 }  // namespace
 }  // namespace hlo_diff
 }  // namespace xla

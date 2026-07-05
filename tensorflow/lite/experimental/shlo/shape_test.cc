@@ -25,8 +25,6 @@ namespace shlo_ref {
 namespace {
 
 using ::testing::ElementsAre;
-using ::testing::Eq;
-
 TEST(ShapeTest, DimensionsAccess) {
   const Shape shape({1, 2, 4, 8});
   EXPECT_THAT(shape.Dimensions(), ElementsAre(1, 2, 4, 8));
@@ -46,8 +44,8 @@ TEST(ShapeTest, Axes) {
 
 TEST(ShapeTest, Dim) {
   Shape shape({1, 2, 4, 8});
-  EXPECT_THAT(shape.Dim(1), Eq(2));
-  EXPECT_THAT(shape.Dim(3), Eq(8));
+  EXPECT_EQ(shape.Dim(1), 2);
+  EXPECT_EQ(shape.Dim(3), 8);
 }
 
 TEST(ShapeTest, Dims) {
@@ -62,33 +60,33 @@ TEST(ShapeTest, DimsInvalidAxisIgnored) {
 
 TEST(ShapeTest, Rank) {
   Shape shape({1, 2, 4, 8});
-  EXPECT_THAT(shape.Rank(), Eq(4));
+  EXPECT_EQ(shape.Rank(), 4);
 }
 
 TEST(ShapeTest, RankEmpty) {
   Shape shape{};
-  EXPECT_THAT(shape.Rank(), Eq(0));
+  EXPECT_EQ(shape.Rank(), 0);
 }
 
 TEST(ShapeTest, NumElementsEmpty) {
   Shape shape{};
-  EXPECT_THAT(shape.NumElements(), Eq(0));
+  EXPECT_EQ(shape.NumElements(), 1);
 }
 TEST(ShapeTest, NumElements) {
   Shape shape({1, 2, 4, 8});
-  EXPECT_THAT(shape.NumElements(), Eq(64));
+  EXPECT_EQ(shape.NumElements(), 64);
 }
 
 TEST(ShapeTest, Equals) {
   Shape s1({1, 2, 4, 8});
   Shape s2({1, 2, 4, 8});
-  EXPECT_TRUE(s1 == s2);
+  EXPECT_EQ(s1, s2);
 }
 
 TEST(ShapeTest, NotEquals) {
   Shape s1({1, 2, 4, 8});
   Shape s2({1, 4, 2, 8});
-  EXPECT_TRUE(s1 != s2);
+  EXPECT_NE(s1, s2);
 }
 
 TEST(ShapeTest, ComputeStridesFromShape) {

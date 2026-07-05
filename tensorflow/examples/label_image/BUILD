@@ -1,7 +1,7 @@
 # Description:
 #   TensorFlow C++ inference example for labeling images.
 
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
@@ -62,10 +62,11 @@ tf_cc_binary(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "label_image_py",
     srcs = ["label_image.py"],
     main = "label_image.py",
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",

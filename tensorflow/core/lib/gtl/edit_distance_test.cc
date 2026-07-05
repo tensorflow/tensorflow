@@ -113,14 +113,14 @@ TEST_F(LevenshteinDistanceTest, Vectors) {
 
 static void BM_EditDistanceHelper(::testing::benchmark::State& state, int len,
                                   bool completely_different) {
-  string a =
+  std::string a =
       "The quick brown fox jumped over the lazy dog and on and on and on"
       " Every good boy deserves fudge.  In fact, this is a very long sentence  "
       " w/many bytes..";
   while (a.size() < static_cast<size_t>(len)) {
     a = a + a;
   }
-  string b = a;
+  std::string b = a;
   if (completely_different) {
     for (size_t i = 0; i < b.size(); i++) {
       b[i]++;

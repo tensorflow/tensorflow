@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -99,7 +101,7 @@ constexpr char kDeviceIndexOp[] = "DeviceIndex";
 //    intermediate result can be different between FUNC_1 and FUNC_2.
 // 5. DTYPE of the Identity node after s_1/2/3 need to be updated if they exist.
 
-string FindForwardNode(utils::MutableNodeView* backward_node) {
+std::string FindForwardNode(utils::MutableNodeView* backward_node) {
   // For the tf function, Identity op node might be added by
   // placer_inspection_required_ops_utils for device placement. Those ops might
   // be removed by model_pruner, or stay there if the Identity op is cross
@@ -145,28 +147,38 @@ void UpdateForwardIdentityNodeDtype(utils::MutableNodeView* forward_node,
 }
 
 absl::Status UpdateNodeDef(utils::MutableNodeView* node_view,
-                           const string& funcName,
+                           const std::string& attr_name,
+                           const std::string& funcName,
                            const FunctionApiInfo& apiInfo) {
   NodeDef* node_def = node_view->node();
 
   VLOG(3) << "Node def before swap is: " << node_def->DebugString();
 
   // For step 1 above.
-  node_def->mutable_attr()->find("f")->second.mutable_func()->set_name(
-      funcName);
+  auto f_attr = node_def->mutable_attr()->find(attr_name);
+  if (f_attr != node_def->mutable_attr()->end()) {
+    f_attr->second.mutable_func()->set_name(funcName);
+  } else {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Missing attribute '", attr_name, "' in node ", node_def->name()));
+  }
 
   // For step 2 above.
   auto tin = node_def->mutable_attr()->find("Tin");
-  tin->second.mutable_list()->clear_type();
-  for (const auto& tin_dtype : apiInfo.input_arg_dtypes()) {
-    tin->second.mutable_list()->add_type(tin_dtype);
+  if (tin != node_def->mutable_attr()->end()) {
+    tin->second.mutable_list()->clear_type();
+    for (const auto& tin_dtype : apiInfo.input_arg_dtypes()) {
+      tin->second.mutable_list()->add_type(tin_dtype);
+    }
   }
 
   // For step 3 above.
   auto tout = node_def->mutable_attr()->find("Tout");
-  tout->second.mutable_list()->clear_type();
-  for (const auto& tout_dtype : apiInfo.output_arg_dtypes()) {
-    tout->second.mutable_list()->add_type(tout_dtype);
+  if (tout != node_def->mutable_attr()->end()) {
+    tout->second.mutable_list()->clear_type();
+    for (const auto& tout_dtype : apiInfo.output_arg_dtypes()) {
+      tout->second.mutable_list()->add_type(tout_dtype);
+    }
   }
 
   if (apiInfo.function_type() == FunctionApiInfo::BACKWARD) {
@@ -197,19 +209,20 @@ absl::Status UpdateNodeDef(utils::MutableNodeView* node_view,
       //   input: "unified_lstm/StatefulPartitionedCall:4"
       //   # New input should be "unified_lstm/StatefulPartitionedCall:5"
       // }
-      const string last_input = FindForwardNode(node_view);
-      const std::vector<string> name_index = ::absl::StrSplit(last_input, ':');
+      const std::string last_input = FindForwardNode(node_view);
+      const std::vector<std::string> name_index =
+          ::absl::StrSplit(last_input, ':');
       if (name_index.size() != 2) {
-        return errors::InvalidArgument(
-            "Invalid format of input node name: ", last_input,
-            " Expected: {forward_node_name}:{index}");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid format of input node name: ", last_input,
+                         " Expected: {forward_node_name}:{index}"));
       }
       const absl::string_view node_name = name_index[0];
       int last_index;
       if (!::absl::SimpleAtoi(name_index[1], &last_index)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "The index of input node is expected to be number, got: ",
-            name_index[1]);
+            name_index[1]));
       }
       for (int i = 1; i <= -diff; ++i)
         node_def->add_input(absl::StrCat(node_name, ":", i + last_index));
@@ -247,7 +260,7 @@ absl::Status ImplementationSelector::MaybeOptimizeFunctionCall(
   //     the DTYPE of input/output.
   NodeDef* node_def = node_view->node();
 
-  std::vector<string> function_attribute_names;
+  std::vector<std::string> function_attribute_names;
   for (const auto& attr : node_def->attr()) {
     if (attr.second.has_func() &&
         lib_info_->GetApiInfo(attr.second.func().name()) != nullptr) {
@@ -264,23 +277,25 @@ absl::Status ImplementationSelector::MaybeOptimizeFunctionCall(
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(node_def->device(), &parsed_name) ||
       !parsed_name.has_type) {
-    return errors::Internal("Could not parse device name:", node_def->device());
+    return absl::InternalError(
+        absl::StrCat("Could not parse device name:", node_def->device()));
   }
   VLOG(2) << "Op " << node_def->name() << " runs on " << node_def->device()
           << " = (" << parsed_name.type << ")";
 
   for (const auto& attr_name : function_attribute_names) {
-    string function_name = node_def->attr().at(attr_name).func().name();
+    std::string function_name = node_def->attr().at(attr_name).func().name();
     // Skip the function if its already optimized by function optimizer.
     if (::absl::StrContains(function_name, "_specialized_for_")) continue;
-    std::vector<string> equiv_func_names;
+    std::vector<std::string> equiv_func_names;
     TF_RETURN_IF_ERROR(lib_info_->GetEquivalentImplementations(
         function_name, &equiv_func_names));
     for (const auto& func_name : equiv_func_names) {
       const auto& func_api_info = lib_info_->GetApiInfo(func_name);
       if (func_api_info->preferred_device() == parsed_name.type) {
         VLOG(2) << "Swapping: " << function_name << " TO: " << func_name;
-        TF_RETURN_IF_ERROR(UpdateNodeDef(node_view, func_name, *func_api_info));
+        TF_RETURN_IF_ERROR(
+            UpdateNodeDef(node_view, attr_name, func_name, *func_api_info));
         break;
       }
     }
@@ -288,10 +303,10 @@ absl::Status ImplementationSelector::MaybeOptimizeFunctionCall(
 
   if (lib_info_->GetApiInfo(node_def->op()) != nullptr &&
       !::absl::StrContains(node_def->op(), "_specialized_for_")) {
-    std::vector<string> equiv_func_names;
+    std::vector<std::string> equiv_func_names;
     TF_RETURN_IF_ERROR(lib_info_->GetEquivalentImplementations(
         node_def->op(), &equiv_func_names));
-    for (const string& func_name : equiv_func_names) {
+    for (const std::string& func_name : equiv_func_names) {
       const auto func_api_info = lib_info_->GetApiInfo(func_name);
       if (func_api_info->preferred_device() == parsed_name.type) {
         node_def->set_op(func_name);
@@ -304,11 +319,12 @@ absl::Status ImplementationSelector::MaybeOptimizeFunctionCall(
 
 // Finds the index of the device from the device name list.
 absl::Status FindDeviceIndex(const utils::MutableNodeView* device_index_node,
-                             const string& device, int* index) {
+                             const std::string& device, int* index) {
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(device, &parsed_name) ||
       !parsed_name.has_type) {
-    return errors::Internal("Could not parse device name:", device);
+    return absl::InternalError(
+        absl::StrCat("Could not parse device name:", device));
   }
   const auto& device_list =
       device_index_node->GetAttr("device_names")->list().s();
@@ -406,7 +422,7 @@ absl::Status ImplementationSelector::Optimize(Cluster* cluster,
   if (!status.ok()) {
     VLOG(2) << "Skipping optimization due to error while loading function "
             << "libraries: " << status;
-    return errors::Aborted("Skipped Optimization");
+    return absl::AbortedError("Skipped Optimization");
   }
 
   *optimized_graph = item.graph;

@@ -1,4 +1,4 @@
-// RUN: DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE=4 dtensor-opt -- -split-input-file -dtensor-mixed-precision-reduce -verify-diagnostics %s | FileCheck %s
+// RUN: env DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE=4 dtensor-opt -- -split-input-file -dtensor-mixed-precision-reduce -verify-diagnostics %s | FileCheck %s
 
 // Check bfloat16 AllReduce is upcasted for a sufficient group size.
 // CHECK-LABEL: func @main

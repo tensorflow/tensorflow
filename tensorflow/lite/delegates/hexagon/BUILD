@@ -23,7 +23,7 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -115,10 +115,12 @@ cc_library(
     name = "hexagon_delegate",
     srcs = select({
         ":explicit_disable_hexagon_setting": [],
+        "//tensorflow:windows": [],
         "//conditions:default": ["hexagon_delegate.cc"],
     }),
     hdrs = select({
         ":explicit_disable_hexagon_setting": [],
+        "//tensorflow:windows": [],
         "//conditions:default": ["hexagon_delegate.h"],
     }),
     tags = [
@@ -127,6 +129,7 @@ cc_library(
     ],
     deps = select({
         ":explicit_disable_hexagon_setting": [],
+        "//tensorflow:windows": [],
         "//conditions:default": [
             ":hexagon_delegate_kernel",
             ":hexagon_implementation",
@@ -141,6 +144,7 @@ cc_library(
         "//tensorflow:ios": [],
         "//tensorflow:ios_x86_64": [],
         "//tensorflow:macos": [],
+        "//tensorflow:windows": [],
         "//conditions:default": [":enable_hexagon_delegate"],
     }),
 )

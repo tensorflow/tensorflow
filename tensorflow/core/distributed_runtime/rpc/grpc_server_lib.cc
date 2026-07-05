@@ -146,25 +146,25 @@ absl::Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
     if (job.name() == server_def.job_name()) {
       auto iter = job.tasks().find(server_def.task_index());
       if (iter == job.tasks().end()) {
-        return errors::Internal("Task ", server_def.task_index(),
-                                " was not defined in job \"",
-                                server_def.job_name(), "\"");
+        return absl::InternalError(absl::StrCat(
+            "Task ", server_def.task_index(), " was not defined in job \"",
+            server_def.job_name(), "\""));
       }
 
       if (server_def.port() != 0) {
         *port = server_def.port();
       } else {
         if (server_def.replica() != 0) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "An explicit server port must be specified when using jobs "
               "with multiple replicas: ",
-              server_def.DebugString());
+              server_def.DebugString()));
         }
         auto colon_index = iter->second.find_last_of(':');
         if (!absl::SimpleAtoi(iter->second.substr(colon_index + 1), port)) {
-          return errors::InvalidArgument(
-              "Could not parse port for local server from \"", iter->second,
-              "\".");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Could not parse port for local server from \"",
+                           iter->second, "\"."));
         }
 
         if (colon_index != std::string::npos &&
@@ -176,8 +176,8 @@ absl::Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
     }
   }
   if (*port == -1) {
-    return errors::Internal("Job \"", server_def.job_name(),
-                            "\" was not defined in cluster");
+    return absl::InternalError(absl::StrCat("Job \"", server_def.job_name(),
+                                            "\" was not defined in cluster"));
   }
 
   return absl::OkStatus();
@@ -237,7 +237,7 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
   std::string default_worker_name;
   if (!DeviceNameUtils::SplitDeviceName(master_env_.local_devices[0]->name(),
                                         &default_worker_name, &unused)) {
-    return errors::Internal("Could not parse worker name.");
+    return absl::InternalError("Could not parse worker name.");
   }
 
   // N.B. The order of initialization here is intricate, because we
@@ -300,7 +300,7 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
   server_ = builder.BuildAndStart();
 
   if (!server_) {
-    return errors::Unknown("Could not start gRPC server");
+    return absl::UnknownError("Could not start gRPC server");
   }
   // Create the execution environment for the GRPC workers cache.
   grpc_worker_env_.reset(CreateGrpcWorkerEnv());
@@ -315,7 +315,7 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
     worker_env_.collective_executor_mgr.reset(
         opts.collective_mgr_func(config, &worker_env_, worker_cache));
     if (worker_env_.collective_executor_mgr == nullptr) {
-      return errors::Internal(
+      return absl::InternalError(
           "collective_mgr_func did not return CollectiveExecutorMgr");
     }
   } else {
@@ -378,7 +378,8 @@ absl::Status GrpcServer::ParseChannelSpec(
       int port = -1;
       if (parts.size() == 2) {
         if (!absl::SimpleAtoi(parts[1], &port)) {
-          return errors::InvalidArgument("Failed to parse port.", task.second);
+          return absl::InvalidArgumentError(
+              absl::StrCat("Failed to parse port.", task.second));
         }
       }
 
@@ -400,10 +401,10 @@ absl::Status GrpcServer::WorkerCacheFactory(
     const WorkerCacheFactoryOptions& options,
     WorkerCacheInterface** worker_cache) {
   if (options.job_name.empty()) {
-    absl::Status s = errors::InvalidArgument(
+    absl::Status s = absl::InvalidArgumentError(absl::StrCat(
         "The master (current machine) is not included in the provided "
         "cluster_def. ",
-        options.cluster_def.DebugString());
+        options.cluster_def.DebugString()));
     LOG(WARNING) << s;
     return s;
   }
@@ -423,12 +424,13 @@ absl::Status GrpcServer::WorkerCacheFactory(
 
   auto colon_index = host_port.find_last_of(':');
   if (!absl::SimpleAtoi(host_port.substr(colon_index + 1), &requested_port)) {
-    return errors::Internal("Could not parse port for local server from \"",
-                            host_port, "\".");
+    return absl::InternalError(absl::StrCat(
+        "Could not parse port for local server from \"", host_port, "\"."));
   }
   if (requested_port != bound_port_) {
-    return errors::InvalidArgument("Requested port ", requested_port,
-                                   " differs from expected port ", bound_port_);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Requested port ", requested_port,
+                     " differs from expected port ", bound_port_));
   }
   *worker_cache = NewGrpcWorkerCacheWithLocalWorker(
       channel_cache, grpc_worker_env(), worker_impl(), name_prefix);
@@ -471,7 +473,7 @@ absl::Status GrpcServer::Start() {
       LOG(INFO) << "Server already started (target: " << target() << ")";
       return absl::OkStatus();
     case STOPPED:
-      return errors::FailedPrecondition("Server has stopped.");
+      return absl::FailedPreconditionError("Server has stopped.");
     default:
       LOG(FATAL);
   }
@@ -492,7 +494,7 @@ absl::Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
   TF_RETURN_IF_ERROR(
       WorkerCacheFactory(worker_cache_factory_options, &worker_cache));
   if (worker_cache == nullptr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Failed to build worker cache with the provided server def.");
   }
   // Transfer ownership of worker_cache to worker_env_.session_mgr.
@@ -502,7 +504,7 @@ absl::Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
   std::string unused;
   if (!DeviceNameUtils::SplitDeviceName(master_env_.local_devices[0]->name(),
                                         &default_worker_name, &unused)) {
-    return errors::Internal("Could not parse worker name.");
+    return absl::InternalError("Could not parse worker name.");
   }
   worker_env_.collective_executor_mgr = CreateProdRpcCollectiveExecutorMgr(
       server_def_.default_session_config(), worker_env_.device_mgr,
@@ -554,7 +556,7 @@ absl::Status GrpcServer::Stop() {
       state_ = STOPPED;
       return absl::OkStatus();
     case STARTED:
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Clean shutdown is not currently implemented");
     case STOPPED:
       LOG(INFO) << "Server already stopped (target: " << target() << ")";

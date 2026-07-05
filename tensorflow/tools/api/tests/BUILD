@@ -1,8 +1,8 @@
 # TensorFlow API backwards compatibility tests.
 
-load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(
     "//tensorflow:tensorflow.bzl",
+    "py_test",
     "tf_cc_binary",
 )
 
@@ -17,7 +17,7 @@ exports_files([
     "API_UPDATE_WARNING.txt",
 ])
 
-py_strict_test(
+py_test(
     name = "api_compatibility_test",
     srcs = ["api_compatibility_test.py"],
     data = [
@@ -27,6 +27,7 @@ py_strict_test(
         "//tensorflow/tools/api/golden:api_golden_v2",
         "//third_party/py/numpy/tf_numpy_api:api_golden",
     ],
+    strict_deps = True,
     tags = [
         "no_mac",  # b/198669105
         "no_oss",  # Runs explicitly in OSS
@@ -48,9 +49,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "module_test",
     srcs = ["module_test.py"],
+    strict_deps = True,
     tags = [
         "no_windows",  # Failing due to missing API symbols.
     ],

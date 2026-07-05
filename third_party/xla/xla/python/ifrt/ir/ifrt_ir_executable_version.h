@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_IFRT_IR_EXECUTABLE_VERSION_H_
 #define XLA_PYTHON_IFRT_IR_IFRT_IR_EXECUTABLE_VERSION_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -23,32 +24,31 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_executable_version.pb.h"
 #include "xla/python/ifrt/ir/version.h"
-#include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
 namespace ifrt {
 
+TSL_LIB_GTL_DEFINE_INT_TYPE(IfrtIrLogicalDeviceId, int32_t);
+
 struct IfrtIrExecutableVersionDeserializeOptions
     : llvm::RTTIExtends<IfrtIrExecutableVersionDeserializeOptions,
-                        xla::ifrt::DeserializeOptions> {
+                        DeserializeOptions> {
   explicit IfrtIrExecutableVersionDeserializeOptions(
-      xla::ifrt::Client* client,
-      absl::Span<const xla::ifrt::DeviceId> device_assignments)
+      Client* client, absl::Span<const DeviceId> device_assignments)
       : client(client),
         device_assignments(device_assignments.begin(),
                            device_assignments.end()) {}
 
   static char ID;  // NOLINT
 
-  xla::ifrt::Client* client = nullptr;
-  std::vector<xla::ifrt::DeviceId> device_assignments;
+  Client* client = nullptr;
+  std::vector<DeviceId> device_assignments;
 };
 
 struct IfrtIrExecutableVersion
@@ -56,21 +56,21 @@ struct IfrtIrExecutableVersion
   // Tracking the runtime ABI version of an atom executable and the devices that
   // it is to be used on.
   struct AtomExecutableVersion {
-    std::shared_ptr<const xla::ifrt::ExecutableVersion> runtime_abi_version;
-    std::vector<xla::ifrt::DeviceId> devices;
+    std::shared_ptr<const ExecutableVersion> runtime_abi_version;
+    // Logical device indices into device_assignments vector in IFRT IR MLIR.
+    std::vector<IfrtIrLogicalDeviceId> logical_device_ids;
   };
 
   IfrtIrExecutableVersion() = default;
   explicit IfrtIrExecutableVersion(
-      Version ifrt_version,
-      absl::Span<const xla::ifrt::DeviceId> device_assignments = {},
+      Version ifrt_version, absl::Span<const DeviceId> device_assignments = {},
       std::vector<AtomExecutableVersion> runtime_abi_versions = {});
 
   // The version of the IFRT IR.
   Version ifrt_version;
   // Mapping from logical device ids in IFRT IR MLIR module to runtime device
   // ids obtained from IFRT client.
-  std::vector<xla::ifrt::DeviceId> device_assignments;
+  std::vector<DeviceId> device_assignments;
   // Atom executable runtime ABI versions and their device assignments.
   std::vector<AtomExecutableVersion> runtime_abi_versions;
 
@@ -80,14 +80,13 @@ struct IfrtIrExecutableVersion
   // Returns true if the IFRT IR version is compatible with the other version
   // and the runtime ABI version is compatible with the given client on the
   // given devices.
-  absl::Status IsCompatibleWith(xla::ifrt::Client& client,
-                                const xla::ifrt::DeviceListRef& devices,
+  absl::Status IsCompatibleWith(Client& client,
                                 const ExecutableVersion& other) const;
 
   absl::StatusOr<IfrtIrExecutableVersionProto> ToProto(
       SerDesVersion version = SerDesVersion::current()) const;
   static absl::StatusOr<std::unique_ptr<IfrtIrExecutableVersion>> FromProto(
-      std::vector<xla::ifrt::DeviceId> device_assignments,
+      std::vector<DeviceId> device_assignments,
       const IfrtIrExecutableVersionProto& proto);
 
   // Returns a string representation of the version for logging purposes.

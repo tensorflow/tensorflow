@@ -29,15 +29,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
@@ -111,7 +114,7 @@ void EnsureParentAllocationIsAvailableForCopy(CopyAllocation* copy_allocation) {
   parent_allocation.Extend(copy_allocation->copy_done_schedule_before());
   if (parent_allocation.is_copy_allocation()) {
     auto parent_copy_allocation =
-        tensorflow::down_cast<CopyAllocation*>(&parent_allocation);
+        absl::down_cast<CopyAllocation*>(&parent_allocation);
     parent_copy_allocation->set_copy_done_schedule_before(
         std::min(parent_copy_allocation->copy_done_schedule_before(),
                  copy_allocation->start_time()));
@@ -141,8 +144,7 @@ void ProcessPrefetchesToAlternateMemory(AllocationSequence& allocations,
   for (auto allocation : allocations_in_raw_pointers) {
     if (allocation->is_copy_allocation() && allocation->is_in_alternate_mem() &&
         !allocation->uses().empty()) {
-      CopyAllocation* prefetch =
-          tensorflow::down_cast<CopyAllocation*>(allocation);
+      CopyAllocation* prefetch = absl::down_cast<CopyAllocation*>(allocation);
       std::vector<HloUse> uses = prefetch->uses();  // Create a copy of uses.
       prefetch->clear_uses();                       // Clear old uses.
       // For every prefetch, update prefetch to serve earliest use just in time.
@@ -179,7 +181,7 @@ absl::flat_hash_map<Allocation*, CopyAllocation*> GetEvictionsMap(
   absl::flat_hash_map<Allocation*, CopyAllocation*> evictions_map;
   for (auto& allocation : allocations) {
     if (allocation->is_copy_allocation() && allocation->is_in_default_mem()) {
-      auto eviction = tensorflow::down_cast<CopyAllocation*>(allocation);
+      auto eviction = absl::down_cast<CopyAllocation*>(allocation);
       Allocation& parent_allocation = eviction->mutable_prev_allocation();
       if (!parent_allocation.is_copy_allocation()) {
         evictions_map[&parent_allocation] = eviction;
@@ -359,8 +361,9 @@ absl::Status MemorySpaceAssignment::VerifyAllocations() const {
   // Verify that all alternate memory allocations are free of overlapping
   // Allocations in time and space, and add them to interval_tree one by one.
   for (const auto& allocation : allocations_) {
-    if (allocation->memory_space() == MemorySpace::kAlternate) {
-      TF_RETURN_IF_ERROR(add_allocation_and_verify(allocation.get()));
+    if (allocation->memory_space() == MemorySpace::kAlternate &&
+        !allocation->is_mirrored_allocation()) {
+      RETURN_IF_ERROR(add_allocation_and_verify(allocation.get()));
     }
   }
   return absl::OkStatus();
@@ -380,7 +383,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
         << "TODO(b/167392593): Support split shapes for window "
            "prefetches.";
   }
-  TF_RETURN_IF_ERROR(FindAllocationSequence(hlo_live_range, alias_analysis));
+  RETURN_IF_ERROR(FindAllocationSequence(hlo_live_range, alias_analysis));
 
   std::optional<RuntimeSimulator> runtime_simulator = std::nullopt;
   if (options_.cost_analysis) {
@@ -395,9 +398,9 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
     }
   }
 
-  TF_RETURN_IF_ERROR(Process(hlo_live_range));
+  RETURN_IF_ERROR(Process(hlo_live_range, alias_analysis));
   if (options_.verify) {
-    TF_RETURN_IF_ERROR(VerifyAllocations());
+    RETURN_IF_ERROR(VerifyAllocations());
   }
 
   // DEBUG_LOG_ALLOCATIONS_AT
@@ -408,15 +411,15 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   // AllocationSequenceDebugging::LogAltMemAllocationsAt(
   //     allocations_, /*time*/1);
   ScheduleAsynchronousCopies();
-  TF_RETURN_IF_ERROR(SimplifyGraph());
-  TF_RETURN_IF_ERROR(FixSchedule());
-  TF_ASSIGN_OR_RETURN(auto alias, HloAliasAnalysis::Run(module_, alias_info_));
-  TF_RETURN_IF_ERROR(ExportAndColorBuffers(*alias));
+  RETURN_IF_ERROR(SimplifyGraph());
+  RETURN_IF_ERROR(SetSchedule());
+  ASSIGN_OR_RETURN(auto alias, HloAliasAnalysis::Run(module_, alias_info_));
+  RETURN_IF_ERROR(ExportAndColorBuffers(*alias));
   std::vector<int64_t> alt_mem_bytes_occupied;
   // alt_mem_bytes_occupied is used for logging in the RuntimeSimulator below.
   // We only populate it in VerifyAndExportHeapSimulatorTrace if the
   // RuntimeSimulator is present.
-  TF_RETURN_IF_ERROR(VerifyAndExportHeapSimulatorTrace(
+  RETURN_IF_ERROR(VerifyAndExportHeapSimulatorTrace(
       *alias,
       runtime_simulator.has_value() ? &alt_mem_bytes_occupied : nullptr));
   if (VLOG_IS_ON(2) && runtime_simulator.has_value()) {
@@ -431,8 +434,8 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   }
   CHECK_OK(module_->schedule().Verify());
   if (VLOG_IS_ON(1)) {
-    TF_ASSIGN_OR_RETURN(AsyncCopyStats stats,
-                        CalculateAsyncCopyStats(alias->dataflow_analysis()));
+    ASSIGN_OR_RETURN(AsyncCopyStats stats,
+                     CalculateAsyncCopyStats(alias->dataflow_analysis()));
     LOG(INFO) << "Maximum number of outstanding async copies/slices: "
               << stats.max_outstanding_async_copies;
     LOG(INFO) << "Number of prefetches: " << stats.num_prefetches
@@ -482,7 +485,8 @@ std::string MemorySpaceAssignment::ScopedMemorySource::ToString() const {
 }
 
 absl::Status MemorySpaceAssignment::Process(
-    const HloLiveRange& hlo_live_range) {
+    const HloLiveRange& hlo_live_range,
+    const HloAliasAnalysis& alias_analysis) {
   VLOG(1) << "Processing assigned buffers...";
   // Since some parent allocations may not be needed (e.g. when they don't have
   // any uses and if there is no other (non-parent) allocation that depends on
@@ -502,7 +506,8 @@ absl::Status MemorySpaceAssignment::Process(
       VLOG(3) << "Allocation not needed.";
       continue;
     }
-    TF_RETURN_IF_ERROR(allocation->Process(options_.bitcast_split_fn));
+    RETURN_IF_ERROR(allocation->Process(options_.bitcast_split_fn,
+                                        hlo_live_range, alias_analysis));
     // Add the offset and size of the allocation in the alternate memory to
     // the output map.
     if (allocation->is_scoped_allocation()) {
@@ -548,7 +553,7 @@ absl::Status MemorySpaceAssignment::Process(
         }
       }
       if (allocation->cross_program_prefetch_index().has_value()) {
-        TF_RETURN_IF_ERROR(module_->SetCrossProgramPrefetchOffset(
+        RETURN_IF_ERROR(module_->SetCrossProgramPrefetchOffset(
             *allocation->cross_program_prefetch_index(),
             allocation->chunk().offset));
       }
@@ -562,7 +567,7 @@ absl::Status MemorySpaceAssignment::Process(
   for (auto& allocation : allocations_) {
     if (needed_allocations.contains(allocation.get())) {
       VLOG(3) << "Post-Processing: " << allocation->ToString();
-      TF_RETURN_IF_ERROR(allocation->PostProcess());
+      RETURN_IF_ERROR(allocation->PostProcess());
       if (allocation->is_pinned_allocation() &&
           !allocation->is_scoped_allocation()) {
         auto [it, inserted] =
@@ -721,7 +726,7 @@ absl::Status ProcessDeadComputation(
     }
   }
   VLOG(2) << "Removing dead computation: " << computation->name();
-  TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
+  RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
   return absl::OkStatus();
 }
 
@@ -740,8 +745,8 @@ absl::Status CleanupDeadFusionComputations(
   while (!worklist.empty()) {
     HloComputation* computation = worklist.back();
     worklist.pop_back();
-    TF_RETURN_IF_ERROR(ProcessDeadComputation(module, computation,
-                                              removed_instructions, worklist));
+    RETURN_IF_ERROR(ProcessDeadComputation(module, computation,
+                                           removed_instructions, worklist));
   }
   return absl::OkStatus();
 }
@@ -778,7 +783,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
     // control dependencies).
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
-      TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+      RETURN_IF_ERROR(instruction->DropAllControlDeps());
     }
     // We perform limited DCE and forward the tuple operand in patterns like
     // GetTupleElement(Tuple(a, b), 0). This is mostly because memory space
@@ -798,7 +803,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
           VLOG(4) << "Instruction removed: " << instruction->ToString();
           removed_instructions.insert(instruction);
           // Instead of deleting the instruction from the schedule, replace it
-          // with a nullptr. This is needed because FixSchedule relies on the
+          // with a nullptr. This is needed because SetSchedule relies on the
           // logical time that is the index into flattened_instructions_ for
           // scheduling asynchronous copies.
           if (instruction_to_flattened_instructions_idx.contains(instruction)) {
@@ -806,7 +811,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
                 [instruction_to_flattened_instructions_idx[instruction]] =
                     nullptr;
           }
-          TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+          RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
           computation_modified = true;
         } else if (instruction->opcode() == HloOpcode::kGetTupleElement) {
           HloInstruction* operand = instruction->mutable_operand(0);
@@ -815,7 +820,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
                 operand->mutable_operand(instruction->tuple_index());
             VLOG(4) << "Replacing uses of " << instruction->ToString()
                     << " with " << forwarded_instruction->ToString();
-            TF_RETURN_IF_ERROR(
+            RETURN_IF_ERROR(
                 instruction->ReplaceAllUsesWith(forwarded_instruction));
             computation_modified = true;
           }
@@ -847,7 +852,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
                 instruction->mutable_operand(0)->mutable_operand(0);
             VLOG(4) << "Replacing uses of " << instruction->ToString()
                     << " with " << forwarded_instruction->ToString();
-            TF_RETURN_IF_ERROR(
+            RETURN_IF_ERROR(
                 instruction->ReplaceAllUsesWith(forwarded_instruction));
             computation_modified = true;
           }
@@ -856,8 +861,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
     }
   }
 
-  TF_RETURN_IF_ERROR(
-      CleanupDeadFusionComputations(module_, removed_instructions));
+  RETURN_IF_ERROR(CleanupDeadFusionComputations(module_, removed_instructions));
 
   RemoveAlternateMemoryAssignments(removed_instructions);
   RemoveScopedMemoryAssignments(removed_instructions);
@@ -888,16 +892,66 @@ class AsyncCopyStep {
   virtual ~AsyncCopyStep() = default;
 
   bool operator<(const AsyncCopyStep& rhs) const {
+    // AsyncCopySteps are scheduled in a multi-step algorithm:
+    // 1. ScheduleAsynchronousCopies
+    //    - Build a list of needed AsyncCopySteps and sort it using this
+    //      comparator.
+    //    - Iterate over the sorted AsyncCopySteps and build the following data
+    //      structures:
+    //      * schedule_before_: A map from logical time to a list of
+    //        instructions that should be inserted before that logical time, in
+    //        order to perform the end of an async copy step. Such instructions
+    //        include copy-dones.
+    //      * schedule_after_: A map from logical time to a list of
+    //        instructions that should be inserted after that logical time, in
+    //        order to perform the start of an async copy step. Such
+    //        instructions include copy-starts.
+    // 2. SetSchedule - This step uses the data structures built in the previous
+    //    step to schedule the instructions in the schedule_before_ and
+    //    schedule_after_ maps.
+
+    // Given the way SetSchedule operates, the purpose of this comparator is to
+    // order the set of instructions to be scheduled after a given instruction,
+    // and independently order the set of instructions to be scheduled before a
+    // given instruction.
+    // * At logical time i, this comparator has the following effects:
+    //   - Orders the set of instructions in schedule_before[i]:
+    //     * Instructions in schedule_before_[i] are done instructions. Thus, by
+    //       definition, all instructions in schedule_before_[i] have the same
+    //       done time.
+    //     * Amongst done instructions with the same done time, we first
+    //       schedule one that starts first, since copies execute in FIFO order.
+    //     * The next part of the comparator places evictions before prefetches,
+    //       when the start and done times of the 2 copies are the same.
+    //       Normally, we don't care about the ordering here, unless the 2
+    //       copies are jit copies. In the case of jit copies, we prefer a jit
+    //       eviction to run and complete before a jit prefetch, so the jit
+    //       prefetch can reuse the alternate memory freed by the jit eviction.
+    //       In that case, this comparator ensures that we schedule the eviction
+    //       done followed by the prefetch done. SetSchedule() then uses
+    //       InsertInstructionAndEnsureOperandsInserted() to make the final
+    //       ordering: evict start, evict done, prefetch start, prefetch done.
+    //   - Ordering the set of instructions in schedule_after[i]:
+    //     * Instructions in schedule_after_[i] are start instructions. Thus, by
+    //       definition, all instructions in schedule_after_[i] have the same
+    //       start time.
+    //     * Amongst start instructions with the same start time, we first
+    //       schedule one that ends first, since copies execute in FIFO order.
+    //     * As mentioned above, the last part of the sort order (checking
+    //       evictions vs prefetches) only matters for 2 jit copies, and the
+    //       ordering of jit copy starts never reaches this criteria.
     std::optional<StartPhase> lhs_start_phase = start_phase();
     auto lhs_tuple = std::make_tuple(
         done_phase().schedule_before_time,
         (lhs_start_phase.has_value() ? lhs_start_phase->schedule_after_time
-                                     : done_phase().schedule_before_time));
+                                     : done_phase().schedule_before_time),
+        destination_memory_space() == MemorySpace::kAlternate);
     std::optional<StartPhase> rhs_start_phase = rhs.start_phase();
     auto rhs_tuple = std::make_tuple(
         rhs.done_phase().schedule_before_time,
         (rhs_start_phase.has_value() ? rhs_start_phase->schedule_after_time
-                                     : rhs.done_phase().schedule_before_time));
+                                     : rhs.done_phase().schedule_before_time),
+        destination_memory_space() == MemorySpace::kAlternate);
 
     return lhs_tuple < rhs_tuple;
   }
@@ -907,6 +961,7 @@ class AsyncCopyStep {
   virtual std::optional<StartPhase> start_phase() const = 0;
   virtual void set_start_phase_schedule_after_time(int64_t schedule_after) = 0;
   virtual DonePhase done_phase() const = 0;
+  virtual MemorySpace destination_memory_space() const = 0;
 
  protected:
   AsyncCopyStep() = default;
@@ -937,6 +992,10 @@ class AsyncCopyStepForCopyAllocation : public AsyncCopyStep {
   DonePhase done_phase() const override {
     return {copy_allocation_->copy_done_schedule_before(),
             copy_allocation_->copy_done()};
+  }
+
+  MemorySpace destination_memory_space() const override {
+    return copy_allocation_->memory_space();
   }
 
  private:
@@ -983,6 +1042,10 @@ class AsyncCopyStepForSlice : public AsyncCopyStep {
     return phase;
   }
 
+  MemorySpace destination_memory_space() const override {
+    return sliced_copy_allocation_->memory_space();
+  }
+
  private:
   SlicedCopyAllocation* sliced_copy_allocation_ = nullptr;
   size_t slice_index_;
@@ -1009,6 +1072,10 @@ class AsyncCopyStepForSliceConcat : public AsyncCopyStep {
   DonePhase done_phase() const override {
     return {sliced_copy_allocation_->earliest_available_time(),
             sliced_copy_allocation_->concat()};
+  }
+
+  MemorySpace destination_memory_space() const override {
+    return sliced_copy_allocation_->memory_space();
   }
 
  private:
@@ -1089,7 +1156,7 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
   }
 }
 
-absl::Status MemorySpaceAssignment::FixSchedule() {
+absl::Status MemorySpaceAssignment::SetSchedule() {
   VLOG(1) << "Fixing schedule...";
   TF_RET_CHECK(module_->has_schedule());
   HloSchedule& schedule = module_->schedule();
@@ -1145,32 +1212,33 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
     }
   }
 
-  // Create the schedule for all computations at the same time, by first
-  // scheduling the before instructions, then the current instruction and
-  // finally the after instructions (each in its respective computation).
-  for (int64_t instruction_index = -1;; ++instruction_index) {
-    auto insts_before_iter = schedule_before_.find(instruction_index);
-    if (insts_before_iter != schedule_before_.end()) {
-      for (HloInstruction* new_instruction : insts_before_iter->second) {
-        HloComputation* computation = new_instruction->parent();
-        if (computation_to_stats.contains(computation)) {
-          ComputationStats& stats = computation_to_stats[computation];
-          VLOG(4) << "before " << instruction_index << ": "
-                  << new_instruction->ToString();
-          InsertInstructionAndEnsureOperandsInserted(
-              new_instruction, &stats.sequence, &stats.inserted_instructions);
-        }
-      }
-    }
-
-    if (instruction_index != -1) {
-      // We allow scheduling copy dones past the root instruction (for
-      // end-of-program cross-program prefetch). So the loop exit condition is
-      // actually here.
-      if (instruction_index >= flattened_instructions_.size()) {
-        break;
-      }
-
+  // Create the schedule for all computations at the same time. As we iterate
+  // through the original instructions.
+  //
+  // Iterate through the flattened schedule, doing the following:
+  // 1. First schedule the current instruction.
+  // 2. Then schedule the instructions that are supposed to be scheduled before
+  //    the next instruction. This typically includes things like
+  //    copy-dones.
+  // 3. Finally schedule the instructions that are supposed to be scheduled
+  //    after the current instruction. This typically includes things like
+  //    copy-starts
+  //
+  // Step 2 comes before step 3, so that we can free up space in step 2 that
+  // can be reused in step 3.
+  //
+  // For JIT(just-in-time) copies, the copy start will be after instruction i
+  // and the copy done will come before instruction i+1. Normally that would
+  // cause a problem because we schedule dones before starts. However, when we
+  // insert the done with InsertInstructionAndEnsureOperandsInserted(), it will
+  // end up properly scheduling the start.
+  //
+  // Schedule all instructions in their respective computations.
+  int64_t instructions_count = flattened_instructions_.size();
+  for (int64_t instruction_index = -2; instruction_index < instructions_count;
+       ++instruction_index) {
+    // Start by inserting the instruction.
+    if (instruction_index >= 0) {
       HloInstruction* instruction = flattened_instructions_[instruction_index];
       // Insert only if it is not deleted (SimplifyGraph sets it to nullptr if
       // it was deleted) and not previously inserted. Also bitcasts and tuples
@@ -1193,11 +1261,29 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
       }
     }
 
+    // Insert the scheduler_before_ instructions, e.g., copy dones.
+    auto insts_before_iter = schedule_before_.find(instruction_index + 1);
+    if (insts_before_iter != schedule_before_.end()) {
+      for (HloInstruction* new_instruction : insts_before_iter->second) {
+        HloComputation* computation = new_instruction->parent();
+        if (computation_to_stats.contains(computation)) {
+          ComputationStats& stats = computation_to_stats[computation];
+          VLOG(4) << "before " << instruction_index + 1 << ": "
+                  << new_instruction->ToString();
+          InsertInstructionAndEnsureOperandsInserted(
+              new_instruction, &stats.sequence, &stats.inserted_instructions);
+        }
+      }
+    }
+
+    // Insert the scheduler_after_ instructions, e.g., copy starts.
     auto insts_after_iter = schedule_after_.find(instruction_index);
     if (insts_after_iter != schedule_after_.end()) {
       for (HloInstruction* new_instruction : insts_after_iter->second) {
         HloComputation* computation = new_instruction->parent();
         if (computation_to_stats.contains(computation)) {
+          VLOG(4) << "after " << instruction_index << ": "
+                  << new_instruction->ToString();
           ComputationStats& stats = computation_to_stats[computation];
           InsertInstructionAndEnsureOperandsInserted(
               new_instruction, &stats.sequence, &stats.inserted_instructions);
@@ -1224,7 +1310,7 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
     schedule.set_sequence(computation, stats.sequence);
   }
 
-  TF_RETURN_IF_ERROR(schedule.Update());
+  RETURN_IF_ERROR(schedule.Update());
 
   return absl::OkStatus();
 }
@@ -1289,9 +1375,9 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
     const HloAliasAnalysis& alias_analysis,
     std::vector<int64_t>* alt_mem_bytes_occupied) {
   VLOG(1) << "Verifying...";
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
-                      HloLiveRange::Run(module_->schedule(), alias_analysis,
-                                        module_->entry_computation()));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                   HloLiveRange::Run(module_->schedule(), alias_analysis,
+                                     module_->entry_computation()));
 
   BufferIntervalTree interval_tree;
   absl::flat_hash_set<int64_t> seen_buffers;
@@ -1386,9 +1472,10 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
       std::function<absl::Status(const HloInstruction*, int64_t, int64_t,
                                  absl::string_view)>
           split_conditional_buffer;
-      split_conditional_buffer = [&](const HloInstruction* use_instruction,
-                                     int64_t start_time, int64_t end_time,
-                                     absl::string_view indent_string) {
+      split_conditional_buffer =
+          [&](const HloInstruction* use_instruction, int64_t start_time,
+              int64_t end_time,
+              absl::string_view indent_string) -> absl::Status {
         // Special case when verifying conditional: we internally split the use
         // of alternate memory in conditionals, so fish them out from the
         // conditionals.
@@ -1428,11 +1515,11 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
             if (last_use_instruction->opcode() == HloOpcode::kConditional) {
               // The last use is another (nested) conditional. Call this
               // function recursively.
-              TF_RETURN_IF_ERROR(split_conditional_buffer(
+              RETURN_IF_ERROR(split_conditional_buffer(
                   last_use_instruction, computation_start_time, last_use_time,
                   absl::StrCat(indent_string, "  ")));
             } else {
-              TF_RETURN_IF_ERROR(add_allocation_and_verify(
+              RETURN_IF_ERROR(add_allocation_and_verify(
                   computation_start_time, last_use_time, chunk, value));
             }
           }
@@ -1440,14 +1527,14 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
         VLOG(3) << indent_string << " from beginning until first computation: ("
                 << start_time << ", " << (earliest_computation_start_time - 1)
                 << ")";
-        TF_RETURN_IF_ERROR(add_allocation_and_verify(
+        RETURN_IF_ERROR(add_allocation_and_verify(
             start_time, earliest_computation_start_time - 1, chunk, value));
         return absl::OkStatus();
       };
 
       if (last_use_instruction &&
           last_use_instruction->opcode() == HloOpcode::kConditional) {
-        TF_RETURN_IF_ERROR(split_conditional_buffer(
+        RETURN_IF_ERROR(split_conditional_buffer(
             last_use_instruction, time_bound.start, time_bound.end, " "));
       } else if (!value->GetUses().empty()) {
         last_use_time = std::min(last_use_time, time_bound.end);
@@ -1455,8 +1542,8 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
                 << " value: " << value->ToShortString() << ": ("
                 << time_bound.start << ", " << last_use_time
                 << ") off: " << chunk.offset << ", size: " << chunk.size;
-        TF_RETURN_IF_ERROR(add_allocation_and_verify(
-            time_bound.start, last_use_time, chunk, value));
+        RETURN_IF_ERROR(add_allocation_and_verify(time_bound.start,
+                                                  last_use_time, chunk, value));
       }
     }
   }

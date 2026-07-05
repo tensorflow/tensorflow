@@ -90,7 +90,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-string ToString(CompressionType compression_type) {
+std::string ToString(CompressionType compression_type) {
   switch (compression_type) {
     case CompressionType::ZLIB:
       return "ZLIB";
@@ -119,11 +119,11 @@ io::ZlibCompressionOptions GetZlibCompressionOptions(
   }
 }
 
-absl::Status WriteDataToFile(const string& filename, const char* data) {
+absl::Status WriteDataToFile(const std::string& filename, const char* data) {
   return WriteDataToFile(filename, data, CompressionParams());
 }
 
-absl::Status WriteDataToFile(const string& filename, const char* data,
+absl::Status WriteDataToFile(const std::string& filename, const char* data,
                              const CompressionParams& params) {
   Env* env = Env::Default();
   std::unique_ptr<WritableFile> file_writer;
@@ -143,8 +143,8 @@ absl::Status WriteDataToFile(const string& filename, const char* data,
     TF_RETURN_IF_ERROR(out.Flush());
     TF_RETURN_IF_ERROR(out.Close());
   } else {
-    return tensorflow::errors::InvalidArgument(
-        "Unsupported compression_type: ", ToString(params.compression_type));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Unsupported compression_type: ", ToString(params.compression_type)));
   }
 
   TF_RETURN_IF_ERROR(file_writer->Flush());
@@ -154,7 +154,7 @@ absl::Status WriteDataToFile(const string& filename, const char* data,
 }
 
 absl::Status WriteDataToTFRecordFile(
-    const string& filename, const std::vector<absl::string_view>& records,
+    const std::string& filename, const std::vector<absl::string_view>& records,
     const CompressionParams& params) {
   Env* env = Env::Default();
   std::unique_ptr<WritableFile> file_writer;
@@ -176,14 +176,14 @@ absl::Status WriteDataToTFRecordFile(
 template <typename T>
 absl::Status IsEqual(const Tensor& t1, const Tensor& t2) {
   if (t1.dtype() != t2.dtype()) {
-    return tensorflow::errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Two tensors have different dtypes: ", DataTypeString(t1.dtype()),
-        " vs. ", DataTypeString(t2.dtype()));
+        " vs. ", DataTypeString(t2.dtype())));
   }
   if (!t1.IsSameSize(t2)) {
-    return tensorflow::errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Two tensors have different shapes: ", t1.shape().DebugString(),
-        " vs. ", t2.shape().DebugString());
+        " vs. ", t2.shape().DebugString()));
   }
 
   auto flat_t1 = t1.flat<T>();
@@ -217,8 +217,9 @@ DatasetOpsTestBase::~DatasetOpsTestBase() {
 
 absl::Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
   if (a.dtype() != b.dtype()) {
-    return errors::Internal("Tensor dtypes don't match:\n", a.DebugString(),
-                            "\n", b.DebugString());
+    return absl::InternalError(absl::StrCat("Tensor dtypes don't match:\n",
+                                            a.DebugString(), "\n",
+                                            b.DebugString()));
   }
   switch (a.dtype()) {
 #define CASE(DT)                           \
@@ -231,24 +232,28 @@ absl::Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
     case DT_VARIANT: {
       if (!TensorShapeUtils::IsScalar(a.shape()) ||
           !TensorShapeUtils::IsScalar(b.shape())) {
-        return errors::Internal("Variant tensors must be scalars:\n",
-                                a.DebugString(), "\n", b.DebugString());
+        return absl::InternalError(
+            absl::StrCat("Variant tensors must be scalars:\n", a.DebugString(),
+                         "\n", b.DebugString()));
       }
       const TestVariant* a_object = a.scalar<Variant>()().get<TestVariant>();
       const TestVariant* b_object = b.scalar<Variant>()().get<TestVariant>();
       if (a_object == nullptr || b_object == nullptr) {
-        return errors::Internal("Variant types must be `TestVariant`:\n",
-                                a.scalar<Variant>()().TypeName(), "\n",
-                                b.scalar<Variant>()().TypeName());
+        return absl::InternalError(
+            absl::StrCat("Variant types must be `TestVariant`:\n",
+                         a.scalar<Variant>()().TypeName(), "\n",
+                         b.scalar<Variant>()().TypeName()));
       }
       if (*a_object != *b_object) {
-        return errors::Internal("Variant tensors aren't equal:\n",
-                                a.DebugString(), "\n", b.DebugString());
+        return absl::InternalError(
+            absl::StrCat("Variant tensors aren't equal:\n", a.DebugString(),
+                         "\n", b.DebugString()));
       }
       break;
     }
     default:
-      return errors::Internal("Unsupported dtype: ", a.dtype());
+      return absl::InternalError(
+          absl::StrCat("Unsupported dtype: ", a.dtype()));
   }
   return absl::OkStatus();
 }
@@ -269,17 +274,17 @@ absl::Status DatasetOpsTestBase::ExpectEqual(
     std::vector<Tensor> produced_tensors, std::vector<Tensor> expected_tensors,
     bool compare_order) {
   if (produced_tensors.size() != expected_tensors.size()) {
-    return absl::Status(tensorflow::errors::Internal(
+    return absl::Status(absl::InternalError(absl::StrCat(
         "The two tensor vectors have different size (", produced_tensors.size(),
-        " v.s. ", expected_tensors.size(), ")"));
+        " v.s. ", expected_tensors.size(), ")")));
   }
 
   if (produced_tensors.empty()) return absl::OkStatus();
   if (produced_tensors[0].dtype() != expected_tensors[0].dtype()) {
-    return absl::Status(tensorflow::errors::Internal(
-        "The two tensor vectors have different dtypes (",
-        produced_tensors[0].dtype(), " v.s. ", expected_tensors[0].dtype(),
-        ")"));
+    return absl::Status(absl::InternalError(
+        absl::StrCat("The two tensor vectors have different dtypes (",
+                     produced_tensors[0].dtype(), " v.s. ",
+                     expected_tensors[0].dtype(), ")")));
   }
 
   if (!compare_order) {
@@ -313,7 +318,7 @@ absl::Status DatasetOpsTestBase::ExpectEqual(
       // TODO(feihugis): support other dtypes.
 #undef CASE
       default:
-        return errors::Internal("Unsupported dtype: ", dtype);
+        return absl::InternalError(absl::StrCat("Unsupported dtype: ", dtype));
     }
   }
 
@@ -375,7 +380,7 @@ absl::Status DatasetOpsTestBase::CreateDataset(OpKernel* kernel,
 
 absl::Status DatasetOpsTestBase::RestoreIterator(
     IteratorContext* ctx, IteratorStateReader* reader,
-    const string& output_prefix, const DatasetBase& dataset,
+    const std::string& output_prefix, const DatasetBase& dataset,
     std::unique_ptr<IteratorBase>* iterator) {
   return dataset.MakeIteratorFromCheckpoint(ctx, output_prefix, reader,
                                             iterator);
@@ -405,8 +410,8 @@ absl::Status DatasetOpsTestBase::GetDatasetFromContext(
 
 absl::Status DatasetOpsTestBase::InitThreadPool(int thread_num) {
   if (thread_num < 1) {
-    return errors::InvalidArgument(
-        "The `thread_num` argument should be positive but got: ", thread_num);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "The `thread_num` argument should be positive but got: ", thread_num));
   }
   thread_pool_ = std::make_unique<thread::ThreadPool>(
       Env::Default(), ThreadOptions(), "test_thread_pool", thread_num);
@@ -416,8 +421,8 @@ absl::Status DatasetOpsTestBase::InitThreadPool(int thread_num) {
 absl::Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
     const std::vector<FunctionDef>& flib, int cpu_num) {
   if (cpu_num < 1) {
-    return errors::InvalidArgument(
-        "The `cpu_num` argument should be positive but got: ", cpu_num);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "The `cpu_num` argument should be positive but got: ", cpu_num));
   }
   SessionOptions options;
   auto* device_count = options.config.mutable_device_count();
@@ -468,7 +473,7 @@ absl::Status DatasetOpsTestBase::RunFunction(
     const GraphConstructorOptions& graph_options, std::vector<Tensor*> rets) {
   std::unique_ptr<Executor> exec;
   InstantiationResult result;
-  auto GetOpSig = [](const string& op, const OpDef** sig) {
+  auto GetOpSig = [](const std::string& op, const OpDef** sig) {
     return OpRegistry::Global()->LookUpOpDef(op, sig);
   };
   TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, GetOpSig, &result));
@@ -506,9 +511,9 @@ absl::Status DatasetOpsTestBase::RunFunction(
   std::vector<Tensor> computed;
   TF_RETURN_IF_ERROR(frame.GetRetvals(&computed));
   if (computed.size() != rets.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "The result does not match the expected number of return outpus",
-        ". Expected: ", rets.size(), ". Actual: ", computed.size());
+        ". Expected: ", rets.size(), ". Actual: ", computed.size()));
   }
   for (int i = 0; i < rets.size(); ++i) {
     *(rets[i]) = computed[i];
@@ -540,7 +545,7 @@ absl::Status DatasetOpsTestBase::CreateOpKernelContext(
       std::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
   params->slice_reader_cache = slice_reader_cache_.get();
   step_container_ =
-      std::make_unique<ScopedStepContainer>(0, [](const string&) {});
+      std::make_unique<ScopedStepContainer>(0, [](const std::string&) {});
   params->step_container = step_container_.get();
 
   // Set the allocator attributes for the outputs.
@@ -569,9 +574,9 @@ absl::Status DatasetOpsTestBase::CreateSerializationContext(
 absl::Status DatasetOpsTestBase::CheckOpKernelInput(
     const OpKernel& kernel, const absl::InlinedVector<TensorValue, 4>& inputs) {
   if (kernel.num_inputs() != inputs.size()) {
-    return errors::InvalidArgument("The number of input elements should be ",
-                                   kernel.num_inputs(),
-                                   ", but got: ", inputs.size());
+    return absl::InvalidArgumentError(
+        absl::StrCat("The number of input elements should be ",
+                     kernel.num_inputs(), ", but got: ", inputs.size()));
   }
   return absl::OkStatus();
 }
@@ -580,8 +585,9 @@ absl::Status DatasetOpsTestBase::AddDatasetInput(
     absl::InlinedVector<TensorValue, 4>* inputs, DataTypeVector input_types,
     DataType dtype, const TensorShape& shape) {
   if (input_types.size() < inputs->size()) {
-    return errors::InvalidArgument("Adding more inputs than types: ",
-                                   inputs->size(), " vs. ", input_types.size());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Adding more inputs than types: ", inputs->size(), " vs. ",
+                     input_types.size()));
   }
   bool is_ref = IsRefType(input_types[inputs->size()]);
   auto input = std::make_unique<Tensor>(allocator_, dtype, shape);
@@ -589,15 +595,16 @@ absl::Status DatasetOpsTestBase::AddDatasetInput(
   if (is_ref) {
     DataType expected_dtype = RemoveRefType(input_types[inputs->size()]);
     if (expected_dtype != dtype) {
-      return errors::InvalidArgument("The input data type is ", dtype,
-                                     " , but expected: ", expected_dtype);
+      return absl::InvalidArgumentError(
+          absl::StrCat("The input data type is ", dtype,
+                       " , but expected: ", expected_dtype));
     }
     inputs->push_back({&lock_for_refs_, input.get()});
   } else {
     if (input_types[inputs->size()] != dtype) {
-      return errors::InvalidArgument(
-          "The input data type is ", dtype,
-          " , but expected: ", input_types[inputs->size()]);
+      return absl::InvalidArgumentError(
+          absl::StrCat("The input data type is ", dtype,
+                       " , but expected: ", input_types[inputs->size()]));
     }
     inputs->push_back({nullptr, input.get()});
   }
@@ -709,13 +716,13 @@ absl::Status DatasetOpsTestBase::CheckSplitProviderShardedIteration(
 }
 
 absl::Status DatasetOpsTestBase::CheckDatasetNodeName(
-    const string& expected_dataset_node_name) {
+    const std::string& expected_dataset_node_name) {
   EXPECT_EQ(dataset_->node_name(), expected_dataset_node_name);
   return absl::OkStatus();
 }
 
 absl::Status DatasetOpsTestBase::CheckDatasetTypeString(
-    const string& expected_type_str) {
+    const std::string& expected_type_str) {
   EXPECT_EQ(dataset_->type_string(), expected_type_str);
   return absl::OkStatus();
 }
@@ -762,7 +769,7 @@ absl::Status DatasetOpsTestBase::CheckIteratorOutputShapes(
 }
 
 absl::Status DatasetOpsTestBase::CheckIteratorPrefix(
-    const string& expected_iterator_prefix) {
+    const std::string& expected_iterator_prefix) {
   EXPECT_EQ(iterator_->prefix(), expected_iterator_prefix);
   return absl::OkStatus();
 }
@@ -814,7 +821,7 @@ absl::Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
 absl::Status DatasetOpsTestBase::Initialize(
     const DatasetParams& dataset_params) {
   if (initialized_) {
-    return errors::Internal(
+    return absl::InternalError(
         "The fields (e.g. dataset_kernel_, dataset_ctx_, dataset_, "
         "iterator_ctx_, iterator_) have already been initialized.");
   }
@@ -947,7 +954,7 @@ absl::Status DatasetOpsTestBase::MakeDatasetOpKernel(
     std::unique_ptr<OpKernel>* dataset_kernel) {
   name_utils::OpNameParams params;
   params.op_version = dataset_params.op_version();
-  std::vector<string> input_names;
+  std::vector<std::string> input_names;
   TF_RETURN_IF_ERROR(dataset_params.GetInputNames(&input_names));
   AttributeVector attributes;
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
@@ -962,7 +969,7 @@ absl::Status DatasetOpsTestBase::MakeGetOptionsOpKernel(
     const DatasetParams& dataset_params, std::unique_ptr<OpKernel>* op_kernel) {
   name_utils::OpNameParams params;
   params.op_version = dataset_params.op_version();
-  std::vector<string> input_names;
+  std::vector<std::string> input_names;
   TF_RETURN_IF_ERROR(dataset_params.GetInputNames(&input_names));
   AttributeVector attributes;
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
@@ -1017,7 +1024,7 @@ absl::Status DatasetOpsTestBase::MakeDatasetTensor(
 
 DatasetParams::DatasetParams(DataTypeVector output_dtypes,
                              std::vector<PartialTensorShape> output_shapes,
-                             string node_name)
+                             std::string node_name)
     : output_dtypes_(std::move(output_dtypes)),
       output_shapes_(std::move(output_shapes)),
       node_name_(std::move(node_name)) {}
@@ -1029,7 +1036,7 @@ bool DatasetParams::IsDatasetTensor(const Tensor& tensor) {
 
 RangeDatasetParams::RangeDatasetParams(
     int64_t start, int64_t stop, int64_t step, DataTypeVector output_dtypes,
-    std::vector<PartialTensorShape> output_shapes, string node_name)
+    std::vector<PartialTensorShape> output_shapes, std::string node_name)
     : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                     std::move(node_name)),
       start_(start),
@@ -1060,7 +1067,7 @@ std::vector<Tensor> RangeDatasetParams::GetInputTensors() const {
 }
 
 absl::Status RangeDatasetParams::GetInputNames(
-    std::vector<string>* input_names) const {
+    std::vector<std::string>* input_names) const {
   *input_names = {"start", "stop", "step"};
   return absl::OkStatus();
 }
@@ -1074,7 +1081,7 @@ absl::Status RangeDatasetParams::GetAttributes(
   return absl::OkStatus();
 }
 
-string RangeDatasetParams::dataset_type() const { return "Range"; }
+std::string RangeDatasetParams::dataset_type() const { return "Range"; }
 
 std::vector<Tensor> BatchDatasetParams::GetInputTensors() const {
   Tensor batch_size = CreateTensor<int64_t>(TensorShape({}), {batch_size_});
@@ -1084,7 +1091,7 @@ std::vector<Tensor> BatchDatasetParams::GetInputTensors() const {
 }
 
 absl::Status BatchDatasetParams::GetInputNames(
-    std::vector<string>* input_names) const {
+    std::vector<std::string>* input_names) const {
   *input_names = {"input_dataset", "batch_size", "drop_remainder"};
   return absl::OkStatus();
 }
@@ -1098,14 +1105,14 @@ absl::Status BatchDatasetParams::GetAttributes(
   return absl::OkStatus();
 }
 
-string BatchDatasetParams::dataset_type() const { return "Batch"; }
+std::string BatchDatasetParams::dataset_type() const { return "Batch"; }
 
 std::vector<Tensor> MapDatasetParams::GetInputTensors() const {
   return other_arguments_;
 }
 
 absl::Status MapDatasetParams::GetInputNames(
-    std::vector<string>* input_names) const {
+    std::vector<std::string>* input_names) const {
   input_names->emplace_back("input_dataset");
   for (int i = 0; i < other_arguments_.size(); ++i) {
     input_names->emplace_back(absl::StrCat("other_arguments_", i));
@@ -1125,14 +1132,14 @@ absl::Status MapDatasetParams::GetAttributes(
   return absl::OkStatus();
 }
 
-string MapDatasetParams::dataset_type() const { return "Map"; }
+std::string MapDatasetParams::dataset_type() const { return "Map"; }
 
 std::vector<FunctionDef> MapDatasetParams::func_lib() const {
   return func_lib_;
 }
 
 TensorSliceDatasetParams::TensorSliceDatasetParams(
-    std::vector<Tensor> components, string node_name, bool is_files)
+    std::vector<Tensor> components, std::string node_name, bool is_files)
     : DatasetParams(TensorSliceDtypes(components),
                     TensorSliceShapes(components), std::move(node_name)),
       components_(std::move(components)),
@@ -1143,7 +1150,7 @@ std::vector<Tensor> TensorSliceDatasetParams::GetInputTensors() const {
 }
 
 absl::Status TensorSliceDatasetParams::GetInputNames(
-    std::vector<string>* input_names) const {
+    std::vector<std::string>* input_names) const {
   input_names->reserve(components_.size());
   for (int i = 0; i < components_.size(); ++i) {
     input_names->emplace_back(absl::StrCat("components_", i));
@@ -1183,14 +1190,16 @@ std::vector<PartialTensorShape> TensorSliceDatasetParams::TensorSliceShapes(
   return shapes;
 }
 
-string TensorSliceDatasetParams::dataset_type() const { return "TensorSlice"; }
+std::string TensorSliceDatasetParams::dataset_type() const {
+  return "TensorSlice";
+}
 
 std::vector<Tensor> TakeDatasetParams::GetInputTensors() const {
   return {CreateTensor<int64_t>(TensorShape({}), {count_})};
 }
 
 absl::Status TakeDatasetParams::GetInputNames(
-    std::vector<string>* input_names) const {
+    std::vector<std::string>* input_names) const {
   *input_names = {"input_dataset", "count"};
   return absl::OkStatus();
 }
@@ -1203,14 +1212,14 @@ absl::Status TakeDatasetParams::GetAttributes(
   return absl::OkStatus();
 }
 
-string TakeDatasetParams::dataset_type() const { return "Take"; }
+std::string TakeDatasetParams::dataset_type() const { return "Take"; }
 
 std::vector<Tensor> ConcatenateDatasetParams::GetInputTensors() const {
   return {};
 }
 
 absl::Status ConcatenateDatasetParams::GetInputNames(
-    std::vector<string>* input_names) const {
+    std::vector<std::string>* input_names) const {
   *input_names = {"input_dataset", "another_dataset"};
   return absl::OkStatus();
 }
@@ -1223,12 +1232,14 @@ absl::Status ConcatenateDatasetParams::GetAttributes(
   return absl::OkStatus();
 }
 
-string ConcatenateDatasetParams::dataset_type() const { return "Concatenate"; }
+std::string ConcatenateDatasetParams::dataset_type() const {
+  return "Concatenate";
+}
 
 std::vector<Tensor> OptionsDatasetParams::GetInputTensors() const { return {}; }
 
 absl::Status OptionsDatasetParams::GetInputNames(
-    std::vector<string>* input_names) const {
+    std::vector<std::string>* input_names) const {
   input_names->emplace_back("input_dataset");
   return absl::OkStatus();
 }
@@ -1242,7 +1253,7 @@ absl::Status OptionsDatasetParams::GetAttributes(
   return absl::OkStatus();
 }
 
-string OptionsDatasetParams::dataset_type() const { return "Options"; }
+std::string OptionsDatasetParams::dataset_type() const { return "Options"; }
 
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(
     DatasetOpsTestBase::TestVariant,
