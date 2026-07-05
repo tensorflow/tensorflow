@@ -40,7 +40,7 @@ struct BuildGraphOptions {
   // edges, if `kAttrs` encode as attribute on collective op.
   GraphCollectiveOrder collective_order = GraphCollectiveOrder::kNone;
 
-  string DebugString() const;
+  std::string DebugString() const;
 };
 
 }  // namespace tensorflow

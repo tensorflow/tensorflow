@@ -45,7 +45,7 @@ namespace xla {
 namespace {
 
 class ConvertTest : public ClientLibraryTestRunnerMixin<
-                        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                        HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   explicit ConvertTest() {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
@@ -60,16 +60,6 @@ template <typename T>
 class ConvertTestT : public ConvertTest {
  public:
   using ConvertTest::ConvertTest;
-
- protected:
-  void SetUp() override {
-    if ((std::is_same_v<T, tsl::float4_e2m1fn> ||
-         std::is_same_v<T, tsl::float8_e8m0fnu>) &&
-        test::DeviceTypeIs(test::kTpu)) {
-      // TODO(b/385004399): Run tests on these types on TPU.
-      GTEST_SKIP();
-    }
-  }
 };
 using FloatingPointTypeList =
     ::testing::Types<tsl::float8_e3m4, tsl::float8_e4m3, tsl::float8_e4m3fn,
@@ -560,10 +550,6 @@ TEST_F(ConvertTest, ConvertR1S4ToR1S8) {
 }
 
 TEST_F(ConvertTest, ConvertR1S4ParameterToR1S8) {
-  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
-    // TODO: b/443805514 - Enable this test for the TFRT GPU client.
-    GTEST_SKIP() << "The TFRT GPU client does not support packed formats.";
-  }
   XlaBuilder builder(TestName());
   Literal arg_literal =
       LiteralUtil::CreateR1<s4>({s4(0), s4(1), s4(2), s4(-8)});
@@ -585,10 +571,6 @@ TEST_F(ConvertTest, ConvertR1U4ToR1U8) {
 }
 
 TEST_F(ConvertTest, ConvertR1U4ParameterToR1U8) {
-  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
-    // TODO: b/443805514 - Enable this test for the TFRT GPU client.
-    GTEST_SKIP() << "The TFRT GPU client does not support packed formats.";
-  }
   XlaBuilder builder(TestName());
   Literal arg_literal =
       LiteralUtil::CreateR1<u4>({u4(0), u4(1), u4(2), u4(15)});
@@ -752,7 +734,7 @@ TYPED_TEST(ConvertTestT, ConvertFPToPred) {
   auto a = ConstantR1<FP>(&builder, {FP{0.0}, FP{0.5}, FP{2.0}, FP{-0.0}});
   ConvertElementType(a, PRED);
 
-  bool zero_pred = !has_zero_v<FP>;
+  bool zero_pred = !has_positive_or_negative_zero_v<FP>;
   std::array<bool, 4> expected = {zero_pred, true, true, zero_pred};
   this->template ComputeAndCompareR1<bool>(&builder, expected, {});
 }
@@ -1952,9 +1934,6 @@ TYPED_TEST(ConvertTestF16, ConvertF8e3m4F16RoundtripExhaustive4) {
 // ----- F4E2M1FN
 
 TEST_F(ConvertTest, ConvertF16F4e2m1fnRoundtrip) {
-  if (test::DeviceTypeIs(test::kTpu)) {
-    GTEST_SKIP();
-  }
   // Convert from FP16 to FP4, then back to FP16.
   XlaBuilder builder(TestName());
   float inf = std::numeric_limits<float>::infinity();
@@ -2004,7 +1983,7 @@ TEST_F(ConvertTest, ConvertF16F4e2m1fnRoundtrip) {
 }
 
 TEST_F(ConvertTest, ConvertF32F4e2m1fnRoundtrip) {
-  if (test::DeviceIs(test::kCpu) || test::DeviceTypeIs(test::kTpu)) {
+  if (test::DeviceIs(test::kCpu)) {
     GTEST_SKIP();
   }
   // Convert from FP32 to FP4, then back to FP32.
@@ -2032,13 +2011,15 @@ TEST_F(ConvertTest, ConvertF32F4e2m1fnRoundtrip) {
       {0x1.8p-1, 0x1p0},        // Smallest number rounding up to normal
 
       // Denormal tests
-      {0x1.0p-1, 0x1.0p-1},     // Denormal without rounding
-      {0x1.8p-1, 0x1.0p0},      // Round-to-even up
-      {0x1.6p-1, 0x1.0p-1},     // Round-to-nearest down
-      {0x1.Ep-1, 0x1.0p0},      // Round-to-nearest up
-      {0x1p-2, 0},              // Largest number that underflows
-      {0x1.000002p-2, 0x1p-1},  // Smallest number that doesn't underflow
-      {0x1.7FFFFEp-1, 0x1p-1},  // Largest number that rounds to denormal
+      {0x1.0p-1, 0x1.0p-1},       // Denormal without rounding
+      {0x1.8p-1, 0x1.0p0},        // Round-to-even up
+      {0x1.6p-1, 0x1.0p-1},       // Round-to-nearest down
+      {0x1.Ep-1, 0x1.0p0},        // Round-to-nearest up
+      {0x1p-2, 0},                // Largest number that underflows
+      {0x1.000002p-2, 0x1p-1},    // Smallest number that doesn't underflow
+      {0x1.7FFFFEp-1, 0x1p-1},    // Largest number that rounds to denormal
+      {3.40282347e+38f, 6.0f},    // F32 MaxValue (saturate to max)
+      {-3.40282347e+38f, -6.0f},  // F32 -MaxValue (saturate to -max)
   };
 
   std::vector<float> inputs;
@@ -2048,9 +2029,12 @@ TEST_F(ConvertTest, ConvertF32F4e2m1fnRoundtrip) {
     expected_roundtrip.push_back(test_case.expected_roundtrip);
   }
 
-  auto f4 = ConvertElementType(ConstantR1<float>(&builder, inputs), F4E2M1FN);
+  auto param0 = LiteralUtil::CreateR1<float>(inputs);
+  XlaOp x = Parameter(&builder, 0, param0.shape(), "input");
+  auto f4 = ConvertElementType(x, F4E2M1FN);
   ConvertElementType(f4, F32);
-  ComputeAndCompareR1<float>(&builder, expected_roundtrip, {}, ErrorSpec(0.));
+  ComputeAndCompareR1<float>(&builder, expected_roundtrip, {&param0},
+                             ErrorSpec(0.));
 }
 
 TYPED_TEST(ConvertTestT, ConvertF4e2m1fnRoundtripExhaustive) {
@@ -2128,9 +2112,6 @@ TYPED_TEST(ConvertTestF16, ConvertF4e2m1fnF16RoundtripExhaustive4) {
 // ----- F8E8M0FNU
 
 TEST_F(ConvertTest, ConvertF32F8e8m0fnuRoundtrip) {
-  if (test::DeviceTypeIs(test::kTpu)) {
-    GTEST_SKIP();
-  }
   // Convert from FP32 to FP8, then back to FP32.
   XlaBuilder builder(TestName());
   float nan = std::numeric_limits<float>::quiet_NaN();

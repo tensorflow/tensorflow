@@ -33,6 +33,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -58,10 +61,13 @@ namespace op = xla::testing::opcode_matchers;
 
 using ::absl_testing::IsOkAndHolds;
 using ::testing::_;
+using ::testing::AllOf;
 using ::testing::Contains;
 using ::testing::ElementsAre;
 using ::testing::Eq;
+using ::testing::Gt;
 using ::testing::HasSubstr;
+using ::testing::Key;
 using ::testing::Not;
 using ::testing::Pair;
 using ::testing::Property;
@@ -159,6 +165,7 @@ class RecomputeAndCompressHloRematerializationTest
       int64_t memory_limit_bytes, HloModule* module, int64_t min_remat_size = 0,
       HloRematerialization::RematAlgorithm remat_algorithm =
           HloRematerialization::RematAlgorithm::kAlwaysRemat,
+      int block_size_limit = 1,
       absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
           on_rematerialized = nullptr) {
     TF_EXPECT_OK(verifier().Run(module).status());
@@ -183,9 +190,9 @@ class RecomputeAndCompressHloRematerializationTest
     auto shape_size_func = [](const Shape& shape) { return ByteSizeOf(shape); };
     HloCostAnalysis cost_analysis(shape_size_func);
     HloRematerialization::Options options(
-        cost_analysis, config, memory_limit_bytes,
-        /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
-        min_remat_size, /*compact_shape_function=*/nullptr,
+        cost_analysis, config, memory_limit_bytes, block_size_limit,
+        /*block_rematerialization_factor=*/1, min_remat_size,
+        /*compact_shape_function=*/nullptr,
         /*host_memory_offload_config=*/std::nullopt,
         /*async_computation_parallelism=*/{},
         /*remat_algorithm=*/remat_algorithm);
@@ -1862,6 +1869,7 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
           /*min_remat_size=*/0,
           /*remat_algorithm=*/
           HloRematerialization::RematAlgorithm::kAlwaysRemat,
+          /*block_size_limit=*/1,
           /*on_rematerialized=*/std::move(rematerialization_callback)));
   EXPECT_TRUE(changed);
 
@@ -1906,6 +1914,99 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
           << "original: " << original_name << " remat: " << remat_name;
     }
   }
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       PeakPriorityRematIgnoresDeadInstructionsInPlaceBefore) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+  HloModule fusion, is_scheduled=true
+
+ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
+  %constant_source_8 = f32[] constant(8)
+  %param_0 = f32[1024]{0} parameter(0)
+  %param_1 = f32[1024]{0} parameter(1)
+  %constant.anon = f32[] constant(1)
+  %constant_0 = f32[16384]{0} broadcast(%constant.anon), dimensions={}
+  %constant_1 = f32[16384]{0} broadcast(%constant.anon), dimensions={}
+  %op_1 = f32[16384]{0} tanh(%constant_0)
+  %op_2 = f32[16384]{0} tanh(%op_1)
+  %op_3 = f32[16384]{0} add(%op_1, %op_2)
+  %op_5 = f32[16384]{0} add(%op_3, %op_3)
+  %op_6 = f32[16384]{0} add(%op_3, %op_5)
+  %f4651 = f32[16384]{0} add(%constant_0, %constant_1)
+  %f4653 = f32[16384]{0} add(%constant_0, %constant_1)
+  %bitcast_f4651_f16 = f16[32768]{0} bitcast(%f4651)
+  %bitcast_f4653_f16 = f16[32768]{0} bitcast(%f4653)
+  %bitcast_f4653_f16_2 = f16[32768]{0} bitcast(%f4653)
+  %f16_f_sum = f16[32768]{0} add(%bitcast_f4651_f16, %bitcast_f4651_f16)
+  %f32_f_sum_bitcast = f32[16384]{0} bitcast(%f16_f_sum)
+  %f16_f_sum_2 = f16[32768]{0} add(%bitcast_f4653_f16_2, %bitcast_f4653_f16_2)
+  %f32_f_sum_bitcast_2 = f32[16384]{0} bitcast(%f16_f_sum_2)
+  %tan_res = f32[1024]{0} slice(%op_6), slice={[0:1024]}
+  %add_tan_res = f32[1024]{0} add(%tan_res, %tan_res)
+  %add_tan_res_2 = f32[1024]{0} add(%add_tan_res, %add_tan_res)
+  %add_tan_res_3 = f32[1024]{0} add(%add_tan_res_2, %add_tan_res)
+  %add_tan_res_4 = f32[1024]{0} add(%add_tan_res_3, %add_tan_res)
+  %add_tan_res_5 = f32[1024]{0} add(%add_tan_res_4, %add_tan_res)
+  %add_tan_res_6 = f32[1024]{0} add(%add_tan_res_5, %add_tan_res)
+  %add_tan_res_7 = f32[1024]{0} add(%add_tan_res_6, %add_tan_res)
+  %res_param_add.remat = f32[1024]{0} add(%param_0, %param_1)
+  %res_1 = f32[1024]{0} add(%res_param_add.remat, %add_tan_res_7)
+  %constant_source_8_user.remat = f32[1024]{0} broadcast(%constant_source_8), dimensions={}
+  %res_3 = f32[1024]{0} add(%constant_source_8_user.remat, %res_1)
+  %constant_source_8_user_2.remat = f32[1024]{0} broadcast(%constant_source_8), dimensions={}
+  %res_3_2 = f32[1024]{0} add(%constant_source_8_user_2.remat, %res_3)
+  %constant_x = f32[1024]{0} broadcast(%constant_source_8), dimensions={}
+  %constant_x_and_res_param_add = f32[1024]{0} add(%constant_x, %res_param_add.remat)
+  %slice_f_sum_2 = f32[1024]{0} slice(%f32_f_sum_bitcast_2), slice={[0:1024]}
+  %res_4 = f32[1024]{0} add(%res_3_2, %constant_x_and_res_param_add)
+  %slice_f_sum = f32[1024]{0} slice(%f32_f_sum_bitcast), slice={[0:1024]}
+  %tan_f4651 = f32[1024]{0} slice(%slice_f_sum), slice={[0:1024]}
+  %tan_f4653 = f32[1024]{0} slice(%f4653), slice={[0:1024]}
+  %res_5 = f32[1024]{0} add(%tan_f4651, %res_4)
+  %res_6 = f32[1024]{0} add(%tan_f4653, %res_5)
+  %res_7 = f32[1024]{0} add(%slice_f_sum, %res_6)
+  %res_8 = f32[1024]{0} add(%slice_f_sum_2, %res_7)
+  ROOT %res = f32[1024]{0} add(%res_3, %res_8)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, RunHloRematerialization(
+                        /*memory_limit_bytes=*/25 * 1024, module.get(),
+                        /*min_remat_size=*/0,
+                        HloRematerialization::RematAlgorithm::kPeakPriority,
+                        /*block_size_limit=*/32));
+
+  EXPECT_TRUE(changed);
+  EXPECT_OK(verifier().Run(module.get()).status());
+
+  absl::flat_hash_map<std::string, int> instruction_name_to_index;
+  int instruction_index = 0;
+  for (HloInstruction* instruction : module->schedule()
+                                         .sequence(module->entry_computation())
+                                         .instructions()) {
+    instruction_name_to_index[instruction->name()] = instruction_index;
+    instruction_index++;
+  }
+
+  EXPECT_THAT(instruction_name_to_index,
+              AllOf(Contains(Key("f4653.remat")), Contains(Key("f4651.remat")),
+                    Contains(Key("tan_f4653")), Contains(Key("op_1.remat")),
+                    Contains(Key("op_6.remat"))));
+
+  // Check that f4653.remat is placed immediately before a bitcast using it
+  // instead of being placed in the old position of f.4651, which was killed by
+  // rematerialization.
+  EXPECT_THAT(instruction_name_to_index["f4653.remat"],
+              Gt(instruction_name_to_index["f4651.remat"]));
+  EXPECT_THAT(instruction_name_to_index["bitcast.remat.2"],
+              Eq(instruction_name_to_index["f4653.remat"] + 1));
+  EXPECT_THAT(module->entry_computation()
+                  ->GetInstructionWithName("bitcast.remat.2")
+                  ->operand(0)
+                  ->name(),
+              Eq("f4653.remat"));
 }
 
 TEST_F(RecomputeAndCompressHloRematerializationTest,
@@ -1987,6 +2088,154 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
                                     StrEq("constant_source_8_user.remat"))),
                   Contains(Property(&HloInstruction::name,
                                     StrEq("constant_source_8_user_2.remat")))));
+}
+class TestHloRematerialization : public HloRematerialization {
+ public:
+  using HloRematerialization::HloRematerialization;
+  using HloRematerialization::start_time_;
+  using HloRematerialization::warned_too_little_progress_;
+  using HloRematerialization::warned_too_long_;
+
+  bool simulate_long_run_ = false;
+
+  absl::StatusOr<RematAlgorithmFunction> GetRematAlgorithmFunction(
+      RematAlgorithm remat_algorithm) override {
+    if (simulate_long_run_) {
+      ASSIGN_OR_RETURN(
+          RematAlgorithmFunction base_func,
+          HloRematerialization::GetRematAlgorithmFunction(remat_algorithm));
+      return
+          [this, base_func = std::move(base_func)](
+              HloComputation* computation, HloSchedule* schedule,
+              int64_t memory_limit_bytes, int64_t min_remat_size,
+              const absl::flat_hash_set<absl::string_view>& execution_threads)
+              -> absl::StatusOr<bool> {
+            start_time_ = absl::Now() - absl::Minutes(5);
+            return base_func(computation, schedule, memory_limit_bytes,
+                             min_remat_size, execution_threads);
+          };
+    }
+    return HloRematerialization::GetRematAlgorithmFunction(remat_algorithm);
+  }
+};
+
+TEST_F(RecomputeAndCompressHloRematerializationTest, WarningWhenTakingTooLong) {
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(MakeRematerializableComputation());
+
+  // Set memory limit low enough to trigger rematerialization.
+  int64_t memory_limit_bytes = 12 * 1024;
+  int block_size_limit = 1;
+
+  HloMemoryScheduler scheduler(&alias_info_, [](const BufferValue& buffer) {
+    return ByteSizeOf(buffer.shape());
+  });
+  EXPECT_OK(scheduler.Run(module.get()).status());
+
+  HloRematerialization::RematerializationModeConfig config(
+      /*recompute=*/true, /*compress=*/true, /*host_offload=*/false);
+  auto shape_size_func = [](const Shape& shape) { return ByteSizeOf(shape); };
+  HloCostAnalysis cost_analysis(shape_size_func);
+  HloRematerialization::Options options(
+      cost_analysis, config, memory_limit_bytes, block_size_limit,
+      /*block_rematerialization_factor=*/1, /*min_remat_size=*/0,
+      /*compact_shape_function=*/nullptr,
+      /*host_memory_offload_config=*/std::nullopt,
+      /*async_computation_parallelism=*/{},
+      /*remat_algorithm=*/
+      HloRematerialization::RematAlgorithm::kAlwaysRemat);
+  HloRematerialization::RematerializationSizes sizes;
+
+  TestHloRematerialization remat(options, sizes);
+  // Enable mock long run behavior to set start_time_ inside the algorithm
+  // execution.
+  remat.simulate_long_run_ = true;
+  remat.warned_too_long_ = false;
+
+  absl::StatusOr<bool> result = remat.Run(module.get());
+  EXPECT_OK(result.status());
+  EXPECT_TRUE(remat.warned_too_long_);
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       WarningWhenTooLittleProgress) {
+  // Use the module from PeakFirstRematerializesAtSamePeak, but with larger tanh
+  // shapes (131072 instead of 16384) to make peak memory around 1MB, so saving
+  // 4KB (c8_u) is < 1% and triggers the progress warning.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule fusion, is_scheduled=true
+
+%call_convoluted (param_0: f32[1024], param_1: f32[1024]) -> f32[1024] {
+  %c8 = f32[] constant(8)
+  %c8_u = f32[1024]{0} broadcast(%c8), dimensions={}
+  %param_0 = f32[1024]{0} parameter(0)
+  %c8_u2 = f32[1024]{0} broadcast(%c8), dimensions={}
+  %param_1 = f32[1024]{0} parameter(1)
+  %res_param_add = f32[1024]{0} add(%param_0, %param_1)
+  %constant.anon = f32[] constant(1)
+  %constant_0 = f32[131072]{0} broadcast(%constant.anon), dimensions={}
+  %op_1 = f32[131072]{0} tanh(%constant_0)
+  %op_2 = f32[131072]{0} tanh(%op_1)
+  %op_3 = f32[131072]{0} tanh(%op_2)
+  %op_4 = f32[131072]{0} tanh(%op_3)
+  %tan_res = f32[1024]{0} slice(%op_4), slice={[0:1024]}
+  %res_1 = f32[1024]{0} add(%res_param_add, %tan_res)
+  %res_3 = f32[1024]{0} add(%c8_u, %res_1)
+  %res_3_2 = f32[1024]{0} add(%c8_u2, %res_3)
+  %constant_x = f32[1024]{0} broadcast(%c8), dimensions={}
+  %cx_add = f32[1024]{0} add(%constant_x, %res_param_add)
+  %res_4 = f32[1024]{0} add(%res_3_2, %cx_add)
+  ROOT %res = f32[1024]{0} add(%res_3, %res_4)
+}
+
+%call_comp (p: f32[1024], p_2: f32[1024]) -> f32[1024] {
+  %p = f32[1024]{0} parameter(0)
+  %p_2 = f32[1024]{0} parameter(1)
+  %call_convoluted = f32[1024]{0} call(%p, %p_2), to_apply=%call_convoluted
+  ROOT %n = f32[1024]{0} negate(%call_convoluted)
+}
+
+%add_mul_comp (p0: f32[], p1: f32[]) -> f32[1024] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %p0_bcast = f32[1024]{0} broadcast(%p0), dimensions={}
+  %p1_bcast = f32[1024]{0} broadcast(%p1), dimensions={}
+  %res_comp = f32[1024]{0} call(%p0_bcast, %p1_bcast), to_apply=%call_comp
+  ROOT %res_mul = f32[1024]{0} multiply(%res_comp, %res_comp)
+}
+
+ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
+  %param.0 = f32[] parameter(0)
+  %param.1 = f32[] parameter(1)
+  %res = f32[1024]{0} call(%param.0, %param.1), to_apply=%add_mul_comp
+  ROOT %res_2 = f32[1024]{0} negate(%res)
+}
+)"));
+
+  int64_t memory_limit_bytes = 0;
+  int block_size_limit = 1;
+
+  HloRematerialization::RematerializationModeConfig config(
+      /*recompute=*/true, /*compress=*/true, /*host_offload=*/false);
+  auto shape_size_func = [](const Shape& shape) { return ByteSizeOf(shape); };
+  HloCostAnalysis cost_analysis(shape_size_func);
+  HloRematerialization::Options options(
+      cost_analysis, config, memory_limit_bytes, block_size_limit,
+      /*block_rematerialization_factor=*/1, /*min_remat_size=*/0,
+      /*compact_shape_function=*/nullptr,
+      /*host_memory_offload_config=*/std::nullopt,
+      /*async_computation_parallelism=*/{},
+      /*remat_algorithm=*/
+      HloRematerialization::RematAlgorithm::kPeakPriority);
+  HloRematerialization::RematerializationSizes sizes;
+
+  TestHloRematerialization remat(options, sizes);
+  remat.warned_too_little_progress_ = false;
+
+  absl::StatusOr<bool> result = remat.Run(module.get());
+  EXPECT_OK(result.status());
+  EXPECT_TRUE(remat.warned_too_little_progress_);
 }
 
 }  // namespace

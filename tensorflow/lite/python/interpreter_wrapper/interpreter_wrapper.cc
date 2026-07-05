@@ -17,6 +17,7 @@ limitations under the License.
 #include <stdarg.h>
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
@@ -89,7 +89,9 @@ std::unique_ptr<Interpreter> CreateInterpreter(
     const InterpreterWrapper::Model* model,
     const tflite::MutableOpResolver& resolver, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
-    bool default_delegate_latest_features) {
+    bool default_delegate_latest_features,
+    bool compress_quantization_zero_points, bool disable_delegate_node_fusion,
+    bool force_delegate_node_profiling) {
   if (!model) {
     return nullptr;
   }
@@ -108,6 +110,9 @@ std::unique_ptr<Interpreter> CreateInterpreter(
   InterpreterOptions options;
   options.SetPreserveAllTensors(preserve_all_tensors);
   options.SetDisableDelegateClustering(disable_delegate_clustering);
+  options.SetCompressQuantizationZeroPoints(compress_quantization_zero_points);
+  options.SetDisableDelegateNodeFusion(disable_delegate_node_fusion);
+  options.SetForceDelegateNodeProfiling(force_delegate_node_profiling);
   InterpreterBuilder builder(*model, resolver, &options);
   if (default_delegate_latest_features) {
     builder.AddDelegate(xnnpack_delegate);
@@ -120,31 +125,76 @@ std::unique_ptr<Interpreter> CreateInterpreter(
 }
 
 PyObject* PyArrayFromFloatVector(const float* data, npy_intp size) {
+  if (size == 0) {
+    return PyArray_SimpleNew(1, &size,
+                             NPY_FLOAT32);  // NOLINT(misc-include-cleaner)
+  }
   void* pydata = malloc(size * sizeof(float));
+  if (pydata == nullptr) {
+    PyErr_NoMemory();
+    return nullptr;
+  }
   if (data != nullptr) {
     memcpy(pydata, data, size * sizeof(float));
+  } else {
+    memset(pydata, 0, size * sizeof(float));
   }
-  PyObject* obj = PyArray_SimpleNewFromData(1, &size, NPY_FLOAT32, pydata);
+  PyObject* obj = PyArray_SimpleNewFromData(
+      1, &size, NPY_FLOAT32, pydata);  // NOLINT(misc-include-cleaner)
+  if (obj == nullptr) {
+    free(pydata);
+    return nullptr;
+  }
   PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(obj), NPY_ARRAY_OWNDATA);
   return obj;
 }
 
 PyObject* PyArrayFromFloat16Vector(const uint16_t* data, npy_intp size) {
+  if (size == 0) {
+    return PyArray_SimpleNew(1, &size,
+                             NPY_FLOAT16);  // NOLINT(misc-include-cleaner)
+  }
   void* pydata = malloc(size * sizeof(uint16_t));
+  if (pydata == nullptr) {
+    PyErr_NoMemory();
+    return nullptr;
+  }
   if (data != nullptr) {
     memcpy(pydata, data, size * sizeof(uint16_t));
+  } else {
+    memset(pydata, 0, size * sizeof(uint16_t));
   }
-  PyObject* obj = PyArray_SimpleNewFromData(1, &size, NPY_FLOAT16, pydata);
+  PyObject* obj = PyArray_SimpleNewFromData(
+      1, &size, NPY_FLOAT16, pydata);  // NOLINT(misc-include-cleaner)
+  if (obj == nullptr) {
+    free(pydata);
+    return nullptr;
+  }
   PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(obj), NPY_ARRAY_OWNDATA);
   return obj;
 }
 
 PyObject* PyArrayFromIntVector(const int* data, npy_intp size) {
+  if (size == 0) {
+    return PyArray_SimpleNew(1, &size,
+                             NPY_INT32);  // NOLINT(misc-include-cleaner)
+  }
   void* pydata = malloc(size * sizeof(int));
+  if (pydata == nullptr) {
+    PyErr_NoMemory();
+    return nullptr;
+  }
   if (data != nullptr) {
     memcpy(pydata, data, size * sizeof(int));
+  } else {
+    memset(pydata, 0, size * sizeof(int));
   }
-  PyObject* obj = PyArray_SimpleNewFromData(1, &size, NPY_INT32, pydata);
+  PyObject* obj = PyArray_SimpleNewFromData(
+      1, &size, NPY_INT32, pydata);  // NOLINT(misc-include-cleaner)
+  if (obj == nullptr) {
+    free(pydata);
+    return nullptr;
+  }
   PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(obj), NPY_ARRAY_OWNDATA);
   return obj;
 }
@@ -158,35 +208,105 @@ PyObject* PyTupleFromQuantizationParam(const TfLiteQuantizationParams& param) {
 
 PyObject* PyDictFromSparsityParam(const TfLiteSparsity& param) {
   PyObject* result = PyDict_New();
-  PyDict_SetItemString(result, "traversal_order",
-                       PyArrayFromIntVector(param.traversal_order->data,
-                                            param.traversal_order->size));
-  if (param.block_map != nullptr) {
-    PyDict_SetItemString(
-        result, "block_map",
-        PyArrayFromIntVector(param.block_map->data, param.block_map->size));
+  if (result == nullptr) return nullptr;
+
+  PyObject* traversal_order = PyArrayFromIntVector(param.traversal_order->data,
+                                                   param.traversal_order->size);
+  if (traversal_order == nullptr) {
+    Py_DECREF(result);
+    return nullptr;
   }
+  if (PyDict_SetItemString(result, "traversal_order", traversal_order) < 0) {
+    Py_DECREF(traversal_order);
+    Py_DECREF(result);
+    return nullptr;
+  }
+  Py_DECREF(traversal_order);
+
+  if (param.block_map != nullptr) {
+    PyObject* block_map =
+        PyArrayFromIntVector(param.block_map->data, param.block_map->size);
+    if (block_map == nullptr) {
+      Py_DECREF(result);
+      return nullptr;
+    }
+    if (PyDict_SetItemString(result, "block_map", block_map) < 0) {
+      Py_DECREF(block_map);
+      Py_DECREF(result);
+      return nullptr;
+    }
+    Py_DECREF(block_map);
+  }
+
   PyObject* dim_metadata = PyList_New(param.dim_metadata_size);
+  if (dim_metadata == nullptr) {
+    Py_DECREF(result);
+    return nullptr;
+  }
+
   for (int i = 0; i < param.dim_metadata_size; i++) {
     PyObject* dim_metadata_i = PyDict_New();
+    if (dim_metadata_i == nullptr) {
+      Py_DECREF(dim_metadata);
+      Py_DECREF(result);
+      return nullptr;
+    }
+
     if (param.dim_metadata[i].format == kTfLiteDimDense) {
-      PyDict_SetItemString(dim_metadata_i, "format", PyLong_FromSize_t(0));
-      PyDict_SetItemString(dim_metadata_i, "dense_size",
-                           PyLong_FromSize_t(param.dim_metadata[i].dense_size));
+      PyObject* format = PyLong_FromSize_t(0);
+      PyObject* dense_size =
+          PyLong_FromSize_t(param.dim_metadata[i].dense_size);
+      if (format == nullptr || dense_size == nullptr ||
+          PyDict_SetItemString(dim_metadata_i, "format", format) < 0 ||
+          PyDict_SetItemString(dim_metadata_i, "dense_size", dense_size) < 0) {
+        Py_XDECREF(format);
+        Py_XDECREF(dense_size);
+        Py_DECREF(dim_metadata_i);
+        Py_DECREF(dim_metadata);
+        Py_DECREF(result);
+        return nullptr;
+      }
+      Py_DECREF(format);
+      Py_DECREF(dense_size);
     } else {
-      PyDict_SetItemString(dim_metadata_i, "format", PyLong_FromSize_t(1));
+      PyObject* format = PyLong_FromSize_t(1);
       const auto* array_segments = param.dim_metadata[i].array_segments;
       const auto* array_indices = param.dim_metadata[i].array_indices;
-      PyDict_SetItemString(
-          dim_metadata_i, "array_segments",
-          PyArrayFromIntVector(array_segments->data, array_segments->size));
-      PyDict_SetItemString(
-          dim_metadata_i, "array_indices",
-          PyArrayFromIntVector(array_indices->data, array_indices->size));
+      PyObject* segments =
+          PyArrayFromIntVector(array_segments->data, array_segments->size);
+      PyObject* indices =
+          PyArrayFromIntVector(array_indices->data, array_indices->size);
+      if (format == nullptr || segments == nullptr || indices == nullptr ||
+          PyDict_SetItemString(dim_metadata_i, "format", format) < 0 ||
+          PyDict_SetItemString(dim_metadata_i, "array_segments", segments) <
+              0 ||
+          PyDict_SetItemString(dim_metadata_i, "array_indices", indices) < 0) {
+        Py_XDECREF(format);
+        Py_XDECREF(segments);
+        Py_XDECREF(indices);
+        Py_DECREF(dim_metadata_i);
+        Py_DECREF(dim_metadata);
+        Py_DECREF(result);
+        return nullptr;
+      }
+      Py_DECREF(format);
+      Py_DECREF(segments);
+      Py_DECREF(indices);
     }
-    PyList_SetItem(dim_metadata, i, dim_metadata_i);
+    if (PyList_SetItem(dim_metadata, i, dim_metadata_i) < 0) {
+      Py_DECREF(dim_metadata_i);
+      Py_DECREF(dim_metadata);
+      Py_DECREF(result);
+      return nullptr;
+    }
   }
-  PyDict_SetItemString(result, "dim_metadata", dim_metadata);
+
+  if (PyDict_SetItemString(result, "dim_metadata", dim_metadata) < 0) {
+    Py_DECREF(dim_metadata);
+    Py_DECREF(result);
+    return nullptr;
+  }
+  Py_DECREF(dim_metadata);
   return result;
 }
 
@@ -256,7 +376,9 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
-    bool default_delegate_latest_features) {
+    bool default_delegate_latest_features,
+    bool compress_quantization_zero_points, bool disable_delegate_node_fusion,
+    bool force_delegate_node_profiling) {
   if (!model) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -296,7 +418,9 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
   }
   auto interpreter = CreateInterpreter(
       model.get(), *resolver, preserve_all_tensors, disable_delegate_clustering,
-      num_threads, default_delegate_latest_features);
+      num_threads, default_delegate_latest_features,
+      compress_quantization_zero_points, disable_delegate_node_fusion,
+      force_delegate_node_profiling);
   if (!interpreter) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -400,9 +524,7 @@ PyObject* InterpreterWrapper::ResizeInputTensorImpl(int i, PyObject* value) {
     return nullptr;
   }
 
-  PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(array),
-                      NPY_ARRAY_OWNDATA);
-  return PyArray_Return(reinterpret_cast<PyArrayObject*>(array));
+  return PyArray_Return(reinterpret_cast<PyArrayObject*>(array_safe.release()));
 }
 
 PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value,
@@ -419,6 +541,7 @@ PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value,
 
   std::vector<int> dims(PyArray_SHAPE(array)[0]);
   memcpy(dims.data(), PyArray_BYTES(array), dims.size() * sizeof(int));
+  Py_DECREF(array);
 
   if (strict) {
     TFLITE_PY_CHECK(interpreter_->subgraph(subgraph_index)
@@ -621,13 +744,20 @@ PyObject* InterpreterWrapper::SetTensor(int tensor_index, PyObject* value,
 
   TfLiteType incoming_type = python_utils::TfLiteTypeFromPyArray(array);
   if (incoming_type != tensor->type) {
-    PyErr_Format(PyExc_ValueError,
-                 "Cannot set tensor:"
-                 " Got value of type %s"
-                 " but expected type %s for input %d, name: %s ",
-                 TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
-                 TfLiteTypeGetName(tensor->type), tensor_index, tensor->name);
-    return nullptr;
+    bool allow_raw_bytes =
+        (tensor->type == kTfLiteFloat8E4M3FN ||
+         tensor->type == kTfLiteFloat8E5M2) &&
+        (incoming_type == kTfLiteInt8 || incoming_type == kTfLiteUInt8);
+    if (!allow_raw_bytes) {
+      PyErr_Format(
+          PyExc_ValueError,
+          "Cannot set tensor:"
+          " Got value of type %s"
+          " but expected type %s for input %d, name: %s ",
+          TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
+          TfLiteTypeGetName(tensor->type), tensor_index, tensor->name);
+      return nullptr;
+    }
   }
 
   if (PyArray_NDIM(array) != tensor->dims->size) {
@@ -765,26 +895,65 @@ PyObject* CheckGetTensorArgs(Interpreter* interpreter_, int tensor_index,
 
 PyObject* InterpreterWrapper::GetSignatureDefs() const {
   PyObject* result = PyDict_New();
+  if (result == nullptr) return nullptr;
+
   for (const auto& sig_key : interpreter_->signature_keys()) {
     PyObject* signature_def = PyDict_New();
     PyObject* inputs = PyDict_New();
     PyObject* outputs = PyDict_New();
+    if (signature_def == nullptr || inputs == nullptr || outputs == nullptr) {
+      Py_XDECREF(signature_def);
+      Py_XDECREF(inputs);
+      Py_XDECREF(outputs);
+      Py_DECREF(result);
+      return nullptr;
+    }
+
     const auto& signature_def_inputs =
         interpreter_->signature_inputs(sig_key->c_str());
     const auto& signature_def_outputs =
         interpreter_->signature_outputs(sig_key->c_str());
+
     for (const auto& input : signature_def_inputs) {
-      PyDict_SetItemString(inputs, input.first.c_str(),
-                           PyLong_FromLong(input.second));
-    }
-    for (const auto& output : signature_def_outputs) {
-      PyDict_SetItemString(outputs, output.first.c_str(),
-                           PyLong_FromLong(output.second));
+      PyObject* val = PyLong_FromLong(input.second);
+      if (val == nullptr ||
+          PyDict_SetItemString(inputs, input.first.c_str(), val) < 0) {
+        Py_XDECREF(val);
+        Py_DECREF(signature_def);
+        Py_DECREF(inputs);
+        Py_DECREF(outputs);
+        Py_DECREF(result);
+        return nullptr;
+      }
+      Py_DECREF(val);
     }
 
-    PyDict_SetItemString(signature_def, "inputs", inputs);
-    PyDict_SetItemString(signature_def, "outputs", outputs);
-    PyDict_SetItemString(result, sig_key->c_str(), signature_def);
+    for (const auto& output : signature_def_outputs) {
+      PyObject* val = PyLong_FromLong(output.second);
+      if (val == nullptr ||
+          PyDict_SetItemString(outputs, output.first.c_str(), val) < 0) {
+        Py_XDECREF(val);
+        Py_DECREF(signature_def);
+        Py_DECREF(inputs);
+        Py_DECREF(outputs);
+        Py_DECREF(result);
+        return nullptr;
+      }
+      Py_DECREF(val);
+    }
+
+    if (PyDict_SetItemString(signature_def, "inputs", inputs) < 0 ||
+        PyDict_SetItemString(signature_def, "outputs", outputs) < 0 ||
+        PyDict_SetItemString(result, sig_key->c_str(), signature_def) < 0) {
+      Py_DECREF(inputs);
+      Py_DECREF(outputs);
+      Py_DECREF(signature_def);
+      Py_DECREF(result);
+      return nullptr;
+    }
+    Py_DECREF(inputs);
+    Py_DECREF(outputs);
+    Py_DECREF(signature_def);
   }
   return result;
 }
@@ -825,10 +994,14 @@ PyObject* InterpreterWrapper::GetTensor(int tensor_index,
       // Numpy doesn't have int4 type, so we double the size of the buffer
       // to hold int8 type for each (4-bit packed) element.
       numpy_bytes *= 2;
+    } else if (tensor->type == kTfLiteInt2) {
+      // Numpy doesn't have int2 type, so we quadruple the size of the buffer
+      // to hold int8 type for each (2-bit packed) element.
+      numpy_bytes *= 4;
     }
     void* data = malloc(numpy_bytes);
     if (!data) {
-      PyErr_SetString(PyExc_ValueError, "Malloc to copy tensor failed.");
+      PyErr_NoMemory();
       return nullptr;
     }
     if (tensor->type == kTfLiteInt4) {
@@ -853,6 +1026,21 @@ PyObject* InterpreterWrapper::GetTensor(int tensor_index,
         numpy_data[2 * i] = lower;
         numpy_data[2 * i + 1] = upper;
       }
+    } else if (tensor->type == kTfLiteInt2) {
+      int8_t* tensor_data = reinterpret_cast<int8_t*>(tensor->data.raw);
+      int8_t* numpy_data = static_cast<int8_t*>(data);
+      // Unpack each 2-bit value to an 8-bit container.
+      for (size_t i = 0; i < tensor->bytes; i++) {
+        int8_t byte = tensor_data[i];
+        int8_t first = static_cast<int8_t>(byte << 6) >> 6;
+        int8_t second = static_cast<int8_t>(byte << 4) >> 6;
+        int8_t third = static_cast<int8_t>(byte << 2) >> 6;
+        int8_t fourth = static_cast<int8_t>(byte) >> 6;
+        numpy_data[4 * i] = first;
+        numpy_data[4 * i + 1] = second;
+        numpy_data[4 * i + 2] = third;
+        numpy_data[4 * i + 3] = fourth;
+      }
     } else {
       memcpy(data, tensor->data.raw, tensor->bytes);
     }
@@ -872,6 +1060,10 @@ PyObject* InterpreterWrapper::GetTensor(int tensor_index,
       sparse_buffer_dims[0] = tensor->bytes / size_of_type;
       np_array = PyArray_SimpleNewFromData(
           sparse_buffer_dims.size(), sparse_buffer_dims.data(), type_num, data);
+    }
+    if (np_array == nullptr) {
+      free(data);
+      return nullptr;
     }
     PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(np_array),
                         NPY_ARRAY_OWNDATA);
@@ -936,7 +1128,9 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
-    bool default_delegate_latest_features) {
+    bool default_delegate_latest_features,
+    bool compress_quantization_zero_points, bool disable_delegate_node_fusion,
+    bool force_delegate_node_profiling) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
   std::unique_ptr<InterpreterWrapper::Model> model =
       Model::BuildFromFile(model_path, error_reporter.get());
@@ -944,7 +1138,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
       std::move(model), op_resolver_id, std::move(error_reporter),
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
       disable_delegate_clustering, num_threads,
-      default_delegate_latest_features);
+      default_delegate_latest_features, compress_quantization_zero_points,
+      disable_delegate_node_fusion, force_delegate_node_profiling);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
@@ -954,7 +1149,10 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
   return CreateWrapperCPPFromFile(
       model_path, op_resolver_id, registerers, {} /*registerers_by_func*/,
       error_msg, preserve_all_tensors, disable_delegate_clustering,
-      /*num_threads=*/1, /*default_delegate_latest_features=*/false);
+      /*num_threads=*/1, /*default_delegate_latest_features=*/false,
+      /*compress_quantization_zero_points=*/false,
+      /*disable_delegate_node_fusion=*/false,
+      /*force_delegate_node_profiling=*/false);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
@@ -963,7 +1161,9 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
-    bool default_delegate_latest_features) {
+    bool default_delegate_latest_features,
+    bool compress_quantization_zero_points, bool disable_delegate_node_fusion,
+    bool force_delegate_node_profiling) {
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
@@ -978,7 +1178,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
       std::move(model), op_resolver_id, std::move(error_reporter),
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
       disable_delegate_clustering, num_threads,
-      default_delegate_latest_features);
+      default_delegate_latest_features, compress_quantization_zero_points,
+      disable_delegate_node_fusion, force_delegate_node_profiling);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
@@ -988,7 +1189,10 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
   return CreateWrapperCPPFromBuffer(
       data, op_resolver_id, registerers, {}, error_msg, preserve_all_tensors,
       disable_delegate_clustering, /*num_threads=*/1,
-      /*default_delegate_latest_features=*/false);
+      /*default_delegate_latest_features=*/false,
+      /*compress_quantization_zero_points=*/false,
+      /*disable_delegate_node_fusion=*/false,
+      /*force_delegate_node_profiling=*/false);
 }
 
 PyObject* InterpreterWrapper::ResetVariableTensors() {

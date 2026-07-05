@@ -10,8 +10,6 @@
 // CHECK-NEXT: }
 // CHECK-NEXT: metadata {
 // CHECK-NEXT: }
-// CHECK: stack_frame_index {
-// CHECK-NEXT: }
 #loc = loc(unknown)
 module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
   func.func @main(%arg0: !mhlo.token loc(unknown)) -> !mhlo.token {

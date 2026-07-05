@@ -24,6 +24,7 @@ cc_library(
         "//xla/hlo/translate:stablehlo",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -43,7 +44,10 @@ cc_library(
     hdrs = ["testing_pipeline.h"],
     deps = [
         ":stablehlo_to_hlo_to_stablehlo",
+        "//xla/service/spmd/shardy:utils",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",
+        "@shardy//shardy/dialect/sdy/transforms/import:passes",
     ],
 )

@@ -36,7 +36,7 @@ using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 TEST(OutfeedThunkTest, ProtoRoundTrip) {
   auto thunk_proto = ParseTextProtoOrDie<ThunkProto>(R"pb(
-    thunk_info { profile_annotation: "outfeed" execution_stream_id: 2 }
+    thunk_info { profile_annotation: "outfeed" }
     outfeed_thunk {
       source_slices {
         slice { offset: 0 size: 4 buffer_allocation_index: 0 }

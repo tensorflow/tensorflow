@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <set>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
@@ -87,9 +88,9 @@ se::DeviceAddressBase BufferAllocations::GetDeviceAddress(
 std::optional<BufferAllocation::Index> BufferAllocations::FindAllocationIndex(
     const se::DeviceAddressBase& addr) const {
   for (BufferAllocation::Index i = 0; i < buffers_.size(); ++i) {
-    char* buf = static_cast<char*>(buffers_[i].opaque());
-    char* ptr = static_cast<char*>(addr.opaque());
-    if (ptr >= buf && ptr <= buf + buffers_[i].size()) {
+    auto* buf = static_cast<char*>(buffers_[i].opaque());
+    auto* ptr = static_cast<char*>(addr.opaque());
+    if (ptr >= buf && ptr < buf + buffers_[i].size()) {
       return i;
     }
   }

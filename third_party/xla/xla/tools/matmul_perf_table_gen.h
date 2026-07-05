@@ -21,15 +21,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
-#include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/service/platform_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -66,9 +67,13 @@ class MatmulPerfTableGen {
     std::string output = std::string(kStdout);
   };
 
-  explicit MatmulPerfTableGen(Config config)
-      : runner_(PlatformUtil::GetPlatform("gpu").value()),
-        config_(std::move(config)) {};
+  MatmulPerfTableGen(
+      HloRunnerInterface* absl_nonnull runner,
+      const stream_executor::DeviceDescription* absl_nonnull device_description,
+      Config config)
+      : runner_(*ABSL_DIE_IF_NULL(runner)),
+        device_description_(*ABSL_DIE_IF_NULL(device_description)),
+        config_(std::move(config)) {}
 
   // Computes a performance table for a given `config`.
   DeviceHloInstructionProfiles ComputeTable();
@@ -94,8 +99,8 @@ class MatmulPerfTableGen {
 
   absl::Duration Profile(std::unique_ptr<HloModule> module);
 
-  HloRunner runner_;
-
+  HloRunnerInterface& runner_;
+  const stream_executor::DeviceDescription& device_description_;
   Config config_;
 };
 

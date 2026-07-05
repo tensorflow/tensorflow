@@ -63,10 +63,10 @@ absl::Status CredentialsFactory::Get(absl::string_view protocol,
     available_types.push_back(factory.first);
   }
 
-  return errors::NotFound("No credentials factory has been registered for ",
-                          "protocol ", protocol,
-                          ". The available types are: [ ",
-                          absl::StrJoin(available_types, ", "), " ]");
+  return absl::NotFoundError(
+      absl::StrCat("No credentials factory has been registered for ",
+                   "protocol ", protocol, ". The available types are: [ ",
+                   absl::StrJoin(available_types, ", "), " ]"));
 }
 
 absl::Status CredentialsFactory::CreateServerCredentials(

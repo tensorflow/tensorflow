@@ -24,10 +24,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
@@ -37,20 +39,44 @@ limitations under the License.
 
 namespace xla {
 
+// This is a temporary define to solve a versioning problem with the XLA and
+// xprof repositories. It may be removed after xprof syncs XLA past Feb 16,
+// 2026.
+#define XLA_HAVE_STACK_FRAME_ID 1
+
+// Strong typedef for stack frame IDs.
+struct StackFrameId {
+  int value = 0;  // 0 is reserved for "not present".
+  bool operator==(StackFrameId other) const { return value == other.value; }
+  bool operator!=(StackFrameId other) const { return value != other.value; }
+  bool valid() const { return value > 0; }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, StackFrameId id) {
+    absl::Format(&sink, "%d", id.value);
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, StackFrameId id) {
+    return H::combine(std::move(h), id.value);
+  }
+};
+
 // Describes a stack frame.
 struct HloStackFrame {
   absl::string_view file_name;
   absl::string_view function_name;
   int line = 0;
   int column = 0;
+  int end_line = 0;
+  int end_column = 0;
 
-  // 1-based index of the parent frame.
-  // 0 value indicates that the current frame is the root.
-  int parent_frame_id = 0;
+  // Index of the parent frame. An invalid (0) value indicates the root.
+  StackFrameId parent_frame_id;
 
   bool empty() const {
-    return line == 0 && column == 0 && file_name.empty() &&
-           function_name.empty();
+    return line == 0 && column == 0 && end_line == 0 && end_column == 0 &&
+           file_name.empty() && function_name.empty();
   }
 
   template <typename Sink>
@@ -114,8 +140,8 @@ class HloModuleMetadata {
   absl::Status set_key_value_metric(const std::string& key, int64_t value);
 
   absl::StatusOr<int64_t> current_pass_id() {
-    TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
-                        GetCurrentHloPassMetadata());
+    ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+                     GetCurrentHloPassMetadata());
     return pass_metadata->pass_id();
   }
 
@@ -162,12 +188,12 @@ class HloModuleMetadata {
   // Clears all pass metadata.
   void ClearPassMetadata() { module_metadata_.clear_pass_metadata(); }
 
- private:
   // Gets mutable metadata for the currently running pass. If passes are nested,
   // finds the deepest one still running. Returns NotFound if metadata for the
   // currently running pass cannot be found.
   absl::StatusOr<HloPassMetadata*> GetCurrentHloPassMetadata();
 
+ private:
   void CopyFrom(const HloModuleMetadata& other) {
     module_metadata_ = other.module_metadata_;
     env_ = other.env_;

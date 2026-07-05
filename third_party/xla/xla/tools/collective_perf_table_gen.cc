@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tools/collective_perf_table_gen.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -35,6 +36,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "google/protobuf/text_format.h"
+#include "xla/backends/gpu/target_config/target_config.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/replica_group.h"
@@ -42,11 +47,12 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
-#include "xla/service/backend.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/pjrt_gpu_utils.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 #include "xla/tsl/platform/env.h"
@@ -58,10 +64,33 @@ namespace xla::gpu {
 
 namespace {
 
-// Assume we're always issuing transfers for f32 data type. It should not
-// necessarily change the derating curve properties, yet the effects of compute
-// for e.g. all reduce are yet to be measured.
-constexpr uint8_t kBytesPerElem = 4;
+// Helper function to get the total number of elements for a given tensor size
+// and data type. This centralizes the handling of sub-byte types (S4/U4).
+int64_t GetElementCount(int64_t tensor_size_bytes, PrimitiveType data_type) {
+  switch (data_type) {
+    case S4:
+    case U4:
+      // 4-bit types: 2 elements per byte
+      return tensor_size_bytes * 2;
+    case F8E4M3FN:
+    case F8E5M2:
+      return tensor_size_bytes;
+    case F16:
+    case BF16:
+      CHECK_EQ(tensor_size_bytes % 2, 0);
+      return tensor_size_bytes / 2;
+    case F32:
+      CHECK_EQ(tensor_size_bytes % 4, 0);
+      return tensor_size_bytes / 4;
+    default:
+      LOG(FATAL) << "Unsupported data type: " << PrimitiveType_Name(data_type);
+  }
+}
+
+// Helper function to check if a type requires special layout (E(4))
+bool RequiresPackedLayout(PrimitiveType type) {
+  return type == S4 || type == U4;
+}
 
 // Mem fraction dedicated to XLA buffers.
 constexpr double kGpuMemFraction = 0.8;
@@ -83,6 +112,8 @@ struct StaticSpec {
   // std::nullopt for others.
   std::optional<CollectivePermuteCostModelType> collective_permute_pattern;
   int64_t tensor_size_bytes;
+  PrimitiveType data_type = F32;
+  bool use_2d_shape = false;  // Only applicable for all-gather
 };
 
 struct ExplicitSpec {
@@ -130,19 +161,20 @@ int64_t GetMedianRuntimeNs(const std::vector<ExecutionProfile>& profiles) {
 
 int64_t GetInputDim(CollectivePerfTableGen::CollectiveType type,
                     int64_t tensor_size_bytes,
-                    IotaReplicaGroupList replica_groups) {
+                    IotaReplicaGroupList replica_groups,
+                    PrimitiveType data_type) {
+  int64_t elements_total = GetElementCount(tensor_size_bytes, data_type);
   int64_t dim_size = -1;
-  CHECK_EQ(tensor_size_bytes % kBytesPerElem, 0);
+
   switch (type) {
     case CollectivePerfTableGen::CollectiveType::ALL_REDUCE:
     case CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER:
     case CollectivePerfTableGen::CollectiveType::ALL_TO_ALL:
     case CollectivePerfTableGen::CollectiveType::COLLECTIVE_PERMUTE:
-      dim_size = tensor_size_bytes / kBytesPerElem;
+      dim_size = elements_total;
       break;
     case CollectivePerfTableGen::CollectiveType::ALL_GATHER:
-      dim_size = tensor_size_bytes /
-                 (kBytesPerElem * replica_groups.num_devices_per_group());
+      dim_size = elements_total / replica_groups.num_devices_per_group();
       break;
     default:
       LOG(FATAL) << "Unsupported collective type.";
@@ -152,19 +184,20 @@ int64_t GetInputDim(CollectivePerfTableGen::CollectiveType type,
 
 int64_t GetOutputDim(CollectivePerfTableGen::CollectiveType type,
                      int64_t tensor_size_bytes,
-                     IotaReplicaGroupList replica_groups) {
+                     IotaReplicaGroupList replica_groups,
+                     PrimitiveType data_type) {
+  int64_t elements_total = GetElementCount(tensor_size_bytes, data_type);
   int64_t dim_size = -1;
-  CHECK_EQ(tensor_size_bytes % kBytesPerElem, 0);
+
   switch (type) {
     case CollectivePerfTableGen::CollectiveType::ALL_REDUCE:
     case CollectivePerfTableGen::CollectiveType::ALL_GATHER:
     case CollectivePerfTableGen::CollectiveType::ALL_TO_ALL:
     case CollectivePerfTableGen::CollectiveType::COLLECTIVE_PERMUTE:
-      dim_size = tensor_size_bytes / kBytesPerElem;
+      dim_size = elements_total;
       break;
     case CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER:
-      dim_size = tensor_size_bytes /
-                 (kBytesPerElem * replica_groups.num_devices_per_group());
+      dim_size = elements_total / replica_groups.num_devices_per_group();
       break;
     default:
       LOG(FATAL) << "Unsupported collective type.";
@@ -172,13 +205,34 @@ int64_t GetOutputDim(CollectivePerfTableGen::CollectiveType type,
   return dim_size;
 }
 
+// Helper function to find the largest factor of n that is <= sqrt(n)
+// This ensures dim0 * dim1 == n exactly for 2D shape decomposition
+int64_t FindLargestFactorLessThanOrEqualSqrt(int64_t n) {
+  int64_t sqrt_n = static_cast<int64_t>(std::sqrt(n));
+  // Search downward from sqrt(n) to find the largest factor
+  for (int64_t candidate = sqrt_n; candidate >= 1; --candidate) {
+    if (n % candidate == 0) {
+      return candidate;
+    }
+  }
+  return 1;  // Fallback (should never happen for n > 0)
+}
+
 std::string GetHlo(
     CollectivePerfTableGen::CollectiveType type, int64_t input_dim,
     int64_t output_dim, const IotaReplicaGroupList& replica_groups,
-    std::optional<CollectivePermuteCostModelType> collective_permute_pattern) {
-  CHECK_EQ(kBytesPerElem, 4);
+    std::optional<CollectivePermuteCostModelType> collective_permute_pattern,
+    PrimitiveType data_type, bool use_2d_shape) {
   CHECK(type != CollectivePerfTableGen::CollectiveType::COLLECTIVE_PERMUTE ||
         collective_permute_pattern.has_value());
+
+  // Get the type string for HLO using the utility function
+  std::string type_str = primitive_util::LowercasePrimitiveTypeName(data_type);
+
+  // Get layout specification - use E(4) for u4/s4 types
+  std::string layout_1d = RequiresPackedLayout(data_type) ? "{0:E(4)}" : "{0}";
+  std::string layout_2d =
+      RequiresPackedLayout(data_type) ? "{1,0:E(4)}" : "{1,0}";
 
   std::string hlo;
   switch (type) {
@@ -187,8 +241,8 @@ std::string GetHlo(
         HloModule m
 
         add {
-          a = f32[] parameter(0)
-          b = f32[] parameter(1)
+          a = $0[] parameter(0)
+          b = $0[] parameter(1)
           ROOT res = add(a, b)
         }
 
@@ -198,29 +252,53 @@ std::string GetHlo(
             to_apply=add, use_global_device_ids=true, channel_id=1
         }
       )",
-                             "f32", input_dim, output_dim,
+                             type_str, input_dim, output_dim,
                              replica_groups.ToString());
       break;
     case CollectivePerfTableGen::CollectiveType::ALL_GATHER:
-      hlo = absl::Substitute(R"(
+      if (use_2d_shape) {
+        // For 2D shapes, find the largest factor <= sqrt(input_dim)
+        // This ensures dim0 * dim1 == input_dim exactly (no truncation)
+        int64_t dim0 = FindLargestFactorLessThanOrEqualSqrt(input_dim);
+        int64_t dim1 = input_dim / dim0;
+        // Verify the factorization is exact
+        CHECK_EQ(dim0 * dim1, input_dim)
+            << "2D shape decomposition failed: " << dim0 << " * " << dim1
+            << " != " << input_dim;
+        int64_t out_dim0 = dim0 * replica_groups.num_devices_per_group();
+        int64_t out_dim1 = dim1;
+        hlo = absl::Substitute(R"(
         HloModule m
 
         ENTRY e {
-          p0 = $0[$1] parameter(0)
-          ROOT _ = $0[$2] all-gather(p0), replica_groups=$3,
+          p0 = $0[$1,$2]$6 parameter(0)
+          ROOT _ = $0[$3,$4]$6 all-gather(p0), replica_groups=$5,
             use_global_device_ids=true, channel_id=1, dimensions={0}
         }
       )",
-                             "f32", input_dim, output_dim,
-                             replica_groups.ToString());
+                               type_str, dim0, dim1, out_dim0, out_dim1,
+                               replica_groups.ToString(), layout_2d);
+      } else {
+        hlo = absl::Substitute(R"(
+        HloModule m
+
+        ENTRY e {
+          p0 = $0[$1]$4 parameter(0)
+          ROOT _ = $0[$2]$4 all-gather(p0), replica_groups=$3,
+            use_global_device_ids=true, channel_id=1, dimensions={0}
+        }
+      )",
+                               type_str, input_dim, output_dim,
+                               replica_groups.ToString(), layout_1d);
+      }
       break;
     case CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER:
       hlo = absl::Substitute(R"(
         HloModule m
 
         add {
-          a = f32[] parameter(0)
-          b = f32[] parameter(1)
+          a = $0[] parameter(0)
+          b = $0[] parameter(1)
           ROOT res = add(a, b)
         }
 
@@ -231,7 +309,7 @@ std::string GetHlo(
             dimensions={0}
         }
       )",
-                             "f32", input_dim, output_dim,
+                             type_str, input_dim, output_dim,
                              replica_groups.ToString());
       break;
     case CollectivePerfTableGen::CollectiveType::ALL_TO_ALL:
@@ -244,7 +322,7 @@ std::string GetHlo(
           dimensions={0}
         }
       )",
-                             "f32", input_dim, output_dim,
+                             type_str, input_dim, output_dim,
                              replica_groups.ToString());
       break;
     case CollectivePerfTableGen::CollectiveType::COLLECTIVE_PERMUTE: {
@@ -257,32 +335,32 @@ std::string GetHlo(
         HloModule collective-permute-while-loop-microbenchmark, num_partitions=$2
 
         while_cond {
-          iter = (f32[$0], u32[]) parameter(0)
+          iter = ($3[$0], u32[]) parameter(0)
           i = u32[] get-tuple-element(iter), index=1
           ub = u32[] constant(100)
           ROOT compare = pred[] compare(i, ub), direction=LT
         }
 
         while_body {
-          iter = (f32[$0], u32[]) parameter(0)
+          iter = ($3[$0], u32[]) parameter(0)
           i = u32[] get-tuple-element(iter), index=1
-          arg = f32[$0] get-tuple-element(iter), index=0
-          collective-permute = f32[$0] collective-permute(arg), channel_id=1, source_target_pairs=$1
+          arg = $3[$0] get-tuple-element(iter), index=0
+          collective-permute = $3[$0] collective-permute(arg), channel_id=1, source_target_pairs=$1
           c1 = u32[] constant(1)
           i_next = u32[] add(i, c1)
-          ROOT out = (f32[$0], u32[]) tuple(collective-permute, i_next)
+          ROOT out = ($3[$0], u32[]) tuple(collective-permute, i_next)
         }
 
         ENTRY main {
-          arg = f32[$0] parameter(0)
+          arg = $3[$0] parameter(0)
           c0 = u32[] constant(0)
-          cp_first_iter = f32[$0] collective-permute(arg), channel_id=1, source_target_pairs=$1
-          init = (f32[$0], u32[]) tuple(cp_first_iter, c0)
-          while = (f32[$0], u32[]) while(init), condition=while_cond, body=while_body
-          ROOT result = f32[$0] get-tuple-element(while), index=0
+          cp_first_iter = $3[$0] collective-permute(arg), channel_id=1, source_target_pairs=$1
+          init = ($3[$0], u32[]) tuple(cp_first_iter, c0)
+          while = ($3[$0], u32[]) while(init), condition=while_cond, body=while_body
+          ROOT result = $3[$0] get-tuple-element(while), index=0
         }
       )",
-          input_dim, source_target_pairs, num_devices);
+          input_dim, source_target_pairs, num_devices, type_str);
       break;
     }
     default:
@@ -293,14 +371,15 @@ std::string GetHlo(
 
 std::unique_ptr<HloModule> CreateCollectiveModule(const StaticSpec& spec) {
   int64_t input_dim = GetInputDim(spec.collective_type, spec.tensor_size_bytes,
-                                  spec.replica_groups);
+                                  spec.replica_groups, spec.data_type);
 
-  int64_t output_dim = GetOutputDim(
-      spec.collective_type, spec.tensor_size_bytes, spec.replica_groups);
+  int64_t output_dim =
+      GetOutputDim(spec.collective_type, spec.tensor_size_bytes,
+                   spec.replica_groups, spec.data_type);
 
-  std::string hlo =
-      GetHlo(spec.collective_type, input_dim, output_dim, spec.replica_groups,
-             spec.collective_permute_pattern);
+  std::string hlo = GetHlo(spec.collective_type, input_dim, output_dim,
+                           spec.replica_groups, spec.collective_permute_pattern,
+                           spec.data_type, spec.use_2d_shape);
 
   HloModuleConfig config;
   config.set_num_partitions(spec.replica_groups.num_devices_per_group() *
@@ -321,14 +400,28 @@ uint64_t GetNetworkThroughputBytesPerSec(absl::Duration runtime,
   return tensor_size_bytes * 1e9 / absl::ToInt64Nanoseconds(runtime);
 }
 
-IotaReplicaGroupList GetCollectiveDeviceList(
+IotaReplicaGroupList GetIotaReplicaGroupList(
     absl::string_view collective_device_list_unparsed) {
-  auto collective_device_list =
-      xla::ParseCollectiveDeviceListOnly(collective_device_list_unparsed);
-  CHECK_OK(collective_device_list);
-  CHECK(collective_device_list->iota_replica_group_list().has_value());
+  auto device_list_or_status =
+      xla::ParseCollectiveDeviceListBase(collective_device_list_unparsed);
+  if (device_list_or_status.ok()) {
+    std::unique_ptr<xla::CollectiveDeviceListBase> list =
+        std::move(device_list_or_status.value());
+    if (auto* iota = dynamic_cast<xla::IotaReplicaGroupList*>(list.get())) {
+      return *iota;
+    }
+    if (auto iota = list->MaybeConvertToIotaReplicaGroupList()) {
+      return *iota;
+    }
+  }
 
-  return *collective_device_list->iota_replica_group_list();
+  IotaReplicaGroupListProto proto;
+  if (tsl::protobuf::TextFormat::ParseFromString(
+          collective_device_list_unparsed, &proto)) {
+    return IotaReplicaGroupList::FromProto(proto);
+  }
+  LOG(FATAL) << "Failed to parse collective device list: "
+             << collective_device_list_unparsed;
 }
 
 }  // namespace
@@ -397,25 +490,18 @@ PjRtEnvironment& CollectivePerfTableGen::GetPjRtEnv() {
   return *pjrt_env_;
 }
 
-Backend& CollectivePerfTableGen::GetBackend() {
-  if (backend_ == nullptr) {
-    backend_ = Backend::CreateDefaultBackend().value();
-  }
-  return *backend_;
-}
-
 std::unique_ptr<PjRtLoadedExecutable> CollectivePerfTableGen::Compile(
     std::unique_ptr<HloModule> module) {
-  DebugOptions debug_opts;
   FunctionalHloRunner::RawCompileOptions opts;
+  opts.debug_options = module->config().debug_options();
   opts.num_partitions = module->config().num_partitions();
   opts.spmd_mode = FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning;
   auto compile_opts = FunctionalHloRunner::CreateCompileOptions(
       *GetPjRtEnv().client, opts, config_.task_id, config_.num_nodes);
   CHECK_OK(compile_opts);
-  auto executable = FunctionalHloRunner::Compile(
-      *GetPjRtEnv().client, module.get(), debug_opts,
-      /*preproc_options=*/{}, *compile_opts);
+  auto executable =
+      FunctionalHloRunner::Compile(*GetPjRtEnv().client, module.get(),
+                                   /*preproc_options=*/{}, *compile_opts);
   CHECK_OK(executable);
   return std::move(*executable);
 }
@@ -474,27 +560,40 @@ DeviceHloInstructionProfiles CollectivePerfTableGen::ComputeTable() {
       for (absl::string_view replica_groups_raw : config_.replica_groups_list) {
         CHECK(collective_type != CollectiveType::UNSPECIFIED);
         IotaReplicaGroupList replica_groups =
-            GetCollectiveDeviceList(replica_groups_raw);
+            GetIotaReplicaGroupList(replica_groups_raw);
         int num_devices = replica_groups.num_devices_per_group() *
                           replica_groups.num_replica_groups();
 
-        if (collective_type != CollectiveType::COLLECTIVE_PERMUTE) {
-          static_specs.push_back(
-              {collective_type, replica_groups, std::nullopt, tensor_size});
-          continue;
-        }
-        for (CollectivePermuteCostModelType pattern :
-             config_.collective_permute_patterns) {
-          // Skip patterns that require an even number of devices if n is odd.
-          if (num_devices % 2 != 0 &&
-              (pattern ==
-                   CollectivePermuteCostModelType::kIntraPartitionOneWay ||
-               pattern == CollectivePermuteCostModelType::
-                              kIntraPartitionTwoWayAllMutual)) {
-            continue;
+        for (PrimitiveType data_type : config_.data_types) {
+          // For all-gather, test both 1D and 2D shapes if configured
+          std::vector<bool> shape_configs = {false};
+          if (collective_type == CollectiveType::ALL_GATHER &&
+              config_.test_2d_shapes) {
+            shape_configs.push_back(true);  // Add 2D shape test
           }
-          static_specs.push_back(
-              {collective_type, replica_groups, pattern, tensor_size});
+
+          for (bool use_2d_shape : shape_configs) {
+            if (collective_type != CollectiveType::COLLECTIVE_PERMUTE) {
+              static_specs.push_back({collective_type, replica_groups,
+                                      std::nullopt, tensor_size, data_type,
+                                      use_2d_shape});
+              continue;
+            }
+            for (CollectivePermuteCostModelType pattern :
+                 config_.collective_permute_patterns) {
+              // Skip patterns that require an even number of devices if n is
+              // odd.
+              if (num_devices % 2 != 0 &&
+                  (pattern ==
+                       CollectivePermuteCostModelType::kIntraPartitionOneWay ||
+                   pattern == CollectivePermuteCostModelType::
+                                  kIntraPartitionTwoWayAllMutual)) {
+                continue;
+              }
+              static_specs.push_back({collective_type, replica_groups, pattern,
+                                      tensor_size, data_type, use_2d_shape});
+            }
+          }
         }
       }
     }
@@ -545,10 +644,10 @@ DeviceHloInstructionProfiles CollectivePerfTableGen::ComputeTable() {
     return profiles;
   }
 
-  std::string device_key = HloOpProfiles::GetProfileName(
-      /*device_info=*/GetBackend()
-          .stream_executors()[0]
-          ->GetDeviceDescription());
+  GpuTargetConfig gpu_target_config =
+      GetGpuTargetConfig(GetPjRtEnv().client.get());
+  std::string device_key = HloOpProfiles::GetDeviceSpecificProfileName(
+      /*device_info=*/gpu_target_config.device_description);
   profiles.mutable_entries()->insert({device_key, profile_list});
   return profiles;
 }
@@ -565,7 +664,7 @@ absl::Status CollectivePerfTableGen::Dump(
 
   DeviceHloInstructionProfiles file;
   if (tsl::Env::Default()->FileExists(config_.output).ok()) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         tsl::ReadTextOrBinaryProto(tsl::Env::Default(), config_.output, &file));
   }
 
@@ -577,12 +676,12 @@ absl::Status CollectivePerfTableGen::Dump(
     }
 
     if (absl::StrContains(config_.output, ".pbtxt")) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           tsl::WriteTextProto(tsl::Env::Default(), config_.output, file));
       continue;
     }
     if (absl::StrContains(config_.output, ".pb")) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           tsl::WriteBinaryProto(tsl::Env::Default(), config_.output, file));
       continue;
     }

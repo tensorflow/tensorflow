@@ -1,11 +1,11 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
     "tf_cc_test",
-    "tf_features_nolayering_check_if_ios",
 )
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
@@ -26,7 +26,7 @@ load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
 # copybara:uncomment(oss-unused) load("//tools/build_defs/build_test:build_test.bzl", "build_test")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -125,12 +125,13 @@ test_suite(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "mlir_convert",
     srcs = ["mlir_convert.py"],
     data = [
         "//tensorflow/compiler/mlir/lite:tf_tfl_translate",
     ],
+    strict_deps = True,
     deps = [
         ":zip_test_utils",
         "//tensorflow/lite/python:lite",
@@ -141,9 +142,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "op_tests",
     srcs = glob(["op_tests/*.py"]),
+    strict_deps = True,
     deps = [
         ":zip_test_utils",
         "//third_party/py/numpy",
@@ -159,9 +161,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "generate_examples_lib",
     srcs = ["generate_examples_lib.py"],
+    strict_deps = True,
     deps = [
         ":op_tests",
         ":zip_test_utils",
@@ -169,9 +172,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "zip_test_utils",
     srcs = ["zip_test_utils.py"],
+    strict_deps = True,
     deps = [
         ":generate_examples_report",
         "//tensorflow:tensorflow_py",
@@ -191,9 +195,10 @@ py_strict_library(
     ),
 )
 
-py_strict_binary(
+py_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
+    strict_deps = True,
     deps = [
         ":generate_examples_lib",
         ":mlir_convert",
@@ -203,9 +208,10 @@ py_strict_binary(
     ),
 )
 
-py_strict_library(
+py_library(
     name = "generate_examples_report",
     srcs = ["generate_examples_report.py"],
+    strict_deps = True,
 )
 
 cc_library(
@@ -440,7 +446,6 @@ cc_library(
     name = "tf_driver",
     srcs = ["tf_driver.cc"],
     hdrs = ["tf_driver.h"],
-    features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":join",
         ":split",
@@ -492,7 +497,6 @@ cc_library(
     name = "generate_testspec",
     srcs = ["generate_testspec.cc"],
     hdrs = ["generate_testspec.h"],
-    features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":join",
         ":split",
@@ -573,7 +577,6 @@ cc_library(
 cc_library(
     name = "tflite_diff_flags",
     hdrs = ["tflite_diff_flags.h"],
-    features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":split",
         ":tflite_diff_util",
@@ -700,6 +703,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core/c:common",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
 )

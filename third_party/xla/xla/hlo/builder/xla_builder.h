@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -57,7 +59,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/bitmap.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/stacktrace.h"
 
 namespace xla {
@@ -89,6 +90,12 @@ struct XlaBuilderFriend {
       const std::optional<ChannelHandle>& channel_id = std::nullopt,
       const std::optional<Layout>& layout = std::nullopt,
       std::optional<bool> use_global_device_ids = std::nullopt);
+  static XlaOp BuildAllGatherStart(
+      XlaBuilder* builder, XlaOp operand, int64_t all_gather_dimension,
+      int64_t shard_count, const CollectiveDeviceListBase& replica_groups,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const std::optional<Layout>& layout = std::nullopt,
+      std::optional<bool> use_global_device_ids = std::nullopt);
   static XlaOp BuildAllGatherDone(XlaBuilder* builder, XlaOp operands,
                                   const Shape& shape);
 
@@ -98,19 +105,23 @@ struct XlaBuilderFriend {
       const std::optional<ChannelHandle>& channel_id = std::nullopt,
       const std::optional<Shape>& layout = std::nullopt,
       std::optional<bool> use_global_device_ids = std::nullopt);
+  static XlaOp BuildAllReduceStart(
+      XlaBuilder* builder, XlaOp operand, XlaComputationId computation,
+      const CollectiveDeviceListBase& replica_groups,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const std::optional<Shape>& layout = std::nullopt,
+      std::optional<bool> use_global_device_ids = std::nullopt);
   static XlaOp BuildAllReduceDone(XlaBuilder* builder, XlaOp operands,
                                   const Shape& shape);
 
   static XlaOp BuildCollectivePermuteStart(
       XlaBuilder* builder, XlaOp operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const std::optional<ChannelHandle>& channel_id = std::nullopt,
-      const bool inplace = false);
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
   static XlaOp BuildCollectivePermuteStart(
       XlaBuilder* builder, absl::Span<const XlaOp> operands,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const std::optional<ChannelHandle>& channel_id = std::nullopt,
-      const bool inplace = false);
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
   static XlaOp BuildCollectivePermuteDone(XlaBuilder* builder, XlaOp operands,
                                           const Shape& shape);
 
@@ -309,9 +320,13 @@ class XlaBuilder {
   //
   // Returns the old op metadata.
   OpMetadata SwapOpMetadata(OpMetadata metadata) {
-    OpMetadata old_metadata = std::move(metadata_);
-    metadata_ = std::move(metadata);
-    return old_metadata;
+    return std::exchange(metadata_, std::move(metadata));
+  }
+
+  // Swaps the passed sharding with the one currently set.
+  // Returns the old sharding.
+  std::optional<OpSharding> SwapSharding(std::optional<OpSharding> sharding) {
+    return std::exchange(sharding_, std::move(sharding));
   }
 
   // Similar to SetOpMetadata, but only set the metadata for the next op.
@@ -701,6 +716,11 @@ class XlaBuilder {
       XlaOp output_offsets, XlaOp recv_sizes,
       absl::Span<const ReplicaGroup> replica_groups = {},
       const std::optional<ChannelHandle>& channel_id = std::nullopt);
+  XlaOp RaggedAllToAllWithDeviceList(
+      XlaOp input, XlaOp input_offsets, XlaOp send_sizes, XlaOp output,
+      XlaOp output_offsets, XlaOp recv_sizes,
+      const CollectiveDeviceListBase& replica_groups,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   XlaOp RaggedDot(
       XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
@@ -894,10 +914,12 @@ class XlaBuilder {
 
   XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
              const XlaComputation& computation, int64_t scan_dimension,
+             std::optional<int64_t> scan_dimension_size = std::nullopt,
              bool is_reverse = false,
              TriState is_associative = TRI_STATE_UNSPECIFIED);
   XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
              XlaComputationId computation, int64_t scan_dimension,
+             std::optional<int64_t> scan_dimension_size = std::nullopt,
              bool is_reverse = false,
              TriState is_associative = TRI_STATE_UNSPECIFIED);
 
@@ -941,16 +963,34 @@ class XlaBuilder {
                   const std::optional<ChannelHandle>& channel_id = std::nullopt,
                   const std::optional<Layout>& layout = std::nullopt,
                   std::optional<bool> use_global_device_ids = std::nullopt);
+  XlaOp AllGatherWithDeviceList(
+      XlaOp operand, int64_t all_gather_dimension, int64_t shard_count,
+      const CollectiveDeviceListBase& replica_groups,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const std::optional<Layout>& layout = std::nullopt,
+      std::optional<bool> use_global_device_ids = std::nullopt);
 
   XlaOp AllReduce(XlaOp operand, XlaComputationId computation,
                   absl::Span<const ReplicaGroup> replica_groups = {},
                   const std::optional<ChannelHandle>& channel_id = std::nullopt,
                   const std::optional<Shape>& shape_with_layout = std::nullopt,
                   std::optional<bool> use_global_device_ids = std::nullopt);
+  XlaOp AllReduceWithDeviceList(
+      XlaOp operand, XlaComputationId computation,
+      const CollectiveDeviceListBase& replica_groups,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const std::optional<Shape>& shape_with_layout = std::nullopt,
+      std::optional<bool> use_global_device_ids = std::nullopt);
 
   XlaOp ReduceScatter(
       XlaOp operand, XlaComputationId computation, int64_t scatter_dimension,
       int64_t shard_count, absl::Span<const ReplicaGroup> replica_groups = {},
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const std::optional<Layout>& layout = std::nullopt,
+      std::optional<bool> use_global_device_ids = std::nullopt);
+  XlaOp ReduceScatterWithDeviceList(
+      XlaOp operand, XlaComputationId computation, int64_t scatter_dimension,
+      int64_t shard_count, const CollectiveDeviceListBase& replica_groups,
       const std::optional<ChannelHandle>& channel_id = std::nullopt,
       const std::optional<Layout>& layout = std::nullopt,
       std::optional<bool> use_global_device_ids = std::nullopt);
@@ -960,10 +1000,20 @@ class XlaBuilder {
                  absl::Span<const ReplicaGroup> replica_groups,
                  const std::optional<Layout>& layout = std::nullopt,
                  const std::optional<ChannelHandle>& channel_id = std::nullopt);
+  XlaOp AllToAllWithDeviceList(
+      XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+      int64_t split_count, const CollectiveDeviceListBase& replica_groups,
+      const std::optional<Layout>& layout = std::nullopt,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   XlaOp AllToAllTuple(
       absl::Span<const XlaOp> operands,
       absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<Layout>& layout,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
+  XlaOp AllToAllTupleWithDeviceList(
+      absl::Span<const XlaOp> operands,
+      const CollectiveDeviceListBase& replica_groups,
       const std::optional<Layout>& layout,
       const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
@@ -972,22 +1022,28 @@ class XlaBuilder {
       int64_t split_count, absl::Span<const ReplicaGroup> replica_groups,
       const std::optional<Layout>& layout,
       const std::optional<ChannelHandle>& channel_id = std::nullopt);
+  XlaOp AllToAllTupleWithDeviceList(
+      XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+      int64_t split_count, const CollectiveDeviceListBase& replica_groups,
+      const std::optional<Layout>& layout,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   XlaOp CollectiveBroadcast(
       XlaOp operand, absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
+  XlaOp CollectiveBroadcastWithDeviceList(
+      XlaOp operand, const CollectiveDeviceListBase& replica_groups,
       const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   XlaOp CollectivePermute(
       XlaOp operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const std::optional<ChannelHandle>& channel_id = std::nullopt,
-      const bool inplace = false);
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   XlaOp CollectivePermute(
       absl::Span<const XlaOp> operands,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const std::optional<ChannelHandle>& channel_id = std::nullopt,
-      const bool inplace = false);
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   XlaOp ReplicaId();
 
@@ -1039,9 +1095,10 @@ class XlaBuilder {
                                              XlaComputationId comparator,
                                              int64_t dimension, bool is_stable);
 
-  XlaOp TopK(XlaOp operand, int64_t k, bool largest);
+  XlaOp TopK(XlaOp operand, int64_t k, bool largest, bool is_stable = true);
   virtual absl::StatusOr<XlaOp> TopKInternal(const Shape& shape, XlaOp operand,
-                                             int64_t k, bool largest);
+                                             int64_t k, bool largest,
+                                             bool is_stable);
 
   XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
 
@@ -1467,6 +1524,11 @@ class XlaBuilder {
                               XlaOp output_offsets, XlaOp recv_sizes,
                               absl::Span<const ReplicaGroup> replica_groups,
                               const std::optional<ChannelHandle>& channel_id);
+  friend XlaOp RaggedAllToAllWithDeviceList(
+      XlaOp input, XlaOp input_offsets, XlaOp send_sizes, XlaOp output,
+      XlaOp output_offsets, XlaOp recv_sizes,
+      const CollectiveDeviceListBase& replica_groups,
+      const std::optional<ChannelHandle>& channel_id);
   friend XlaOp RaggedDot(XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
                          const RaggedDotDimensionNumbers& dimension_numbers,
                          const PrecisionConfig* precision_config,
@@ -1618,6 +1680,8 @@ class XlaBuilder {
                    absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Mul(XlaOp lhs, XlaOp rhs,
                    absl::Span<const int64_t> broadcast_dimensions);
+  friend XlaOp Mulhi(XlaOp lhs, XlaOp rhs,
+                     absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Div(XlaOp lhs, XlaOp rhs,
                    absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Rem(XlaOp lhs, XlaOp rhs,
@@ -1650,10 +1714,12 @@ class XlaBuilder {
   friend XlaOp Scan(absl::Span<const XlaOp> inputs,
                     absl::Span<const XlaOp> inits,
                     const XlaComputation& computation, int64_t scan_dimension,
-                    bool is_reverse, TriState is_associative);
+                    std::optional<int64_t> scan_dimension_size, bool is_reverse,
+                    TriState is_associative);
   friend XlaOp Scan(absl::Span<const XlaOp> inputs,
                     absl::Span<const XlaOp> inits, XlaComputationId computation,
-                    int64_t scan_dimension, bool is_reverse,
+                    int64_t scan_dimension,
+                    std::optional<int64_t> scan_dimension_size, bool is_reverse,
                     TriState is_associative);
   friend XlaOp ReduceAll(XlaOp operand, XlaOp init_value,
                          const XlaComputation& computation);
@@ -1691,55 +1757,116 @@ class XlaBuilder {
                          const std::optional<ChannelHandle>& channel_id,
                          const std::optional<Layout>& layout,
                          std::optional<bool> use_global_device_ids);
+  friend XlaOp AllGatherWithDeviceList(
+      XlaOp operand, int64_t all_gather_dimension, int64_t shard_count,
+      const CollectiveDeviceListBase& replica_groups,
+      const std::optional<ChannelHandle>& channel_id,
+      const std::optional<Layout>& layout,
+      std::optional<bool> use_global_device_ids);
+
   friend XlaOp AllGatherTuple(absl::Span<const XlaOp> operands,
                               int64_t all_gather_dimension, int64_t shard_count,
                               absl::Span<const ReplicaGroup> replica_groups,
                               const std::optional<ChannelHandle>& channel_id,
                               const std::optional<Layout>& layout,
                               std::optional<bool> use_global_device_ids);
+  friend XlaOp AllGatherTupleWithDeviceList(
+      absl::Span<const XlaOp> operands, int64_t all_gather_dimension,
+      int64_t shard_count, const CollectiveDeviceListBase& replica_groups,
+      const std::optional<ChannelHandle>& channel_id,
+      const std::optional<Layout>& layout,
+      std::optional<bool> use_global_device_ids);
+
   friend XlaOp AllReduce(XlaOp operand, XlaComputationId computation,
                          absl::Span<const ReplicaGroup> replica_groups,
                          const std::optional<ChannelHandle>& channel_id,
                          const std::optional<Shape>& shape_with_layout,
                          std::optional<bool> use_global_device_ids);
+  friend XlaOp AllReduceWithDeviceList(
+      XlaOp operand, XlaComputationId computation,
+      const CollectiveDeviceListBase& replica_groups,
+      const std::optional<ChannelHandle>& channel_id,
+      const std::optional<Shape>& shape_with_layout,
+      std::optional<bool> use_global_device_ids);
+  friend XlaOp AllReduceWithDeviceList(
+      XlaOp operand, const XlaComputation& computation,
+      const CollectiveDeviceListBase& replica_groups,
+      const std::optional<ChannelHandle>& channel_id,
+      const std::optional<Shape>& shape_with_layout,
+      std::optional<bool> use_global_device_ids);
+
   friend XlaOp AllReduceTuple(absl::Span<const XlaOp> operand,
                               XlaComputationId computation,
                               absl::Span<const ReplicaGroup> replica_groups,
                               const std::optional<ChannelHandle>& channel_id,
                               const std::optional<Shape>& shape_with_layout,
                               std::optional<bool> use_global_device_ids);
+  friend XlaOp AllReduceTupleWithDeviceList(
+      absl::Span<const XlaOp> operand, XlaComputationId computation,
+      const CollectiveDeviceListBase& replica_groups,
+      const std::optional<ChannelHandle>& channel_id,
+      const std::optional<Shape>& shape_with_layout,
+      std::optional<bool> use_global_device_ids);
+
   friend XlaOp ReduceScatter(XlaOp operand, XlaComputationId computation,
                              int64_t scatter_dimension, int64_t shard_count,
                              absl::Span<const ReplicaGroup> replica_groups,
                              const std::optional<ChannelHandle>& channel_id,
                              const std::optional<Layout>& layout,
                              std::optional<bool> use_global_device_ids);
+  friend XlaOp ReduceScatterWithDeviceList(
+      XlaOp operand, XlaComputationId computation, int64_t scatter_dimension,
+      int64_t shard_count, const CollectiveDeviceListBase& replica_groups,
+      const std::optional<ChannelHandle>& channel_id,
+      const std::optional<Layout>& layout,
+      std::optional<bool> use_global_device_ids);
 
   friend XlaOp AllToAll(XlaOp operand, int64_t split_dimension,
                         int64_t concat_dimension, int64_t split_count,
                         absl::Span<const ReplicaGroup> replica_groups,
                         const std::optional<Layout>& layout,
                         const std::optional<ChannelHandle>& channel_id);
+  friend XlaOp AllToAllWithDeviceList(
+      XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+      int64_t split_count, const CollectiveDeviceListBase& replica_groups,
+      const std::optional<Layout>& layout,
+      const std::optional<ChannelHandle>& channel_id);
+
   friend XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
                              absl::Span<const ReplicaGroup> replica_groups,
                              const std::optional<Layout>& layout,
                              const std::optional<ChannelHandle>& channel_id);
+  friend XlaOp AllToAllTupleWithDeviceList(
+      absl::Span<const XlaOp> operands,
+      const CollectiveDeviceListBase& replica_groups,
+      const std::optional<Layout>& layout,
+      const std::optional<ChannelHandle>& channel_id);
+
   friend XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
                              int64_t concat_dimension, int64_t split_count,
                              absl::Span<const ReplicaGroup> replica_groups,
                              const std::optional<Layout>& layout,
                              const std::optional<ChannelHandle>& channel_id);
+  friend XlaOp AllToAllTupleWithDeviceList(
+      XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+      int64_t split_count, const CollectiveDeviceListBase& replica_groups,
+      const std::optional<Layout>& layout,
+      const std::optional<ChannelHandle>& channel_id);
+
   friend XlaOp CollectiveBroadcast(
       XlaOp operand, absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<ChannelHandle>& channel_id);
+  friend XlaOp CollectiveBroadcastWithDeviceList(
+      XlaOp operand, const CollectiveDeviceListBase& replica_groups,
       const std::optional<ChannelHandle>& channel_id);
   friend XlaOp CollectivePermute(
       XlaOp operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const std::optional<ChannelHandle>& channel_id, const bool inplace);
+      const std::optional<ChannelHandle>& channel_id);
   friend XlaOp MultiCollectivePermute(
       absl::Span<const XlaOp> operands,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const std::optional<ChannelHandle>& channel_id, const bool inplace);
+      const std::optional<ChannelHandle>& channel_id);
   friend XlaOp ReplicaId(XlaBuilder* builder);
   friend XlaOp SelectAndScatter(XlaOp operand, XlaComputationId select,
                                 absl::Span<const int64_t> window_dimensions,
@@ -1831,7 +1958,7 @@ class XlaBuilder {
   friend XlaOp Sort(absl::Span<const XlaOp> operands,
                     XlaComputationId comparator, int64_t dimension,
                     bool is_stable);
-  friend XlaOp TopK(XlaOp operand, int64_t k, bool largest);
+  friend XlaOp TopK(XlaOp operand, int64_t k, bool largest, bool is_stable);
   friend XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
   friend XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                    XlaComputationId computation,
@@ -1910,9 +2037,20 @@ class XlaBuilder {
                       const std::optional<ChannelHandle>& channel_id,
                       const std::optional<Layout>& layout,
                       std::optional<bool> use_global_device_ids, bool async);
+  XlaOp AllGatherImpl(XlaOp operand, int64_t all_gather_dimension,
+                      int64_t shard_count,
+                      const CollectiveDeviceListBase& replica_groups,
+                      const std::optional<ChannelHandle>& channel_id,
+                      const std::optional<Layout>& layout,
+                      std::optional<bool> use_global_device_ids, bool async);
 
   XlaOp AllReduceImpl(XlaOp operand, XlaComputationId computation,
                       absl::Span<const ReplicaGroup> replica_groups,
+                      const std::optional<ChannelHandle>& channel_id,
+                      const std::optional<Shape>& layout,
+                      std::optional<bool> use_global_device_ids, bool async);
+  XlaOp AllReduceImpl(XlaOp operand, XlaComputationId computation,
+                      const CollectiveDeviceListBase& replica_groups,
                       const std::optional<ChannelHandle>& channel_id,
                       const std::optional<Shape>& layout,
                       std::optional<bool> use_global_device_ids, bool async);
@@ -1920,18 +2058,19 @@ class XlaBuilder {
   XlaOp CollectiveBroadcastImpl(XlaOp operand,
                                 absl::Span<const ReplicaGroup> replica_groups,
                                 const std::optional<ChannelHandle>& channel_id);
+  XlaOp CollectiveBroadcastImpl(XlaOp operand,
+                                const CollectiveDeviceListBase& replica_groups,
+                                const std::optional<ChannelHandle>& channel_id);
 
   XlaOp CollectivePermuteImpl(
       XlaOp operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const std::optional<ChannelHandle>& channel_id, bool async,
-      const bool inplace);
+      const std::optional<ChannelHandle>& channel_id, bool async);
 
   XlaOp CollectivePermuteImpl(
       absl::Span<const XlaOp> operands,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const std::optional<ChannelHandle>& channel_id, bool async,
-      const bool inplace);
+      const std::optional<ChannelHandle>& channel_id, bool async);
 
   XlaOp ConditionalImpl(XlaOp branch_index,
                         absl::Span<XlaComputationId const> branch_computations,
@@ -1940,6 +2079,10 @@ class XlaBuilder {
   XlaOp AllToAllArray(
       XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
       int64_t split_count, absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
+  XlaOp AllToAllArray(
+      XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+      int64_t split_count, const CollectiveDeviceListBase& replica_groups,
       const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   // Creates an op with the given opcode and the output shape.
@@ -1977,7 +2120,7 @@ class XlaBuilder {
   // absl::StatusOr similar to absl::StatusOr.
   template <typename InstructionType>
   absl::StatusOr<InstructionType> LookUpInstructionInternal(XlaOp op) const {
-    TF_RETURN_IF_ERROR(CheckOpBuilder(op));
+    RETURN_IF_ERROR(CheckOpBuilder(op));
     return LookUpInstructionByHandleInternal<InstructionType>(op.handle());
   }
 
@@ -1992,25 +2135,21 @@ class XlaScopedShardingAssignment {
  public:
   XlaScopedShardingAssignment(xla::XlaBuilder* builder,
                               std::optional<OpSharding> sharding)
-      : builder_(builder), prev_sharding_(builder->sharding()) {
-    SetSharding(sharding);
+      : builder_(builder) {
+    // Move the new sharding into the builder, store the original one.
+    prev_sharding_ = builder_->SwapSharding(std::move(sharding));
   }
 
   XlaScopedShardingAssignment(const XlaScopedShardingAssignment&) = delete;
   XlaScopedShardingAssignment& operator=(const XlaScopedShardingAssignment&) =
       delete;
 
-  ~XlaScopedShardingAssignment() { SetSharding(prev_sharding_); }
-
- private:
-  void SetSharding(const std::optional<OpSharding>& sharding) {
-    if (sharding.has_value()) {
-      builder_->SetSharding(sharding.value());
-    } else {
-      builder_->ClearSharding();
-    }
+  ~XlaScopedShardingAssignment() {
+    // Restore the original sharding.
+    builder_->SwapSharding(std::move(prev_sharding_));
   }
 
+ private:
   xla::XlaBuilder* const builder_;
   std::optional<OpSharding> prev_sharding_;
 };
@@ -2423,6 +2562,12 @@ XlaOp RaggedAllToAll(
     absl::Span<const ReplicaGroup> replica_groups = {},
     const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
+XlaOp RaggedAllToAllWithDeviceList(
+    XlaOp input, XlaOp input_offsets, XlaOp send_sizes, XlaOp output,
+    XlaOp output_offsets, XlaOp recv_sizes,
+    const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
+
 // Enqueues a ragged dot instruction onto the computation.
 XlaOp RaggedDot(
     XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
@@ -2716,6 +2861,10 @@ XlaOp Sub(XlaOp lhs, XlaOp rhs,
 XlaOp Mul(XlaOp lhs, XlaOp rhs,
           absl::Span<const int64_t> broadcast_dimensions = {});
 
+// Enqueues a multiply-high instruction onto the computation.
+XlaOp Mulhi(XlaOp lhs, XlaOp rhs,
+            absl::Span<const int64_t> broadcast_dimensions = {});
+
 // Enqueues a divide instruction onto the computation.
 XlaOp Div(XlaOp lhs, XlaOp rhs,
           absl::Span<const int64_t> broadcast_dimensions = {});
@@ -2792,10 +2941,12 @@ XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
 // Enqueues a scan instruction onto the computation.
 XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
            const XlaComputation& computation, int64_t scan_dimension,
+           std::optional<int64_t> scan_dimension_size = std::nullopt,
            bool is_reverse = false,
            TriState is_associative = TRI_STATE_UNSPECIFIED);
 XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
            XlaComputationId computation, int64_t scan_dimension,
+           std::optional<int64_t> scan_dimension_size = std::nullopt,
            bool is_reverse = false,
            TriState is_associative = TRI_STATE_UNSPECIFIED);
 
@@ -2854,9 +3005,22 @@ XlaOp AllGather(XlaOp operand, int64_t all_gather_dimension,
                 const std::optional<Layout>& layout = std::nullopt,
                 std::optional<bool> use_global_device_ids = std::nullopt);
 
+XlaOp AllGatherWithDeviceList(
+    XlaOp operand, int64_t all_gather_dimension, int64_t shard_count,
+    const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    const std::optional<Layout>& layout = std::nullopt,
+    std::optional<bool> use_global_device_ids = std::nullopt);
+
 XlaOp AllGatherTuple(
     absl::Span<const XlaOp> operands, int64_t all_gather_dimension,
     int64_t shard_count, absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    const std::optional<Layout>& layout = std::nullopt,
+    std::optional<bool> use_global_device_ids = std::nullopt);
+XlaOp AllGatherTupleWithDeviceList(
+    absl::Span<const XlaOp> operands, int64_t all_gather_dimension,
+    int64_t shard_count, const CollectiveDeviceListBase& replica_groups,
     const std::optional<ChannelHandle>& channel_id = std::nullopt,
     const std::optional<Layout>& layout = std::nullopt,
     std::optional<bool> use_global_device_ids = std::nullopt);
@@ -2885,11 +3049,24 @@ XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                 const std::optional<ChannelHandle>& channel_id = std::nullopt,
                 const std::optional<Shape>& shape_with_layout = std::nullopt,
                 std::optional<bool> use_global_device_ids = std::nullopt);
+XlaOp AllReduceWithDeviceList(
+    XlaOp operand, const XlaComputation& computation,
+    const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    const std::optional<Shape>& shape_with_layout = std::nullopt,
+    std::optional<bool> use_global_device_ids = std::nullopt);
+
 XlaOp AllReduce(XlaOp operand, XlaComputationId computation,
                 absl::Span<const ReplicaGroup> replica_groups = {},
                 const std::optional<ChannelHandle>& channel_id = std::nullopt,
                 const std::optional<Shape>& shape_with_layout = std::nullopt,
                 std::optional<bool> use_global_device_ids = std::nullopt);
+XlaOp AllReduceWithDeviceList(
+    XlaOp operand, XlaComputationId computation,
+    const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    const std::optional<Shape>& shape_with_layout = std::nullopt,
+    std::optional<bool> use_global_device_ids = std::nullopt);
 
 XlaOp AllReduceTuple(
     absl::Span<const XlaOp> operand, XlaComputationId computation,
@@ -2897,9 +3074,22 @@ XlaOp AllReduceTuple(
     const std::optional<ChannelHandle>& channel_id = std::nullopt,
     const std::optional<Shape>& shape_with_layout = std::nullopt,
     std::optional<bool> use_global_device_ids = std::nullopt);
+XlaOp AllReduceTupleWithDeviceList(
+    absl::Span<const XlaOp> operands, XlaComputationId computation,
+    const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    const std::optional<Shape>& shape_with_layout = std::nullopt,
+    std::optional<bool> use_global_device_ids = std::nullopt);
+
 XlaOp AllReduceTuple(
     absl::Span<const XlaOp> operand, const XlaComputation& computation,
     absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    const std::optional<Shape>& shape_with_layout = std::nullopt,
+    std::optional<bool> use_global_device_ids = std::nullopt);
+XlaOp AllReduceTupleWithDeviceList(
+    absl::Span<const XlaOp> operands, const XlaComputation& computation,
+    const CollectiveDeviceListBase& replica_groups,
     const std::optional<ChannelHandle>& channel_id = std::nullopt,
     const std::optional<Shape>& shape_with_layout = std::nullopt,
     std::optional<bool> use_global_device_ids = std::nullopt);
@@ -2910,9 +3100,22 @@ XlaOp ReduceScatter(
     const std::optional<ChannelHandle>& channel_id = std::nullopt,
     const std::optional<Layout>& layout = std::nullopt,
     std::optional<bool> use_global_device_ids = std::nullopt);
+XlaOp ReduceScatterWithDeviceList(
+    XlaOp operand, const XlaComputation& computation, int64_t scatter_dimension,
+    int64_t shard_count, const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    const std::optional<Layout>& layout = std::nullopt,
+    std::optional<bool> use_global_device_ids = std::nullopt);
+
 XlaOp ReduceScatter(
     XlaOp operand, XlaComputationId computation, int64_t scatter_dimension,
     int64_t shard_count, absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    const std::optional<Layout>& layout = std::nullopt,
+    std::optional<bool> use_global_device_ids = std::nullopt);
+XlaOp ReduceScatterWithDeviceList(
+    XlaOp operand, XlaComputationId computation, int64_t scatter_dimension,
+    int64_t shard_count, const CollectiveDeviceListBase& replica_groups,
     const std::optional<ChannelHandle>& channel_id = std::nullopt,
     const std::optional<Layout>& layout = std::nullopt,
     std::optional<bool> use_global_device_ids = std::nullopt);
@@ -2929,10 +3132,20 @@ XlaOp AllToAll(XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
                absl::Span<const ReplicaGroup> replica_groups = {},
                const std::optional<Layout>& layout = std::nullopt,
                const std::optional<ChannelHandle>& channel_id = std::nullopt);
+XlaOp AllToAllWithDeviceList(
+    XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+    int64_t split_count, const CollectiveDeviceListBase& replica_groups,
+    const std::optional<Layout>& layout = std::nullopt,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
 XlaOp AllToAllTuple(
     absl::Span<const XlaOp> operand,
     absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<Layout>& layout = std::nullopt,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
+XlaOp AllToAllTupleWithDeviceList(
+    absl::Span<const XlaOp> operands,
+    const CollectiveDeviceListBase& replica_groups,
     const std::optional<Layout>& layout = std::nullopt,
     const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
@@ -2941,9 +3154,17 @@ XlaOp AllToAllTuple(
     int64_t split_count, absl::Span<const ReplicaGroup> replica_groups = {},
     const std::optional<Layout>& layout = std::nullopt,
     const std::optional<ChannelHandle>& channel_id = std::nullopt);
+XlaOp AllToAllTupleWithDeviceList(
+    XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+    int64_t split_count, const CollectiveDeviceListBase& replica_groups,
+    const std::optional<Layout>& layout = std::nullopt,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
 XlaOp CollectiveBroadcast(
     XlaOp operand, absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
+XlaOp CollectiveBroadcastWithDeviceList(
+    XlaOp operand, const CollectiveDeviceListBase& replica_groups,
     const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
 // Enqueues an collective operation that sends and receives data cross replicas.
@@ -2957,13 +3178,11 @@ XlaOp CollectiveBroadcast(
 XlaOp CollectivePermute(
     XlaOp operand,
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-    const std::optional<ChannelHandle>& channel_id = std::nullopt,
-    const bool inplace = false);
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 XlaOp MultiCollectivePermute(
     absl::Span<const XlaOp> operands,
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-    const std::optional<ChannelHandle>& channel_id = std::nullopt,
-    const bool inplace = false);
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
 // Enqueues an operation that returns the replica ID.
 XlaOp ReplicaId(XlaBuilder* builder);
@@ -3163,7 +3382,10 @@ XlaOp Sort(absl::Span<const XlaOp> operands, XlaComputationId comparator,
 
 // Enqueues a topk instruction onto the computation. TopK returns the largest
 // 'k' values and their indices along the last dimension of the 'operand' if
-// `lagest=true` or the smallest `k` values if `largest=false`.
+// `largest=true` or the smallest `k` values if `largest=false`.
+// If `is_stable=true`, the output indices will maintain the original relative
+// order of equal elements. If `false`, the order of equal elements is
+// undefined.
 //
 // * If the operand is a rank-1 tensor (an array), the result is a tuple that
 //   consists of:
@@ -3179,7 +3401,7 @@ XlaOp Sort(absl::Span<const XlaOp> operands, XlaComputationId comparator,
 //     dimension.
 //   For example, if the input is [0.1, 0.3, 0.2][0.5, 0.4, 0.6] and k == 1, the
 //   output tuple is ([0.3][0.6], [1][2]).
-XlaOp TopK(XlaOp operand, int64_t k, bool largest);
+XlaOp TopK(XlaOp operand, int64_t k, bool largest, bool is_stable = true);
 
 // Enqueues a clamp instruction onto the computation.
 XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);

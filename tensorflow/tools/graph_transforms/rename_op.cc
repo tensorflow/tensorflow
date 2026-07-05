@@ -33,13 +33,13 @@ absl::Status RenameOp(const GraphDef& input_graph_def,
       (context.params.at("old_op_name").size() != 1) ||
       !context.params.count("new_op_name") ||
       (context.params.at("new_op_name").size() != 1)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "rename_op expects exactly one 'old_op_name' and 'new_op_name' "
         "argument, e.g. rename_op(old_op_name=Mul, new_op_name=Multiply)");
   }
 
-  const string old_op_name = context.params.at("old_op_name")[0];
-  const string new_op_name = context.params.at("new_op_name")[0];
+  const std::string old_op_name = context.params.at("old_op_name")[0];
+  const std::string new_op_name = context.params.at("new_op_name")[0];
   output_graph_def->Clear();
   for (const NodeDef& node : input_graph_def.node()) {
     NodeDef* new_node = output_graph_def->mutable_node()->Add();

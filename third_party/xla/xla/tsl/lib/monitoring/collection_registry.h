@@ -15,23 +15,16 @@ limitations under the License.
 
 #ifndef XLA_TSL_LIB_MONITORING_COLLECTION_REGISTRY_H_
 #define XLA_TSL_LIB_MONITORING_COLLECTION_REGISTRY_H_
-namespace tensorflow {
-namespace monitoring {
-namespace test_util {
-class CollectionRegistryTestAccess;
-}  // namespace test_util
-}  // namespace monitoring
-}  // namespace tensorflow
+
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tsl/platform/platform.h"
+#include "tsl/platform/platform.h"  // IWYU pragma: keep
 // clang-format on
 
 // We use a null implementation for mobile platforms.
 #ifdef IS_MOBILE_PLATFORM
 
 #include <functional>
-#include <map>
 #include <memory>
 
 #include "xla/tsl/lib/monitoring/metric_def.h"
@@ -102,22 +95,26 @@ class CollectionRegistry {
 }  // namespace tsl
 #else  // !defined(IS_MOBILE_PLATFORM)
 
+#include <array>
+#include <cstdint>
 #include <functional>
-#include <map>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/lib/monitoring/types.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/histogram.pb.h"
-#include "tsl/platform/stringpiece.h"
-#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 namespace monitoring {
@@ -125,6 +122,10 @@ namespace monitoring {
 namespace internal {
 class Collector;
 }  // namespace internal
+
+namespace test_util {
+class CollectionRegistryTestAccess;
+}  // namespace test_util
 
 // Metric implementations would get an instance of this class using the
 // MetricCollectorGetter in the collection-function lambda, so that their values
@@ -184,7 +185,7 @@ class MetricCollectorGetter {
   // metric_def.
   template <MetricKind metric_kind, typename Value, int NumLabels>
   MetricCollector<metric_kind, Value, NumLabels> Get(
-      const MetricDef<metric_kind, Value, NumLabels>* const metric_def);
+      const MetricDef<metric_kind, Value, NumLabels>* metric_def);
 
  private:
   friend class internal::Collector;
@@ -237,11 +238,11 @@ class CollectionRegistry {
   std::unique_ptr<RegistrationHandle> Register(
       const AbstractMetricDef* metric_def,
       const CollectionFunction& collection_function)
-      TF_LOCKS_EXCLUDED(mu_) TF_MUST_USE_RESULT;
+      ABSL_LOCKS_EXCLUDED(mu_) ABSL_MUST_USE_RESULT;
 
   // Options for collecting metrics.
   struct CollectMetricsOptions {
-    CollectMetricsOptions() {}
+    CollectMetricsOptions() = default;
     bool collect_metric_descriptors = true;
   };
   // Goes through all the registered metrics, collects their definitions
@@ -250,8 +251,7 @@ class CollectionRegistry {
       const CollectMetricsOptions& options) const;
 
  private:
-  friend class ::tensorflow::monitoring::test_util::
-      CollectionRegistryTestAccess;
+  friend class test_util::CollectionRegistryTestAccess;
   friend class internal::Collector;
 
   explicit CollectionRegistry(Env* env);
@@ -259,7 +259,7 @@ class CollectionRegistry {
   // Unregisters the metric from this registry. This is private because the
   // public interface provides a Registration handle which automatically calls
   // this upon destruction.
-  void Unregister(const AbstractMetricDef* metric_def) TF_LOCKS_EXCLUDED(mu_);
+  void Unregister(const AbstractMetricDef* metric_def) ABSL_LOCKS_EXCLUDED(mu_);
 
   // TF environment, mainly used for timestamping.
   Env* const env_;
@@ -272,7 +272,8 @@ class CollectionRegistry {
     CollectionFunction collection_function;
     uint64_t registration_time_millis;
   };
-  std::map<absl::string_view, CollectionInfo> registry_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<absl::string_view, CollectionInfo> registry_
+      ABSL_GUARDED_BY(mu_);
 
   CollectionRegistry(const CollectionRegistry&) = delete;
   void operator=(const CollectionRegistry&) = delete;
@@ -383,12 +384,12 @@ class Collector {
   MetricCollector<metric_kind, Value, NumLabels> GetMetricCollector(
       const MetricDef<metric_kind, Value, NumLabels>* const metric_def,
       const uint64_t registration_time_millis,
-      internal::Collector* const collector) TF_LOCKS_EXCLUDED(mu_) {
+      internal::Collector* const collector) ABSL_LOCKS_EXCLUDED(mu_) {
     auto* const point_set = [&]() {
       absl::MutexLock l(mu_);
       return collected_metrics_->point_set_map
           .insert(std::make_pair(std::string(metric_def->name()),
-                                 std::unique_ptr<PointSet>(new PointSet())))
+                                 std::make_unique<PointSet>()))
           .first->second.get();
     }();
     return MetricCollector<metric_kind, Value, NumLabels>(
@@ -397,18 +398,18 @@ class Collector {
 
   uint64_t collection_time_millis() const { return collection_time_millis_; }
 
-  void CollectMetricDescriptor(const AbstractMetricDef* const metric_def)
-      TF_LOCKS_EXCLUDED(mu_);
+  void CollectMetricDescriptor(const AbstractMetricDef* metric_def)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   void CollectMetricValues(
       const CollectionRegistry::CollectionInfo& collection_info);
 
   std::unique_ptr<CollectedMetrics> ConsumeCollectedMetrics()
-      TF_LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(mu_);
 
  private:
   mutable absl::Mutex mu_;
-  std::unique_ptr<CollectedMetrics> collected_metrics_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<CollectedMetrics> collected_metrics_ ABSL_GUARDED_BY(mu_);
   const uint64_t collection_time_millis_;
 
   Collector(const Collector&) = delete;
@@ -423,8 +424,8 @@ class Collector {
 // collection function was registered, while the end timestamp will be set to
 // the collection time.
 template <MetricKind kind>
-void WriteTimestamps(const uint64_t registration_time_millis,
-                     const uint64_t collection_time_millis, Point* const point);
+void WriteTimestamps(uint64_t registration_time_millis,
+                     uint64_t collection_time_millis, Point* point);
 
 template <>
 inline void WriteTimestamps<MetricKind::kGauge>(
@@ -489,14 +490,68 @@ class Exporter {
 
 namespace exporter_registration {
 
+// This class is a helper class that registers an exporter with the collection
+// registry globally.
+//
+// In order to avoid issues with static initialization order, your program must
+// explicitly call `StartExporters` from the appropriate place in
+// your main function (e.g. after flags have been parsed).
+//
+// Example usage:
+//
+// Register your exporter:
+// REGISTER_TF_METRICS_EXPORTER(YourExporterClass);
+//
+// Call Start() in main():
+// int main() {
+//   ...
+//   ExporterRegistration::StartExporters();
+//   ...
+// }
 class ExporterRegistration {
  public:
-  explicit ExporterRegistration(Exporter* exporter) : exporter_(exporter) {
-    exporter_->PeriodicallyExportMetrics();
-  }
+  // Starts the periodic export of metrics for all registered exporters.
+  //
+  // This should be called after the program has finished initialization.
+  static void StartExporters();
+
+  static ExporterRegistration* Get();
+
+  // Registers an exporter with the collection registry.
+  //
+  // The exporter will be added to the list of exporters and start exporting
+  // metrics after ExporterRegistration::StartExporters() is called.
+  void Register(Exporter* exporter) ABSL_LOCKS_EXCLUDED(exporters_mu_);
 
  private:
-  Exporter* exporter_;
+  friend class absl::NoDestructor<ExporterRegistration>;
+
+  ExporterRegistration() = default;
+  ~ExporterRegistration() = default;
+  ExporterRegistration(const ExporterRegistration&) = delete;
+  ExporterRegistration& operator=(const ExporterRegistration&) = delete;
+  ExporterRegistration(ExporterRegistration&&) = delete;
+  ExporterRegistration& operator=(ExporterRegistration&&) = delete;
+
+  void StartExportersImpl() ABSL_LOCKS_EXCLUDED(exporters_mu_);
+
+  absl::Mutex exporters_mu_;
+  std::vector<Exporter*> exporters_ ABSL_GUARDED_BY(exporters_mu_);
+  bool start_exporters_called_ ABSL_GUARDED_BY(exporters_mu_) = false;
+};
+
+// Helper class to register an exporter with the collection registry using
+// the macro REGISTER_TF_METRICS_EXPORTER.
+class ExporterRegistrar {
+ public:
+  explicit ExporterRegistrar(Exporter* exporter) {
+    ExporterRegistration::Get()->Register(exporter);
+  }
+
+  ExporterRegistrar(const ExporterRegistrar&) = delete;
+  ExporterRegistrar& operator=(const ExporterRegistrar&) = delete;
+  ExporterRegistrar(ExporterRegistrar&&) = delete;
+  ExporterRegistrar& operator=(ExporterRegistrar&&) = delete;
 };
 
 }  // namespace exporter_registration
@@ -507,9 +562,9 @@ class ExporterRegistration {
 #define REGISTER_TF_METRICS_EXPORTER_UNIQ_HELPER(ctr, exporter) \
   REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)
 
-#define REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)                \
-  static ::tsl::monitoring::exporter_registration::ExporterRegistration \
-      exporter_registration_##ctr(new exporter())
+#define REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)                  \
+  ABSL_ATTRIBUTE_UNUSED static ::tsl::monitoring::exporter_registration:: \
+      ExporterRegistrar exporter_registrar_##ctr(new exporter())
 
 }  // namespace monitoring
 }  // namespace tsl

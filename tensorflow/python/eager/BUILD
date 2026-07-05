@@ -1,6 +1,7 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
-load("//tensorflow:tensorflow.bzl", "check_deps")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "check_deps", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load(
@@ -70,9 +71,11 @@ cc_library(
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:stack_trace",
         "//third_party/py/numpy:headers",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -132,8 +135,9 @@ filegroup(
 )
 
 # Transitive dependencies of this target will be included in the pip package.
-py_strict_library(
+py_library(
     name = "eager_pip",
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop",
@@ -157,9 +161,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "core",
     srcs = ["core.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
@@ -168,9 +173,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "cancellation",
     srcs = ["cancellation.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
@@ -187,21 +193,23 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "executor",
     srcs = ["executor.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "context",
     srcs = ["context.py"],
+    lazy_imports = True,
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = [
-    # "//smartass/brain/ops:__subpackages__",
     # "//third_party/py/courier:__subpackages__",
     # "//third_party/py/jax_tpu_embedding:__subpackages__",
     # "//tensorflow:internal",
@@ -258,10 +266,11 @@ tf_python_pybind_extension(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "custom_device_test",
     size = "small",
     srcs = ["custom_device_test.py"],
+    strict_deps = True,
     # Note that this currently only works with --config=monolithic, since it
     # requires the C API which runs static initializers again.
     #
@@ -321,8 +330,15 @@ cuda_py_strict_test(
     name = "context_cross_platform_gpu_test",
     size = "small",
     srcs = ["context_cross_platform_gpu_test.py"],
+    # copybara:uncomment_begin(google-only)
+    # exec_properties = select({
+    # "//tools/cpp:msan_build": {"cpp_link.mem": "16g"},
+    # "//conditions:default": None,
+    # }),
+    # copybara:uncomment_end
     tags = [
         "no_oss",
+        "no_pip",
         "noasan",  # TODO(b/417285186): Re-enable once the test is fixed.
     ],
     tpu_ops_enabled = True,
@@ -352,9 +368,10 @@ tpu_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "monitoring",
     srcs = ["monitoring.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -392,9 +409,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "summary_optimizer_test",
     srcs = ["summary_optimizer_test.py"],
+    strict_deps = True,
     tags = [
         "no_oss",
         "no_pip",
@@ -417,18 +435,20 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tape",
     srcs = ["tape.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "record",
     srcs = ["record.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = ["//tensorflow/python:pywrap_tfe"],
 )
@@ -572,9 +592,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test",
     srcs = ["test.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/framework:ops",
@@ -582,9 +603,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "execute",
     srcs = ["execute.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         ":core",
@@ -598,9 +620,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "graph_only_ops",
     srcs = ["graph_only_ops.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -624,9 +647,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "framework_for_generated_wrappers",
     deprecation = "Depending on this target can cause build dependency cycles. Depend on the fine-grained sub-targets instead.",
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":execute",
@@ -636,9 +660,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "function",
     srcs = ["function.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/eager/polymorphic_function:atomic_function",
@@ -649,9 +674,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "backprop",
     srcs = ["backprop.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop_util",
@@ -690,9 +716,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "backprop_util",
     srcs = ["backprop_util.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -708,9 +735,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "forwardprop",
     srcs = ["forwardprop.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop",
@@ -731,18 +759,20 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "forwardprop_util",
     srcs = ["forwardprop_util.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "benchmarks_test_base",
     srcs = ["benchmarks_test_base.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         ":test",
@@ -937,9 +967,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "imperative_grad",
     srcs = ["imperative_grad.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/ops:unconnected_gradients",
@@ -956,9 +987,10 @@ check_deps(
     deps = [":def_function"],
 )
 
-py_strict_library(
+py_library(
     name = "def_function",
     srcs = ["def_function.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = ["//tensorflow:internal"],
     # copybara:uncomment_end_and_comment_begin
@@ -972,9 +1004,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "lift_to_graph",
     srcs = ["lift_to_graph.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/framework:func_graph",
@@ -1006,9 +1039,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "wrap_function",
     srcs = ["wrap_function.py"],
+    strict_deps = True,
     visibility = [
         "//tensorflow:internal",
         "//third_party/py/orbax/export:__subpackages__",
@@ -1085,9 +1119,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "remote",
     srcs = ["remote.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -1263,9 +1298,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "gradient_input_output_exclusions",
     srcs = ["gradient_input_output_exclusions.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/autograph/pyct:anno",
@@ -1282,9 +1318,10 @@ py_strict_library(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "gen_gradient_input_output_exclusions",
     srcs = ["gen_gradient_input_output_exclusions.py"],
+    strict_deps = True,
     deps = [":gradient_input_output_exclusions"],
 )
 
@@ -1293,12 +1330,13 @@ exports_files([
     "pywrap_gradient_exclusions.cc",
 ])
 
-py_strict_test(
+py_test(
     name = "gradient_input_output_exclusions_test",
     srcs = ["gradient_input_output_exclusions_test.py"],
     data = [
         ":pywrap_gradient_exclusions.cc",
     ],
+    strict_deps = True,
     tags = [
         "no_pip",  # No point linking the gen script in the pip package.
     ],

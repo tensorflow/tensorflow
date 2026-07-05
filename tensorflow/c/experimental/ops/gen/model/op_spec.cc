@@ -34,7 +34,7 @@ OpSpec::OpSpec(const OpDef& op_def, const ApiDef& api_def)
     : name_(op_def.name()),
       summary_(api_def.summary()),
       description_(api_def.description()) {
-  absl::flat_hash_set<string> inferred_attrs;
+  absl::flat_hash_set<std::string> inferred_attrs;
   // Parse the arguments
   for (const OpDef::ArgDef& arg_def : op_def.input_arg()) {
     ArgSpec arg = ArgSpec::CreateInput(arg_def, input_args_.size());

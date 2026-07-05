@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
@@ -77,6 +78,7 @@ class MIOpenBackendTest : public HloHardwareIndependentTestBase {
   AMDGPUCompiler compiler_;
   se::StreamExecutor* stream_executor_;
   Compiler::GpuTargetConfig target_config_;
+  stream_executor::StreamExecutorAddressAllocator allocator_;
   MIOpenBackend backend_;
 
   MIOpenBackendTest()
@@ -85,8 +87,14 @@ class MIOpenBackendTest : public HloHardwareIndependentTestBase {
                              ->ExecutorForDevice(0)
                              .value()),
         target_config_(stream_executor_),
-        backend_(stream_executor_, &debug_options_, &compiler_,
-                 &target_config_) {}
+        allocator_(stream_executor_),
+        backend_(
+            stream_executor_,
+            [](auto& opts) {
+              opts.set_xla_gpu_autotune_level(1);
+              return &opts;
+            }(debug_options_),
+            &compiler_, &target_config_, &allocator_) {}
 
   bool IsRocm() {
     return stream_executor_->GetPlatform()->id() == se::rocm::kROCmPlatformId;
@@ -107,8 +115,8 @@ TEST_F(MIOpenBackendTest, GetSupportedConfigsFromMIOpenCustomCall) {
       backend_.GetSupportedConfigs(
           (*hlo_module->entry_computation()->root_instruction()->operand(0)));
   ASSERT_THAT(configs, IsOkAndHolds(SizeIs(1)));
-  MIOpenBackendConfig algorithm_config;
-  ASSERT_TRUE((*configs)[0]->UnpackTo(&algorithm_config));
+  ASSERT_TRUE((*configs)[0]->has_algorithm());
+  MIOpenBackendConfig algorithm_config = (*configs)[0]->algorithm();
   EXPECT_NE(algorithm_config.algo_id(), 0);
 }
 
@@ -122,8 +130,8 @@ TEST_F(MIOpenBackendTest, GetDefaultConfigFromMIOpenCustomCall) {
       backend_.GetDefaultConfig(
           (*hlo_module->entry_computation()->root_instruction()->operand(0)));
   TF_ASSERT_OK(config);
-  MIOpenBackendConfig algorithm_config;
-  ASSERT_TRUE(config->get()->UnpackTo(&algorithm_config));
+  ASSERT_TRUE((*config)->has_algorithm());
+  MIOpenBackendConfig algorithm_config = (*config)->algorithm();
   EXPECT_EQ(algorithm_config.algo_id(), 0);
 }
 
@@ -137,9 +145,9 @@ TEST_F(MIOpenBackendTest, ApplyConfigToMIOpenCustomCall) {
   config.set_algo_id(1);
   HloInstruction* instr =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  google::protobuf::Any any;
-  any.PackFrom(config);
-  TF_ASSERT_OK(backend_.ApplyConfig(*instr, any));
+  BackendConfig backend_config;
+  *backend_config.mutable_algorithm() = config;
+  TF_ASSERT_OK(backend_.ApplyConfig(*instr, backend_config));
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           instr->backend_config<GpuBackendConfig>());
   EXPECT_THAT(gpu_config.cudnn_conv_backend_config().algorithm(),
@@ -157,9 +165,9 @@ TEST_F(MIOpenBackendTest, ApplyConfigToMIOpenCustomCallWithWorkspace) {
   config.mutable_workspace_size()->set_value(1024);
   HloInstruction* instr =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  google::protobuf::Any any;
-  any.PackFrom(config);
-  TF_ASSERT_OK(backend_.ApplyConfig(*instr, any));
+  BackendConfig backend_config;
+  *backend_config.mutable_algorithm() = config;
+  TF_ASSERT_OK(backend_.ApplyConfig(*instr, backend_config));
 
   auto* replaced_instr =
       hlo_module->entry_computation()->GetInstructionWithName("cudnn-conv");

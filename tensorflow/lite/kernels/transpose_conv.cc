@@ -16,6 +16,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -122,12 +124,13 @@ TfLiteStatus ResizeTensor(TfLiteContext* context,
     return kTfLiteError;
   }
 
-  TfLiteIntArray* shape = TfLiteIntArrayCreate(NumElements(shape_tensor));
+  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
+      TfLiteIntArrayCreate(NumElements(shape_tensor)), TfLiteIntArrayFree);
   for (int i = 0; i < shape->size; ++i) {
     shape->data[i] = GetTensorData<int32_t>(shape_tensor)[i];
   }
 
-  return context->ResizeTensor(context, tensor_to_resize, shape);
+  return context->ResizeTensor(context, tensor_to_resize, shape.release());
 }
 
 // Allocate temporary tensors if necessary.
@@ -213,22 +216,35 @@ TfLiteStatus ResizeCol2ImTensor(TfLiteContext* context,
     return kTfLiteError;
   }
   TF_LITE_ENSURE_EQ(context, NumElements(output_shape), 4);
-  TfLiteIntArray* col2im_shape_array = TfLiteIntArrayCreate(2);
   const RuntimeShape& input_shape = GetTensorShape(input);
   const RuntimeShape& weights_shape = GetTensorShape(weights);
-  col2im_shape_array->data[0] = input_shape.Dims(1) * input_shape.Dims(2);
-  col2im_shape_array->data[1] =
-      weights_shape.Dims(0) * weights_shape.Dims(1) * weights_shape.Dims(2);
+  int col2im_rows = 0;
+  TF_LITE_ENSURE_MSG(context,
+                     input_shape.CheckedNumElementsInRange(
+                         /*start=*/1, /*end=*/3, col2im_rows),
+                     "%s", "TransposeConv col2im tensor has too many rows.");
+
+  int col2im_columns = 0;
+  TF_LITE_ENSURE_MSG(
+      context, weights_shape.CheckedSizeToDimension(/*end=*/3, col2im_columns),
+      "%s", "TransposeConv col2im tensor has too many columns.");
+
+  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> col2im_shape_array(
+      TfLiteIntArrayCreate(2), TfLiteIntArrayFree);
+  col2im_shape_array->data[0] = col2im_rows;
+  col2im_shape_array->data[1] = col2im_columns;
 
   col2im->type = input->type == kTfLiteFloat32 ? kTfLiteFloat32 : kTfLiteInt32;
   col2im->allocation_type = kTfLiteDynamic;
-  return context->ResizeTensor(context, col2im, col2im_shape_array);
+  return context->ResizeTensor(context, col2im, col2im_shape_array.release());
 }
 
 TfLiteStatus ResizeAndTransposeWeights(TfLiteContext* context,
                                        const TfLiteTensor* weights,
                                        TfLiteTensor* transposed_weights) {
-  TfLiteIntArray* transposed_weights_shape_array = TfLiteIntArrayCreate(4);
+  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)>
+      transposed_weights_shape_array(TfLiteIntArrayCreate(4),
+                                     TfLiteIntArrayFree);
   const RuntimeShape& input_shape = GetTensorShape(weights);
   transposed_weights_shape_array->data[0] = input_shape.Dims(1);
   transposed_weights_shape_array->data[1] = input_shape.Dims(2);
@@ -237,8 +253,8 @@ TfLiteStatus ResizeAndTransposeWeights(TfLiteContext* context,
 
   transposed_weights->type = weights->type;
   transposed_weights->allocation_type = kTfLiteDynamic;
-  TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, transposed_weights,
-                                              transposed_weights_shape_array));
+  TF_LITE_ENSURE_STATUS(context->ResizeTensor(
+      context, transposed_weights, transposed_weights_shape_array.release()));
 
   // Transpose the weights from OHWI order to HWOI order.
   TransposeParams transpose_params;
@@ -468,13 +484,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // flattened to 2D.
     const int channels_in = weights->dims->data[3];
     TF_LITE_ENSURE(context, channels_in != 0);
-    const int height = NumElements(input) / channels_in;
+    int input_num_elements = 0;
+    TF_LITE_ENSURE_MSG(
+        context, CheckedNumElements(input, input_num_elements) == kTfLiteOk,
+        "%s", "TransposeConv hybrid input has too many elements.");
+    const int height = input_num_elements / channels_in;
     int scaling_dims[1] = {height};
     if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1, scaling_dims)) {
-      TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
+      std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)>
+          scaling_factors_size(TfLiteIntArrayCreate(1), TfLiteIntArrayFree);
       scaling_factors_size->data[0] = height;
-      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
-                                                       scaling_factors_size));
+      TF_LITE_ENSURE_OK(context,
+                        context->ResizeTensor(context, scaling_factors,
+                                              scaling_factors_size.release()));
     }
 
     auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
@@ -507,10 +529,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, channels_in != 0);
     const int input_offset_dims[1] = {height};
     if (!TfLiteIntArrayEqualsArray(input_offsets->dims, 1, input_offset_dims)) {
-      TfLiteIntArray* input_offsets_size = TfLiteIntArrayCreate(1);
+      std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)>
+          input_offsets_size(TfLiteIntArrayCreate(1), TfLiteIntArrayFree);
       input_offsets_size->data[0] = input_offset_dims[0];
-      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_offsets,
-                                                       input_offsets_size));
+      TF_LITE_ENSURE_OK(context,
+                        context->ResizeTensor(context, input_offsets,
+                                              input_offsets_size.release()));
     }
   }
 

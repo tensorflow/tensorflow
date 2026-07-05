@@ -38,17 +38,17 @@ class SparseAddOp : public OpKernel {
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsMatrix(a_indices->shape()) &&
                     TensorShapeUtils::IsMatrix(b_indices->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input indices should be matrices but received shapes: ",
                     a_indices->shape().DebugString(), " and ",
-                    b_indices->shape().DebugString()));
+                    b_indices->shape().DebugString())));
     const int64_t a_nnz = a_indices->dim_size(0);
     const int64_t b_nnz = b_indices->dim_size(0);
     const int num_dims = a_indices->dim_size(1);
     OP_REQUIRES(ctx, b_indices->dim_size(1) == num_dims,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input indices must have the same dimension, got ",
-                    num_dims, " and ", b_indices->dim_size(1)));
+                    num_dims, " and ", b_indices->dim_size(1))));
 
     OP_REQUIRES_OK(ctx, ctx->input("a_values", &a_values_t));
     OP_REQUIRES_OK(ctx, ctx->input("b_values", &b_values_t));
@@ -56,10 +56,10 @@ class SparseAddOp : public OpKernel {
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsVector(a_values_t->shape()) &&
                     TensorShapeUtils::IsVector(b_values_t->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input values should be vectors but received shapes: ",
                     a_values_t->shape().DebugString(), " and ",
-                    b_values_t->shape().DebugString()));
+                    b_values_t->shape().DebugString())));
     auto a_values = ctx->input(1).vec<T>();
     auto b_values = ctx->input(4).vec<T>();
     OP_REQUIRES(
@@ -73,43 +73,43 @@ class SparseAddOp : public OpKernel {
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsVector(a_shape->shape()) &&
                     TensorShapeUtils::IsVector(b_shape->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input shapes should be a vector but received shapes ",
                     a_shape->shape().DebugString(), " and ",
-                    b_shape->shape().DebugString()));
-    OP_REQUIRES(
-        ctx, a_shape->NumElements() == num_dims,
-        errors::InvalidArgument("Second dimension of a_indices and length of "
-                                "a_shape must match, got ",
-                                num_dims, " and ", a_shape->NumElements()));
+                    b_shape->shape().DebugString())));
+    OP_REQUIRES(ctx, a_shape->NumElements() == num_dims,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Second dimension of a_indices and length of "
+                                 "a_shape must match, got ",
+                                 num_dims, " and ", a_shape->NumElements())));
     OP_REQUIRES(ctx, num_dims > 0,
-                errors::InvalidArgument("Tesors must not be empty"));
-    OP_REQUIRES(
-        ctx, a_shape->IsSameSize(*b_shape),
-        errors::InvalidArgument(
-            "Operands do not have the same ranks; got shapes: ",
-            a_shape->SummarizeValue(10), " and ", b_shape->SummarizeValue(10)));
+                absl::InvalidArgumentError("Tesors must not be empty"));
+    OP_REQUIRES(ctx, a_shape->IsSameSize(*b_shape),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Operands do not have the same ranks; got shapes: ",
+                    a_shape->SummarizeValue(10), " and ",
+                    b_shape->SummarizeValue(10))));
     const auto a_shape_flat = a_shape->flat<int64_t>();
     const auto b_shape_flat = b_shape->flat<int64_t>();
     for (int i = 0; i < a_shape->NumElements(); ++i) {
       OP_REQUIRES(ctx, a_shape_flat(i) == b_shape_flat(i),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Operands' shapes do not match: got ", a_shape_flat(i),
-                      " and ", b_shape_flat(i), " for dimension ", i));
+                      " and ", b_shape_flat(i), " for dimension ", i)));
     }
 
     OP_REQUIRES_OK(ctx, ctx->input("thresh", &thresh_t));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(thresh_t->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "The magnitude threshold must be a scalar: got shape ",
-                    thresh_t->shape().DebugString()));
+                    thresh_t->shape().DebugString())));
     // std::abs() so that it works for complex{64,128} values as well
     const Treal thresh = thresh_t->scalar<Treal>()();
 
     // (1) do a pass over inputs, and append values and indices to vectors
     auto a_indices_mat = a_indices->matrix<int64_t>();
     auto b_indices_mat = b_indices->matrix<int64_t>();
-    std::vector<std::pair<bool, int64>> entries_to_copy;  // from_a?, idx
+    std::vector<std::pair<bool, int64_t>> entries_to_copy;  // from_a?, idx
     entries_to_copy.reserve(a_nnz + b_nnz);
     std::vector<T> out_values;
 
@@ -187,10 +187,10 @@ class SparseAddOp : public OpKernel {
 // is because std::abs() on uint8 does not compile.
 REGISTER_KERNELS(float, float);
 REGISTER_KERNELS(double, double);
-REGISTER_KERNELS(int64_t, int64);
-REGISTER_KERNELS(int32, int32);
-REGISTER_KERNELS(int16, int16);
-REGISTER_KERNELS(int8, int8);
+REGISTER_KERNELS(int64_t, int64_t);
+REGISTER_KERNELS(int32_t, int32_t);
+REGISTER_KERNELS(int16_t, int16_t);
+REGISTER_KERNELS(int8_t, int8_t);
 REGISTER_KERNELS(complex64, float);
 REGISTER_KERNELS(complex128, double);
 #undef REGISTER_KERNELS

@@ -15,8 +15,19 @@ limitations under the License.
 
 #include "tsl/platform/retrying_file_system.h"
 
-#include <fstream>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/str_util.h"
@@ -24,14 +35,14 @@ limitations under the License.
 namespace tsl {
 namespace {
 
-typedef std::vector<std::tuple<string, absl::Status>> ExpectedCalls;
+typedef std::vector<std::tuple<std::string, absl::Status>> ExpectedCalls;
 
-ExpectedCalls CreateRetriableErrors(const string& method, int n) {
+ExpectedCalls CreateRetriableErrors(const std::string& method, int n) {
   ExpectedCalls expected_calls;
   expected_calls.reserve(n);
   for (int i = 0; i < n; i++) {
     expected_calls.emplace_back(std::make_tuple(
-        method, errors::Unavailable(absl::StrCat("Retriable error #", i))));
+        method, absl::UnavailableError(absl::StrCat("Retriable error #", i))));
   }
   return expected_calls;
 }
@@ -47,7 +58,7 @@ class MockCallSequence {
         << "the next expected call: " << std::get<0>(calls_.front());
   }
 
-  absl::Status ConsumeNextCall(const string& method) {
+  absl::Status ConsumeNextCall(const std::string& method) {
     EXPECT_FALSE(calls_.empty()) << "No more calls were expected.";
     auto call = calls_.front();
     calls_.erase(calls_.begin());
@@ -65,7 +76,7 @@ class MockRandomAccessFile : public RandomAccessFile {
   absl::Status Name(absl::string_view* result) const override {
     return calls_.ConsumeNextCall("Name");
   }
-  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
+  absl::Status Read(uint64_t offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     return calls_.ConsumeNextCall("Read");
   }
@@ -99,91 +110,83 @@ class MockFileSystem : public FileSystem {
   explicit MockFileSystem(const ExpectedCalls& calls, bool* flushed = nullptr)
       : calls_(calls), flushed_(flushed) {}
 
-  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
-
   absl::Status NewRandomAccessFile(
-      const string& fname, TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<RandomAccessFile>* result) override {
     *result = std::move(random_access_file_to_return);
     return calls_.ConsumeNextCall("NewRandomAccessFile");
   }
 
-  absl::Status NewWritableFile(const string& fname, TransactionToken* token,
+  absl::Status NewWritableFile(const std::string& fname,
                                std::unique_ptr<WritableFile>* result) override {
     *result = std::move(writable_file_to_return);
     return calls_.ConsumeNextCall("NewWritableFile");
   }
 
   absl::Status NewAppendableFile(
-      const string& fname, TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<WritableFile>* result) override {
     *result = std::move(writable_file_to_return);
     return calls_.ConsumeNextCall("NewAppendableFile");
   }
 
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     return calls_.ConsumeNextCall("NewReadOnlyMemoryRegionFromFile");
   }
 
-  absl::Status FileExists(const string& fname,
-                          TransactionToken* token) override {
+  absl::Status FileExists(absl::string_view fname) override {
     return calls_.ConsumeNextCall("FileExists");
   }
 
-  absl::Status GetChildren(const string& dir, TransactionToken* token,
-                           std::vector<string>* result) override {
+  absl::Status GetChildren(const std::string& dir,
+                           std::vector<std::string>* result) override {
     return calls_.ConsumeNextCall("GetChildren");
   }
 
-  absl::Status GetMatchingPaths(const string& dir, TransactionToken* token,
-                                std::vector<string>* result) override {
+  absl::Status GetMatchingPaths(const std::string& dir,
+                                std::vector<std::string>* result) override {
     return calls_.ConsumeNextCall("GetMatchingPaths");
   }
 
-  absl::Status Stat(const string& fname, TransactionToken* token,
-                    FileStatistics* stat) override {
+  absl::Status Stat(const std::string& fname, FileStatistics* stat) override {
     return calls_.ConsumeNextCall("Stat");
   }
 
-  absl::Status DeleteFile(const string& fname,
-                          TransactionToken* token) override {
+  absl::Status DeleteFile(const std::string& fname) override {
     return calls_.ConsumeNextCall("DeleteFile");
   }
 
-  absl::Status CreateDir(const string& dirname,
-                         TransactionToken* token) override {
+  absl::Status CreateDir(const std::string& dirname) override {
     return calls_.ConsumeNextCall("CreateDir");
   }
 
-  absl::Status DeleteDir(const string& dirname,
-                         TransactionToken* token) override {
+  absl::Status DeleteDir(const std::string& dirname) override {
     return calls_.ConsumeNextCall("DeleteDir");
   }
 
-  absl::Status GetFileSize(const string& fname, TransactionToken* token,
-                           uint64* file_size) override {
+  absl::Status GetFileSize(const std::string& fname,
+                           uint64_t* file_size) override {
     return calls_.ConsumeNextCall("GetFileSize");
   }
 
-  absl::Status RenameFile(const string& src, const string& target,
-                          TransactionToken* token) override {
+  absl::Status RenameFile(const std::string& src,
+                          const std::string& target) override {
     return calls_.ConsumeNextCall("RenameFile");
   }
 
-  absl::Status IsDirectory(const string& dirname,
-                           TransactionToken* token) override {
+  absl::Status IsDirectory(const std::string& dirname) override {
     return calls_.ConsumeNextCall("IsDirectory");
   }
 
-  absl::Status DeleteRecursively(const string& dirname, TransactionToken* token,
+  absl::Status DeleteRecursively(const std::string& dirname,
                                  int64_t* undeleted_files,
                                  int64_t* undeleted_dirs) override {
     return calls_.ConsumeNextCall("DeleteRecursively");
   }
 
-  void FlushCaches(TransactionToken* token) override {
+  void FlushCaches() override {
     if (flushed_) {
       *flushed_ = true;
     }
@@ -216,8 +219,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_ImmediateSuccess) {
 
   // Retrieve the wrapped random access file.
   std::unique_ptr<RandomAccessFile> random_access_file;
-  TF_EXPECT_OK(
-      fs.NewRandomAccessFile("filename.txt", nullptr, &random_access_file));
+  TF_EXPECT_OK(fs.NewRandomAccessFile("filename.txt", &random_access_file));
 
   // Use it and check the results.
   absl::string_view result;
@@ -232,8 +234,8 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_ImmediateSuccess) {
 TEST(RetryingFileSystemTest, NewRandomAccessFile_SuccessWith3rdTry) {
   // Configure the mock base random access file.
   ExpectedCalls expected_file_calls(
-      {std::make_tuple("Read", errors::Unavailable("Something is wrong")),
-       std::make_tuple("Read", errors::Unavailable("Wrong again")),
+      {std::make_tuple("Read", absl::UnavailableError("Something is wrong")),
+       std::make_tuple("Read", absl::UnavailableError("Wrong again")),
        std::make_tuple("Read", absl::OkStatus())});
   std::unique_ptr<RandomAccessFile> base_file(
       new MockRandomAccessFile(expected_file_calls));
@@ -249,8 +251,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_SuccessWith3rdTry) {
 
   // Retrieve the wrapped random access file.
   std::unique_ptr<RandomAccessFile> random_access_file;
-  TF_EXPECT_OK(
-      fs.NewRandomAccessFile("filename.txt", nullptr, &random_access_file));
+  TF_EXPECT_OK(fs.NewRandomAccessFile("filename.txt", &random_access_file));
 
   // Use it and check the results.
   absl::string_view result;
@@ -276,8 +277,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_AllRetriesFailed) {
 
   // Retrieve the wrapped random access file.
   std::unique_ptr<RandomAccessFile> random_access_file;
-  TF_EXPECT_OK(
-      fs.NewRandomAccessFile("filename.txt", nullptr, &random_access_file));
+  TF_EXPECT_OK(fs.NewRandomAccessFile("filename.txt", &random_access_file));
 
   // Use it and check the results.
   absl::string_view result;
@@ -292,7 +292,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_NoRetriesForSomeErrors) {
   // Configure the mock base random access file.
   ExpectedCalls expected_file_calls({
       std::make_tuple("Read",
-                      errors::FailedPrecondition("Failed precondition")),
+                      absl::FailedPreconditionError("Failed precondition")),
   });
   std::unique_ptr<RandomAccessFile> base_file(
       new MockRandomAccessFile(expected_file_calls));
@@ -308,8 +308,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_NoRetriesForSomeErrors) {
 
   // Retrieve the wrapped random access file.
   std::unique_ptr<RandomAccessFile> random_access_file;
-  TF_EXPECT_OK(
-      fs.NewRandomAccessFile("filename.txt", nullptr, &random_access_file));
+  TF_EXPECT_OK(fs.NewRandomAccessFile("filename.txt", &random_access_file));
 
   // Use it and check the results.
   absl::string_view result;
@@ -339,7 +338,7 @@ TEST(RetryingFileSystemTest, NewWritableFile_ImmediateSuccess) {
 
   // Retrieve the wrapped writable file.
   std::unique_ptr<WritableFile> writable_file;
-  TF_EXPECT_OK(fs.NewWritableFile("filename.txt", nullptr, &writable_file));
+  TF_EXPECT_OK(fs.NewWritableFile("filename.txt", &writable_file));
 
   absl::string_view result;
   TF_EXPECT_OK(writable_file->Name(&result));
@@ -352,8 +351,9 @@ TEST(RetryingFileSystemTest, NewWritableFile_ImmediateSuccess) {
 TEST(RetryingFileSystemTest, NewWritableFile_SuccessWith3rdTry) {
   // Configure the mock base random access file.
   ExpectedCalls expected_file_calls(
-      {std::make_tuple("Sync", errors::Unavailable("Something is wrong")),
-       std::make_tuple("Sync", errors::Unavailable("Something is wrong again")),
+      {std::make_tuple("Sync", absl::UnavailableError("Something is wrong")),
+       std::make_tuple("Sync",
+                       absl::UnavailableError("Something is wrong again")),
        std::make_tuple("Sync", absl::OkStatus()),
        std::make_tuple("Close", absl::OkStatus())});
   std::unique_ptr<WritableFile> base_file(
@@ -370,7 +370,7 @@ TEST(RetryingFileSystemTest, NewWritableFile_SuccessWith3rdTry) {
 
   // Retrieve the wrapped writable file.
   std::unique_ptr<WritableFile> writable_file;
-  TF_EXPECT_OK(fs.NewWritableFile("filename.txt", nullptr, &writable_file));
+  TF_EXPECT_OK(fs.NewWritableFile("filename.txt", &writable_file));
 
   // Use it and check the results.
   TF_EXPECT_OK(writable_file->Sync());
@@ -379,9 +379,9 @@ TEST(RetryingFileSystemTest, NewWritableFile_SuccessWith3rdTry) {
 TEST(RetryingFileSystemTest, NewWritableFile_SuccessWith3rdTry_ViaDestructor) {
   // Configure the mock base random access file.
   ExpectedCalls expected_file_calls(
-      {std::make_tuple("Close", errors::Unavailable("Something is wrong")),
+      {std::make_tuple("Close", absl::UnavailableError("Something is wrong")),
        std::make_tuple("Close",
-                       errors::Unavailable("Something is wrong again")),
+                       absl::UnavailableError("Something is wrong again")),
        std::make_tuple("Close", absl::OkStatus())});
   std::unique_ptr<WritableFile> base_file(
       new MockWritableFile(expected_file_calls));
@@ -397,7 +397,7 @@ TEST(RetryingFileSystemTest, NewWritableFile_SuccessWith3rdTry_ViaDestructor) {
 
   // Retrieve the wrapped writable file.
   std::unique_ptr<WritableFile> writable_file;
-  TF_EXPECT_OK(fs.NewWritableFile("filename.txt", nullptr, &writable_file));
+  TF_EXPECT_OK(fs.NewWritableFile("filename.txt", &writable_file));
 
   writable_file.reset();  // Trigger Close() via destructor.
 }
@@ -405,8 +405,9 @@ TEST(RetryingFileSystemTest, NewWritableFile_SuccessWith3rdTry_ViaDestructor) {
 TEST(RetryingFileSystemTest, NewAppendableFile_SuccessWith3rdTry) {
   // Configure the mock base random access file.
   ExpectedCalls expected_file_calls(
-      {std::make_tuple("Sync", errors::Unavailable("Something is wrong")),
-       std::make_tuple("Sync", errors::Unavailable("Something is wrong again")),
+      {std::make_tuple("Sync", absl::UnavailableError("Something is wrong")),
+       std::make_tuple("Sync",
+                       absl::UnavailableError("Something is wrong again")),
        std::make_tuple("Sync", absl::OkStatus()),
        std::make_tuple("Close", absl::OkStatus())});
   std::unique_ptr<WritableFile> base_file(
@@ -423,7 +424,7 @@ TEST(RetryingFileSystemTest, NewAppendableFile_SuccessWith3rdTry) {
 
   // Retrieve the wrapped appendable file.
   std::unique_ptr<WritableFile> writable_file;
-  TF_EXPECT_OK(fs.NewAppendableFile("filename.txt", nullptr, &writable_file));
+  TF_EXPECT_OK(fs.NewAppendableFile("filename.txt", &writable_file));
 
   // Use it and check the results.
   TF_EXPECT_OK(writable_file->Sync());
@@ -447,7 +448,7 @@ TEST(RetryingFileSystemTest, NewWritableFile_AllRetriesFailed) {
 
   // Retrieve the wrapped writable file.
   std::unique_ptr<WritableFile> writable_file;
-  TF_EXPECT_OK(fs.NewWritableFile("filename.txt", nullptr, &writable_file));
+  TF_EXPECT_OK(fs.NewWritableFile("filename.txt", &writable_file));
 
   // Use it and check the results.
   const auto& status = writable_file->Sync();
@@ -459,7 +460,7 @@ TEST(RetryingFileSystemTest,
      NewReadOnlyMemoryRegionFromFile_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
       {std::make_tuple("NewReadOnlyMemoryRegionFromFile",
-                       errors::Unavailable("Something is wrong")),
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("NewReadOnlyMemoryRegionFromFile", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
@@ -467,8 +468,7 @@ TEST(RetryingFileSystemTest,
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
   std::unique_ptr<ReadOnlyMemoryRegion> result;
-  TF_EXPECT_OK(
-      fs.NewReadOnlyMemoryRegionFromFile("filename.txt", nullptr, &result));
+  TF_EXPECT_OK(fs.NewReadOnlyMemoryRegionFromFile("filename.txt", &result));
 }
 
 TEST(RetryingFileSystemTest, NewReadOnlyMemoryRegionFromFile_AllRetriesFailed) {
@@ -481,7 +481,7 @@ TEST(RetryingFileSystemTest, NewReadOnlyMemoryRegionFromFile_AllRetriesFailed) {
 
   std::unique_ptr<ReadOnlyMemoryRegion> result;
   const auto& status =
-      fs.NewReadOnlyMemoryRegionFromFile("filename.txt", nullptr, &result);
+      fs.NewReadOnlyMemoryRegionFromFile("filename.txt", &result);
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
 }
@@ -489,15 +489,15 @@ TEST(RetryingFileSystemTest, NewReadOnlyMemoryRegionFromFile_AllRetriesFailed) {
 TEST(RetryingFileSystemTest, GetChildren_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
       {std::make_tuple("GetChildren",
-                       errors::Unavailable("Something is wrong")),
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("GetChildren", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  std::vector<string> result;
-  TF_EXPECT_OK(fs.GetChildren("gs://path", nullptr, &result));
+  std::vector<std::string> result;
+  TF_EXPECT_OK(fs.GetChildren("gs://path", &result));
 }
 
 TEST(RetryingFileSystemTest, GetChildren_AllRetriesFailed) {
@@ -507,8 +507,8 @@ TEST(RetryingFileSystemTest, GetChildren_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  std::vector<string> result;
-  const auto& status = fs.GetChildren("gs://path", nullptr, &result);
+  std::vector<std::string> result;
+  const auto& status = fs.GetChildren("gs://path", &result);
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
 }
@@ -516,15 +516,15 @@ TEST(RetryingFileSystemTest, GetChildren_AllRetriesFailed) {
 TEST(RetryingFileSystemTest, GetMatchingPaths_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
       {std::make_tuple("GetMatchingPaths",
-                       errors::Unavailable("Something is wrong")),
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("GetMatchingPaths", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  std::vector<string> result;
-  TF_EXPECT_OK(fs.GetMatchingPaths("gs://path/dir", nullptr, &result));
+  std::vector<std::string> result;
+  TF_EXPECT_OK(fs.GetMatchingPaths("gs://path/dir", &result));
 }
 
 TEST(RetryingFileSystemTest, GetMatchingPaths_AllRetriesFailed) {
@@ -535,22 +535,23 @@ TEST(RetryingFileSystemTest, GetMatchingPaths_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  std::vector<string> result;
-  const auto& status = fs.GetMatchingPaths("gs://path/dir", nullptr, &result);
+  std::vector<std::string> result;
+  const auto& status = fs.GetMatchingPaths("gs://path/dir", &result);
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
 }
 
 TEST(RetryingFileSystemTest, DeleteFile_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
-      {std::make_tuple("DeleteFile", errors::Unavailable("Something is wrong")),
+      {std::make_tuple("DeleteFile",
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("DeleteFile", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  TF_EXPECT_OK(fs.DeleteFile("gs://path/file.txt", nullptr));
+  TF_EXPECT_OK(fs.DeleteFile("gs://path/file.txt"));
 }
 
 TEST(RetryingFileSystemTest, DeleteFile_AllRetriesFailed) {
@@ -560,21 +561,22 @@ TEST(RetryingFileSystemTest, DeleteFile_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  const auto& status = fs.DeleteFile("gs://path/file.txt", nullptr);
+  const auto& status = fs.DeleteFile("gs://path/file.txt");
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
 }
 
 TEST(RetryingFileSystemTest, CreateDir_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
-      {std::make_tuple("CreateDir", errors::Unavailable("Something is wrong")),
+      {std::make_tuple("CreateDir",
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("CreateDir", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  TF_EXPECT_OK(fs.CreateDir("gs://path/newdir", nullptr));
+  TF_EXPECT_OK(fs.CreateDir("gs://path/newdir"));
 }
 
 TEST(RetryingFileSystemTest, CreateDir_AllRetriesFailed) {
@@ -584,21 +586,22 @@ TEST(RetryingFileSystemTest, CreateDir_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  const auto& status = fs.CreateDir("gs://path/newdir", nullptr);
+  const auto& status = fs.CreateDir("gs://path/newdir");
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
 }
 
 TEST(RetryingFileSystemTest, DeleteDir_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
-      {std::make_tuple("DeleteDir", errors::Unavailable("Something is wrong")),
+      {std::make_tuple("DeleteDir",
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("DeleteDir", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  TF_EXPECT_OK(fs.DeleteDir("gs://path/dir", nullptr));
+  TF_EXPECT_OK(fs.DeleteDir("gs://path/dir"));
 }
 
 TEST(RetryingFileSystemTest, DeleteDir_AllRetriesFailed) {
@@ -608,7 +611,7 @@ TEST(RetryingFileSystemTest, DeleteDir_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  const auto& status = fs.DeleteDir("gs://path/dir", nullptr);
+  const auto& status = fs.DeleteDir("gs://path/dir");
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
 }
@@ -616,15 +619,15 @@ TEST(RetryingFileSystemTest, DeleteDir_AllRetriesFailed) {
 TEST(RetryingFileSystemTest, GetFileSize_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
       {std::make_tuple("GetFileSize",
-                       errors::Unavailable("Something is wrong")),
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("GetFileSize", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  uint64 size;
-  TF_EXPECT_OK(fs.GetFileSize("gs://path/file.txt", nullptr, &size));
+  uint64_t size;
+  TF_EXPECT_OK(fs.GetFileSize("gs://path/file.txt", &size));
 }
 
 TEST(RetryingFileSystemTest, GetFileSize_AllRetriesFailed) {
@@ -634,22 +637,23 @@ TEST(RetryingFileSystemTest, GetFileSize_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  uint64 size;
-  const auto& status = fs.GetFileSize("gs://path/file.txt", nullptr, &size);
+  uint64_t size;
+  const auto& status = fs.GetFileSize("gs://path/file.txt", &size);
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
 }
 
 TEST(RetryingFileSystemTest, RenameFile_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
-      {std::make_tuple("RenameFile", errors::Unavailable("Something is wrong")),
+      {std::make_tuple("RenameFile",
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("RenameFile", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  TF_EXPECT_OK(fs.RenameFile("old_name", "new_name", nullptr));
+  TF_EXPECT_OK(fs.RenameFile("old_name", "new_name"));
 }
 
 TEST(RetryingFileSystemTest, RenameFile_AllRetriesFailed) {
@@ -659,14 +663,14 @@ TEST(RetryingFileSystemTest, RenameFile_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  const auto& status = fs.RenameFile("old_name", "new_name", nullptr);
+  const auto& status = fs.RenameFile("old_name", "new_name");
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
 }
 
 TEST(RetryingFileSystemTest, Stat_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
-      {std::make_tuple("Stat", errors::Unavailable("Something is wrong")),
+      {std::make_tuple("Stat", absl::UnavailableError("Something is wrong")),
        std::make_tuple("Stat", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
@@ -674,7 +678,7 @@ TEST(RetryingFileSystemTest, Stat_SuccessWith2ndTry) {
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
   FileStatistics stat;
-  TF_EXPECT_OK(fs.Stat("file_name", nullptr, &stat));
+  TF_EXPECT_OK(fs.Stat("file_name", &stat));
 }
 
 TEST(RetryingFileSystemTest, Stat_AllRetriesFailed) {
@@ -685,7 +689,7 @@ TEST(RetryingFileSystemTest, Stat_AllRetriesFailed) {
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
   FileStatistics stat;
-  const auto& status = fs.Stat("file_name", nullptr, &stat);
+  const auto& status = fs.Stat("file_name", &stat);
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
 }
@@ -697,34 +701,35 @@ TEST(RetryingFileSystemTest, FileExists_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  const auto& status = fs.FileExists("file_name", nullptr);
+  const auto& status = fs.FileExists("file_name");
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
 }
 
 TEST(RetryingFileSystemTest, FileExists_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
-      {std::make_tuple("FileExists", errors::Unavailable("Something is wrong")),
+      {std::make_tuple("FileExists",
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("FileExists", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  TF_EXPECT_OK(fs.FileExists("gs://path/dir", nullptr));
+  TF_EXPECT_OK(fs.FileExists("gs://path/dir"));
 }
 
 TEST(RetryingFileSystemTest, IsDirectory_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
       {std::make_tuple("IsDirectory",
-                       errors::Unavailable("Something is wrong")),
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("IsDirectory", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  TF_EXPECT_OK(fs.IsDirectory("gs://path/dir", nullptr));
+  TF_EXPECT_OK(fs.IsDirectory("gs://path/dir"));
 }
 
 TEST(RetryingFileSystemTest, IsDirectory_AllRetriesFailed) {
@@ -734,7 +739,7 @@ TEST(RetryingFileSystemTest, IsDirectory_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  const auto& status = fs.IsDirectory("gs://path/dir", nullptr);
+  const auto& status = fs.IsDirectory("gs://path/dir");
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
 }
@@ -742,7 +747,7 @@ TEST(RetryingFileSystemTest, IsDirectory_AllRetriesFailed) {
 TEST(RetryingFileSystemTest, DeleteRecursively_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
       {std::make_tuple("DeleteRecursively",
-                       errors::Unavailable("Something is wrong")),
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("DeleteRecursively", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
@@ -750,8 +755,8 @@ TEST(RetryingFileSystemTest, DeleteRecursively_SuccessWith2ndTry) {
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
   int64_t undeleted_files, undeleted_dirs;
 
-  TF_EXPECT_OK(fs.DeleteRecursively("gs://path/dir", nullptr, &undeleted_files,
-                                    &undeleted_dirs));
+  TF_EXPECT_OK(
+      fs.DeleteRecursively("gs://path/dir", &undeleted_files, &undeleted_dirs));
 }
 
 TEST(RetryingFileSystemTest, DeleteRecursively_AllRetriesFailed) {
@@ -763,8 +768,8 @@ TEST(RetryingFileSystemTest, DeleteRecursively_AllRetriesFailed) {
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
   int64_t undeleted_files, undeleted_dirs;
 
-  const auto& status = fs.DeleteRecursively("gs://path/dir", nullptr,
-                                            &undeleted_files, &undeleted_dirs);
+  const auto& status =
+      fs.DeleteRecursively("gs://path/dir", &undeleted_files, &undeleted_dirs);
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
 }
@@ -775,7 +780,7 @@ TEST(RetryingFileSystemTest, FlushCaches) {
   std::unique_ptr<MockFileSystem> base_fs(new MockFileSystem(none, &flushed));
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
-  fs.FlushCaches(nullptr);
+  fs.FlushCaches();
   EXPECT_TRUE(flushed);
 }
 

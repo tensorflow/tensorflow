@@ -20,11 +20,13 @@ limitations under the License.
 
 #include "google/protobuf/descriptor.pb.h"
 #include <gmock/gmock.h>
+#include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/dynamic_message.h"
+#include "google/protobuf/message_lite.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -39,7 +41,8 @@ namespace xla {
 std::unique_ptr<google::protobuf::Message> ProcessNewEnv1(
     std::unique_ptr<google::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment1> env(
-      tensorflow::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
+      google::protobuf::DownCastMessage<test::TestCompilationEnvironment1>(
+          msg.release()));
   if (!env) {
     env = std::make_unique<test::TestCompilationEnvironment1>();
   }
@@ -51,7 +54,8 @@ std::unique_ptr<google::protobuf::Message> ProcessNewEnv1(
 std::unique_ptr<google::protobuf::Message> ProcessNewEnv2(
     std::unique_ptr<google::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment2> env(
-      tensorflow::down_cast<test::TestCompilationEnvironment2*>(msg.release()));
+      google::protobuf::DownCastMessage<test::TestCompilationEnvironment2>(
+          msg.release()));
   if (!env) {
     env = std::make_unique<test::TestCompilationEnvironment2>();
   }
@@ -63,7 +67,8 @@ std::unique_ptr<google::protobuf::Message> ProcessNewEnv2(
 std::unique_ptr<google::protobuf::Message> ProcessNewEnv3(
     std::unique_ptr<google::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment3> env(
-      tensorflow::down_cast<test::TestCompilationEnvironment3*>(msg.release()));
+      google::protobuf::DownCastMessage<test::TestCompilationEnvironment3>(
+          msg.release()));
   if (!env) {
     env = std::make_unique<test::TestCompilationEnvironment3>();
   }

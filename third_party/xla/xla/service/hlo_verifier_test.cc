@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
@@ -1151,6 +1152,59 @@ TEST_F(HloVerifierTestLayoutSensitive,
   ASSERT_TRUE(status.ok());
 }
 
+TEST_F(HloVerifierTestLayoutSensitive,
+       VerifyAsyncStartAliasConfigLayoutMismatch) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32,32]{0,1} parameter(0)
+    ROOT custom-call = (f32[32,32]{1,0}) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32,32]{0,1} parameter(0)
+    async-start = ((f32[32,32]{0,1}), (f32[32,32]{1,0}), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{1, 0}: (0, {})}
+    async-update = ((f32[32,32]{0,1}), (f32[32,32]{1,0}), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32,32]{1,0}) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr(
+          "Different aliasing shapes: f32[32,32]{0,1} vs f32[32,32]{1,0}"));
+}
+
+TEST_F(HloVerifierTestLayoutSensitive,
+       VerifyAsyncStartAliasConfigOperandMatchesButComputationMismatches) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32,32]{0,1} parameter(0)
+    ROOT custom-call = (f32[32,32]{0,1}) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32,32]{1,0} parameter(0)
+    async-start = ((f32[32,32]{1,0}), (f32[32,32]{0,1}), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{0, 0}: (0, {})}
+    async-update = ((f32[32,32]{1,0}), (f32[32,32]{0,1}), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32,32]{0,1}) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("expects the async shape at index {0} to match async "
+                        "computation parameter shape"));
+}
+
 TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongType) {
   const char* const hlo_string = R"(
   HloModule Module
@@ -1166,9 +1220,14 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("async-done expects the shape of output to match the "
-                        "async shape at index {1}"));
+  // The parser updates the async wrapped computation to match `async-done`
+  // (via UpdateAsyncWrappedComputation). Consequently, the verifier now
+  // detects the mismatch at `async-start` (which still has the old shape)
+  // rather than at `async-done`.
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("The async-start expects the async shape at index {1} to match "
+                "the async computation root shape"));
 }
 
 TEST_F(HloVerifierTest, AsyncStartMultipleAsyncDone) {
@@ -1376,9 +1435,11 @@ TEST_F(HloVerifierTest, AsyncOpTupleWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("async-start expects the async shape to be a tuple of "
-                        "at least two elements"));
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("async-start (opcode: async-start) expects the async shape to "
+                "be in the form of "
+                "((op0_shape, op1_shape, ...), output_shape, ...)"));
 }
 
 TEST_F(HloVerifierTest, AsyncStartOperandWrongType) {
@@ -1402,8 +1463,9 @@ TEST_F(HloVerifierTest, AsyncStartOperandWrongType) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              HasSubstr("async-start expects the shape of operand 0 to match "
-                        "the async shape at index {0}"));
+              HasSubstr("async-start (opcode: async-start) expects the shape "
+                        "of operand 0 to match "
+                        "the async shape at index {0, 0}"));
 }
 
 TEST_F(HloVerifierTest, AsyncDoneOutputWrongType) {
@@ -1426,9 +1488,11 @@ TEST_F(HloVerifierTest, AsyncDoneOutputWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("async-done expects the shape of output to match the "
-                        "async shape at index {1}"));
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("async-done (opcode: async-done) expects the shape of output "
+                "to match the "
+                "shape of the second element in the async tuple at index {1}"));
 }
 
 TEST_F(HloVerifierTest, AsyncOpComputationNotTrivial) {
@@ -1854,6 +1918,41 @@ TEST_F(HloVerifierTest, AllReduceDoneWithoutStart) {
   EXPECT_THAT(status.message(),
               HasSubstr("The operand of a all-reduce-done instruction "
                         "needs to be all-reduce-start, found tuple"));
+}
+
+TEST_F(HloVerifierTest, AllGatherStartAndDone) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    start = (f32[2,3], f32[4,3]) all-gather-start(p0), dimensions={0},
+      replica_groups={{0,1}}
+    ROOT done = f32[4,3] all-gather-done(start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+}
+
+TEST_F(HloVerifierTest, AllGatherStartAndMultipleDone) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    start = (f32[2,3], f32[4,3]) all-gather-start(p0), dimensions={0},
+      replica_groups={{0,1}}
+    done1 = f32[4,3] all-gather-done(start)
+    ROOT done2 = f32[4,3] all-gather-done(start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("all-gather-start instruction requires one consumer, found 2"));
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
@@ -4951,6 +5050,108 @@ ENTRY main {
   EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOk());
 }
 
+TEST_F(HloVerifierTest, AllGatherWithUnexpectedTupleOperandShape) {
+  const char* const kHlo = R"(
+  HloModule all_gather_module
+
+  ENTRY main {
+    input = (f32[128,32], f32[128,32]) parameter(0)
+    ROOT all-gather = f32[128,32] all-gather(input),
+      replica_groups={{0,1}}, dimensions={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  absl::Status status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("ag->operand(i)->shape().IsArray()"));
+}
+
+TEST_F(HloVerifierTest, AllGatherWithUnexpectedArrayOutputShape) {
+  const char* const kHlo = R"(
+  HloModule all_gather_module
+
+  ENTRY main {
+    p0 = f32[128,32] parameter(0)
+    p1 = f32[128,32] parameter(1)
+    ROOT all-gather = f32[128,32] all-gather(p0, p1),
+      replica_groups={{0,1}}, dimensions={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  absl::Status status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("ag->shape().IsTuple() && "
+                "ag->operand_count() == ag->shape().tuple_shapes().size()"));
+}
+
+TEST_F(HloVerifierTest, ReduceScatterWithUnexpectedTupleOperandShape) {
+  const char* const kHlo = R"(
+  HloModule reduce_scatter_module
+
+  reduce {
+    p0 = f32[] parameter(0)
+    p1 = f32[] parameter(1)
+    ROOT add = f32[] add(p0, p1)
+  }
+
+  ENTRY main {
+    input = (f32[128,32], f32[128,32]) parameter(0)
+    ROOT reduce-scatter = f32[64,32] reduce-scatter(input),
+      replica_groups={{0,1}}, dimensions={0}, to_apply=reduce
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  absl::Status status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("ars->operand(i)->shape().IsArray()"));
+}
+
+TEST_F(HloVerifierTest, ReduceScatterWithUnexpectedArrayOutputShape) {
+  const char* const kHlo = R"(
+  HloModule reduce_scatter_module
+
+  reduce {
+    p0 = f32[] parameter(0)
+    p1 = f32[] parameter(1)
+    ROOT add = f32[] add(p0, p1)
+  }
+
+  ENTRY main {
+    p0 = f32[128,32] parameter(0)
+    p1 = f32[128,32] parameter(1)
+    ROOT reduce-scatter = f32[64,32] reduce-scatter(p0, p1),
+      replica_groups={{0,1}}, dimensions={0}, to_apply=reduce
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  absl::Status status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("ars->shape().IsTuple() && "
+                "ars->operand_count() == ars->shape().tuple_shapes().size()"));
+}
+
+TEST_F(HloVerifierTest, AllGatherStartWithUnexpectedArrayOutputShape) {
+  const char* const kHlo = R"(
+  HloModule all_gather_module
+
+  ENTRY main {
+    input = f32[128,32] parameter(0)
+    all-gather-start = f32[128,32] all-gather-start(input),
+      replica_groups={{0,1}}, dimensions={0}
+    ROOT all-gather-done = f32[128,32] all-gather-done(all-gather-start)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  absl::Status status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("ag->shape().IsTuple()"));
+}
+
 TEST_F(HloVerifierTest, ScaledDotWithNoScalesFails) {
   static constexpr absl::string_view kScaledDotHloString = R"(
     HloModule module
@@ -5211,12 +5412,347 @@ TEST_F(HloVerifierTest, Scan) {
   ENTRY entry {
     init = f32[2] constant({0, 0})
     input = f32[4,2] parameter(0)
-    ROOT scan = (f32[4,2], f32[2]) scan(input, init), dimensions={0}, is_associative=true, to_apply=add
+    ROOT scan = (f32[4,2], f32[2]) scan(input, init), dimensions={0}, num_carries=1, is_associative=true, to_apply=add
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, ScanWithoutComputationLayout) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  add {
+    lhs = f32[2] parameter(0)
+    rhs = f32[2] parameter(1)
+    add = f32[2] add(lhs, rhs)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    init = f32[2]{0} constant({0, 0})
+    input = f32[4,2]{1,0} parameter(0)
+    ROOT scan = (f32[4,2]{1,0}, f32[2]{0}) scan(input, init), dimensions={0}, num_carries=1, is_associative=true, to_apply=add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTestLayoutSensitive,
+       NonAssociativeScanRejectedInLayoutSensitiveMode) {
+  // Non-associative scans must be expanded into while loops by ScanExpander
+  // before the layout-sensitive verifier runs. If one survives that far, the
+  // verifier should reject it with a clear error rather than silently
+  // ignoring layouts on its to_apply parameters.
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  add {
+    lhs = f32[2] parameter(0)
+    rhs = f32[2] parameter(1)
+    add = f32[2] add(lhs, rhs)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    init = f32[2]{0} constant({0, 0})
+    input = f32[4,2]{1,0} parameter(0)
+    ROOT scan = (f32[4,2]{1,0}, f32[2]{0}) scan(input, init), dimensions={0}, num_carries=1, is_associative=false, to_apply=add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Non-associative scan reached layout-sensitive "
+                        "HloVerifier"));
+  EXPECT_THAT(status.message(), HasSubstr("ScanExpander"));
+}
+
+TEST_F(HloVerifierTest, NonAssociativeScanAllowedInLayoutInsensitiveMode) {
+  // The default (layout-insensitive) verifier still accepts non-associative
+  // scans -- ScanExpander only needs to have run by the time we are
+  // layout-sensitive, not before every verifier invocation.
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  add {
+    lhs = f32[2] parameter(0)
+    rhs = f32[2] parameter(1)
+    add = f32[2] add(lhs, rhs)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    init = f32[2] constant({0, 0})
+    input = f32[4,2] parameter(0)
+    ROOT scan = (f32[4,2], f32[2]) scan(input, init), dimensions={0}, num_carries=1, is_associative=false, to_apply=add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncStartOutputToOperandAliasing) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32] parameter(0)
+    ROOT custom-call = (f32[32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32] parameter(0)
+    async-start = ((f32[32]), (f32[32]), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{0, 0}: (0, {})}
+    async-update = ((f32[32]), (f32[32]), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32]) async-done(async-update)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigOutofBoundsOperandNumber) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32] parameter(0)
+    ROOT custom-call = (f32[32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32] parameter(0)
+    async-start = ((f32[32]), (f32[32]), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{0, 0}: (5, {})}
+    async-update = ((f32[32]), (f32[32]), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32]) async-done(async-update)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("Operand number 5 in aliasing config is out of bounds."));
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigNegativeOperandNumber) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32] parameter(0)
+    ROOT custom-call = (f32[32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32] parameter(0)
+    async-start = ((f32[32]), (f32[32]), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{0, 0}: (-1, {})}
+    async-update = ((f32[32]), (f32[32]), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32]) async-done(async-update)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Negative operand number in aliasing config."));
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigOutputIndexEmpty) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32] parameter(0)
+    ROOT custom-call = (f32[32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32] parameter(0)
+    async-start = ((f32[32]), (f32[32]), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{}: (0, {})}
+    async-update = ((f32[32]), (f32[32]), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32]) async-done(async-update)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Output index should not be empty."));
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigInvalidShapeIndex) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32] parameter(0)
+    ROOT custom-call = (f32[32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32] parameter(0)
+    async-start = ((f32[32]), (f32[32]), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{5}: (0, {})}
+    async-update = ((f32[32]), (f32[32]), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32]) async-done(async-update)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Invalid aliasing output shape index."));
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigInvalidOperandShapeIndex) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32] parameter(0)
+    ROOT custom-call = (f32[32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32] parameter(0)
+    async-start = ((f32[32]), (f32[32]), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{0, 0}: (0, {0})}
+    async-update = ((f32[32]), (f32[32]), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32]) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Invalid aliasing operand shape index."));
+}
+
+TEST_F(HloVerifierTest,
+       VerifyAsyncStartAliasConfigDifferentOperandOutputShapes) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[64] parameter(0)
+    ROOT custom-call = (f32[32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[64] parameter(0)
+    async-start = ((f32[64]), (f32[32]), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{1, 0}: (0, {})}
+    async-update = ((f32[64]), (f32[32]), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32]) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Different aliasing shapes: f32[64]{0} vs f32[32]{0}"));
+}
+
+TEST_F(HloVerifierTest,
+       VerifyAsyncStartAliasConfigLayoutMismatchAllowedWhenInsensitive) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32,32]{0,1} parameter(0)
+    ROOT custom-call = (f32[32,32]{1,0}) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32,32]{0,1} parameter(0)
+    async-start = ((f32[32,32]{0,1}), (f32[32,32]{1,0}), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{1, 0}: (0, {})}
+    async-update = ((f32[32,32]{0,1}), (f32[32,32]{1,0}), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32,32]{1,0}) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, RejectsGetRngSeedWithOperand) {
+  const char* const hlo_string = R"(
+    HloModule test
+    ENTRY entry {
+      constant = u32[] constant(1)
+      ROOT call = u32[] custom-call(constant), custom_call_target="GetRngSeed"
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_THAT(
+      verifier().Run(module.get()),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr("must have 0 operands")));
+}
+
+TEST_F(HloVerifierTest, RejectsGetRngSeedWithNonU64Shape) {
+  const char* const hlo_string = R"(
+    HloModule test
+    ENTRY entry {
+      ROOT call = f32[] custom-call(), custom_call_target="GetRngSeed"
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_THAT(
+      verifier().Run(module.get()),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr("must return U64 type")));
+}
+
+TEST_F(HloVerifierTest, RejectsGetRngSeedWithU32Shape) {
+  const char* const hlo_string = R"(
+    HloModule test
+    ENTRY entry {
+      ROOT call = u32[] custom-call(), custom_call_target="GetRngSeed"
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_THAT(
+      verifier().Run(module.get()),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr("must return U64 type")));
+}
+
+TEST_F(HloVerifierTest, RejectsMismatchedOriginalValueTupleStructure) {
+  HloComputation::Builder builder(TestName());
+  const Shape shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {}), ShapeUtil::MakeShape(F32, {})});
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  auto module = CreateUnverifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  // Set original_value with a different shape structure.
+  const Shape different_shape = ShapeUtil::MakeShape(F32, {});
+  auto original_value = std::make_shared<OriginalValue>(different_shape);
+  param->set_original_value(original_value);
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("Mismatched tuple structure in shape and original value"));
+  EXPECT_THAT(status.message(), HasSubstr("Module: module"));
+  EXPECT_THAT(status.message(),
+              HasSubstr("Instruction: %param = (f32[], f32[]) parameter(0), "
+                        "origin={{}}"));
 }
 
 }  // namespace

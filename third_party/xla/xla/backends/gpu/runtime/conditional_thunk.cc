@@ -23,7 +23,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/functional/function_ref.h"
 #include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -32,56 +31,143 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
-#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
-ConditionalThunk::ConditionalThunk(
-    ThunkInfo thunk_info, const ShapedSlice& branch_index_buffer_index,
-    std::vector<std::unique_ptr<SequentialThunk>>&& branch_thunks)
-    : Thunk(Kind::kConditional, thunk_info),
+namespace {
+
+// Create a callback to create a command buffer from a command sequence.
+se::CommandBuffer::CreateCommands CreateCommands(
+    const CommandExecutor* commands, const Thunk::ExecuteParams* execute_params,
+    const Command::RecordParams* record_params) {
+  return [=](se::CommandBuffer* command_buffer,
+             absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+    return commands->RecordCreate(*execute_params, *record_params,
+                                  command_buffer, dependencies);
+  };
+}
+
+// Create callbacks to create command buffers from command sequences.
+std::vector<se::CommandBuffer::CreateCommands> CreateCommands(
+    absl::Span<const CommandExecutor> commands,
+    const Thunk::ExecuteParams* execute_params,
+    const Command::RecordParams* record_params) {
+  std::vector<se::CommandBuffer::CreateCommands> create_commands;
+  create_commands.reserve(commands.size());
+  for (const CommandExecutor& cmd : commands) {
+    create_commands.push_back(
+        CreateCommands(&cmd, execute_params, record_params));
+  }
+  return create_commands;
+}
+
+// Create a callback to update a command buffer with a command sequence.
+se::CommandBuffer::UpdateCommands UpdateCommands(
+    const CommandExecutor* commands, const Thunk::ExecuteParams* execute_params,
+    const Command::RecordParams* record_params) {
+  return [=](se::CommandBuffer* command_buffer) {
+    return commands->RecordUpdate(*execute_params, *record_params,
+                                  command_buffer);
+  };
+}
+
+// Create callbacks to update command buffers with command sequences.
+std::vector<se::CommandBuffer::UpdateCommands> UpdateCommands(
+    absl::Span<const CommandExecutor> commands,
+    const Thunk::ExecuteParams* execute_params,
+    const Command::RecordParams* record_params) {
+  std::vector<se::CommandBuffer::UpdateCommands> update_commands;
+  update_commands.reserve(commands.size());
+  for (const CommandExecutor& cmd : commands) {
+    update_commands.push_back(
+        UpdateCommands(&cmd, execute_params, record_params));
+  }
+  return update_commands;
+}
+
+using CreateCommand =
+    absl::FunctionRef<absl::StatusOr<const se::CommandBuffer::Command*>(
+        absl::Span<const se::CommandBuffer::Command* const> dependencies)>;
+
+using UpdateCommand =
+    absl::FunctionRef<absl::Status(const se::CommandBuffer::Command* command)>;
+
+absl::StatusOr<const se::CommandBuffer::Command*> HandleRecordAction(
+    Command::RecordAction action, CreateCommand create_command,
+    UpdateCommand update_command) {
+  if (auto* create = std::get_if<Command::RecordCreate>(&action)) {
+    return create_command(create->dependencies);
+  }
+
+  if (auto* update = std::get_if<Command::RecordUpdate>(&action)) {
+    RETURN_IF_ERROR(update_command(update->command));
+    return update->command;
+  }
+
+  return Internal("Invalid record action");
+}
+
+}  // namespace
+
+ConditionalThunk::ConditionalThunk(ThunkInfo thunk_info,
+                                   const ShapedSlice& branch_index_buffer_index,
+                                   std::vector<ThunkSequence> branch_thunks)
+    : Command(Kind::kConditional, std::move(thunk_info)),
       branch_index_buffer_index_(branch_index_buffer_index),
-      branch_thunks_(std::move(branch_thunks)),
       branch_index_is_bool_(branch_index_buffer_index.shape.element_type() ==
                             PRED) {
   PrimitiveType element_type = branch_index_buffer_index.shape.element_type();
   CHECK(element_type == PRED || element_type == S32);
   CHECK_EQ(branch_index_buffer_index.shape.dimensions(),
            std::vector<int64_t>{});
+
+  for (auto& branch_thunks : branch_thunks) {
+    branch_executors_.push_back(ThunkExecutor(std::move(branch_thunks)));
+  }
 }
 
 absl::Status ConditionalThunk::Prepare(const PrepareParams& params) {
   if (branch_index_is_bool_) {
-    TF_RET_CHECK(branch_thunks_.size() == 2);
+    TF_RET_CHECK(branch_executors_.size() == 2);
   } else {
-    TF_RET_CHECK(!branch_thunks_.empty());
+    TF_RET_CHECK(!branch_executors_.empty());
   }
-  for (auto& branch_thunk : branch_thunks_) {
-    TF_RETURN_IF_ERROR(branch_thunk->Prepare(params));
+  for (auto& branch_executor : branch_executors_) {
+    RETURN_IF_ERROR(branch_executor.Prepare(params));
+  }
+  if (command_branch_executors_.has_value()) {
+    for (CommandExecutor& branch_executor : *command_branch_executors_) {
+      RETURN_IF_ERROR(branch_executor.Prepare(params));
+    }
   }
   return absl::OkStatus();
 }
 
 absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
   if (branch_index_is_bool_) {
-    TF_RET_CHECK(branch_thunks_.size() == 2);
+    TF_RET_CHECK(branch_executors_.size() == 2);
   } else {
-    TF_RET_CHECK(!branch_thunks_.empty());
+    TF_RET_CHECK(!branch_executors_.empty());
   }
-  for (auto& branch_thunk : branch_thunks_) {
-    TF_RETURN_IF_ERROR(branch_thunk->Initialize(params));
+  for (auto& branch_executor : branch_executors_) {
+    RETURN_IF_ERROR(branch_executor.Initialize(params));
+  }
+  if (command_branch_executors_.has_value()) {
+    for (CommandExecutor& branch_executor : *command_branch_executors_) {
+      RETURN_IF_ERROR(branch_executor.Initialize(params));
+    }
   }
 
   absl::MutexLock lock(mutex_);
@@ -89,11 +175,69 @@ absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
   if (!host_memory_pools_.contains(params.executor)) {
     PrimitiveType type =
         branch_index_is_bool_ ? PrimitiveType::PRED : PrimitiveType::S32;
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HostMemoryPool> pool,
-                        HostMemoryPool::Create(params.executor, type));
+    ASSIGN_OR_RETURN(std::unique_ptr<HostMemoryPool> pool,
+                     HostMemoryPool::Create(params.executor, type));
     host_memory_pools_[params.executor] = std::move(pool);
   }
 
+  return absl::OkStatus();
+}
+
+absl::StatusOr<const se::CommandBuffer::Command*> ConditionalThunk::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, RecordAction record_action,
+    se::CommandBuffer* command_buffer) {
+  if (!command_branch_executors_.has_value()) {
+    return FailedPrecondition(
+        "ConditionalThunk command-buffer branches are not initialized");
+  }
+
+  se::DeviceAddressBase branch_index =
+      execute_params.buffer_allocations->GetDeviceAddress(
+          branch_index_buffer_index_.slice);
+
+  VLOG(5) << "ConditionalThunk::Record:";
+  VLOG(5) << "  branch_index: " << branch_index_buffer_index_ << " ("
+          << branch_index.opaque() << ")";
+
+  absl::Span<const CommandExecutor> command_branches =
+      absl::MakeConstSpan(*command_branch_executors_);
+
+  return HandleRecordAction(
+      std::move(record_action),
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+        if (branch_index_is_bool_) {
+          return command_buffer->CreateCase(
+              se::DeviceAddress<bool>(branch_index),
+              CreateCommands(command_branches, &execute_params, &record_params),
+              dependencies);
+        }
+        return command_buffer->CreateCase(
+            se::DeviceAddress<int32_t>(branch_index),
+            CreateCommands(command_branches, &execute_params, &record_params),
+            dependencies);
+      },
+      [&](const se::CommandBuffer::Command* command) {
+        if (branch_index_is_bool_) {
+          return command_buffer->UpdateCase(
+              command, se::DeviceAddress<bool>(branch_index),
+              UpdateCommands(command_branches, &execute_params,
+                             &record_params));
+        }
+        return command_buffer->UpdateCase(
+            command, se::DeviceAddress<int32_t>(branch_index),
+            UpdateCommands(command_branches, &execute_params, &record_params));
+      });
+}
+
+absl::Status ConditionalThunk::SetOrUpdateCommandBufferBranchExecutors(
+    std::vector<CommandExecutor> branch_executors) {
+  if (branch_index_is_bool_) {
+    TF_RET_CHECK(branch_executors.size() == 2);
+  } else {
+    TF_RET_CHECK(!branch_executors.empty());
+  }
+  command_branch_executors_ = std::move(branch_executors);
   return absl::OkStatus();
 }
 
@@ -105,7 +249,7 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
     absl::MutexLock lock(mutex_);
     pool = host_memory_pools_.at(stream.parent()).get();
   }
-  TF_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
+  ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
 
   // Copy the predicate value from device.
   auto branch_index_or_pred = [&]() -> std::variant<int32_t*, bool*> {
@@ -119,11 +263,11 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
       params.buffer_allocations->GetDeviceAddress(
           branch_index_buffer_index_.slice);
   if (branch_index_is_bool_) {
-    TF_RETURN_IF_ERROR(stream.Memcpy(std::get<bool*>(branch_index_or_pred),
-                                     branch_index_address, sizeof(bool)));
+    RETURN_IF_ERROR(stream.Memcpy(std::get<bool*>(branch_index_or_pred),
+                                  branch_index_address, sizeof(bool)));
   } else {
-    TF_RETURN_IF_ERROR(stream.Memcpy(std::get<int32_t*>(branch_index_or_pred),
-                                     branch_index_address, sizeof(int32_t)));
+    RETURN_IF_ERROR(stream.Memcpy(std::get<int32_t*>(branch_index_or_pred),
+                                  branch_index_address, sizeof(int32_t)));
   }
 
   if (absl::Status blocked = stream.BlockHostUntilDone(); !blocked.ok()) {
@@ -145,41 +289,36 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
           << " (kind: " << branch_kind << ")";
 
   // Handle default scenario for branch_index not in [0, num_branches).
-  if (branch_index < 0 || branch_index >= branch_thunks_.size()) {
-    branch_index = static_cast<int32_t>(branch_thunks_.size()) - 1;
+  if (branch_index < 0 || branch_index >= branch_executors_.size()) {
+    branch_index = static_cast<int32_t>(branch_executors_.size()) - 1;
   }
 
   // Execute the branch computation corresponding to the value of branch_index.
-  TF_RETURN_IF_ERROR(branch_thunks_[branch_index]->ExecuteOnStream(params));
+  RETURN_IF_ERROR(branch_executors_[branch_index].ExecuteOnStream(params));
 
   return absl::OkStatus();
 }
 
-void ConditionalThunk::ForAllThunks(
-    absl::FunctionRef<void(const Thunk*)> fn) const {
-  fn(this);
-  for (const std::unique_ptr<SequentialThunk>& branch_thunk : branch_thunks_) {
-    branch_thunk->ForAllThunks(fn);
+absl::Status ConditionalThunk::WalkNested(Walker callback) {
+  for (ThunkExecutor& branch_executor : branch_executors_) {
+    RETURN_IF_ERROR(branch_executor.thunks().WalkNested(callback));
   }
+  return absl::OkStatus();
 }
 
-void ConditionalThunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
-  fn(this);
-  for (const std::unique_ptr<SequentialThunk>& branch_thunk : branch_thunks_) {
-    branch_thunk->ForAllThunksMutable(fn);
+absl::Status ConditionalThunk::WalkNestedCommands(CommandWalker callback) {
+  if (!command_branch_executors_.has_value()) {
+    return absl::OkStatus();
   }
+  for (CommandExecutor& branch_executor : *command_branch_executors_) {
+    RETURN_IF_ERROR(branch_executor.Walk(callback));
+  }
+  return absl::OkStatus();
 }
 
-absl::Status ConditionalThunk::TransformAllNestedThunks(
-    absl::FunctionRef<
-        absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
-        fn) {
-  for (std::unique_ptr<SequentialThunk>& branch_thunk : branch_thunks_) {
-    TF_RETURN_IF_ERROR(branch_thunk->TransformAllNestedThunks(fn));
-
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk,
-                        fn(std::move(branch_thunk)));
-    branch_thunk = SequentialThunk::FromThunk(std::move(thunk));
+absl::Status ConditionalThunk::TransformNested(Transformer callback) {
+  for (ThunkExecutor& branch_executor : branch_executors_) {
+    RETURN_IF_ERROR(branch_executor.thunks().TransformNested(callback));
   }
   return absl::OkStatus();
 }
@@ -189,13 +328,16 @@ absl::StatusOr<ThunkProto> ConditionalThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   auto* conditional_thunk_proto = proto.mutable_conditional_thunk();
-  TF_ASSIGN_OR_RETURN(*conditional_thunk_proto->mutable_branch_index_buffer(),
-                      branch_index_buffer_index_.ToProto());
+  ASSIGN_OR_RETURN(*conditional_thunk_proto->mutable_branch_index_buffer(),
+                   branch_index_buffer_index_.ToProto());
 
-  for (const auto& seq_thunk : branch_thunks_) {
-    TF_ASSIGN_OR_RETURN(ThunkProto seq_thunk_proto, seq_thunk->ToProto());
+  for (const ThunkExecutor& branch_executor : branch_executors_) {
+    ThunkSequenceProto thunk_sequence_proto;
+    for (const std::unique_ptr<Thunk>& thunk : branch_executor.thunks()) {
+      ASSIGN_OR_RETURN(*thunk_sequence_proto.add_thunks(), thunk->ToProto());
+    }
     *conditional_thunk_proto->add_branch_thunks() =
-        std::move(seq_thunk_proto).sequential_thunk();
+        std::move(thunk_sequence_proto);
   }
   return proto;
 }
@@ -204,17 +346,19 @@ absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::FromProto(
     ThunkInfo thunk_info, const ConditionalThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
     const Deserializer& deserializer) {
-  TF_ASSIGN_OR_RETURN(ShapedSlice branch_index_buffer_index,
-                      ShapedSlice::FromProto(thunk_proto.branch_index_buffer(),
-                                             buffer_allocations));
+  ASSIGN_OR_RETURN(ShapedSlice branch_index_buffer_index,
+                   ShapedSlice::FromProto(thunk_proto.branch_index_buffer(),
+                                          buffer_allocations));
 
-  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
+  std::vector<ThunkSequence> branch_thunks;
   branch_thunks.reserve(thunk_proto.branch_thunks_size());
-  for (const auto& seq_thunk_proto : thunk_proto.branch_thunks()) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<SequentialThunk> seq_thunk,
-        SequentialThunk::FromProto(thunk_info, seq_thunk_proto, deserializer));
-    branch_thunks.push_back(std::move(seq_thunk));
+  for (const auto& thunk_sequence_proto : thunk_proto.branch_thunks()) {
+    ThunkSequence thunks;
+    for (const auto& proto : thunk_sequence_proto.thunks()) {
+      ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk, deserializer(proto));
+      thunks.push_back(std::move(thunk));
+    }
+    branch_thunks.push_back(std::move(thunks));
   }
   return std::make_unique<ConditionalThunk>(std::move(thunk_info),
                                             branch_index_buffer_index,
@@ -226,19 +370,18 @@ std::string ConditionalThunk::ToString(int indent) const {
   std::string result;
   absl::StrAppend(&result, indent_str, "\n");
   if (branch_index_is_bool_) {
-    CHECK_EQ(branch_thunks_.size(), 2);
+    CHECK_EQ(branch_executors_.size(), 2);
     absl::StrAppend(&result, indent_str, "false_branch:\n",
-                    branch_thunks_[0]->ToString(indent + 1));
+                    branch_executors_[0].thunks().ToString(indent + 1));
     absl::StrAppend(&result, indent_str, "true_branch:\n",
-                    branch_thunks_[1]->ToString(indent + 1));
+                    branch_executors_[1].thunks().ToString(indent + 1));
   } else {
-    for (size_t i = 0; i < branch_thunks_.size(); ++i) {
+    for (size_t i = 0; i < branch_executors_.size(); ++i) {
       absl::StrAppend(&result, indent_str, "branch_", i, ":\n",
-                      branch_thunks_[i]->ToString(indent + 1));
+                      branch_executors_[i].thunks().ToString(indent + 1));
     }
   }
   return result;
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

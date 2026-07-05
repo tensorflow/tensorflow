@@ -1,5 +1,6 @@
 // RUN: ifrt-opt %s -ifrt-to-outlined-atom-programs-pipeline -ifrt-populate-atom-program-metadata-pipeline -ifrt-outlined-atom-programs-to-compiled-pipeline='platform_names=tpu:8' -split-input-file | FileCheck %s
 
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @call_hlo
 module @call_hlo {
   func.func @main(%arg0: !ifrt.array<tensor<2x2xi32>,
@@ -19,8 +20,8 @@ module @call_hlo {
   }
 
   // CHECK: ifrt.LoadedExecutable @[[EXEC_NAME]] on devices [0, 1]
-  // CHECK: (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>)
-  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+  // CHECK: (!ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>)
+  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = mhlo.constant dense<1> : tensor<2x2xi32>
     %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
@@ -34,6 +35,7 @@ module @call_hlo {
                       [0,1]>
 !array2 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
                       [4,5]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @call_hlo_different_meshes
 module @call_hlo_different_meshes {
   func.func @main(%arg0: !array1, %arg1: !array2) -> (!array1, !array2)
@@ -51,11 +53,11 @@ module @call_hlo_different_meshes {
   }
 
   // CHECK: ifrt.LoadedExecutable @[[EXEC2]] on devices [4, 5]
-  // CHECK: : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [4, 5]>)
-  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [4, 5]>
+  // CHECK: : (!ifrt.array<tensor<2x2xi32>, #sp, [4, 5]>)
+  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #sp, [4, 5]>
   // CHECK: ifrt.LoadedExecutable @[[EXEC1]] on devices [0, 1]
-  // CHECK: : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>)
-  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+  // CHECK: : (!ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>)
+  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = mhlo.constant dense<1> : tensor<2x2xi32>
     %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
@@ -131,6 +133,7 @@ module @ctrl_dep_doesnt_generate_new_executable {
 // -----
 
 !array = !ifrt.array<tensor<i32>, #ifrt.sharding_param< to [0] on 2>, [0, 1]>
+// CHECK: #sp = #ifrt.sharding_param< to [0] on 2>
 // CHECK-LABEL: @unused_argument
 module @unused_argument {
   func.func public @main(%arg0: !array, %arg1: !array) -> (!array)
@@ -143,8 +146,8 @@ module @unused_argument {
   }
 
   // CHECK: ifrt.LoadedExecutable @[[EXEC_NAME]] on devices [0, 1]
-  // CHECK: : (!ifrt.array<tensor<i32>, #ifrt.sharding_param< to [0] on 2>, [0, 1]>)
-  // CHECK: -> !ifrt.array<tensor<i32>, #ifrt.sharding_param< to [0] on 2>, [0, 1]>
+  // CHECK: : (!ifrt.array<tensor<i32>, #sp, [0, 1]>)
+  // CHECK: -> !ifrt.array<tensor<i32>, #sp, [0, 1]>
   func.func @add_one(%arg0: tensor<i32>) -> tensor<i32> {
     %0 = mhlo.constant dense<1> : tensor<i32>
     %1 = mhlo.add %arg0, %0 : tensor<i32>
@@ -160,6 +163,7 @@ module @unused_argument {
                              #ifrt.sharding_param<1x1 to [0] on 2>, [4, 5]>
 !arr_on_mesh_2 = !ifrt.array<tensor<1x8xf32>,
                              #ifrt.sharding_param<1x1 to [0] on 2>, [6, 7]>
+// CHECK: #sp = #ifrt.sharding_param<1x1 to [0] on 2>
 // CHECK-LABEL: @copy_multiple_meshes
 module @copy_multiple_meshes {
   func.func public @main(%arg0: !arr_on_mesh_0,
@@ -168,23 +172,23 @@ module @copy_multiple_meshes {
                          %arg3: !arr_on_mesh_2)
       -> (!arr_on_mesh_0, !arr_on_mesh_1, !arr_on_mesh_2) attributes {ifrt.function} {
     // CHECK: %[[COPIED_0:.+]], %{{.+}} = ifrt.CopyArrays(%arg1)
-    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>
+    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #sp, [0, 1]>
     %0, %ctrl_0 = ifrt.CopyArrays(%arg1) : (!arr_on_mesh_1) -> !arr_on_mesh_0
     // CHECK: %[[COPIED_1:.+]]:2, %{{.+}} = ifrt.CopyArrays(%arg2, %arg3)
-    // CHECK: -> (!ifrt.array<tensor<1x8xf32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>, !ifrt.array<tensor<1x8xf32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>)
+    // CHECK: -> (!ifrt.array<tensor<1x8xf32>, #sp, [0, 1]>, !ifrt.array<tensor<1x8xf32>, #sp, [0, 1]>)
     %1, %2, %ctrl_1 = ifrt.CopyArrays(%arg2, %arg3)
         : (!arr_on_mesh_2, !arr_on_mesh_2) -> (!arr_on_mesh_0, !arr_on_mesh_0)
     // CHECK: %[[OUT:.+]], %[[CTRL_OUT:.+]] = ifrt.CallLoadedExecutable @[[EXEC_NAME:.+]](%arg0, %[[COPIED_0]], %[[COPIED_1]]#0, %[[COPIED_1]]#1)
-    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>
+    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #sp, [0, 1]>
     %outputs, %control_output = ifrt.Call @outer(%arg0, %0, %1, %2)
         on devices [0, 1] {ifrt.local_view}
         : (!arr_on_mesh_0, !arr_on_mesh_0, !arr_on_mesh_0, !arr_on_mesh_0)
         -> !arr_on_mesh_0
     // CHECK: %[[COPIED_3:.+]], %{{.+}} = ifrt.CopyArrays(%[[OUT]])
-    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #ifrt.sharding_param<1x1 to [0] on 2>, [4, 5]>
+    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #sp, [4, 5]>
     %3, %ctrl_3 = ifrt.CopyArrays(%outputs) : (!arr_on_mesh_0) -> !arr_on_mesh_1
     // CHECK: %[[COPIED_4:.+]], %{{.+}} = ifrt.CopyArrays(%[[OUT]])
-    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #ifrt.sharding_param<1x1 to [0] on 2>, [6, 7]>
+    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #sp, [6, 7]>
     %4, %ctrl_4 = ifrt.CopyArrays(%outputs) : (!arr_on_mesh_0) -> !arr_on_mesh_2
     // CHECK: return %[[OUT]], %[[COPIED_3]], %[[COPIED_4]]
     return %outputs, %3, %4 : !arr_on_mesh_0, !arr_on_mesh_1, !arr_on_mesh_2
@@ -214,6 +218,8 @@ module @copy_multiple_meshes {
                              #ifrt.sharding_param<2x1 to [0] on 2>, [4, 5]>
 !arr_on_mesh_2 = !ifrt.array<tensor<1x8xf32>,
                              #ifrt.sharding_param<2x1 to [0] on 2>, [6, 7]>
+// CHECK: #sp = #ifrt.sharding_param<1x1 to [0] on 2>
+// CHECK: #sp1 = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @reshard_multiple_meshes
 module @reshard_multiple_meshes {
   func.func public @main(%arg0: !arr_on_mesh_0,
@@ -222,23 +228,23 @@ module @reshard_multiple_meshes {
                          %arg3: !arr_on_mesh_2)
       -> (!arr_on_mesh_0, !arr_on_mesh_1, !arr_on_mesh_2) attributes {ifrt.function} {
     // CHECK: %[[RESHARDED_0:.+]], %{{.+}} = ifrt.CallLoadedExecutable @[[RESHARD_1:.+]](%arg1)
-    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>
+    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #sp, [0, 1]>
     %0, %ctrl_0 = ifrt.Reshard(%arg1) : (!arr_on_mesh_1) -> !arr_on_mesh_0
     // CHECK: %[[RESHARDED_1:.+]]:2, %{{.+}} = ifrt.CallLoadedExecutable @[[RESHARD_2:.+]](%arg2, %arg3)
-    // CHECK: -> (!ifrt.array<tensor<1x8xf32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>, !ifrt.array<tensor<1x8xf32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>)
+    // CHECK: -> (!ifrt.array<tensor<1x8xf32>, #sp, [0, 1]>, !ifrt.array<tensor<1x8xf32>, #sp, [0, 1]>)
     %1, %2, %ctrl_1 = ifrt.Reshard(%arg2, %arg3)
         : (!arr_on_mesh_2, !arr_on_mesh_2) -> (!arr_on_mesh_0, !arr_on_mesh_0)
     // CHECK: %[[OUT:.+]], %[[CTRL_OUT:.+]] = ifrt.CallLoadedExecutable @[[EXEC_NAME:.+]](%arg0, %[[RESHARDED_0]], %[[RESHARDED_1]]#0, %[[RESHARDED_1]]#1)
-    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>
+    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #sp, [0, 1]>
     %outputs, %control_output = ifrt.Call @outer(%arg0, %0, %1, %2)
         on devices [0, 1] {ifrt.local_view}
         : (!arr_on_mesh_0, !arr_on_mesh_0, !arr_on_mesh_0, !arr_on_mesh_0)
         -> !arr_on_mesh_0
     // CHECK: %[[RESHARDED_2:.+]], %{{.+}} = ifrt.CallLoadedExecutable @[[RESHARD_2:.+]](%[[OUT]])
-    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #ifrt.sharding_param<2x1 to [0] on 2>, [4, 5]>
+    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #sp1, [4, 5]>
     %3, %ctrl_3 = ifrt.Reshard(%outputs) : (!arr_on_mesh_0) -> !arr_on_mesh_1
     // CHECK: %[[RESHARDED_3:.+]], %{{.+}} = ifrt.CallLoadedExecutable @[[RESHARD_3:.+]](%[[OUT]])
-    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #ifrt.sharding_param<2x1 to [0] on 2>, [6, 7]>
+    // CHECK: -> !ifrt.array<tensor<1x8xf32>, #sp1, [6, 7]>
     %4, %ctrl_4 = ifrt.Reshard(%outputs) : (!arr_on_mesh_0) -> !arr_on_mesh_2
     // CHECK: return %[[OUT]], %[[RESHARDED_2]], %[[RESHARDED_3]]
     return %outputs, %3, %4 : !arr_on_mesh_0, !arr_on_mesh_1, !arr_on_mesh_2

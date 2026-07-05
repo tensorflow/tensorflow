@@ -58,7 +58,9 @@ struct GpuClientOptions {
 
   bool use_tfrt_gpu_client = false;
 
-  int max_inflight_computations = 8;
+  std::optional<bool> use_async_dispatch;
+
+  std::optional<int> max_inflight_computations = 32;
 };
 
 }  //  namespace xla

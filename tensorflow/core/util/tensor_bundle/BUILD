@@ -21,19 +21,28 @@ package(
 filegroup(
     name = "mobile_srcs",
     srcs = [
-        "byte_swap_array.h",
         "byte_swap_tensor.cc",
-        "byte_swap_tensor.h",
         "naming.cc",
-        "naming.h",
         "tensor_bundle.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs",
+    srcs = [
+        "byte_swap_array.h",
+        "byte_swap_tensor.h",
+        "naming.h",
         "tensor_bundle.h",
     ],
 )
 
-alias(
+filegroup(
     name = "android_srcs",
-    actual = ":mobile_srcs",
+    srcs = [
+        ":mobile_hdrs",
+        ":mobile_srcs",
+    ],
 )
 
 cc_library(
@@ -81,6 +90,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

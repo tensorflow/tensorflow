@@ -28,7 +28,7 @@ class NotDifferentiableGradientFunction : public GradientFunction {
 };
 // Shorthand for registry->Register(op, new NotDifferentiableGradientFunction)
 absl::Status RegisterNotDifferentiable(GradientRegistry* registry,
-                                       const string& op);
+                                       const std::string& op);
 }  // namespace gradients
 }  // namespace tensorflow
 

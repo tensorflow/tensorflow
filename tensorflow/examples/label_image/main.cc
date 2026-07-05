@@ -46,6 +46,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/cc/framework/ops.h"
@@ -94,8 +95,8 @@ Status ReadLabelsFile(const string& file_name, std::vector<string>* result,
                       size_t* found_label_count) {
   std::ifstream file(file_name);
   if (!file) {
-    return tensorflow::errors::NotFound("Labels file ", file_name,
-                                        " not found.");
+    return absl::NotFoundError(
+        absl::StrCat("Labels file ", file_name, " not found."));
   }
   result->clear();
   string line;
@@ -112,7 +113,7 @@ Status ReadLabelsFile(const string& file_name, std::vector<string>* result,
 
 static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
                              Tensor* output) {
-  tensorflow::uint64 file_size = 0;
+  uint64_t file_size = 0;
   TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
 
   string contents;
@@ -125,9 +126,9 @@ static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
   TF_RETURN_IF_ERROR(
       file->Read(0, data, absl::MakeSpan(&contents[0], file_size)));
   if (data.size() != file_size) {
-    return tensorflow::errors::DataLoss("Truncated read of '", filename,
-                                        "' expected ", file_size, " got ",
-                                        data.size());
+    return absl::DataLossError(absl::StrCat("Truncated read of '", filename,
+                                            "' expected ", file_size, " got ",
+                                            data.size()));
   }
   output->scalar<tstring>()() = tstring(data);
   return absl::OkStatus();
@@ -212,8 +213,8 @@ Status LoadGraph(const string& graph_file_name,
   Status load_graph_status =
       ReadBinaryProto(tensorflow::Env::Default(), graph_file_name, &graph_def);
   if (!load_graph_status.ok()) {
-    return tensorflow::errors::NotFound("Failed to load compute graph at '",
-                                        graph_file_name, "'");
+    return absl::NotFoundError(absl::StrCat("Failed to load compute graph at '",
+                                            graph_file_name, "'"));
   }
   session->reset(tensorflow::NewSession(tensorflow::SessionOptions()));
   Status session_create_status = (*session)->Create(graph_def);

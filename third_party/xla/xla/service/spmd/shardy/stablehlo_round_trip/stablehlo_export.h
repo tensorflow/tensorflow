@@ -33,19 +33,27 @@ struct StablehloExportPipelineOptions
           "calls - the HLO sharding constraint op. Else export "
           "them to MHLO copy ops. By default, export to MHLO copy ops."),
       llvm::cl::init(false)};
-  Option<bool> dedupFunctionsFully{
-      *this, "dedup-functions-fully",
-      llvm::cl::desc(
-          "Whether to deduplicate functions fully, regardless of the input and "
-          "output shardings of functions, and it keeps one callee function for "
-          "each caller function. The default is false, meaning it will "
-          "deduplicate only if the input and output shardings are the same."),
-      llvm::cl::init(false)};
   Option<bool> addMissingShardingToControlFlow{
       *this, "add-missing-sharding-to-control-flow",
       llvm::cl::desc(
           "Whether to add a sharding to a control flow op without one."),
       llvm::cl::init(true)};
+  Option<bool> enableHloShardingV3{
+      *this, "enable-hlo-sharding-v3",
+      llvm::cl::desc("Whether to enable HloShardingV3 which is the mesh and "
+                     "axis based sharding representation."),
+      llvm::cl::init(false)};
+  Option<bool> exportAllReduceScatter{
+      *this, "export-all-reduce-scatter",
+      llvm::cl::desc("Whether to export all sdy.reduce_scatter as native "
+                     "stablehlo.reduce_scatter. If false, only ops with "
+                     "unreduced axes are exported this way."),
+      llvm::cl::init(false)};
+  Option<bool> simplifyReplicatedShardings{
+      *this, "simplify-replicated-shardings",
+      llvm::cl::desc("Whether to simplify replicated shardings during export "
+                     "to make final sharding strings shorter."),
+      llvm::cl::init(false)};
 };
 
 // Register the xla-sdy-stablehlo-export-pipeline.

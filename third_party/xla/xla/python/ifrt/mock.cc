@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -46,6 +47,7 @@ namespace xla {
 namespace ifrt {
 
 char MockArray::ID = 0;
+char MockBundle::ID = 0;
 char MockClient::ID = 0;
 char MockCompiler::ID = 0;
 char MockExecutable::ID = 0;
@@ -64,6 +66,9 @@ MockArray::MockArray(xla::ifrt::ArrayRef delegated)
     : delegated_(std::move(delegated)) {
   ON_CALL(*this, user_context).WillByDefault([this]() {
     return delegated_->user_context();
+  });
+  ON_CALL(*this, ByteSize).WillByDefault([this]() {
+    return delegated_->ByteSize();
   });
   ON_CALL(*this, GetReadyFuture).WillByDefault([this]() {
     return delegated_->GetReadyFuture();
@@ -161,6 +166,16 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                             ArrayCopySemantics semantics) {
         return delegated_->RemapArrays(plan, arrays, semantics);
       });
+  ON_CALL(*this, BitcastArrays)
+      .WillByDefault([this](absl::Span<ArrayRef> arrays,
+                            absl::Span<const ArraySpec> specs,
+                            ArrayCopySemantics semantics) {
+        return delegated_->BitcastArrays(arrays, specs, semantics);
+      });
+  ON_CALL(*this, HashValues)
+      .WillByDefault([this](absl::Span<const ValueRef> values, HashMode mode) {
+        return delegated_->HashValues(values, mode);
+      });
   ON_CALL(*this, ReshardArrays)
       .WillByDefault([this](absl::Span<ArrayRef> arrays,
                             absl::Span<const ArraySpec> specs,
@@ -171,9 +186,24 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
       .WillByDefault([this](absl::Span<const ValueRef> values) {
         return delegated_->GetReadyFuture(values);
       });
+  ON_CALL(*this, DeleteValues)
+      .WillByDefault([this](absl::Span<ValueRef> values) {
+        return delegated_->DeleteValues(values);
+      });
   ON_CALL(*this, MakeTuple).WillByDefault([this](absl::Span<ValueRef> values) {
     return delegated_->MakeTuple(values);
   });
+
+  ON_CALL(*this, Bundle)
+      .WillByDefault(
+          [this](absl::Span<ValueRef> values, ArrayCopySemantics semantics) {
+            return delegated_->Bundle(values, semantics);
+          });
+  ON_CALL(*this, ConcatBundles)
+      .WillByDefault(
+          [this](absl::Span<BundleRef> bundles, ArrayCopySemantics semantics) {
+            return delegated_->ConcatBundles(bundles, semantics);
+          });
   ON_CALL(*this, CancelExecution)
       .WillByDefault([this](xla::ifrt::LoadedExecutable::CancellationHandle
                                 cancellation_handle,

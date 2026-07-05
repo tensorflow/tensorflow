@@ -2,7 +2,19 @@
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
-load("@rules_python//python:defs.bzl", "py_binary")
+load("@xla//third_party/rules_python/python:defs.bzl", "py_binary")
+load(
+    "//xla:native_test.bzl",
+    "native_test",
+)
+load(
+    "//xla:platform_native_rule.default.bzl",
+    "platform_native_rule",
+)
+load(
+    "//xla/tests:build_defs.bzl",
+    "prepare_gpu_backend_data",
+)
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "if_cuda_tools")
@@ -61,6 +73,7 @@ def lit_test_suite(
         exec_properties = {},
         tags = [],
         gpu_suffix = "",
+        native_test_rule = native_test,
         **kwargs):
     """Creates one lit test per source file and a test suite that bundles them.
 
@@ -94,6 +107,8 @@ def lit_test_suite(
         requirement to run on a GPU.
       gpu_suffix: string. A suffix derived from the gpu name that can be added
         to make (file) names unique.
+      native_test_rule: callable. A rule or macro to create the test target,
+        instead of `native_test`.
       **kwargs: additional keyword arguments to pass to all generated rules.
 
     See https://llvm.org/docs/CommandGuide/lit.html for details on lit
@@ -128,6 +143,7 @@ def lit_test_suite(
             hermetic_cuda_data_dir = hermetic_cuda_data_dir,
             exec_properties = exec_properties,
             gpu_suffix = gpu_suffix,
+            native_test_rule = native_test_rule,
             **kwargs
         )
 
@@ -189,7 +205,7 @@ def lit_test_suite_for_gpus(
         requirement to run on a GPU.
       gpus: string list. GPU names for which a lit test suite should be
         generated. Supported GPU names are: p100, v100, a100_pcie, a6000, h100,
-        b200, mi200.
+        b200, mi200, gfx1250.
       disabled_on_gpus: string_dict. For a gpu name (key) contains a list of
         test files that should be skipped.
       **kwargs: additional keyword arguments to pass to all generated rules.
@@ -199,10 +215,13 @@ def lit_test_suite_for_gpus(
     # If there are kwargs that need to be passed to only some of the generated
     # rules, they should be extracted into separate named arguments.
 
+    rocm_gpus = ["mi200", "gfx1250"]
+
     for gpu in gpus:
+        is_rocm = gpu in rocm_gpus
         filtered_srcs = [src for src in srcs if src not in disabled_on_gpus.get(gpu, [])]
         gpu_args = args + [
-            "--param=PTX=%s" % ("GCN" if gpu == "mi200" else "PTX"),
+            "--param=PTX=%s" % ("GCN" if is_rocm else "PTX"),
             "--param=GPU=%s" % (gpu),
         ]
         gpu_data = data + [
@@ -225,8 +244,110 @@ def lit_test_suite_for_gpus(
             # We add the tag xla_h100 to avoid that the test suite is scheduled
             # on different GPU architectures. Technically these tests don't
             # need a GPU, but a build with GPU configured.
-            tags + ["rocm-only"] if gpu == "mi200" else ["cuda-only", "xla_h100"],
+            tags + ["rocm-only"] if is_rocm else ["cuda-only", "xla_h100"],
             "_%s" % (gpu),
+            **kwargs
+        )
+
+def lit_device_test(
+        name,
+        srcs,
+        tags = [],
+        backends = [],
+        args = [],
+        data = [],
+        cfg = "//xla:lit.cfg.py",
+        tools = None,
+        visibility = None,
+        env = {},
+        timeout = None,
+        default_tags = None,
+        tags_override = None,
+        hermetic_cuda_data_dir = None,
+        exec_properties = {},
+        backend_tags = {},
+        backend_args = {},
+        **kwargs):
+    """Creates lit test suites to be executed on a given backend.
+
+    Args:
+      name: string. the name prefix of the generated test suite. Each test suite
+        will get the gpu name as suffix.
+      srcs: label_list. The files which contain the lit tests.
+      tags: string list. Tags applied to all tests and the test suite.
+      backends: string list. GPU backends for which a lit test suite should be
+        generated.
+      args: string list. Additional arguments to pass to lit. Note that the test
+        file, `-v`, and a `--path` argument for the directory to which `tools`
+        are symlinked are added automatically.
+      data: label list. Additional data dependencies of the test. Note that
+        targets in `cfg` and `tools`, as well as their data dependencies, are
+        added automatically.
+      cfg: label. The lit config file. It must list the file extension of
+        the files in `srcs` in config.suffixes and must be in a parent directory
+        of `srcs`.
+      tools: label list. Tools invoked in the lit RUN lines. These binaries will
+        be symlinked into a directory which is on the path. They must therefore
+        have unique basenames. Note that tools that are xla_cc_binary targets
+        will also need to have linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
+        otherwise they will not work properly with hermetic cuda.
+      visibility: visibility of the generated test targets and test suite.
+      env: string_dict. Environment variables available during test execution.
+        See the common Bazel test attribute.
+      timeout: timeout argument passed to the individual tests.
+      default_tags: string list. Tags applied to all tests.
+      tags_override: string_dict. Tags applied in addition to only select tests.
+      hermetic_cuda_data_dir: string. If set, the tests will be run with a
+        `--xla_gpu_cuda_data_dir` flag set to the hermetic CUDA data directory.
+      exec_properties: string_dict. Properties to pass to the test rule, e.g.
+        requirement to run on a GPU.
+      backend_tags: A dict mapping backend name to list of additional tags to
+        use for that target.
+      backend_args: A dict mapping backend name to list of additional args to
+        use for that target.
+      **kwargs: additional keyword arguments to pass to all generated rules.
+
+    See https://llvm.org/docs/CommandGuide/lit.html for details on lit
+    """
+    backends, disabled_backends, backend_tags, backend_args = prepare_gpu_backend_data(
+        backends,
+        [],  # disabled_backends
+        backend_tags,
+        backend_args,
+        tags,
+    )
+    backends = [
+        backend
+        for backend in backends
+        if backend not in disabled_backends
+    ]
+    for backend in backends:
+        modifiers = backend.split("_")
+        device = modifiers.pop(0)
+        this_backend_env = dict(env)
+        this_backend_env.update({
+            "XLA_TEST_DEVICE": device,
+            "XLA_TEST_MODIFIERS": ",".join(modifiers),
+        })
+        this_backend_tags = ["xla_%s" % backend, "xla_device_%s" % backend] + tags + backend_tags.get(backend, [])
+        test_name = "%s_%s" % (name, backend)
+        lit_test_suite(
+            name = test_name,
+            srcs = srcs,
+            cfg = cfg,
+            tools = tools,
+            args = args + backend_args.get(backend, []),
+            data = data,
+            visibility = visibility,
+            env = this_backend_env,
+            timeout = timeout,
+            default_tags = default_tags,
+            tags_override = tags_override,
+            hermetic_cuda_data_dir = hermetic_cuda_data_dir,
+            exec_properties = exec_properties,
+            tags = this_backend_tags,
+            gpu_suffix = "_%s" % (backend),
+            native_test_rule = platform_native_rule(name = test_name, backend = backend),
             **kwargs
         )
 
@@ -260,6 +381,7 @@ def lit_test(
         hermetic_cuda_data_dir = None,
         exec_properties = {},
         gpu_suffix = "",
+        native_test_rule = native_test,
         **kwargs):
     """Runs a single test file with LLVM's lit tool.
 
@@ -290,6 +412,8 @@ def lit_test(
         requirement to run on a GPU.
       gpu_suffix: string. A suffix derived from the gpu name that can be added
         to make (file) names unique.
+      native_test_rule: callable. A rule or macro to create the test target,
+        instead of `native_test`.
       **kwargs: additional keyword arguments to pass to all generated rules.
 
     See https://llvm.org/docs/CommandGuide/lit.html for details on lit
@@ -367,7 +491,7 @@ def lit_test(
         )
         test_file = output_file
 
-    native_test(
+    native_test_rule(
         name = name,
         src = lit_name,
         args = [
@@ -394,37 +518,6 @@ def lit_test(
         exec_properties = exec_properties,
         **kwargs
     )
-
-def _shared_impl(ctx):
-    out = ctx.attr.out
-    if not out:
-        out = ctx.attr.name
-    output = ctx.actions.declare_file(out)
-    ctx.actions.symlink(
-        target_file = ctx.executable.src,
-        output = output,
-        is_executable = True,
-    )
-
-    runfiles = ctx.runfiles(files = ctx.files.data)
-
-    # For Bazel 4.x support. Drop when Bazel 4.x is no longer supported
-    to_merge = ([d[DefaultInfo].default_runfiles for d in ctx.attr.data] +
-                [ctx.attr.src[DefaultInfo].default_runfiles])
-    if hasattr(runfiles, "merge_all"):
-        runfiles = runfiles.merge_all(to_merge)
-    else:
-        for m in to_merge:
-            runfiles = runfiles.merge(m)
-    return DefaultInfo(
-        executable = output,
-        files = depset([output]),
-        runfiles = runfiles,
-    )
-
-def _native_test_impl(ctx):
-    default_info = _shared_impl(ctx)
-    return [default_info, testing.TestEnvironment(ctx.attr.env)]
 
 def _tools_on_path_impl(ctx):
     runfiles = ctx.runfiles()
@@ -489,25 +582,3 @@ _tools_on_path = rule(
 # We have to manually set "env" on the test rule because the builtin one is only
 # available in native rules. See
 # https://docs.bazel.build/versions/main/be/common-definitions.html#test.env
-_TEST_ATTRS = {
-    "src": attr.label(
-        executable = True,
-        allow_files = True,
-        mandatory = True,
-        cfg = "target",
-    ),
-    "data": attr.label_list(allow_files = True),
-    # "out" is attr.string instead of attr.output, so that it is select()'able.
-    "out": attr.string(),
-    "env": attr.string_dict(
-        doc = "Mirrors the common env attribute that otherwise is" +
-              " only available on native rules. See" +
-              " https://docs.bazel.build/versions/main/be/common-definitions.html#test.env",
-    ),
-}
-
-native_test = rule(
-    implementation = _native_test_impl,
-    attrs = _TEST_ATTRS,
-    test = True,
-)

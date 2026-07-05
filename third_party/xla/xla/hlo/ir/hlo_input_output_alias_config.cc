@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -107,7 +108,7 @@ HloInputOutputAliasConfig::CreateFromProto(
     ShapeIndex param_index(entry.parameter_shape_index().begin(),
                            entry.parameter_shape_index().end());
     AliasKind kind = entry.kind() == Kind::MAY_ALIAS ? kMayAlias : kMustAlias;
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         result.SetUpAlias(output_index, param_number, param_index, kind));
   }
   return result;
@@ -189,9 +190,10 @@ void HloInputOutputAliasConfig::ForEachAlias(AliasFn fn) const {
 absl::Status HloInputOutputAliasConfig::ForEachAliasWithStatus(
     AliasFnWithStatus fn) const {
   return alias_.ForEachElementWithStatus(
-      [&](const ShapeIndex& output_index, std::optional<Alias> aliased) {
+      [&](const ShapeIndex& output_index,
+          std::optional<Alias> aliased) -> absl::Status {
         if (aliased) {
-          TF_RETURN_IF_ERROR(fn(output_index, *aliased));
+          RETURN_IF_ERROR(fn(output_index, *aliased));
         }
         return absl::OkStatus();
       });
@@ -291,7 +293,7 @@ absl::StatusOr<HloBufferDonorConfig> HloBufferDonorConfig::CreateFromProto(
     int64_t param_number = entry.parameter_number();
     ShapeIndex param_index(entry.parameter_shape_index().begin(),
                            entry.parameter_shape_index().end());
-    TF_RETURN_IF_ERROR(result.AddBufferDonor(param_number, param_index));
+    RETURN_IF_ERROR(result.AddBufferDonor(param_number, param_index));
   }
   return result;
 }

@@ -21,12 +21,15 @@ limitations under the License.
 #include <cstdlib>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/time/time.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -47,12 +50,12 @@ struct CudaBandwidthSettings {
 
   const std::vector<double>& GetIntraNodeBandwidths() const {
     // Different tiers for intra-node bandwidth.
-    static const std::vector<double>* kIntraNodeSpeeds =
-        new std::vector<double>{3.0,  4.0,  5.0,  6.0,  7.0,  9.0, 10.0,
-                                12.0, 15.0, 18.0, 20.0, 30.0, 40.0};
+    static const absl::NoDestructor<std::vector<double>> kIntraNodeSpeeds(
+        {3.0, 4.0, 5.0, 6.0, 7.0, 9.0, 10.0, 12.0, 15.0, 18.0, 20.0, 30.0,
+         40.0});
     // SM90 has different bandwidths.
-    static std::vector<double>* kIntraNodeSpeedsSm90 = new std::vector<double>{
-        3.0, 6.0, 12.0, 15.0, 20.0, 24.0, 30.0, 40.0, 60.0};
+    static const absl::NoDestructor<std::vector<double>> kIntraNodeSpeedsSm90(
+        {3.0, 6.0, 12.0, 15.0, 20.0, 24.0, 30.0, 40.0, 60.0});
     return compute_capability.major >= se::CudaComputeCapability::kHopper
                ? *kIntraNodeSpeedsSm90
                : *kIntraNodeSpeeds;
@@ -136,19 +139,16 @@ struct RocmBandwidthSettings {
     // capabilities Values in GB/s
 
     // MI300 series (Instinct MI300) - up to 896GB/s (8x112GB/s)
-    static const std::vector<double>* intraNodeSpeedsMi300 =
-        new std::vector<double>{32.0,  56.0,  112.0, 224.0, 336.0,
-                                448.0, 560.0, 672.0, 784.0, 896.0};
+    static const absl::NoDestructor<std::vector<double>> intraNodeSpeedsMi300(
+        {32.0, 56.0, 112.0, 224.0, 336.0, 448.0, 560.0, 672.0, 784.0, 896.0});
 
     // MI200 series (Instinct MI200/MI250) - up to 600GB/s (8x75GB/s)
-    static const std::vector<double>* intraNodeSpeedsMi200 =
-        new std::vector<double>{32.0,  75.0,  150.0, 225.0, 300.0,
-                                375.0, 450.0, 525.0, 600.0};
+    static const absl::NoDestructor<std::vector<double>> intraNodeSpeedsMi200(
+        {32.0, 75.0, 150.0, 225.0, 300.0, 375.0, 450.0, 525.0, 600.0});
 
     // MI100 (Instinct MI100) - up to 300GB/s (8x37.5GB/s)
-    static const std::vector<double>* intraNodeSpeedsMi100 =
-        new std::vector<double>{32.0,  37.5,  75.0,  112.5, 150.0,
-                                187.5, 225.0, 262.5, 300.0};
+    static const absl::NoDestructor<std::vector<double>> intraNodeSpeedsMi100(
+        {32.0, 37.5, 75.0, 112.5, 150.0, 187.5, 225.0, 262.5, 300.0});
 
     if (compute_capability.gfx9_mi300_series()) {
       return *intraNodeSpeedsMi300;
@@ -283,7 +283,7 @@ int GetNumThreads(int warp_size, int min_num_threads, int max_num_threads,
 }
 
 template <typename GpuBandwidthSettings>
-absl::Duration ComputeAllreduceTimeImpl(
+absl::Duration ComputeCollectiveTimeImpl(
     const HloInstruction& instr, const GpuHloCostAnalysis* cost_analysis,
     const se::DeviceDescription& gpu_device_info,
     const GpuBandwidthSettings& bandwidth_settings) {
@@ -358,17 +358,17 @@ RocmBandwidthSettings CreateSettings(
 }  // namespace
 
 /*static*/ absl::Duration
-GpuPerformanceWithCollectiveModel::ComputeAllreduceTime(
+GpuPerformanceWithCollectiveModel::ComputeCollectiveTimeForRing(
     const HloInstruction& instr, const GpuHloCostAnalysis* cost_analysis,
     const se::DeviceDescription& gpu_device_info) {
   // We use nccl group call to launch multiple allreduces so launch overhead
   // only occurs once.
   if (auto ptr =
           gpu_device_info.gpu_compute_capability().cuda_compute_capability()) {
-    return ComputeAllreduceTimeImpl(instr, cost_analysis, gpu_device_info,
-                                    CreateSettings(*ptr));
+    return ComputeCollectiveTimeImpl(instr, cost_analysis, gpu_device_info,
+                                     CreateSettings(*ptr));
   }
-  return ComputeAllreduceTimeImpl(
+  return ComputeCollectiveTimeImpl(
       instr, cost_analysis, gpu_device_info,
       CreateSettings(
           *gpu_device_info.gpu_compute_capability().rocm_compute_capability()));
@@ -390,7 +390,25 @@ GpuPerformanceWithCollectiveModel::ComputeCollectiveTime(
   switch (instr.opcode()) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
-      return ComputeAllreduceTime(instr, cost_analysis, gpu_device_info);
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kReduceScatter:
+      return ComputeCollectiveTimeForRing(instr, cost_analysis,
+                                          gpu_device_info);
+    case HloOpcode::kAsyncStart: {
+      auto* async_start = Cast<HloAsyncStartInstruction>(&instr);
+      switch (async_start->async_wrapped_opcode()) {
+        case HloOpcode::kReduceScatter:
+          return ComputeCollectiveTimeForRing(instr, cost_analysis,
+                                              gpu_device_info);
+        default:
+          break;
+      }
+      LOG(WARNING)
+          << "Runtime estimate for " << instr.name()
+          << " not implemented. Returning only the kernel launch time.";
+      return kNcclKernelLaunchOverhead;
+    }
     default: {
       LOG(WARNING)
           << "Runtime estimate for " << instr.name()
@@ -398,6 +416,22 @@ GpuPerformanceWithCollectiveModel::ComputeCollectiveTime(
       return kNcclKernelLaunchOverhead;
     }
   }
+}
+
+/*static*/ absl::StatusOr<double>
+GpuPerformanceWithCollectiveModel::GetIciBandwidthPerLaneGbps(
+    const se::DeviceDescription& gpu_device_info) {
+  if (const auto* cuda_cc =
+          gpu_device_info.gpu_compute_capability().cuda_compute_capability()) {
+    return CreateSettings(*cuda_cc).GetNvlinkBw();
+  }
+  if (const auto* rocm_cc =
+          gpu_device_info.gpu_compute_capability().rocm_compute_capability()) {
+    return CreateSettings(*rocm_cc).GetNvlinkBw();
+  }
+  return absl::InvalidArgumentError(
+      "GetIciBandwidthPerLaneGbps: unsupported compute capability "
+      "(neither CUDA nor ROCm)");
 }
 
 }  // namespace gpu

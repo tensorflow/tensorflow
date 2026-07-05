@@ -33,16 +33,17 @@ class ClipOp : public OpKernel {
     const Tensor& in0 = ctx->input(0);
     const Tensor& in1 = ctx->input(1);
     const Tensor& in2 = ctx->input(2);
-    OP_REQUIRES(ctx, (in0.shape() == in1.shape() ||
-                      TensorShapeUtils::IsScalar(in1.shape())) &&
-                     (in0.shape() == in2.shape() ||
-                      TensorShapeUtils::IsScalar(in2.shape())),
-                errors::InvalidArgument(
+    OP_REQUIRES(ctx,
+                (in0.shape() == in1.shape() ||
+                 TensorShapeUtils::IsScalar(in1.shape())) &&
+                    (in0.shape() == in2.shape() ||
+                     TensorShapeUtils::IsScalar(in2.shape())),
+                absl::InvalidArgumentError(absl::StrCat(
                     "clip_value_min and clip_value_max must be either of "
                     "the same shape as input, or a scalar. ",
                     "input shape: ", in0.shape().DebugString(),
                     "clip_value_min shape: ", in1.shape().DebugString(),
-                    "clip_value_max shape: ", in2.shape().DebugString()));
+                    "clip_value_max shape: ", in2.shape().DebugString())));
 
     Tensor* out = nullptr;
     OP_REQUIRES_OK(
@@ -82,7 +83,13 @@ struct UnaryClipFunc {
   UnaryClipFunc(const T& value_min, const T& value_max)
       : value_min(value_min), value_max(value_max) {}
   T operator()(const T& value) const {
-    return std::max(std::min(value, value_max), value_min);
+    return (std::max)((std::min)(value, value_max), value_min);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    return Eigen::internal::pmax(
+        Eigen::internal::pmin(x, Eigen::internal::pset1<Packet>(value_max)),
+        Eigen::internal::pset1<Packet>(value_min));
   }
   T value_min;
   T value_max;
@@ -95,12 +102,12 @@ struct UnaryClipFunc<T, /*is_complex=*/true> {
   T operator()(const T& value) const {
     // Clip real and imaginary component separately, as if the clipping bounds
     // form a box in the imaginary plane.
-    return T{std::max(std::min(Eigen::numext::real(value),
-                               Eigen::numext::real(value_max)),
-                      Eigen::numext::real(value_min)),
-             std::max(std::min(Eigen::numext::imag(value),
-                               Eigen::numext::imag(value_max)),
-                      Eigen::numext::imag(value_min))};
+    return T{(std::max)((std::min)(Eigen::numext::real(value),
+                                   Eigen::numext::real(value_max)),
+                        Eigen::numext::real(value_min)),
+             (std::max)((std::min)(Eigen::numext::imag(value),
+                                   Eigen::numext::imag(value_max)),
+                        Eigen::numext::imag(value_min))};
   }
   T value_min;
   T value_max;
@@ -112,7 +119,8 @@ struct UnaryClipOp<CPUDevice, T> {
                   typename TTypes<T>::ConstFlat& in1_flat,
                   typename TTypes<T>::ConstFlat& in2_flat,
                   typename TTypes<T>::Flat& out_flat) const {
-    out_flat = in0_flat.unaryExpr(UnaryClipFunc<T>(in1_flat(0), in2_flat(0)));
+    out_flat.device(d) =
+        in0_flat.unaryExpr(UnaryClipFunc<T>(in1_flat(0), in2_flat(0)));
   }
 };
 
@@ -121,7 +129,13 @@ template <typename T, bool is_complex = Eigen::NumTraits<T>::IsComplex>
 struct BinaryRightClipFunc {
   explicit BinaryRightClipFunc(const T& value_min) : value_min(value_min) {}
   T operator()(const T& value, const T& value_max) const {
-    return std::max(std::min(value, value_max), value_min);
+    return (std::max)((std::min)(value, value_max), value_min);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x,
+                                                        const Packet& y) const {
+    return Eigen::internal::pmax(Eigen::internal::pmin(x, y),
+                                 Eigen::internal::pset1<Packet>(value_min));
   }
   T value_min;
 };
@@ -131,12 +145,12 @@ struct BinaryRightClipFunc<T, /*is_complex=*/true> {
   T operator()(const T& value, const T& value_max) const {
     // Clip real and imaginary component separately, as if the clipping bounds
     // form a box in the imaginary plane.
-    return T{std::max(std::min(Eigen::numext::real(value),
-                               Eigen::numext::real(value_max)),
-                      Eigen::numext::real(value_min)),
-             std::max(std::min(Eigen::numext::imag(value),
-                               Eigen::numext::imag(value_max)),
-                      Eigen::numext::imag(value_min))};
+    return T{(std::max)((std::min)(Eigen::numext::real(value),
+                                   Eigen::numext::real(value_max)),
+                        Eigen::numext::real(value_min)),
+             (std::max)((std::min)(Eigen::numext::imag(value),
+                                   Eigen::numext::imag(value_max)),
+                        Eigen::numext::imag(value_min))};
   }
   T value_min;
 };
@@ -146,7 +160,7 @@ struct BinaryRightClipOp<CPUDevice, T> {
                   typename TTypes<T>::ConstFlat& in1_flat,
                   typename TTypes<T>::ConstFlat& in2_flat,
                   typename TTypes<T>::Flat& out_flat) const {
-    out_flat =
+    out_flat.device(d) =
         in0_flat.binaryExpr(in2_flat, BinaryRightClipFunc<T>(in1_flat(0)));
   }
 };
@@ -156,7 +170,13 @@ template <typename T, bool is_complex = Eigen::NumTraits<T>::IsComplex>
 struct BinaryLeftClipFunc {
   explicit BinaryLeftClipFunc(const T& value_max) : value_max(value_max) {}
   T operator()(const T& value, const T& value_min) const {
-    return std::max(std::min(value, value_max), value_min);
+    return (std::max)((std::min)(value, value_max), value_min);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x,
+                                                        const Packet& y) const {
+    return Eigen::internal::pmax(
+        Eigen::internal::pmin(x, Eigen::internal::pset1<Packet>(value_max)), y);
   }
   T value_max;
 };
@@ -166,12 +186,12 @@ struct BinaryLeftClipFunc<T, /*is_complex=*/true> {
   T operator()(const T& value, const T& value_min) const {
     // Clip real and imaginary component separately, as if the clipping bounds
     // form a box in the imaginary plane.
-    return T{std::max(std::min(Eigen::numext::real(value),
-                               Eigen::numext::real(value_max)),
-                      Eigen::numext::real(value_min)),
-             std::max(std::min(Eigen::numext::imag(value),
-                               Eigen::numext::imag(value_max)),
-                      Eigen::numext::imag(value_min))};
+    return T{(std::max)((std::min)(Eigen::numext::real(value),
+                                   Eigen::numext::real(value_max)),
+                        Eigen::numext::real(value_min)),
+             (std::max)((std::min)(Eigen::numext::imag(value),
+                                   Eigen::numext::imag(value_max)),
+                        Eigen::numext::imag(value_min))};
   }
   T value_max;
 };
@@ -181,7 +201,7 @@ struct BinaryLeftClipOp<CPUDevice, T> {
                   typename TTypes<T>::ConstFlat& in1_flat,
                   typename TTypes<T>::ConstFlat& in2_flat,
                   typename TTypes<T>::Flat& out_flat) const {
-    out_flat =
+    out_flat.device(d) =
         in0_flat.binaryExpr(in1_flat, BinaryLeftClipFunc<T>(in2_flat(0)));
   }
 };
@@ -191,7 +211,7 @@ template <typename T, bool is_complex = Eigen::NumTraits<T>::IsComplex>
 struct BinaryClipAboveFunc {
   explicit BinaryClipAboveFunc() = default;
   T operator()(const T& value, const T& value_max) const {
-    return std::min(value, value_max);
+    return (std::min)(value, value_max);
   }
 };
 template <typename T>
@@ -201,15 +221,15 @@ struct BinaryClipAboveFunc<T, /*is_complex=*/true> {
     // Clip real and imaginary component separately, as if the clipping bounds
     // form a box in the imaginary plane.
     return T{
-        std::min(Eigen::numext::real(value), Eigen::numext::real(value_max)),
-        std::min(Eigen::numext::imag(value), Eigen::numext::imag(value_max))};
+        (std::min)(Eigen::numext::real(value), Eigen::numext::real(value_max)),
+        (std::min)(Eigen::numext::imag(value), Eigen::numext::imag(value_max))};
   }
 };
 template <typename T, bool is_complex = Eigen::NumTraits<T>::IsComplex>
 struct BinaryClipBelowFunc {
   explicit BinaryClipBelowFunc() = default;
   T operator()(const T& value, const T& value_min) const {
-    return std::max(value, value_min);
+    return (std::max)(value, value_min);
   }
 };
 template <typename T>
@@ -219,8 +239,8 @@ struct BinaryClipBelowFunc<T, /*is_complex=*/true> {
     // Clip real and imaginary component separately, as if the clipping bounds
     // form a box in the imaginary plane.
     return T{
-        std::max(Eigen::numext::real(value), Eigen::numext::real(value_min)),
-        std::max(Eigen::numext::imag(value), Eigen::numext::imag(value_min))};
+        (std::max)(Eigen::numext::real(value), Eigen::numext::real(value_min)),
+        (std::max)(Eigen::numext::imag(value), Eigen::numext::imag(value_min))};
   }
 };
 
@@ -249,12 +269,12 @@ INSTANTIATE_CPU(Eigen::half);
 INSTANTIATE_CPU(float);
 INSTANTIATE_CPU(double);
 INSTANTIATE_CPU(bfloat16);
-INSTANTIATE_CPU(int8);
-INSTANTIATE_CPU(int16);
-INSTANTIATE_CPU(int32);
+INSTANTIATE_CPU(int8_t);
+INSTANTIATE_CPU(int16_t);
+INSTANTIATE_CPU(int32_t);
 INSTANTIATE_CPU(int64_t);
-INSTANTIATE_CPU(uint8);
-INSTANTIATE_CPU(uint16);
+INSTANTIATE_CPU(uint8_t);
+INSTANTIATE_CPU(uint16_t);
 INSTANTIATE_CPU(std::complex<float>);
 INSTANTIATE_CPU(std::complex<double>);
 #undef INSTANTIATE_CPU
@@ -289,11 +309,11 @@ REGISTER_GPU_KERNEL(Eigen::half);
 REGISTER_GPU_KERNEL(bfloat16);
 REGISTER_GPU_KERNEL(float);
 REGISTER_GPU_KERNEL(double);
-REGISTER_GPU_KERNEL(int8);
-REGISTER_GPU_KERNEL(int16);
+REGISTER_GPU_KERNEL(int8_t);
+REGISTER_GPU_KERNEL(int16_t);
 REGISTER_GPU_KERNEL(int64_t);
-REGISTER_GPU_KERNEL(uint8);
-REGISTER_GPU_KERNEL(uint16);
+REGISTER_GPU_KERNEL(uint8_t);
+REGISTER_GPU_KERNEL(uint16_t);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -304,10 +324,40 @@ REGISTER_KERNEL_BUILDER(Name("ClipByValue")
                             .HostMemory("clip_value_min")
                             .HostMemory("clip_value_max")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        ClipOp<CPUDevice, int32>);
+                            .TypeConstraint<int32_t>("T"),
+                        ClipOp<CPUDevice, int32_t>);
 
 #undef REGISTER_GPU_KERNEL
 #endif
 
 }  // namespace tensorflow
+
+namespace Eigen {
+namespace internal {
+
+template <typename T>
+struct functor_traits<tensorflow::functor::UnaryClipFunc<T, false>> {
+  enum {
+    Cost = NumTraits<T>::AddCost * 2,
+    PacketAccess = packet_traits<T>::HasMin && packet_traits<T>::HasMax
+  };
+};
+
+template <typename T>
+struct functor_traits<tensorflow::functor::BinaryRightClipFunc<T, false>> {
+  enum {
+    Cost = NumTraits<T>::AddCost * 2,
+    PacketAccess = packet_traits<T>::HasMin && packet_traits<T>::HasMax
+  };
+};
+
+template <typename T>
+struct functor_traits<tensorflow::functor::BinaryLeftClipFunc<T, false>> {
+  enum {
+    Cost = NumTraits<T>::AddCost * 2,
+    PacketAccess = packet_traits<T>::HasMin && packet_traits<T>::HasMax
+  };
+};
+
+}  // namespace internal
+}  // namespace Eigen

@@ -57,6 +57,37 @@ func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
 
 // -----
 
+!token = !ifrt.array<tensor<!ifrt.token>,
+                     #ifrt.sharding_param< to [0] on 2>, [0, 1]>
+func.func @good_call_with_token_type(%arg0: !token) attributes {ifrt.function} {
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
+    : (!token) -> !token
+  return
+}
+
+
+func.func @callee(%arg0: !stablehlo.token) -> !stablehlo.token {
+  return %arg0 : !stablehlo.token
+}
+
+// -----
+
+!token = !ifrt.array<tensor<!ifrt.token>,
+                     #ifrt.sharding_param< to [0] on 2>, [0, 1]>
+func.func @good_call_with_token_type(%arg0: !token) attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op requires the same global shape. Input #0 'tensor<!ifrt.token>' vs Callee 'tensor<i32>'}}
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
+    : (!token) -> !token
+  return
+}
+
+
+func.func @callee(%arg0: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+
+// -----
 
 func.func @call_requires_in_ifrt_function(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
@@ -380,7 +411,8 @@ func.func @io_aliases_should_alias_arrays_with_same_per_shard_shape(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                        [0,1]>)
     attributes {ifrt.function} {
-  // expected-error@+1 {{'ifrt.Call' op can't alias input #0 to output #0 with different per-shard shapes: '!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>' vs '!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>'}}
+  // expected-error@+2 {{'ifrt.Call' op Arrays have different per-shard shapes:}}
+  // expected-error@+1 {{'ifrt.Call' op can't alias input #0 to output #0}}
   %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
     {io_aliases=[array<i32: 0, 0>]}
     : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,

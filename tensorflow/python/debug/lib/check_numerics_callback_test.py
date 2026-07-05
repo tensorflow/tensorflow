@@ -276,10 +276,16 @@ class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
     if not context.executing_eagerly():
       self.evaluate([counter.initializer, accum.initializer])
 
-    message = self._assertRaisesInvalidArgumentErrorAndGetMessage(
-        lambda: self.evaluate(accumulation_function(counter, lim, accum)))
+    caught = None
+    try:
+      self.evaluate(accumulation_function(counter, lim, accum))
+    except (errors.InvalidArgumentError, errors.InternalError) as error:
+      caught = error
+    self.assertTrue(caught, "Failed to catch expected error")
+    message = caught.message
 
-    self.assertAllClose(self.evaluate(counter), 128)
+    # With XLA, overflow might happen at step 127 instead of 128.
+    self.assertIn(self.evaluate(counter), (127, 128))
     # Check the content of the error message.
     # The overflow to +Infinity happens during the `* 2.0` operation.
     self.assertTrue(re.search(r"graph op.*\"Mul\"", message))

@@ -1,6 +1,6 @@
 """Provides build configuration for TSL"""
 
-load("@rules_python//python:py_library.bzl", "py_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
@@ -24,6 +24,10 @@ load(
     "if_rocm",
 )
 load(
+    "@local_config_sycl//sycl:build_defs.bzl",
+    "if_sycl",
+)
+load(
     "//xla/tsl/platform:rules_cc.bzl",
     "cc_binary",
     "cc_library",
@@ -39,7 +43,7 @@ load(
     _transitive_parameters_library = "transitive_parameters_library",
 )
 load(
-    "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "@rules_ml_toolchain//py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
 )
 load(
@@ -127,13 +131,13 @@ def if_google(google_value, oss_value = []):
     _ = (google_value, oss_value)  # buildifier: disable=unused-variable
     return oss_value  # copybara:comment_replace return google_value
 
-def internal_visibility(internal_targets):
+def internal_visibility(internal_targets, or_else = ["//visibility:public"]):
     """Returns internal_targets in g3, but returns public in OSS.
 
     Useful for targets that are part of the XLA/TSL API surface but want finer-grained visibilites
     internally.
     """
-    return if_google(internal_targets, ["//visibility:public"])
+    return if_google(internal_targets, or_else)
 
 # TODO(jakeharmon): Use this to replace if_static
 # TODO(b/356020232): remove completely after migration is done
@@ -340,6 +344,7 @@ def tsl_copts(
         if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) +
+        if_sycl(["-DTENSORFLOW_USE_SYCL=1"]) +
         # Compile in oneDNN based ops when building for x86 platforms
         if_onednn(["-DXLA_ONEDNN"]) +
         # Enable additional ops (e.g., ops with non-NHWC data layout) and
@@ -414,7 +419,7 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
             "@local_config_rocm//rocm:hip",
             "@local_config_rocm//rocm:rocm_headers",
         ]),
-        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_onednn(["-DXLA_ONEDNN"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
+        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_sycl(["-DTENSORFLOW_USE_SYCL=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_onednn(["-DXLA_ONEDNN"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
         **kwargs
     )
 
@@ -583,6 +588,7 @@ def tsl_pybind_extension_opensource(
         deprecation = None,
         enable_stub_generation = False,  # @unused
         features = [],
+        local_defines = [],
         licenses = None,
         linkopts = [],
         pytype_deps = [],
@@ -650,6 +656,7 @@ def tsl_pybind_extension_opensource(
                 ],
             }),
             defines = defines,
+            local_defines = local_defines,
             features = features + ["-use_header_modules"],
             restricted_to = restricted_to,
             testonly = testonly,
@@ -675,6 +682,11 @@ def tsl_pybind_extension_opensource(
                     # not being exported.  There should be a better way to deal with this.
                     "-Wl,-w",
                     "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
+                    # Resolve Python C API symbols at module load time. Without
+                    # this the link fails on macOS because libpython is not
+                    # available at link time for the extension .so.
+                    "-undefined",
+                    "dynamic_lookup",
                 ],
                 clean_dep("//xla/tsl:windows"): [],
                 "//conditions:default": [
@@ -714,6 +726,11 @@ def tsl_pybind_extension_opensource(
                     # not being exported.  There should be a better way to deal with this.
                     "-Wl,-w",
                     "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
+                    # Resolve Python C API symbols at module load time. Without
+                    # this the link fails on macOS because libpython is not
+                    # available at link time for the extension .so.
+                    "-undefined",
+                    "dynamic_lookup",
                 ],
                 clean_dep("//xla/tsl:windows"): [],
                 "//conditions:default": [
@@ -726,6 +743,7 @@ def tsl_pybind_extension_opensource(
                 version_script_file,
             ],
             defines = defines,
+            local_defines = local_defines,
             features = features + ["-use_header_modules"],
             linkshared = 1,
             testonly = testonly,
@@ -777,6 +795,10 @@ def nvtx_headers():
 
 def tsl_google_bzl_deps():
     return []
+
+def if_include_google_deps(default_deps, no_google_deps = []):
+    _ = default_deps  # buildifier: disable=unused-variable
+    return no_google_deps
 
 def tsl_extra_config_settings():
     pass

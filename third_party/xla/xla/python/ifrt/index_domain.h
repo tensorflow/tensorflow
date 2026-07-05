@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_INDEX_DOMAIN_H_
 #define XLA_PYTHON_IFRT_INDEX_DOMAIN_H_
 
-#include <cstdint>
 #include <ostream>
-#include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.pb.h"
+#include "xla/python/ifrt/serdes_default_version_accessor.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 
 namespace xla {
@@ -44,6 +47,22 @@ class IndexDomain {
   IndexDomain(IndexDomain&&) = default;
   IndexDomain& operator=(const IndexDomain&) = default;
   IndexDomain& operator=(IndexDomain&&) noexcept = default;
+
+  // Constructs `IndexDomain` from `IndexDomainProto`.
+  static absl::StatusOr<IndexDomain> FromProto(const IndexDomainProto& proto);
+
+  // Converts the index domain to a protobuf.
+  void ToProto(
+      IndexDomainProto& proto,
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+
+  // Returns a `IndexDomainProto` representation.
+  IndexDomainProto ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    IndexDomainProto proto;
+    ToProto(proto, version);
+    return proto;
+  }
 
   const Index& origin() const { return origin_; }
   const Shape& shape() const { return shape_; }
@@ -73,12 +92,10 @@ class IndexDomain {
     return *this;
   }
 
-  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
-  std::string DebugString() const;
-
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const IndexDomain& index_domain) {
-    sink.Append(index_domain.DebugString());
+    sink.Append(absl::StrCat("IndexDomain(origin=", index_domain.origin_,
+                             ",shape=", index_domain.shape_, ")"));
   }
 
  private:

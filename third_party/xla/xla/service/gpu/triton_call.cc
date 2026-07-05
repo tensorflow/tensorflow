@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "mlir/AsmParser/AsmParser.h"
@@ -44,8 +45,27 @@ TritonCall TritonCall::Parse(absl::string_view backend_config,
       attrs.getAs<mlir::IntegerAttr>("num_stages").getValue().getSExtValue();
   auto num_warps =
       attrs.getAs<mlir::IntegerAttr>("num_warps").getValue().getSExtValue();
-  return TritonCall{std::move(name), std::move(ir), num_stages, num_warps,
-                    grid_x,          grid_y,        grid_z};
+  int64_t global_scratch_memory_size = 0;
+  if (auto attr =
+          attrs.getAs<mlir::IntegerAttr>("global_scratch_memory_size")) {
+    global_scratch_memory_size = attr.getValue().getSExtValue();
+  }
+  bool is_tma_allowed = false;
+  if (auto attr = attrs.getAs<mlir::BoolAttr>("is_tma_allowed")) {
+    is_tma_allowed = attr.getValue();
+  }
+  std::vector<int64_t> zeroed_outputs;
+  if (auto attr = attrs.getAs<mlir::ArrayAttr>("zeroed_outputs")) {
+    for (auto val : attr) {
+      zeroed_outputs.push_back(
+          mlir::cast<mlir::IntegerAttr>(val).getValue().getSExtValue());
+    }
+  }
+  return TritonCall{std::move(name), std::move(ir),
+                    num_stages,      num_warps,
+                    grid_x,          grid_y,
+                    grid_z,          global_scratch_memory_size,
+                    is_tma_allowed,  std::move(zeroed_outputs)};
 }
 
 }  // namespace xla::gpu

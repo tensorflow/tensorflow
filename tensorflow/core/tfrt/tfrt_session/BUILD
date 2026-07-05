@@ -1,5 +1,5 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_shared_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
@@ -117,8 +117,9 @@ tf_cc_shared_test(
 )
 
 # copybara:uncomment_begin(C++ Global registration not working in python, b/290988709)
-# py_strict_library(
+# py_library(
 #     name = "tfrt_session_py",
+#     strict_deps = True,
 #     visibility = ["//visibility:public"],
 #     deps = [
 #         "//tensorflow/core/tfrt/tfrt_session",
@@ -129,7 +130,7 @@ tf_cc_shared_test(
 #     name = "tfrt_session_python_test",
 #     srcs = ["tfrt_session_python_test.py"],
 #     exec_properties = select({
-#         "//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
+#         "//tools/cpp:sanitizer_build": {"cpp_link.mem": "20g"},
 #         "//conditions:default": None,
 #     }),
 #     deps = [

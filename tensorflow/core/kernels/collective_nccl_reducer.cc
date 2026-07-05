@@ -49,15 +49,15 @@ void NcclReducer::Run(StatusCallback done) {
         break;
       case DT_INT32:
         group_size_val =
-            Tensor(static_cast<int32>(col_params_->group.group_size));
+            Tensor(static_cast<int32_t>(col_params_->group.group_size));
         break;
       case DT_INT64:
         group_size_val =
             Tensor(static_cast<int64_t>(col_params_->group.group_size));
         break;
       default:
-        done(errors::Internal("Unsupported type ",
-                              DataTypeString(col_ctx_->output->dtype())));
+        done(absl::InternalError(absl::StrCat(
+            "Unsupported type ", DataTypeString(col_ctx_->output->dtype()))));
         return;
     }
     group_size = Tensor(

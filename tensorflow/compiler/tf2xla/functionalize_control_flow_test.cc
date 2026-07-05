@@ -59,7 +59,7 @@ absl::Status FindIfThenAndElse(const GraphDef& graph, std::string* op_name,
       return absl::OkStatus();
     }
   }
-  return errors::NotFound("No If node found in graph");
+  return absl::NotFoundError("No If node found in graph");
 }
 
 // Graph:
@@ -320,7 +320,7 @@ absl::Status FindWhileCondAndBody(const GraphDef& graph, NameAttrList* cond,
       return absl::OkStatus();
     }
   }
-  return errors::NotFound("No While node found in graph");
+  return absl::NotFoundError("No While node found in graph");
 }
 
 // Graph:

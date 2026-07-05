@@ -101,13 +101,13 @@ void CollectiveExecutorMgr::CleanupAll() {
 void CollectiveExecutorMgr::GetStepSequenceAsync(
     const GetStepSequenceRequest* request, GetStepSequenceResponse* response,
     const StatusCallback& done) {
-  done(errors::Internal(
+  done(absl::InternalError(
       "CollectiveExecutorMgr does not implement GetStepSequence."));
 }
 
 void CollectiveExecutorMgr::RefreshStepIdSequenceAsync(
     int64_t graph_key, const StatusCallback& done) {
-  done(errors::Internal(
+  done(absl::InternalError(
       "CollectiveExecutorMgr does not implement RefreshStepIdSequence."));
 }
 

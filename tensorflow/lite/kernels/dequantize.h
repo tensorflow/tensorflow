@@ -75,15 +75,18 @@ inline TfLiteStatus PerChannelDequantizeImpl(TfLiteContext* context,
   size_t bytes_unpacked;
   if (input->type == kTfLiteInt2) {
     bytes_unpacked = input->bytes * 4;
-  } else {
+  } else if (input->type == kTfLiteInt4 || input->type == kTfLiteUInt4) {
     bytes_unpacked = input->bytes * 2;
+  } else {
+    bytes_unpacked = input->bytes;
   }
   auto unpacked_input_data = std::make_unique<int8_t[]>(bytes_unpacked);
 
-  if (input->type == kTfLiteInt4) {
+  if (input->type == kTfLiteInt4 || input->type == kTfLiteUInt4) {
     tflite::tensor_utils::UnpackPackedIntToInt8(
         GetTensorData<int8_t>(input), GetTensorShape(input).FlatSize(),
-        /*bit_width=*/4, unpacked_input_data.get());
+        /*bit_width=*/4, unpacked_input_data.get(),
+        /*unpack_unsigned=*/input->type == kTfLiteUInt4);
     input_data = unpacked_input_data.get();
   } else if (input->type == kTfLiteInt2) {
     tflite::tensor_utils::UnpackPackedIntToInt8(
@@ -103,6 +106,7 @@ inline TfLiteStatus PerChannelDequantizeImpl(TfLiteContext* context,
       break;
     case kTfLiteInt2:
     case kTfLiteInt4:
+    case kTfLiteUInt4:
     case kTfLiteInt8:
       reference_ops::PerChannelDequantize<int8_t>(
           per_channel_op_params, GetTensorShape(input), input_data,
@@ -129,16 +133,19 @@ TfLiteStatus DequantizeImpl(TfLiteContext* context, TfLiteNode* node,
   size_t bytes_unpacked;
   if (input->type == kTfLiteInt2) {
     bytes_unpacked = input->bytes * 4;
-  } else {
+  } else if (input->type == kTfLiteInt4 || input->type == kTfLiteUInt4) {
     bytes_unpacked = input->bytes * 2;
+  } else {
+    bytes_unpacked = input->bytes;
   }
   auto unpacked_input_data = std::make_unique<int8_t[]>(bytes_unpacked);
 
-  if (input->type == kTfLiteInt4) {
+  if (input->type == kTfLiteInt4 || input->type == kTfLiteUInt4) {
     // Use GetTensorShape(input).FlatSize() for num_elements.
     tflite::tensor_utils::UnpackPackedIntToInt8(
         GetTensorData<int8_t>(input), GetTensorShape(input).FlatSize(),
-        /*bit_width=*/4, unpacked_input_data.get());
+        /*bit_width=*/4, unpacked_input_data.get(),
+        /*unpack_unsigned=*/input->type == kTfLiteUInt4);
     input_data = unpacked_input_data.get();
   } else if (input->type == kTfLiteInt2) {
     // Use GetTensorShape(input).FlatSize() for num_elements.
@@ -164,6 +171,7 @@ TfLiteStatus DequantizeImpl(TfLiteContext* context, TfLiteNode* node,
       break;
     case kTfLiteInt2:
     case kTfLiteInt4:
+    case kTfLiteUInt4:
     case kTfLiteInt8:
       if (kernel_type == kReference) {
         reference_integer_ops::Dequantize<int8_t>(

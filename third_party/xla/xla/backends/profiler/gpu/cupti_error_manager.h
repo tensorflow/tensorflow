@@ -16,19 +16,21 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUPTI_ERROR_MANAGER_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUPTI_ERROR_MANAGER_H_
 
-#include <stddef.h>
-#include <stdint.h>
-
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_profiler_target.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_target.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "tsl/platform/thread_annotations.h"
 
@@ -73,6 +75,27 @@ class CuptiErrorManager : public xla::profiler::CuptiInterface {
       CUpti_BuffersCallbackRequestFunc func_buffer_requested,
       CUpti_BuffersCallbackCompleteFunc func_buffer_completed) override;
 
+  // V2 multi-subscriber variants (CUPTI >= 13.2).
+  CUptiResult ActivityRegisterCallbacksV2(
+      CUpti_SubscriberHandle subscriber,
+      CuptiBuffersCallbackRequestFuncV2 func_buffer_requested,
+      CuptiBuffersCallbackCompleteFuncV2 func_buffer_completed) override;
+
+  CUptiResult ActivityEnableV2(CUpti_SubscriberHandle subscriber,
+                               CUpti_ActivityKind kind, void* cfg) override;
+
+  CUptiResult ActivityDisableV2(CUpti_SubscriberHandle subscriber,
+                                CUpti_ActivityKind kind, void* cfg) override;
+
+  CUptiResult ActivitySetAttributeV2(CUpti_SubscriberHandle subscriber,
+                                     CUpti_ActivityAttribute attr,
+                                     size_t* valueSize, void* value) override;
+
+  CUptiResult ActivityUseSystemThreadIdV2(
+      CUpti_SubscriberHandle subscriber) override;
+
+  CUptiResult ActivityUsePerThreadBufferV2() override;
+
   CUptiResult ActivityUsePerThreadBuffer() override;
 
   CUptiResult SetActivityFlushPeriod(uint32_t period_ms) override;
@@ -103,6 +126,9 @@ class CuptiErrorManager : public xla::profiler::CuptiInterface {
   // Unsubscribe to the undo log.
   CUptiResult Subscribe(CUpti_SubscriberHandle* subscriber,
                         CUpti_CallbackFunc callback, void* userdata) override;
+
+  CUptiResult SubscribeV2(CUpti_SubscriberHandle* subscriber,
+                          CUpti_CallbackFunc callback, void* userdata) override;
 
   // Unsubscribes callbacks.
   CUptiResult Unsubscribe(CUpti_SubscriberHandle subscriber) override;

@@ -26,7 +26,7 @@ xla_cc_binary(
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/cpu/codegen/emitters/transforms:passes",
         "//xla/backends/cpu/codegen/tiled/transforms:passes",
-        "//xla/backends/gpu/codegen/emitters:emitter_base",
+        "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/backends/gpu/codegen/emitters/transforms:passes",
         "//xla/codegen/emitters/ir:xla",
@@ -37,6 +37,9 @@ xla_cc_binary(
         "//xla/codegen/xtile/ir/transforms:passes",
         "//xla/mlir_hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
@@ -73,6 +76,7 @@ cc_library(
     visibility = [
         "//xla/backends/cpu/codegen/tools:__subpackages__",
         "//xla/backends/gpu/codegen/tools:__subpackages__",
+        "//xla/backends/gpu/codegen/triton/tests:__subpackages__",
     ],
     deps = [
         "//xla:status_macros",

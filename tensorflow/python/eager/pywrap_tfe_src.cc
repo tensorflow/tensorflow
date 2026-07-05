@@ -28,6 +28,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/debugging/leak_check.h"
 #include "absl/status/status.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -63,7 +63,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/python/eager/pywrap_gradient_exclusions.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
@@ -79,6 +78,15 @@ limitations under the License.
 using tensorflow::Status;
 using tensorflow::string;
 using tsl::strings::Printf;
+
+// Added for free-threaded run. Locks are no-op when GIL is enabled.
+#ifdef Py_GIL_DISABLED
+#define LOCK_READER(m) absl::ReaderMutexLock lock(&m)
+#define LOCK_WRITER(m) absl::WriterMutexLock lock(&m)
+#else
+#define LOCK_READER(m)
+#define LOCK_WRITER(m)
+#endif
 
 namespace {
 // NOTE: Items are retrieved from and returned to these unique_ptrs, and they
@@ -102,6 +110,12 @@ thread_local std::unordered_map<TFE_Context*,                        // NOLINT
 
 thread_local tensorflow::TF_StatusPtr thread_local_tf_status(  // NOLINT
     nullptr, tensorflow::internal::TF_StatusDeleter());        // NOLINT
+
+// Added for free-threaded run.
+#ifdef Py_GIL_DISABLED
+static absl::Mutex attr_to_inputs_mutex(absl::kConstInit);
+static absl::Mutex attr_to_defaults_mutex(absl::kConstInit);
+#endif
 
 std::unique_ptr<TFE_Op, OpDeleter> ReleaseThreadLocalOp(TFE_Context* ctx) {
   auto it = thread_local_eager_operation_map.find(ctx);
@@ -160,17 +174,20 @@ tensorflow::gtl::FlatMap<string, AttrToInputsMap*>* GetAllAttrToInputsMaps() {
   return all_attr_to_input_maps;
 }
 
-// This function doesn't use a lock, since we depend on the GIL directly.
 AttrToInputsMap* GetAttrToInputsMapHoldingGIL(const tensorflow::OpDef& op_def) {
-#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 4
+#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 4 && !defined(Py_GIL_DISABLED)
   DCHECK(PyGILState_Check())
       << "This function needs to hold the GIL when called.";
 #endif
   auto* all_attr_to_input_maps = GetAllAttrToInputsMaps();
-  auto* output =
-      tensorflow::gtl::FindPtrOrNull(*all_attr_to_input_maps, op_def.name());
-  if (output != nullptr) {
-    return output;
+
+  {
+    LOCK_READER(attr_to_inputs_mutex);
+    auto* output =
+        tensorflow::gtl::FindPtrOrNull(*all_attr_to_input_maps, op_def.name());
+    if (output != nullptr) {
+      return output;
+    }
   }
 
   std::unique_ptr<AttrToInputsMap> m(new AttrToInputsMap);
@@ -187,12 +204,24 @@ AttrToInputsMap* GetAttrToInputsMapHoldingGIL(const tensorflow::OpDef& op_def) {
   }
 
   auto* retval = m.get();
-  (*all_attr_to_input_maps)[op_def.name()] = m.release();
+
+  {
+    LOCK_WRITER(attr_to_inputs_mutex);
+#ifdef Py_GIL_DISABLED
+    // Double check under the lock to handle concurrent insertions in
+    // free-threaded mode.
+    auto* output =
+        tensorflow::gtl::FindPtrOrNull(*all_attr_to_input_maps, op_def.name());
+    if (output != nullptr) {
+      return output;
+    }
+#endif
+    (*all_attr_to_input_maps)[op_def.name()] = m.release();
+  }
 
   return retval;
 }
 
-// This function doesn't use a lock, since we depend on the GIL directly.
 tensorflow::gtl::FlatMap<
     string, tensorflow::gtl::FlatMap<string, tensorflow::DataType>*>*
 GetAllAttrToDefaultsMaps() {
@@ -203,18 +232,23 @@ GetAllAttrToDefaultsMaps() {
 
 tensorflow::gtl::FlatMap<string, tensorflow::DataType>*
 GetAttrToDefaultsMapHoldingGIL(const tensorflow::OpDef& op_def) {
-#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 4
+#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 4 && !defined(Py_GIL_DISABLED)
   DCHECK(PyGILState_Check())
       << "This function needs to hold the GIL when called.";
 #endif
   auto* all_attr_to_defaults_maps = GetAllAttrToDefaultsMaps();
-  auto* output =
-      tensorflow::gtl::FindPtrOrNull(*all_attr_to_defaults_maps, op_def.name());
-  if (output != nullptr) {
-    return output;
+
+  {
+    LOCK_READER(attr_to_defaults_mutex);
+    auto* output = tensorflow::gtl::FindPtrOrNull(*all_attr_to_defaults_maps,
+                                                  op_def.name());
+    if (output != nullptr) {
+      return output;
+    }
   }
 
-  auto* new_map = new tensorflow::gtl::FlatMap<string, tensorflow::DataType>;
+  using DefaultsMap = tensorflow::gtl::FlatMap<string, tensorflow::DataType>;
+  auto new_map = std::make_unique<DefaultsMap>();
 
   for (const auto& attr : op_def.attr()) {
     if (attr.type() == "type" && attr.has_default_value()) {
@@ -222,9 +256,21 @@ GetAttrToDefaultsMapHoldingGIL(const tensorflow::OpDef& op_def) {
     }
   }
 
-  (*all_attr_to_defaults_maps)[op_def.name()] = new_map;
-
-  return new_map;
+  {
+    LOCK_WRITER(attr_to_defaults_mutex);
+#ifdef Py_GIL_DISABLED
+    // Double check under the lock to handle concurrent insertions in
+    // free-threaded mode.
+    auto* output = tensorflow::gtl::FindPtrOrNull(*all_attr_to_defaults_maps,
+                                                  op_def.name());
+    if (output != nullptr) {
+      return output;
+    }
+#endif
+    auto* retval = new_map.get();
+    (*all_attr_to_defaults_maps)[op_def.name()] = new_map.release();
+    return retval;
+  }
 }
 
 struct FastPathOpExecInfo {
@@ -1160,8 +1206,8 @@ int64_t get_uid() { return _uid++; }
 PyObject* TFE_Py_UID() { return PyLong_FromLongLong(get_uid()); }
 
 void TFE_DeleteContextCapsule(PyObject* context) {
-  TFE_Context* ctx =
-      reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(context, nullptr));
+  TFE_Context* ctx = reinterpret_cast<TFE_Context*>(
+      PyCapsule_GetPointer(context, "TFE_Context"));
   auto op = ReleaseThreadLocalOp(ctx);
   op.reset();
   TFE_DeleteContext(ctx);
@@ -1770,10 +1816,9 @@ static PyTypeObject TFE_Py_VariableWatcher_Type = {
     "TFE_Py_VariableWatcher objects", /* tp_doc */
 };
 
-// Note: in the current design no mutex is needed here because of the python
-// GIL, which is always held when any TFE_Py_* methods are called. We should
-// revisit this if/when decide to not hold the GIL while manipulating the tape
-// stack.
+// Note: in the current design no mutex is needed here for the tape set because
+// it is thread_local. However, initialization of global types like
+// TFE_Py_Tape_Type requires synchronization under free-threading.
 tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* GetTapeSet() {
   thread_local std::unique_ptr<tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>>
       tape_set;
@@ -1961,8 +2006,17 @@ PyObject* TFE_Py_TapeSetIsStopped() {
 
 PyObject* TFE_Py_TapeSetNew(PyObject* persistent,
                             PyObject* watch_accessed_variables) {
-  TFE_Py_Tape_Type.tp_new = PyType_GenericNew;
-  if (PyType_Ready(&TFE_Py_Tape_Type) < 0) return nullptr;
+  // Ensure global type object is initialized only once to prevent data races
+  // under free-threading.
+  static absl::once_flag tape_type_once;
+  static bool tape_type_ready = false;
+  absl::call_once(tape_type_once, []() {
+    TFE_Py_Tape_Type.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&TFE_Py_Tape_Type) >= 0) {
+      tape_type_ready = true;
+    }
+  });
+  if (!tape_type_ready) return nullptr;
   TFE_Py_Tape* tape = PyObject_NEW(TFE_Py_Tape, &TFE_Py_Tape_Type);
   tape->tape = new GradientTape(persistent == Py_True,
                                 watch_accessed_variables == Py_True);
@@ -1973,6 +2027,10 @@ PyObject* TFE_Py_TapeSetNew(PyObject* persistent,
 }
 
 void TFE_Py_TapeSetAdd(PyObject* tape) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   Py_INCREF(tape);
   TFE_Py_Tape* tfe_tape = reinterpret_cast<TFE_Py_Tape*>(tape);
   if (!GetTapeSet()->insert(tfe_tape).second) {
@@ -1991,13 +2049,21 @@ PyObject* TFE_Py_TapeSetIsEmpty() {
 }
 
 void TFE_Py_TapeSetRemove(PyObject* tape) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   auto* stack = GetTapeSet();
+  bool erased = false;
   if (stack != nullptr) {
-    stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape));
+    erased = stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape)) > 0;
   }
   // We kept a reference to the tape in the set to ensure it wouldn't get
   // deleted under us; cleaning it up here.
-  Py_DECREF(tape);
+  // We only decref if the tape was actually erased from the set.
+  if (erased) {
+    Py_DECREF(tape);
+  }
 }
 
 static std::vector<int64_t> MakeIntList(PyObject* list) {
@@ -2156,6 +2222,10 @@ PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors) {
 }
 
 void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   if (!CouldBackprop()) {
     return;
   }
@@ -2321,8 +2391,17 @@ PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
 }
 
 PyObject* TFE_Py_VariableWatcherNew() {
-  TFE_Py_VariableWatcher_Type.tp_new = PyType_GenericNew;
-  if (PyType_Ready(&TFE_Py_VariableWatcher_Type) < 0) return nullptr;
+  // Ensure global type object is initialized only once to prevent data races
+  // under free-threading.
+  static absl::once_flag variable_watcher_type_once;
+  static bool variable_watcher_type_ready = false;
+  absl::call_once(variable_watcher_type_once, []() {
+    TFE_Py_VariableWatcher_Type.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&TFE_Py_VariableWatcher_Type) >= 0) {
+      variable_watcher_type_ready = true;
+    }
+  });
+  if (!variable_watcher_type_ready) return nullptr;
   TFE_Py_VariableWatcher* variable_watcher =
       PyObject_NEW(TFE_Py_VariableWatcher, &TFE_Py_VariableWatcher_Type);
   variable_watcher->variable_watcher = new VariableWatcher();
@@ -2403,7 +2482,7 @@ void TapeSetRecordBackprop(
     const std::vector<tensorflow::DataType>& input_dtypes,
     const std::function<PyBackwardFunction*()>& backward_function_getter,
     const std::function<void(PyBackwardFunction*)>& backward_function_killer,
-    tensorflow::uint64 max_gradient_tape_id) {
+    uint64_t max_gradient_tape_id) {
   if (!CouldBackprop()) {
     return;
   }
@@ -2424,9 +2503,8 @@ bool TapeSetRecordForwardprop(
     const std::function<PyBackwardFunction*()>& backward_function_getter,
     const std::function<void(PyBackwardFunction*)>& backward_function_killer,
     const tensorflow::eager::ForwardFunction<PyObject>* forward_function,
-    PyObject* forwardprop_output_indices,
-    tensorflow::uint64* max_gradient_tape_id) {
-  *max_gradient_tape_id = std::numeric_limits<tensorflow::uint64>::max();
+    PyObject* forwardprop_output_indices, uint64_t* max_gradient_tape_id) {
+  *max_gradient_tape_id = std::numeric_limits<uint64_t>::max();
   if (!CouldForwardprop()) {
     return true;
   }
@@ -2636,7 +2714,7 @@ bool TapeSetRecordOperation(
   if (!ParseOpTypeString(op_type, &op_type_str)) {
     return false;
   }
-  tensorflow::uint64 max_gradient_tape_id;
+  uint64_t max_gradient_tape_id;
   if (!TapeSetRecordForwardprop(
           op_type_str, output_seq.get(), output_info, input_tensors, input_ids,
           input_dtypes, backward_function_getter, backward_function_killer,
@@ -2746,7 +2824,7 @@ PyObject* TFE_Py_TapeSetRecordOperationForwardprop(
   if (!ParseOpTypeString(op_type, &op_type_str)) {
     return nullptr;
   }
-  tensorflow::uint64 max_gradient_tape_id;
+  uint64_t max_gradient_tape_id;
   if (!TapeSetRecordForwardprop(
           op_type_str, output_seq.get(), output_info, input_tensors, input_ids,
           input_dtypes, backward_function_getter, backward_function_killer,
@@ -2801,7 +2879,7 @@ PyObject* TFE_Py_TapeSetRecordOperationBackprop(PyObject* op_type,
                         backward_function_getter, backward_function_killer,
                         // No filtering based on relative ordering with forward
                         // accumulators.
-                        std::numeric_limits<tensorflow::uint64>::max());
+                        std::numeric_limits<uint64_t>::max());
   Py_RETURN_NONE;
 }
 
@@ -2944,8 +3022,17 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
 }
 
 PyObject* TFE_Py_ForwardAccumulatorNew(bool use_batch) {
-  TFE_Py_ForwardAccumulator_Type.tp_new = PyType_GenericNew;
-  if (PyType_Ready(&TFE_Py_ForwardAccumulator_Type) < 0) return nullptr;
+  // Ensure global type object is initialized only once to prevent data races
+  // under free-threading.
+  static absl::once_flag accumulator_type_once;
+  static bool accumulator_type_ready = false;
+  absl::call_once(accumulator_type_once, []() {
+    TFE_Py_ForwardAccumulator_Type.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&TFE_Py_ForwardAccumulator_Type) >= 0) {
+      accumulator_type_ready = true;
+    }
+  });
+  if (!accumulator_type_ready) return nullptr;
   TFE_Py_ForwardAccumulator* accumulator =
       PyObject_NEW(TFE_Py_ForwardAccumulator, &TFE_Py_ForwardAccumulator_Type);
   if (py_vspace == nullptr) {
@@ -3590,21 +3677,23 @@ const char* GetDeviceName(PyObject* py_device_name) {
 
 bool RaiseIfNotPySequence(PyObject* seq, const string& attr_name) {
   if (!PySequence_Check(seq)) {
-    PyErr_SetString(PyExc_TypeError,
-                    Printf("expected a sequence for attr %s, got %s instead",
-                           attr_name.data(), seq->ob_type->tp_name)
-                        .data());
+    PyErr_SetString(
+        PyExc_TypeError,
+        absl::StrFormat("expected a sequence for attr %s, got %s instead",
+                        attr_name.data(), seq->ob_type->tp_name)
+            .data());
 
     return false;
   }
   if (PyArray_Check(seq) &&
       PyArray_NDIM(reinterpret_cast<PyArrayObject*>(seq)) != 1) {
-    PyErr_SetString(PyExc_ValueError,
-                    Printf("expected a sequence for attr %s, got an ndarray "
-                           "with rank %d instead",
-                           attr_name.data(),
-                           PyArray_NDIM(reinterpret_cast<PyArrayObject*>(seq)))
-                        .data());
+    PyErr_SetString(
+        PyExc_ValueError,
+        absl::StrFormat("expected a sequence for attr %s, got an ndarray "
+                        "with rank %d instead",
+                        attr_name.data(),
+                        PyArray_NDIM(reinterpret_cast<PyArrayObject*>(seq)))
+            .data());
     return false;
   }
   return true;
@@ -3658,9 +3747,10 @@ bool RunCallbacks(
       if (!PyCallable_Check(callback_fn)) {
         PyErr_SetString(
             PyExc_TypeError,
-            Printf("expected a function for "
-                   "post execution callback in index %ld, got %s instead",
-                   i, callback_fn->ob_type->tp_name)
+            absl::StrFormat(
+                "expected a function for "
+                "post execution callback in index %ld, got %s instead",
+                i, callback_fn->ob_type->tp_name)
                 .c_str());
         return false;
       }
@@ -3685,8 +3775,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   if (args_size < FAST_PATH_EXECUTE_ARG_INPUT_START) {
     PyErr_SetString(
         PyExc_ValueError,
-        Printf("There must be at least %d items in the input tuple.",
-               FAST_PATH_EXECUTE_ARG_INPUT_START)
+        absl::StrFormat("There must be at least %d items in the input tuple.",
+                        FAST_PATH_EXECUTE_ARG_INPUT_START)
             .c_str());
     return nullptr;
   }
@@ -3701,7 +3791,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
       PyObject_GetAttrString(py_eager_context, "_context_handle");
 
   TFE_Context* ctx = reinterpret_cast<TFE_Context*>(
-      PyCapsule_GetPointer(eager_context_handle, nullptr));
+      PyCapsule_GetPointer(eager_context_handle, "TFE_Context"));
   op_exec_info.ctx = ctx;
   op_exec_info.args = args;
 
@@ -3738,10 +3828,11 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   TF_Status* status = GetStatus();
   const char* op_name = TFE_GetPythonString(op_exec_info.op_name);
   if (op_name == nullptr) {
-    PyErr_SetString(PyExc_TypeError,
-                    Printf("expected a string for op_name, got %s instead",
-                           op_exec_info.op_name->ob_type->tp_name)
-                        .c_str());
+    PyErr_SetString(
+        PyExc_TypeError,
+        absl::StrFormat("expected a string for op_name, got %s instead",
+                        op_exec_info.op_name->ob_type->tp_name)
+            .c_str());
     return nullptr;
   }
 
@@ -3767,10 +3858,11 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
       FAST_PATH_EXECUTE_ARG_INPUT_START + op_def->input_arg_size()) {
     PyErr_SetString(
         PyExc_ValueError,
-        Printf("Tuple size smaller than intended. Expected to be at least %d, "
-               "was %ld",
-               FAST_PATH_EXECUTE_ARG_INPUT_START + op_def->input_arg_size(),
-               args_size)
+        absl::StrFormat(
+            "Tuple size smaller than intended. Expected to be at least %d, "
+            "was %ld",
+            FAST_PATH_EXECUTE_ARG_INPUT_START + op_def->input_arg_size(),
+            args_size)
             .c_str());
     return nullptr;
   }
@@ -3834,8 +3926,10 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
 
   // TODO(nareshmodi): Encapsulate callbacks information into a struct.
   if (op_exec_info.run_callbacks) {
-    flattened_attrs.reset(new std::vector<tensorflow::Safe_PyObjectPtr>);
-    flattened_inputs.reset(new std::vector<tensorflow::Safe_PyObjectPtr>);
+    flattened_attrs =
+        std::make_unique<std::vector<tensorflow::Safe_PyObjectPtr>>();
+    flattened_inputs =
+        std::make_unique<std::vector<tensorflow::Safe_PyObjectPtr>>();
   }
 
   // Add inferred attrs and inputs.
@@ -3967,7 +4061,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   if (static_cast<int64_t>(static_cast<int32_t>(num_outputs)) != num_outputs) {
     PyErr_SetString(
         PyExc_ValueError,
-        Printf("Number of outputs is too big: %ld", num_outputs).c_str());
+        absl::StrFormat("Number of outputs is too big: %ld", num_outputs)
+            .c_str());
     return nullptr;
   }
   int num_retvals = num_outputs;

@@ -108,6 +108,16 @@ class HistogramFixedWidthTest(test.TestCase):
         "Requires nbins > 0|should be a positive number"):
       self.evaluate(
           histogram_ops.histogram_fixed_width(values, [1.0, 5.0], nbins=-5))
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        "Requires nbins < 2147483647|nbins \\+ 1 must not exceed the maximum"
+        " value of int32_t",
+    ):
+      self.evaluate(
+          histogram_ops.histogram_fixed_width(
+              values, [1.0, 5.0], nbins=2147483647
+          )
+      )
 
   def test_empty_input_gives_all_zero_counts(self):
     # Bins will be:

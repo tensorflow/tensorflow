@@ -56,7 +56,7 @@ void CheckPeakOpsPerNs(const DeviceDescription& device_info,
 
 TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsH100) {
   DeviceDescription h100_device_info =
-      xla::gpu::TestGpuDeviceInfo::RTXH100SXMDeviceInfo();
+      xla::gpu::TestGpuDeviceInfo::H100SXMDeviceInfo();
   FillExecutionUnitDesc(h100_device_info.cuda_compute_capability(),
                         h100_device_info.clock_rate_ghz(), h100_device_info);
 
@@ -86,7 +86,7 @@ TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsH100) {
 
 TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsB200) {
   DeviceDescription b200_device_info =
-      xla::gpu::TestGpuDeviceInfo::RTXB200SXMDeviceInfo();
+      xla::gpu::TestGpuDeviceInfo::B200SXMDeviceInfo();
   FillExecutionUnitDesc(b200_device_info.cuda_compute_capability(),
                         b200_device_info.clock_rate_ghz(), b200_device_info);
 
@@ -114,6 +114,16 @@ TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsB200) {
                     xla::PrimitiveType::S32, 37.0);
   CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/false,
                     xla::PrimitiveType::F64, 37.0);
+}
+
+TEST(CudaCoreInfoTableTest, B300UsesBlackwellTable) {
+  DeviceDescription b300_device_info;
+  FillExecutionUnitDesc(CudaComputeCapability{10, 3}, 1.965, b300_device_info);
+
+  const ExecutionUnitDescription* matrix_unit_desc =
+      b300_device_info.matrix_unit_description();
+  ASSERT_NE(matrix_unit_desc, nullptr);
+  EXPECT_EQ(matrix_unit_desc->GetRateInfo(xla::BF16).value().units_per_core, 4);
 }
 
 TEST(CudaCoreInfoTableTest, GetFpusPerCore) {

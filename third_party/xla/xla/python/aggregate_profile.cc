@@ -30,7 +30,9 @@ void AggregateProfiledInstructionsProto(
     absl::Span<const tensorflow::profiler::ProfiledInstructionsProto> profiles,
     int percentile,
     tensorflow::profiler::ProfiledInstructionsProto *result_profile) {
-  if (percentile < 0 || percentile > 100) return;
+  if (percentile < 0 || percentile > 100) {
+    return;
+  }
 
   absl::flat_hash_map<std::string, HloLatencyInfo> hlo_latency_info;
   // Store costs information from each profile to the hash map.

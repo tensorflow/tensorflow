@@ -85,6 +85,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -113,7 +114,6 @@ cc_library(
 
 xla_cc_test(
     name = "hlo_evaluator_slow_reduce_window_test",
-    timeout = "long",
     srcs = ["hlo_evaluator_slow_reduce_window_test.cc"],
     tags = [
         # Times out in asan/tsan/zapfhahn.
@@ -127,9 +127,11 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -157,6 +159,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/transforms/simplifiers:hlo_element_type_converter",
         "//xla/service:dynamic_dimension_inference",
         "//xla/service:hlo_module_config",
@@ -180,6 +183,27 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "hlo_evaluator_sparsity_test",
+    srcs = ["hlo_evaluator_sparsity_test.cc"],
+    deps = [
+        ":hlo_evaluator",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
 cc_library(
     name = "caching_hlo_evaluator",
     srcs = ["caching_hlo_evaluator.cc"],
@@ -191,6 +215,7 @@ cc_library(
         "//xla/service:dynamic_dimension_inference",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -217,6 +242,7 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",  # fixdeps: keep
         "@com_google_absl//absl/status",

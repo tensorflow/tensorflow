@@ -6,7 +6,7 @@ load("//tensorflow/lite:special_rules.bzl", "nnapi_sl_visibility_allowlist")
 _DEFAULT_VISIBILITY = ["//tensorflow/lite:__subpackages__"]
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = _DEFAULT_VISIBILITY,
     licenses = ["notice"],
 )

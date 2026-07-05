@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 
@@ -37,8 +37,13 @@ class CpuPjRtCompiler : public PjRtCompiler {
 
   // Variant of `Compile` that accepts an MLIR module.
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, mlir::ModuleOp module,
+      CompileOptions options, MaybeOwningMlirModule module,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
+
+  // Deserializes a PjRtTopologyDescription from a string.
+  absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+  DeserializePjRtTopologyDescription(
+      const std::string& serialized_topology) override;
 };
 
 }  // namespace xla::cpu

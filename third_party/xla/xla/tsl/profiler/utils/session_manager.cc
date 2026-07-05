@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <climits>
+#include <cstdint>
 #include <string>
 #include <variant>
 #include <vector>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -41,6 +43,7 @@ using tensorflow::RemoteProfilerSessionManagerOptions;
 
 // Profiler gives grace after profiling duration to terminate.
 constexpr absl::Duration kMinSessionGraceTime = absl::Seconds(60);
+constexpr uint64_t kDefaultDelayMs = 3000;
 
 // Helper template function to set integer options in ProfilerOptions.
 template <typename T, typename Setter>
@@ -241,6 +244,12 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
   AddServiceAddresses(*is_cloud_tpu_session ? worker_list : service_addresses,
                       &options);
 
+  // Add a default delay for multi-host profiling sessions to allow all hosts
+  // to be ready.
+  if (options.service_addresses_size() > 1) {
+    options.set_delay_ms(kDefaultDelayMs);
+  }
+
   // Set local profiler duration and profiler session durations.
   options.mutable_profiler_options()->set_include_dataset_ops(
       include_dataset_ops);
@@ -268,7 +277,7 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
   }
 
   for (absl::string_view host_port : options.service_addresses()) {
-    TF_RETURN_IF_ERROR(ValidateHostPortPair(host_port));
+    RETURN_IF_ERROR(ValidateHostPortPair(host_port));
   }
 
   if (options.max_session_duration_ms() <

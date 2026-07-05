@@ -97,6 +97,16 @@ TEST(DequantizeOpTest, Int4) {
               ElementsAreArray(ArrayFloatNear({4, 3.5, -3, -3.5})));
 }
 
+TEST(DequantizeOpTest, Uint4) {
+  // [0, 7.5] -> scale=0.5, zero_point=0 for UINT4
+  DequantizeOpModel m(TensorType_UINT4, {2, 2}, 0.5, 0, 8);
+
+  m.SetInputInt4<uint8_t>(0, {15, 14, 1, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({7.5, 7.0, 0.5, 0.0})));
+}
+
 TEST(DequantizeOpTest, Int2) {
   DequantizeOpModel m(TensorType_INT2, {1, 4}, 0.5, -1, 6);
 
@@ -214,6 +224,22 @@ TEST(DequantizePerChannelOpTest, Int2) {
   // val=-2: (-2 - 0) * 1.0 = -2.0
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({1.0, 0.5, -1.0, -2.0})));
+}
+
+TEST(DequantizePerChannelOpTest, Uint4) {
+  // scales={0.5, 1.0}, zero_points={0, 1}, channel_dim=0
+  DequantizePerChannelOpModel m(TensorType_UINT4, {2, 2}, {0.5, 1.0}, {0, 1}, 0,
+                                8);
+  m.SetInputInt4<uint8_t>(0, {15, 1, 15, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  // Channel 0: scale=0.5, zp=0
+  // val=15: (15 - 0) * 0.5 = 7.5
+  // val=1: (1 - 0) * 0.5 = 0.5
+  // Channel 1: scale=1.0, zp=1
+  // val=15: (15 - 1) * 1.0 = 14.0
+  // val=1: (1 - 1) * 1.0 = 0.0
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({7.5, 0.5, 14.0, 0.0})));
 }
 
 }  // namespace

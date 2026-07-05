@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -33,62 +34,31 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
-#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
-#include "xla/core/collectives/communicator.h"
+#include "xla/backends/gpu/runtime/thunk_kind.pb.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/lib/gtl/int_type.h"
+#include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/util/unique_any.h"
 #include "xla/util.h"
 
-namespace xla {
-namespace gpu {
-
-// Execution stream id allows to specify what Gpu stream Thunk should be using
-// for launching device work (kernels, library calls, etc.). By default all
-// thunks use stream #0, which is the default compute stream of an XLA
-// executable.
-//
-// Stream synchronizations are explicit and represented as WaitForStreams thunk
-// in a ThunkSequence. When ThunkSequence converted to CommandBuffer, execution
-// streams mapped to concurrent execution scopes and barriers between them.
-//
-// IMPORTANT: Async execution semantics and execution stream id
-//
-// For async thunks (i.e. thunks corresponding to `all-reduce-start` and
-// `all-reduce-done`) execution stream id means NOT a stream where the async
-// operation must execute, but a stream that async operation must be
-// synchronized with:
-//
-//   - Start operation must wait for the completion of all launched work on the
-//     execution stream id (usually by adding a stream wait) and after that
-//     launch async work on implementation defined extra stream (can be borrowed
-//     from a pool)
-//
-//   - Corresponding Done operation must synchronize execution stream id with
-//     an implementation defined stream that is running async work, again
-//     usually by adding a stream wait.
-//
-TSL_LIB_GTL_DEFINE_INT_TYPE(ExecutionStreamId, uint64_t);
-
-// Unique identifier for async events. The same identifier is expected to be
-// shared between a pair of StartThunk and corresponding DoneThunk. It is used
-// to collect async regions for a CommandBufferThunk.
-TSL_LIB_GTL_DEFINE_INT_TYPE(AsyncEventsUniqueId, uint64_t);
+namespace xla::gpu {
 
 // Thunk acts as the bridge between IrEmitter and GpuExecutable. It stores the
 // metadata IrEmitter generates for GpuExecutable to invoke an HloInstruction.
@@ -118,50 +88,37 @@ TSL_LIB_GTL_DEFINE_INT_TYPE(AsyncEventsUniqueId, uint64_t);
 // different threads and coordinate resource acquisition via rendezvous.
 class Thunk {
  public:
-  using ExecutionStreamIdMap =
-      absl::flat_hash_map<ExecutionStreamId, se::Stream*>;
-
-  // When default execution stream id is used, operations launched by a thunk
-  // must be synchronized with a stream passed in ExecuteOptions.
-  static constexpr auto kDefaultExecutionStreamId = ExecutionStreamId(0);
+  using BufferUses = absl::InlinedVector<BufferUse, 4>;
+  using ResourceUses = absl::InlinedVector<ResourceUse, 1>;
 
   enum Kind {
     // # go/keep-sorted start
     kAllGather,
-    kAllGatherDone,
-    kAllGatherStart,
     kAllReduce,
-    kAllReduceDone,
-    kAllReduceStart,
     kAllToAll,
-    kAllToAllDone,
-    kAllToAllStart,
+    kAsyncDone,
+    kAsyncStart,
     kBuffersDebugChecksum,
     kBuffersDebugFloatCheck,
     kCollectiveBroadcast,
-    kCollectiveBroadcastDone,
-    kCollectiveBroadcastStart,
     kCollectiveKernel,
     kCollectiveMetadata,
     kCollectivePermute,
-    kCollectivePermuteDone,
-    kCollectivePermuteStart,
+    kCommand,
     kCommandBuffer,
     kConditional,
     kConvolution,
     kConvolutionReorder,
     kCopy,
-    kCopyDone,
     kCuDnn,
-    kCubSort,
     kCublasLtMatmul,
     kCustomCall,
     kCustomKernel,
     kDynamicSlice,
+    kDynamicSliceFusion,
     kFft,
     kGemm,
-    kGroupDone,
-    kGroupStart,
+    kGroup,
     kHostExecuteDone,
     kHostExecuteStart,
     kHostRecv,
@@ -173,32 +130,17 @@ class Thunk {
     kMemset32BitValue,
     kMemzero,
     kNorm,
-    kNvshmemAllReduceDone,
-    kNvshmemAllReduceStart,
-    kNvshmemCollectivePermute,
-    kNvshmemCollectivePermuteDone,
-    kNvshmemCollectivePermuteStart,
-    kNvshmemRecv,
-    kNvshmemRecvDone,
-    kNvshmemSend,
-    kNvshmemSendDone,
     kOutfeed,
     kPartitionId,
     kRaggedAllToAll,
-    kRaggedAllToAllDone,
-    kRaggedAllToAllStart,
     kRecv,
-    kRecvDone,
     kReduceScatter,
-    kReduceScatterDone,
-    kReduceScatterStart,
     kReplicaId,
+    kRngSeed,
     kSelectK,
     kSend,
-    kSendDone,
     kSequential,
     kTriangularSolve,
-    kWaitForStreams,
     kWhile
     // go/keep-sorted end
   };
@@ -231,13 +173,32 @@ class Thunk {
 
     std::string profile_annotation;
 
-    ExecutionStreamId execution_stream_id = kDefaultExecutionStreamId;
-
     ThunkId thunk_id = ThunkId{0};
+    // Only used in kConcurrentRegions mode to determine dependencies between
+    // thunks. See Thunk::concurrent_region_id() for more details.
+    std::optional<int64_t> concurrent_region_id;
 
     // Serializes a ThunkInfo to a ThunkInfoProto.
     ThunkInfoProto ToProto() const;
   };
+
+  //===--------------------------------------------------------------------===//
+  // ExecutionScopedState
+  //===--------------------------------------------------------------------===//
+
+  // Thunks themself instantiated once per XLA program (GpuExecutable), and the
+  // same Thunk is reused for all concurrent executions. Thunks state is shared
+  // between all concurrently executing XLA programs (and must be carefully
+  // synchronized). `ExecutionScopedState` is a container that allows thunks to
+  // put an arbitrary state that will have an execution scope, i.e. it will be
+  // automatically destroyed when GpuExecutable finishes execution. This allows
+  // thunks to pass arbitrary state between stages (from prepare to initialize
+  // and then to execute), without having to create a globally synchronized map
+  // and it also guarantees correct state life time, as leaving state in a map
+  // might lead to "leaks", as the map will be destroyed only when the
+  // executable is destroyed. It also thread-safe by construction as all thunks
+  // for a GPU program run sequentially from a single thread.
+  using ExecutionScopedState = absl::flat_hash_map<ThunkId, tsl::UniqueAny>;
 
   //===--------------------------------------------------------------------===//
   // PrepareParams
@@ -253,12 +214,13 @@ class Thunk {
     CollectiveCliqueRequests* collective_clique_requests = nullptr;
     // Collective memory requests for preparing symmetric allocations.
     CollectiveMemoryRequests* collective_memory_requests = nullptr;
-    // Multimem registry for preparing multimem objects.
-    CollectiveMultimemRegistry* absl_nonnull multimem_registry = nullptr;
+
     // Stream executor for the thunk.
     se::StreamExecutor* absl_nonnull executor = nullptr;
     // Buffer allocations for the thunk.
     const BufferAllocations* absl_nonnull buffer_allocations = nullptr;
+    // Execution scoped state shared between prepare, initialize and execute.
+    ExecutionScopedState* execution_scoped_state = nullptr;
   };
 
   //===--------------------------------------------------------------------===//
@@ -288,17 +250,26 @@ class Thunk {
     // Parameters for executing collective operations.
     CollectiveParams* collective_params = nullptr;
 
-    // Collective cliques acquired based on resource requests.
+    // Collective cliques acquired based on clique requests.
     CollectiveCliques* collective_cliques = nullptr;
 
-    // Multimem registry for preparing collective communicators.
-    CollectiveMultimemRegistry* multicast_memory_registry = nullptr;
+    // Collective memory acquired based on memory requests.
+    CollectiveMemory* collective_memory = nullptr;
 
     // XLA FFI execution context.
     const ffi::ExecutionContext* ffi_execution_context = nullptr;
 
     // Total local device count.
     int local_device_count = 0;
+
+    // Execution scoped state shared between prepare, initialize and execute.
+    ExecutionScopedState* execution_scoped_state = nullptr;
+
+    // Optional allocation indices whose device addresses are stable for this
+    // execution. If absent, consumers that need address-change checks should
+    // conservatively treat allocation addresses as dynamic.
+    std::optional<absl::Span<const BufferAllocation::Index>>
+        persistent_alloc_indices = std::nullopt;
   };
 
   //===--------------------------------------------------------------------===//
@@ -317,13 +288,20 @@ class Thunk {
         se::Stream* command_buffer_trace_stream,
         CollectiveParams* collective_params,
         CollectiveCliques* collective_cliques,
-        ExecutionStreamIdMap additional_compute_streams = {});
+        CollectiveMemory* collective_memory,
+        std::vector<se::Stream*> additional_compute_streams = {},
+        ExecutionScopedState* execution_scoped_state = nullptr,
+        std::optional<absl::Span<const BufferAllocation::Index>>
+            persistent_alloc_indices = std::nullopt);
 
     // Constructs execute parameters from an existing parameters but with
     // different buffer allocations.
     static ExecuteParams CloneWithNewAllocations(
         const ExecuteParams& params,
         const BufferAllocations& buffer_allocations);
+
+    // Creates a clone of *this parameters with a new compute stream.
+    ExecuteParams WithComputeStream(se::Stream* stream) const;
 
     const BufferAllocations* buffer_allocations;  // never null
 
@@ -340,6 +318,9 @@ class Thunk {
     // Collective cliques acquired based on resource requests.
     CollectiveCliques* collective_cliques;
 
+    // Collective memory acquired based on memory requests.
+    CollectiveMemory* collective_memory;
+
     // Streams for moving data between host and device.
     se::Stream* device_to_host_stream;
     se::Stream* host_to_device_stream;
@@ -351,12 +332,22 @@ class Thunk {
     // XLA FFI execution context.
     const ffi::ExecutionContext* ffi_execution_context;
 
-    // Additional compute streams on which thunks launch operations.
-    ExecutionStreamIdMap additional_compute_streams;
+    // Additional compute streams on which thunks can launch operations.
+    std::vector<se::Stream*> additional_compute_streams;
+
+    // Execution scoped state shared between prepare, initialize and execute.
+    ExecutionScopedState* execution_scoped_state = nullptr;
 
     bool mock_collectives = false;
-
     int64_t execution_id = 0;
+
+    uint64_t rng_seed = 0;
+
+    // Optional allocation indices whose device addresses are stable for this
+    // execution. If absent, consumers that need address-change checks should
+    // conservatively treat allocation addresses as dynamic.
+    std::optional<absl::Span<const BufferAllocation::Index>>
+        persistent_alloc_indices = std::nullopt;
 
    private:
     friend class CommandBufferThunk;
@@ -365,13 +356,18 @@ class Thunk {
                   se::Stream* stream, se::Stream* command_buffer_trace_stream,
                   CollectiveParams* collective_params,
                   CollectiveCliques* collective_cliques,
+                  CollectiveMemory* collective_memory,
                   se::Stream* device_to_host_stream,
                   se::Stream* host_to_device_stream,
                   SendDeviceMemoryFunction* send_device_memory_function,
                   RecvDeviceMemoryFunction* recv_device_memory_function,
                   const ffi::ExecutionContext* ffi_execution_context,
-                  ExecutionStreamIdMap additional_compute_streams = {},
-                  bool mock_collectives = false, int64_t execution_id = 0);
+                  std::vector<se::Stream*> additional_compute_streams = {},
+                  ExecutionScopedState* execution_scoped_state = nullptr,
+                  bool mock_collectives = false, int64_t execution_id = 0,
+                  uint64_t rng_seed = 0,
+                  std::optional<absl::Span<const BufferAllocation::Index>>
+                      persistent_alloc_indices = std::nullopt);
   };
 
   //===--------------------------------------------------------------------===//
@@ -415,55 +411,61 @@ class Thunk {
   // Precondition: Initialize(initialize_params) has been called.
   virtual absl::Status ExecuteOnStream(const ExecuteParams& params) = 0;
 
-  using BufferUses = absl::InlinedVector<BufferUse, 4>;
-
-  // Returns all device buffers used by the thunk.
-  //
-  // Does not propagate buffers from nested thunks.
+  // Returns device buffers used by the thunk.
   //
   // The order of the buffers in returned vector is consistent across calls.
-  virtual BufferUses buffer_uses() const { return {}; }
+  //
+  // Buffer uses do not include buffers that might be used by nested thunks,
+  // they must be collected separately by walking the nested thunks using `Walk`
+  // API.
+  virtual BufferUses buffer_uses() const = 0;
+
+  // Returns resources used by this thunk.
+  //
+  // The order of the resources in returned vector is consistent across calls.
+  //
+  // Resource uses do not include resources that might be used by nested thunks,
+  // they must be collected separately by walking the nested thunks using `Walk`
+  // API.
+  virtual ResourceUses resource_uses() const { return {}; }
 
   static absl::string_view KindToString(Thunk::Kind kind);
 
-  ExecutionStreamId execution_stream_id() const {
-    return thunk_info_.execution_stream_id;
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, Kind kind) {
+    sink.Append(KindToString(kind));
   }
-  void set_execution_stream_id(ExecutionStreamId execution_stream_id) {
-    thunk_info_.execution_stream_id = execution_stream_id;
-  }
-
-  static absl::StatusOr<se::Stream*> GetStreamForExecution(
-      ExecutionStreamId stream_id, const ExecuteParams& params);
 
   // Returns `true` if this thunk requires inter-GPU communication.
   bool IsCollective() const;
 
-  // Returns any communicators used during execution.
-  virtual absl::StatusOr<std::vector<Communicator*>> GetCommunicators(
-      const ExecuteParams& params) const {
-    return std::vector<Communicator*>();
-  }
+  // Type predicate for `Walk` callback.
+  template <typename F, typename Arg>
+  using WalkCallback =
+      std::enable_if_t<std::is_invocable_v<F, Arg> ||
+                       std::is_invocable_r_v<absl::Status, F, Arg>>;
 
-  // Invokes `fn` with this thunk and all nested thunks.
-  virtual void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const;
+  // Recursively walks all the thunks nested inside *this one and calls the
+  // user-provided callback on every thunk. Always starts traversal with *this,
+  // and traverses thunks in DFS order.
+  template <typename F, WalkCallback<F, Thunk*>* = nullptr>
+  std::invoke_result_t<F, Thunk*> Walk(F&& callback);
+  template <typename F, WalkCallback<F, const Thunk*>* = nullptr>
+  std::invoke_result_t<F, const Thunk*> Walk(F&& callback) const;
 
-  // Invokes `fn` with this thunk and all nested thunks.
-  virtual void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn);
-
-  // Recursively replaces all nested thunks with the result of applying `fn` to
-  // them.
-  // An error will leave the transformation in invalid state.
-  // InternalError should be used for status.
-  virtual absl::Status TransformAllNestedThunks(
-      absl::FunctionRef<
-          absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
-          fn) {
+  // Recursively applies transformation to all nested thunks inside *this one.
+  // Transformation can be applied optionally by returning the argument back to
+  // the caller. Any error during transformation leaves the thunk in an invalid
+  // state. Traverses thunks in reverse-DFS order (transforms innermost thunk
+  // first).
+  using Transformer = absl::FunctionRef<absl::StatusOr<std::unique_ptr<Thunk>>(
+      std::unique_ptr<Thunk>)>;
+  virtual absl::Status TransformNested(Transformer callback) {
     return absl::OkStatus();
   }
 
   // Serializes the thunk into a `ThunkProto`.
-  virtual absl::StatusOr<ThunkProto> ToProto() const;
+  virtual absl::StatusOr<ThunkProto> ToProto() const = 0;
 
   // Serializes the metadata of the thunk into a `ThunkMetadataProto`.
   ThunkMetadataProto ToMetadataProto() const;
@@ -478,36 +480,71 @@ class Thunk {
       absl::AnyInvocable<absl::StatusOr<std::unique_ptr<Thunk>>(
           const ThunkProto&, absl::Span<const BufferAllocation>) const>;
 
-  void add_control_predecessor(const Thunk* control_predecessor) {
-    control_predecessors_.push_back(control_predecessor);
+  // In scheduling mode kConcurrentRegions, thunks sequences are divided into
+  // regions. Thunks can be executed concurrently within the same region, but
+  // regions will be executed sequentially.
+  // See ConcurrentRegionsHloOrdering::Initialize for how these are assigned.
+  std::optional<uint64_t> concurrent_region_id() const {
+    return thunk_info_.concurrent_region_id;
+  }
+  void set_concurrent_region_id(uint64_t concurrent_region_id) {
+    thunk_info_.concurrent_region_id = concurrent_region_id;
   }
 
-  std::vector<const Thunk*> control_predecessors() const {
-    return control_predecessors_;
+  void set_profile_annotation(absl::string_view profile_annotation) {
+    thunk_info_.profile_annotation = std::string(profile_annotation);
   }
 
-  virtual std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const {
-    return std::nullopt;
+ protected:
+  friend class ThunkSequence;
+
+  // Walks all nested thunks and calls `callback` for them.
+  using Walker = absl::FunctionRef<absl::Status(Thunk*)>;
+  using ConstWalker = absl::FunctionRef<absl::Status(const Thunk*)>;
+  virtual absl::Status WalkNested(Walker callback) { return absl::OkStatus(); }
+  virtual absl::Status WalkNested(ConstWalker callback) const {
+    return absl::OkStatus();
   }
-
-  virtual bool IsAsyncStart() const { return false; }
-
-  virtual bool IsAsyncDone() const { return false; }
 
  private:
   Kind kind_;
   ThunkInfo thunk_info_;
-
-  // The list of control predecessors of the thunk.
-  // Thunk needs to maintain the control dependency information because
-  // when it is executed by command buffer, and command buffer may execute the
-  // sequence in concurrent mode, and we should make sure that it does not
-  // violate the control dependency in the original computation.
-  std::vector<const Thunk*> control_predecessors_;
 };
 
 // A sequence of thunks.
-using ThunkSequence = std::vector<std::unique_ptr<Thunk>>;
+class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
+ public:
+  ThunkSequence() = default;
+  ThunkSequence(ThunkSequence&&) = default;
+  explicit ThunkSequence(std::vector<std::unique_ptr<Thunk>>&& thunks)
+      : std::vector<std::unique_ptr<Thunk>>(std::move(thunks)) {};
+  ThunkSequence(const ThunkSequence&) = delete;
+
+  ThunkSequence& operator=(const ThunkSequence&) = delete;
+  ThunkSequence& operator=(ThunkSequence&&) = default;
+
+  explicit ThunkSequence(int64_t len)
+      : std::vector<std::unique_ptr<Thunk>>::vector(len) {}
+
+  // Creates a thunks sequence from a single thunk.
+  static ThunkSequence Of(std::unique_ptr<Thunk> thunk) {
+    ThunkSequence thunks;
+    thunks.push_back(std::move(thunk));
+    return thunks;
+  }
+
+  // Walks/Transforms all thunks nested in *this sequence.
+  absl::Status WalkNested(Thunk::Walker callback);
+  absl::Status WalkNested(Thunk::ConstWalker callback) const;
+  absl::Status TransformNested(Thunk::Transformer callback);
+
+  // Creates a human-readable representation of a thunk sequence. For each thunk
+  // prints its id, kind, nearest buffer dependencies (prev/next), and the
+  // thunk-specific description. Useful for diagnosing suboptimal schedules.
+  std::string ToString(int indent) const;
+};
+
+using AsyncThunkSequence = tsl::Future<ThunkSequence>;
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 
@@ -515,11 +552,38 @@ std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 // reduce-scatter).
 bool IsReductionCollective(Thunk::Kind kind);
 
-// Returns the metadata from all thunks in the given thunk graph.
+// Returns the metadata from all thunks in the given thunk sequence.
 ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
-    const Thunk& root_thunk);
+    const ThunkSequence& thunk_sequence);
 
-}  // namespace gpu
-}  // namespace xla
+//===----------------------------------------------------------------------===//
+// Thunk templates implementation.
+//===----------------------------------------------------------------------===//
+
+template <typename F, Thunk::WalkCallback<F, Thunk*>*>
+std::invoke_result_t<F, Thunk*> Thunk::Walk(F&& callback) {
+  if constexpr (std::is_void_v<std::invoke_result_t<F, Thunk*>>) {
+    Walk([f = std::forward<F>(callback)](Thunk* thunk) {
+      return (f(thunk), absl::OkStatus());
+    }).IgnoreError();  // Error can never happen here.
+  } else {
+    RETURN_IF_ERROR(callback(this));
+    return WalkNested(Walker([&](Thunk* thunk) { return callback(thunk); }));
+  }
+}
+
+template <typename F, Thunk::WalkCallback<F, const Thunk*>*>
+std::invoke_result_t<F, const Thunk*> Thunk::Walk(F&& callback) const {
+  Thunk* non_const_this = const_cast<Thunk*>(this);
+  if constexpr (std::is_void_v<std::invoke_result_t<F, const Thunk*>>) {
+    non_const_this->Walk(
+        [f = std::forward<F>(callback)](Thunk* thunk) { f(thunk); });
+  } else {
+    return non_const_this->Walk(
+        [f = std::forward<F>(callback)](Thunk* thunk) { return f(thunk); });
+  }
+}
+
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_THUNK_H_

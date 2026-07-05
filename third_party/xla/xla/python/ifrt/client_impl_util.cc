@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/ifrt/client_impl_util.h"
 
-#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -27,17 +26,21 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/value.h"
+#include "xla/python/ifrt/value_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -127,15 +130,14 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
       // Fast-path for fully replicated arrays. Assumes that
       // `MakeArrayFromHostBuffer` can handle fully replicated array creation.
       auto& [addressable_shard_indices, host_buffer] = spec.buffers.front();
-      TF_RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
+      RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
 
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           ArrayRef array,
           client->MakeArrayFromHostBuffer(
               host_buffer.data, host_buffer.dtype, std::move(host_buffer.shape),
-              std::move(host_buffer.byte_strides),
-              std::move(spec.array_spec.sharding), semantics,
-              std::move(host_buffer.on_done)));
+              host_buffer.byte_strides, std::move(spec.array_spec.sharding),
+              /*layout=*/nullptr, semantics, std::move(host_buffer.on_done)));
       arrays.push_back(std::move(array));
       continue;
     }
@@ -151,18 +153,16 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     // from it because the same instance may be used multiple times if the same
     // index domain shows up in `addressable_index_domains` multiple times.
     for (const auto& [addressable_shard_indices, host_buffer] : spec.buffers) {
-      TF_RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
+      RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
 
       std::function<void()> on_done_with_host_buffer_per_device;
       if (host_buffer.on_done != nullptr) {
-        auto count = std::make_shared<std::atomic<int64_t>>(
-            addressable_shard_indices.size());
+        auto shared_on_done = std::shared_ptr<void>(
+            nullptr,
+            [on_done = std::move(host_buffer.on_done)](void*) { on_done(); });
         on_done_with_host_buffer_per_device =
-            [on_done = std::move(host_buffer.on_done), count]() mutable {
-              if (count->fetch_sub(1, std::memory_order_relaxed) == 1) {
-                on_done();
-              }
-              on_done = nullptr;
+            [shared_on_done = std::move(shared_on_done)]() mutable {
+              shared_on_done.reset();
             };
       }
 
@@ -185,7 +185,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
         if (spec.array_spec.layout != nullptr) {
           layout = PjRtLayout::Create(spec.array_spec.layout);  // NOLINT
         }
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             shard, client->MakeArrayFromHostBuffer(
                        host_buffer.data, host_buffer.dtype, host_buffer.shape,
                        host_buffer.byte_strides, std::move(sharding),
@@ -201,7 +201,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
           num_processed_shards, " vs. ", addressable_devices.size()));
     }
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         ArrayRef array,
         client->AssembleArrayFromSingleDeviceArrays(
             spec.array_spec.dtype, std::move(spec.array_spec.shape),
@@ -212,6 +212,84 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     arrays.push_back(std::move(array));
   }
   return arrays;
+}
+
+absl::StatusOr<LoadedExecutable::ExecuteBundleResult>
+LoadedExecutableExecuteBundle(
+    LoadedExecutable* executable, absl::Span<BundleRef> args,
+    const ExecuteOptions& options,
+    const std::optional<std::vector<int>>& outputs_bundle_slice_sizes) {
+  int total_args_size = 0;
+  for (const BundleRef& bundle : args) {
+    total_args_size += bundle->num_values();
+  }
+  std::vector<ArrayRef> arg_arrays;
+  arg_arrays.reserve(total_args_size);
+
+  for (const BundleRef& bundle : args) {
+    if (bundle->IsDeleted()) {
+      return absl::FailedPreconditionError("Bundle is deleted or donated.");
+    }
+    ASSIGN_OR_RETURN(std::vector<ValueRef> values,
+                     bundle->GetValues(ArrayCopySemantics::kReuseInput));
+    for (const ValueRef& value : values) {
+      if (auto* array = llvm::dyn_cast<Array>(value.get())) {
+        arg_arrays.push_back(tsl::FormRef(array));
+      } else {
+        return absl::InvalidArgumentError(
+            "`LoadedExecutableExecuteBundle` only supports `Bundle`s "
+            "containing `Array`s.");
+      }
+    }
+  }
+
+  ASSIGN_OR_RETURN(LoadedExecutable::ExecuteResult result,
+                   executable->Execute(absl::MakeSpan(arg_arrays), options,
+                                       /*devices=*/std::nullopt));
+
+  Client* client = executable->client();
+
+  std::vector<BundleRef> output_bundles;
+  if (outputs_bundle_slice_sizes.has_value()) {
+    int total_output_size = 0;
+    for (int size : *outputs_bundle_slice_sizes) {
+      total_output_size += size;
+    }
+    if (total_output_size != result.outputs.size()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Output bundle slice sizes do not match the number of "
+                       "outputs: ",
+                       total_output_size, " vs. ", result.outputs.size()));
+    }
+    output_bundles.reserve(outputs_bundle_slice_sizes->size());
+
+    int offset = 0;
+    for (int size : *outputs_bundle_slice_sizes) {
+      std::vector<ValueRef> values;
+      values.reserve(size);
+      for (int j = 0; j < size; ++j) {
+        values.push_back(std::move(result.outputs[offset]));
+        ++offset;
+      }
+
+      ASSIGN_OR_RETURN(BundleRef bundle,
+                       client->Bundle(absl::MakeSpan(values),
+                                      ArrayCopySemantics::kDonateInput));
+      output_bundles.push_back(std::move(bundle));
+    }
+  } else {
+    std::vector<ValueRef> output_values =
+        ToValues(absl::MakeSpan(result.outputs));
+    ASSIGN_OR_RETURN(BundleRef output_bundle,
+                     client->Bundle(absl::MakeSpan(output_values),
+                                    ArrayCopySemantics::kDonateInput));
+    output_bundles.push_back(std::move(output_bundle));
+  }
+
+  return LoadedExecutable::ExecuteBundleResult{
+      /*outputs=*/std::move(output_bundles),
+      /*status=*/std::move(result.status),
+      /*cancellation_handle=*/std::move(result.cancellation_handle)};
 }
 
 }  // namespace ifrt

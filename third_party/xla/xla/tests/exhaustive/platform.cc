@@ -38,6 +38,8 @@ Platform::Value GetPlatformValue(const HloRunnerInterface& runner) {
     return Platform::Value::kCuda;
   } else if (runner.HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
     return Platform::Value::kRocm;
+  } else if (runner.HasProperty(HloRunnerPropertyTag::kUsingGpuOneAPI)) {
+    return Platform::Value::kOneAPI;
   }
   LOG(FATAL) << "Unhandled platform: " << runner.Name()
              << ". Please add support to " __FILE__ ".";

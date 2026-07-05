@@ -27,6 +27,7 @@ limitations under the License.
 
 #if defined(TENSORFLOW_PROTOBUF_USES_CORD)
 #include "strings/cord_varint.h"
+#include "third_party/gloop/strings/cord_bytestream.h"
 #include "util/gtl/stl_util.h"
 #endif  // defined(TENSORFLOW_PROTOBUF_USES_CORD)
 
@@ -34,11 +35,11 @@ namespace tensorflow {
 namespace port {
 
 void AssignRefCounted(absl::string_view src, core::RefCounted* obj,
-                      string* out) {
+                      std::string* out) {
   out->assign(src.data(), src.size());
 }
 
-void EncodeStringList(const tstring* strings, int64_t n, string* out) {
+void EncodeStringList(const tstring* strings, int64_t n, std::string* out) {
   int64_t tot = n * sizeof(size_t);
   for (int i = 0; i < n; ++i) {
     tot += strings[i].size();
@@ -55,8 +56,8 @@ void EncodeStringList(const tstring* strings, int64_t n, string* out) {
   }
 }
 
-bool DecodeStringList(const string& src, tstring* strings, int64_t n) {
-  std::vector<uint32> sizes(n);
+bool DecodeStringList(const std::string& src, tstring* strings, int64_t n) {
+  std::vector<uint32_t> sizes(n);
   absl::string_view reader(src);
   int64_t tot = 0;
   for (auto& v : sizes) {
@@ -80,23 +81,23 @@ bool DecodeStringList(const string& src, tstring* strings, int64_t n) {
   return true;
 }
 
-void CopyFromArray(string* s, const char* base, size_t bytes) {
+void CopyFromArray(std::string* s, const char* base, size_t bytes) {
   s->assign(base, bytes);
 }
 
 class StringListEncoderImpl : public StringListEncoder {
  public:
-  explicit StringListEncoderImpl(string* out) : out_(out) {}
+  explicit StringListEncoderImpl(std::string* out) : out_(out) {}
   ~StringListEncoderImpl() override = default;
 
   void Append(const protobuf::MessageLite& m) override {
     core::PutVarint32(out_, m.ByteSizeLong());
-    tensorflow::string serialized_message;
+    std::string serialized_message;
     m.AppendToString(&serialized_message);
     absl::StrAppend(&rest_, serialized_message);
   }
 
-  void Append(const string& s) override {
+  void Append(const std::string& s) override {
     core::PutVarint32(out_, s.length());
     absl::StrAppend(&rest_, s);
   }
@@ -104,16 +105,16 @@ class StringListEncoderImpl : public StringListEncoder {
   void Finalize() override { absl::StrAppend(out_, rest_); }
 
  private:
-  string* out_;
-  string rest_;
+  std::string* out_;
+  std::string rest_;
 };
 
 class StringListDecoderImpl : public StringListDecoder {
  public:
-  explicit StringListDecoderImpl(const string& in) : reader_(in) {}
+  explicit StringListDecoderImpl(const std::string& in) : reader_(in) {}
   ~StringListDecoderImpl() override = default;
 
-  bool ReadSizes(std::vector<uint32>* sizes) override {
+  bool ReadSizes(std::vector<uint32_t>* sizes) override {
     int64_t total = 0;
     for (auto& size : *sizes) {
       if (!core::GetVarint32(&reader_, &size)) return false;
@@ -125,7 +126,7 @@ class StringListDecoderImpl : public StringListDecoder {
     return true;
   }
 
-  const char* Data(uint32 size) override {
+  const char* Data(uint32_t size) override {
     const char* data = reader_.data();
     reader_.remove_prefix(size);
     return data;
@@ -135,11 +136,11 @@ class StringListDecoderImpl : public StringListDecoder {
   absl::string_view reader_;
 };
 
-std::unique_ptr<StringListEncoder> NewStringListEncoder(string* out) {
+std::unique_ptr<StringListEncoder> NewStringListEncoder(std::string* out) {
   return std::unique_ptr<StringListEncoder>(new StringListEncoderImpl(out));
 }
 
-std::unique_ptr<StringListDecoder> NewStringListDecoder(const string& in) {
+std::unique_ptr<StringListDecoder> NewStringListDecoder(const std::string& in) {
   return std::unique_ptr<StringListDecoder>(new StringListDecoderImpl(in));
 }
 
@@ -160,9 +161,9 @@ void EncodeStringList(const tstring* strings, int64_t n, absl::Cord* out) {
   }
 }
 
-bool DecodeStringList(const absl::Cord& src, string* strings, int64_t n) {
-  std::vector<uint32> sizes(n);
-  CordReader reader(src);
+bool DecodeStringList(const absl::Cord& src, std::string* strings, int64_t n) {
+  std::vector<uint32_t> sizes(n);
+  ::strings::CordReader reader(src);
   int64_t tot = 0;
   for (auto& v : sizes) {
     if (!::strings::CordReaderReadVarint(&reader, &v)) return false;
@@ -171,7 +172,7 @@ bool DecodeStringList(const absl::Cord& src, string* strings, int64_t n) {
   if (tot != reader.Available()) {
     return false;
   }
-  string* data = strings;
+  std::string* data = strings;
   for (int i = 0; i < n; ++i, ++data) {
     auto size = sizes[i];
     if (size > reader.Available()) {
@@ -184,8 +185,8 @@ bool DecodeStringList(const absl::Cord& src, string* strings, int64_t n) {
 }
 
 bool DecodeStringList(const absl::Cord& src, tstring* strings, int64_t n) {
-  std::vector<uint32> sizes(n);
-  CordReader reader(src);
+  std::vector<uint32_t> sizes(n);
+  ::strings::CordReader reader(src);
   int64_t tot = 0;
   for (auto& v : sizes) {
     if (!::strings::CordReaderReadVarint(&reader, &v)) return false;
@@ -220,7 +221,7 @@ class CordStringListEncoderImpl : public StringListEncoder {
     m.AppendToString(&rest_);
   }
 
-  void Append(const string& s) override {
+  void Append(const std::string& s) override {
     ::strings::CordAppendVarint(s.length(), out_);
     rest_.append(s.data(), s.size());
   }
@@ -229,7 +230,7 @@ class CordStringListEncoderImpl : public StringListEncoder {
 
  private:
   absl::Cord* out_;
-  string rest_;
+  std::string rest_;
 };
 
 class CordStringListDecoderImpl : public StringListDecoder {
@@ -237,7 +238,7 @@ class CordStringListDecoderImpl : public StringListDecoder {
   explicit CordStringListDecoderImpl(const absl::Cord& in) : reader_(in) {}
   ~CordStringListDecoderImpl() override = default;
 
-  bool ReadSizes(std::vector<uint32>* sizes) override {
+  bool ReadSizes(std::vector<uint32_t>* sizes) override {
     int64_t total = 0;
     for (auto& size : *sizes) {
       if (!::strings::CordReaderReadVarint(&reader_, &size)) return false;
@@ -249,14 +250,16 @@ class CordStringListDecoderImpl : public StringListDecoder {
     return true;
   }
 
-  const char* Data(uint32 size) override {
+  const char* Data(uint32_t size) override {
     tmp_.resize(size);
-    reader_.ReadN(size, tmp_.data());
+    if (size > 0) {
+      reader_.ReadN(size, tmp_.data());
+    }
     return tmp_.data();
   }
 
  private:
-  CordReader reader_;
+  ::strings::CordReader reader_;
   std::vector<char> tmp_;
 };
 

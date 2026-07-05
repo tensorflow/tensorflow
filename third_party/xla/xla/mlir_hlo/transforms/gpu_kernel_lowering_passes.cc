@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cassert>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
@@ -118,14 +119,16 @@ void GpuKernelToNVVMPass::runOnOperation() {
       converter, [](gpu::AddressSpace space) {
         switch (space) {
           case gpu::AddressSpace::Global:
-            return 1;
+            return static_cast<unsigned>(NVVM::NVVMMemorySpace::Global);
           case gpu::AddressSpace::Workgroup:
-            return 3;
+            return static_cast<unsigned>(NVVM::NVVMMemorySpace::Shared);
           case gpu::AddressSpace::Private:
-            return 5;
+            return static_cast<unsigned>(NVVM::NVVMMemorySpace::Local);
+          case gpu::AddressSpace::Constant:
+            return static_cast<unsigned>(NVVM::NVVMMemorySpace::Constant);
         }
         assert(false && "unknown address space enum value");
-        return 0;
+        return 0u;
       });
 
   ConversionTarget target(getContext());

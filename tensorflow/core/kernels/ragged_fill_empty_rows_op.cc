@@ -57,30 +57,33 @@ void RaggedFillEmptyRowsOpImpl(OpKernelContext* context,
   const Tensor& nrows_t = context->input(kNRowsInput);
   const Tensor& default_value_t = context->input(kDefaultValueInput);
 
-  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsScalar(nrows_t.shape()),
-                    errors::InvalidArgument("nrows must be a scalar, saw: ",
-                                            nrows_t.shape().DebugString()),
+  OP_REQUIRES_ASYNC(
+      context, TensorShapeUtils::IsScalar(nrows_t.shape()),
+      absl::InvalidArgumentError(absl::StrCat("nrows must be a scalar, saw: ",
+                                              nrows_t.shape().DebugString())),
+      done);
+  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(value_rowids_t.shape()),
+                    absl::InvalidArgumentError(
+                        absl::StrCat("value_rowids must be a vector, saw: ",
+                                     value_rowids_t.shape().DebugString())),
                     done);
   OP_REQUIRES_ASYNC(
-      context, TensorShapeUtils::IsVector(value_rowids_t.shape()),
-      errors::InvalidArgument("value_rowids must be a vector, saw: ",
-                              value_rowids_t.shape().DebugString()),
+      context, TensorShapeUtils::IsVector(values_t.shape()),
+      absl::InvalidArgumentError(absl::StrCat("values must be a vector, saw: ",
+                                              values_t.shape().DebugString())),
       done);
-  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(values_t.shape()),
-                    errors::InvalidArgument("values must be a vector, saw: ",
-                                            values_t.shape().DebugString()),
-                    done);
   OP_REQUIRES_ASYNC(context, value_rowids_t.dim_size(0) == values_t.dim_size(0),
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "The length of `values` (", values_t.dim_size(0),
                         ") must match the first dimension of `value_rowids` (",
-                        value_rowids_t.dim_size(0), ")."),
+                        value_rowids_t.dim_size(0), ").")),
                     done);
-  OP_REQUIRES_ASYNC(
-      context, TensorShapeUtils::IsScalar(default_value_t.shape()),
-      errors::InvalidArgument("default_value must be a scalar, saw: ",
-                              default_value_t.shape().DebugString()),
-      done);
+  OP_REQUIRES_ASYNC(context,
+                    TensorShapeUtils::IsScalar(default_value_t.shape()),
+                    absl::InvalidArgumentError(
+                        absl::StrCat("default_value must be a scalar, saw: ",
+                                     default_value_t.shape().DebugString())),
+                    done);
 
   using FunctorType =
       functor::FillEmptyRows<Device, T, Tindex, /*RaggedOperands=*/true>;
@@ -160,13 +163,15 @@ class RaggedFillEmptyRowsGradOp : public OpKernel {
                    context->input("reverse_index_map", &reverse_index_map_t));
     OP_REQUIRES_OK(context, context->input("grad_values", &grad_values_t));
 
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsVector(reverse_index_map_t->shape()),
-        errors::InvalidArgument("reverse_index_map must be a vector, saw: ",
-                                reverse_index_map_t->shape().DebugString()));
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsVector(reverse_index_map_t->shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("reverse_index_map must be a vector, saw: ",
+                                 reverse_index_map_t->shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(grad_values_t->shape()),
-                errors::InvalidArgument("grad_values must be a vector, saw: ",
-                                        grad_values_t->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("grad_values must be a vector, saw: ",
+                                 grad_values_t->shape().DebugString())));
 
     const auto reverse_index_map = reverse_index_map_t->vec<Tindex>();
     const auto grad_values = grad_values_t->vec<T>();

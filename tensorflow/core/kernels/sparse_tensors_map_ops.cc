@@ -39,9 +39,10 @@ using sparse::SparseTensor;
 
 class SparseTensorsMap : public ResourceBase {
  public:
-  explicit SparseTensorsMap(const string& name) : name_(name), counter_(0) {}
+  explicit SparseTensorsMap(const std::string& name)
+      : name_(name), counter_(0) {}
 
-  string DebugString() const override { return "A SparseTensorsMap"; }
+  std::string DebugString() const override { return "A SparseTensorsMap"; }
 
   typedef struct {
     Tensor indices;
@@ -83,8 +84,8 @@ class SparseTensorsMap : public ResourceBase {
         const int64_t handle = handles(i);
         auto sp_iter = sp_tensors_.find(handle);
         if (sp_iter == sp_tensors_.end()) {
-          return errors::InvalidArgument(
-              "Unable to find SparseTensor: ", handle, " in map: ", name_);
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Unable to find SparseTensor: ", handle, " in map: ", name_));
         }
         const Tensor* ix = &sp_iter->second.indices;
         const Tensor* values = &sp_iter->second.values;
@@ -103,7 +104,7 @@ class SparseTensorsMap : public ResourceBase {
   ~SparseTensorsMap() override {}
 
  private:
-  string name_;
+  std::string name_;
 
   mutex mu_;
   int64_t counter_ TF_GUARDED_BY(mu_);
@@ -174,19 +175,19 @@ class AddSparseToTensorsMapOp : public SparseTensorAccessingOp {
     OP_REQUIRES_OK(context, GetMap(context, true /* is_writing */, &map));
 
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_indices->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input indices should be a matrix but received shape ",
-                    input_indices->shape().DebugString()));
+                    input_indices->shape().DebugString())));
 
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_values->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input values should be a vector but received shape ",
-                    input_values->shape().DebugString()));
+                    input_values->shape().DebugString())));
 
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_shape->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input shape should be a vector but received shape ",
-                    input_shape->shape().DebugString()));
+                    input_shape->shape().DebugString())));
 
     TensorShape input_shape_object;
     OP_REQUIRES_OK(
@@ -229,39 +230,39 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
     OP_REQUIRES_OK(context, GetMap(context, true /* is_writing */, &map));
 
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_indices->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input indices should be a matrix but received shape ",
-                    input_indices->shape().DebugString()));
+                    input_indices->shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_values->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input values should be a vector but received shape ",
-                    input_values->shape().DebugString()));
+                    input_values->shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_shape->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input shape should be a vector but received shape ",
-                    input_shape->shape().DebugString()));
+                    input_shape->shape().DebugString())));
     OP_REQUIRES(
         context,
         input_values->shape().dim_size(0) == input_indices->shape().dim_size(0),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Number of values must match first dimension of indices. ", "Got ",
             input_values->shape().dim_size(0),
-            " values, indices shape: ", input_indices->shape().DebugString()));
+            " values, indices shape: ", input_indices->shape().DebugString())));
     OP_REQUIRES(
         context,
         input_shape->shape().dim_size(0) == input_indices->shape().dim_size(1),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Number of dimensions must match second dimension of indices. ",
             "Got ", input_shape->shape().dim_size(0),
             " dimensions, indices shape: ",
-            input_indices->shape().DebugString()));
+            input_indices->shape().DebugString())));
 
     int rank = input_shape->NumElements();
 
     OP_REQUIRES(
         context, rank > 1,
-        errors::InvalidArgument(
-            "Rank of input SparseTensor should be > 1, but saw rank: ", rank));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Rank of input SparseTensor should be > 1, but saw rank: ", rank)));
 
     auto input_shape_vec = input_shape->vec<int64_t>();
 
@@ -297,9 +298,9 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
       visited.insert(b);
       OP_REQUIRES(
           context, b > -1 && b < N,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Received unexpected column 0 value in input SparseTensor: ", b,
-              " < 0 or >= N (= ", N, ")"));
+              " < 0 or >= N (= ", N, ")")));
 
       const auto indices = subset.indices();
       const auto values = subset.values<T>();
@@ -373,16 +374,16 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
     const Tensor& sparse_handles = context->input(0);
 
     OP_REQUIRES(context, TensorShapeUtils::IsVector(sparse_handles.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "sparse_handles should be a vector but received shape ",
-                    sparse_handles.shape().DebugString()));
+                    sparse_handles.shape().DebugString())));
 
     int64_t N = sparse_handles.shape().dim_size(0);
 
-    OP_REQUIRES(
-        context, N > 0,
-        errors::InvalidArgument("Must have at least 1 serialized SparseTensor, "
-                                "but input matrix has 0 rows"));
+    OP_REQUIRES(context, N > 0,
+                absl::InvalidArgumentError(
+                    "Must have at least 1 serialized SparseTensor, "
+                    "but input matrix has 0 rows"));
 
     std::vector<Tensor> indices_to_concat;
     std::vector<Tensor> values_to_concat;
@@ -402,15 +403,15 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
       const auto output_shape = st.shape();
 
       OP_REQUIRES(context, TensorShapeUtils::IsMatrix(output_indices.shape()),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Expected sparse_handles[", i,
                       "] to represent an index matrix but received shape ",
-                      output_indices.shape().DebugString()));
+                      output_indices.shape().DebugString())));
       OP_REQUIRES(context, TensorShapeUtils::IsVector(output_values.shape()),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Expected sparse_handles[", i,
                       "] to represent a values vector but received shape ",
-                      output_values.shape().DebugString()));
+                      output_values.shape().DebugString())));
       OP_REQUIRES(
           context, DataTypeToEnum<T>::value == output_values.dtype(),
           errors::InvalidArgument(
@@ -420,19 +421,19 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
 
       int64_t num_entries = output_indices.dim_size(0);
       OP_REQUIRES(context, num_entries == output_values.dim_size(0),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Expected row counts of SparseTensor[", i,
                       "].indices and SparseTensor[", i,
                       "].values to match but they do not: ", num_entries,
-                      " vs. ", output_values.dim_size(0)));
+                      " vs. ", output_values.dim_size(0))));
       int rank = output_indices.dim_size(1);
-      OP_REQUIRES(
-          context, rank == output_shape.size(),
-          errors::InvalidArgument("Expected column counts of SparseTensor[", i,
-                                  "].indices to match size of SparseTensor[", i,
-                                  "].shape "
-                                  "but they do not: ",
-                                  rank, " vs. ", output_shape.size()));
+      OP_REQUIRES(context, rank == output_shape.size(),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Expected column counts of SparseTensor[", i,
+                      "].indices to match size of SparseTensor[", i,
+                      "].shape "
+                      "but they do not: ",
+                      rank, " vs. ", output_shape.size())));
 
       // Now we expand each SparseTensors' indices and shape by
       // prefixing a dimension
@@ -463,11 +464,11 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
     for (int i = 0; i < N; ++i) {
       if (rank < 0) rank = shapes_to_concat[i].dims();
       OP_REQUIRES(context, rank == shapes_to_concat[i].dims(),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Inconsistent rank across SparseTensors: rank prior to "
                       "SparseTensor[",
                       i, "] was: ", rank, " but rank of SparseTensor[", i,
-                      "] is: ", shapes_to_concat[i].dims()));
+                      "] is: ", shapes_to_concat[i].dims())));
     }
 
     // SparseTensor::Concat requires consistent shape for all but the

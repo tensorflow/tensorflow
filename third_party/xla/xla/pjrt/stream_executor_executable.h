@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <variant>
 #include <vector>
 
@@ -30,25 +29,25 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/service/buffer_assignment.h"
-#include "xla/service/compiler.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_proto_util.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
 
 namespace xla {
 
 class StreamExecutorExecutable : public PjRtExecutable {
  public:
   StreamExecutorExecutable(
-      const CompileOptions& compile_options,
+      PjRtPlatformId platform_id, const CompileOptions& compile_options,
       std::vector<std::unique_ptr<CompiledModule>> executables,
       int num_replicas, int num_partitions, absl::string_view name,
       absl::string_view fingerprint, absl::string_view default_memory_kind);
 
   StreamExecutorExecutable(
-      const CompileOptions& compile_options,
+      PjRtPlatformId platform_id, const CompileOptions& compile_options,
       std::optional<HloModuleProto> unoptimized_hlo_module_proto,
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
       LocalClient* local_client, int num_replicas, int num_partitions,
@@ -74,18 +73,22 @@ class StreamExecutorExecutable : public PjRtExecutable {
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override;
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override;
+
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override;
 
   absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
-  GetCostAnalysis() const override {
-    return absl::UnimplementedError("GetCostAnalysis is not supported.");
-  }
+  GetCostAnalysis() const override;
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
   const CompileOptions& compile_options() const { return compile_options_; }
 
   absl::StatusOr<std::unique_ptr<LocalExecutable>> ConsumeExecutable(
+      LocalClient* client, const CompileOptions& compile_options);
+
+  absl::StatusOr<LocalExecutable*> GetOrLoadExecutable(
       LocalClient* client, const CompileOptions& compile_options);
 
   absl::StatusOr<std::string> FingerprintExecutable() const override {
@@ -96,7 +99,12 @@ class StreamExecutorExecutable : public PjRtExecutable {
     return unoptimized_hlo_module_proto_;
   }
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>> GetAbiVersion()
+      const override;
+
  private:
+  PjRtPlatformId platform_id_;
+
   CompileOptions compile_options_;
   // The unoptimized HLO module proto is necessary for HLO debug dumping. It is
   // not available for deserialized executables.
@@ -111,6 +119,9 @@ class StreamExecutorExecutable : public PjRtExecutable {
   std::string name_;
   std::string fingerprint_;
   absl::string_view default_memory_kind_;
+
+  absl::StatusOr<stream_executor::ExecutableAbiVersion>
+  ExtractExecutableAbiVersion() const;
 };
 }  // namespace xla
 

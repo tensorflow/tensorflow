@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <tuple>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"

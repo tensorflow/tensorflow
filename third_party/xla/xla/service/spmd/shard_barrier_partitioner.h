@@ -22,8 +22,8 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
-constexpr char kShardBarrierFrom[] = "ShardBarrierFrom";
-constexpr char kShardBarrierTo[] = "ShardBarrierTo";
+inline constexpr char kShardBarrierFrom[] = "ShardBarrierFrom";
+inline constexpr char kShardBarrierTo[] = "ShardBarrierTo";
 
 // Custom-call partitioner shard barrier.
 class ShardBarrierPartitioner : public CustomCallPartitioner {

@@ -102,11 +102,11 @@ absl::Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
     }
   }
   if (num_const_results > 0) {
-    return errors::Unimplemented(
-        "Conversion from TensorFlow graph to XLA resulted in ",
-        num_const_results,
-        " constant results.  The configuration of "
-        "the output args (i.e. fetch ids) is probably wrong.");
+    return absl::UnimplementedError(
+        absl::StrCat("Conversion from TensorFlow graph to XLA resulted in ",
+                     num_const_results,
+                     " constant results.  The configuration of "
+                     "the output args (i.e. fetch ids) is probably wrong."));
   }
   {
     // Verify that the readonly bits on variables are set correctly by the user.
@@ -117,11 +117,11 @@ absl::Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
     int64_t input_index = xla_args.size() - config.variable_size();
     for (const tf2xla::Variable& variable : config.variable()) {
       if (variable.readonly() == updated_inputs[input_index]) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Variable \"", variable.node_name(), "\" is marked as ",
             variable.readonly() ? "" : "not ", "readonly, but is ",
             updated_inputs[input_index] ? "" : "not ",
-            "modified by the computation.");
+            "modified by the computation."));
       }
       ++input_index;
     }
@@ -136,7 +136,7 @@ absl::Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
       const auto& it = node.attr().find("allowed_devices");
       if (it != node.attr().end()) {
         if (!it->second.list().s().empty()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "VarHandleOp with non-empty allowed devices is not supported.");
         }
         node.mutable_attr()->erase("allowed_devices");

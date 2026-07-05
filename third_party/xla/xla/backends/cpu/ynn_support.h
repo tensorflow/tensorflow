@@ -30,8 +30,6 @@ limitations under the License.
 
 namespace xla::cpu {
 
-inline constexpr absl::string_view kYnnFusionKind = "__ynn_fusion";
-
 // Returns the mappings from HLO opcodes to YNNPACK unary operators.
 const absl::flat_hash_map<HloOpcode, ynn_unary_operator>& GetYnnUnaryOpMap();
 
@@ -46,6 +44,10 @@ const absl::flat_hash_map<HloOpcode, ynn_binary_operator>& GetYnnBinaryOpMap();
 // Returns `InvalidArgument` if the opcode is not supported.
 absl::StatusOr<ynn_binary_operator> YnnBinaryOperator(const HloOpcode& opcode);
 
+// Returns the YNNPACK reduce operator corresponding to the given HLO opcode.
+// Returns `InvalidArgument` if the opcode is not supported.
+absl::StatusOr<ynn_reduce_operator> YnnReduceOperator(const HloOpcode& opcode);
+
 // Returns true if the shape either doesn't have a layout or the layout is
 // descending. Shapes without layout are accepted to make HLO tests less
 // verbose.
@@ -54,27 +56,56 @@ bool IsLayoutSupportedByYnn(const Shape& shape);
 // Returns true if the bitcast op is supported by YNNPACK.
 bool IsBitcastOpSupportedByYnn(const HloInstruction* hlo);
 
+// Returns true if the reshape op is supported by YNNPACK.
+bool IsReshapeOpSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the transpose op is supported by YNNPACK.
+bool IsTransposeOpSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the broadcast op is supported by YNNPACK.
+bool IsBroadcastOpSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the concatenate op is supported by YNNPACK.
+bool IsConcatenateOpSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the slice op is supported by YNNPACK.
+bool IsSliceOpSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the pad op is supported by YNNPACK.
+bool IsPadOpSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the iota op is supported by YNNPACK.
+bool IsIotaSupportedByYnn(const HloInstruction* hlo);
+
 // Returns true if the constant is supported by YNNPACK.
 bool IsConstantSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the "is_constant" frontend attribute is set to "true".
+inline bool IsConstant(const HloInstruction* instruction) {
+  return instruction->get_frontend_attribute("is_constant") == "true";
+}
+
+// Sets the "is_constant" frontend attribute to "true".
+inline void SetConstant(HloInstruction* instruction) {
+  instruction->set_frontend_attribute("is_constant", "true");
+}
 
 // Returns true if the nonconstant elementwise op is supported by YNNPACK.
 bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo);
 
 // Returns true if the dot operation is supported by YNNPACK. Returns an error
 // if the dot operation shape is invalid.
-absl::StatusOr<bool> IsDotSupportedByYnn(
-    const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
-    const Shape& rhs_shape, const Shape& out_shape);
 absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo);
 
-// Returns true if the reduce op is supported by YNNPACK.
-bool IsReduceOpSupportedByYnn(const HloInstruction* hlo);
-
-// Returns true if the reduce op will be offloaded to YNNPACK.
-bool IsReduceOpOffloadedToYnn(const HloInstruction* hlo);
+// Returns true if the reduce or reduce window op is supported by YNNPACK.
+bool IsReduceLikeOpSupportedByYnn(const HloInstruction* hlo);
 
 // Returns true if the convolution op is supported by YNNPACK.
 bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr);
+
+// Returns true if we want to handle the instruction in YNNPACK. Does not imply
+// the instruction is supported.
+bool IsInstructionPreferredByYnn(const HloInstruction* instr);
 
 // Convert XLA options to YNNPACK flags.
 uint32_t YnnFlags(const DebugOptions& debug_options);

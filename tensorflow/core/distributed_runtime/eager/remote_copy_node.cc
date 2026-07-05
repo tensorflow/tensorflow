@@ -48,9 +48,9 @@ absl::Status CreateUncachedKernelAndDeviceOp(
 
   FunctionLibraryRuntime* flr = ctx.func_lib(device);
   if (flr == nullptr) {
-    return errors::Unavailable(
+    return absl::UnavailableError(absl::StrCat(
         "Unable to find a FunctionLibraryRuntime corresponding to device ",
-        device->name());
+        device->name()));
   }
 
   auto runner = (flr->runner() != nullptr) ? flr->runner() : ctx.runner();
@@ -211,7 +211,7 @@ absl::Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
     if (ret.index() == 0) {
       outputs->push_back(std::get<Tensor>(ret));
     } else {
-      return errors::Internal(
+      return absl::InternalError(
           "Expect to receive a Tensor but got a TensorShape.");
     }
   }
@@ -354,7 +354,8 @@ absl::Status SerializePackedHandle(const uint64_t op_id,
           op->add_handles()->mutable_remote_handle(), src_device, "",
           serialize_resource_dtype_and_shape));
     } else {
-      return errors::InvalidArgument("Nested packed handles are not supported");
+      return absl::InvalidArgumentError(
+          "Nested packed handles are not supported");
     }
   }
   return absl::OkStatus();
@@ -364,7 +365,7 @@ void RemoteCopyNode::StartSendPackedHandle(StatusCallback done) {
   absl::Status s;
   const uint64_t context_view_id = ctx_->GetContextViewId();
   if (!send_device_->IsLocal()) {
-    s = errors::InvalidArgument(
+    s = absl::InvalidArgumentError(
         "Copy a packed handle from a remote device is not supported");
     captured_state_->dst()->PoisonRemote(s, recv_device_, context_view_id);
     done(s);

@@ -43,11 +43,12 @@ REGISTER_OP("TestBinary")
 
 // Compares that the order of nodes in 'inputs' respects the
 // pair orders described in 'ordered_pairs'.
-bool ExpectBefore(const std::vector<std::pair<string, string>>& ordered_pairs,
-                  const std::vector<Node*>& inputs, string* error) {
-  for (const std::pair<string, string>& pair : ordered_pairs) {
-    const string& before_node = pair.first;
-    const string& after_node = pair.second;
+bool ExpectBefore(
+    const std::vector<std::pair<std::string, std::string>>& ordered_pairs,
+    const std::vector<Node*>& inputs, std::string* error) {
+  for (const std::pair<std::string, std::string>& pair : ordered_pairs) {
+    const std::string& before_node = pair.first;
+    const std::string& after_node = pair.second;
     bool seen_before = false;
     bool seen_both = false;
     for (const Node* node : inputs) {
@@ -98,7 +99,7 @@ TEST(AlgorithmTest, TopologicalOrdering) {
 
   TopologicalOrdering(g, [&](Node* n) { order.push_back(n); }, GroupByDevice());
 
-  std::vector<std::pair<string, string>> desired_order = {
+  std::vector<std::pair<std::string, std::string>> desired_order = {
       {"n1", "n2"},  // because of control dependency
       {"n2", "n3"},  // because of control dependency
       {"n3", "n4"},  // because of NodeScorerDevice
@@ -109,7 +110,7 @@ TEST(AlgorithmTest, TopologicalOrdering) {
       {"n3", "n5"},  // data dependency
       {"n3", "n6"},  // data dependency
   };
-  string error;
+  std::string error;
   EXPECT_TRUE(ExpectBefore(desired_order, order, &error)) << error;
 }
 
@@ -226,13 +227,13 @@ TEST(AlgorithmTest, TopologicalOrderingOnMultipleOutputs) {
   std::vector<Node*> order;
   TopologicalOrdering(g, [&](Node* n) { order.push_back(n); }, GroupByDevice());
 
-  std::vector<std::pair<string, string>> desired_order = {
+  std::vector<std::pair<std::string, std::string>> desired_order = {
       {"n1", "n2"},
       {"n1", "n3"},
       {"n1", "n4"},
       {"n1", "n5"},
   };
-  string error;
+  std::string error;
   EXPECT_TRUE(ExpectBefore(desired_order, order, &error)) << error;
 }
 

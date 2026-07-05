@@ -208,14 +208,21 @@ cc_library(
     ],
     deps = [
         ":abstract_context",
+        ":abstract_operation",
         ":abstract_tensor_handle",
         ":c_api_unified_internal",
         ":tape",
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:attr_builder",
+        "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/lib/llvm_rtti",
-        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -321,8 +328,10 @@ cc_library(
     deps = [
         ":abstract_tensor_handle",
         ":unified_api_testutil",
+        "//tensorflow/c:tf_datatype_hdrs",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/experimental/ops:math_ops",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -338,16 +347,22 @@ tf_cuda_cc_test(
         "no_cuda_asan",  # b/175330074
     ],
     deps = [
+        ":abstract_context",
         ":abstract_tensor_handle",
         ":c_api_experimental",
         ":gradient_checker",
         ":unified_api_testutil",
+        "//tensorflow/c:tf_datatype_hdrs",
+        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/experimental/ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:tensor_float_32_utils",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -911,6 +926,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@xla//xla/tsl/c:tsl_status_internal",
@@ -1063,6 +1079,15 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/config:flag_defs",
         "//tensorflow/core/config:flags",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:macros",
     ],
 )
 
@@ -1108,10 +1133,12 @@ cc_library(
         ":c_api_experimental",
         ":tfe_tensorhandle_internal",
         "//tensorflow/c:tf_status_internal",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "@com_google_absl//absl/status",
         "@dlpack",
     ],
     alwayslink = 1,
@@ -1144,24 +1171,37 @@ filegroup(
     srcs = glob(
         [
             "*.cc",
-            "*.h",
         ],
         exclude = [
             "c_api_experimental.cc",
             "c_api_experimental_reader.cc",
-            "c_api_experimental_reader.h",
-            "tfe_monitoring_reader_internal.h",
             "c_api_unified_experimental.cc",
             "c_api_unified_experimental_eager.cc",
             "c_api_unified_experimental_graph.cc",
-            "c_api_unified_experimental_internal.h",
-            "graph_function.h",
             "graph_function.cc",
             "gradient_checker.cc",
-            "gradient_checker.h",
             "gradients.cc",  # Uses RTTI.
-            "tracing_utils.h",
             "tracing_utils.cc",
+            "*test*",
+            "*dlpack*",
+        ],
+    ),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "hdrs",
+    srcs = glob(
+        [
+            "*.h",
+        ],
+        exclude = [
+            "c_api_experimental_reader.h",
+            "tfe_monitoring_reader_internal.h",
+            "c_api_unified_experimental_internal.h",
+            "graph_function.h",
+            "gradient_checker.h",
+            "tracing_utils.h",
             "*test*",
             "*dlpack*",
         ],

@@ -20,6 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -63,14 +65,14 @@ void OpRegistry::Register(const OpRegistrationDataFactory& op_data_factory) {
 namespace {
 // Helper function that returns Status message for failed LookUp.
 absl::Status OpNotFound(const std::string& op_type_name) {
-  absl::Status status = errors::NotFound(
+  absl::Status status = absl::NotFoundError(absl::StrCat(
       "Op type not registered '", op_type_name, "' in binary running on ",
       port::Hostname(), ". ",
       "Make sure the Op and Kernel are registered in the binary running in "
       "this process. Note that if you are loading a saved graph which used ops "
       "from tf.contrib (e.g. `tf.contrib.resampler`), accessing should be done "
       "before importing the graph, as contrib ops are lazily registered when "
-      "the module is first accessed.");
+      "the module is first accessed."));
   VLOG(1) << status.ToString();
   return status;
 }
@@ -152,7 +154,7 @@ void OpRegistry::GetOpRegistrationData(
 absl::Status OpRegistry::SetWatcher(const Watcher& watcher) {
   mutex_lock lock(mu_);
   if (watcher_ && watcher) {
-    return errors::AlreadyExists(
+    return absl::AlreadyExistsError(
         "Cannot over-write a valid watcher with another.");
   }
   watcher_ = watcher;
@@ -242,7 +244,8 @@ absl::Status OpRegistry::RegisterAlreadyLocked(
   if (s.ok() &&
       !registry_.try_emplace(op_reg_data->op_def.name(), std::move(op_reg_data))
            .second) {
-    s = errors::AlreadyExists("Op with name ", op_reg_data->op_def.name());
+    s = absl::AlreadyExistsError(
+        absl::StrCat("Op with name ", op_reg_data->op_def.name()));
   }
   absl::Status watcher_status = s;
   if (watcher_) {

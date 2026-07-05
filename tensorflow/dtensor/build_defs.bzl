@@ -1,6 +1,6 @@
 """Helpers for defining multi-platform DTensor test targets."""
 
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 # LINT.IfChange
 ALL_BACKENDS = [
@@ -8,7 +8,7 @@ ALL_BACKENDS = [
     "gpu",  # 1 physical GPU,
     "tpu",  # 2 physical TPU devices
 ]
-TPU_V3_DONUT_BACKEND = "tpu_v3_2x2"  # 8 TPU devices; includes TFRT and non-TFRT targets
+TPU_V3_DONUT_BACKEND = "tpu_v3_2x2"  # 8 TPU devices
 TPU_V4_DONUT_BACKEND = "tpu_v4_2x2"  # 8 TPU devices for non-Megacore targets and 4 for Megacore targets
 GPU_2DEVS_BACKEND = "2gpus"  # 2 Physical GPUs.
 # LINT.ThenChange(
@@ -22,7 +22,6 @@ def _get_configurations(
         disable,
         enable,
         disable_tfrt,
-        disable_tfrt_tpu,  # buildifier: disable=unused-variable
         backend_tags,
         backend_deps,
         additional_backends,  # buildifier: disable=unused-variable
@@ -92,7 +91,6 @@ def dtensor_test(
         disable = [],
         enable = [],
         disable_tfrt = [],
-        disable_tfrt_tpu = [],
         data = [],
         tags = [],
         backend_tags = {},
@@ -102,7 +100,7 @@ def dtensor_test(
         shard_count = None,
         size = None,
         get_configurations = _get_configurations,
-        test_rule = py_strict_test):
+        test_rule = py_test):
     """Defines a set of per-platform DTensor test targets.
 
     Generates test targets named:
@@ -111,7 +109,6 @@ def dtensor_test(
     :name_cpu_tfrt
     :name_gpu  # must run with --config=cuda
     :name_tpu  # recommend to be run with -c opt
-    :name_tpu_tfrt  # recommend to be run with -c opt
 
     Args:
       name: test name
@@ -123,7 +120,6 @@ def dtensor_test(
       enable: list of specific configs on which the test should be enabled,
         e.g., ["tpu"]. This overrides 'disable'.
       disable_tfrt: list of backends that are disabled for tfrt. This overrides 'enable'.
-      disable_tfrt_tpu: list of backends that are disabled for tfrt tpu.
       data: data dependencies
       tags: test tags
       backend_tags: a dictionary keyed by backend name of per-backend tags.
@@ -139,7 +135,6 @@ def dtensor_test(
         disable = disable,
         enable = enable,
         disable_tfrt = disable_tfrt,
-        disable_tfrt_tpu = disable_tfrt_tpu,
         backend_tags = backend_tags,
         backend_deps = backend_deps,
         additional_backends = additional_backends,

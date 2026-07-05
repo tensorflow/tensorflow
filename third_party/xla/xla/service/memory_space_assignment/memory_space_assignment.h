@@ -79,6 +79,16 @@ Classes
     a buffer of a given size, with a defined lifetime. In MSA, the buffer
     corresponds to an HloValue.
 
+  - Joint Proposal: A joint proposal is initially created from an HloValue.
+    However, we also add all HloValues that must alias with the HloValue, so
+    upon creation its granularity is that of an HloBuffer.
+    * In the general case, a joint proposal consists of a collection of
+      AllocationValues corresponding to the non-trivial positions of all
+      HloValues in the HloBuffer.
+    * When sync copy/slice replacement is enabled, AllocationValues are also
+      created for non-trivial positions that are candidates for sync copy
+      replacement.
+
   - AllocationValue: An AllocationValue is defined by an HloValue, and *one* of
     its HloPositions. Note that a given HloValue may be associated with multiple
     AllocationValues in this way.
@@ -224,6 +234,10 @@ class PresetAssignments {
   };
 
   PresetAssignments() = default;
+
+  std::unique_ptr<PresetAssignments> ClonePresetAssignments() const {
+    return std::make_unique<PresetAssignments>(*this);
+  }
 
   void add_chunk(const HloPosition& position,
                  const HeapSimulator::Chunk& chunk) {
@@ -395,7 +409,8 @@ class MemorySpaceAssignment {
 
   // Process calls Process methods of the allocations after the allocations have
   // been finalized.
-  absl::Status Process(const HloLiveRange& hlo_live_range);
+  absl::Status Process(const HloLiveRange& hlo_live_range,
+                       const HloAliasAnalysis& alias_analysis);
 
   // Process() might have altered the computation graph by inserting kTuple and
   // kGetTupleElement instructions. SimplifyGraph performs a simple DCE and
@@ -403,8 +418,10 @@ class MemorySpaceAssignment {
   // 1), simply forwards b). Runs to fixed point.
   absl::Status SimplifyGraph();
 
-  // FixSchedule inserts asynchronous copies in the schedule.
-  absl::Status FixSchedule();
+  // Places copy-start and copy-done instructions in the schedule, according to
+  // the schedule_before_ and schedule_after_ data structures, making necessary
+  // adjustments to the schedule to ensure correctness.
+  absl::Status SetSchedule();
 
   // Export the alternate memory assignments to the PresetAssignments and color
   // the HLO graph with the determined memory spaces.

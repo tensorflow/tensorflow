@@ -70,7 +70,7 @@ class BufferAllocations {
       const BufferAllocation::Slice& buffer_slice) const;
 
   // Returns a buffer allocation index for the given device address if it
-  // belongs to one of the buffer allocations. Returns nullptr otherwise.
+  // belongs to one of the buffer allocations. Returns nullopt otherwise.
   std::optional<BufferAllocation::Index> FindAllocationIndex(
       const se::DeviceAddressBase& addr) const;
 

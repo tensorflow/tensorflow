@@ -113,10 +113,11 @@ inline constexpr llvm::StringRef kImportMhloShardings =
 inline constexpr llvm::StringRef kUseTupleArgs = "xla.sdy.use_tuple_args";
 
 // Attribute name for the input tuple shardings.
-inline const llvm::StringRef kInTupleShardings = "xla.sdy.tuple_args_shardings";
+inline constexpr llvm::StringRef kInTupleShardings =
+    "xla.sdy.tuple_args_shardings";
 
 // Attribute name for the output tuple shardings.
-inline const llvm::StringRef kOutTupleShardings =
+inline constexpr llvm::StringRef kOutTupleShardings =
     "xla.sdy.tuple_results_shardings";
 
 // Attribute name for the in shardings of a `ManualComputationOp`.

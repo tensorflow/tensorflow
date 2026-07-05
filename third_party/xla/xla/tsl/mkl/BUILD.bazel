@@ -14,11 +14,12 @@ config_setting(
 
 config_setting(
     name = "build_with_mkl_lnx_x64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
     define_values = {
         "build_with_mkl": "true",
-    },
-    values = {
-        "cpu": "k8",
     },
     visibility = ["//visibility:public"],
 )

@@ -32,16 +32,16 @@ hwloc_topology_t GetHWLocTopology() {
   static hwloc_topology_t hwloc_topology_handle = nullptr;
   absl::call_once(init_once, [] {
     if (hwloc_topology_init(&hwloc_topology_handle)) {
-      LOG(ERROR) << "Call to hwloc_topology_init() failed";
+      LOG_FIRST_N(ERROR, 1) << "Call to hwloc_topology_init() failed";
       return;
     }
     if (hwloc_topology_set_flags(hwloc_topology_handle,
                                  HWLOC_TOPOLOGY_FLAG_DONT_CHANGE_BINDING)) {
-      LOG(ERROR) << "Call to hwloc_topology_set_flags() failed";
+      LOG_FIRST_N(ERROR, 1) << "Call to hwloc_topology_set_flags() failed";
       return;
     }
     if (hwloc_topology_load(hwloc_topology_handle)) {
-      LOG(ERROR) << "Call to hwloc_topology_load() failed";
+      LOG_FIRST_N(ERROR, 1) << "Call to hwloc_topology_load() failed";
       return;
     }
   });
@@ -91,8 +91,8 @@ int NUMANumNodes() {
     }
     num_numanodes = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_NUMANODE);
     if (num_numanodes < 1) {
-      LOG(ERROR) << "Unknown number of NUMA nodes (got " << num_numanodes
-                 << "), assuming 1.";
+      LOG_FIRST_N(ERROR, 1) << "Unknown number of NUMA nodes (got "
+                            << num_numanodes << "), assuming 1.";
       num_numanodes = 1;
     }
   });
@@ -112,13 +112,13 @@ void NUMASetThreadNodeAffinity(int node) {
   // Find the corresponding NUMA node topology object.
   hwloc_obj_t obj = GetHWLocTypeIndex(HWLOC_OBJ_NUMANODE, node);
   if (!obj) {
-    LOG(ERROR) << "Could not find hwloc NUMA node " << node;
+    LOG_FIRST_N(ERROR, 1) << "Could not find hwloc NUMA node " << node;
     return;
   }
 
   if (hwloc_set_cpubind(topology, obj->cpuset,
                         HWLOC_CPUBIND_THREAD | HWLOC_CPUBIND_STRICT)) {
-    LOG(ERROR).WithPerror() << "Call to hwloc_set_cpubind() failed";
+    LOG_FIRST_N(ERROR, 1).WithPerror() << "Call to hwloc_set_cpubind() failed";
   }
 }
 
@@ -130,12 +130,12 @@ int NUMAGetThreadNodeAffinity() {
 
   auto thread_cpuset = AllocateBitmap();
   if (!thread_cpuset) {
-    LOG(ERROR) << "Call to hwloc_bitmap_alloc() failed";
+    LOG_FIRST_N(ERROR, 1) << "Call to hwloc_bitmap_alloc() failed";
     return kNUMANoAffinity;
   }
 
   if (hwloc_get_cpubind(topology, thread_cpuset.get(), HWLOC_CPUBIND_THREAD)) {
-    LOG(ERROR).WithPerror() << "Call to hwloc_get_cpubind() failed";
+    LOG_FIRST_N(ERROR, 1).WithPerror() << "Call to hwloc_get_cpubind() failed";
     return kNUMANoAffinity;
   }
 
@@ -159,7 +159,7 @@ void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
         return hwloc_alloc_membind(topology, size, numa_node->nodeset,
                                    HWLOC_MEMBIND_BIND, HWLOC_MEMBIND_BYNODESET);
       }
-      LOG(ERROR) << "Failed to find hwloc NUMA node " << node;
+      LOG_FIRST_N(ERROR, 1) << "Failed to find hwloc NUMA node " << node;
     }
   }
   return AlignedMalloc(size, static_cast<std::align_val_t>(minimum_alignment));
@@ -186,13 +186,13 @@ int NUMAGetMemAffinity(const void* ptr) {
 
   auto nodeset = AllocateBitmap();
   if (!nodeset) {
-    LOG(ERROR) << "Call to hwloc_bitmap_alloc() failed";
+    LOG_FIRST_N(ERROR, 1) << "Call to hwloc_bitmap_alloc() failed";
     return kNUMANoAffinity;
   }
 
   if (hwloc_get_area_memlocation(topology, ptr, 4, nodeset.get(),
                                  HWLOC_MEMBIND_BYNODESET)) {
-    LOG(ERROR) << "Failed call to hwloc_get_area_memlocation.";
+    LOG_FIRST_N(ERROR, 1) << "Failed call to hwloc_get_area_memlocation.";
     return kNUMANoAffinity;
   }
 

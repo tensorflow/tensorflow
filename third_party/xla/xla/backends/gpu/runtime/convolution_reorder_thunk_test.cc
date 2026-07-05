@@ -37,7 +37,7 @@ using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 TEST(ConvolutionReorderThunkTest, ProtoRoundTrip) {
   auto proto = ParseTextProtoOrDie<ThunkProto>(R"pb(
-    thunk_info { profile_annotation: "test" execution_stream_id: 0 }
+    thunk_info { profile_annotation: "test" }
     convolution_reorder_thunk {
       filter_input {
         slice { buffer_allocation_index: 0 offset: 0 size: 1024 }

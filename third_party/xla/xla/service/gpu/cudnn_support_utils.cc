@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -37,7 +39,7 @@ namespace gpu {
 absl::StatusOr<bool> CudnnSupportsOptimizedIntegerConvolution(
     const se::CudaComputeCapability& compute_capability,
     HloCustomCallInstruction& conv, int vector_size) {
-  TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(&conv));
+  ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(&conv));
   const Shape& input_shape = conv.operand(0)->shape();
   const Shape& kernel_shape = conv.operand(1)->shape();
   const Shape& result_shape = conv.shape().tuple_shapes(0);
@@ -218,10 +220,14 @@ CudnnInferTransposeForBiasReordering(const Shape& shape) {
 
 bool IsWorkspaceAllocationRoot(const HloInstruction& root) {
   return root.IsRoot() && root.opcode() == HloOpcode::kTuple &&
-         root.operand_count() == 2 &&
-         root.operand(1)->IsCustomCall(kWorkspaceAllocationCustomCallTarget) &&
-         root.operand(1)->operand_count() == 0;
+         root.operand(root.operand_count() - 1)
+             ->IsCustomCall(kWorkspaceAllocationCustomCallTarget) &&
+         root.operand(root.operand_count() - 1)->operand_count() == 0;
 }
 
+bool IsAmaxRoot(const HloInstruction& root) {
+  return root.IsRoot() && root.opcode() == HloOpcode::kTuple &&
+         root.operand(1)->opcode() == HloOpcode::kReduce;
+}
 }  // namespace gpu
 }  // namespace xla

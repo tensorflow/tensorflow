@@ -20,94 +20,50 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
-#include "absl/types/span.h"
+#include "absl/strings/string_view.h"
 #include "xla/pjrt/async_work_runner.h"
-#include "xla/tsl/concurrency/async_value.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/unbounded_work_queue.h"
 
 namespace xla {
-namespace {
 
-void EnqueueWork(tsl::thread::ThreadPool* pool,
-                 absl::AnyInvocable<void() &&> callee) {
-  // TSL TheadPool expects std::function that must be copyable, so we are
+ThreadPoolAsyncWorkRunner::ThreadPoolAsyncWorkRunner(
+    tsl::Env* env, absl::string_view name, int num_threads,
+    const tsl::ThreadOptions& thread_options)
+    : pool_(env, thread_options, std::string(name), num_threads) {}
+
+void ThreadPoolAsyncWorkRunner::Execute(Task task) {
+  // TSL ThreadPool expects std::function that must be copyable, so we are
   // forced to do a little bit of manual memory management here.
-  pool->Schedule(
-      [ptr = new absl::AnyInvocable<void() &&>(std::move(callee))]() {
-        std::move (*ptr)();
-        delete ptr;
-      });
-}
-
-// Enqueue to PjRtClient pool when all `values` are ready.
-void EnqueueWorkWhenReady(
-    tsl::thread::ThreadPool* pool,
-    absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
-    absl::AnyInvocable<void() &&> callee) {
-  RunWhenReady(values, [pool, callee = std::move(callee)]() mutable {
-    EnqueueWork(pool, std::move(callee));
+  pool_.Schedule([ptr = new absl::AnyInvocable<void() &&>(std::move(task))]() {
+    std::move (*ptr)();
+    delete ptr;
   });
 }
 
-class ThreadPoolAsyncWorkRunner : public AsyncWorkRunner {
- public:
-  explicit ThreadPoolAsyncWorkRunner(tsl::thread::ThreadPool* pool)
-      : pool_(pool) {}
+UnboundedAsyncWorkRunner::UnboundedAsyncWorkRunner(
+    absl::string_view name, const tsl::ThreadOptions& thread_options)
+    : queue_(tsl::Env::Default(), std::string(name), thread_options) {}
 
-  void Schedule(absl::AnyInvocable<void() &&> work) override {
-    EnqueueWork(pool_, std::move(work));
-  }
-
-  void ScheduleWhenReady(
-      absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
-      absl::AnyInvocable<void() &&> work) override {
-    EnqueueWorkWhenReady(pool_, values, std::move(work));
-  }
-
- private:
-  tsl::thread::ThreadPool* pool_;
-};
-
-class UnboundedAsyncWorkRunner : public AsyncWorkRunner {
- public:
-  UnboundedAsyncWorkRunner(const std::string& name,
-                           const tsl::ThreadOptions& thread_options)
-      : queue_(tsl::Env::Default(), name, thread_options) {}
-
-  void Schedule(absl::AnyInvocable<void() &&> work) override {
-    // `tsl::UnboundedWorkQueue` expects std::function that must be copyable, so
-    // we are forced to do a little bit of manual memory management here.
-    queue_.Schedule(
-        [ptr = new absl::AnyInvocable<void() &&>(std::move(work))]() {
-          std::move (*ptr)();
-          delete ptr;
-        });
-  }
-
-  void ScheduleWhenReady(
-      absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
-      absl::AnyInvocable<void() &&> work) override {
-    tsl::RunWhenReady(values, [this, work = std::move(work)]() mutable {
-      Schedule([work = std::move(work)]() mutable { std::move(work)(); });
-    });
-  }
-
- private:
-  tsl::UnboundedWorkQueue queue_;
-};
-
-}  // namespace
-
-std::unique_ptr<AsyncWorkRunner> MakeThreadPoolAsyncWorkRunner(
-    tsl::thread::ThreadPool* pool) {
-  return std::make_unique<ThreadPoolAsyncWorkRunner>(pool);
+void UnboundedAsyncWorkRunner::Execute(Task task) {
+  // UnboundedWorkQueue expects std::function that must be copyable, so we are
+  // forced to do a little bit of manual memory management here.
+  queue_.Schedule([ptr = new Task(std::move(task))] {
+    std::move (*ptr)();
+    delete ptr;
+  });
 }
 
-std::unique_ptr<AsyncWorkRunner> MakeUnboundedAsyncWorkRunner(
-    const std::string& name, const tsl::ThreadOptions& thread_options) {
+std::unique_ptr<ThreadPoolAsyncWorkRunner> MakeThreadPoolAsyncWorkRunner(
+    tsl::Env* env, absl::string_view name, int num_threads,
+    const tsl::ThreadOptions& thread_options) {
+  return std::make_unique<ThreadPoolAsyncWorkRunner>(env, name, num_threads,
+                                                     thread_options);
+}
+
+std::unique_ptr<UnboundedAsyncWorkRunner> MakeUnboundedAsyncWorkRunner(
+    absl::string_view name, const tsl::ThreadOptions& thread_options) {
   return std::make_unique<UnboundedAsyncWorkRunner>(name, thread_options);
 }
 

@@ -20,17 +20,19 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/env_time.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/profiler/rpc/client/save_profile.h"
@@ -64,6 +66,18 @@ std::string GetHostname(const ProfileRequest& request) {
   return request.host_name();
 }
 
+bool IsValidSnapshotSessionId(absl::string_view id) {
+  if (id.size() > 128) {
+    return false;
+  }
+  for (char c : id) {
+    if (!absl::ascii_isalnum(c) && c != '_' && c != '-') {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Collects data in XSpace format. The data is saved to a repository
 // unconditionally.
 absl::Status CollectData(const ProfileRequest& request,
@@ -73,7 +87,7 @@ absl::Status CollectData(const ProfileRequest& request,
   tensorflow::profiler::XSpace xspace;
   tensorflow::profiler::XSpace* xspace_ptr =
       request.emit_xspace() ? response->mutable_xspace() : &xspace;
-  TF_RETURN_IF_ERROR(profiler->CollectData(xspace_ptr));
+  RETURN_IF_ERROR(profiler->CollectData(xspace_ptr));
   VLOG(3) << "Collected XSpace to "
           << (request.emit_xspace() ? "response" : "repository") << ".";
   response->set_empty_trace(IsEmpty(*xspace_ptr));
@@ -152,8 +166,8 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
     if (!status.ok()) {
       LOG(ERROR) << "Failed to create profiler session: " << status;
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
-                            "Failed to create profiler session: " +
-                                std::string(status.message()));
+                            absl::StrCat("Failed to create profiler session: ",
+                                         status.message()));
     }
     tensorflow::ProfileRequest request = *req;
     request.set_emit_xspace(true);
@@ -166,7 +180,7 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
       StopContinuousProfilingResponse* response) override {
     std::optional<ContinuousSession> session_to_destroy;
     {
-      absl::MutexLock lock(&mutex_);
+      absl::MutexLock lock(mutex_);
       if (!continuous_profiling_session_.has_value()) {
         return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
                               "No continuous profiling session found.");
@@ -188,8 +202,21 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
                             "No continuous profiling session found.");
     }
 
+    tensorflow::ProfileRequest snapshot_request =
+        continuous_profiling_session_->request;
+    if (!req->snapshot_session_id().empty() &&
+        !snapshot_request.repository_root().empty()) {
+      if (!IsValidSnapshotSessionId(req->snapshot_session_id())) {
+        return ::grpc::Status(
+            ::grpc::StatusCode::INVALID_ARGUMENT,
+            "Invalid snapshot_session_id. Only alphanumeric, underscores, "
+            "and hyphens are allowed.");
+      }
+      snapshot_request.set_session_id(req->snapshot_session_id());
+      snapshot_request.set_emit_xspace(false);
+    }
     absl::Status status =
-        CollectData(continuous_profiling_session_->request,
+        CollectData(snapshot_request,
                     continuous_profiling_session_->profiler.get(), response);
     if (!status.ok()) {
       LOG(ERROR) << "Failed to collect profile data: " << status;

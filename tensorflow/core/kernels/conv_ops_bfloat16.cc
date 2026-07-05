@@ -15,6 +15,12 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include <array>
+#include <cstdint>
+#include <vector>
+
+#include "absl/container/inlined_vector.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/conv_ops_impl.h"
 
 namespace tensorflow {
@@ -104,8 +110,8 @@ DECLARE_GPU_SPEC(float);
 template <>
 void LaunchConvOp<GPUDevice, Eigen::bfloat16>::operator()(
     OpKernelContext* context, bool cudnn_use_autotune, const Tensor& input,
-    const Tensor& filter, const std::vector<int64>& dilations,
-    const std::vector<int64>& strides, const Padding padding,
+    const Tensor& filter, const std::vector<int64_t>& dilations,
+    const std::vector<int64_t>& strides, const Padding padding,
     const std::vector<int64_t>& explicit_paddings, TensorFormat data_format,
     Tensor* output) {
   // Get spatial dims for dilations and strides.

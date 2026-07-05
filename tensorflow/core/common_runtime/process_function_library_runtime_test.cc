@@ -1136,11 +1136,11 @@ REGISTER_OP("BrokenOp")
 class BrokenOp : public OpKernel {
  public:
   explicit BrokenOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    ctx->SetStatus(errors::Internal("I am broken"));
+    ctx->SetStatus(absl::InternalError("I am broken"));
   }
 
   void Compute(OpKernelContext* ctx) override {
-    ctx->SetStatus(errors::Internal("I am broken"));
+    ctx->SetStatus(absl::InternalError("I am broken"));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("BrokenOp").Device(DEVICE_CPU), BrokenOp);

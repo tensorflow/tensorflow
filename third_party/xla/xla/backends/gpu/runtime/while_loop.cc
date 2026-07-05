@@ -1,0 +1,79 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/gpu/runtime/while_loop.h"
+
+#include <cstddef>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+
+namespace xla::gpu {
+
+static thread_local std::vector<WhileLoopState> while_loop_stack;
+
+static size_t EnterWhileLoop(absl::string_view loop_name,
+                             std::optional<size_t> trip_count) {
+  size_t depth = while_loop_stack.size();
+  while_loop_stack.push_back(
+      WhileLoopState{std::string(loop_name), trip_count, depth, 0});
+  return depth;
+}
+
+static void IncWhileLoopIteration() {
+  if (!while_loop_stack.empty()) {
+    ++while_loop_stack.back().loop_iteration;
+  }
+}
+
+static void ExitWhileLoop() { while_loop_stack.pop_back(); }
+
+const WhileLoopState* IsInsideWhileLoop() {
+  if (while_loop_stack.empty()) return nullptr;
+  return &while_loop_stack.back();
+}
+
+absl::Span<const WhileLoopState> IsInsideWhileLoopNest() {
+  return while_loop_stack;
+}
+
+ScopedWhileLoop::ScopedWhileLoop(absl::string_view loop_name,
+                                 std::optional<size_t> trip_count)
+    : loop_depth_(EnterWhileLoop(loop_name, trip_count)) {}
+
+ScopedWhileLoop::~ScopedWhileLoop() { ExitWhileLoop(); }
+
+absl::string_view ScopedWhileLoop::loop_name() const {
+  return while_loop_stack[loop_depth_].loop_name;
+}
+
+std::optional<size_t> ScopedWhileLoop::trip_count() const {
+  return while_loop_stack[loop_depth_].loop_trip_count;
+}
+
+size_t ScopedWhileLoop::loop_depth() const {
+  return while_loop_stack[loop_depth_].loop_depth;
+}
+
+size_t ScopedWhileLoop::loop_iteration() const {
+  return while_loop_stack[loop_depth_].loop_iteration;
+}
+
+void ScopedWhileLoop::IncLoopIteration() { IncWhileLoopIteration(); }
+
+}  // namespace xla::gpu

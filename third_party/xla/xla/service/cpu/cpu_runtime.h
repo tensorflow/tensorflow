@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/strings/string_view.h"
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
 #include "xla/executable_run_options.h"
 
@@ -41,57 +42,107 @@ namespace runtime {
 //    maps this symbol name to the actual symbol.
 // 2. When using ahead-of-time compilation, the linker can resolve the name
 //    because it is a symbol in the cpu_runtime library.
-extern const char* const kEigenMatMulF16SymbolName;
-extern const char* const kEigenMatMulF32SymbolName;
-extern const char* const kEigenMatMulF64SymbolName;
-extern const char* const kEigenMatMulC64SymbolName;
-extern const char* const kEigenMatMulC128SymbolName;
-extern const char* const kEigenMatMulS32SymbolName;
+inline constexpr absl::string_view kEigenMatMulF16SymbolName =
+    "__xla_cpu_runtime_EigenMatMulF16";
+inline constexpr absl::string_view kEigenMatMulF32SymbolName =
+    "__xla_cpu_runtime_EigenMatMulF32";
+inline constexpr absl::string_view kEigenMatMulF64SymbolName =
+    "__xla_cpu_runtime_EigenMatMulF64";
+inline constexpr absl::string_view kEigenMatMulC64SymbolName =
+    "__xla_cpu_runtime_EigenMatMulC64";
+inline constexpr absl::string_view kEigenMatMulC128SymbolName =
+    "__xla_cpu_runtime_EigenMatMulC128";
+inline constexpr absl::string_view kEigenMatMulS32SymbolName =
+    "__xla_cpu_runtime_EigenMatMulS32";
 extern const char* const kEigenMatMulU8SymbolName;
-extern const char* const kEigenBatchMatMulF32SymbolName;
-extern const char* const kACLConv2DF32SymbolName;
-extern const char* const kACLMatMulF32SymbolName;
-extern const char* const kACLBatchMatMulF32SymbolName;
-extern const char* const kEigenConv2DF16SymbolName;
-extern const char* const kEigenConv2DF32SymbolName;
-extern const char* const kEigenConv3DF16SymbolName;
-extern const char* const kEigenConv3DF32SymbolName;
-extern const char* const kEigenSingleThreadedMatMulF16SymbolName;
-extern const char* const kEigenSingleThreadedMatMulF32SymbolName;
-extern const char* const kEigenSingleThreadedMatMulF64SymbolName;
-extern const char* const kEigenSingleThreadedMatMulF8E4M3FNSymbolName;
-extern const char* const kEigenSingleThreadedMatMulF8E5M2SymbolName;
-extern const char* const kEigenSingleThreadedMatMulC64SymbolName;
-extern const char* const kEigenSingleThreadedMatMulC128SymbolName;
-extern const char* const kEigenSingleThreadedMatMulS32SymbolName;
-extern const char* const kEigenSingleThreadedMatMulU8SymbolName;
-extern const char* const kEigenSingleThreadedConv2DF16SymbolName;
-extern const char* const kEigenSingleThreadedConv2DF32SymbolName;
-extern const char* const kEigenSingleThreadedConv3DF16SymbolName;
-extern const char* const kEigenSingleThreadedConv3DF32SymbolName;
-extern const char* const kAcquireInfeedBufferForDequeueSymbolName;
-extern const char* const kReleaseInfeedBufferAfterDequeueSymbolName;
-extern const char* const kAcquireOutfeedBufferForPopulationSymbolName;
-extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName;
-extern const char* const kParallelForkJoinSymbolName;
-extern const char* const kPrintfToStderrSymbolName;
-extern const char* const kStatusIsSuccessSymbolName;
-extern const char* const kKeyValueSortSymbolName;
-extern const char* const kTopKF32SymbolName;
-extern const char* const kAllReduceSymbolName;
-extern const char* const kCollectivePermuteSymbolName;
-extern const char* const kPartitionIdSymbolName;
-extern const char* const kReplicaIdSymbolName;
-extern const char* const kTracingStartSymbolName;
-extern const char* const kTracingEndSymbolName;
-extern const char* const kAllToAllSymbolName;
-extern const char* const kAllGatherSymbolName;
-extern const char* const kReduceScatterSymbolName;
-extern const char* const kHandleFfiCallSymbolName;
+inline constexpr absl::string_view kEigenBatchMatMulF32SymbolName =
+    "__xla_cpu_runtime_EigenBatchMatMulF32";
+inline constexpr absl::string_view kACLConv2DF32SymbolName =
+    "__xla_cpu_runtime_ACLConv2DF32";
+inline constexpr absl::string_view kACLMatMulF32SymbolName =
+    "__xla_cpu_runtime_ACLMatMulF32";
+inline constexpr absl::string_view kACLBatchMatMulF32SymbolName =
+    "__xla_cpu_runtime_ACLBatchMatMulF32";
+inline constexpr absl::string_view kEigenConv2DF16SymbolName =
+    "__xla_cpu_runtime_EigenConv2DF16";
+inline constexpr absl::string_view kEigenConv2DF32SymbolName =
+    "__xla_cpu_runtime_EigenConv2DF32";
+inline constexpr absl::string_view kEigenConv3DF16SymbolName =
+    "__xla_cpu_runtime_EigenConv3DF16";
+inline constexpr absl::string_view kEigenConv3DF32SymbolName =
+    "__xla_cpu_runtime_EigenConv3DF32";
+inline constexpr absl::string_view kEigenSingleThreadedMatMulF16SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulF16";
+inline constexpr absl::string_view kEigenSingleThreadedMatMulF32SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulF32";
+inline constexpr absl::string_view kEigenSingleThreadedMatMulF64SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulF64";
+inline constexpr absl::string_view
+    kEigenSingleThreadedMatMulF8E4M3FNSymbolName =
+        "__xla_cpu_runtime_EigenSingleThreadedMatMulF8E4M3FN";
+inline constexpr absl::string_view kEigenSingleThreadedMatMulF8E5M2SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulF8E5M2";
+inline constexpr absl::string_view kEigenSingleThreadedMatMulC64SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulC64";
+inline constexpr absl::string_view kEigenSingleThreadedMatMulC128SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulC128";
+inline constexpr absl::string_view kEigenSingleThreadedMatMulS32SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulS32";
+inline constexpr absl::string_view kEigenSingleThreadedMatMulU8SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulU8";
+inline constexpr absl::string_view kEigenSingleThreadedConv2DF16SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedConv2DF16";
+inline constexpr absl::string_view kEigenSingleThreadedConv2DF32SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedConv2DF32";
+inline constexpr absl::string_view kEigenSingleThreadedConv3DF16SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedConv3DF16";
+inline constexpr absl::string_view kEigenSingleThreadedConv3DF32SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedConv3DF32";
+inline constexpr absl::string_view kAcquireInfeedBufferForDequeueSymbolName =
+    "__xla_cpu_runtime_AcquireInfeedBufferForDequeue";
+inline constexpr absl::string_view kReleaseInfeedBufferAfterDequeueSymbolName =
+    "__xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue";
+inline constexpr absl::string_view
+    kAcquireOutfeedBufferForPopulationSymbolName =
+        "__xla_cpu_runtime_AcquireOutfeedBufferForPopulation";
+inline constexpr absl::string_view
+    kReleaseOutfeedBufferAfterPopulationSymbolName =
+        "__xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation";
+inline constexpr absl::string_view kParallelForkJoinSymbolName =
+    "__xla_cpu_runtime_ParallelForkJoin";
+inline constexpr absl::string_view kPrintfToStderrSymbolName =
+    "__xla_cpu_runtime_PrintfToStderr";
+inline constexpr absl::string_view kStatusIsSuccessSymbolName =
+    "__xla_cpu_runtime_StatusIsSuccess";
+inline constexpr absl::string_view kKeyValueSortSymbolName =
+    "__xla_cpu_runtime_KeyValueSort";
+inline constexpr absl::string_view kTopKF32SymbolName =
+    "__xla_cpu_runtime_TopKF32";
+inline constexpr absl::string_view kAllReduceSymbolName =
+    "__xla_cpu_runtime_AllReduce";
+inline constexpr absl::string_view kCollectivePermuteSymbolName =
+    "__xla_cpu_runtime_CollectivePermute";
+inline constexpr absl::string_view kPartitionIdSymbolName =
+    "__xla_cpu_runtime_PartitionId";
+inline constexpr absl::string_view kReplicaIdSymbolName =
+    "__xla_cpu_runtime_ReplicaId";
+inline constexpr absl::string_view kTracingStartSymbolName =
+    "__xla_cpu_runtime_TracingStart";
+inline constexpr absl::string_view kTracingEndSymbolName =
+    "__xla_cpu_runtime_TracingEnd";
+inline constexpr absl::string_view kAllToAllSymbolName =
+    "__xla_cpu_runtime_AllToAll";
+inline constexpr absl::string_view kAllGatherSymbolName =
+    "__xla_cpu_runtime_AllGather";
+inline constexpr absl::string_view kReduceScatterSymbolName =
+    "__xla_cpu_runtime_ReduceScatter";
+inline constexpr absl::string_view kHandleFfiCallSymbolName =
+    "__xla_cpu_runtime_HandleFfiCall";
 
 // All symbol names for XLA CPU runtime functions need to start with this
 // prefix.
-extern const char* const kXlaCpuRuntimeSymbolNamePrefix;
+inline constexpr absl::string_view kXlaCpuRuntimeSymbolNamePrefix =
+    "__xla_cpu_runtime_";
 
 }  // namespace runtime
 }  // namespace cpu

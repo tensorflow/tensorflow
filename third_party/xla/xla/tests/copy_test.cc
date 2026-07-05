@@ -47,7 +47,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class CopyOpTest : public HloPjRtTestBase {
+class CopyOpTest : public HloTestBase {
  protected:
   void TestCopyOp(const Literal& literal) {
     auto builder = HloComputation::Builder(TestName());
@@ -104,7 +104,7 @@ TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic0) {
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
   }
-  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     // TODO: b/443805514 - Enable this test for the TFRT GPU client.
     GTEST_SKIP() << "Does not work with the TFRT GPU client.";
   }
@@ -121,7 +121,7 @@ TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic106632) {
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
   }
-  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     // TODO: b/443805514 - Enable this test for the TFRT GPU client.
     GTEST_SKIP() << "Does not work with the TFRT GPU client.";
   }
@@ -139,7 +139,7 @@ TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic1310720) {
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
   }
-  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     // TODO: b/443805514 - Enable this test for the TFRT GPU client.
     GTEST_SKIP() << "Does not work with the TFRT GPU client.";
   }
@@ -157,7 +157,7 @@ TEST_F(CopyOpTest, CopyDynamicR1S512U32Dynamic64) {
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
   }
-  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     // TODO: b/443805514 - Enable this test for the TFRT GPU client.
     GTEST_SKIP() << "Does not work with the TFRT GPU client.";
   }
@@ -339,8 +339,8 @@ TEST_F(CopyOpTest, CopyConstantR4Layout0312_MultipleTilesPerLayer) {
   TestCopyConstantLayoutR4(2, 14, 5, 35, {0, 3, 1, 2});
 }
 
-using CopyOpClientTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using CopyOpClientTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(CopyOpClientTest, Copy0x0) {
   Shape in_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {0, 0}, {0, 1});

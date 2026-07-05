@@ -24,24 +24,30 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/btree_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
-
+#include "tsl/platform/path.h"
 namespace {
 const char* const kUsage = R"(
 This tool lets you run an HLO module on one or more GPUs.
@@ -56,7 +62,7 @@ Usage:
 
 The tool can be used to just compile the HLO and not run it:
 
-  bazel run hlo_runner_main -- /path/to/module1.hlo --run=false
+  bazel run hlo_runner_main -- /path/to/module1.hlo --compile_only=true
 
 Note that multiple HLOs can also be launched:
 
@@ -81,14 +87,16 @@ struct HloRunnerConfig {
   xla::InputFormat input_format;
   std::string output_mode_str = "return_outputs";
   bool should_run = true;
+  bool compile_only = false;
   bool enable_mock_nccl = false;
+  int run_single_shard_id = -1;
   std::string dump_output_literal_to = "";
   int task_id = 0;
   int num_nodes = 1;
   std::string device_type_str = "gpu";
   std::string address_str = "";
-  int32_t num_replicas = -1;
-  int32_t num_partitions = 1;
+  std::optional<int32_t> num_replicas = std::nullopt;
+  std::optional<int32_t> num_partitions = std::nullopt;
   bool log_output = false;
   bool run_xla_backend_only = false;
   bool disable_all_hlo_passes = false;
@@ -110,6 +118,7 @@ struct HloRunnerConfig {
   int64_t gpu_client_initialization_timeout_sec = 300;
   float gpu_client_mem_fraction = xla::GpuAllocatorConfig{}.memory_fraction;
   bool profile_execution = false;
+  std::string append_profile_to_csv_file = "";
   std::string xla_gpu_dump_xspace_to = "";
 };
 
@@ -138,12 +147,15 @@ ArgumentModeFromString(absl::string_view text) {
     return FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput;
   } else if (text == "uninitialized") {
     return FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
+  } else if (text == "use_random_normal_inputs") {
+    return FunctionalHloRunner::ModuleArgumentMode::kUseRandomNormalInputs;
   }
   return absl::InvalidArgumentError(
       absl::StrCat(R"(Invalid --hlo_argument_mode specified. Expected one of: )"
                    R"("use_device_id_as_input", "use_random_inputs", )"
-                   R"("use_shared_random_inputs", "use_zeros_as_input", or )",
-                   R"("uninitialized". Got: )", text));
+                   R"("use_shared_random_inputs", "use_zeros_as_input", )"
+                   R"("uninitialized", or "use_random_normal_inputs". Got: )",
+                   text));
 }
 
 static absl::StatusOr<FunctionalHloRunner::PreprocessingOptions>
@@ -165,8 +177,8 @@ PreprocessingOptionsFromFlags(const HloRunnerConfig& opts) {
 static absl::StatusOr<FunctionalHloRunner::RunningOptions>
 RunningOptionsFromFlags(const HloRunnerConfig& opts) {
   FunctionalHloRunner::RunningOptions out;
-  TF_ASSIGN_OR_RETURN(out.module_argument_mode,
-                      ArgumentModeFromString(opts.hlo_argument_mode));
+  ASSIGN_OR_RETURN(out.module_argument_mode,
+                   ArgumentModeFromString(opts.hlo_argument_mode));
   std::string error;
   if (!FunctionalHloRunner::AbslParseFlag(opts.output_mode_str,
                                           &out.module_output_mode, &error)) {
@@ -183,7 +195,8 @@ RunningOptionsFromFlags(const HloRunnerConfig& opts) {
 }
 
 static absl::StatusOr<FunctionalHloRunner::RawCompileOptions>
-RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
+RawCompileOptionsFromFlags(const HloRunnerConfig& opts,
+                           const DebugOptions& debug_options) {
   FunctionalHloRunner::RawCompileOptions out;
   out.hlo_passes_mode =
       opts.run_xla_backend_only
@@ -198,16 +211,13 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
                  : FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning)
           : FunctionalHloRunner::SpmdMode::kNotUseSpmdPartitioning;
   if (!opts.execution_options_path.empty()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         out.execution_options,
         FunctionalHloRunner::LoadExecutionOptions(opts.execution_options_path));
   }
-  out.num_replicas = opts.num_replicas < 0
-                         ? std::nullopt
-                         : std::optional<int>(opts.num_replicas);
-  out.num_partitions = opts.num_partitions < 0
-                           ? std::nullopt
-                           : std::optional<int>(opts.num_partitions);
+  out.debug_options = debug_options;
+  out.num_replicas = opts.num_replicas;
+  out.num_partitions = opts.num_partitions;
   out.xla_dump_to = opts.xla_dump_to;
   out.xla_text_dump_mode =
       opts.xla_dump_as_text
@@ -221,6 +231,77 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
   return out;
 }
 
+struct CSVProfileTimeWriter {
+  constexpr static const char kCSVSep = ',';
+
+  explicit CSVProfileTimeWriter(const HloRunnerConfig& opts)
+      : csv_file_path_(opts.append_profile_to_csv_file) {
+    // Use different CSV file for each node since they can use shared file
+    // system.
+    if (opts.num_nodes > 1) {
+      csv_file_path_ = absl::StrCat(csv_file_path_, "_", opts.task_id);
+    }
+    csv_file_path_ += ".csv";
+    new_file_ = !tsl::Env::Default()->FileExists(csv_file_path_).ok();
+    run_time_ = absl::FormatTime("%Y-%m-%d %H:%M:%S", absl::Now(),
+                                 absl::LocalTimeZone());
+  }
+
+  void append_row(absl::string_view hlo_file,
+                  const std::vector<ExecutionProfile>& exec_profiles) {
+    double total_ns = 0.0;
+    size_t num_repeats = exec_profiles.size();
+    for (size_t i = 0; i < num_repeats; ++i) {
+      total_ns += exec_profiles[i].compute_time_ns();
+    }
+    // If there are multiple repeats, we average the execution time over them
+    // skipping the first one which is a warmup run.
+    if (num_repeats > 1) {
+      total_ns -= exec_profiles[0].compute_time_ns();
+      total_ns /= (num_repeats - 1);
+    }
+    exec_time_ms_[hlo_file] = total_ns / 1e6;
+  }
+
+  ~CSVProfileTimeWriter() {
+    if (exec_time_ms_.empty()) {
+      return;
+    }
+    std::unique_ptr<tsl::WritableFile> fout;
+    if (!tsl::Env::Default()->NewAppendableFile(csv_file_path_, &fout).ok()) {
+      LOG(ERROR) << "Failed to open CSV file " << csv_file_path_;
+      return;
+    }
+    // Column headers are appended only once if a CSV file does not exist.
+    if (new_file_) {
+      std::vector<std::string> paths;
+      paths.reserve(exec_time_ms_.size());
+      for (const auto& [hlo_file, _] : exec_time_ms_) {
+        paths.push_back(hlo_file);
+      }
+      std::string prefix = tsl::io::CommonPathPrefix(paths);
+      fout->Append("Datetime").IgnoreError();
+      for (const auto& [hlo_file, _] : exec_time_ms_) {
+        auto fname = hlo_file.substr(prefix.size());
+        fout->Append(kCSVSep + fname).IgnoreError();
+      }
+      fout->Append("\n").IgnoreError();
+    }
+    fout->Append(run_time_).IgnoreError();
+    for (const auto& [_, time_ms] : exec_time_ms_) {
+      fout->Append(absl::StrFormat("%c %.4gms", kCSVSep, time_ms))
+          .IgnoreError();
+    }
+    fout->Append("\n").IgnoreError();
+  }
+
+ private:
+  std::string csv_file_path_, run_time_;
+  bool new_file_;
+  // Use a btree map to sort the HLO files by name.
+  absl::btree_map<std::string, double> exec_time_ms_;
+};  // struct CSVProfileTimeWriter
+
 static absl::Status RunMultihostHloRunner(int argc, char** argv,
                                           HloRunnerConfig& opts) {
   if (std::string error;
@@ -230,15 +311,35 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
 
   PreprocessFlags(opts);
 
-  TF_ASSIGN_OR_RETURN(
+  if (opts.run_single_shard_id >= 0) {
+    opts.enable_mock_nccl = true;
+    opts.task_id = opts.run_single_shard_id;
+
+    std::string hlo_file = (argc > 1) ? argv[1] : "";
+    ASSIGN_OR_RETURN(auto resolve_result,
+                     FunctionalHloRunner::ResolveTopology(
+                         opts.num_replicas, opts.num_partitions, hlo_file,
+                         opts.input_format));
+
+    opts.num_replicas = resolve_result.topology.num_replicas;
+    opts.num_partitions = resolve_result.topology.num_partitions;
+    opts.num_nodes = resolve_result.topology.num_nodes;
+  }
+
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
+  if (opts.enable_mock_nccl) {
+    debug_options.set_xla_gpu_shard_autotuning(false);
+  }
+
+  ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::PreprocessingOptions preproc_options,
       PreprocessingOptionsFromFlags(opts));
   preproc_options.annotate_while_loop_trip_count = true;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::RawCompileOptions raw_compile_options,
-      RawCompileOptionsFromFlags(opts));
-  TF_ASSIGN_OR_RETURN(xla::FunctionalHloRunner::RunningOptions running_options,
-                      RunningOptionsFromFlags(opts));
+      RawCompileOptionsFromFlags(opts, debug_options));
+  ASSIGN_OR_RETURN(xla::FunctionalHloRunner::RunningOptions running_options,
+                   RunningOptionsFromFlags(opts));
 
   // tsl::Flags::Parse() leaves unknown flags in argv, we assume that those are
   // HLO files to run. Note that argv[0] is the binary name and is excluded.
@@ -262,24 +363,24 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     gpu_options.num_nodes = opts.num_nodes;
     gpu_options.enable_mock_nccl = opts.enable_mock_nccl;
     gpu_options.allocator_config.memory_fraction = opts.gpu_client_mem_fraction;
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         env, xla::GetPjRtEnvironmentForGpu(
                  opts.address_str, gpu_options,
                  absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
     // Create a GPURunnerProfiler to profile GPU executions to save xspace data
     // to disk.
     if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
-      TF_ASSIGN_OR_RETURN(hlo_runner_profiler,
-                          HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
-                                                    /*keep_xspace=*/false));
+      ASSIGN_OR_RETURN(hlo_runner_profiler,
+                       HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
+                                                 /*keep_xspace=*/false));
       running_options.profiler = hlo_runner_profiler.get();
     }
   } else if (opts.device_type_str == "host") {
-    TF_ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
+    ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
     if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
-      TF_ASSIGN_OR_RETURN(hlo_runner_profiler,
-                          HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
-                                                    /*keep_xspace=*/false));
+      ASSIGN_OR_RETURN(hlo_runner_profiler,
+                       HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
+                                                 /*keep_xspace=*/false));
       running_options.profiler = hlo_runner_profiler.get();
     }
   } else {
@@ -290,30 +391,39 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   CHECK(env.client != nullptr);
 
   std::vector<ExecutionProfile> execution_profiles;
+  std::unique_ptr<CSVProfileTimeWriter> csv_writer;
+
   if (opts.profile_execution) {
     running_options.execution_profiles = &execution_profiles;
+    if (!opts.append_profile_to_csv_file.empty()) {
+      csv_writer = std::make_unique<CSVProfileTimeWriter>(opts);
+    }
   }
 
   for (int c = 1; c < argc; c++) {
     const char* hlo_file = argv[c];
     execution_profiles.clear();
-    if (opts.should_run) {
+    if (opts.should_run && !opts.compile_only) {
       std::cout << "\n** Running " << hlo_file << " **\n";
-      TF_RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
-          *env.client, GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, running_options, hlo_file, opts.input_format,
-          opts.dump_output_literal_to, opts.task_id, opts.num_nodes,
-          env.kv_store, engine.get()));
+      RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
+          *env.client, preproc_options, raw_compile_options, running_options,
+          hlo_file, opts.input_format, opts.dump_output_literal_to,
+          opts.task_id, opts.num_nodes, env.kv_store, engine.get()));
     } else {
       std::cout << "\n** Compiling " << hlo_file << " **\n";
-      TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
-          *env.client, GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, argv[c], opts.input_format, opts.task_id));
+      RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
+                          *env.client, preproc_options, raw_compile_options,
+                          argv[c], opts.input_format, opts.task_id)
+                          .status());
     }
-    for (int i = 0; i < execution_profiles.size(); ++i) {
+
+    for (size_t i = 0; i < execution_profiles.size(); ++i) {
       std::cout << "## Execution time, file=" << hlo_file << " repeat=" << i
                 << " duration=" << execution_profiles[i].compute_time_ns()
                 << "ns" << std::endl;
+    }
+    if (csv_writer != nullptr) {
+      csv_writer->append_row(hlo_file, execution_profiles);
     }
   }
   return absl::OkStatus();
@@ -353,7 +463,11 @@ int main(int argc, char** argv) {
                 "HLO input mode: text, proto_text, proto_binary, "
                 "snapshot_proto_binary, unoptimized_snapshot_proto_binary, or "
                 "unoptimized_snapshot_proto_text"),
-      tsl::Flag("run", &opts.should_run, "Should we run the compiled HLO?"),
+      // --run and --compile_only does the same thing, remove --run when it is
+      // safe to do so to avoid breaking 3P workflows.
+      tsl::Flag("compile_only", &opts.compile_only,
+                "Compiles a module without running it"),
+      tsl::Flag("run", &opts.should_run, "Compiles and runs a module"),
       tsl::Flag("dump_output_literal_to", &opts.dump_output_literal_to,
                 "A path to which the HLO output will be dumped. "
                 "Example: /a/b/literal.txt."),
@@ -365,14 +479,39 @@ int main(int argc, char** argv) {
       tsl::Flag(
           "enable_mock_nccl", &opts.enable_mock_nccl,
           "Should we simulate multi-hosts run with mock nccl collectives?"),
+      tsl::Flag(
+          "run_single_shard_id", &opts.run_single_shard_id,
+          "Run only a single shard of a multi-GPU workload. Specifying a "
+          "non-negative value will automatically enable mock NCCL, set the "
+          "task_id to this shard ID, and infer the total number of shards from "
+          "the HLO module config."),
       tsl::Flag("address", &opts.address_str,
                 "Coordinator address with port for when num_nodes > 1. "
                 "Example: 127.0.0.1:12345"),
-      tsl::Flag("num_replicas", &opts.num_replicas,
-                "The number of replicas; set to -1 for multihost "
-                "execution, which then uses all devices on all host."),
-      tsl::Flag("num_partitions", &opts.num_partitions,
-                "Number of partitions for SPMD."),
+      tsl::Flag(
+          "num_replicas",
+          [&opts](int32_t val) {
+            if (val >= 0) {
+              opts.num_replicas = val;
+            } else {
+              opts.num_replicas = std::nullopt;
+            }
+            return true;
+          },
+          -1,
+          "The number of replicas; set to -1 for multihost "
+          "execution, which then uses all devices on all host."),
+      tsl::Flag(
+          "num_partitions",
+          [&opts](int32_t val) {
+            if (val >= 0) {
+              opts.num_partitions = val;
+            } else {
+              opts.num_partitions = std::nullopt;
+            }
+            return true;
+          },
+          -1, "Number of partitions for SPMD."),
       tsl::Flag("log_output", &opts.log_output,
                 "Log the input and output to stderr."),
       tsl::Flag("run_xla_backend_only", &opts.run_xla_backend_only,
@@ -399,8 +538,8 @@ int main(int argc, char** argv) {
                 "Specify how arguments to the HLO module are generated. "
                 "Accepted values: "
                 "use_device_id_as_input, use_random_inputs, "
-                "use_shared_random_inputs, "
-                "use_zeros_as_input or uninitialized."),
+                "use_shared_random_inputs, use_zeros_as_input, "
+                "uninitialized, or use_random_normal_inputs."),
       tsl::Flag("random_seed", &opts.random_seed,
                 "Seed to be used for generating random inputs when "
                 "`hlo_argument_mode` is set to use_random_inputs or "
@@ -434,6 +573,13 @@ int main(int argc, char** argv) {
                 "client. Only used with the BFC allocator."),
       tsl::Flag("profile_execution", &opts.profile_execution,
                 "If set, we will profile the execution and print the results."),
+      tsl::Flag(
+          "append_profile_to_csv_file", &opts.append_profile_to_csv_file,
+          "A path to a CSV file ('.csv' extension is added automatically) "
+          "to save the averaged profile results to. Takes effect only if "
+          "--profile_execution is set. If the file does not exist, it "
+          "will be created with a header row listing all input hlo files. "
+          "Otherwise, new results will be appended to the existing file."),
       tsl::Flag("xla_gpu_dump_xspace_to", &opts.xla_gpu_dump_xspace_to,
                 "A directory to dump xspace data for GPU profiling."),
       // This option is not used during parsing, but it is added here for

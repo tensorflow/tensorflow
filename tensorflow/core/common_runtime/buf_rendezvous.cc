@@ -38,7 +38,7 @@ void DeregisterCancellation(BufRendezvous::Hook* h) {
 BufRendezvous::~BufRendezvous() {
   mutex_lock l(mu_);
   if (!hook_table_.empty()) {
-    PurgeTable(errors::Internal("Delete called on non-empty BufRendezvous"),
+    PurgeTable(absl::InternalError("Delete called on non-empty BufRendezvous"),
                &hook_table_);
   }
 }
@@ -75,16 +75,16 @@ void BufRendezvous::PurgeTable(const absl::Status& s, HookTable* table) {
   table->clear();
 }
 
-string BufRendezvous::Hook::DebugString() const {
+std::string BufRendezvous::Hook::DebugString() const {
   return absl::StrCat(
       "[dev:", (prod_dev ? prod_dev->name() : "none"),
-      ", ctx:", reinterpret_cast<uint64>(prod_ctx),
-      ", val:", reinterpret_cast<uint64>(prod_value),
-      ", pcb:", prod_cb ? reinterpret_cast<uint64>(&prod_cb) : 0,
-      ", ccb:", cons_cb ? reinterpret_cast<uint64>(&cons_cb) : 0, "]");
+      ", ctx:", reinterpret_cast<uint64_t>(prod_ctx),
+      ", val:", reinterpret_cast<uint64_t>(prod_value),
+      ", pcb:", prod_cb ? reinterpret_cast<uint64_t>(&prod_cb) : 0,
+      ", ccb:", cons_cb ? reinterpret_cast<uint64_t>(&cons_cb) : 0, "]");
 }
 
-void BufRendezvous::ProvideBuf(const string& key, Device* dev,
+void BufRendezvous::ProvideBuf(const std::string& key, Device* dev,
                                DeviceContext* dev_ctx, const Tensor* v,
                                const AllocatorAttributes& attr,
                                const ProducerCallback& done,
@@ -113,8 +113,8 @@ void BufRendezvous::ProvideBuf(const string& key, Device* dev,
         it = hook_table_.insert(std::make_pair(key, h)).first;
       } else {
         if (it->second->prod_cb != nullptr) {
-          providebuf_status = errors::Internal(
-              "BufRendezvous::ProvideBuf already called for key ", key);
+          providebuf_status = absl::InternalError(absl::StrCat(
+              "BufRendezvous::ProvideBuf already called for key ", key));
           break;
         }
         h = it->second;
@@ -135,8 +135,8 @@ void BufRendezvous::ProvideBuf(const string& key, Device* dev,
                 cancellation_token, [this, key]() { CancelHook(key); })) {
           // Register cancellation callback with CancellationManager.  If it is
           // already cancelled, call done immediately with cancelled status.
-          providebuf_status = errors::Cancelled(
-              "Operation was cancelled for BufRendezvous key ", key);
+          providebuf_status = absl::CancelledError(absl::StrCat(
+              "Operation was cancelled for BufRendezvous key ", key));
           hook_table_.erase(it);
           delete h;
         }
@@ -155,8 +155,9 @@ void BufRendezvous::ProvideBuf(const string& key, Device* dev,
   }
 }
 
-void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
-                               const uint64 device_incarnation,
+void BufRendezvous::ConsumeBuf(const std::string& key,
+                               const std::string& device_name,
+                               const uint64_t device_incarnation,
                                const ConsumerCallback& done,
                                CancellationManager* cancellation_manager) {
   DVLOG(4) << "ConsumeBuf: key = " << key << " device_name = " << device_name;
@@ -171,12 +172,12 @@ void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
   absl::Status consumebuf_status = dev_mgr_->LookupDevice(device_name, &device);
   if (consumebuf_status.ok() &&
       device->attributes().incarnation() != device_incarnation) {
-    consumebuf_status = errors::FailedPrecondition(
+    consumebuf_status = absl::FailedPreconditionError(absl::StrCat(
         "RecvBuf expects a different device incarnation: ", device_incarnation,
         " vs. ", device->attributes().incarnation(),
         ". Your worker job that contains the device (\"", device_name,
         "\") was probably restarted. Check your "
-        "worker job for the reason why it was restarted.");
+        "worker job for the reason why it was restarted."));
   }
   if (!consumebuf_status.ok()) {
     done(consumebuf_status, nullptr);
@@ -193,8 +194,8 @@ void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
     if (it != hook_table_.end()) {
       // Prepare to consume immediately.
       if (it->second->cons_cb) {
-        consumebuf_status =
-            errors::Internal("Second consumer arrived for key ", key);
+        consumebuf_status = absl::InternalError(
+            absl::StrCat("Second consumer arrived for key ", key));
         break;
       }
       existing_hook = it->second;
@@ -210,8 +211,8 @@ void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
             cancellation_token, [this, key]() { CancelHook(key); });
       }
       if (already_cancelled) {
-        consumebuf_status = errors::Cancelled(
-            "Operation was cancelled for BufRendezvous key ", key);
+        consumebuf_status = absl::CancelledError(absl::StrCat(
+            "Operation was cancelled for BufRendezvous key ", key));
       } else {
         Hook* h = new Hook(cancellation_manager, cancellation_token);
         h->cons_cb = done;
@@ -233,7 +234,7 @@ void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
   }
 }
 
-void BufRendezvous::CancelHook(const string& key) {
+void BufRendezvous::CancelHook(const std::string& key) {
   Hook* h = nullptr;
   {
     mutex_lock l(mu_);
@@ -243,8 +244,8 @@ void BufRendezvous::CancelHook(const string& key) {
     hook_table_.erase(it);
   }
   if (h != nullptr) {
-    auto s = errors::Cancelled("Operation was cancelled for BufRendezvous key ",
-                               key);
+    auto s = absl::CancelledError(
+        absl::StrCat("Operation was cancelled for BufRendezvous key ", key));
     if (h->prod_cb != nullptr) {
       h->prod_cb(s);
     }
@@ -264,7 +265,7 @@ void BufRendezvous::DoneWithHook(Hook* h) {
 void BufRendezvous::LogContents() {
   mutex_lock l(mu_);
   LOG(INFO) << strings::StrCat("BufRendezvous ",
-                               strings::Hex(reinterpret_cast<uint64>(this)),
+                               strings::Hex(reinterpret_cast<uint64_t>(this)),
                                " step_id=", step_id_, " current contents:");
   for (const auto& it : hook_table_) {
     LOG(INFO) << it.first << ":" << it.second->DebugString();

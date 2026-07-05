@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 MlirTestKernelEmitter::MlirTestKernelEmitter(absl::string_view mlir,
@@ -54,9 +56,8 @@ absl::StatusOr<MlirTestKernelEmitter::KernelDefinition>
 MlirTestKernelEmitter::EmitKernelDefinition() {
   std::unique_ptr<mlir::MLIRContext> context = FusionCompiler::CreateContext();
 
-  TF_ASSIGN_OR_RETURN(
-      MlirKernelSource source,
-      MlirKernelSource::ParseFromString(mlir_, std::move(context)));
+  ASSIGN_OR_RETURN(MlirKernelSource source, MlirKernelSource::ParseFromString(
+                                                mlir_, std::move(context)));
 
   // Convert kernel arguments to fake allocations and buffer uses.
   KernelSpec::Buffers argument_buffers;

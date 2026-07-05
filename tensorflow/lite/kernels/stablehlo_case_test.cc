@@ -111,8 +111,7 @@ class StablehloCaseOpModel : public SingleOpModel {
                      .Union());
     BuildInterpreter({GetShape(input_)}, /*num_threads=*/-1,
                      /*allow_fp32_relax_to_fp16=*/false,
-                     /*apply_delegate=*/false, /*allocate_and_delegate=*/false,
-                     /*use_simple_allocator=*/false);
+                     /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
     AddSubgraphs(params.num_branches);
   }
 

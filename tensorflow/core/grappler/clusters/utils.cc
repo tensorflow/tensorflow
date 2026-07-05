@@ -127,8 +127,8 @@ DeviceProperties GetLocalGPUInfo(PlatformDeviceId platform_device_id) {
   device.set_bandwidth(properties.memoryBusWidth / 8 * memoryClockRate * 2ULL);
 
   (*device.mutable_environment())["architecture"] =
-      strings::StrCat(properties.major, ".", properties.minor);
-  (*device.mutable_environment())["cuda"] = strings::StrCat(CUDA_VERSION);
+      absl::StrCat(properties.major, ".", properties.minor);
+  (*device.mutable_environment())["cuda"] = absl::StrCat(CUDA_VERSION);
   (*device.mutable_environment())["cudnn"] = strings::StrCat(CUDNN_VERSION);
 
 #elif TENSORFLOW_USE_ROCM

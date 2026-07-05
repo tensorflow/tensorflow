@@ -223,7 +223,7 @@ Shape MemDescToXlaShapeFlattened(const dnnl::memory::desc& md) {
   auto dtype = md.get_data_type();
   auto element_size = dnnl::memory::data_type_size(dtype);
   int64_t bytes_num = md.get_size();
-  int64_t elements_num = static_cast<int64_t>(bytes_num / element_size);
+  auto elements_num = static_cast<int64_t>(bytes_num / element_size);
   return ShapeUtil::MakeShape(ToXlaPrimitiveType(dtype), {elements_num});
 }
 

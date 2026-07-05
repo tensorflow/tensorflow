@@ -5,6 +5,8 @@ load(
     "tf_proto_library",
 )
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:LICENSE"])
+
 # OSS only: This target is header-only. Link `debug_options_proto_cc_impl` only to
 # `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link `debug_options_proto_cc_impl`
 # directly unless the target does not link `libtensorflow_framework.so`.

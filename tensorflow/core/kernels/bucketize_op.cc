@@ -16,6 +16,11 @@ limitations under the License.
 // See docs in ../ops/math_ops.cc.
 
 #include "tensorflow/core/kernels/bucketize_op.h"
+
+#include <algorithm>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -36,7 +41,7 @@ struct BucketizeFunctor<CPUDevice, T> {
   static absl::Status Compute(OpKernelContext* context,
                               const typename TTypes<T, 1>::ConstTensor& input,
                               const std::vector<float>& boundaries_vector,
-                              typename TTypes<int32, 1>::Tensor& output) {
+                              typename TTypes<int32_t, 1>::Tensor& output) {
     const int N = input.size();
     for (int i = 0; i < N; i++) {
       auto first_bigger_it = std::upper_bound(
@@ -56,7 +61,7 @@ class BucketizeOp : public OpKernel {
   explicit BucketizeOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("boundaries", &boundaries_));
     OP_REQUIRES(context, std::is_sorted(boundaries_.begin(), boundaries_.end()),
-                errors::InvalidArgument("Expected sorted boundaries"));
+                absl::InvalidArgumentError("Expected sorted boundaries"));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -66,7 +71,7 @@ class BucketizeOp : public OpKernel {
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
                                                      &output_tensor));
-    auto output = output_tensor->template flat<int32>();
+    auto output = output_tensor->template flat<int32_t>();
     if (input.size() > 0) {
       OP_REQUIRES_OK(context, functor::BucketizeFunctor<Device, T>::Compute(
                                   context, input, boundaries_, output));
@@ -82,7 +87,7 @@ class BucketizeOp : public OpKernel {
       Name("Bucketize").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       BucketizeOp<CPUDevice, T>);
 
-REGISTER_KERNEL(int32);
+REGISTER_KERNEL(int32_t);
 REGISTER_KERNEL(int64_t);
 REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
@@ -94,7 +99,7 @@ REGISTER_KERNEL(double);
       Name("Bucketize").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       BucketizeOp<GPUDevice, T>);
 
-REGISTER_KERNEL(int32);
+REGISTER_KERNEL(int32_t);
 REGISTER_KERNEL(int64_t);
 REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);

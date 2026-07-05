@@ -1,5 +1,14 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "if_oss")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
+load(
+    "//xla/tsl/platform/default:build_config_root.bzl",
+    "if_llvm_aarch32_available",
+    "if_llvm_hexagon_available",
+    "if_llvm_powerpc_available",
+    "if_llvm_system_z_available",
+    "if_llvm_x86_available",
+)
 load(":cc_to_llvm_ir.bzl", "cc_ir_header")
 
 package(
@@ -15,6 +24,11 @@ package_group(
     ],
 )
 
+config_setting(
+    name = "x86_64",
+    constraint_values = ["@platforms//cpu:x86_64"],
+)
+
 # This empty target provides the C++ compilation context for the C++ source file.
 cc_library(
     name = "cpp_context_provider",
@@ -22,12 +36,40 @@ cc_library(
 )
 
 cc_binary(
-    name = "ir_to_string",
-    srcs = ["ir_to_string.cc"],
+    name = "embed_bitcode",
+    srcs = ["embed_bitcode.cc"],
+    defines = if_llvm_aarch32_available(["TF_LLVM_AARCH32_AVAILABLE=1"]) + [
+        "TF_LLVM_AARCH64_AVAILABLE=1",
+    ] + if_llvm_hexagon_available([
+        "TF_LLVM_HEXAGON_AVAILABLE=1",
+    ]) + if_llvm_powerpc_available([
+        "TF_LLVM_POWERPC_AVAILABLE=1",
+    ]) + if_llvm_system_z_available([
+        "TF_LLVM_S390X_AVAILABLE=1",
+    ]) + if_llvm_x86_available([
+        "TF_LLVM_X86_AVAILABLE=1",
+    ]),
     deps = [
+        "//xla/util:embedded_constant_buffers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:AArch64CodeGen",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
-    ],
+        "@llvm-project//llvm:TargetParser",
+    ] + if_llvm_aarch32_available([
+        "@llvm-project//llvm:ARMCodeGen",
+    ]) + if_llvm_hexagon_available([
+        "@llvm-project//llvm:HexagonCodeGen",
+    ]) + if_llvm_powerpc_available([
+        "@llvm-project//llvm:PowerPCCodeGen",
+    ]) + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZCodeGen",
+    ]) + if_llvm_x86_available([
+        "@llvm-project//llvm:X86CodeGen",
+    ]),
 )
 
 cc_library(
@@ -87,8 +129,39 @@ cc_library(
 )
 
 cc_ir_header(
-    name = "eigen_unary_ll",
+    name = "eigen_unary_32_ll",
     src = "eigen_unary.cc",
+    copts = if_oss(
+        [
+            "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=64",
+            "-mprefer-vector-width=512",
+        ],
+        [
+            "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=32",
+            "-mprefer-vector-width=256",
+        ],
+    ),
+    deps = [
+        ":cpp_context_provider",
+        ":eigen_unary_lib",
+        ":vector_ops",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_ir_header(
+    name = "eigen_unary_64_ll",
+    src = "eigen_unary.cc",
+    copts = [
+        "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=64",
+        "-mprefer-vector-width=512",
+    ] + if_oss(
+        [],
+        select({
+            ":x86_64": ["-mavx512f"],
+            "//conditions:default": [],
+        }),
+    ),
     deps = [
         ":cpp_context_provider",
         ":eigen_unary_lib",
@@ -105,13 +178,15 @@ xla_cc_test(
     ],
     deps = [
         ":_cpp_gen_intrinsics",
+        ":eigen_unary_32_ll",
+        ":eigen_unary_64_ll",
         ":eigen_unary_lib",
-        ":eigen_unary_ll",
         ":vector_ops",
+        "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:test_matchers",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -121,7 +196,7 @@ cc_binary(
     srcs = ["dump_llvm_ir.cc"],
     deps = [
         ":_cpp_gen_intrinsics",
-        ":eigen_unary_ll",
+        "//xla/codegen/intrinsic",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Support",
@@ -133,7 +208,8 @@ cc_library(
     srcs = ["cpp_gen_intrinsics.cc"],
     hdrs = ["cpp_gen_intrinsics.h"],
     deps = [
-        ":eigen_unary_ll",
+        ":eigen_unary_32_ll",
+        ":eigen_unary_64_ll",
         "//xla/codegen/intrinsic",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/log",
@@ -157,6 +233,8 @@ cc_library(
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:type",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:ir_headers",
     ],

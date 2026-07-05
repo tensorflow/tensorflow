@@ -63,7 +63,11 @@ def make_fully_connected_4bit_hybrid_tests(options):
   def create_input_data(parameters):
     """Create a float input with no quantization loss."""
     float_data = np.random.random(parameters["shape1"]).astype(np.float32)
-    scale = np.abs(float_data).max(axis=1, keepdims=True) / 127.0
+    # Note that since the default ops dynamically quantize the inputs to four
+    # bits, but e.g. XNNPACK dynamically quantizes the inputs to 8 bits, we
+    # generate inputs in {-1, 0, 1} which will be quantized exactly by both
+    # schemes.
+    scale = np.abs(float_data).max(axis=1, keepdims=True) / 1.0
     return np.round(float_data / scale)
 
   def build_inputs(parameters, sess, inputs, outputs):

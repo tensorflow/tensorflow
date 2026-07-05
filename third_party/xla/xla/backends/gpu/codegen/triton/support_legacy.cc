@@ -16,12 +16,9 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
 
 #include <cstdint>
-#include <iterator>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -68,13 +65,25 @@ bool IsTritonSupportedDotOutputType(
     case F32:
       return true;
     case F8E5M2:
-      if (auto ptr = gpu_version.cuda_compute_capability()) {
-        return ptr->IsAtLeastAmpere();
+      if (auto* cuda_cc = gpu_version.cuda_compute_capability()) {
+        return cuda_cc->IsAtLeastAmpere();
+      }
+      if (auto* rocm_cc = gpu_version.rocm_compute_capability()) {
+        return rocm_cc->has_ocp_fp8_support();
       }
       return false;
     case F8E4M3FN:
-      if (auto ptr = gpu_version.cuda_compute_capability()) {
-        return ptr->IsAtLeastHopper();
+      if (auto* cuda_cc = gpu_version.cuda_compute_capability()) {
+        return cuda_cc->IsAtLeastHopper();
+      }
+      if (auto* rocm_cc = gpu_version.rocm_compute_capability()) {
+        return rocm_cc->has_ocp_fp8_support();
+      }
+      return false;
+    case F8E4M3FNUZ:
+    case F8E5M2FNUZ:
+      if (auto* rocm_cc = gpu_version.rocm_compute_capability()) {
+        return rocm_cc->has_nanoo_fp8_support();
       }
       return false;
     case BF16:
@@ -145,14 +154,19 @@ std::vector<HloOpcode> TritonSupportedUnaryElementwiseUpToFloatNormalization(
       element_type == PrimitiveType::BF16 ||
       element_type == PrimitiveType::F16 ||
       element_type == PrimitiveType::F64) {
-    absl::c_copy(std::vector<HloOpcode>{HloOpcode::kCos, HloOpcode::kExp,
-                                        HloOpcode::kExpm1, HloOpcode::kFloor,
-                                        HloOpcode::kCeil, HloOpcode::kLog,
-                                        HloOpcode::kLog1p, HloOpcode::kRsqrt,
-                                        HloOpcode::kSin, HloOpcode::kSqrt,
-                                        HloOpcode::kCbrt, HloOpcode::kTan,
-                                        HloOpcode::kTanh, HloOpcode::kErf},
-                 std::back_inserter(ret));
+    ret.insert(ret.end(), {
+                              HloOpcode::kAcos,  HloOpcode::kAcosh,
+                              HloOpcode::kAsin,  HloOpcode::kAsinh,
+                              HloOpcode::kAtanh, HloOpcode::kCbrt,
+                              HloOpcode::kCeil,  HloOpcode::kCos,
+                              HloOpcode::kCosh,  HloOpcode::kErf,
+                              HloOpcode::kExp,   HloOpcode::kExpm1,
+                              HloOpcode::kFloor, HloOpcode::kLog,
+                              HloOpcode::kLog1p, HloOpcode::kRoundNearestEven,
+                              HloOpcode::kRsqrt, HloOpcode::kSin,
+                              HloOpcode::kSinh,  HloOpcode::kSqrt,
+                              HloOpcode::kTan,   HloOpcode::kTanh,
+                          });
   }
   return ret;
 }
@@ -203,7 +217,7 @@ bool IsTritonSupportedElementwiseUpToFloatNormalization(
 CodegenDecision CanTritonHandleElementwise(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   if (auto decision = IsInstructionSupportsDataTypes(instr, gpu_version);
-      !decision.CanFuse()) {
+      decision.IsForbidden()) {
     return decision;
   }
   if (instr.opcode() == HloOpcode::kConstant) {
@@ -225,14 +239,12 @@ bool IsDotAlgorithmSupportedByTriton(
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
-      if (cuda_compute_capability) {
+      if (cuda_compute_capability || rocm_compute_capability) {
         return true;
       }
       return false;
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
       if (cuda_compute_capability) {
         return true;
       }
@@ -240,10 +252,21 @@ bool IsDotAlgorithmSupportedByTriton(
         return rocm_compute_capability->has_bf16_dtype_support();
       }
       return false;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+      // X6 and X9 algorithms on ROCm often require too much shared memory.
+      if (cuda_compute_capability) {
+        return true;
+      }
+      return false;
 
     // TODO(b/326579472): Fix the support of this algorithm and maybe allow it
     // here.
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
+      if (rocm_compute_capability) {
+        return true;
+      }
+      return false;
     default:
       return false;
   }
@@ -289,6 +312,12 @@ CodegenDecision CanTritonHandleGEMM(
     const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
   auto cuda_compute_capability = gpu_version.cuda_compute_capability();
   auto rocm_compute_capability = gpu_version.rocm_compute_capability();
+  auto oneapi_compute_capability = gpu_version.oneapi_compute_capability();
+  // TODO(intel-tf): Support Triton on Intel GPUs.
+  if (oneapi_compute_capability) {
+    return CodegenDecision::Forbid(
+        "Triton backend is not supported on Intel GPUs.");
+  }
 
   CHECK(cuda_compute_capability || rocm_compute_capability);
 
@@ -310,15 +339,8 @@ CodegenDecision CanTritonHandleGEMM(
 
   if (auto decision =
           AreDotInputAndOutputTypesSupportedAndCompatible(dot, gpu_version);
-      !decision.CanFuse()) {
+      decision.IsForbidden()) {
     return decision;
-  }
-
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
-
-  // TODO(b/269580541): support multiple batch dimensions.
-  if (dim_numbers.lhs_batch_dimensions().size() > 1) {
-    return CodegenDecision::Forbid("Multiple batch dimensions.");
   }
 
   return CodegenDecision::Allow();

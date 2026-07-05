@@ -2,7 +2,7 @@ path: "tensorflow.tpu.experimental.TPUSystemMetadata"
 tf_class {
   is_instance: "<class \'tensorflow.python.tpu.tpu_system_metadata.TPUSystemMetadata\'>"
   is_instance: "<class \'tensorflow.python.tpu.tpu_system_metadata.TPUSystemMetadata\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "devices"
     mtype: "<class \'collections._tuplegetter\'>"
@@ -25,6 +25,10 @@ tf_class {
   }
   member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'num_cores\', \'num_hosts\', \'num_of_cores_per_host\', \'topology\', \'devices\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count"

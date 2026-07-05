@@ -28,7 +28,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
-#include "absl/base/log_severity.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
@@ -36,8 +35,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "ml_dtypes/include/float8.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/maybe_owning.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -102,11 +101,6 @@ TEST(UtilTest, VectorString) {
 
   EXPECT_EQ(VectorString({}), "()");
   EXPECT_EQ(VectorString({1, 57, 2}), "(1, 57, 2)");
-}
-
-TEST(UtilTest, LogLines) {
-  // Just make sure this code runs (not verifying the output).
-  LogLines(absl::LogSeverity::kInfo, "hello\n\nworld", __FILE__, __LINE__);
 }
 
 TEST(UtilTest, CommonFactors) {
@@ -409,6 +403,27 @@ TEST(UtilTest, PackInt4) {
   }
 }
 
+class PackUnpackIntNTest : public testing::TestWithParam<int> {};
+
+TEST_P(PackUnpackIntNTest, RoundTrip) {
+  const int bitwidth = GetParam();
+  std::vector<char> input(15);
+  for (int i = 0; i < input.size(); ++i) {
+    input[i] = i & LsbMask<uint8_t>(bitwidth);
+  }
+
+  std::vector<char> packed(CeilOfRatio<int64_t>(input.size(), 8 / bitwidth));
+  PackIntN(bitwidth, input, absl::MakeSpan(packed));
+  std::vector<char> unpacked(input.size());
+  UnpackIntN(bitwidth, packed, absl::MakeSpan(unpacked));
+  for (size_t i = 0; i < input.size(); ++i) {
+    EXPECT_EQ(unpacked[i], input[i]) << i;
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(PackUnpackIntNTest, PackUnpackIntNTest,
+                         testing::Values(1, 2, 4));
+
 TEST(UtilTest, MaybeOwningTestNull) {
   MaybeOwning<char> m(nullptr);
   EXPECT_EQ(m.get(), nullptr);
@@ -453,6 +468,26 @@ TEST(UtilTest, PrintAllFields) {
   execution_profile.set_compilation_cache_hit(false);
   result = PrintAllFields(execution_profile);
   EXPECT_TRUE(absl::StrContains(result, "compilation_cache_hit: false"));
+}
+
+TEST(UtilTest, ScopedLoggingTimerLazyEvaluation) {
+  int counter = 0;
+  auto get_label = [&]() {
+    counter++;
+    return "lazy_label";
+  };
+
+  // Case 1: Condition is false, should not evaluate label.
+  {
+    XLA_SCOPED_LOGGING_TIMER_IF(get_label(), false);
+  }
+  EXPECT_EQ(counter, 0);
+
+  // Case 2: Level is very high (disabled), should not evaluate label.
+  {
+    XLA_SCOPED_LOGGING_TIMER_LEVEL(get_label(), 100);
+  }
+  EXPECT_EQ(counter, 0);
 }
 
 }  // namespace

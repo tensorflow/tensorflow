@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_TSL_PROFILER_UTILS_TF_XPLANE_VISITOR_H_
 #define XLA_TSL_PROFILER_UTILS_TF_XPLANE_VISITOR_H_
 
+#include <memory>
+
+#include "absl/memory/memory.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -23,10 +26,20 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
+// Returns an XPlaneVisitor for the given XPlane.
 inline XPlaneVisitor CreateTfXPlaneVisitor(
     const tensorflow::profiler::XPlane* plane) {
   return XPlaneVisitor(plane, {FindHostEventType, FindTfOpEventType},
                        {FindStatType});
+}
+
+// Returns a unique pointer to an XPlaneVisitor for the given XPlane.
+// NOTE: this enables moving of the visitor since the underlying pointer remains
+// unchanged.
+inline std::unique_ptr<XPlaneVisitor> MakeTfXPlaneVisitor(
+    const tensorflow::profiler::XPlane* plane) {
+  return absl::WrapUnique(new XPlaneVisitor(
+      plane, {FindHostEventType, FindTfOpEventType}, {FindStatType}));
 }
 
 }  // namespace profiler

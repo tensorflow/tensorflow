@@ -69,8 +69,8 @@ class FingerprintOp : public OpKernel {
     DataType dtype;
     OP_REQUIRES_OK(context, context->GetAttr("T", &dtype));
     OP_REQUIRES(context, DataTypeCanUseMemcpy(dtype) || dtype == DT_STRING,
-                errors::InvalidArgument("Data type not supported: ",
-                                        DataTypeString(dtype)));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Data type not supported: ", DataTypeString(dtype))));
   }
 
   void Compute(tensorflow::OpKernelContext* context) override {
@@ -80,9 +80,9 @@ class FingerprintOp : public OpKernel {
                                         method_tensor.shape()));
     // For now, farmhash64 is the only function supported.
     const tstring& method = method_tensor.scalar<tstring>()();
-    OP_REQUIRES(
-        context, method == "farmhash64",
-        errors::InvalidArgument("Unsupported fingerprint method: ", method));
+    OP_REQUIRES(context, method == "farmhash64",
+                absl::InvalidArgumentError(
+                    absl::StrCat("Unsupported fingerprint method: ", method)));
 
     const Tensor& input = context->input(0);
     OP_REQUIRES(

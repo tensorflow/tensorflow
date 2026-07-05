@@ -112,8 +112,8 @@ struct LaunchConv2DBackpropInputOpImpl {
                   int col_stride, const Padding& padding,
                   const std::vector<int64_t>& explicit_paddings,
                   Tensor* in_backprop, TensorFormat data_format) {
-    std::vector<int32> strides(4, 1);
-    std::vector<int32> dilations(4, 1);
+    std::vector<int32_t> strides(4, 1);
+    std::vector<int32_t> dilations(4, 1);
 
     auto input_h = GetTensorDimIndex(data_format, 'H');
     auto input_w = GetTensorDimIndex(data_format, 'W');
@@ -273,9 +273,9 @@ struct Conv2DCustomBackpropInputMatMulFunctor<float> {
         dnnl_sgemm(transposeA, transposeB, m, n, k, alpha, out_data, ldA,
                    filter_data, ldB, beta, im2col_buf, ldC);
 
-    OP_REQUIRES(
-        ctx, st == 0,
-        errors::Internal("Failed to call dnnl_sgemm. Error code: ", st));
+    OP_REQUIRES(ctx, st == 0,
+                absl::InternalError(absl::StrCat(
+                    "Failed to call dnnl_sgemm. Error code: ", st)));
   }
 };
 #endif
@@ -285,42 +285,43 @@ class Conv2DBackpropInputOp : public OpKernel {
  public:
   explicit Conv2DBackpropInputOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
 
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 4 dimensions"));
     int stride_n = GetTensorDim(strides_, data_format_, 'N');
     int stride_c = GetTensorDim(strides_, data_format_, 'C');
     int stride_h = GetTensorDim(strides_, data_format_, 'H');
     int stride_w = GetTensorDim(strides_, data_format_, 'W');
     OP_REQUIRES(
         context, (stride_n == 1 && stride_c == 1),
-        errors::Unimplemented("Current implementation does not yet support "
-                              "strides in the batch and depth dimensions."));
+        absl::UnimplementedError("Current implementation does not yet support "
+                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES(context, stride_h > 0 && stride_w > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Row and column strides should be larger than 0."));
 
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
-    OP_REQUIRES(context, dilations_.size() == 4,
-                errors::InvalidArgument("Sliding window dilations field must "
-                                        "specify 4 dimensions"));
+    OP_REQUIRES(
+        context, dilations_.size() == 4,
+        absl::InvalidArgumentError("Sliding window dilations field must "
+                                   "specify 4 dimensions"));
     int dilation_n = GetTensorDim(dilations_, data_format_, 'N');
     int dilation_c = GetTensorDim(dilations_, data_format_, 'C');
     int dilation_h = GetTensorDim(dilations_, data_format_, 'H');
     int dilation_w = GetTensorDim(dilations_, data_format_, 'W');
-    OP_REQUIRES(
-        context, (dilation_n == 1 && dilation_c == 1),
-        errors::Unimplemented("Current implementation does not yet support "
-                              "dilations in the batch and depth dimensions."));
+    OP_REQUIRES(context, (dilation_n == 1 && dilation_c == 1),
+                absl::UnimplementedError(
+                    "Current implementation does not yet support "
+                    "dilations in the batch and depth dimensions."));
     OP_REQUIRES(
         context, dilation_h > 0 && dilation_w > 0,
-        errors::InvalidArgument("Dilated rates should be larger than 0."));
+        absl::InvalidArgumentError("Dilated rates should be larger than 0."));
 
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES_OK(context,
@@ -332,16 +333,16 @@ class Conv2DBackpropInputOp : public OpKernel {
     cudnn_use_autotune_ = CudnnUseAutotune();
 
     if (std::is_same<Device, CPUDevice>::value ||
-        std::is_same<T, int32>::value) {
-      OP_REQUIRES(
-          context, data_format_ == FORMAT_NHWC,
-          errors::InvalidArgument("Conv2DBackpropInputOp [CPU or GPU(int32)] "
-                                  "only supports NHWC data format."));
+        std::is_same<T, int32_t>::value) {
+      OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
+                  absl::InvalidArgumentError(
+                      "Conv2DBackpropInputOp [CPU or GPU(int32)] "
+                      "only supports NHWC data format."));
 
       // TODO(yangzihao): Add a CPU implementation for dilated convolution.
       OP_REQUIRES(
           context, (dilation_h == 1 && dilation_w == 1),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Conv2DBackpropInputOp [CPU or GPU(int32)] not yet support "
               "dilation rates larger than 1."));
     }
@@ -354,8 +355,8 @@ class Conv2DBackpropInputOp : public OpKernel {
 
     OP_REQUIRES(
         context, out_backprop.dims() == 4,
-        errors::InvalidArgument("input_sizes must be 4-dimensional, got: ",
-                                out_backprop.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "input_sizes must be 4-dimensional, got: ", out_backprop.dims())));
 
     TensorShape input_shape;
     OP_REQUIRES_OK(context,
@@ -402,8 +403,8 @@ class Conv2DBackpropInputOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> dilations_;
-  std::vector<int32> strides_;
+  std::vector<int32_t> dilations_;
+  std::vector<int32_t> strides_;
   TensorFormat data_format_;
   Padding padding_;
   std::vector<int64_t> explicit_paddings_;
@@ -421,38 +422,39 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
  public:
   explicit Conv2DCustomBackpropInputOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
     OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Conv2DCustomBackpropInputOp only supports NHWC."));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 4 dimensions"));
     OP_REQUIRES(
         context, (strides_[0] == 1 && strides_[3] == 1),
-        errors::Unimplemented("Current implementation does not yet support "
-                              "strides in the batch and depth dimensions."));
+        absl::UnimplementedError("Current implementation does not yet support "
+                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES(context, strides_[1] > 0 && strides_[2] > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Row and column strides should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
-    OP_REQUIRES(context, dilations_.size() == 4,
-                errors::InvalidArgument("Sliding window dilations field must "
-                                        "specify 4 dimensions"));
     OP_REQUIRES(
-        context, (dilations_[0] == 1 && dilations_[3] == 1),
-        errors::Unimplemented("Current implementation does not yet support "
-                              "dilations in the batch and depth dimensions."));
+        context, dilations_.size() == 4,
+        absl::InvalidArgumentError("Sliding window dilations field must "
+                                   "specify 4 dimensions"));
+    OP_REQUIRES(context, (dilations_[0] == 1 && dilations_[3] == 1),
+                absl::UnimplementedError(
+                    "Current implementation does not yet support "
+                    "dilations in the batch and depth dimensions."));
     // TODO(yangzihao): Add a CPU implementation for dilated convolution.
     OP_REQUIRES(
         context, (dilations_[1] == 1 && dilations_[2] == 1),
-        errors::InvalidArgument("Current CPU implementations do not yet "
-                                "support dilation rates larger than 1."));
+        absl::InvalidArgumentError("Current CPU implementations do not yet "
+                                   "support dilation rates larger than 1."));
     OP_REQUIRES_OK(context,
                    context->GetAttr("explicit_paddings", &explicit_paddings_));
     OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
@@ -465,8 +467,8 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     const Tensor& out_backprop = context->input(2);
     OP_REQUIRES(
         context, out_backprop.dims() == 4,
-        errors::InvalidArgument("input_sizes must be 4-dimensional, got: ",
-                                out_backprop.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "input_sizes must be 4-dimensional, got: ", out_backprop.dims())));
 
     TensorShape input_shape;
     OP_REQUIRES_OK(context,
@@ -483,17 +485,17 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                        explicit_paddings_, data_format_, &dims));
 
     OP_REQUIRES(context, dims.in_depth == filter.shape().dim_size(2),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Gradients for grouped convolutions are not "
                     "supported on CPU. Please file a feature request if you "
                     "run into this issue. Computed input depth ",
                     dims.in_depth, " doesn't match filter input depth ",
-                    filter.shape().dim_size(2)));
-    OP_REQUIRES(
-        context, dims.out_depth == filter.shape().dim_size(3),
-        errors::InvalidArgument("Computed output depth ", dims.out_depth,
-                                " doesn't match filter output depth ",
-                                filter.shape().dim_size(3)));
+                    filter.shape().dim_size(2))));
+    OP_REQUIRES(context, dims.out_depth == filter.shape().dim_size(3),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Computed output depth ", dims.out_depth,
+                                 " doesn't match filter output depth ",
+                                 filter.shape().dim_size(3))));
 
     Tensor* in_backprop = nullptr;
     OP_REQUIRES_OK(context,
@@ -578,10 +580,10 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
         dims.batch_size == 1 ||
         thread_work_unit_size >= min_thread_work_unit_size;
 
-    OP_REQUIRES(
-        context, work_unit_size > 0,
-        errors::InvalidArgument("input, filter_sizes and out_backprop tensors "
-                                "must all have at least 1 element"));
+    OP_REQUIRES(context, work_unit_size > 0,
+                absl::InvalidArgumentError(
+                    "input, filter_sizes and out_backprop tensors "
+                    "must all have at least 1 element"));
 
     const size_t shard_size =
         use_parallel_contraction
@@ -685,8 +687,8 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> dilations_;
-  std::vector<int32> strides_;
+  std::vector<int32_t> dilations_;
+  std::vector<int32_t> strides_;
   Padding padding_;
   std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;

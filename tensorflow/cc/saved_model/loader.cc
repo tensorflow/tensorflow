@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/threadpool_options.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session.h"
@@ -370,6 +371,18 @@ class LiteSessionWrapper : public Session {
                    RunMetadata* run_metadata) override {
     return wrapped_->Run(run_options, inputs, output_tensor_names,
                          target_node_names, outputs, run_metadata);
+  }
+
+  absl::Status Run(
+      const RunOptions& run_options,
+      const std::vector<std::pair<std::string, Tensor>>& inputs,
+      const std::vector<std::string>& output_tensor_names,
+      const std::vector<std::string>& target_tensor_names,
+      std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& threadpool_options) override {
+    return wrapped_->Run(run_options, inputs, output_tensor_names,
+                         target_tensor_names, outputs, run_metadata,
+                         threadpool_options);
   }
 
   absl::Status PRunSetup(const std::vector<string>& input_names,

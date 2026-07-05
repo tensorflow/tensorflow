@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cufft.h"
 #include "xla/stream_executor/activate_context.h"
@@ -218,12 +219,12 @@ absl::Status CUDAFftPlan::Initialize(
     // For either multiple batches or rank higher than 3, use cufft*PlanMany*().
     if (scratch_allocator == nullptr) {
       // Downsize 64b arrays to 32b as there's no 64b version of cufftPlanMany
-      TF_ASSIGN_OR_RETURN(auto elem_count_32b_,
-                          Downsize64bArray(elem_count_, rank));
-      TF_ASSIGN_OR_RETURN(auto input_embed_32b_,
-                          Downsize64bArray(input_embed_, rank));
-      TF_ASSIGN_OR_RETURN(auto output_embed_32b_,
-                          Downsize64bArray(output_embed_, rank));
+      ASSIGN_OR_RETURN(auto elem_count_32b_,
+                       Downsize64bArray(elem_count_, rank));
+      ASSIGN_OR_RETURN(auto input_embed_32b_,
+                       Downsize64bArray(input_embed_, rank));
+      ASSIGN_OR_RETURN(auto output_embed_32b_,
+                       Downsize64bArray(output_embed_, rank));
       auto ret = cufftPlanMany(
           &plan_, rank, elem_count_32b_.data(),
           input_embed ? input_embed_32b_.data() : nullptr, input_stride,
@@ -460,6 +461,16 @@ STREAM_EXECUTOR_CUDA_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 }  // namespace gpu
 
 void initialize_cufft() {
+  // Check if already registered before attempting - prevents duplicate
+  // registration error messages (can happen with multiple library loads)
+  auto already_registered = PluginRegistry::Instance()->HasFactory(
+      cuda::kCudaPlatformId, PluginKind::kFft);
+
+  if (already_registered) {
+    // Already registered, skip silently (mimics ROCm behavior)
+    return;
+  }
+
   absl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
           cuda::kCudaPlatformId, "cuFFT",

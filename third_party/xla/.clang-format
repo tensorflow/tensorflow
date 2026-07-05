@@ -14,8 +14,12 @@ IncludeCategories:
   - Regex:    '^<g(test|mock)/.*>$'
     Priority: 2
     SortPriority: 2
-  # absl headers    
+  # absl headers
   - Regex:    '^"absl/.*"$'
+    Priority: 2
+    SortPriority: 3
+  # xla/tsl/platform/status_macros.h — internally third_party/gloop, sorts after absl/
+  - Regex:    '^"xla/tsl/platform/status_macros\.h"$'
     Priority: 2
     SortPriority: 3
   # llvm headers
@@ -37,12 +41,16 @@ IncludeCategories:
   # xla headers (including xla/tsl)
   - Regex:    '^"xla/.*"$'
     Priority: 2
-    SortPriority: 8
+    SortPriority: 100
   # tsl headers (without xla/ prefix)
   - Regex:    '^"tsl/.*"$'
     Priority: 2
-    SortPriority: 9
-  # Default catch-all for any other headers
+    SortPriority: 101
+  # triton headers
+  - Regex:    '^"triton/.*"$'
+    Priority: 2
+    SortPriority: 102
+  # Default catch-all for any other headers (IMPORTANT: ordered before XLA)
   - Regex:    '.*'
     Priority: 2
-    SortPriority: 100
+    SortPriority: 8

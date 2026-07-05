@@ -1,7 +1,7 @@
 path: "tensorflow.data.experimental.service.WorkerServer"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.experimental.service.server_lib.WorkerServer\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'config\', \'start\'], varargs=None, keywords=None, defaults=[\'True\'], "

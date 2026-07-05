@@ -18,6 +18,7 @@ limitations under the License.
 // This file is copied to MLIR to avoid a dependency on TFLite.
 // LINT.IfChange
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -46,6 +47,7 @@ class RuntimeShape {
   RuntimeShape() : size_(0) {}
 
   explicit RuntimeShape(int dimensions_count) : size_(dimensions_count) {
+    TFLITE_DCHECK_GE(dimensions_count, 0);
 #ifndef TF_LITE_STATIC_MEMORY
     if (dimensions_count > kMaxSmallSize) {
       dims_pointer_ = new int32_t[dimensions_count];
@@ -57,9 +59,11 @@ class RuntimeShape {
 
 #ifndef TF_LITE_STATIC_MEMORY
   RuntimeShape(int shape_size, int32_t value) : size_(0) {
+    TFLITE_DCHECK_GE(shape_size, 0);
     Resize(shape_size);
 #else
   RuntimeShape(int shape_size, int32_t value) : size_(shape_size) {
+    TFLITE_DCHECK_GE(shape_size, 0);
     TFLITE_DCHECK_LE(shape_size, kMaxSmallSize);
 #endif  // TF_LITE_STATIC_MEMORY
     for (int i = 0; i < shape_size; ++i) {
@@ -68,6 +72,7 @@ class RuntimeShape {
   }
 
   RuntimeShape(int dimensions_count, const int32_t* dims_data) : size_(0) {
+    TFLITE_DCHECK_GE(dimensions_count, 0);
     ReplaceWith(dimensions_count, dims_data);
   }
 
@@ -131,6 +136,7 @@ class RuntimeShape {
 
 #ifndef TF_LITE_STATIC_MEMORY
   inline void Resize(int dimensions_count) {
+    TFLITE_DCHECK_GE(dimensions_count, 0);
     const int32_t old_size = size_;
     size_ = dimensions_count;
 
@@ -180,6 +186,7 @@ class RuntimeShape {
   // inputs should already be 4-D, so this function should not be needed.
   inline static RuntimeShape ExtendedShape(int new_shape_size,
                                            const RuntimeShape& shape) {
+    TFLITE_DCHECK_GE(new_shape_size, 0);
 #ifdef TF_LITE_STATIC_MEMORY
     TFLITE_DCHECK_LE(new_shape_size, kMaxSmallSize);
 #endif  // TF_LITE_STATIC_MEMORY
@@ -194,7 +201,98 @@ class RuntimeShape {
 
   // Returns the total count of elements, that is the size when flattened into a
   // vector.
+  // NOTE: This function does not handle potential integer overflow.  Use
+  // CheckedFlatSize instead in non-hot-path code.
   int FlatSize() const;
+
+  /**
+   * Returns false if any dimension is negative or if the product of all
+   * dimensions would overflow size_t.
+   * @param flat_size The output parameter in which to store the product of the
+   * dimensions.
+   * @return  False if any dimension is negative, or if the product would
+   * overflow size_t. Returns true otherwise. Returns 1 if the shape is empty.
+   */
+  bool CheckedFlatSize(size_t& flat_size) const;
+
+  /**
+   * Returns the checked product of dimensions in the half-open interval
+   * [start, end). It does a similar thing to FlatSize(), but it is more
+   * general and more secure.
+   * @param start The starting dimension index (inclusive).
+   * @param end The ending dimension index (exclusive).
+   * @param out The output parameter in which to store the product of the
+   * dimensions.
+   * @return  False if the range [start, end) is invalid or if any dimension is
+   * negative, or if the product would overflow size_t. Returns true otherwise.
+   * An empty range [start, start) will return 1.
+   */
+  bool CheckedNumElementsInRange(int start, int end, size_t& out) const;
+  bool CheckedNumElementsInRange(int start, int end, int& out) const;
+
+  /**
+   * Returns the checked product of dimensions in the half-open interval [0,
+   * end). It does a similar thing to FlatSize(), but it is more general and
+   * more secure.
+   * @param end The ending dimension index (exclusive).
+   * @param out The output parameter in which to store the product of the
+   * dimensions.
+   * @return  False if the index end is out of bounds or if any dimension in the
+   * interval [0, end) is negative, or if the product would overflow size_t.
+   * Returns true otherwise. Returns 1 if end is 0.
+   */
+  bool CheckedSizeToDimension(int end, size_t& out) const;
+
+  /**
+   * Returns the checked product of dimensions in the half-open interval [0,
+   * end). It does a similar thing to FlatSize(), but it is more general and
+   * more secure.
+   * @param end The ending dimension index (exclusive).
+   * @param out The output parameter in which to store the product of the
+   * dimensions.
+   * @return  False if the index end is out of bounds or if any dimension in the
+   * interval [0, end) is negative, or if the product would overflow int.
+   * Returns true otherwise. Returns 1 if end is 0.
+   */
+  bool CheckedSizeToDimension(int end, int& out) const;
+
+  /**
+   * Returns the checked product of dimensions in the half-open interval [start,
+   * DimensionsCount()).
+   * @param start The starting dimension index (inclusive).
+   * @param out The output parameter in which to store the product of the
+   * dimensions.
+   * @return  False if the index start is out of bounds or if any dimension in
+   * the interval [start, DimensionsCount()) is negative, or if the product
+   * would overflow size_t. Returns true otherwise. Returns 1 if start is
+   * DimensionsCount().
+   */
+  bool CheckedSizeFromDimension(int start, size_t& out) const;
+  /**
+   * Returns the checked product of dimensions in the half-open interval [start,
+   * DimensionsCount()).
+   * @param start The starting dimension index (inclusive).
+   * @param out The output parameter in which to store the product of the
+   * dimensions.
+   * @return  False if the index start is out of bounds or if any dimension in
+   * the interval [start, DimensionsCount()) is negative, or if the product
+   * would overflow int. Returns true otherwise. Returns 1 if start is
+   * DimensionsCount().
+   */
+  bool CheckedSizeFromDimension(int start, int& out) const;
+
+  /**
+   * Returns the checked product of dimensions in the half-open interval [0,
+   * DimensionsCount()) excluding the dimension at the given index.
+   * @param skip_dim The index of the dimension to exclude from the product.
+   * @param flat_size The output parameter in which to store the product of the
+   * dimensions.
+   * @return  False if the index skip_dim is out of bounds or if any dimension
+   * in the interval [0, DimensionsCount()) excluding the dimension at the given
+   * index is negative, or if the product would overflow size_t. Returns true
+   * otherwise. Returns 1 if the shape has only one dimension.
+   */
+  bool CheckedFlatSizeSkipDim(int skip_dim, size_t& flat_size) const;
 
   bool operator!=(const RuntimeShape& comp) const { return !((*this) == comp); }
 
@@ -223,6 +321,9 @@ class RuntimeShape {
                 sizeof(int32_t) * shape.DimensionsCount());
   }
 
+  // Number of dimensions in the shape.
+  // size_ * sizeof(int32_t) is the number of bytes to allocate which should
+  // not exceed the maximum value of size_t.
   int32_t size_;
   union {
     int32_t dims_[kMaxSmallSize];

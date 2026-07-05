@@ -51,7 +51,7 @@ std::string TmpDir() {
   return tmp_dir;
 }
 
-int PickUnusedPortOrDie() { return internal::PickUnusedPortOrDie(); }
+int PickUnusedPortOrDie() { return net::PickUnusedPortOrDie(); }
 
 int RandomSeed() {
   const char* random_seed_str = std::getenv("TEST_RANDOM_SEED");

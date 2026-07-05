@@ -144,7 +144,7 @@ class PythonAPIInfo {
   //     right-aligned with `param_names` -- i.e., `defaults[-i]` is the default
   //     for `param_names[-i]`.
   absl::Status Initialize(const OpDef& op_def,
-                          const std::vector<string> param_names,
+                          const std::vector<std::string> param_names,
                           PyObject* defaults_tuple);
 
   // Initialize this PythonAPIInfo based on the registered OpDef for the given
@@ -171,7 +171,7 @@ class PythonAPIInfo {
   absl::Status InitializeFromParamSpecs(
       const std::map<std::string, std::string>& input_specs,
       const std::map<std::string, std::string>& attr_specs,
-      const std::vector<string> param_names, PyObject* defaults_tuple);
+      const std::vector<std::string> param_names, PyObject* defaults_tuple);
 
   // The name of the API that is described by this PythonAPIInfo.
   const char* api_name() const { return api_name_; }
@@ -215,7 +215,7 @@ class PythonAPIInfo {
   }
 
   // Returns a string summarizing the internal state of this type converter.
-  string DebugInfo() const;
+  std::string DebugInfo() const;
 
  private:
   // Adds an entry to the attributes_ vector based on the given `AttrDef`.
@@ -251,13 +251,13 @@ class PythonAPIInfo {
   absl::Status CheckParamNames() const;
 
   // Searches inputs_with_type_attrs_ for an input with the given name.
-  InputsWithTypeAttr* FindInputsWithTypeAttr(const string& name);
+  InputsWithTypeAttr* FindInputsWithTypeAttr(const std::string& name);
 
   // Searches inputs_with_type_list_attrs_ for an input with the given name.
-  InputsWithTypeListAttr* FindInputsWithTypeListAttr(const string& name);
+  InputsWithTypeListAttr* FindInputsWithTypeListAttr(const std::string& name);
 
   // Searches inputs_with_type_list_attrs_ for an input with the given name.
-  InputsWithNumberAttr* FindInputsWithNumberAttr(const string& name);
+  InputsWithNumberAttr* FindInputsWithNumberAttr(const std::string& name);
 
   ABSL_MUST_USE_RESULT
   bool InferLengthAttributes(const absl::Span<PyObject*> params,
