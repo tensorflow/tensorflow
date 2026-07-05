@@ -15,6 +15,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <limits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -122,6 +123,78 @@ class BaseDetectionPostprocessOpModel : public SingleOpModel {
   int output3_;
   int output4_;
 };
+
+class InvalidDetectionPostprocessOpModel : public SingleOpModel {
+ public:
+  InvalidDetectionPostprocessOpModel(
+      int max_detections, int max_classes_per_detection, int num_classes,
+      int detections_per_class = 1, int box_encoding_size = 4) {
+    const TensorData input_box_encodings = {
+        TensorType_FLOAT32, {1, 6, box_encoding_size}};
+    const TensorData input_class_predictions = {TensorType_FLOAT32, {1, 6, 3}};
+    const TensorData input_anchors = {TensorType_FLOAT32, {6, 4}};
+    input1_ = AddInput(input_box_encodings);
+    input2_ = AddInput(input_class_predictions);
+    input3_ = AddInput(input_anchors);
+    output1_ = AddOutput({TensorType_FLOAT32, {}});
+    output2_ = AddOutput({TensorType_FLOAT32, {}});
+    output3_ = AddOutput({TensorType_FLOAT32, {}});
+    output4_ = AddOutput({TensorType_FLOAT32, {}});
+
+    flexbuffers::Builder fbb;
+    fbb.Map([&]() {
+      fbb.Int("max_detections", max_detections);
+      fbb.Int("max_classes_per_detection", max_classes_per_detection);
+      fbb.Int("detections_per_class", detections_per_class);
+      fbb.Bool("use_regular_nms", true);
+      fbb.Float("nms_score_threshold", 0.0);
+      fbb.Float("nms_iou_threshold", 0.5);
+      fbb.Int("num_classes", num_classes);
+      fbb.Float("y_scale", 10.0);
+      fbb.Float("x_scale", 10.0);
+      fbb.Float("h_scale", 5.0);
+      fbb.Float("w_scale", 5.0);
+    });
+    fbb.Finish();
+    SetCustomOp("TFLite_Detection_PostProcess", fbb.GetBuffer(),
+                Register_DETECTION_POSTPROCESS);
+    BuildInterpreter({GetShape(input1_), GetShape(input2_), GetShape(input3_)},
+                     /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true,
+                     /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  int input1_;
+  int input2_;
+  int input3_;
+  int output1_;
+  int output2_;
+  int output3_;
+  int output4_;
+};
+
+TEST(DetectionPostprocessOpTest, InvalidParamsFailAllocation) {
+  EXPECT_EQ(InvalidDetectionPostprocessOpModel(-1, 1, 2).AllocateTensors(),
+            kTfLiteError);
+  EXPECT_EQ(InvalidDetectionPostprocessOpModel(1, -1, 2).AllocateTensors(),
+            kTfLiteError);
+  EXPECT_EQ(InvalidDetectionPostprocessOpModel(1, 1, 0).AllocateTensors(),
+            kTfLiteError);
+  EXPECT_EQ(InvalidDetectionPostprocessOpModel(1, 1, 2, -1).AllocateTensors(),
+            kTfLiteError);
+  EXPECT_EQ(
+      InvalidDetectionPostprocessOpModel(65536, 65536, 2).AllocateTensors(),
+      kTfLiteError);
+  EXPECT_EQ(InvalidDetectionPostprocessOpModel(
+                std::numeric_limits<int>::max(), 1, 2, 1)
+                .AllocateTensors(),
+            kTfLiteError);
+  EXPECT_EQ(InvalidDetectionPostprocessOpModel(1, 1, 2, 1, 3)
+                .AllocateTensors(),
+            kTfLiteError);
+}
 
 TEST(DetectionPostprocessOpTest, FloatTest) {
   BaseDetectionPostprocessOpModel m(
