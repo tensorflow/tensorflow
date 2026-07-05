@@ -91,6 +91,29 @@ class ClipOpsTest(test.TestCase):
                                      [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
 
   @test_util.run_deprecated_v1
+  def testClipTensorByNormInfinite(self):
+    self._testClipTensorByNorm([1.0, 2.0, 3.0], float("inf"),
+                               [1.0, 2.0, 3.0])
+    self._testClipTensorByNorm([1.0, 2.0, 3.0], np.float32(float("inf")),
+                               [1.0, 2.0, 3.0])
+
+    clipped = clip_ops.clip_by_norm(
+        constant_op.constant([1.0, 2.0, 3.0]),
+        constant_op.constant(float("inf")))
+    self.assertAllClose(self.evaluate(clipped), [1.0, 2.0, 3.0])
+
+  @test_util.run_deprecated_v1
+  def testClipTensorByGlobalNormInfinite(self):
+    self._testClipTensorByGlobalNorm([[1.0, 2.0, 3.0]], float("inf"),
+                                     [[1.0, 2.0, 3.0]])
+    self._testClipTensorByGlobalNorm([[1.0, 2.0, 3.0]],
+                                     np.float32(float("inf")),
+                                     [[1.0, 2.0, 3.0]])
+    self._testClipTensorByGlobalNorm(
+        [[1.0, 2.0, 3.0]], constant_op.constant(float("inf")),
+        [[1.0, 2.0, 3.0]])
+
+  @test_util.run_deprecated_v1
   def testClipTensorByGlobalNormMultipleDtypes(self):
     (a, b), _ = self.evaluate(
         clip_ops.clip_by_global_norm(
