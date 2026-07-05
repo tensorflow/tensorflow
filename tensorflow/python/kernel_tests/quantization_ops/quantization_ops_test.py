@@ -499,7 +499,7 @@ class QuantizeAndDequantizeV3OpTest(test_util.TensorFlowTestCase):
 
     with self.assertRaisesRegex(
         (errors.InvalidArgumentError, ValueError),
-        "input_min must be a scalar"):
+        "(input_min must be a scalar|Shape must be rank 0)"):
       self.evaluate(
           array_ops.quantize_and_dequantize_v3(
               input_value,
