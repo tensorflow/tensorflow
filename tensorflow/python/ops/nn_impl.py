@@ -36,6 +36,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import device_context
 from tensorflow.python.util import dispatch
+from tensorflow.python.util import tensor_util
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
@@ -1487,7 +1488,7 @@ def batch_normalization(x,
       [Ioffe et al., 2015](http://arxiv.org/abs/1502.03167)
       ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
-  if variance_epsilon <= 0:
+  if not tensor_util.is_tf_type(variance_epsilon) and variance_epsilon <= 0:
     raise ValueError(
         f'variance_epsilon must be greater than 0, got {variance_epsilon}'
     )
