@@ -166,7 +166,7 @@ class CollectiveExecutor;
 // Interface that provides resolution of device localities.
 class DeviceResolverInterface {
  public:
-  virtual ~DeviceResolverInterface() {}
+  virtual ~DeviceResolverInterface() = default;
 
   // Populates *attributes with the DeviceAttributes of the specified device.
   virtual absl::Status GetDeviceAttributes(const std::string& device,
@@ -185,7 +185,7 @@ class DeviceResolverInterface {
 // Interface that provides resolution of shared CollectiveParams fields.
 class ParamResolverInterface {
  public:
-  virtual ~ParamResolverInterface() {}
+  virtual ~ParamResolverInterface() = default;
 
   // Called by each collective op at first execution in order to fill out
   // the CollectiveParams structure with data gathered from the full
@@ -226,7 +226,7 @@ class ParamResolverInterface {
 // coordinated step_ids to use in such cases.
 class StepSequenceInterface {
  public:
-  virtual ~StepSequenceInterface() {}
+  virtual ~StepSequenceInterface() = default;
 
   // Used with a distributed implementation to coordinate step_id
   // sequences across tasks.
@@ -256,7 +256,7 @@ class NcclCommunicatorInterface;
 // instances and various distributed resolution capabilities.
 class CollectiveExecutorMgrInterface : public StepSequenceInterface {
  public:
-  ~CollectiveExecutorMgrInterface() override {}
+  ~CollectiveExecutorMgrInterface() override = default;
 
   // Returns the step-specific CollectiveExecutor, creating if one does not
   // already exist.  The caller assumes ownership of one Ref on the object.
@@ -282,7 +282,7 @@ class CollectiveExecutorMgrInterface : public StepSequenceInterface {
 // types.
 class CollectiveRemoteAccess {
  public:
-  virtual ~CollectiveRemoteAccess() {}
+  virtual ~CollectiveRemoteAccess() = default;
 
   virtual void RecvFromPeer(
       const std::string& peer_device, const std::string& peer_task,
@@ -322,7 +322,7 @@ class CollectiveExecutor : public core::RefCounted {
   virtual void ExecuteAsync(OpKernelContext* ctx,
                             const CollectiveParams* col_params,
                             const std::string& exec_key, StatusCallback done) {
-    done(errors::Internal(
+    done(absl::InternalError(
         "A collective Op has been called in a context in which "
         "a CollectiveExecutor has not been provided."));
   }
@@ -331,7 +331,7 @@ class CollectiveExecutor : public core::RefCounted {
                                    CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    StatusCallback done) {
-    done(errors::Internal(
+    done(absl::InternalError(
         "A collective Op has been called in a context in which "
         "a CollectiveExecutor has not been provided."));
   }

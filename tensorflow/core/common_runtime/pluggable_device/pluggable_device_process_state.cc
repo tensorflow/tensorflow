@@ -231,4 +231,17 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
   return pluggable_device_host_allocators_[0].allocator.get();
 }
 
+void PluggableDeviceProcessState::TestOnlyReset() {
+  if (process_state_) {
+    process_state_->ProcessState::TestOnlyReset();
+  }
+  {
+    mutex_lock lock(mu_);
+    pluggable_device_enabled_ = false;
+    pluggable_device_allocators_.clear();
+    pluggable_device_visitors_.clear();
+    pluggable_device_host_allocators_.clear();
+  }
+}
+
 }  // namespace tensorflow

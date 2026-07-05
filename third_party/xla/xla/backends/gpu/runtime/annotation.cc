@@ -489,7 +489,7 @@ ScopedModuleAnnotations::ScopedModuleAnnotations(
     : restore_(std::exchange(current_annotations, annotations)) {}
 
 ScopedModuleAnnotations::~ScopedModuleAnnotations() {
-  std::exchange(current_annotations, restore_);
+  current_annotations = restore_;
 }
 
 std::optional<ScopedAnnotation> GetKernelAnnotation(

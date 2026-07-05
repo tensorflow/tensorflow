@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_init_mode.h"
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
@@ -41,18 +42,18 @@ void ForceSetTPUInitMode(const TPUInitMode mode) {
 
 absl::Status SetTPUInitMode(const TPUInitMode mode) {
   if (mode == TPUInitMode::kNone) {
-    return errors::InvalidArgument("State cannot be set to: ",
-                                   static_cast<int>(mode));
+    return absl::InvalidArgumentError(
+        absl::StrCat("State cannot be set to: ", static_cast<int>(mode)));
   }
   {
     mutex_lock l(init_mode_mutex);
     if (init_mode != TPUInitMode::kNone && mode != init_mode) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "TPUInit already attempted with mode: ", static_cast<int>(init_mode),
           " and cannot be changed to: ", static_cast<int>(mode),
           ". You are most probably trying to initialize the TPU system, both "
           "using the explicit API and using an initialization Op within the "
-          "graph; please choose one. ");
+          "graph; please choose one. "));
     }
     init_mode = mode;
   }

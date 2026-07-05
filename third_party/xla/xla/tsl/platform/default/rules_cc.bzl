@@ -38,3 +38,7 @@ def cc_library(name, deps = None, **kwargs):
         deps = deps + [Label("//xla/tsl:bazel_issue_21519")]  # buildifier: disable=list-append
         deps = deps + [Label("@tsl//:bazel_issue_21519")]  # buildifier: disable=list-append
     _cc_library(name = name, deps = deps, **kwargs)
+
+# Match Google-internal rules_cc interfaces.
+def default_compatible_with():
+    return []

@@ -21,10 +21,12 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -49,6 +51,7 @@ bool IsFlexOp(const char* custom_name) {
                                 strlen(kFlexCustomCodePrefix)) == 0;
 }
 
+#ifndef TF_LITE_STATIC_MEMORY
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
   return BuildTfLiteArray(input).release();
 }
@@ -56,6 +59,7 @@ TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
 TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int ndims, const int* dims) {
   return BuildTfLiteArray(ndims, dims).release();
 }
+#endif  // TF_LITE_STATIC_MEMORY
 
 bool EqualArrayAndTfLiteIntArray(const TfLiteIntArray* a, const int b_size,
                                  const int* b) {
@@ -143,6 +147,10 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       // is handled in the BytesRequired function.
       *bytes = sizeof(int8_t);
       break;
+    case kTfLiteFloat8E4M3FN:
+    case kTfLiteFloat8E5M2:
+      *bytes = 1;
+      break;
     default:
       if (context) {
         TF_LITE_KERNEL_LOG(
@@ -190,6 +198,8 @@ bool IsValidationSubgraph(const char* name) {
   return name && std::string(name).find(kValidationSubgraphNamePrefix) == 0;
 }
 
+// TODO: b/500201192 - Use a common library for overflow checking.
+// Returns kTfLiteError if overflow occurred during multiplication.
 TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
   // Multiplying a * b where a and b are size_t cannot result in overflow in a
   // size_t accumulator if both numbers have no non-zero bits in their upper
@@ -205,26 +215,41 @@ TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
   return kTfLiteOk;
 }
 
+TfLiteStatus CheckedNumElements(absl::Span<const int> dims, size_t& count) {
+  size_t checked_count = 1;
+  for (const int dim : dims) {
+    if (dim < 0) return kTfLiteError;
+    if (MultiplyAndCheckOverflow(checked_count, static_cast<size_t>(dim),
+                                 &checked_count) != kTfLiteOk) {
+      return kTfLiteError;
+    }
+  }
+  count = checked_count;
+  return kTfLiteOk;
+}
+
+TfLiteStatus CheckedNumElements(absl::Span<const int> dims, int& count) {
+  size_t checked_count = 0;
+  if (CheckedNumElements(dims, checked_count) != kTfLiteOk) {
+    return kTfLiteError;
+  }
+  if (checked_count > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return kTfLiteError;
+  }
+  count = static_cast<int>(checked_count);
+  return kTfLiteOk;
+}
+
 TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
                            size_t* bytes, TfLiteContext* context_) {
   TF_LITE_ENSURE(context_, bytes != nullptr);
   // When 'dims_size' is 0, we simply assume it's a scalar. Therefore, we start
   // 'count' as 1.
-  size_t count = 1;
-  for (int k = 0; k < dims_size; k++) {
-    // Dimension values must be non-negative. A negative dimension (e.g. from
-    // integer overflow when a model specifies INT_MAX) would be implicitly
-    // converted to a very large size_t, leading to an undersized allocation
-    // and a subsequent SIGSEGV.
-    TF_LITE_ENSURE_MSG(context_, dims[k] >= 0,
-                       "BytesRequired: tensor dimension must be non-negative, "
-                       "got a negative dimension value.\n");
-    size_t old_count = count;
-    TF_LITE_ENSURE_MSG(
-        context_,
-        MultiplyAndCheckOverflow(old_count, dims[k], &count) == kTfLiteOk,
-        "BytesRequired number of elements overflowed.\n");
-  }
+  size_t count = 0;
+  TF_LITE_ENSURE_MSG(context_,
+                     CheckedNumElements(absl::Span<const int>(dims, dims_size),
+                                        count) == kTfLiteOk,
+                     "BytesRequired number of elements overflowed.\n");
   size_t type_size = 0;
   TF_LITE_ENSURE_OK(context_, GetSizeOfType(context_, type, &type_size));
   TF_LITE_ENSURE_MSG(
@@ -254,6 +279,7 @@ TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
   return kTfLiteOk;
 }
 
+#ifndef TF_LITE_STATIC_MEMORY
 TensorUniquePtr BuildTfLiteTensor() {
   auto tensor = TensorUniquePtr((TfLiteTensor*)calloc(1, sizeof(TfLiteTensor)));
   tensor->buffer_handle = kTfLiteNullBufferHandle;
@@ -291,6 +317,7 @@ TensorUniquePtr BuildTfLiteTensor(TfLiteType type, IntArrayUniquePtr dims,
   TfLiteTensorRealloc(bytes, t.get());
   return t;
 }
+#endif  // TF_LITE_STATIC_MEMORY
 
 int GetBuiltinDataSize(BuiltinOperator op) {
   switch (op) {

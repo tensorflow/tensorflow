@@ -279,7 +279,7 @@ absl::Status FunctionLibraryRuntimeOverlay::CreateKernel(
   // When we call Instantiate from the base runtime with the lib_def option,
   // the base runtime implementation is responsible for correctly passing it
   // through to all kernel constructions.
-  return errors::Internal(
+  return absl::InternalError(
       "Overlay function library runtime doesn't support kernel creation.");
 }
 
@@ -563,7 +563,7 @@ class CallOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     FunctionLibraryRuntime* lib = ctx->function_library();
     OP_REQUIRES_ASYNC(ctx, lib != nullptr,
-                      errors::Internal("No function library is provided."),
+                      absl::InternalError("No function library is provided."),
                       done);
     FunctionLibraryRuntime::Options opts(ctx->step_id());
     opts.rendezvous = ctx->rendezvous();
@@ -624,7 +624,8 @@ absl::Status FunctionLibraryRuntimeImpl::GetRetTypes(
   }
   LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, h);
   if (local_handle == kInvalidLocalHandle) {
-    return errors::InvalidArgument("Handle ", h, " not found.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Handle ", h, " not found."));
   }
   const FunctionBody* fbody = GetFunctionBody(h);
   *ret_types = fbody->ret_types;
@@ -731,8 +732,8 @@ absl::Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
     gradient::Creator creator;
     TF_RETURN_IF_ERROR(gradient::GetOpGradientCreator(func.name(), &creator));
     if (creator == nullptr) {
-      return errors::InvalidArgument("No gradient is defined for ",
-                                     func.name());
+      return absl::InvalidArgumentError(
+          absl::StrCat("No gradient is defined for ", func.name()));
     }
     FunctionDef grad_fdef;
     // TODO(josh11b): Should filter out the attrs from func that aren't used
@@ -811,14 +812,14 @@ absl::Status FunctionLibraryRuntimeImpl::Instantiate(
       FunctionLibraryRuntime::LocalHandle handle_on_device =
           parent_->GetHandleOnDevice(device_name_, *handle);
       if (handle_on_device == kInvalidLocalHandle) {
-        return errors::Internal("LocalHandle not found for handle ", *handle,
-                                ".");
+        return absl::InternalError(
+            absl::StrCat("LocalHandle not found for handle ", *handle, "."));
       }
       auto item_handle = items_->find(handle_on_device);
       if (item_handle == items_->end()) {
-        return errors::Internal("LocalHandle ", handle_on_device,
-                                " for handle ", *handle,
-                                " not found in items.");
+        return absl::InternalError(
+            absl::StrCat("LocalHandle ", handle_on_device, " for handle ",
+                         *handle, " not found in items."));
       }
       ++item_handle->second->instantiation_counter;
       return absl::OkStatus();
@@ -831,11 +832,12 @@ absl::Status FunctionLibraryRuntimeImpl::Instantiate(
   if (function_name == kGradientOp) {
     const AttrValue* f = attrs.Find(kFuncAttr);
     if (f == nullptr) {
-      return errors::InvalidArgument("SymbolicGradient is missing attr: f");
+      return absl::InvalidArgumentError("SymbolicGradient is missing attr: f");
     }
     const auto& func = f->func();
     if (func.name() == kGradientOp) {
-      return errors::InvalidArgument("Can't take gradient of SymbolicGradient");
+      return absl::InvalidArgumentError(
+          "Can't take gradient of SymbolicGradient");
     }
     const std::string grad = lib_def->FindGradient(func.name());
     if (!grad.empty()) {
@@ -845,7 +847,8 @@ absl::Status FunctionLibraryRuntimeImpl::Instantiate(
   } else {
     core::RefCountPtr<FunctionRecord> fdef = lib_def->FindRecord(function_name);
     if (fdef == nullptr) {
-      return errors::NotFound("Function ", function_name, " is not defined.");
+      return absl::NotFoundError(
+          absl::StrCat("Function ", function_name, " is not defined."));
     }
     TF_RETURN_IF_ERROR(
         FunctionDefToBody(std::move(fdef), attrs, lib_def, &fbody));
@@ -917,10 +920,10 @@ absl::Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
 
     auto it = items_->find(h);
     if (it == items_->end()) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Inconsistent FunctionLibraryRuntime. Expected to find an item for "
           "handle ",
-          h, " but found none");
+          h, " but found none"));
     }
     std::unique_ptr<Item>& item = it->second;
     --item->instantiation_counter;
@@ -1012,8 +1015,9 @@ absl::Status FunctionLibraryRuntimeImpl::GetOrCreateItem(
     tf_shared_lock l(mu_);
     auto iter = items_->find(local_handle);
     if (iter == items_->end()) {
-      return errors::Internal("Local function handle ", local_handle,
-                              " is not valid. Likely an internal error.");
+      return absl::InternalError(
+          absl::StrCat("Local function handle ", local_handle,
+                       " is not valid. Likely an internal error."));
     }
     *item = iter->second.get();
     if ((*item)->exec != nullptr) {
@@ -1212,7 +1216,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
                                      std::vector<Tensor>* rets,
                                      DoneCallback done) {
   if (opts.cancellation_manager && opts.cancellation_manager->IsCancelled()) {
-    done(errors::Cancelled("Function was cancelled before it was started"));
+    done(absl::CancelledError("Function was cancelled before it was started"));
     return;
   }
   Options run_opts = opts;
@@ -1295,7 +1299,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
                                      CallFrameInterface* frame,
                                      DoneCallback done) {
   if (opts.cancellation_manager && opts.cancellation_manager->IsCancelled()) {
-    done(errors::Cancelled(""));
+    done(absl::CancelledError(""));
     return;
   }
 
@@ -1323,7 +1327,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     // calls back into this class, and the current implementation of
     // `ProcessFunctionLibraryRuntime` currently always uses the vector-based
     // `args`/`rets` interface.
-    done(errors::Unimplemented("Remote calling with CallFrameInterface"));
+    done(absl::UnimplementedError("Remote calling with CallFrameInterface"));
     return;
   }
 
@@ -1360,7 +1364,7 @@ absl::Status FunctionLibraryRuntimeImpl::PrepareRunSync(
     std::unique_ptr<PrivateIntraProcessRendezvous>* out_rendezvous) {
   if (run_opts->cancellation_manager &&
       run_opts->cancellation_manager->IsCancelled()) {
-    return errors::Cancelled("");
+    return absl::CancelledError("");
   }
 
   if (run_opts->remote_execution) {
@@ -1368,7 +1372,7 @@ absl::Status FunctionLibraryRuntimeImpl::PrepareRunSync(
     // calls back into this class, and the current implementation of
     // `ProcessFunctionLibraryRuntime` currently always uses the asynchronous
     // Run() method.
-    return errors::Unimplemented("Remote calling with RunSync()");
+    return absl::UnimplementedError("Remote calling with RunSync()");
   }
 
   if (run_opts->create_rendezvous) {
@@ -1468,7 +1472,7 @@ absl::Status FunctionLibraryRuntimeImpl::Clone(
   if (*out_flr != nullptr) {
     return absl::OkStatus();
   } else {
-    return errors::Internal("Cloning FunctionLibraryRuntime failed.");
+    return absl::InternalError("Cloning FunctionLibraryRuntime failed.");
   }
 }
 

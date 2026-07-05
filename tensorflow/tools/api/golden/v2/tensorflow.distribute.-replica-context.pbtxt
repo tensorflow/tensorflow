@@ -2,22 +2,22 @@ path: "tensorflow.distribute.ReplicaContext"
 tf_class {
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.ReplicaContext\'>"
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.ReplicaContextBase\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "devices"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "num_replicas_in_sync"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "replica_id_in_sync_group"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "strategy"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

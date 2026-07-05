@@ -21,6 +21,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_driver_cbid.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "xla/backends/profiler/gpu/cuda_test.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
@@ -114,27 +118,28 @@ TEST_F(CuptiErrorManagerTest, GpuTraceActivityEnableTest) {
   // Enforces the order of execution below.
   Sequence s1;
   // CuptiBase::EnableProfiling()
-  EXPECT_CALL(*mock_, Subscribe(_, _, _))
+  EXPECT_CALL(*mock_, SubscribeV2(_, _, _))
       .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::Subscribe));
+      .WillOnce([](CUpti_SubscriberHandle* subscriber,
+                   CUpti_CallbackFunc /*callback*/, void* /*userdata*/) {
+        *subscriber = reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
+        return CUPTI_SUCCESS;
+      });
   const int cb_enable_times = IsCudaNewEnoughForGraphTraceTest() ? 6 : 1;
   EXPECT_CALL(*mock_, EnableCallback(1, _, _, _))
       .Times(cb_enable_times)
       .InSequence(s1)
-      .WillRepeatedly(
-          Invoke(cupti_wrapper_.get(), &CuptiWrapper::EnableCallback));
-  EXPECT_CALL(*mock_, SetThreadIdType(_))
+      .WillRepeatedly(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityUseSystemThreadIdV2(_))
       .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::SetThreadIdType));
-  EXPECT_CALL(*mock_, ActivityUsePerThreadBuffer())
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityUsePerThreadBufferV2())
       .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(),
-                       &CuptiWrapper::ActivityUsePerThreadBuffer));
-  EXPECT_CALL(*mock_, ActivityRegisterCallbacks(_, _))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityRegisterCallbacksV2(_, _, _))
       .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(),
-                       &CuptiWrapper::ActivityRegisterCallbacks));
-  EXPECT_CALL(*mock_, ActivityEnable(CUPTI_ACTIVITY_KIND_KERNEL))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityEnableV2(_, CUPTI_ACTIVITY_KIND_KERNEL, _))
       .InSequence(s1)
       .WillOnce(Return(CUPTI_ERROR_UNKNOWN));  // injected error
   // CuptiErrorManager::ResultString()
@@ -145,11 +150,10 @@ TEST_F(CuptiErrorManagerTest, GpuTraceActivityEnableTest) {
   EXPECT_CALL(*mock_, EnableCallback(0, _, _, _))
       .Times(cb_enable_times)
       .InSequence(s1)
-      .WillRepeatedly(
-          Invoke(cupti_wrapper_.get(), &CuptiWrapper::EnableCallback));
+      .WillRepeatedly(Return(CUPTI_SUCCESS));
   EXPECT_CALL(*mock_, Unsubscribe(_))
       .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::Unsubscribe));
+      .WillOnce(Return(CUPTI_SUCCESS));
 
   EXPECT_FALSE(CuptiDisabled());
   CuptiTracerOptions options;
@@ -170,35 +174,36 @@ TEST_F(CuptiErrorManagerTest, GpuTraceAutoEnableTest) {
   EXPECT_FALSE(CuptiDisabled());
   // Enforces the order of execution below.
   Sequence s1;
-  EXPECT_CALL(*mock_, Subscribe(_, _, _))
+  EXPECT_CALL(*mock_, SubscribeV2(_, _, _))
       .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::Subscribe));
+      .WillOnce([](CUpti_SubscriberHandle* subscriber,
+                   CUpti_CallbackFunc /*callback*/, void* /*userdata*/) {
+        *subscriber = reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
+        return CUPTI_SUCCESS;
+      });
   const int cb_enable_times = IsCudaNewEnoughForGraphTraceTest() ? 5 : 0;
   if (cb_enable_times > 0) {
     EXPECT_CALL(*mock_, EnableCallback(1, _, _, _))
         .Times(cb_enable_times)
         .InSequence(s1)
-        .WillRepeatedly(
-            Invoke(cupti_wrapper_.get(), &CuptiWrapper::EnableCallback));
+        .WillRepeatedly(Return(CUPTI_SUCCESS));
   }
   EXPECT_CALL(*mock_, EnableDomain(1, _, _))
       .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::EnableDomain));
-  EXPECT_CALL(*mock_, SetThreadIdType(_))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityUseSystemThreadIdV2(_))
       .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::SetThreadIdType));
-  EXPECT_CALL(*mock_, ActivityUsePerThreadBuffer())
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityUsePerThreadBufferV2())
       .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(),
-                       &CuptiWrapper::ActivityUsePerThreadBuffer));
-  EXPECT_CALL(*mock_, ActivityRegisterCallbacks(_, _))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityRegisterCallbacksV2(_, _, _))
       .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(),
-                       &CuptiWrapper::ActivityRegisterCallbacks));
-  EXPECT_CALL(*mock_, ActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityEnableV2(_, CUPTI_ACTIVITY_KIND_MEMCPY, _))
       .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::ActivityEnable));
-  EXPECT_CALL(*mock_, ActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY2))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityEnableV2(_, CUPTI_ACTIVITY_KIND_MEMCPY2, _))
       .InSequence(s1)
       .WillOnce(Return(CUPTI_ERROR_UNKNOWN));  // injected error
   // CuptiErrorManager::ResultString()
@@ -206,22 +211,21 @@ TEST_F(CuptiErrorManagerTest, GpuTraceAutoEnableTest) {
       .InSequence(s1)
       .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::GetResultString));
   // CuptiErrorManager::UndoAndDisable()
-  EXPECT_CALL(*mock_, ActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY))
+  EXPECT_CALL(*mock_, ActivityDisableV2(_, CUPTI_ACTIVITY_KIND_MEMCPY, _))
       .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::ActivityDisable));
+      .WillOnce(Return(CUPTI_SUCCESS));
   EXPECT_CALL(*mock_, EnableDomain(0, _, _))
       .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::EnableDomain));
+      .WillOnce(Return(CUPTI_SUCCESS));
   if (cb_enable_times > 0) {
     EXPECT_CALL(*mock_, EnableCallback(0, _, _, _))
         .Times(cb_enable_times)
         .InSequence(s1)
-        .WillRepeatedly(
-            Invoke(cupti_wrapper_.get(), &CuptiWrapper::EnableCallback));
+        .WillRepeatedly(Return(CUPTI_SUCCESS));
   }
   EXPECT_CALL(*mock_, Unsubscribe(_))
       .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::Unsubscribe));
+      .WillOnce(Return(CUPTI_SUCCESS));
 
   EXPECT_FALSE(CuptiDisabled());
   CuptiTracerOptions options;

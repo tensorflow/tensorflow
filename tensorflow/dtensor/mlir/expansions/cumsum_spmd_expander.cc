@@ -45,8 +45,8 @@ namespace {
 StatusOr<int64_t> GetAxisDimension(mlir::Operation* op) {
   auto cumsum = llvm::dyn_cast<mlir::TF::CumsumOp>(op);
   if (cumsum == nullptr) {
-    return errors::Internal(
-        absl::StrCat("Expected Cumsum op but got : ", OpName(op)).c_str());
+    return absl::InternalError(
+        absl::StrCat("Expected Cumsum op but got : ", OpName(op)));
   }
   TF_ASSIGN_OR_RETURN(int64_t axis_dim,
                       ExtractConstIntFromValue(cumsum.getAxis()));
@@ -56,7 +56,7 @@ StatusOr<int64_t> GetAxisDimension(mlir::Operation* op) {
   if (axis_dim >= -tensor_rank && axis_dim < 0) {
     axis_dim += tensor_rank;
   } else if (axis_dim < -tensor_rank || axis_dim >= tensor_rank) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Invalid axis; expected a value in [-tensor_rank, tensor_rank)");
   }
   return axis_dim;
@@ -83,7 +83,7 @@ StatusOr<mlir::Operation*> CumsumSPMDExpander::ExpandOp(mlir::Operation* op) {
   const auto operand = op->getOperand(0);
   TF_ASSIGN_OR_RETURN(auto operand_layout, ExtractLayoutFromOperand(operand));
   if (!operand_layout)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "input layout of Cumsum op must be known before SPMD "
         "expansion.");
 

@@ -764,7 +764,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Compress ops where rhs shape is [..., 1, X, Y] and lhs shape is
   // [..., Q, R, S] which is equivalent to rhs: [..., X, Y] and
   // lhs: [..., Q * R, S].
-  if (rhs_dims_count > 2 && lhs_dims_count > 2) {
+  // This compression is only valid when adj_x is false. If we squash the
+  // batch dimension 'Q' into the row dimension 'R' and then transpose the
+  // resulting [..., Q * R, S] matrix, we will incorrectly scramble the data
+  // across batches.
+  if (!adj_x && rhs_dims_count > 2 && lhs_dims_count > 2) {
     int rhs_one = orig_rhs_shape.DimsData()[rhs_dims_count - 3];
     if (rhs_one == 1) {
       int32_t* lhs_dims = orig_lhs_shape.DimsData();

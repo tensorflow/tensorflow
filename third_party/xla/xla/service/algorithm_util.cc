@@ -206,6 +206,7 @@ bool IsSupportedByCudnn(PrecisionConfig::Algorithm algorithm) {
 bool IsSupportedByElementalIrEmitter(PrecisionConfig::Algorithm algorithm) {
   switch (algorithm) {
     // Probably more can be added.
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
     case PrecisionConfig::ALG_UNSET:
       return true;
@@ -299,5 +300,15 @@ bool IsSupportedDotAlgorithmOnGpu(
   }
 }
 
+bool IsBf16ToF32AlgorithmRequested(const HloInstruction* instr) {
+  return instr->precision_config().algorithm() ==
+             PrecisionConfig::ALG_DOT_BF16_BF16_F32 &&
+         instr->operand_count() >= 2 &&
+         instr->operand(0)->shape().element_type() == F32 &&
+         instr->operand(1)->shape().element_type() == F32 &&
+         instr->shape().element_type() == F32;
+}
+
 }  // namespace algorithm_util
+
 }  // namespace xla

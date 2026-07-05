@@ -193,10 +193,10 @@ absl::Status CalculateRetvalRearrange(
     const Edge* e;
     TF_RETURN_IF_ERROR(n->input_edge(0, &e));
     if (!e->src()->IsArg()) {
-      return errors::Unimplemented(
-          "Resource _Retval node's input does not come from _Arg "
-          "directly: ",
-          e->DebugString());
+      return absl::UnimplementedError(
+          absl::StrCat("Resource _Retval node's input does not come from _Arg "
+                       "directly: ",
+                       e->DebugString()));
     }
     Node* arg = e->src();
     int src_index;
@@ -334,15 +334,15 @@ absl::Status MaybeRewriteWhileNode(
           int index;
           TF_RETURN_IF_ERROR(GetNodeAttr(input_node->def(), "index", &index));
           if (index != i) {
-            return errors::Unimplemented("While node ", n->DebugString(),
-                                         " has resource _Retval[", i,
-                                         "] coming from _Arg[", index, "]");
+            return absl::UnimplementedError(absl::StrCat(
+                "While node ", n->DebugString(), " has resource _Retval[", i,
+                "] coming from _Arg[", index, "]"));
           }
         } else {
-          return errors::Unimplemented("Encountered node ",
-                                       input_node->DebugString(),
-                                       " while tracing _Arg node for _Retval[",
-                                       i, "] of while node ", n->DebugString());
+          return absl::UnimplementedError(
+              absl::StrCat("Encountered node ", input_node->DebugString(),
+                           " while tracing _Arg node for _Retval[", i,
+                           "] of while node ", n->DebugString()));
         }
       }
     }

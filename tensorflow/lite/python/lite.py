@@ -16,7 +16,6 @@
 
 import enum
 import functools
-import gc
 import pprint
 import shutil
 import sys
@@ -686,6 +685,7 @@ class TFLiteConverterBase:
     self.canonicalizing_inf_as_min_max_float = True
     self._experimental_strict_qdq = False
     self._experimental_unsafe_fuse_dynamic_shaped_broadcast = False
+    self._experimental_unsafe_single_batch_rank_reduction = False
 
     # Debug parameters
     self.ir_dump_dir = None
@@ -857,6 +857,9 @@ class TFLiteConverterBase:
         "serialize_debug_metadata": self.serialize_debug_metadata,
         "unsafe_fuse_dynamic_shaped_broadcast": (
             self._experimental_unsafe_fuse_dynamic_shaped_broadcast
+        ),
+        "unsafe_single_batch_rank_reduction": (
+            self._experimental_unsafe_single_batch_rank_reduction
         ),
     }
 
@@ -1586,7 +1589,6 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
       )
 
     del trackable_obj
-    gc.collect()
     return self._convert_from_saved_model(graph_def)
 
 
@@ -1644,9 +1646,10 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
         # inference only and TFLite conversion.
         export_archive = keras.export.ExportArchive()
         export_archive.track(self._keras_model)
+        # We use `keras.Function` to detect functional models as keras does not
+        # expose the `Functional` class.
         if isinstance(
-            self._keras_model,
-            (keras.src.models.Functional, keras.src.models.Sequential),
+            self._keras_model, (keras.models.Sequential, keras.Function)
         ):
           input_signature = nest.map_structure(
               lambda x: tensor_spec.TensorSpec(

@@ -23,6 +23,10 @@ package(
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
         # tensorflow/core/profiler/convert uses map_util
         "@org_xprof//xprof/convert:__pkg__",
+        # tensorflow/python/util uses array_slice
+        "//tensorflow/python/util:__pkg__",
+        # tensorflow/python uses array_slice
+        "//tensorflow/python:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -210,20 +214,20 @@ filegroup(
 
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "mobile_srcs_no_runtime",
+    name = "mobile_hdrs_no_runtime",
     srcs = [
         "array_slice.h",
         "flatmap.h",
         "flatrep.h",
         "inlined_vector.h",
         "top_n.h",
-        "@xla//xla/tsl/lib/gtl:mobile_srcs_no_runtime",
+        "@xla//xla/tsl/lib/gtl:mobile_hdrs_no_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
 filegroup(
-    name = "mobile_srcs_only_runtime",
+    name = "mobile_hdrs_only_runtime",
     srcs = [
         "cleanup.h",
         "edit_distance.h",
@@ -234,7 +238,7 @@ filegroup(
         "map_util.h",
         "priority_queue_util.h",
         "//tensorflow/core/lib/gtl/subtle:map_traits",
-        "@xla//xla/tsl/lib/gtl:mobile_srcs_only_runtime",
+        "@xla//xla/tsl/lib/gtl:mobile_hdrs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

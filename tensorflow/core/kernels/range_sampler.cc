@@ -251,9 +251,9 @@ absl::Status FixedUnigramSampler::SetDistributionSampler(
     Env* env, const std::string& vocab_file) {
   TF_RETURN_IF_ERROR(LoadFromFile(env, vocab_file, distortion_));
   if (!TF_PREDICT_TRUE(FixedUnigramSampler::range() == weights_.size()))
-    return (errors::InvalidArgument("range is ", FixedUnigramSampler::range(),
-                                    " must be equal to weights size  ",
-                                    weights_.size()));
+    return (absl::InvalidArgumentError(
+        absl::StrCat("range is ", FixedUnigramSampler::range(),
+                     " must be equal to weights size  ", weights_.size())));
   dist_sampler_.reset(new random::DistributionSampler(weights_));
   return absl::OkStatus();
 }
@@ -262,9 +262,9 @@ absl::Status FixedUnigramSampler::SetDistributionSampler(
     const std::vector<float>& unigrams) {
   LoadFromUnigrams(unigrams, distortion_);
   if (!TF_PREDICT_TRUE(FixedUnigramSampler::range() == weights_.size()))
-    return (errors::InvalidArgument("range is ", FixedUnigramSampler::range(),
-                                    " must be equal to weights size  ",
-                                    weights_.size()));
+    return (absl::InvalidArgumentError(
+        absl::StrCat("range is ", FixedUnigramSampler::range(),
+                     " must be equal to weights size  ", weights_.size())));
   dist_sampler_.reset(new random::DistributionSampler(weights_));
   return absl::OkStatus();
 }
@@ -304,8 +304,8 @@ absl::Status FixedUnigramSampler::LoadFromFile(Env* env,
     if (word_id % num_shards_ == shard_) {
       float w = 0.0;
       if (!absl::SimpleAtof(cols.at(cols.size() - 1), &w)) {
-        return errors::InvalidArgument("Wrong vocabulary format at line: ",
-                                       line);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Wrong vocabulary format at line: ", line));
       }
       w = std::pow(w, distortion);
       total_weight_ += w;

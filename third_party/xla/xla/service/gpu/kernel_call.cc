@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/Attributes.h"
@@ -72,8 +73,8 @@ absl::StatusOr<KernelCall> KernelCall::Parse(absl::string_view backend_config,
         "Missing required field 'kernel_type' in backend_config");
   }
   auto kernel_type_str = kernel_type_attr.getValue().str();
-  TF_ASSIGN_OR_RETURN(KernelCall::KernelType kernel_type,
-                      ParseKernelType(kernel_type_str));
+  ASSIGN_OR_RETURN(KernelCall::KernelType kernel_type,
+                   ParseKernelType(kernel_type_str));
 
   // Check for required "kernel_data" field
   auto kernel_data_attr = attrs.getAs<mlir::StringAttr>("kernel_data");
@@ -103,13 +104,13 @@ absl::StatusOr<KernelCall> KernelCall::Parse(absl::string_view backend_config,
     return static_cast<int32_t>(attr.getValue().getSExtValue());
   };
 
-  TF_ASSIGN_OR_RETURN(int32_t grid_x, get_int32_attr("grid_x"));
-  TF_ASSIGN_OR_RETURN(int32_t grid_y, get_int32_attr("grid_y"));
-  TF_ASSIGN_OR_RETURN(int32_t grid_z, get_int32_attr("grid_z"));
-  TF_ASSIGN_OR_RETURN(int32_t block_x, get_int32_attr("block_x"));
-  TF_ASSIGN_OR_RETURN(int32_t block_y, get_int32_attr("block_y"));
-  TF_ASSIGN_OR_RETURN(int32_t block_z, get_int32_attr("block_z"));
-  TF_ASSIGN_OR_RETURN(int32_t shared_mem, get_int32_attr("shared_mem_bytes"));
+  ASSIGN_OR_RETURN(int32_t grid_x, get_int32_attr("grid_x"));
+  ASSIGN_OR_RETURN(int32_t grid_y, get_int32_attr("grid_y"));
+  ASSIGN_OR_RETURN(int32_t grid_z, get_int32_attr("grid_z"));
+  ASSIGN_OR_RETURN(int32_t block_x, get_int32_attr("block_x"));
+  ASSIGN_OR_RETURN(int32_t block_y, get_int32_attr("block_y"));
+  ASSIGN_OR_RETURN(int32_t block_z, get_int32_attr("block_z"));
+  ASSIGN_OR_RETURN(int32_t shared_mem, get_int32_attr("shared_mem_bytes"));
 
   // Optional output_indices field
   mlir::ArrayAttr output_indices =

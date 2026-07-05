@@ -524,8 +524,9 @@ TfLiteStatus SingleOpModel::ApplyDelegate() {
     TFLITE_LOG(WARN) << "Having a manually-set TfLite delegate, and bypassing "
                         "KernelTestDelegateProviders";
     SetDelegateApplicationStatus(
-        interpreter_->ModifyGraphWithDelegate(delegate_));
+        interpreter_->ModifyGraphWithDelegate(delegate_.get()));
     TF_LITE_ENSURE_STATUS(*GetDelegateApplicationStatus());
+    last_applied_delegate_ = delegate_.get();
     ++num_applied_delegates_;
   } else {
     auto* delegate_providers = tflite::KernelTestDelegateProviders::Get();
@@ -542,8 +543,9 @@ TfLiteStatus SingleOpModel::ApplyDelegate() {
       SetDelegateApplicationStatus(
           interpreter_->ModifyGraphWithDelegate(std::move(one.delegate)));
       TF_LITE_ENSURE_STATUS(*GetDelegateApplicationStatus());
-      // Note: 'delegate_' is always set to the last successfully applied one.
-      delegate_ = delegate_raw_ptr;
+      // Note: 'last_applied_delegate_' is always set to the last successfully
+      // applied one.
+      last_applied_delegate_ = delegate_raw_ptr;
       ++num_applied_delegates_;
     }
   }
@@ -676,7 +678,9 @@ void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
   if (nnapi && nnapi->nnapi_exists &&
       nnapi->android_sdk_version >=
           validation_params.value().MinAndroidSdkVersion()) {
-    EXPECT_EQ(CountPartitionsDelegatedTo(interpreter_.get(), delegate_), 1)
+    EXPECT_EQ(
+        CountPartitionsDelegatedTo(interpreter_.get(), last_applied_delegate_),
+        1)
         << "Expecting operation to be accelerated but cannot find a partition "
            "associated to the NNAPI delegate";
     EXPECT_GT(num_applied_delegates_, 0) << "No delegates were applied.";
@@ -695,7 +699,7 @@ int SingleOpModel::CountOpsExecutedByCpuKernel() {
 }
 
 int SingleOpModel::CountNumberOfDelegatedPartitions() const {
-  return CountPartitionsDelegatedTo(interpreter_.get(), delegate_);
+  return CountPartitionsDelegatedTo(interpreter_.get(), last_applied_delegate_);
 }
 
 void SingleOpModel::MaybeDumpModel() {

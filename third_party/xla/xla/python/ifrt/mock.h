@@ -34,12 +34,12 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -88,6 +88,8 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
               pjrt_layout, (), (const, final));
   MOCK_METHOD(LayoutRef, layout, (), (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::optional<int64_t>>, ByteSize, (),
+              (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               DisassembleIntoSingleDeviceArrays,
               (ArrayCopySemantics array_copy_semantics,
@@ -110,6 +112,39 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
 
  private:
   const xla::ifrt::ArrayRef delegated_;
+};
+
+// bundle.h
+
+class MockBundle : public llvm::RTTIExtends<MockBundle, Bundle> {
+ public:
+  MockBundle() = default;
+
+  MOCK_METHOD(Client*, client, (), (const, final));
+  MOCK_METHOD(UserContextRef, user_context, (), (const, override));
+  MOCK_METHOD(tsl::Future<>, GetReadyFuture, (), (const, final));
+  MOCK_METHOD(tsl::Future<>, Delete, (), (final));
+  MOCK_METHOD(bool, IsDeleted, (), (const, final));
+  MOCK_METHOD(std::string, DebugString, (), (const, final));
+  MOCK_METHOD(int, num_values, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::vector<ValueRef>>, GetValues,
+              (ArrayCopySemantics semantics), (final));
+  MOCK_METHOD(absl::StatusOr<absl::Span<const ArraySpec>>, GetArraySpecs, (),
+              (const, final));
+  MOCK_METHOD(absl::StatusOr<std::vector<BundleRef>>, Slice,
+              (absl::Span<const int> slice_sizes, ArrayCopySemantics semantics),
+              (override));
+  MOCK_METHOD(absl::StatusOr<BundleRef>, CopyArrays,
+              (absl::Span<const int> slice_sizes,
+               absl::Span<const CopySpec> copy_specs,
+               ArrayCopySemantics semantics),
+              (override));
+  MOCK_METHOD(absl::StatusOr<BundleRef>, ReshardArrays,
+              (absl::Span<const xla::ifrt::ArraySpec> array_specs,
+               ArrayCopySemantics semantics),
+              (override));
+
+  static char ID;  // NOLINT
 };
 
 // client.h
@@ -159,14 +194,25 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
                ArrayCopySemantics semantics),
               (final));
+  MOCK_METHOD(tsl::Future<std::vector<uint64_t>>, HashValues,
+              (absl::Span<const ValueRef> values, HashMode mode), (final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, ReshardArrays,
               (absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
                ArrayCopySemantics semantics),
               (final));
   MOCK_METHOD(tsl::Future<>, GetReadyFuture,
               (absl::Span<const ValueRef> values), (final));
+  MOCK_METHOD(tsl::Future<>, DeleteValues, (absl::Span<ValueRef> arrays),
+              (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Tuple>>, MakeTuple,
               (absl::Span<ValueRef> values), (final));
+
+  MOCK_METHOD(absl::StatusOr<BundleRef>, Bundle,
+              (absl::Span<ValueRef> values, ArrayCopySemantics semantics),
+              (final));
+  MOCK_METHOD(absl::StatusOr<BundleRef>, ConcatBundles,
+              (absl::Span<BundleRef> bundles, ArrayCopySemantics semantics),
+              (final));
   MOCK_METHOD(
       void, CancelExecution,
       (xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,
@@ -375,6 +421,9 @@ class MockLoadedExecutable
               (absl::Span<ArrayRef> args, const ExecuteOptions& options,
                std::optional<DeviceListRef> devices),
               (final));
+  MOCK_METHOD(absl::StatusOr<ExecuteBundleResult>, ExecuteBundle,
+              (absl::Span<BundleRef> args, const ExecuteOptions& options),
+              (final));
   MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
               (const, final));
   MOCK_METHOD(std::optional<DeviceListRef>, devices, (), (const, final));
@@ -441,6 +490,9 @@ class MockMpmdLoadedExecutable
   MOCK_METHOD(absl::StatusOr<ExecuteResult>, Execute,
               (absl::Span<ArrayRef> args, const ExecuteOptions& options,
                std::optional<DeviceListRef> devices),
+              (final));
+  MOCK_METHOD(absl::StatusOr<ExecuteBundleResult>, ExecuteBundle,
+              (absl::Span<BundleRef> args, const ExecuteOptions& options),
               (final));
   MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
               (const, final));

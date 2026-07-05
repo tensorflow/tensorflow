@@ -21,9 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 

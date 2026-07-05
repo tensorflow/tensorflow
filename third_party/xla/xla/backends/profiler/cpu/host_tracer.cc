@@ -44,7 +44,8 @@ namespace {
 class HostTracer : public tsl::profiler::ProfilerInterface {
  public:
   explicit HostTracer(int host_trace_level);
-  explicit HostTracer(int host_trace_level, uint64_t filter_mask);
+  explicit HostTracer(int host_trace_level, uint64_t filter_mask,
+                      bool enable_source_location = true);
   ~HostTracer() override;
 
   absl::Status Start() override;  // TENSORFLOW_STATUS_OK
@@ -61,6 +62,9 @@ class HostTracer : public tsl::profiler::ProfilerInterface {
   // Filter mask for host tracing.
   const uint64_t filter_mask_;
 
+  // Whether to enable source location in TraceMe encode.
+  const bool enable_source_location_;
+
   // True if currently recording.
   bool recording_ = false;
 
@@ -73,10 +77,14 @@ class HostTracer : public tsl::profiler::ProfilerInterface {
 
 HostTracer::HostTracer(int host_trace_level)
     : host_trace_level_(host_trace_level),
-      filter_mask_(TRACEME_FILTER_DEFAULT_MASK) {}
+      filter_mask_(TRACEME_FILTER_DEFAULT_MASK),
+      enable_source_location_(true) {}
 
-HostTracer::HostTracer(int host_trace_level, uint64_t filter_mask)
-    : host_trace_level_(host_trace_level), filter_mask_(filter_mask) {}
+HostTracer::HostTracer(int host_trace_level, uint64_t filter_mask,
+                       bool enable_source_location)
+    : host_trace_level_(host_trace_level),
+      filter_mask_(filter_mask),
+      enable_source_location_(enable_source_location) {}
 
 HostTracer::~HostTracer() { Stop().IgnoreError(); }  // NOLINT
 
@@ -89,8 +97,8 @@ absl::Status HostTracer::Start() {  // TENSORFLOW_STATUS_OK
   // start_timestamp_ns_ to prevent timestamp underflow in XPlane.
   // Therefore this have to be done before TraceMeRecorder::Start.
   start_timestamp_ns_ = tsl::profiler::GetCurrentTimeNanos();
-  recording_ =
-      tsl::profiler::TraceMeRecorder::Start(host_trace_level_, filter_mask_);
+  recording_ = tsl::profiler::TraceMeRecorder::Start(
+      host_trace_level_, filter_mask_, enable_source_location_);
   if (!recording_) {
     return absl::InternalError("Failed to start TraceMeRecorder");
   }
@@ -130,7 +138,8 @@ std::unique_ptr<tsl::profiler::ProfilerInterface> CreateHostTracer(
   if (options.trace_level == 0) return nullptr;
   std::vector<std::unique_ptr<tsl::profiler::ProfilerInterface>> profilers;
   profilers.push_back(
-      std::make_unique<HostTracer>(options.trace_level, options.filter_mask));
+      std::make_unique<HostTracer>(options.trace_level, options.filter_mask,
+                                   options.enable_source_location));
   profilers.push_back(
       std::make_unique<tsl::profiler::ThreadpoolProfilerInterface>());
   return std::make_unique<tsl::profiler::ProfilerCollection>(

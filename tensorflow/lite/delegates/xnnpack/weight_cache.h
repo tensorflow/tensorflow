@@ -78,10 +78,14 @@ bool IsCompatibleCacheFile(const char* path);
 bool IsCompatibleCacheFile(FileDescriptorView fd);
 
 struct PackIdentifier {
-  enum { kNoId = SIZE_MAX };
+  enum { kNoId = SIZE_MAX, kInvalidId = SIZE_MAX - 1 };
   uint64_t pack_algorithm_id = kNoId;
   uint64_t weights_id = kNoId;
   uint64_t bias_id = kNoId;
+
+  constexpr bool HasValidBufferIds() const {
+    return weights_id != kInvalidId && bias_id != kInvalidId;
+  }
 
   friend bool operator==(const PackIdentifier& a, const PackIdentifier& b) {
     return a.pack_algorithm_id == b.pack_algorithm_id &&
@@ -238,9 +242,12 @@ class CacheMissHandler {
   //
   // The buffer space must have been reserved before using `Reserve`. If not, a
   // new call to `Reserve` will be done and the data will be copied over.
+  //
+  // `offset_to_addr` will be updated to with the (offset, ptr) mapping.
   [[nodiscard /*The location to the appended data should be saved.*/]]
   BufferLocation Append(PackIdentifier pack_id, const void* data, uint64_t size,
-                        int fingerprint_id);
+                        int fingerprint_id,
+                        std::map<size_t, void*>& offset_to_addr);
 
   // Sets the reference offset from which all the cache miss offsets will be
   // derived from. This avoids overwriting an offset that's already in use.
@@ -355,7 +362,7 @@ class MMapWeightCacheProvider {
   bool StopBuildStep();
 
   // Creates the tensor map.
-  void MapTensorIdentifiers(
+  bool MapTensorIdentifiers(
       const TfLiteTensor* tensors, size_t size,
       const std::unordered_map<size_t, size_t>& tensor_index_to_identifier);
 
@@ -433,11 +440,22 @@ class MMapWeightCacheProvider {
   // C interface: `xnn_weights_cache_provider` callback.
   static enum xnn_status delete_cache(void* context);
 
+  // C interface: `xnn_weights_cache_provider` callback.
+  static enum xnn_status alias_data(void* context, void* alias, void* original);
+
   // Checks if caches misses have happened and updates the cache file stale
   // flag.
   bool WriteCacheMissFlag();
 
+  // Marks the cache file as stale.
+  bool WriteStaleFlag();
+
  private:
+  struct OriginalBufferMetadata {
+    uint64_t identifier;
+    size_t size;
+  };
+
   // Hashes a cache key to lookup in `cache_key_to_identifier_`.
   PackIdentifier BuildPackIdentifier(const xnn_weights_cache_look_up_key& key);
 
@@ -453,13 +471,16 @@ class MMapWeightCacheProvider {
       /*look_up_or_insert=*/MMapWeightCacheProvider::look_up_or_insert,
       /*is_finalized=*/MMapWeightCacheProvider::is_finalized,
       /*offset_to_addr=*/MMapWeightCacheProvider::offset_to_addr,
-      /*delete_cache=*/MMapWeightCacheProvider::delete_cache};
+      /*delete_cache=*/MMapWeightCacheProvider::delete_cache,
+      /*alias_data=*/MMapWeightCacheProvider::alias_data,
+  };
 
   // Path to the cache file.
   std::string file_path_;
 
   // Maps buffer addresses to buffer identifiers.
-  std::unordered_map<const void*, uint64_t> buffer_address_to_identifier_;
+  std::unordered_map<const void*, OriginalBufferMetadata>
+      buffer_address_to_identifier_;
 
   std::unordered_map<const void*, const void*> buffer_remaps_;
 

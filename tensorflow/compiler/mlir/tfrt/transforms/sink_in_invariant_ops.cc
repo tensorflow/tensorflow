@@ -175,9 +175,35 @@ void SinkInInvariantOps(mlir::ModuleOp module) {
 
     mlir::OpResult original = *p.second.begin();
     auto *new_op = builder.clone(*original.getDefiningOp());
-
-    use->get().replaceAllUsesWith(
-        new_op->getResult(original.getResultNumber()));
+    // Use `use->set()` instead of `replaceAllUsesWith()` on the block argument.
+    // `replaceAllUsesWith()` would replace ALL uses of the block argument in
+    // the region, including those that were explicitly skipped (e.g.,
+    // `ReturnOp` uses). Replacing a `ReturnOp` use with a cloned ranked
+    // resource/constant would change the type of the returned value without
+    // updating the function signature, leading to a verifier crash.
+    //
+    // For example, in the following IR:
+    //
+    // func.func private @body(
+    //     %arg0: tensor<*x!tf_type.resource>
+    // ) -> tensor<*x!tf_type.resource> {
+    //   %0 = "tf.ReadVariableOp"(%arg0)
+    //     : (tensor<*x!tf_type.resource>) -> tensor<i32>
+    //   func.return %arg0 : tensor<*x!tf_type.resource>
+    // }
+    //
+    // If %arg0 is a constant with known rank, we only want to sink the use in
+    // `ReadVariableOp`. Using `use->set()` ensures only that specific use is
+    // replaced with the cloned ranked constant, while the `ReturnOp` continues
+    // to use the unranked `%arg0`, preserving signature compliance.
+    //
+    // Since the `targets` map is constructed by recursively traversing all uses
+    // of the invariant value (via `FindSinkTarget`), it is guaranteed to
+    // capture every single safe leaf use. By iterating over `targets` and
+    // updating them individually, we ensure all eligible uses are successfully
+    // sunk without missing any, while safely leaving the ineligible ones (like
+    // `ReturnOp`) untouched.
+    use->set(new_op->getResult(original.getResultNumber()));
   }
 }
 

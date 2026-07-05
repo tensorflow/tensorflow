@@ -38,7 +38,7 @@ class ZoneProvider {
 
   static absl::Status GetZone(ZoneProvider* provider, std::string* zone) {
     if (!provider) {
-      return errors::Internal("Zone provider is required.");
+      return absl::InternalError("Zone provider is required.");
     }
     return provider->GetZone(zone);
   }

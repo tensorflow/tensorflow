@@ -22,7 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/executable.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
@@ -40,10 +40,11 @@ class MockCompiledModule : public CompiledModule {
               (ref(&&), override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Executable>>, LoadExecutable,
               (stream_executor::PlatformId platform_id,
-               const stream_executor::DeviceDescription& device_description),
+               const stream_executor::DeviceDescription& device_description,
+               const DebugOptions& debug_options),
               (ref(&&), override));
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<BufferAssignment>>,
-              buffer_assignment, (), (const, override));
+  MOCK_METHOD(absl::StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),
+              (const, override));
   MOCK_METHOD(const HloModule*, optimized_module, (), (const, override));
   MOCK_METHOD(std::shared_ptr<HloModule>, shared_optimized_module, (),
               (override));

@@ -1,4 +1,4 @@
-// Copyright 2024 The OpenXLA Authors.
+// Copyright 2026 The OpenXLA Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -33,6 +34,7 @@
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_proto_util.h"
@@ -102,7 +104,7 @@ absl::Status RealMain(const std::string& input, const std::string& output,
   QCHECK(!instruction_name.empty()) << "Must pass --instruction_name flag.";
 
   std::string input_contents;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), input, &input_contents));
 
   std::unique_ptr<HloModule> module;
@@ -112,16 +114,15 @@ absl::Status RealMain(const std::string& input, const std::string& output,
       return absl::InvalidArgumentError(
           "Failed to parse input as HloSnapshot proto.");
     }
-    TF_ASSIGN_OR_RETURN(module,
-                        HloModule::CreateFromProto(snapshot.hlo().hlo_module(),
-                                                   HloModuleConfig{}));
+    ASSIGN_OR_RETURN(module,
+                     HloModule::CreateFromProto(snapshot.hlo().hlo_module(),
+                                                HloModuleConfig{}));
   } else {
     std::string load_format = input_format;
     if (load_format == "module.pbtxt") {
       load_format = "pbtxt";
     }
-    TF_ASSIGN_OR_RETURN(module,
-                        LoadModuleFromData(input_contents, load_format));
+    ASSIGN_OR_RETURN(module, LoadModuleFromData(input_contents, load_format));
   }
 
   std::string instr_name = instruction_name;
@@ -165,19 +166,19 @@ absl::Status RealMain(const std::string& input, const std::string& output,
       }
     }
   } else if (output_format == "url") {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         output_contents,
         xla::RenderGraph(*extracted->entry_computation(), /*label=*/"",
                          extracted->config().debug_options(),
                          RenderedGraphFormat::kUrl));
   } else if (output_format == "html") {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         output_contents,
         xla::RenderGraph(*extracted->entry_computation(), /*label=*/"",
                          extracted->config().debug_options(),
                          RenderedGraphFormat::kHtml));
   } else if (output_format == "dot") {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         output_contents,
         xla::RenderGraph(*extracted->entry_computation(), /*label=*/"",
                          extracted->config().debug_options(),
@@ -187,7 +188,7 @@ absl::Status RealMain(const std::string& input, const std::string& output,
         absl::StrCat("Unknown output format: ", output_format));
   }
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       tsl::WriteStringToFile(tsl::Env::Default(), output, output_contents));
 
   return absl::OkStatus();

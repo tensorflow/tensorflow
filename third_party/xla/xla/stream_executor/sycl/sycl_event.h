@@ -25,11 +25,16 @@ limitations under the License.
 namespace stream_executor::sycl {
 
 // This class implements the Event class for SYCL devices.
+// It is not thread-safe and should be used in a single-threaded context.
 class SyclEvent : public Event {
  public:
   Event::Status PollForStatus() override;
 
-  // Waits for the event to complete on the specified stream.
+  // Submits a dependency on event to stream_handle so subsequent work
+  // on that stream waits for event to complete. If event is already
+  // complete at call time, returns immediately without submitting any work
+  // to stream_handle.
+  // TODO(intel-tf): Remove unused executor parameter.
   static absl::Status WaitStreamOnEvent(StreamExecutor* executor,
                                         ::sycl::queue* stream_handle,
                                         const ::sycl::event& event);
@@ -41,7 +46,11 @@ class SyclEvent : public Event {
   // constructed ::sycl::event that has no dependencies and associated commands.
   static absl::StatusOr<SyclEvent> Create(StreamExecutor* executor);
 
+  // Returns the underlying SYCL event. Not thread-safe.
   ::sycl::event GetEvent() const { return event_; }
+
+  // Sets the underlying SYCL event. Not thread-safe.
+  void SetEvent(const ::sycl::event& event) { event_ = event; }
 
   // We don't need a destructor for ::sycl::event since it is handled by the
   // SYCL runtime.
@@ -61,6 +70,8 @@ class SyclEvent : public Event {
   StreamExecutor* executor_;
 
   // The underlying SYCL event.
+  // TODO(intel-tf): Use std::optional<::sycl::event> to represent an
+  // unrecorded event.
   ::sycl::event event_;
 };
 

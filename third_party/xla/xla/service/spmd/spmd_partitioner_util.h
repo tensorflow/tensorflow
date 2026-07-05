@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -64,8 +65,8 @@ ConvolutionDimensionNumbers GenNewConvDNums(
     const HloInstruction* dot_rhs, int64_t lhs_concat_dim,
     int64_t rhs_concat_dim, bool windowed_at_contracting_dims,
     bool windowed_at_batch_dims,
-    const std::vector<int64_t>& lhs_to_output_indices,
-    const std::vector<int64_t>& rhs_to_output_indices,
+    absl::Span<const int64_t> lhs_to_output_indices,
+    absl::Span<const int64_t> rhs_to_output_indices,
     const Shape& new_dot_shape);
 
 template <typename T>
@@ -439,8 +440,8 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
                                    const HloSharding& target);
 
 // Returns whether the resharding can be done via collective-permute.
-bool CanReshardWithCollectivePermute(const HloSharding& source,
-                                     const HloSharding& target);
+bool CanReshardWithCollectivePermute(const HloSharding& source_input,
+                                     const HloSharding& target_input);
 
 // Returns a new GroupedSharding that has the same group definition of
 // `reference`.
@@ -510,7 +511,8 @@ std::optional<HloInstruction*> PadFromPartialReplicateShape(
 // target_tile_dims by dynamic slice, return std::nullopt.
 // If target_sharding is already compatible, returns it.
 std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
-    const HloSharding& partial_sharding, const HloSharding& target_sharding);
+    const HloSharding& raw_partial_sharding,
+    const HloSharding& raw_target_sharding);
 
 // Do left halo exchange if all-reduce directly from tile sharding to partial
 // replicate sharding will remove useful data from the source.
@@ -597,18 +599,25 @@ HloInstruction* PadDataFromWindowReshard(
 // collective) from the sharding and provided replication_dims. Will prioritize
 // generating V3 format and fallback to V2 or V1 if needed.
 std::unique_ptr<CollectiveDeviceListBase> GetPartitionGroupsForReplication(
-    const HloSharding& sharding, absl::Span<const int64_t> replication_dims);
+    const HloSharding& sharding, absl::Span<const int64_t> replication_dims,
+    bool enable_rgv3 = true);
 
 // Generates partition groups (groups of devices that will communicate via a
 // collective) across provided target dims with provided group sizes.
 std::unique_ptr<CollectiveDeviceListBase> GetPartitionGroupsAcrossTargetDims(
     const HloSharding& sharding, absl::Span<const int64_t> target_dims,
-    absl::Span<const int64_t> group_sizes);
+    absl::Span<const int64_t> group_sizes, bool enable_rgv3 = true);
 
 // Expands partition group list across all replicas. Expects that provided
 // partition_group_list utilizes all the partitions.
 IotaReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
-    IotaReplicaGroupList partition_group_list, int64_t num_replicas,
+    const IotaReplicaGroupList& partition_group_list, int64_t num_replicas,
+    int64_t num_partitions);
+
+// Expands partition group list across all replicas. Expects that provided
+// partition_group_list utilizes all the partitions.
+MeshAxesReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
+    const MeshAxesReplicaGroupList& partition_group_list, int64_t num_replicas,
     int64_t num_partitions);
 
 namespace detail {
@@ -891,20 +900,19 @@ absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
       0, ShapeUtil::MakeShape(F32, {}), "input"));
   HloComputation* temp_entry = fake_module.AddEntryComputation(temp_b.Build());
 
-  TF_ASSIGN_OR_RETURN(SpmdPartitioningVisitor * visitor,
-                      detail::FindSpmdPartitioningVisitor(
-                          std::forward<Args>(partition_method_args)...));
+  ASSIGN_OR_RETURN(SpmdPartitioningVisitor * visitor,
+                   detail::FindSpmdPartitioningVisitor(
+                       std::forward<Args>(partition_method_args)...));
   SpmdPartitioner* partitioner = visitor->partitioner();
   std::unique_ptr<SpmdPartitioningVisitor> fake_visitor = visitor->Clone();
   fake_visitor->set_module(&fake_module);
   auto* fake_b = fake_visitor->builder();
   fake_b->set_visiting_hlo(temp_p);
   auto parameter_count = std::make_unique<int>(0);
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * new_hlo,
-      partition_method(detail::ArgModifier(
-          std::forward<Args>(partition_method_args), &fake_module,
-          parameter_count.get(), fake_visitor.get())...));
+  ASSIGN_OR_RETURN(HloInstruction * new_hlo,
+                   partition_method(detail::ArgModifier(
+                       std::forward<Args>(partition_method_args), &fake_module,
+                       parameter_count.get(), fake_visitor.get())...));
 
   if (new_hlo == nullptr) {
     return std::make_pair(INT64_MAX, INT64_MAX);
@@ -923,8 +931,8 @@ absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
   fake_module.ReplaceComputations(replacement);
 
   HloDCE hlo_dce;
-  TF_ASSIGN_OR_RETURN(
-      auto _, hlo_dce.Run(&fake_module, partitioner->execution_threads()));
+  ASSIGN_OR_RETURN(auto _,
+                   hlo_dce.Run(&fake_module, partitioner->execution_threads()));
   (void)_;  // Suppress unused variable warning in OSS
   VLOG(5) << "Dry-run partitioning for op: " << original_hlo->ToString() << "\n"
           << fake_module.ToString();

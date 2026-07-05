@@ -50,10 +50,10 @@ class DecodeRawOp : public OpKernel {
         str_size = in_str.size();
       } else {
         OP_REQUIRES(context, str_size == in_str.size(),
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "DecodeRaw requires input strings to all be the same "
                         "size, but element ",
-                        i, " has size ", str_size, " != ", in_str.size()));
+                        i, " has size ", str_size, " != ", in_str.size())));
       }
     }
     TensorShape out_shape = input.shape();
@@ -64,11 +64,11 @@ class DecodeRawOp : public OpKernel {
                                                        &output_tensor));
       return;
     }
-    OP_REQUIRES(
-        context, str_size % sizeof(T) == 0,
-        errors::InvalidArgument("Input to DecodeRaw has length ", str_size,
-                                " that is not a multiple of ", sizeof(T),
-                                ", the size of ", DataTypeString(out_type_)));
+    OP_REQUIRES(context, str_size % sizeof(T) == 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input to DecodeRaw has length ", str_size,
+                                 " that is not a multiple of ", sizeof(T),
+                                 ", the size of ", DataTypeString(out_type_))));
     const int64_t added_dim = str_size / sizeof(T);
     OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(added_dim));
     Tensor* output_tensor = nullptr;

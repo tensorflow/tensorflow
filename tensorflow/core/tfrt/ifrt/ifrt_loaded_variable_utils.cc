@@ -101,7 +101,7 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
     const VariableDeviceShardingConfig& sharding_config,
     const xla::ifrt::LayoutRef& xla_input_layout,
-    std::shared_ptr<xla::Shape> shape_on_device,
+    std::shared_ptr<const xla::Shape> shape_on_device,
     const xla::ifrt::DeviceListRef& device_list) {
   IfrtLoadedVariableRegistry::Key key{
       .device_ids = sharding_config.device_ids,

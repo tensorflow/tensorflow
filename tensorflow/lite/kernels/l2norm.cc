@@ -50,7 +50,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  TF_LITE_ENSURE(context, NumDimensions(input) <= 4);
+  TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
   TF_LITE_ENSURE(context, output->type == kTfLiteFloat32 ||
                               output->type == kTfLiteUInt8 ||

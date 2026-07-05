@@ -148,6 +148,7 @@ TEST(PjRtCApiClientTest, CreateErrorBuffer) {
                           GetCApiClient("cpu"));
 
   absl::Status error = absl::InternalError("Test Error");
+  error.SetPayload("test_key", absl::Cord("test_payload_value"));
   Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -157,6 +158,8 @@ TEST(PjRtCApiClientTest, CreateErrorBuffer) {
   absl::Status awaited_status = error_buffer->GetReadyFuture().Await();
   EXPECT_TRUE(absl::IsInternal(awaited_status));
   EXPECT_THAT(awaited_status.message(), HasSubstr("Test Error"));
+  EXPECT_EQ(awaited_status.GetPayload("test_key"),
+            absl::Cord("test_payload_value"));
 }
 
 TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
@@ -1034,6 +1037,32 @@ TEST(PjRtCApiClientTest, Bitcast) {
   TF_ASSERT_OK_AND_ASSIGN(auto shared_literal, future.Await());
   std::vector<int32_t> expected = {3};
   EXPECT_EQ(shared_literal->data<int32_t>(), expected);
+}
+
+TEST(PjRtCApiClientTest, MakeCanonicalShapeForMemorySpace) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          client->GetTopologyDescription());
+  ASSERT_NE(topology, nullptr);
+
+  Shape input_shape = ShapeUtil::MakeShape(F32, {10, 20});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape canonical_shape,
+      topology->MakeCanonicalShapeForMemorySpace(
+          /*memory_space_kind_id=*/0, input_shape, /*layout=*/nullptr));
+  EXPECT_TRUE(canonical_shape.has_layout());
+
+  Layout specific_layout = LayoutUtil::MakeLayout({0, 1});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape canonical_shape_specific,
+      topology->MakeCanonicalShapeForMemorySpace(
+          /*memory_space_kind_id=*/0, input_shape, &specific_layout));
+  EXPECT_TRUE(canonical_shape_specific.has_layout());
+  EXPECT_EQ(canonical_shape_specific.layout().minor_to_major(),
+            specific_layout.minor_to_major());
 }
 
 }  // namespace

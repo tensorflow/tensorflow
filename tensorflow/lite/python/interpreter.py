@@ -410,6 +410,8 @@ class Interpreter:
       experimental_disable_delegate_clustering=False,
       experimental_default_delegate_latest_features=False,
       experimental_compress_quantization_zero_points=False,
+      experimental_disable_delegate_node_fusion=False,
+      experimental_force_delegate_node_profiling=False,
   ):
     """Constructor.
 
@@ -452,6 +454,12 @@ class Interpreter:
         may enable all flag protected features. Default is False;
       experimental_compress_quantization_zero_points: If true, compress
         quantization zero points in the model. Default is False.
+      experimental_disable_delegate_node_fusion: If true, node fusion
+        (clustering) when partitioning delegated graphs is disabled, forcing
+        single-operator delegated subsets. Default is False.
+      experimental_force_delegate_node_profiling: If true, force TFLite to
+        profile delegated nodes even if the delegate supports per-operator
+        internal profiling. Default is False.
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -504,6 +512,8 @@ class Interpreter:
           int(num_threads or 1),
           experimental_default_delegate_latest_features,
           experimental_compress_quantization_zero_points,
+          experimental_disable_delegate_node_fusion,
+          experimental_force_delegate_node_profiling,
       )
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
@@ -528,6 +538,8 @@ class Interpreter:
           int(num_threads or 1),
           experimental_default_delegate_latest_features,
           experimental_compress_quantization_zero_points,
+          experimental_disable_delegate_node_fusion,
+          experimental_force_delegate_node_profiling,
       )
     elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')

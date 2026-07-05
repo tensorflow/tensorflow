@@ -35,6 +35,9 @@ def Vifrt_Dialect : Dialect {
 
     Version log:
       0.1.0: Initial IFRT IR stability guarantees.
+      0.2.0: Added unreduced to sharding parameter attribute.
+      0.3.0: Added token type.
+      0.4.0: Added CopyArrays with reuse semantics.
   }];
 
   let useDefaultAttributePrinterParser = 0;
@@ -55,7 +58,7 @@ class Vifrt_AttrDef<string name, string min_version, string max_version>
       }] # !if(
         !eq(max_version, "current"),
         [{ return ::xla::ifrt::Version::getCurrentVersion(); }],
-        [{ return ::xla::ifrt::Version("}] # !subst(".", ", ", max_version) # [{"); }]
+        [{ return ::xla::ifrt::Version(}] # !subst(".", ", ", max_version) # [{); }]
       ) # [{
     }
   }];
@@ -81,7 +84,7 @@ def Vifrt_ShardingParameterV1 :
 }
 
 def Vifrt_ShardingParamAttrV1 : Vifrt_AttrDef<"VifrtShardingParamV1", "0.1.0",
-    "current"> {
+    "0.2.0"> {
   let mnemonic = "sharding_param_v1";
   let parameters = (ins Vifrt_ShardingParameterV1:$sharding);
   let assemblyFormat = "`<` $sharding `>`";
@@ -201,6 +204,8 @@ def Vifrt_ArrayV1 : Vifrt_TypeDef<"VifrtArrayV1", "array_v1", "0.1.0", "current"
 }
 
 def Vifrt_ControlV1 : Vifrt_TypeDef<"VifrtControlV1", "control_v1", "0.1.0", "current">;
+
+def Vifrt_TokenV1 : Vifrt_TypeDef<"VifrtTokenV1", "token_v1", "0.3.0", "current">;
 
 // Equivalent of `mlir::FunctionType`, but with stronger type checking.
 def Vifrt_FunctionV1 : Vifrt_TypeDef<"VifrtFunctionV1", "func_v1", "0.1.0", "current"> {

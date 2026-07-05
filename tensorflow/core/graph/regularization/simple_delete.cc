@@ -43,12 +43,14 @@ void RegularizeNodes(GraphDef* graph_def) {
       // Regularize "f" attribute, the function name for PartitionedCall and
       // and StatefulPartitionedCall ops, by stripping the suffix UID if it
       // has one.
-      std::string function_name = node.attr().find("f")->second.func().name();
-      absl::StatusOr<int64_t> uid = GetSuffixUID(function_name);
-      if (uid.ok()) {
-        node.mutable_attr()->find("f")->second.mutable_func()->set_name(
-            std::string(
-                absl::StripSuffix(function_name, std::to_string(*uid))));
+      auto f_attr = node.mutable_attr()->find("f");
+      if (f_attr != node.mutable_attr()->end() && f_attr->second.has_func()) {
+        std::string function_name = f_attr->second.func().name();
+        absl::StatusOr<int64_t> uid = GetSuffixUID(function_name);
+        if (uid.ok()) {
+          f_attr->second.mutable_func()->set_name(
+              absl::StripSuffix(function_name, std::to_string(*uid)));
+        }
       }
       // Erase the "config_proto" attribute which contains device-specific
       // information.
@@ -59,8 +61,13 @@ void RegularizeNodes(GraphDef* graph_def) {
     }
     // Erase the value of string constants, which can vary based on platform.
     if (grappler::IsConstant(node)) {
-      if (node.attr().at("dtype").type() == DT_STRING) {
-        node.mutable_attr()->find("value")->second.clear_value();
+      auto dtype_attr = node.attr().find("dtype");
+      if (dtype_attr != node.attr().end() &&
+          dtype_attr->second.type() == DT_STRING) {
+        auto value_attr = node.mutable_attr()->find("value");
+        if (value_attr != node.mutable_attr()->end()) {
+          value_attr->second.clear_value();
+        }
       }
     }
   }

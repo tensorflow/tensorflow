@@ -21,11 +21,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
+#include "shardy/dialect/sdy/ir/register.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -46,12 +49,12 @@ namespace {
 //
 // Serialization:
 // ```
-// TF_ASSIGN_OR_RETURN(Serialized serialized, Serialize(xla_program));
+// ASSIGN_OR_RETURN(Serialized serialized, Serialize(xla_program));
 // ```
 //
 // Deserialization:
 // ```
-// TF_ASSIGN_OR_RETURN(auto deserialized, Deserialize(serialized));
+// ASSIGN_OR_RETURN(auto deserialized, Deserialize(serialized));
 // auto xla_program = llvm::dyn_cast<HloProgram>(deserialized);
 // ```
 
@@ -88,9 +91,17 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     mlir::OwningOpRef<mlir::ModuleOp> module(
         llvm::cast<mlir::ModuleOp>(program.mlir_module()->clone()));
 
-    // Serialize portable artifact.
+    // Allow mixed serialization for stablehlo dialects.
+    if (version.version_number() >= SerDesVersionNumber(3)) {
+      return xla::SerializeUsingVersionedStablehlo(
+          *module, xla::GetDefaultStablehloVersion(),
+          xla::GetDefaultSdyVersion(),
+          /*inplace=*/false,
+          /*allow_mixed_serialization=*/true);
+    }
     return xla::SerializeUsingVersionedStablehlo(
-        *module, xla::GetDefaultStablehloVersion());
+        *module, xla::GetDefaultStablehloVersion(),
+        xla::GetDefaultSdyVersion());
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
@@ -101,6 +112,10 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     auto context = std::make_unique<mlir::MLIRContext>(
         mlir::MLIRContext::Threading::DISABLED);
     mlir::BaseScopedDiagnosticHandler diagnostic_handler(context.get());
+
+    mlir::DialectRegistry registry;
+    mlir::sdy::registerAllDialects(registry);
+    context->appendDialectRegistry(registry);
 
     mlir::OwningOpRef<mlir::ModuleOp> module =
         mlir::stablehlo::deserializePortableArtifact(serialized, context.get());

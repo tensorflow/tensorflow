@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-mark-ops-for-outside-compilation | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-mark-ops-for-outside-compilation | env FILECHECK_OPTS="" FileCheck %s
 
 func.func @unsupported_op_missing_soft_placement_attribute() -> tensor<i32> {
   %0 = "tf_device.cluster"() ({

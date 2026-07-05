@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
@@ -49,7 +50,8 @@ class ToTFRecordOp : public AsyncOpKernel {
     const Tensor* argument_t;
     TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
     if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
-      return errors::InvalidArgument(argument_name, " must be a scalar");
+      return absl::InvalidArgumentError(
+          absl::StrCat(argument_name, " must be a scalar"));
     }
     *output = argument_t->scalar<T>()();
     return absl::OkStatus();
@@ -103,15 +105,15 @@ class ToTFRecordOp : public AsyncOpKernel {
 
     const int num_output_dtypes = finalized_dataset->output_dtypes().size();
     if (num_output_dtypes != 1) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "ToTFRecordOp currently only support datasets of 1 single column, ",
-          "but got ", num_output_dtypes);
+          "but got ", num_output_dtypes));
     }
     const DataType dt = finalized_dataset->output_dtypes()[0];
     if (dt != DT_STRING) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "ToTFRecordOp currently only supports DT_STRING dataypes, but got ",
-          DataTypeString(dt));
+          DataTypeString(dt)));
     }
     std::vector<Tensor> components;
     components.reserve(num_output_dtypes);

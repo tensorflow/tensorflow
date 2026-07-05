@@ -1,4 +1,4 @@
-// RUN: (! mlir-interpreter-runner %s -run-all 2>&1) | FileCheck %s
+// RUN: not mlir-interpreter-runner %s -run-all 2>&1 | FileCheck %s
 
 func.func @out_of_bounds_load() -> i32 {
   %c3 = arith.constant 3 : index

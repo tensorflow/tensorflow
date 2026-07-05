@@ -201,7 +201,7 @@ TFE_TensorHandle* TestMatrixTensorHandle3X2(TFE_Context* ctx) {
 }
 
 TFE_TensorHandle* TestVariable(TFE_Context* ctx, float value,
-                               const tensorflow::string& device_name) {
+                               const std::string& device_name) {
   TF_Status* status = TF_NewStatus();
   // Create the variable handle.
   TFE_Op* op = TFE_NewOp(ctx, "VarHandleOp", status);
@@ -365,7 +365,7 @@ TFE_Op* AllReduceOp(TFE_Context* ctx, TFE_TensorHandle* in, int group_size) {
 TFE_Op* SendOp(TFE_Context* ctx, TFE_TensorHandle* in,
                const std::string& op_name, const std::string& send_device,
                const std::string& recv_device,
-               tensorflow::uint64 send_device_incarnation) {
+               uint64_t send_device_incarnation) {
   TF_Status* status = TF_NewStatus();
   TFE_Op* op = TFE_NewOp(ctx, op_name.c_str(), status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -386,7 +386,7 @@ TFE_Op* SendOp(TFE_Context* ctx, TFE_TensorHandle* in,
 
 TFE_Op* RecvOp(TFE_Context* ctx, const std::string& op_name,
                const std::string& send_device, const std::string& recv_device,
-               tensorflow::uint64 send_device_incarnation) {
+               uint64_t send_device_incarnation) {
   TF_Status* status = TF_NewStatus();
   TFE_Op* op = TFE_NewOp(ctx, op_name.c_str(), status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -486,8 +486,8 @@ tensorflow::ServerDef GetMultiClientServerDef(const std::string& job_name,
 }
 
 TFE_TensorHandle* CreateVarHandle(TFE_Context* ctx,
-                                  const tensorflow::string& device_name,
-                                  const tensorflow::string& variable_name) {
+                                  const std::string& device_name,
+                                  const std::string& variable_name) {
   TF_Status* status = TF_NewStatus();
   // Create the variable handle.
   TFE_Op* op = TFE_NewOp(ctx, "VarHandleOp", status);
@@ -513,8 +513,8 @@ TFE_TensorHandle* CreateVarHandle(TFE_Context* ctx,
 }
 
 TFE_TensorHandle* CreateVariable(TFE_Context* ctx, float value,
-                                 const tensorflow::string& device_name,
-                                 const tensorflow::string& variable_name) {
+                                 const std::string& device_name,
+                                 const std::string& variable_name) {
   TF_Status* status = TF_NewStatus();
   TFE_TensorHandle* var_handle =
       CreateVarHandle(ctx, device_name, variable_name);

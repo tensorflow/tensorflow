@@ -1,10 +1,10 @@
 path: "tensorflow.Variable.SaveSliceInfo"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.variables.SaveSliceInfo\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "spec"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

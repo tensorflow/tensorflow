@@ -13,23 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
-
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/status/status_matchers.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/cpu/abstract_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/types.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -57,11 +69,15 @@ TEST(TrackedCpuDeviceBufferTest, Basic) {
     definition_event.SetStateConcrete();
   });
 
-  TrackedCpuDeviceBuffer tracked_buffer(buffer, definition_event);
+  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events;
+  definition_events.push_back(PjRtDeviceEventRef(definition_event));
+  AbstractTrackedDeviceBuffer tracked_buffer(
+      buffer, std::move(definition_events), true);
 
-  BlockUntilReady(tracked_buffer.definition_event().GetAsyncValue());
+  ABSL_ASSERT_OK(tracked_buffer.BlockForOperationsToComplete(memory_space));
 
-  auto result = tracked_buffer.buffer();
+  auto result =
+      tracked_buffer.raw_buffer()->down_cast<CpuRawBuffer>()->buffer();
   ASSERT_TRUE(result.IsAvailable());
   EXPECT_EQ(std::string(static_cast<const char*>(result->untyped_data()),
                         result->size_bytes()),
@@ -84,12 +100,15 @@ TEST(TrackedCpuDeviceBufferTest, BasicError) {
         Internal("tracked_cpu_device_buffer_test error."));
   });
 
-  TrackedCpuDeviceBuffer tracked_buffer(buffer, definition_event);
+  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events;
+  definition_events.push_back(PjRtDeviceEventRef(definition_event));
+  AbstractTrackedDeviceBuffer tracked_buffer(
+      buffer, std::move(definition_events), true);
 
-  BlockUntilReady(tracked_buffer.definition_event().GetAsyncValue());
+  EXPECT_FALSE(tracked_buffer.BlockForOperationsToComplete(memory_space).ok());
 
-  ASSERT_TRUE(tracked_buffer.definition_event().IsError());
-  EXPECT_EQ(tracked_buffer.definition_event().GetError().message(),
+  ASSERT_TRUE(definition_event.IsError());
+  EXPECT_EQ(definition_event.GetError().message(),
             "tracked_cpu_device_buffer_test error.");
 }
 
@@ -105,13 +124,18 @@ TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
   });
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
-  TrackedCpuDeviceBuffer tracked_buffer(
+  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events;
+  definition_events.push_back(PjRtDeviceEventRef(definition_event));
+  AbstractTrackedDeviceBuffer tracked_buffer(
       tsl::MakeRef<CpuRawBuffer>(memory_space, buffer, expected.size(),
                                  /*is_mutable=*/true),
-      definition_event);
-  auto result = tracked_buffer.buffer();
+      std::move(definition_events), true);
+
+  auto result =
+      tracked_buffer.raw_buffer()->down_cast<CpuRawBuffer>()->buffer();
   ASSERT_FALSE(result.IsAvailable());
-  ASSERT_EQ(tracked_buffer.BufferSize(), expected.size());
+  ASSERT_EQ(tracked_buffer.raw_buffer()->GetOnDeviceSizeInBytes(),
+            expected.size());
 
   ThreadPool thread_pool(tsl::Env::Default(), "tracked_buffer_test",
                          /*num_threads=*/4);
@@ -122,11 +146,23 @@ TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
     definition_event.SetStateConcrete();
   });
 
-  BlockUntilReady(tracked_buffer.definition_event().GetAsyncValue());
+  ABSL_ASSERT_OK(tracked_buffer.BlockForOperationsToComplete(memory_space));
 
   EXPECT_EQ(std::string(static_cast<const char*>(result->untyped_data()),
                         result->size_bytes()),
             expected);
+}
+
+TEST(TrackedCpuDeviceBufferTest, PackOrCopyOobWrite) {
+  Shape shape_large = ShapeUtil::MakeShape(S4, {16});
+  std::vector<s4> data(16, s4(1));
+  Literal literal = LiteralUtil::CreateR1<s4>(data);
+
+  std::vector<char> dst(4, 0);
+
+  // Asserts that the mismatched target size triggers the CHECK abort securely.
+  EXPECT_DEATH(PackOrCopy(S4, literal, dst.data(), 4),
+               "Mismatched packed target size in PackOrCopy");
 }
 
 }  // namespace

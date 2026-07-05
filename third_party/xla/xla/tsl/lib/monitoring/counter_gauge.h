@@ -97,10 +97,10 @@ class CounterGauge {
   // never be called. (See `absl::NoDestructor` documentation.)
   //
   // Example:
-  // auto counter_with_label = CounterGauge<1>::MakeStatic(
+  // auto counter_with_label = CounterGauge<1>::NoDestructor(
   //     "/tensorflow/counter", "Tensorflow counter", "MyLabelName");
   template <typename... MetricDefArgs>
-  static absl::NoDestructor<CounterGauge> MakeStatic(
+  static absl::NoDestructor<CounterGauge> NoDestructor(
       MetricDefArgs&&... metric_def_args);
 
   // Retrieves the cell for the specified labels, creating it on demand if
@@ -176,8 +176,8 @@ CounterGauge<NumLabels>* CounterGauge<NumLabels>::New(
 
 template <int NumLabels>
 template <typename... MetricDefArgs>
-absl::NoDestructor<CounterGauge<NumLabels>> CounterGauge<NumLabels>::MakeStatic(
-    MetricDefArgs&&... metric_def_args) {
+absl::NoDestructor<CounterGauge<NumLabels>>
+CounterGauge<NumLabels>::NoDestructor(MetricDefArgs&&... metric_def_args) {
   return absl::NoDestructor<CounterGauge<NumLabels>>(
       MetricDef<MetricKind::kGauge, int64_t, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));

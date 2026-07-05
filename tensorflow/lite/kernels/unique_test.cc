@@ -52,6 +52,28 @@ class UniqueOpModel : public SingleOpModel {
   int output_index_id_;
 };
 
+class PrepareOnlyUniqueOpModel : public SingleOpModel {
+ public:
+  PrepareOnlyUniqueOpModel(const TensorData& input, TensorType output_type,
+                           TensorType index_tensor_type,
+                           TensorType index_out_type) {
+    input_id_ = AddInput(input);
+    output_id_ = AddOutput(output_type);
+    output_index_id_ = AddOutput(index_tensor_type);
+    SetBuiltinOp(BuiltinOperator_UNIQUE, BuiltinOptions_UniqueOptions,
+                 CreateUniqueOptions(builder_, index_out_type).Union());
+    BuildInterpreter({GetShape(input_id_)}, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+ protected:
+  int input_id_;
+  int output_id_;
+  int output_index_id_;
+};
+
 TEST(UniqueOpModelTest, OneElement) {
   UniqueOpModel<float, int32_t> model({TensorType_FLOAT32, {1}},
                                       TensorType_FLOAT32, TensorType_INT32);
@@ -110,6 +132,24 @@ TEST(UniqueOpModelTest, MultipleElements_SomeDuplicates_IndexInt64) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({2, 3, 5, 7}));
   EXPECT_THAT(model.GetIndexesOutput(),
               ElementsAreArray({0, 1, 2, 3, 0, 3, 1}));
+}
+
+TEST(UniqueOpSecurityTest, MismatchedOutputUniqueType) {
+  PrepareOnlyUniqueOpModel model({TensorType_FLOAT32, {7}}, TensorType_INT8,
+                                 TensorType_INT32, TensorType_INT32);
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
+}
+
+TEST(UniqueOpSecurityTest, MismatchedOutputIndexType) {
+  PrepareOnlyUniqueOpModel model({TensorType_FLOAT32, {7}}, TensorType_FLOAT32,
+                                 TensorType_INT8, TensorType_INT32);
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
+}
+
+TEST(UniqueOpSecurityTest, InvalidIndexOutType) {
+  PrepareOnlyUniqueOpModel model({TensorType_FLOAT32, {7}}, TensorType_FLOAT32,
+                                 TensorType_INT8, TensorType_INT8);
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
 }
 
 }  // namespace

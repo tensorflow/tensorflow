@@ -46,9 +46,43 @@ bool IsIdentifierCharacter(char c) {
   return absl::ascii_isalnum(c) || c == '_';
 }
 
+int GetPrecedence(SymbolicExprType type) {
+  switch (type) {
+    case SymbolicExprType::kAdd:
+      return 1;
+    case SymbolicExprType::kMul:
+    case SymbolicExprType::kFloorDiv:
+    case SymbolicExprType::kCeilDiv:
+    case SymbolicExprType::kMod:
+      return 2;
+    default:
+      return 3;
+  }
+}
+
+// Helper to determine if an expression conceptually starts with a negative
+// term. Used to elegantly format `a + (-b)` as `a - b`.
+bool IsNegativeTerm(SymbolicExpr expr) {
+  while (expr.GetType() == SymbolicExprType::kAdd) {
+    expr = expr.GetLHS();
+  }
+  if (expr.GetType() == SymbolicExprType::kConstant) {
+    return expr.GetValue() < 0;
+  }
+  if (expr.GetType() == SymbolicExprType::kMul) {
+    return (expr.GetLHS().GetType() == SymbolicExprType::kConstant &&
+            expr.GetLHS().GetValue() < 0) ||
+           (expr.GetRHS().GetType() == SymbolicExprType::kConstant &&
+            expr.GetRHS().GetValue() < 0);
+  }
+  return false;
+}
+
 void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
                std::optional<int64_t> num_dims,
-               absl::Span<const std::string> var_names) {
+               absl::Span<const std::string> var_names,
+               std::optional<SymbolicExprType> parent_type = std::nullopt,
+               bool is_rhs = false, bool is_rhs_of_minus = false) {
   switch (expr.GetType()) {
     case SymbolicExprType::kConstant:
       os << expr.GetValue();
@@ -81,21 +115,65 @@ void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
     case SymbolicExprType::kFloorDiv:
     case SymbolicExprType::kCeilDiv:
     case SymbolicExprType::kMod: {
+      if (expr.GetType() == SymbolicExprType::kMul) {
+        auto is_minus_one = [](SymbolicExpr e) {
+          return e.GetType() == SymbolicExprType::kConstant &&
+                 e.GetValue() == -1;
+        };
+        if (is_minus_one(expr.GetLHS()) || is_minus_one(expr.GetRHS())) {
+          os << "-";
+          SymbolicExpr other =
+              is_minus_one(expr.GetLHS()) ? expr.GetRHS() : expr.GetLHS();
+          PrintImpl(other, os, num_dims, var_names, SymbolicExprType::kMul,
+                    /*is_rhs=*/false, /*is_rhs_of_minus=*/false);
+          return;
+        }
+      }
       auto bin_op_str = GetBinaryOpString(expr.GetType());
-      os << "(";
-      PrintImpl(expr.GetLHS(), os, num_dims, var_names);
-      os << " " << bin_op_str << " ";
-      PrintImpl(expr.GetRHS(), os, num_dims, var_names);
-      os << ")";
+      int prec = GetPrecedence(expr.GetType());
+      int parent_prec = parent_type ? GetPrecedence(*parent_type) : 0;
+      // Lower precedence always needs parens (e.g., `(a + b) * c`).
+      bool needs_parens = prec < parent_prec;
+      if (prec == parent_prec) {
+        if (*parent_type != expr.GetType()) {
+          // Different operators of the same precedence always need parens
+          // (e.g., `(a % b) * c`).
+          needs_parens = true;
+        } else if (expr.GetType() == SymbolicExprType::kAdd) {
+          // Parens needed on RHS of minus (e.g., `a - (b + c)`).
+          needs_parens = is_rhs_of_minus;
+        } else if (expr.GetType() != SymbolicExprType::kMul) {
+          // Except for mul, parens are needed on RHS (e.g., `a / (b / c)`).
+          needs_parens = is_rhs;
+        }
+      }
+      if (needs_parens) {
+        os << "(";
+      }
+      PrintImpl(expr.GetLHS(), os, num_dims, var_names, expr.GetType(),
+                /*is_rhs=*/false, /*is_rhs_of_minus=*/false);
+      if (expr.GetType() == SymbolicExprType::kAdd &&
+          IsNegativeTerm(expr.GetRHS())) {
+        os << " - ";
+        PrintImpl(-expr.GetRHS(), os, num_dims, var_names, expr.GetType(),
+                  /*is_rhs=*/true, /*is_rhs_of_minus=*/true);
+      } else {
+        os << " " << bin_op_str << " ";
+        PrintImpl(expr.GetRHS(), os, num_dims, var_names, expr.GetType(),
+                  /*is_rhs=*/true, /*is_rhs_of_minus=*/false);
+      }
+      if (needs_parens) {
+        os << ")";
+      }
       return;
     }
     case SymbolicExprType::kMax:
     case SymbolicExprType::kMin: {
       auto bin_op_str = GetBinaryOpString(expr.GetType());
       os << bin_op_str << "(";
-      PrintImpl(expr.GetLHS(), os, num_dims, var_names);
+      PrintImpl(expr.GetLHS(), os, num_dims, var_names, std::nullopt);
       os << ", ";
-      PrintImpl(expr.GetRHS(), os, num_dims, var_names);
+      PrintImpl(expr.GetRHS(), os, num_dims, var_names, std::nullopt);
       os << ")";
       return;
     }
@@ -201,14 +279,22 @@ class SymbolicExprParserImpl {
         }
         lhs =
             CreateSymbolicBinaryOp(SymbolicExprType::kMul, lhs, rhs, context_);
-      } else if (absl::ConsumePrefix(&remaining_str_, "floordiv")) {
+      } else if (absl::StartsWith(remaining_str_, "/") ||
+                 absl::StartsWith(remaining_str_, "floordiv") ||
+                 absl::StartsWith(remaining_str_, "floorDiv")) {
+        absl::string_view prefix =
+            absl::StartsWith(remaining_str_, "/")          ? "/"
+            : absl::StartsWith(remaining_str_, "floordiv") ? "floordiv"
+                                                           : "floorDiv";
+        remaining_str_.remove_prefix(prefix.size());
         SymbolicExpr rhs = ParseFactor();
         if (!rhs) {
           return SymbolicExpr();
         }
         lhs = CreateSymbolicBinaryOp(SymbolicExprType::kFloorDiv, lhs, rhs,
                                      context_);
-      } else if (absl::ConsumePrefix(&remaining_str_, "ceildiv")) {
+      } else if (absl::ConsumePrefix(&remaining_str_, "ceildiv") ||
+                 absl::ConsumePrefix(&remaining_str_, "ceilDiv")) {
         SymbolicExpr rhs = ParseFactor();
         if (!rhs) {
           return SymbolicExpr();
@@ -299,6 +385,14 @@ class SymbolicExprParserImpl {
     SkipWhitespace();
     if (remaining_str_.empty()) {
       return ReportError("Unexpected end of expression");
+    }
+    // Unary minus
+    if (absl::ConsumePrefix(&remaining_str_, "-")) {
+      SymbolicExpr expr = ParseFactor();
+      if (!expr) {
+        return SymbolicExpr();
+      }
+      return -expr;
     }
 
     // Case 1:Function call like max( ... ) or min( ... )
@@ -520,7 +614,7 @@ std::string GetBinaryOpString(SymbolicExprType type) {
     case SymbolicExprType::kMul:
       return "*";
     case SymbolicExprType::kFloorDiv:
-      return "floordiv";
+      return "/";
     case SymbolicExprType::kCeilDiv:
       return "ceildiv";
     case SymbolicExprType::kMod:
@@ -549,11 +643,15 @@ void Print(const SymbolicMap& map, llvm::raw_ostream& os) {
   for (int i = 0; i < map.GetNumDims(); ++i) {
     os << (i > 0 ? ", " : "") << "d" << i;
   }
-  os << ")[";
-  for (int i = 0; i < map.GetNumSymbols(); ++i) {
-    os << (i > 0 ? ", " : "") << "s" << i;
+  os << ")";
+  if (map.GetNumSymbols() > 0) {
+    os << "[";
+    for (int i = 0; i < map.GetNumSymbols(); ++i) {
+      os << (i > 0 ? ", " : "") << "s" << i;
+    }
+    os << "]";
   }
-  os << "] -> (";
+  os << " -> (";
   for (int i = 0; i < map.GetResults().size(); ++i) {
     if (i > 0) {
       os << ", ";
@@ -582,6 +680,36 @@ SymbolicExpr ParseSymbolicExpr(absl::string_view expr_str,
                                mlir::MLIRContext* mlir_context,
                                std::optional<int64_t> num_dims) {
   return ParseSymbolicExprAndAdvance(&expr_str, mlir_context, num_dims);
+}
+
+bool ParseSymbolicExprs(llvm::ArrayRef<std::string> dim_var_names,
+                        llvm::ArrayRef<std::string> symbol_var_names,
+                        llvm::ArrayRef<std::string> expr_strs,
+                        mlir::MLIRContext* mlir_context,
+                        llvm::SmallVectorImpl<SymbolicExpr>& symbolic_exprs) {
+  llvm::DenseMap<llvm::StringRef, SymbolicExpr> variable_map;
+  for (int i = 0; i < dim_var_names.size(); ++i) {
+    variable_map[llvm::StringRef(dim_var_names[i])] =
+        CreateSymbolicVariable(i, mlir_context);
+  }
+  for (int i = 0; i < symbol_var_names.size(); ++i) {
+    variable_map[llvm::StringRef(symbol_var_names[i])] =
+        CreateSymbolicVariable(dim_var_names.size() + i, mlir_context);
+  }
+
+  symbolic_exprs.reserve(expr_strs.size());
+  for (const auto& expr_str : expr_strs) {
+    absl::string_view str_view = expr_str;
+    SymbolicExpr expr =
+        ParseSymbolicExprAndAdvance(&str_view, mlir_context, variable_map);
+    if (!expr) {
+      llvm::errs() << "Failed to parse symbolic expression: " << expr_str
+                   << "\n";
+      return false;
+    }
+    symbolic_exprs.push_back(expr);
+  }
+  return true;
 }
 
 SymbolicExpr ParseSymbolicExprAndAdvance(absl::string_view* expr_str,

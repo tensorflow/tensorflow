@@ -449,7 +449,7 @@ static const uint64_t f64_test_values[][4] = {
 
 class ReducedPrecisionAccuracyTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+          HloPjRtInterpreterReferenceMixin<HloTestBase>>,
       public ::testing::WithParamInterface<int> {
  protected:
   template <typename Fp, typename Uint, int kNumTestcases, int kNumInputs>

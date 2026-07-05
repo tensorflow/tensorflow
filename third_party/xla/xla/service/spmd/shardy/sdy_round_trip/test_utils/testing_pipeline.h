@@ -26,6 +26,8 @@ namespace sdy {
 // removed as part of b/335666088.
 void registerSdyRoundTripTestingPipeline();
 
+void registerTestFlattenCallGraphPipeline();
+
 }  // namespace sdy
 }  // namespace xla
 

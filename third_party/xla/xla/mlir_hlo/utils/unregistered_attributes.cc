@@ -60,11 +60,17 @@ bool IsKnownDiscardableFuncAttribute(std::string_view attr_name) {
 }
 
 bool IsKnownDiscardableOpAttribute(std::string_view attr_name) {
-  static constexpr std::array<std::string_view, 8> kKnownDiscardableAttributes{
-      xla::kBitcastResultLayout, xla::kBitcastSourceLayout,
-      xla::kInfeedLayout,        xla::kMhloFrontendAttributes,
-      xla::kMhloLiteral,         xla::kMhloOriginalValueAttr,
-      xla::kMhloSharding,        xla::kXlaShape,
+  static constexpr std::array<std::string_view, 10> kKnownDiscardableAttributes{
+      xla::kBitcastResultLayout,
+      xla::kBitcastSourceLayout,
+      xla::kInfeedLayout,
+      xla::kMhloFrontendAttributes,
+      xla::kMhloLiteral,
+      xla::kMhloOriginalValueAttr,
+      xla::kMhloOperandMemorySpaces,
+      xla::kMhloResultMemorySpaces,
+      xla::kMhloSharding,
+      xla::kXlaShape,
   };
 
   return std::find(kKnownDiscardableAttributes.begin(),

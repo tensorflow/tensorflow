@@ -27,12 +27,15 @@ limitations under the License.
 #include "google/protobuf/arena.h"
 #include "riegeli/bytes/reader.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/xla.pb.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla::gpu {
 
@@ -73,7 +76,8 @@ class GpuAotCompilationResult : public CompiledModule {
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       se::Platform::Id platform_id,
-      const se::DeviceDescription& device_description) &&
+      const se::DeviceDescription& device_description,
+      const DebugOptions& debug_options) &&
       final;
 
   const HloModule* optimized_module() const final { return hlo_module_.get(); }
@@ -88,6 +92,8 @@ class GpuAotCompilationResult : public CompiledModule {
         GetExecutableProto().executable_abi_version());
   }
 
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const final;
+
  private:
   const GpuExecutableProto& GetExecutableProto() const;
 
@@ -95,13 +101,18 @@ class GpuAotCompilationResult : public CompiledModule {
       std::variant<internal::ArenaAllocatedGpuExecutableProto,
                    GpuExecutableProto>
           gpu_executable_proto,
-      std::shared_ptr<HloModule> hlo_module)
+      std::shared_ptr<HloModule> hlo_module, tsl::Fprint128 hlo_fingerprint,
+      tsl::Fprint128 executable_fingerprint)
       : gpu_executable_proto_(std::move(gpu_executable_proto)),
-        hlo_module_(std::move(hlo_module)) {}
+        hlo_module_(std::move(hlo_module)),
+        hlo_fingerprint_(hlo_fingerprint),
+        executable_fingerprint_(executable_fingerprint) {}
 
   std::variant<internal::ArenaAllocatedGpuExecutableProto, GpuExecutableProto>
       gpu_executable_proto_;
   std::shared_ptr<HloModule> hlo_module_;
+  tsl::Fprint128 hlo_fingerprint_;
+  tsl::Fprint128 executable_fingerprint_;
 };
 
 }  // namespace xla::gpu

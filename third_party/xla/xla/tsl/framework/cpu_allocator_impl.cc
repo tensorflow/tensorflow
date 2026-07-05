@@ -76,61 +76,35 @@ class CPUAllocator : public Allocator {
   std::string Name() override { return "cpu"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    if (num_bytes > static_cast<size_t>(LargeAllocationWarningBytes()) &&
-        single_allocation_warning_count_ < kMaxSingleAllocationWarnings) {
-      ++single_allocation_warning_count_;
-      LOG(WARNING) << "Allocation of " << num_bytes << " exceeds "
-                   << 100 * kLargeAllocationWarningThreshold
-                   << "% of free system memory.";
-    }
+    return AllocateRawCommon(alignment, num_bytes, port::AlignedMalloc);
+  }
 
-    void* p = port::AlignedMalloc(num_bytes,
-                                  static_cast<std::align_val_t>(alignment));
-    if (cpu_allocator_collect_stats) {
-      const std::size_t alloc_size = port::MallocExtension_GetAllocatedSize(p);
-      absl::MutexLock l(mu_);
-      ++stats_.num_allocs;
-      stats_.bytes_in_use += alloc_size;
-      stats_.peak_bytes_in_use =
-          std::max<int64_t>(stats_.peak_bytes_in_use, stats_.bytes_in_use);
-      stats_.largest_alloc_size =
-          std::max<int64_t>(stats_.largest_alloc_size, alloc_size);
+  void* AllocateRawAlignedNew(size_t alignment, size_t num_bytes) override {
+    return AllocateRawCommon(alignment, num_bytes, port::AlignedNew);
+  }
 
-      if (stats_.bytes_in_use > TotalAllocationWarningBytes() &&
-          total_allocation_warning_count_ < kMaxTotalAllocationWarnings) {
-        ++total_allocation_warning_count_;
-        LOG(WARNING) << "Total allocated memory " << stats_.bytes_in_use
-                     << "exceeds " << 100 * kTotalAllocationWarningThreshold
-                     << "% of free system memory";
-      }
-      if (p != nullptr) {
-        AddTraceMe("MemoryAllocation", p, num_bytes, alloc_size);
-      }
-    }
-    return p;
+  void* AllocateRawAlignedNew(
+      size_t alignment, size_t num_bytes,
+      const AllocationAttributes& allocation_attr) override {
+    return AllocateRawAlignedNew(alignment, num_bytes);
   }
 
   void DeallocateRaw(void* ptr) override {
-    if (cpu_allocator_collect_stats) {
-      const std::size_t alloc_size =
-          port::MallocExtension_GetAllocatedSize(ptr);
-      absl::MutexLock l(mu_);
-      stats_.bytes_in_use -= alloc_size;
-      AddTraceMe("MemoryDeallocation", ptr, 0, alloc_size);
-    }
+    DeallocateRawCommon(ptr);
     port::AlignedFree(ptr);
   }
 
   void DeallocateRaw(void* ptr, size_t alignment, size_t num_bytes) override {
-    if (cpu_allocator_collect_stats) {
-      const std::size_t alloc_size =
-          port::MallocExtension_GetAllocatedSize(ptr);
-      absl::MutexLock l(mu_);
-      stats_.bytes_in_use -= alloc_size;
-      AddTraceMe("MemoryDeallocation", ptr, 0, alloc_size);
-    }
+    DeallocateRawCommon(ptr);
     port::AlignedSizedFree(ptr, num_bytes,
                            static_cast<std::align_val_t>(alignment));
+  }
+
+  void DeallocateRawAlignedDelete(void* ptr, size_t alignment,
+                                  size_t num_bytes) override {
+    DeallocateRawCommon(ptr);
+    port::AlignedDelete(ptr, num_bytes,
+                        static_cast<std::align_val_t>(alignment));
   }
 
   void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr,
@@ -190,6 +164,51 @@ class CPUAllocator : public Allocator {
   // statistics are disabled.
   std::atomic<int> single_allocation_warning_count_;
   int total_allocation_warning_count_ TF_GUARDED_BY(mu_);
+
+  void* AllocateRawCommon(size_t alignment, size_t num_bytes,
+                          void* (*alloc_func)(size_t, std::align_val_t)) {
+    if (num_bytes > static_cast<size_t>(LargeAllocationWarningBytes()) &&
+        single_allocation_warning_count_ < kMaxSingleAllocationWarnings) {
+      ++single_allocation_warning_count_;
+      LOG(WARNING) << "Allocation of " << num_bytes << " exceeds "
+                   << 100 * kLargeAllocationWarningThreshold
+                   << "% of free system memory.";
+    }
+
+    void* p = alloc_func(num_bytes, static_cast<std::align_val_t>(alignment));
+    if (cpu_allocator_collect_stats) {
+      const std::size_t alloc_size = port::MallocExtension_GetAllocatedSize(p);
+      absl::MutexLock l(mu_);
+      ++stats_.num_allocs;
+      stats_.bytes_in_use += alloc_size;
+      stats_.peak_bytes_in_use =
+          std::max<int64_t>(stats_.peak_bytes_in_use, stats_.bytes_in_use);
+      stats_.largest_alloc_size =
+          std::max<int64_t>(stats_.largest_alloc_size, alloc_size);
+
+      if (stats_.bytes_in_use > TotalAllocationWarningBytes() &&
+          total_allocation_warning_count_ < kMaxTotalAllocationWarnings) {
+        ++total_allocation_warning_count_;
+        LOG(WARNING) << "Total allocated memory " << stats_.bytes_in_use
+                     << "exceeds " << 100 * kTotalAllocationWarningThreshold
+                     << "% of free system memory";
+      }
+      if (p != nullptr) {
+        AddTraceMe("MemoryAllocation", p, num_bytes, alloc_size);
+      }
+    }
+    return p;
+  }
+
+  void DeallocateRawCommon(void* ptr) {
+    if (cpu_allocator_collect_stats) {
+      const std::size_t alloc_size =
+          port::MallocExtension_GetAllocatedSize(ptr);
+      absl::MutexLock l(mu_);
+      stats_.bytes_in_use -= alloc_size;
+      AddTraceMe("MemoryDeallocation", ptr, 0, alloc_size);
+    }
+  }
 
   CPUAllocator(const CPUAllocator&) = delete;
   void operator=(const CPUAllocator&) = delete;
