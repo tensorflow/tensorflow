@@ -89,6 +89,10 @@ bool IsCheapToRecompute(
     const GraphProperties& properties,
     const std::unordered_map<std::string, const NodeDef*>& name_to_node,
     const OpLevelCostEstimator& estimator) {
+  if (GetCheapToRecomputeOps().count(node.op()) == 0) {
+    return false;
+  }
+
   // Try dynamic cost estimation if input properties are available.
   if (properties.HasInputProperties(node.name())) {
     const auto& input_properties = properties.GetInputProperties(node.name());
@@ -103,8 +107,8 @@ bool IsCheapToRecompute(
     }
   }
 
-  // Fallback to static list for ops without reliable cost estimates.
-  return GetCheapToRecomputeOps().count(node.op()) > 0;
+  // Fallback to the static allowlist when cost estimation is unavailable.
+  return true;
 }
 
 // Find recomputable ops which feed into target nodes.
