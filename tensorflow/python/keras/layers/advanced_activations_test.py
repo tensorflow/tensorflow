@@ -21,6 +21,13 @@ from tensorflow.python.platform import test
 class LeakyReLUTest(test.TestCase):
   """Tests for the LeakyReLU layer."""
 
+  def test_alpha_validation_none(self):
+    """Test that alpha=None raises ValueError."""
+    with self.assertRaisesRegex(
+        ValueError,
+        'The alpha value of a Leaky ReLU layer cannot be None'):
+      advanced_activations.LeakyReLU(alpha=None)
+
   def test_alpha_validation_negative(self):
     """Test that negative alpha raises ValueError."""
     with self.assertRaisesRegex(
