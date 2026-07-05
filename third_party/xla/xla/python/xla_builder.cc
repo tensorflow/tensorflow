@@ -124,17 +124,23 @@ NB_MODULE(_xla_builder, m) {
                  return root ? builder.Build(*root) : builder.Build();
                }),
            "Builds a computation from the contents of the builder.",
-           nb::arg("root") = std::nullopt)
-      .def("GetShape", xla::ValueOrThrowWrapper(&XlaBuilder::GetShape))
+           nb::arg("root") = std::nullopt,
+           nb::sig(
+               "def Build(self, root: XlaOp | None = ...) -> XlaComputation"))
+      .def("GetShape", xla::ValueOrThrowWrapper(&XlaBuilder::GetShape),
+           nb::sig("def GetShape(self, arg: XlaOp, /) -> Shape"))
       .def("build",
            xla::ValueOrThrowWrapper(
                [](XlaBuilder& builder, std::optional<XlaOp> root) {
                  return root ? builder.Build(*root) : builder.Build();
                }),
            "Builds a computation from the contents of the builder.",
-           nb::arg("root") = std::nullopt)
+           nb::arg("root") = std::nullopt,
+           nb::sig(
+               "def build(self, root: XlaOp | None = ...) -> XlaComputation"))
       .def("clear_op_metadata", &XlaBuilder::ClearOpMetadata)
-      .def("get_shape", xla::ValueOrThrowWrapper(&XlaBuilder::GetShape))
+      .def("get_shape", xla::ValueOrThrowWrapper(&XlaBuilder::GetShape),
+           nb::sig("def get_shape(self, arg: XlaOp, /) -> Shape"))
       .def(
           "get_program_shape",
           [](const XlaBuilder& builder,
@@ -142,10 +148,19 @@ NB_MODULE(_xla_builder, m) {
             return ValueOrThrow(root ? builder.GetProgramShape(*root)
                                      : builder.GetProgramShape());
           },
-          nb::arg("root") = std::nullopt)
+          nb::arg("root") = std::nullopt,
+          nb::sig(
+              // clang-format off
+              "def get_program_shape("
+              "self, root: XlaOp | None = ..."
+              ") -> ProgramShape"
+              // clang-format on
+              ))
       .def("is_constant", xla::ValueOrThrowWrapper(&XlaBuilder::IsConstant))
-      .def("set_op_metadata", &XlaBuilder::SetOpMetadata)
-      .def("set_sharding", &XlaBuilder::SetSharding)
+      .def("set_op_metadata", &XlaBuilder::SetOpMetadata,
+           nb::sig("def set_op_metadata(self, arg: object, /) -> None"))
+      .def("set_sharding", &XlaBuilder::SetSharding,
+           nb::sig("def set_sharding(self, arg: OpSharding_Type, /) -> None"))
       .def("clear_sharding", &XlaBuilder::ClearSharding)
       .def("set_frontend_attributes", &XlaBuilder::SetFrontendAttributes)
       .def("clear_frontend_attributes", &XlaBuilder::ClearFrontendAttributes)

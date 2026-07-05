@@ -162,7 +162,7 @@ class IteratorStateReader {
                                   absl::string_view name, absl::string_view key,
                                   Tensor* val) const = 0;
 
-  virtual ~IteratorStateReader() {}
+  virtual ~IteratorStateReader() = default;
 };
 
 // Interface for writing values to a key-value store.
@@ -197,7 +197,7 @@ class IteratorStateWriter {
                                    absl::string_view key,
                                    const Tensor& val) = 0;
 
-  virtual ~IteratorStateWriter() {}
+  virtual ~IteratorStateWriter() = default;
 
  protected:
   // Accessible only through derived concrete class's copy/move constructors
@@ -240,7 +240,7 @@ class GraphDefBuilderWrapper {
     val_t.scalar<T>()() = val;
     AddTensorInternal(val_t, output);
     if (*output == nullptr) {
-      return errors::Internal("AddScalar: Failed to build Const op.");
+      return absl::InternalError("AddScalar: Failed to build Const op.");
     }
     return absl::OkStatus();
   }
@@ -259,7 +259,7 @@ class GraphDefBuilderWrapper {
     }
     AddTensorInternal(val_t, output);
     if (*output == nullptr) {
-      return errors::Internal("AddVector: Failed to build Const op.");
+      return absl::InternalError("AddVector: Failed to build Const op.");
     }
     return absl::OkStatus();
   }
@@ -272,7 +272,7 @@ class GraphDefBuilderWrapper {
     }
     AddTensorInternal(val_t, output);
     if (*output == nullptr) {
-      return errors::Internal("AddVector: Failed to build Const op.");
+      return absl::InternalError("AddVector: Failed to build Const op.");
     }
     return absl::OkStatus();
   }
@@ -285,7 +285,7 @@ class GraphDefBuilderWrapper {
   absl::Status AddTensor(const Tensor& val, Node** output) {
     AddTensorInternal(val, output);
     if (*output == nullptr) {
-      return errors::Internal("AddTensor: Failed to build Const op.");
+      return absl::InternalError("AddTensor: Failed to build Const op.");
     }
     return absl::OkStatus();
   }
@@ -298,7 +298,7 @@ class GraphDefBuilderWrapper {
   absl::Status AddPlaceholder(const Tensor& val, Node** output) {
     AddPlaceholderInternal(val, output);
     if (*output == nullptr) {
-      return errors::Internal(
+      return absl::InternalError(
           "AddPlaceholder: Failed to build Placeholder op.");
     }
     return absl::OkStatus();
@@ -405,7 +405,7 @@ class StatsAggregator;
 // `tensorflow::data` symbol on the stack.
 class Runner {
  public:
-  virtual ~Runner() {}
+  virtual ~Runner() = default;
 
   // Runs the given function.
   virtual void Run(const std::function<void()>& f) = 0;
@@ -427,7 +427,7 @@ class Runner {
 // provided by the split provider.
 class SplitProvider {
  public:
-  virtual ~SplitProvider() {}
+  virtual ~SplitProvider() = default;
   // Stores the next split in `*split`, setting `*end_of_splits` to indicate
   // whether there were any splits left.
   virtual absl::Status GetNext(Tensor* split, bool* end_of_splits) = 0;
@@ -603,8 +603,9 @@ class SerializationContext {
       case ExternalStatePolicy::POLICY_FAIL:
         return s;
       default:
-        return errors::InvalidArgument("Unexpected value of external policy: ",
-                                       params_.external_state_policy);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unexpected value of external policy: ",
+                         params_.external_state_policy));
     }
   }
 
@@ -1730,7 +1731,8 @@ absl::Status ParseScalarArgument(OpKernelContext* ctx,
   const Tensor* argument_t;
   TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
   if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
-    return errors::InvalidArgument(argument_name, " must be a scalar");
+    return absl::InvalidArgumentError(
+        absl::StrCat(argument_name, " must be a scalar"));
   }
   *output = argument_t->scalar<T>()();
   return absl::OkStatus();
@@ -1743,7 +1745,8 @@ absl::Status ParseVectorArgument(OpKernelContext* ctx,
   const Tensor* argument_t;
   TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
   if (!TensorShapeUtils::IsVector(argument_t->shape())) {
-    return errors::InvalidArgument(argument_name, " must be a vector");
+    return absl::InvalidArgumentError(
+        absl::StrCat(argument_name, " must be a vector"));
   }
   int size = argument_t->vec<T>().size();
   output->reserve(size);
@@ -1762,8 +1765,8 @@ class DatasetOpKernel : public OpKernel {
       std::string serialized_metadata;
       OP_REQUIRES_OK(ctx, ctx->GetAttr(kMetadata, &serialized_metadata));
       OP_REQUIRES(ctx, metadata_.ParseFromString(serialized_metadata),
-                  errors::InvalidArgument(absl::StrCat(
-                      "Could not parse the 'metadata' attribute.")));
+                  absl::InvalidArgumentError(
+                      "Could not parse the 'metadata' attribute."));
     }
   }
 

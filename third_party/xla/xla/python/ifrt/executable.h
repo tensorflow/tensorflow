@@ -27,12 +27,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/execute_options.pb.h"
@@ -156,7 +158,7 @@ struct ExecuteOptions {
   absl::StatusOr<ExecuteOptionsProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     ExecuteOptionsProto proto;
-    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 
@@ -279,6 +281,22 @@ class LoadedExecutable
     CancellationHandle cancellation_handle;
   };
 
+  // Result from an execution using Bundle.
+  struct ExecuteBundleResult {
+    // Output bundles. If `CompileOptions::outputs_bundle_slices` is unset, all
+    // outputs will be in a single bundle. Otherwise, the output bundles will be
+    // sliced accordingly.
+    std::vector<BundleRef> outputs;
+
+    // Resulting status of the execution. Filled only if
+    // `ExecuteOptions::fill_status` is true.
+    tsl::Future<> status;
+
+    // Handle that can be passed to `CancelExecution` to perform best-effort
+    // cancellation of the enqueued execution. May be `nullptr` in which case
+    // cancellation will be ignored.
+    CancellationHandle cancellation_handle;
+  };
   // Executes the executable on devices.
   //
   // The runtime expects input arrays to be present on the execution devices.
@@ -299,6 +317,10 @@ class LoadedExecutable
   virtual absl::StatusOr<ExecuteResult> Execute(
       absl::Span<ArrayRef> args, const ExecuteOptions& options,
       std::optional<DeviceListRef> devices) = 0;
+
+  // Executes the executable on devices using `Bundle`s.
+  virtual absl::StatusOr<ExecuteBundleResult> ExecuteBundle(
+      absl::Span<BundleRef> args, const ExecuteOptions& options) = 0;
 
   // Returns the list of devices where the executable has been compiled and
   // loaded onto. Returns `std::nullopt` if the executable is not bound to a

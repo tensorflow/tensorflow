@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -71,7 +72,8 @@ const char kCudnnConvolutionFusionHlo[] = R"(
     p1 = f32[16,3,3,16] parameter(1)
     ROOT c = f32[16,54,54,16] convolution(p0, p1),
       window={size=3x3},
-      dim_labels=f01b_i01o->f01b
+      dim_labels=f01b_i01o->f01b,
+      convolution_kind=fprop
   }
 
   ENTRY e {
@@ -81,9 +83,44 @@ const char kCudnnConvolutionFusionHlo[] = R"(
       backend_config={
         "fusion_backend_config": {
           "kind": "__cudnn$fusion",
-          "cudnn_fusion_config": {"kind": "CONV_FPROP"}
         }
       }
+  })";
+
+const char kTritonGemmFusionHlo[] = R"(
+  fusion1 {
+    p0 = f32[3,28,32] parameter(0)
+    p1 = f32[3,28,32] parameter(1)
+    d = f32[3,32,32] dot(p0, p1),
+      lhs_batch_dims={0}, rhs_batch_dims={0},
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  }
+
+  e {
+    p0 = f32[3,28,32] parameter(0)
+    p1 = f32[3,28,32] parameter(1)
+    _ = f32[3,32,32] fusion(p0, p1), kind=kCustom, calls=fusion1,
+      backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
+  })";
+
+const char kScaledDotGemmFusionHlo[] = R"(
+  block_scaled_dot {
+    lhs = f8e4m3fn[256,128] parameter(0)
+    rhs = f8e4m3fn[384,128] parameter(1)
+    lhs_scale = f8e8m0fnu[256,4] parameter(2)
+    rhs_scale = f8e8m0fnu[384,4] parameter(3)
+    ROOT result = f32[256,384] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+        lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  }
+
+  ENTRY main {
+    lhs = f8e4m3fn[256,128] parameter(0)
+    rhs = f8e4m3fn[384,128] parameter(1)
+    lhs_scale = f8e8m0fnu[256,4] parameter(2)
+    rhs_scale = f8e8m0fnu[384,4] parameter(3)
+    ROOT result = f32[256,384] fusion(lhs, rhs, lhs_scale, rhs_scale),
+        kind=kCustom, calls=block_scaled_dot,
+        backend_config={"fusion_backend_config":{kind:"__triton_gemm"}}
   })";
 
 const char kCudnnCustomCallHlo[] = R"(
@@ -108,21 +145,17 @@ const char kCudnnCustomCallHlo[] = R"(
   })";
 
 const char kUnsupportedHlo[] = R"(
-  HloModule module
-
   computation {
-    p0 = bf16[1024,1024]{1,0} parameter(0)
-    convert0 = f32[1024,1024]{1,0} convert(p0)
-    p1 = s8[1024,1024]{1,0} parameter(1)
-    convert1 = f32[1024,1024]{1,0} convert(p1)
-    ROOT dot = f32[1024,1024]{1,0} dot(convert0, convert1),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    p0 = s2[3,3] parameter(0)
+    p1 = s2[3,3] parameter(1)
+    d = s2[3,3] dot(p0, p1),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
   }
 
-  ENTRY main {
-    p0 = bf16[1024,1024]{1,0} parameter(0)
-    p1 = s8[1024,1024]{1,0} parameter(1)
-    ROOT fusion = f32[1024,1024]{1,0} fusion(p0, p1),
+  main {
+    p0 = s2[3,3] parameter(0)
+    p1 = s2[3,3] parameter(1)
+    fusion = s2[3,3] fusion(p0, p1),
       kind=kCustom, calls=computation,
       backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
   })";
@@ -172,6 +205,36 @@ TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnConvolutionFusion) {
   EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(Gt(0))));
 }
 
+TEST_F(CudnnBackendTest, GetSupportedConfigsFromTritonGemmFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kTritonGemmFusionHlo));
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_->GetSupportedConfigs(
+          (*hlo_module->entry_computation()->root_instruction()));
+  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(Gt(0))));
+}
+
+TEST_F(CudnnBackendTest, GetSupportedConfigsFromScaledDotGemmFusion) {
+  se::CudaComputeCapability cc =
+      stream_executor_->GetDeviceDescription().cuda_compute_capability();
+  if (!cc.IsAtLeastBlackwell()) {
+    GTEST_SKIP() << "Block-scaled dot is only supported on Blackwell GPUs.";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kScaledDotGemmFusionHlo));
+  // Test with cudnn_gemm_fusion_level = 0 to ensure it is permanently enabled.
+  DebugOptions debug_options = debug_options_;
+  debug_options.set_xla_gpu_cudnn_gemm_fusion_level(0);
+  CudnnBackend backend(stream_executor_, &debug_options, &compiler_,
+                       &target_config_);
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend.GetSupportedConfigs(
+          (*hlo_module->entry_computation()->root_instruction()));
+  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(Gt(0))));
+}
+
 TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnCustomCall) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kCudnnCustomCallHlo));
@@ -182,7 +245,7 @@ TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnCustomCall) {
 }
 
 TEST_F(CudnnBackendTest,
-       GetSupportedConfigsFromNonCudnnFusionReturnsEmptyVector) {
+       GetSupportedConfigsFromUnsupportedFusionReturnsEmptyVector) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kUnsupportedHlo));
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
@@ -199,8 +262,8 @@ TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnFusion) {
       backend_->GetDefaultConfig(
           (*hlo_module->entry_computation()->root_instruction()));
   TF_ASSERT_OK(config);
-  CudnnBackendConfig algorithm_config;
-  ASSERT_TRUE(config->get()->UnpackTo(&algorithm_config));
+  ASSERT_TRUE((*config)->has_algorithm());
+  CudnnBackendConfig algorithm_config = (*config)->algorithm();
   EXPECT_GE(algorithm_config.algo_id(), 0);
 }
 
@@ -211,8 +274,8 @@ TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnCustomCall) {
       backend_->GetDefaultConfig(
           (*hlo_module->entry_computation()->root_instruction()->operand(0)));
   TF_ASSERT_OK(config);
-  CudnnBackendConfig algorithm_config;
-  ASSERT_TRUE(config->get()->UnpackTo(&algorithm_config));
+  ASSERT_TRUE((*config)->has_algorithm());
+  CudnnBackendConfig algorithm_config = (*config)->algorithm();
   EXPECT_EQ(algorithm_config.algo_id(), -1);
 }
 
@@ -236,11 +299,28 @@ TEST_F(CudnnBackendTest, ApplyConfigToCudnnFusion) {
   config.set_algo_id(1);
   HloInstruction* fusion_instr =
       hlo_module->entry_computation()->root_instruction();
-  google::protobuf::Any any;
-  any.PackFrom(config);
-  TF_ASSERT_OK(backend_->ApplyConfig(*fusion_instr, any));
+  BackendConfig backend_config;
+  *backend_config.mutable_algorithm() = config;
+  TF_ASSERT_OK(backend_->ApplyConfig(*fusion_instr, backend_config));
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           fusion_instr->backend_config<GpuBackendConfig>());
+  EXPECT_EQ(gpu_config.fusion_backend_config().cudnn_fusion_config().plan_id(),
+            1);
+}
+
+TEST_F(CudnnBackendTest, ApplyConfigToTritonGemmFusionSetsCudnnKind) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kTritonGemmFusionHlo));
+  CudnnBackendConfig config;
+  config.set_algo_id(1);
+  HloInstruction* fusion_instr =
+      hlo_module->entry_computation()->root_instruction();
+  BackendConfig backend_config;
+  *backend_config.mutable_algorithm() = config;
+  TF_ASSERT_OK(backend_->ApplyConfig(*fusion_instr, backend_config));
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                          fusion_instr->backend_config<GpuBackendConfig>());
+  EXPECT_EQ(gpu_config.fusion_backend_config().kind(), kCuDnnFusionKind);
   EXPECT_EQ(gpu_config.fusion_backend_config().cudnn_fusion_config().plan_id(),
             1);
 }
@@ -252,9 +332,9 @@ TEST_F(CudnnBackendTest, ApplyConfigToCudnnCustomCall) {
   config.set_algo_id(1);
   HloInstruction* instr =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  google::protobuf::Any any;
-  any.PackFrom(config);
-  TF_ASSERT_OK(backend_->ApplyConfig(*instr, any));
+  BackendConfig backend_config;
+  *backend_config.mutable_algorithm() = config;
+  TF_ASSERT_OK(backend_->ApplyConfig(*instr, backend_config));
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           instr->backend_config<GpuBackendConfig>());
   EXPECT_THAT(gpu_config.cudnn_conv_backend_config().algorithm(),
@@ -269,9 +349,9 @@ TEST_F(CudnnBackendTest, ApplyConfigToCudnnCustomCallWithWorkspace) {
   config.mutable_workspace_size()->set_value(1024);
   HloInstruction* instr =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  google::protobuf::Any any;
-  any.PackFrom(config);
-  TF_ASSERT_OK(backend_->ApplyConfig(*instr, any));
+  BackendConfig backend_config;
+  *backend_config.mutable_algorithm() = config;
+  TF_ASSERT_OK(backend_->ApplyConfig(*instr, backend_config));
 
   auto* replaced_instr =
       hlo_module->entry_computation()->GetInstructionWithName("cudnn-conv");

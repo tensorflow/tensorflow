@@ -467,3 +467,18 @@ func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> () {
   %3 = "mhlo.outfeed"(%0, %1, %2) <{infeed_config = "", layout = [[1, 0]]}> {mhlo.sharding = "{manual}"} : (tensor<4xf32>, tensor<4xf32>, !mhlo.token) -> !mhlo.token
   return
 }
+
+// -----
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main() -> tensor<4xf32> {
+  // CHECK-NEXT: %after-all.1 = token[] after-all(), sharding={manual}
+  // CHECK-NEXT: %recv.1 = (f32[4], u32[], token[]) recv(%after-all.1), channel_id=1, is_host_transfer=true, sharding={{[{][{]manual}, {manual}, {replicated[}][}]}}
+  // CHECK-NEXT: %recv-done.1 = (f32[4], token[]) recv-done(%recv.1), channel_id=1, is_host_transfer=true, sharding={{[{][{]manual}, {replicated[}][}]}}
+  // CHECK-NEXT: ROOT %get-tuple-element.{{[0-9]+}} = f32[4] get-tuple-element(%recv-done.1), index=0, sharding={manual}
+  // CHECK-NEXT: %get-tuple-element.{{[0-9]+}} = token[] get-tuple-element(%recv-done.1), index=1, sharding={replicated}
+  %0 = stablehlo.create_token {mhlo.sharding = "{manual}", xla_shape = "token[]"} : !stablehlo.token
+  %1:2 = "stablehlo.recv"(%0) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 3>, is_host_transfer = true}> {mhlo.sharding = "{{manual}, {replicated}}"} : (!stablehlo.token) -> (tensor<4xf32>, !stablehlo.token)
+  return %1#0 : tensor<4xf32>
+}
+

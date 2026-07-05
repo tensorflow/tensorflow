@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace xla {
 
-std::optional<absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>> MockFactory(
+std::optional<absl::StatusOr<PjRtRawBufferRef>> MockFactory(
     PjRtBuffer* buffer) {
   if (buffer == nullptr) {
     return std::nullopt;

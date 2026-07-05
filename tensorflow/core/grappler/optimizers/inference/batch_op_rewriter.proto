@@ -50,6 +50,11 @@ message BatchOpRewriteConfig {
     // can only be set to 0.
     optional int32 num_batch_threads = 1;
 
+    // Number of batch threads for processing warmup requests. Warmup batch
+    // threads run in a separate thread pool from the main batch threads and
+    // have negligible overhead.
+    optional int32 num_warmup_batch_threads = 8;
+
     // The maximum allowed batch size. Can be larger than allowed_batch_sizes to
     // utilize large batch splitting.
     optional int32 max_batch_size = 2;
@@ -75,7 +80,14 @@ message BatchOpRewriteConfig {
     optional AdaptiveBatchSchedulerOption adaptive_batch_scheduler_option = 7;
   }
 
-  // The options for overriding BatchFunction op in specific models.
+  // The options for overriding BatchFunction op in all models.
+  //
+  // When these BatchOptions are set, they will override the batching options
+  // for all models on the server.
+  BatchOptions global_batch_options = 9;
+
+  // The options for overriding BatchFunction op in specific models. These
+  // options take precedence over global_batch_options.
   //
   // When these BatchOptions are set for a given model, they will override the
   // models original batching options.

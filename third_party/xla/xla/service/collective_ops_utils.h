@@ -85,10 +85,15 @@ std::optional<Literal> GetReductionIdentity(ReductionKind kind,
 absl::StatusOr<std::vector<int>> GetParticipatingIDs(
     CollectiveOpGroupMode group_mode, int current_id,
     std::optional<int> total_participant_count,
-    absl::Span<const ReplicaGroup> groups);
+    absl::Span<const ReplicaGroup> replica_groups);
+
+absl::StatusOr<std::vector<int>> GetParticipatingIDs(
+    CollectiveOpGroupMode group_mode, int current_id,
+    std::optional<int> total_participant_count,
+    const CollectiveDeviceListBase& groups);
 
 // Returns the replica groups for the given async collective instruction.
-absl::StatusOr<std::vector<std::vector<int64_t>>> GetAsyncReplicaGroups(
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>> GetAsyncReplicaGroups(
     const HloInstruction* instruction);
 
 // Returns the group formation mode of instr, assuming that instr is, or is
@@ -207,6 +212,19 @@ bool IsCollective(const HloInstruction* instruction);
 // Returns true if instruction is an async collective op.
 absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction);
 
+// Returns true if instruction is a RaggedAllToAll op or an async-start that
+// wraps a RaggedAllToAll op.
+bool IsRaggedAllToAllOrAsyncStartRaggedAllToAll(
+    const HloInstruction* instruction);
+
+// Returns true if instruction is a RaggedAllToAll op or an async-done that
+// wraps a RaggedAllToAll op.
+bool IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(
+    const HloInstruction* instruction);
+
+// Returns true if the one-shot RaggedAllToAll with NCCL feature is enabled.
+bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts);
+
 // Returns the collective instruction if argument is a collective op (or a
 // collective fusion) with channel_id.
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
@@ -310,6 +328,24 @@ inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
 
 int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode);
+
+class NcclSymmetricBuffersSpec {
+ public:
+  explicit NcclSymmetricBuffersSpec(const DebugOptions& debug_options);
+
+  bool IsEnabled(const HloInstruction& inst) const;
+
+ private:
+  struct Filter {
+    DebugOptions::CollectiveOpType collective;
+    std::optional<int64_t> max_size_bytes;
+    std::optional<PrimitiveType> op_type;
+  };
+  std::vector<Filter> filters_;
+};
+
+bool IsNcclSymmetricBuffersEnabledForCollective(
+    const HloInstruction* instruction, const DebugOptions& opts);
 
 }  // end namespace xla
 

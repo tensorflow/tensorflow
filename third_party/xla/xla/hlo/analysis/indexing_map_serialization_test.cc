@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/test.h"
 
@@ -70,7 +71,7 @@ TEST_F(IndexingMapSerializationTest, DimsOnly) {
 
 TEST_F(IndexingMapSerializationTest, SymbolsOnly) {
   ParseAndCheck(R"(
-    ()[s0, s1] -> (s0 floordiv s1),
+    ()[s0, s1] -> (s0 / s1),
     domain:
     s0 in [0, 3],
     s1 in [0, 4]
@@ -88,7 +89,7 @@ TEST_F(IndexingMapSerializationTest, RuntimeOnly) {
 
 TEST_F(IndexingMapSerializationTest, DimsAndRuntime) {
   ParseAndCheck(R"(
-    (d0){r0, r1} -> (d0 floordiv r0 + r1),
+    (d0){r0, r1} -> (d0 / r0 + r1),
     domain:
     d0 in [0, 3],
     r0 in [1, 1],
@@ -151,7 +152,7 @@ TEST_F(IndexingMapSerializationTest, DimRangesRuntimeAndConstraints) {
 
 TEST_F(IndexingMapSerializationTest, Int64Bounds) {
   ParseAndCheck(R"(
-    (bl_x) -> (bl_x floordiv 100663296),
+    (bl_x) -> (bl_x / 100663296),
     domain:
     bl_x in [0, 2415919103]
   )");
@@ -159,13 +160,23 @@ TEST_F(IndexingMapSerializationTest, Int64Bounds) {
 
 TEST_F(IndexingMapSerializationTest, AffineExprsWithParens) {
   ParseAndCheck(R"(
-    (d0, d1)[s0, s1] -> ((d0 + d0 mod 3) floordiv 3
+    (d0, d1)[s0, s1] -> ((d0 + d0 mod 3) / 3
       + s0 + (s0 * 2) mod 3 + (d0 + s0) mod 3),
     domain:
     d0 in [0, 9],
     d1 in [0, 19],
     s0 in [0, 29],
     s1 in [0, 39]
+  )");
+}
+
+TEST_F(IndexingMapSerializationTest, MinMaxExpressions) {
+  ParseAndCheck(R"(
+    (d0, d1)[s0] -> (min(d0, 5), max(d1, s0)),
+    domain:
+    d0 in [0, 9],
+    d1 in [0, 9],
+    s0 in [0, 9]
   )");
 }
 
@@ -186,23 +197,24 @@ TEST_F(IndexingMapSerializationTest, CustomNames) {
   )");
 }
 
-TEST_F(IndexingMapSerializationTest, AffineMapPrinterTest) {
-  mlir::AffineExpr d0, d1, s0, s1, r0, r1;
-  mlir::bindDims(&mlir_context_, d0, d1);
-  mlir::bindSymbols(&mlir_context_, s0, s1, r0, r1);
+TEST_F(IndexingMapSerializationTest, SymbolicMapPrinterTest) {
+  SymbolicExpr d0 = CreateDimExpr(0, &mlir_context_);
+  SymbolicExpr d1 = CreateDimExpr(1, &mlir_context_);
+  SymbolicExpr s0 = CreateSymbolExpr(0, 2, &mlir_context_);
+  SymbolicExpr s1 = CreateSymbolExpr(1, 2, &mlir_context_);
+  SymbolicExpr r0 = CreateSymbolExpr(2, 2, &mlir_context_);
+  SymbolicExpr r1 = CreateSymbolExpr(3, 2, &mlir_context_);
 
-  // (d0, d1)[s0, s1]{r0, r1} ->
-  //   (d0 + d1 floordiv 8 - r0 * 64, s0 + s1 mod 16 + r1).
-  auto map = mlir::AffineMap::get(
-      2, 4, {d0 + d1.floorDiv(8) - r0 * 64, s0 + s1 % 16 + r1}, &mlir_context_);
+  auto map = SymbolicMap::Get(&mlir_context_, 2, 4,
+                              {d0 + d1 / 8 - r0 * 64, s0 + s1 % 16 + r1});
   EXPECT_THAT(ToString(map, {"offset", "d1"}, {"s0", "linear_index"},
                        {"gpu_index", "r1"}),
               HasSubstr("(offset, d1)[s0, linear_index]{gpu_index, r1} -> "
-                        "(offset + d1 floordiv 8 - gpu_index * 64, s0 + "
+                        "(offset + d1 / 8 - gpu_index * 64, s0 + "
                         "linear_index mod 16 + r1)"));
-  EXPECT_THAT(ToString(map),
-              HasSubstr("(d0, d1)[s0, s1, s2, s3] -> "
-                        "(d0 + d1 floordiv 8 - s2 * 64, s0 + s1 mod 16 + s3)"));
+  EXPECT_THAT(ToString(map, {"d0", "d1"}, {"s0", "s1"}, {"s2", "s3"}),
+              HasSubstr("(d0, d1)[s0, s1]{s2, s3} -> "
+                        "(d0 + d1 / 8 - s2 * 64, s0 + s1 mod 16 + s3)"));
 }
 
 }  // namespace

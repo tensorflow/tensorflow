@@ -70,8 +70,9 @@ static absl::Status ReadOpHistory(Env* env, const std::string& file,
           FileNameFromOpName(in_op_history.op(0).name());
       const std::string expected = io::JoinPath(directory, file_tail);
       if (full_file != expected) {
-        return errors::Internal("Expected file paths to match but '", full_file,
-                                "' != '", expected, "'");
+        return absl::InternalError(
+            absl::StrCat("Expected file paths to match but '", full_file,
+                         "' != '", expected, "'"));
       }
       out->emplace_back(file_tail, in_op_history);
     }
@@ -140,8 +141,8 @@ absl::Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
       removed.push_back(*iter);
     }
     if (!removed.empty()) {
-      return errors::InvalidArgument("Error, stable op(s) removed: ",
-                                     absl::StrJoin(removed, ", "));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Error, stable op(s) removed: ", absl::StrJoin(removed, ", ")));
     }
   }
 
@@ -176,8 +177,8 @@ absl::Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
         ++hist;
       } else {
         // Op removed: error.
-        return errors::InvalidArgument("Error, removed op: ",
-                                       SummarizeOpDef(history_op_list.op(0)));
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Error, removed op: ", SummarizeOpDef(history_op_list.op(0))));
       }
     } else {
       // Op match.
@@ -226,9 +227,9 @@ absl::Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
 
   // Error if missing ops.
   if (stable_ops_ == nullptr && hist < in_op_history.size()) {
-    return errors::InvalidArgument(
-        "Error, removed op: ",
-        SummarizeOpDef(in_op_history[hist].second.op(0)));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Error, removed op: ",
+                     SummarizeOpDef(in_op_history[hist].second.op(0))));
   }
 
   // Add remaining new ops.

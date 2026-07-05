@@ -37,8 +37,9 @@ absl::StatusOr<StructuredValue> DecodeElementSpec(
 
   StructuredValue decoded_spec;
   if (!decoded_spec.ParsePartialFromString(encoded_spec)) {
-    return errors::InvalidArgument("Failed to parse element_spec for dataset ",
-                                   dataset_id, ": ", encoded_spec, ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to parse element_spec for dataset ", dataset_id,
+                     ": ", encoded_spec, "."));
   }
   return decoded_spec;
 }
@@ -61,11 +62,11 @@ absl::Status ValidateElementSpec(const std::string& dataset_id,
   differ.set_repeated_field_comparison(MessageDifferencer::AS_SET);
   differ.set_float_comparison(MessageDifferencer::APPROXIMATE);
   if (!differ.Compare(element_spec1, element_spec2)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Datasets with the same ID should have the same structure, got diff ",
         "for dataset ID ", dataset_id, " with different element_spec: ", diff,
         ". To fix this error, make sure you're registering the same dataset ",
-        "with the same ID.");
+        "with the same ID."));
   }
   return absl::OkStatus();
 }
@@ -84,10 +85,10 @@ absl::Status ValidateDatasetMetadata(const std::string& dataset_id,
   differ.set_repeated_field_comparison(MessageDifferencer::AS_SET);
   differ.set_float_comparison(MessageDifferencer::APPROXIMATE);
   if (!differ.Compare(metadata1, metadata2)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Datasets with the same ID should have the same structure, got diff ",
         "for dataset ID ", dataset_id, ": ", diff, ". To fix this error, make ",
-        "sure you're registering the same dataset with the same ID.");
+        "sure you're registering the same dataset with the same ID."));
   }
   return absl::OkStatus();
 }

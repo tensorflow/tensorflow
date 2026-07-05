@@ -414,13 +414,13 @@ absl::Status PartiallyDeclusterPass::Run(
   TF_RETURN_IF_ERROR(
       reduce_device_to_host_copies::PartiallyDeclusterGraph(graph));
   if (options.flib_def == nullptr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "GraphOptimizationPassOptions::flib_def must be set for "
         "PartiallyDeclusterPass.");
   }
   if (options.session_options == nullptr ||
       options.session_options->env == nullptr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "GraphOptimizationPassOptions::session_options::env must be set for "
         "PartiallyDeclusterPass.");
   }

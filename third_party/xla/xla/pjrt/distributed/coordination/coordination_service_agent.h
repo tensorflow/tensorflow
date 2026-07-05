@@ -132,29 +132,22 @@ class CoordinationServiceAgent {
   //              the configured timeout)
   absl::Status Connect();
 
-  // Get the device attributes of tasks from remote tasks in the cluster.
-  const xla::coordination::DeviceInfo& GetClusterDeviceInfo();
-
   // State transition in coordination service agent:
   //
   //               Connect           SetError
   //  DISCONNECTED ------> CONNECTED -------> ERROR
-  //       ^                                  |
-  //       |__________________________________|
-  //                     Reset
 
   CoordinationService::TaskId task_id() const { return task_id_; }
 
   // Watches the status of a remote job.
-  absl::StatusOr<xla::coordination::WatchJobStateResponse> WatchJobState(
+  absl::StatusOr<xla::coordination::WatchTasksResponse> WatchTasks(
       std::optional<int64_t> version_number);
 
   // Note: Cancel the underlying RPC call with `call_opts->StartCancel()` and
   // `call_opts->ClearCancelCallback()`.
-  std::shared_ptr<tsl::CallOptions> WatchJobStateAsync(
+  std::shared_ptr<tsl::CallOptions> WatchTasksAsync(
       std::optional<int64_t> version_number,
-      std::function<
-          void(absl::StatusOr<xla::coordination::WatchJobStateResponse>)>
+      std::function<void(absl::StatusOr<xla::coordination::WatchTasksResponse>)>
           callback);
 
   // Report error to coordination service. This will invoke the error callback.
@@ -178,14 +171,6 @@ class CoordinationServiceAgent {
   //   - FailedPrecondition: Task was in error state (note: agent is still
   //                         shut down forcefully).
   absl::Status Shutdown();
-
-  // Disconnect from the service, and clean up the internal error status.
-  // Possible service errors:
-  //   - Internal: Coordination service has shut down.
-  //   - InvalidArgument: Unexpected task request.
-  //   - FailedPrecondition: task is not in error state/has already
-  //       disconnected.
-  absl::Status Reset();
 
   // Key-value store API.
   // The agent does not need to be connected to utilize the key-value store.
@@ -390,16 +375,15 @@ class CoordinationServiceAgent {
   tsl::StatusCallback error_fn_;
 
   mutable absl::Mutex state_mu_;
-  xla::coordination::CoordinatedTaskState state_ ABSL_GUARDED_BY(state_mu_) =
-      xla::coordination::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
+  xla::coordination::TaskState state_ ABSL_GUARDED_BY(state_mu_) =
+      xla::coordination::TaskState::DISCONNECTED;
   absl::Status status_ ABSL_GUARDED_BY(state_mu_) = absl::OkStatus();
   // Tracks the number of times a barrier has been used, keyed by id.
   absl::flat_hash_map<std::string, int64_t> barrier_counter_
       ABSL_GUARDED_BY(state_mu_);
   absl::flat_hash_set<std::string> ongoing_barriers_ ABSL_GUARDED_BY(state_mu_);
 
-  IncarnationId leader_incarnation_{0};
-  xla::coordination::DeviceInfo cluster_devices_;
+  IncarnationId service_incarnation_{0};
 
   absl::Mutex shutdown_mu_;
   bool shutting_down_ ABSL_GUARDED_BY(shutdown_mu_) = false;

@@ -22,7 +22,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "google/protobuf/text_format.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
+#include "tsl/platform/path.h"
 
 namespace xla::gpu {
 namespace {
@@ -67,10 +70,14 @@ INSTANTIATE_TEST_SUITE_P(
         {"BMG_G21", GpuModel::BMG_G21, true},
         {"H100_PCIE", GpuModel::H100_PCIE, true},
         {"H100_SXM", GpuModel::H100_SXM, true},
+        {"H200", GpuModel::H200, true},
         {"MI200", GpuModel::MI200, true},
         {"P100", GpuModel::P100, true},
+        {"PVC", GpuModel::PVC, true},
         {"V100", GpuModel::V100, true},
         {"GB200", GpuModel::GB200, true},
+        {"GB300", GpuModel::GB300, true},
+        {"RTX6000PRO", GpuModel::RTX6000PRO, true},
     }),
     [](const ::testing::TestParamInfo<GetGpuTargetConfigTest::ParamType>&
            info) { return info.param.test_name; });
@@ -90,6 +97,22 @@ TEST(TargetConfigTest, CompareEqualFromSameProto) {
   ASSERT_OK_AND_ASSIGN(auto config1, GpuTargetConfig::FromProto(config_proto));
   ASSERT_OK_AND_ASSIGN(auto config2, GpuTargetConfig::FromProto(config_proto));
   EXPECT_THAT(config1, ::testing::Eq(config2));
+}
+
+TEST(TargetConfigTest, GetTargetConfigFromFile) {
+  std::string filename =
+      tsl::io::JoinPath(testing::TempDir(), "target_config.textproto");
+  std::string proto_content = R"pb(
+    platform_name: "platform"
+    gpu_device_info { threads_per_block_limit: 5 }
+  )pb";
+  TF_ASSERT_OK(
+      tsl::WriteStringToFile(tsl::Env::Default(), filename, proto_content));
+
+  ASSERT_OK_AND_ASSIGN(GpuTargetConfig config,
+                       GetTargetConfigFromFile(filename));
+  EXPECT_EQ(config.platform_name, "platform");
+  EXPECT_EQ(config.device_description.threads_per_block_limit(), 5);
 }
 
 }  // namespace

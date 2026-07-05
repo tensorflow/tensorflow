@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
@@ -27,6 +28,8 @@ struct ConvertToCommandsOptions {
   CommandExecutor::SynchronizationMode synchronization_mode =
       CommandExecutor::SynchronizationMode::kSerialize;
   bool enable_loop_unroll = false;
+  DebugOptions::CommandBufferUpdateMode command_buffer_update_mode =
+      DebugOptions::ALWAYS_UPDATE;
 };
 
 // Converts thunk sequence to a command buffer cmd sequence.

@@ -231,15 +231,13 @@ CreateOneDnnPrimDesc<kOnednnMatmulConfig>(HloInstruction* instr) {
                               fused_shapes, matmul_config);
 }
 
-void ExecuteOneDnnMatMul(absl::Span<MemrefInfoHandler> arguments,
-                         absl::Span<MemrefInfoHandler> results,
-                         OneDnnMatMulConfig matmul_config,
+void ExecuteOneDnnMatMul(OneDnnMatMulConfig matmul_config,
                          const dnnl::engine& cpu_engine,
                          dnnl::stream& onednn_stream,
-                         OneDnnResources& resources) {
-  MemrefInfo input_minfo(arguments[0].get());
-  MemrefInfo weights_minfo(arguments[1].get());
-  MemrefInfo output_minfo(results[0].get());
+                         OneDnnPrimResources& resources) {
+  MemrefInfo input_minfo(resources.arg_memrefs[0].get());
+  MemrefInfo weights_minfo(resources.arg_memrefs[1].get());
+  MemrefInfo output_minfo(resources.result_memrefs[0].get());
 
   auto input_md = input_minfo.GetOneDnnMemDesc();
   auto weights_md = weights_minfo.GetOneDnnMemDesc();
@@ -267,11 +265,11 @@ void ExecuteOneDnnMatMul(absl::Span<MemrefInfoHandler> arguments,
   }
 
   // Excluding input and weight operands.
-  const int64_t num_fused_operands = arguments.size() - 2;
+  const int64_t num_fused_operands = resources.arg_memrefs.size() - 2;
   std::vector<memory::desc> fused_mds;
   std::vector<void*> fused_bufs;
   for (int64_t i = 0; i < num_fused_operands; ++i) {
-    MemrefInfo operand_minfo(arguments[i + 2].get());
+    MemrefInfo operand_minfo(resources.arg_memrefs[i + 2].get());
     fused_mds.push_back(operand_minfo.GetOneDnnMemDesc());
     fused_bufs.push_back(operand_minfo.Data());
   }
@@ -298,7 +296,7 @@ void ExecuteOneDnnMatMul(absl::Span<MemrefInfoHandler> arguments,
       {DNNL_ARG_DST, resources.dst_mem}};
 
   if (matmul_config.optimization_config().user_scratchpad()) {
-    MemrefInfo scratch_minfo(results[1].get());
+    MemrefInfo scratch_minfo(resources.result_memrefs[1].get());
     auto scratchpad_md = matmul_pd->scratchpad_desc();
     resources.scratch_mem =
         memory(scratchpad_md, cpu_engine, scratch_minfo.Data());

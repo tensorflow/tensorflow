@@ -186,12 +186,22 @@ TfLiteStatus GatherStrings(TfLiteContext* context, const TfLiteTensor* input,
   }
   TF_LITE_ENSURE(context, indices_has_only_positive_elements);
 
-  const PositionT num_strings = GetStringCount(input);
+  TF_LITE_ENSURE(context, input->bytes >= sizeof(int32_t));
+  const int num_strings = GetStringCount(input);
+  TF_LITE_ENSURE(context, num_strings >= 0);
+  TF_LITE_ENSURE(context, input->bytes / sizeof(int32_t) >=
+                              static_cast<size_t>(num_strings) + 2);
   const int num_indexes = NumElements(positions);
 
   for (int i = 0; i < num_indexes; ++i) {
     const PositionT pos = indexes[i];
     TF_LITE_ENSURE(context, pos < num_strings);
+    const int32_t* offsets = reinterpret_cast<const int32_t*>(input->data.raw);
+    const int32_t start_offset = offsets[pos + 1];
+    const int32_t end_offset = offsets[pos + 2];
+    TF_LITE_ENSURE(context, start_offset >= 0);
+    TF_LITE_ENSURE(context, end_offset >= start_offset);
+    TF_LITE_ENSURE(context, end_offset <= input->bytes);
     const auto string_ref = GetString(input, pos);
     buffer.AddString(string_ref.str, string_ref.len);
   }

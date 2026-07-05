@@ -57,7 +57,7 @@ static absl::Status ValidateTensorHandleRemoteDevice(
   if (ctx->remote_device_mgr()->ContainsDevice(device_incarnation)) {
     return absl::OkStatus();
   }
-  return errors::InvalidArgument(
+  return absl::InvalidArgumentError(
       "Resource input tensor contains an invalid device. This might happen "
       "when the client has connected to a different cluster, or some remote "
       "workers have been restarted.");

@@ -155,7 +155,7 @@ class ReductionOp : public OpKernel {
       Tensor out;
       // Special case. Reduces nothing and does not alter the input values.
       if (!out.CopyFrom(data, helper.out_shape())) {
-        ctx->SetStatus(errors::Internal("Error during reduction copy."));
+        ctx->SetStatus(absl::InternalError("Error during reduction copy."));
       }
       ctx->set_output(0, out);
       return;
@@ -220,7 +220,7 @@ class ReductionOp : public OpKernel {
         // all reduced dimensions are last and reuse the 2-D -> 1-D case.
         Tensor data_reshaped;
         OP_REQUIRES(ctx, data_reshaped.CopyFrom(data, helper.data_reshape()),
-                    errors::Internal("Error during reduction copy."));
+                    absl::InternalError("Error during reduction copy."));
         Tensor shuffled;
         OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
                                                helper.shuffled_shape(),
@@ -241,7 +241,7 @@ class ReductionOp : public OpKernel {
     // match between the two shapes.
     Tensor out;
     OP_REQUIRES(ctx, out.CopyFrom(tmp_out, helper.out_shape()),
-                errors::Internal("Error during reduction copy."));
+                absl::InternalError("Error during reduction copy."));
     ctx->set_output(0, out);
   }
 

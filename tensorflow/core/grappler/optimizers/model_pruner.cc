@@ -323,9 +323,9 @@ absl::Status RewriteIdentityNAndInputsOutputs(
           NewIdentityFromIdentityN(i, *node, graph, node_map);
       if (identity.empty()) {
         // Fail early when creating Identity from IdentityN errors.
-        return errors::Internal(
-            "Could not create Identity node from IdentityN node ", node->name(),
-            " at port ", i);
+        return absl::InternalError(
+            absl::StrCat("Could not create Identity node from IdentityN node ",
+                         node->name(), " at port ", i));
       }
       new_identities[i] = identity;
     }
@@ -500,7 +500,7 @@ absl::Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   if (nodes_to_delete.empty() && nodes_to_preserve.empty()) {
-    return errors::Aborted("Nothing to do.");
+    return absl::AbortedError("Nothing to do.");
   }
 
   optimized_graph->Clear();
@@ -528,7 +528,7 @@ absl::Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
           << " nodes from the graph. The graph now contains "
           << optimized_graph->node_size() << " nodes.";
   if (optimized_graph->node_size() > item.graph.node_size()) {
-    return errors::Internal("Pruning increased graph size.");
+    return absl::InternalError("Pruning increased graph size.");
   }
   return absl::OkStatus();
 }

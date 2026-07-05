@@ -42,8 +42,8 @@ class ReplicateHelper {
   // Initialize replicated nodes with nullptr.
   absl::Status InitializeNode(const Node* node, int num_allowed_devices) {
     if (replicated_nodes_map_.find(node) != replicated_nodes_map_.end()) {
-      return errors::InvalidArgument("Node ", node->name(),
-                                     " has been replicated.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Node ", node->name(), " has been replicated."));
     }
     std::vector<Node*> replicated_nodes(num_allowed_devices, nullptr);
     replicated_nodes_map_.emplace(node, std::move(replicated_nodes));
@@ -97,12 +97,12 @@ class ReplicateHelper {
     const std::vector<Node*>& dst_replicated_nodes =
         replicated_nodes_map_.at(edge->dst());
     if (src_replicated_nodes.size() != dst_replicated_nodes.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Nodes assigned to the same composite device should have the "
           "same number of replicated nodes. Found an edge from node ",
           edge->src()->name(), " (", src_replicated_nodes.size(),
           " replicated nodes) to node ", edge->dst()->name(), " (",
-          dst_replicated_nodes.size(), " replicated nodes).");
+          dst_replicated_nodes.size(), " replicated nodes)."));
     }
     for (int i = 0; i < src_replicated_nodes.size(); ++i) {
       Node* dst = dst_replicated_nodes.at(i);
@@ -187,12 +187,12 @@ class ReplicateHelper {
         }
         graph->AddEdge(pack_node, /*x=*/0, dst, edge->dst_input());
       } else {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Dst node should be assigned to an allowed device. Found an "
             "edge from node ",
             edge->src()->name(), " assigned to ",
             edge->src()->assigned_device_name(), " to node ", dst->name(),
-            " assigned to ", dst_device);
+            " assigned to ", dst_device));
       }
     }
     return absl::OkStatus();
@@ -294,8 +294,8 @@ absl::Status ReplicatePerReplicaNodesInFunctionGraph(
     const std::vector<std::string>& allowed_devices =
         *composite_devices.at(it.first);
     if (allowed_devices.empty()) {
-      return errors::InvalidArgument("No allowed device of composite device: ",
-                                     it.first);
+      return absl::InvalidArgumentError(
+          absl::StrCat("No allowed device of composite device: ", it.first));
     }
     absl::flat_hash_map<Node*, int>& cluster_nodes = it.second;
     if (allowed_devices.size() == 1) {
@@ -319,10 +319,10 @@ absl::Status ReplicatePerReplicaNodesInFunctionGraph(
                                               &helper, graph));
 
     if (!cluster_nodes.empty()) {
-      return errors::InvalidArgument(
-          "There are still ", cluster_nodes.size(),
-          " nodes on CompositiveDevice ",
-          cluster_nodes.begin()->first->assigned_device_name());
+      return absl::InvalidArgumentError(
+          absl::StrCat("There are still ", cluster_nodes.size(),
+                       " nodes on CompositiveDevice ",
+                       cluster_nodes.begin()->first->assigned_device_name()));
     }
   }
 

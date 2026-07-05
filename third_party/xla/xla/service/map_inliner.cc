@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -62,7 +63,7 @@ class MapInlinerVisitor : public DfsHloVisitorWithDefault {
 absl::StatusOr<bool> MapInlinerVisitor::Run(HloComputation* computation) {
   changed_ = false;
   computation_ = computation;
-  TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(this));
+  RETURN_IF_ERROR(computation->root_instruction()->Accept(this));
   return changed_;
 }
 
@@ -81,9 +82,9 @@ absl::Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
     if (root.opcode() == HloOpcode::kParameter) {
       // If the root is a parameter, then use the corresponding operand as the
       // result of the computation.
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           map->ReplaceAllUsesWith(map->operands()[root.parameter_number()]));
-      TF_RETURN_IF_ERROR(computation_->RemoveInstruction(map));
+      RETURN_IF_ERROR(computation_->RemoveInstruction(map));
     } else if (root.opcode() == HloOpcode::kConstant) {
       // If the input is a constant then the shape of the constant could be
       // different than the map shape. Hence, a broadcast is needed, else the
@@ -94,7 +95,7 @@ absl::Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
       HloInstruction* constant = computation_->AddInstruction(root.Clone());
       HloInstruction* placed_instruction = computation_->AddInstruction(
           HloInstruction::CreateBroadcast(map->shape(), constant, {}));
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           computation_->ReplaceInstruction(map, placed_instruction));
     } else {
       std::vector<HloInstruction*> params;
@@ -104,7 +105,7 @@ absl::Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
       }
       HloInstruction* placed_instruction = computation_->AddInstruction(
           root.CloneWithNewOperands(map->shape(), params));
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           computation_->ReplaceInstruction(map, placed_instruction));
     }
     changed_ = true;
@@ -120,7 +121,7 @@ absl::StatusOr<bool> MapInliner::RunImpl(
   MapInlinerVisitor visitor(/*computation=*/nullptr);
   bool changed = false;
   for (HloComputation* computation : module->computations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool computation_changed, visitor.Run(computation));
+    ASSIGN_OR_RETURN(bool computation_changed, visitor.Run(computation));
     changed |= computation_changed;
   }
   return changed;

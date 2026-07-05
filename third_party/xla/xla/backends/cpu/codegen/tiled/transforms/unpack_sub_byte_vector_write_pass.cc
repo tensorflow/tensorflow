@@ -175,9 +175,4 @@ class UnpackSubByteVectorWritePass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateUnpackSubByteVectorWritePass() {
-  return std::make_unique<UnpackSubByteVectorWritePass>();
-}
-
 }  // namespace xla::cpu

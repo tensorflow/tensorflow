@@ -3,14 +3,14 @@ tf_class {
   is_instance: "<class \'tensorflow.python.ops.lookup_ops.TextFileInitializer\'>"
   is_instance: "<class \'tensorflow.python.ops.lookup_ops.TableInitializerBase\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "key_dtype"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "value_dtype"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

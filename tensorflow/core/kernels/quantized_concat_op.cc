@@ -88,16 +88,16 @@ class QuantizedConcatOp : public OpKernel {
     float overall_max = std::numeric_limits<float>::lowest();
     for (int i = 0; i < N; ++i) {
       if (input_mins[i].NumElements() != 1) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "input_mins each tensor's num elements must be 1, given num "
             "elements ",
-            input_mins[i].NumElements(), " in index ", i);
+            input_mins[i].NumElements(), " in index ", i));
       }
       if (input_maxes[i].NumElements() != 1) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "input_maxes each tensor's num elements must be 1, given num "
             "elements ",
-            input_maxes[i].NumElements(), " in index ", i);
+            input_maxes[i].NumElements(), " in index ", i));
       }
       const float input_min = input_mins[i].flat<float>()(0);
       const float input_max = input_maxes[i].flat<float>()(0);
@@ -149,20 +149,20 @@ class QuantizedConcatOp : public OpKernel {
       const auto in = values[i];
       const bool in_is_scalar = TensorShapeUtils::IsScalar(in.shape());
       if (!(in.dims() == input_dims || (input_is_scalar && in_is_scalar))) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
             input_shape.DebugString(), " vs. shape[", i,
-            "] = ", in.shape().DebugString());
+            "] = ", in.shape().DebugString()));
       }
       for (int j = 0; j < input_dims; ++j) {
         if (j == concat_dim) {
           continue;
         }
         if (in.dim_size(j) != input_shape.dim_size(j)) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "ConcatOp : Dimensions of inputs should match: shape[0] = ",
               input_shape.DebugString(), " vs. shape[", i,
-              "] = ", in.shape().DebugString());
+              "] = ", in.shape().DebugString()));
         }
       }
       if (in.NumElements() > 0) {
@@ -180,9 +180,9 @@ class QuantizedConcatOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input("concat_dim", &concat_dim_tensor));
     OP_REQUIRES(
         context, TensorShapeUtils::IsScalar(concat_dim_tensor->shape()),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Concat dim tensor should be a scalar integer, but got shape ",
-            concat_dim_tensor->shape().DebugString()));
+            concat_dim_tensor->shape().DebugString())));
     const int32_t concat_dim = concat_dim_tensor->scalar<int32_t>()();
     OpInputList values;
     OP_REQUIRES_OK(context, context->input_list("values", &values));
@@ -190,22 +190,22 @@ class QuantizedConcatOp : public OpKernel {
     OpInputList input_mins;
     OP_REQUIRES_OK(context, context->input_list("input_mins", &input_mins));
     OP_REQUIRES(context, (input_mins.size() == N),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "QuantizedConcatOp : Expected mins input list length ",
-                    input_mins.size(), " to equal values length ", N));
+                    input_mins.size(), " to equal values length ", N)));
     OpInputList input_maxes;
     OP_REQUIRES_OK(context, context->input_list("input_maxes", &input_maxes));
     OP_REQUIRES(context, (input_maxes.size() == N),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "QuantizedConcatOp : Expected maxes input list length ",
-                    input_maxes.size(), " to equal values length ", N));
+                    input_maxes.size(), " to equal values length ", N)));
     const int input_dims = values[0].dims();
     const TensorShape& input_shape = values[0].shape();
     OP_REQUIRES(
         context, (0 <= concat_dim && concat_dim < input_dims),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "ConcatOp : Expected concatenating dimensions in the range [", 0,
-            ", ", input_dims, "), but got ", concat_dim));
+            ", ", input_dims, "), but got ", concat_dim)));
 
     float output_min = std::numeric_limits<float>::max();
     float output_max = std::numeric_limits<float>::lowest();

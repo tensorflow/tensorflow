@@ -162,6 +162,7 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:graph_constructor",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

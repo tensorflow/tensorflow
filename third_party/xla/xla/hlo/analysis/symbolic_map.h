@@ -18,14 +18,16 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <ostream>
 #include <string>
 
 #include "absl/log/check.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 
@@ -67,9 +69,11 @@ inline int64_t GetSymbolIndex(SymbolicExpr expr, int64_t num_dims) {
 class SymbolicMap {
  public:
   SymbolicMap() = default;
-  static SymbolicMap Get(mlir::MLIRContext* ctx, int64_t num_dimensions,
-                         int64_t num_symbols,
-                         llvm::SmallVector<SymbolicExpr> exprs);
+  static SymbolicMap Get(mlir::MLIRContext* ctx, int64_t num_dimensions = 0,
+                         int64_t num_symbols = 0,
+                         llvm::SmallVector<SymbolicExpr> exprs = {});
+  static SymbolicMap GetMultiDimIdentityMap(int64_t num_dimensions,
+                                            mlir::MLIRContext* ctx);
 
   explicit operator bool() const { return ctx_ != nullptr; }
   bool operator!() const { return ctx_ == nullptr; }
@@ -84,8 +88,12 @@ class SymbolicMap {
     return CreateSymbolExpr(idx, num_dimensions_, ctx_);
   }
   int64_t GetNumResults() const { return exprs_.size(); }
-  llvm::ArrayRef<SymbolicExpr> GetResults() const { return exprs_; }
+  llvm::ArrayRef<SymbolicExpr> GetResults() const& { return exprs_; }
+  // Move the results out if the map is a temporary
+  llvm::SmallVector<SymbolicExpr> GetResults() && { return std::move(exprs_); }
   SymbolicExpr GetResult(unsigned idx) const { return exprs_[idx]; }
+  void SetResult(unsigned idx, SymbolicExpr expr) { exprs_[idx] = expr; }
+
   std::string ToString() const;
 
   bool IsEmpty() const { return exprs_.empty(); }
@@ -106,6 +114,11 @@ class SymbolicMap {
   // Returns a vector containing the values of all the results. CHECK-fails if
   // any result expression is not a constant.
   llvm::SmallVector<int64_t> GetConstantResults() const;
+
+  // Evaluates the map with the given dimension and symbol values.
+  llvm::SmallVector<int64_t> Evaluate(
+      absl::Span<int64_t const> dim_values,
+      absl::Span<int64_t const> symbol_values = {}) const;
 
   // Replaces the dimensions and symbols in the map with the given expressions.
   // The number of dimension and symbol replacements must match the number of
@@ -134,6 +147,9 @@ class SymbolicMap {
 
   // Creates a new SymbolicMap with a subset of the results of this map.
   SymbolicMap GetSubMap(absl::Span<const size_t> result_indices) const;
+
+  // Returns the map consisting of `length` expressions starting from `start`.
+  SymbolicMap GetSliceMap(size_t start, size_t length) const;
 
   // Creates a new SymbolicMap with the given number of dimensions. Symbols are
   // preserved and shifted accordingly.
@@ -166,13 +182,24 @@ class SymbolicMap {
     sink.Append(map.ToString());
   }
 
+  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                                       const SymbolicMap& map) {
+    os << map.ToString();
+    return os;
+  }
+
+  friend std::ostream& operator<<(std::ostream& os, const SymbolicMap& map) {
+    os << map.ToString();
+    return os;
+  }
+
  private:
   SymbolicMap(mlir::MLIRContext* ctx, int64_t num_dimensions,
               int64_t num_symbols, llvm::SmallVector<SymbolicExpr> exprs);
 
-  mlir::MLIRContext* ctx_;
-  int64_t num_dimensions_;
-  int64_t num_symbols_;
+  mlir::MLIRContext* ctx_ = nullptr;
+  int64_t num_dimensions_ = 0;
+  int64_t num_symbols_ = 0;
   llvm::SmallVector<SymbolicExpr> exprs_;
 };
 

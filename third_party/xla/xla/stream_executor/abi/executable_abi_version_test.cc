@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/stream_executor/abi/executable_abi_version.pb.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
@@ -69,9 +70,9 @@ TEST(ExecutableAbiVersionTest, FromDeviceDescriptionRocm) {
   ASSERT_OK_AND_ASSIGN(
       ExecutableAbiVersion executable_abi_version,
       ExecutableAbiVersion::FromDeviceDescription(device_description));
-  EXPECT_THAT(executable_abi_version.platform_name(), "ROCm");
+  EXPECT_THAT(executable_abi_version.platform_name(), "ROCM");
   EXPECT_THAT(executable_abi_version.proto(),
-              EqualsProto(R"pb(platform_name: "ROCm")pb"));
+              EqualsProto(R"pb(platform_name: "ROCM")pb"));
 }
 
 TEST(ExecutableAbiVersionTest, FromDeviceDescriptionOneAPI) {

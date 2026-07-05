@@ -27,7 +27,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/MathExtras.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -46,8 +48,6 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -155,6 +155,24 @@ bool ShouldRewriteReductionFusion(
 absl::StatusOr<bool> ShouldTryRewriteFusion(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_description) {
+  // If a dot fusion can be handled by Triton, GemmRewriter would have already
+  // taken care of it.
+  for (const HloInstruction* instr :
+       fusion->fused_instructions_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kDot ||
+        instr->opcode() == HloOpcode::kScaledDot) {
+      return false;
+    }
+  }
+
+  if (fusion->IsMultiOutputFusion() &&
+      !fusion->GetModule()
+           ->config()
+           .debug_options()
+           .xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
+    return false;
+  }
+
   if (fusion->GetModule()
           ->config()
           .debug_options()
@@ -172,9 +190,9 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     HloFusionInstruction* fusion_instruction,
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size,
-    mlir::MLIRContext* mlir_context) {
-  TF_ASSIGN_OR_RETURN(bool should_try_rewrite,
-                      ShouldTryRewriteFusion(fusion_instruction, device_info));
+    mlir::MLIRContext* mlir_context, bool use_experimental_tiling) {
+  ASSIGN_OR_RETURN(bool should_try_rewrite,
+                   ShouldTryRewriteFusion(fusion_instruction, device_info));
   if (!should_try_rewrite) {
     VLOG(2) << "Not rewriting fusion " << fusion_instruction->ToString()
             << " because it is not supported.";
@@ -192,8 +210,8 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(auto backend_config,
-                      fusion_instruction->backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(auto backend_config,
+                   fusion_instruction->backend_config<GpuBackendConfig>());
 
   if (backend_config.has_fusion_backend_config() &&
       backend_config.fusion_backend_config().has_block_level_fusion_config()) {
@@ -203,12 +221,13 @@ absl::StatusOr<bool> ProcessFusionInstruction(
 
   HloFusionAnalysisCache fusion_analysis_cache(device_info);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
-      &device_info, &fusion_analysis_cache, shape_size, mlir_context);
+      &device_info, &fusion_analysis_cache, shape_size, mlir_context,
+      use_experimental_tiling);
 
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       Cast<HloFusionInstruction>(fusion_instruction));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       TiledRunTimeDataOrError tiled_runtime_data_or_error,
       indexing_performance_model.TryFindBestTilingForFusion(*fusion_adaptor));
 
@@ -238,7 +257,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
        ->mutable_block_level_fusion_config() =
       tiled_runtime_data.block_level_parameters.ToBlockLevelFusionConfig();
   backend_config.mutable_fusion_backend_config()->set_kind(kTritonFusionKind);
-  TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(backend_config));
+  RETURN_IF_ERROR(fusion_instruction->set_backend_config(backend_config));
   fusion_instruction->set_fusion_kind(HloInstruction::FusionKind::kCustom);
   return true;
 }
@@ -248,7 +267,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
 absl::StatusOr<bool> FusionBlockLevelRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(
+  RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(
       device_info_.gpu_compute_capability()));
 
   bool has_changed = false;
@@ -260,9 +279,13 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::RunImpl(
     }
     HloFusionInstruction* fusion_instruction =
         ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction());
-    TF_ASSIGN_OR_RETURN(
-        bool changed, ProcessFusionInstruction(fusion_instruction, device_info_,
-                                               shape_size_, mlir_context_));
+    ASSIGN_OR_RETURN(
+        bool changed,
+        ProcessFusionInstruction(
+            fusion_instruction, device_info_, shape_size_, mlir_context_,
+            module->config()
+                .debug_options()
+                .xla_gpu_experimental_enable_tiling_propagation()));
 
     has_changed |= changed;
   }

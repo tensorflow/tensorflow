@@ -22,11 +22,11 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 #include "xla/xla_data.pb.h"
 
@@ -88,8 +88,9 @@ static std::string GetOpTypeFromLoc(Location loc) {
       locs.push_back(call_loc.getCallee());
     } else if (auto fused_loc = mlir::dyn_cast<FusedLoc>(curr_loc)) {
       // The first location is reserved for op_type.
-      if (!fused_loc.getLocations().empty())
+      if (!fused_loc.getLocations().empty()) {
         locs.push_back(fused_loc.getLocations()[0]);
+      }
     }
   }
 
@@ -119,12 +120,24 @@ xla::OpMetadata CreateOpMetadataFromLocation(
     mlir::Operation* op, mlir::StackFrameIndexBuilder* frame_index_builder) {
   xla::OpMetadata metadata;
   mlir::Location loc = op->getLoc();
-  if (isa<mlir::UnknownLoc>(loc)) return metadata;
+  if (isa<mlir::UnknownLoc>(loc)) {
+    return metadata;
+  }
 
   std::string name = GetNameFromLocImpl(loc);
   metadata.set_op_name(name);
   std::string op_type = GetOpTypeFromLoc(loc);
   metadata.set_op_type(op_type);
+
+  // TODO(b/503147499): Consider plumbing metadata payload directly from the
+  // frontend.
+  if (auto attrs =
+          op->getAttrOfType<mlir::DictionaryAttr>("mhlo.frontend_attributes")) {
+    if (auto payload = mlir::dyn_cast_or_null<mlir::StringAttr>(
+            attrs.get("xla_metadata_payload"))) {
+      metadata.mutable_metadata_payload()->set_value(payload.getValue().str());
+    }
+  }
 
   // Skip all leading names that are not frame names, e.g., op name and op type
   // attributes found above.

@@ -34,8 +34,16 @@ cc_library(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "histogram.h",
         "@xla//xla/tsl/lib/histogram:mobile_srcs_only_runtime",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "histogram.h",
+        "@xla//xla/tsl/lib/histogram:mobile_hdrs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

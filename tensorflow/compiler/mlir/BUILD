@@ -66,7 +66,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_graph_optimization_pass",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",  # buildcleaner:keep
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:runtime_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms/sparsecore:sparsecore_passes",
@@ -77,11 +77,10 @@ cc_library(
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:RegisterAllDialects",
-        "@llvm-project//mlir:RegisterAllPasses",
+        "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
+        "@llvm-project//mlir:RegisterAllPasses",  # buildcleaner: keep
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@xla//xla/mlir/framework/transforms:passes",
         "@xla//xla/mlir_hlo:all_passes",
     ],
 )
@@ -177,11 +176,11 @@ tf_cc_binary(
         ":init_mlir",
         ":register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_reduce_patterns_inc_gen",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirReduceLib",
         "@llvm-project//mlir:Reducer",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -198,17 +197,14 @@ cc_library(
         "@llvm-project//mlir:AllExtensions",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:RegisterAllDialects",
-        "@llvm-project//mlir:RegisterAllExtensions",
-        "@llvm-project//mlir:RegisterAllPasses",
+        "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
+        "@llvm-project//mlir:RegisterAllExtensions",  # buildcleaner: keep
+        "@llvm-project//mlir:RegisterAllPasses",  # buildcleaner: keep
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TosaDialect",
-        "@llvm-project//mlir:Transforms",
         "@stablehlo//:register",
-        "@xla//xla/mlir/framework/ir:xla_framework",
         "@xla//xla/mlir_hlo:hlo_dialect_registration",
     ],
 )

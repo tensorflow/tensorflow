@@ -14,13 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/util/memmapped_file_system.h"
 
+#include <cstdint>
 #include <memory>
 
+#include "absl/base/internal/endian.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/memmapped_file_system_writer.h"
 
@@ -141,6 +147,57 @@ TEST(MemmappedFileSystemTest, Corrupted) {
   MemmappedFileSystem memmapped_env;
   ASSERT_NE(memmapped_env.InitializeFromFile(Env::Default(), filename),
             absl::OkStatus());
+}
+
+TEST(MemmappedFileSystemTest, CorruptedLength) {
+  const std::string dir = testing::TmpDir();
+  const std::string filename =
+      io::JoinPath(dir, "memmapped_env_corrupted_length_test");
+
+  // Create a properly formatted memmapped file first
+  const TensorShape test_tensor_shape = {10, 20};
+  Tensor test_tensor(DT_FLOAT, test_tensor_shape);
+  TF_ASSERT_OK(CreateMemmappedFileSystemFile(filename, false, &test_tensor));
+
+  // Corrupt the length of an element in the directory to be too large
+  Env* env = Env::Default();
+  std::string file_content;
+  TF_ASSERT_OK(ReadFileToString(env, filename, &file_content));
+
+  // Re-parse the directory to find where it is
+  const uint64_t directory_offset = absl::little_endian::Load64(
+      reinterpret_cast<const uint8_t*>(file_content.data()) +
+      file_content.length() - sizeof(uint64_t));
+
+  MemmappedFileSystemDirectory proto_directory;
+  ASSERT_TRUE(proto_directory.ParseFromString(absl::string_view(
+      file_content.data() + directory_offset,
+      file_content.length() - directory_offset - sizeof(uint64_t))));
+
+  // Modify the first element to have an incredibly large length
+  proto_directory.mutable_element(0)->set_length(file_content.length() * 2);
+
+  std::string new_directory_content = proto_directory.SerializeAsString();
+
+  // Create a new corrupted file
+  std::unique_ptr<WritableFile> corrupted_file;
+  TF_ASSERT_OK(env->NewWritableFile(filename, &corrupted_file));
+  TF_ASSERT_OK(corrupted_file->Append(
+      absl::string_view(file_content.data(), directory_offset)));
+  TF_ASSERT_OK(corrupted_file->Append(new_directory_content));
+
+  // Write offset in little endian format
+  uint8_t offset_buffer[sizeof(uint64_t)];
+  absl::little_endian::Store64(offset_buffer, directory_offset);
+  TF_ASSERT_OK(corrupted_file->Append(absl::string_view(
+      reinterpret_cast<char*>(offset_buffer), sizeof(uint64_t))));
+  TF_ASSERT_OK(corrupted_file->Close());
+
+  MemmappedFileSystem memmapped_env;
+  auto status = memmapped_env.InitializeFromFile(Env::Default(), filename);
+  EXPECT_EQ(status.code(), absl::StatusCode::kDataLoss);
+  EXPECT_TRUE(absl::StrContains(
+      status.message(), "Invalid offset or length of internal component"));
 }
 
 TEST(MemmappedFileSystemTest, ProxyToDefault) {

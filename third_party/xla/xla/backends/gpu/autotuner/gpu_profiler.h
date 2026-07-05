@@ -48,7 +48,8 @@ class GpuProfiler : public Profiler {
   // executable.
   // TODO(b/407494793): Add a better way to get the input buffer shapes.
   absl::StatusOr<std::unique_ptr<InputBuffers>> CreateInputBuffers(
-      const Executable* executable) override;
+      const Executable* executable,
+      const HloInstruction* instr = nullptr) override;
 
   absl::StatusOr<ProfileResult> Profile(Executable* executable,
                                         const InputBuffers& buffers) override;

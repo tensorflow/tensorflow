@@ -54,8 +54,8 @@ RegisterDatasetOp::RegisterDatasetOp(OpKernelConstruction* ctx)
   } else if (op_name == kRegisterDatasetV2) {
     op_version_ = 2;
   } else {
-    ctx->CtxFailure(errors::FailedPrecondition(
-        "Unrecognized register dataset op name: ", op_name));
+    ctx->CtxFailure(absl::FailedPreconditionError(
+        absl::StrCat("Unrecognized register dataset op name: ", op_name)));
     return;
   }
 
@@ -92,12 +92,14 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   tstring address;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kAddress, &address));
   OP_REQUIRES(ctx, !address.empty(),
-              errors::InvalidArgument(kAddress, " must be non-empty."));
+              absl::InvalidArgumentError(
+                  absl::StrCat(kAddress, " must be non-empty.")));
 
   tstring protocol;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kProtocol, &protocol));
   OP_REQUIRES(ctx, !protocol.empty(),
-              errors::InvalidArgument(kProtocol, " must be non-empty."));
+              absl::InvalidArgumentError(
+                  absl::StrCat(kProtocol, " must be non-empty.")));
 
   SerializationContext::Params params(ctx);
   params.external_state_policy = external_state_policy_;
@@ -108,7 +110,7 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   if (!s.ok()) {
     OP_REQUIRES_OK(
         ctx,
-        errors::FailedPrecondition(
+        absl::FailedPreconditionError(absl::StrCat(
             "Serialization error while trying to register a dataset with "
             "tf.data service. "
             "The dataset may depend on a resource located on a different "
@@ -117,7 +119,7 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
             "resource, then use `from_dataset_id` to create per-device "
             "datasets. "
             "Original error: ",
-            s));
+            s)));
   }
 
   DataServiceMetadata metadata;
@@ -126,9 +128,9 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   }
   if (!serialized_metadata_.empty()) {
     OP_REQUIRES(ctx, metadata.ParseFromString(serialized_metadata_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Failed to parse DataServiceMetadata from string: ",
-                    std::string(serialized_metadata_)));
+                    serialized_metadata_)));
   }
   metadata.set_cardinality(dataset->Cardinality());
 
@@ -157,9 +159,10 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
     output_dataset_id() = dataset_id;
   } else {
     int64_t dataset_id_int = 0;
-    OP_REQUIRES(ctx, absl::SimpleAtoi(dataset_id, &dataset_id_int),
-                errors::InvalidArgument("Failed to parse dataset ID: ",
-                                        dataset_id, ". Expect integers."));
+    OP_REQUIRES(
+        ctx, absl::SimpleAtoi(dataset_id, &dataset_id_int),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Failed to parse dataset ID: ", dataset_id, ". Expect integers.")));
 
     Tensor* output;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &output));

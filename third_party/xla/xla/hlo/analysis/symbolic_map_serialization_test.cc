@@ -59,23 +59,44 @@ TEST_F(SymbolicMapSerializationTest,
        PrintSymbolicExprWithDifferentNumDimensions) {
   SymbolicExpr expr = v0 * 2 + v1;
 
-  EXPECT_THAT(expr.ToString(), MatchIndexingString("((v0 * 2) + v1)"));
+  EXPECT_THAT(expr.ToString(), MatchIndexingString("v0 * 2 + v1"));
   // Only symbols
-  EXPECT_THAT(expr.ToString(0), MatchIndexingString("((s0 * 2) + s1)"));
+  EXPECT_THAT(expr.ToString(0), MatchIndexingString("s0 * 2 + s1"));
   // One dimension and one symbol
-  EXPECT_THAT(expr.ToString(1), MatchIndexingString("((d0 * 2) + s0)"));
+  EXPECT_THAT(expr.ToString(1), MatchIndexingString("d0 * 2 + s0"));
   // Only dimensions
-  EXPECT_THAT(expr.ToString(2), MatchIndexingString("((d0 * 2) + d1)"));
+  EXPECT_THAT(expr.ToString(2), MatchIndexingString("d0 * 2 + d1"));
+}
+
+TEST_F(SymbolicMapSerializationTest, PrintSymbolicExprOperatorPrecedence) {
+  // Multiplication and modulo have higher precedence than addition.
+  EXPECT_THAT((v0 + (v1 * 2)).ToString(), MatchIndexingString("v0 + v1 * 2"));
+  EXPECT_THAT(((v0 % 2) * 4).ToString(), MatchIndexingString("(v0 mod 2) * 4"));
+
+  // Pretty print negative terms.
+  EXPECT_THAT((v0 + (-1)).ToString(), MatchIndexingString("v0 - 1"));
+  EXPECT_THAT((v0 + (-2 * v1)).ToString(), MatchIndexingString("v0 - v1 * 2"));
+
+  // No parentheses should be added for addition/subtraction.
+  EXPECT_THAT(((v0 + v1) - v2).ToString(), MatchIndexingString("v0 + v1 - v2"));
 }
 
 TEST_F(SymbolicMapSerializationTest, ParseSymbolicExprAndPrint) {
   const std::string kStringContainingAllOperators =
-      "(((((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2) mod 5)";
+      "((((v0 + 42) * max(min(v1, 2), 0)) / 2) ceildiv 2) mod 5";
   SymbolicExpr parsed_expr =
       ParseSymbolicExpr(kStringContainingAllOperators, &ctx);
   ASSERT_NE(parsed_expr, nullptr);
   EXPECT_THAT(parsed_expr.ToString(),
               MatchIndexingString(kStringContainingAllOperators));
+}
+
+TEST_F(SymbolicMapSerializationTest, ParseSymbolicExprUnaryMinus) {
+  SymbolicExpr parsed_expr = ParseSymbolicExpr("-v0", &ctx);
+  EXPECT_THAT(parsed_expr.ToString(), MatchIndexingString("-v0"));
+
+  SymbolicExpr parsed_expr_complex = ParseSymbolicExpr("-(v0 + 1)", &ctx);
+  EXPECT_THAT(parsed_expr_complex.ToString(), MatchIndexingString("-v0 - 1"));
 }
 
 TEST_F(SymbolicMapSerializationTest, ParseSymbolicExprAndPrint_Invalid) {
@@ -154,7 +175,7 @@ TEST_F(SymbolicMapSerializationTest, ParseSymbolicMap) {
   EXPECT_EQ(id.GetNumSymbols(), 0);
   EXPECT_THAT(id.GetResults(), ElementsAre(v0));
 
-  SymbolicMap empty = ParseSymbolicMap("()[] -> ()", &ctx);
+  SymbolicMap empty = ParseSymbolicMap("() -> ()", &ctx);
   EXPECT_EQ(empty.GetNumDims(), 0);
   EXPECT_EQ(empty.GetNumSymbols(), 0);
   EXPECT_TRUE(empty.IsEmpty());
@@ -164,7 +185,7 @@ TEST_F(SymbolicMapSerializationTest, ParseSymbolicMap) {
   EXPECT_EQ(no_dims.GetNumSymbols(), 1);
   EXPECT_THAT(no_dims.GetResults(), ElementsAre(v0));
 
-  SymbolicMap no_symbols = ParseSymbolicMap("(d0)[] -> (d0)", &ctx);
+  SymbolicMap no_symbols = ParseSymbolicMap("(d0) -> (d0)", &ctx);
   EXPECT_EQ(no_symbols.GetNumDims(), 1);
   EXPECT_EQ(no_symbols.GetNumSymbols(), 0);
   EXPECT_THAT(no_symbols.GetResults(), ElementsAre(v0));
@@ -217,14 +238,14 @@ TEST_F(SymbolicMapSerializationTest, ParseSymbolicMap_Invalid) {
 TEST_F(SymbolicMapSerializationTest, ParseSymbolicMapAndAdvance_ConsumesAll) {
   absl::string_view map_str = "(d0) -> (d0)";
   SymbolicMap map = ParseSymbolicMapAndAdvance(&map_str, &ctx);
-  EXPECT_EQ(map.ToString(), "(d0)[] -> (d0)");
+  EXPECT_EQ(map.ToString(), "(d0) -> (d0)");
   EXPECT_EQ(map_str, "");
 }
 
 TEST_F(SymbolicMapSerializationTest, ParseSymbolicMapAndAdvance_WithSuffix) {
   absl::string_view map_str = "(d0) -> (d0) domain: d0 in [0, 1]";
   SymbolicMap map = ParseSymbolicMapAndAdvance(&map_str, &ctx);
-  EXPECT_EQ(map.ToString(), "(d0)[] -> (d0)");
+  EXPECT_EQ(map.ToString(), "(d0) -> (d0)");
   EXPECT_EQ(absl::StripLeadingAsciiWhitespace(map_str), "domain: d0 in [0, 1]");
 }
 

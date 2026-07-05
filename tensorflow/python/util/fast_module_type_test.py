@@ -62,12 +62,32 @@ class FastModuleTypeTest(test.TestCase):
                                              ChildFastModule._getattribute1)
     self.assertEqual(2, module.foo)
 
+  def testInvalidGetattributeCallbackRaisesAndKeepsExistingCallback(self):
+    module = ChildFastModule("test")
+    FastModuleType.set_getattribute_callback(
+        module, ChildFastModule._getattribute1
+    )
+
+    with self.assertRaisesRegex(TypeError, "input args must be callable"):
+      FastModuleType.set_getattribute_callback(module, 1)
+
+    self.assertEqual(2, module.foo)
+
   def testGetattrCallback(self):
     # Tests that functionality of __getattr__ can be set as a callback.
     module = ChildFastModule("test")
     FastModuleType.set_getattribute_callback(module,
                                              ChildFastModule._getattribute2)
     FastModuleType.set_getattr_callback(module, ChildFastModule._getattr)
+    self.assertEqual(3, module.foo)
+
+  def testInvalidGetattrCallbackRaisesAndKeepsExistingCallback(self):
+    module = ChildFastModule("test")
+    FastModuleType.set_getattr_callback(module, ChildFastModule._getattr)
+
+    with self.assertRaisesRegex(TypeError, "input args must be callable"):
+      FastModuleType.set_getattr_callback(module, 1)
+
     self.assertEqual(3, module.foo)
 
   def testFastdictApis(self):

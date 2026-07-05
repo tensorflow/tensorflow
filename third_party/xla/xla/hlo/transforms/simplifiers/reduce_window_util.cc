@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
@@ -119,8 +120,8 @@ absl::Status Replace1DReduceWindowWithReshape(
     CHECK_EQ(final_reshapes.size(), 1);
     result = final_reshapes[0];
   }
-  TF_RETURN_IF_ERROR(reduce_window->ReplaceAllUsesWith(result));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(reduce_window->ReplaceAllUsesWith(result));
+  RETURN_IF_ERROR(
       new_reduce_window->parent()->RemoveInstruction(reduce_window));
 
   return absl::OkStatus();

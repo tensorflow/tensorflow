@@ -747,8 +747,9 @@ struct ResultEncoding<stage, absl::StatusOr<std::unique_ptr<T>>> {
               ctx, static_cast<XLA_FFI_ExecutionStage>(stage)));
       DCHECK(execution_state) << "ExecutionState must be set";
 
-      absl::Status status =
-          execution_state->Set(internal::GetTypeId<T>(api), state->release());
+      absl::Status status = execution_state->Set(internal::GetTypeId<T>(api),
+                                                 TypeRegistry::GetTypeInfo<T>(),
+                                                 state->release());
       if (ABSL_PREDICT_TRUE(status.ok())) {
         return nullptr;
       }

@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
@@ -158,11 +159,11 @@ HostOffloadingNanoRtExecutable::LoadFromProto(
 
   // We keep program shape and alias config of the original HLO module and not
   // the destination-passing-style module with extra output parameters.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ProgramShape program_shape,
       ProgramShape::FromProto(hlo_module_proto.host_program_shape()));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto alias_config,
       HloInputOutputAliasConfig::CreateFromProto(
           program_shape.result(), hlo_module_proto.input_output_alias()));
@@ -170,17 +171,17 @@ HostOffloadingNanoRtExecutable::LoadFromProto(
   std::unique_ptr<xla::cpu::NanoRtExecutable> executable;
 
   if (proto.has_aot_compilation_result()) {
-    TF_ASSIGN_OR_RETURN(executable,
-                        xla::cpu::NanoRtExecutable::Create(
-                            proto.aot_compilation_result(), program_shape));
+    ASSIGN_OR_RETURN(executable,
+                     xla::cpu::NanoRtExecutable::Create(
+                         proto.aot_compilation_result(), program_shape));
   } else {
     XlaComputation computation;
     computation = XlaComputation(proto.hlo_module());
 
-    TF_ASSIGN_OR_RETURN(xla::cpu::NanoRtClient * client,
-                        GetHostOffloadingNanoRtClient());
+    ASSIGN_OR_RETURN(xla::cpu::NanoRtClient * client,
+                     GetHostOffloadingNanoRtClient());
 
-    TF_ASSIGN_OR_RETURN(executable, client->Compile(computation));
+    ASSIGN_OR_RETURN(executable, client->Compile(computation));
   }
 
   // TODO(basioli): Add support for compile options.
@@ -189,7 +190,7 @@ HostOffloadingNanoRtExecutable::LoadFromProto(
   std::shared_ptr<DeviceAssignment> device_assignment;
   int num_replicas;
   int num_partitions;
-  TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+  RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
       compile_options.compile_portable_executable,
       &compile_options.executable_build_options,
       [](int num_replicas, int num_partitions) {
@@ -198,11 +199,11 @@ HostOffloadingNanoRtExecutable::LoadFromProto(
       },
       &num_replicas, &num_partitions, &device_assignment));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      HloModule::CreateFromProto(
-                          proto.hlo_module(), HloModuleConfig(program_shape)));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                   HloModule::CreateFromProto(proto.hlo_module(),
+                                              HloModuleConfig(program_shape)));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       bool needs_layout_conversion,
       HostOffloadingLayoutAnalysis::NeedsLayoutConversion(hlo_module.get()));
 
@@ -234,6 +235,10 @@ HostOffloadingNanoRtExecutable::Execute(
 
   auto add_argument = [&](const Shape& shape,
                           const HostOffloadingBuffer& buffer) {
+    // Tokens are not backed by buffers, so skip them.
+    if (shape.IsToken()) {
+      return;
+    }
     DCHECK(shape.IsArray()) << "Buffer shape must be an array";
     const size_t num_bytes = ShapeUtil::ByteSizeOf(shape);
     arguments.emplace_back(buffer.opaque_base(), num_bytes);
@@ -251,6 +256,10 @@ HostOffloadingNanoRtExecutable::Execute(
 
   for (const auto& [index, buffer] : result.leaves()) {
     auto shape = ShapeUtil::GetSubshape(result.shape(), index);
+    // Tokens are not backed by buffers, so skip them.
+    if (shape.IsToken()) {
+      continue;
+    }
     const size_t num_bytes = ShapeUtil::ByteSizeOf(shape);
     nanort_results.emplace_back(buffer.opaque_base(), num_bytes);
   }

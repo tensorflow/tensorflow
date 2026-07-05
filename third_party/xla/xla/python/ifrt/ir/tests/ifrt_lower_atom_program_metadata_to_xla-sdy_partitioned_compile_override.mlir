@@ -44,12 +44,13 @@ module @arg_unspecified_sharding_sdy_partitioned attributes {ifrt.num_devices = 
 
 // -----
 
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @result_metadata_sdy_partitioned
 module @result_metadata_sdy_partitioned attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
   // CHECK: -> (tensor<2x2xi32>
   // CHECK-SAME: {
   // CHECK-NOT:    mhlo.sharding
-  // CHECK-DAG:    ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:    ifrt.sharding = #sp
   // CHECK-DAG:    ifrt.memory_kind = "device"
   // CHECK-DAG:    mhlo.memory_kind = "device"
   // CHECK-SAME: }
@@ -64,12 +65,13 @@ module @result_metadata_sdy_partitioned attributes {ifrt.num_devices = 2, ifrt.c
 
 // -----
 
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @result_unspecified_sharding_sdy_partitioned
 module @result_unspecified_sharding_sdy_partitioned attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
   // CHECK: -> (tensor<2x2xi32>
   // CHECK-SAME: {
   // CHECK-NOT:    mhlo.sharding
-  // CHECK-DAG:    ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:    ifrt.sharding = #sp
   // CHECK-SAME: }
   // CHECK: tensor<2x2xi32> {ifrt.sharding = #ifrt.sharding_unspecified})
   func.func @main()

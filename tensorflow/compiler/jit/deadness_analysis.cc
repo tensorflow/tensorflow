@@ -916,10 +916,10 @@ absl::Status DeadnessAnalysisImpl::GetInputPreds(
 
         // If we didn't return with an error above then the graph is probably
         // fine and we have a bug in deadness analysis.
-        return errors::Internal("Could not find input ", in_edge->DebugString(),
-                                " to ", n->name(),
-                                " when visiting the graph in post-order.  Most "
-                                "likely indicates a bug in deadness analysis.");
+        return absl::InternalError(absl::StrCat(
+            "Could not find input ", in_edge->DebugString(), " to ", n->name(),
+            " when visiting the graph in post-order.  Most "
+            "likely indicates a bug in deadness analysis."));
       }
       result->push_back(it->second);
     }
@@ -988,10 +988,10 @@ absl::Status CreateMultipleNextIterationInputsError(Node* merge) {
       backedges.push_back(absl::StrCat("  ", SummarizeNode(*backedge->src())));
     }
   }
-  return errors::InvalidArgument(
+  return absl::InvalidArgumentError(absl::StrCat(
       "Multiple NextIteration inputs to merge node ",
       FormatNodeForError(*merge), ": \n", absl::StrJoin(backedges, "\n"),
-      "\nMerge nodes can have at most one incoming NextIteration edge.");
+      "\nMerge nodes can have at most one incoming NextIteration edge."));
 }
 
 absl::Status FindUniqueBackedge(Node* merge, const Edge** result) {
@@ -1065,7 +1065,7 @@ absl::Status GetFullFrame(const Node* n,
     frame->push_back(cfi_iter->frame_name);
 
     if (depth++ > 5000) {
-      return errors::Internal(
+      return absl::InternalError(
           "Frame of depth > 5000:  Probably malformed graph or a bug in "
           "BuildControlFlowInfo");
     }
@@ -1086,7 +1086,7 @@ absl::Status GetRootFrame(const Node* n,
     cfi_iter = &cfi_infos[n->id()];
 
     if (depth++ > 5000) {
-      return errors::Internal(
+      return absl::InternalError(
           "Frame of depth > 5000:  Probably malformed graph or a bug in "
           "BuildControlFlowInfo");
     }
@@ -1338,7 +1338,7 @@ absl::Status DeadnessAnalysisImpl::GetFrameBasedTopologicalOrder(
   }
 
   if (!ready_enters_per_frame.empty() || !ready_exits.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Some enters/exits have never been visited in the traversal."
         " Most probably the input graph is malformed.");
   }
@@ -1370,10 +1370,10 @@ absl::Status DeadnessAnalysisImpl::Populate(bool enable_optimistic) {
                               unreachable_nodes.end());
     }
 
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Found unreachable nodes, most likely source and sink nodes not "
         "connected: ",
-        absl::StrJoin(unreachable_nodes, ", "));
+        absl::StrJoin(unreachable_nodes, ", ")));
   }
 
   std::vector<Node*> topo;

@@ -1,4 +1,3 @@
-#include "third_party/absl/strings/str_cat.h"
 #Description:
 # TensorFlow SavedModel.
 
@@ -16,7 +15,6 @@ load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
-    "if_static_and_not_mobile",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
@@ -102,17 +100,27 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "loader_default_deps",
+    visibility = ["//visibility:private"],
+    deps = if_static([
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:direct_session",
+    ]) + if_google(if_static(["//tensorflow/core/platform/default/build_config:tensorflow_platform_specific"])),
+)
+
+cc_library(
     name = "loader",
     hdrs = ["loader.h"],
     deps = [
         ":loader_lite",
-    ] + if_static_and_not_mobile([
-        "//tensorflow/core:direct_session",
-        "//tensorflow/core:all_kernels",
-    ] + if_google(
-        ["//tensorflow/core/platform/default/build_config:tensorflow_platform_specific"],
-        [],
-    )) + if_not_mobile([
+    ] + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:tflite_converter": ["//tensorflow/core:direct_session"] + if_google([
+            "//tensorflow/core/platform/default/build_config:tensorflow_platform_specific",
+        ]),
+        "//conditions:default": [":loader_default_deps"],
+    }) + if_not_mobile([
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",

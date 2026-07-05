@@ -23,10 +23,14 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/primitive_util.h"
+#include "xla/shape.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -42,7 +46,7 @@ struct ScaledDotRewriterTestCase {
 using ScaledDotRewriterTest =
     ::testing::WithParamInterface<ScaledDotRewriterTestCase>;
 
-class ScaledDotRewriterTestFixture : public HloTestBase,
+class ScaledDotRewriterTestFixture : public HloTestBaseLegacy,
                                      public ScaledDotRewriterTest {
  public:
   void SetUp() override {}
@@ -51,9 +55,11 @@ class ScaledDotRewriterTestFixture : public HloTestBase,
 TEST_P(ScaledDotRewriterTestFixture, ScaledDot) {
   const ScaledDotRewriterTestCase& test_case = GetParam();
 
-  // lhs_scale should have two dim
-  const std::string hlo_string = absl::Substitute(
-      R"(
+  for (auto output_type :
+       {PrimitiveType::F32, PrimitiveType::BF16, PrimitiveType::F16}) {
+    // lhs_scale should have two dim
+    const std::string hlo_string = absl::Substitute(
+        R"(
         HloModule module
 
         ENTRY main {
@@ -61,53 +67,103 @@ TEST_P(ScaledDotRewriterTestFixture, ScaledDot) {
           rhs = $0[64,512] parameter(1)
           lhs_scale = $1[32,2] parameter(2)
           rhs_scale = $1[64,2] parameter(3)
-          ROOT dot = f32[1024,64] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+          ROOT dot = $2[1024,64] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
             lhs_contracting_dims={1},
             rhs_contracting_dims={1}
         }
       )",
-      absl::AsciiStrToLower(PrimitiveType_Name(test_case.operand_type)),
-      absl::AsciiStrToLower(PrimitiveType_Name(test_case.scale_type)));
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+        absl::AsciiStrToLower(PrimitiveType_Name(test_case.operand_type)),
+        absl::AsciiStrToLower(PrimitiveType_Name(test_case.scale_type)),
+        absl::AsciiStrToLower(PrimitiveType_Name(output_type)));
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnUnverifiedModule(hlo_string));
 
-  ScaledDotRewriter rewriter;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-  EXPECT_TRUE(changed);
+    ScaledDotRewriter rewriter;
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    EXPECT_TRUE(changed);
 
-  // Verify that the module is still valid after the rewrite.
-  auto status_or_module = ParseAndReturnVerifiedModule(module->ToString());
-  EXPECT_TRUE(status_or_module.status().ok()) << status_or_module.status();
+    // Verify that the module is still valid after the rewrite.
+    auto status_or_module = ParseAndReturnVerifiedModule(module->ToString());
+    EXPECT_TRUE(status_or_module.status().ok()) << status_or_module.status();
 
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kDot);
-  for (const HloInstruction* operand : root->operands()) {
-    std::vector<HloOpcode> actual_op_codes{};
-    while (operand->opcode() != HloOpcode::kParameter) {
-      actual_op_codes.push_back(operand->opcode());
-      if (operand->opcode() == HloOpcode::kMultiply) {
-        operand = operand->operand(1);
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+
+    if (output_type == PrimitiveType::F16) {
+      EXPECT_EQ(root->opcode(), HloOpcode::kConvert);
+      root = root->operand(0);
+    }
+
+    EXPECT_EQ(root->opcode(), HloOpcode::kDot);
+    for (const HloInstruction* operand : root->operands()) {
+      std::vector<HloOpcode> actual_op_codes{};
+      while (operand->opcode() != HloOpcode::kParameter) {
+        actual_op_codes.push_back(operand->opcode());
+        if (operand->opcode() == HloOpcode::kMultiply) {
+          operand = operand->operand(1);
+        } else {
+          operand = operand->operand(0);
+        }
+      }
+      actual_op_codes = std::vector<HloOpcode>(actual_op_codes.rbegin(),
+                                               actual_op_codes.rend());
+
+      if (test_case.scale_type == PrimitiveType::BF16) {
+        const std::vector<HloOpcode> expected_op_codes{
+            HloOpcode::kBroadcast, HloOpcode::kReshape, HloOpcode::kMultiply};
+        EXPECT_THAT(actual_op_codes, expected_op_codes);
       } else {
-        operand = operand->operand(0);
+        const std::vector<HloOpcode> expected_op_codes_with_convert{
+            HloOpcode::kConvert, HloOpcode::kBroadcast, HloOpcode::kReshape,
+            HloOpcode::kMultiply};
+        EXPECT_THAT(actual_op_codes, expected_op_codes_with_convert);
       }
     }
-    actual_op_codes = std::vector<HloOpcode>(actual_op_codes.rbegin(),
-                                             actual_op_codes.rend());
 
-    if (test_case.scale_type == PrimitiveType::BF16) {
-      const std::vector<HloOpcode> expected_op_codes{
-          HloOpcode::kBroadcast, HloOpcode::kReshape, HloOpcode::kMultiply};
-      EXPECT_THAT(actual_op_codes, expected_op_codes);
-    } else {
-      const std::vector<HloOpcode> expected_op_codes_with_convert{
-          HloOpcode::kConvert, HloOpcode::kBroadcast, HloOpcode::kReshape,
-          HloOpcode::kMultiply};
-      EXPECT_THAT(actual_op_codes, expected_op_codes_with_convert);
+    EXPECT_TRUE(RunAndCompare(std::move(module),
+                              ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  }
+}
+
+using ScaledDotRewriterElementSizeTest = HloHardwareIndependentTestBase;
+
+// Upcasting an fp4 operand (whose layout carries element_size_in_bits=4) to
+// BF16 must drop the custom sub-byte element size; otherwise the rewriter emits
+// an illegal bf16[...]{:E(4)} shape that the CpuGpuShapeVerifier rejects.
+TEST_F(ScaledDotRewriterElementSizeTest, Fp4OperandDropsSubByteElementSize) {
+  const std::string hlo_string = R"(
+    HloModule module
+
+    ENTRY main {
+      lhs = f4e2m1fn[1024,512]{1,0:E(4)} parameter(0)
+      rhs = f8e4m3fn[64,512] parameter(1)
+      lhs_scale = f8e8m0fnu[1024,16] parameter(2)
+      rhs_scale = f8e8m0fnu[64,16] parameter(3)
+      ROOT dot = f32[1024,64] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+
+  ScaledDotRewriter rewriter;
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      const Shape& shape = instruction->shape();
+      if (!shape.IsArray() || !shape.has_layout()) {
+        continue;
+      }
+      if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+        continue;
+      }
+      EXPECT_EQ(shape.layout().element_size_in_bits(), 0)
+          << "Non-sub-byte instruction retains custom element size: "
+          << instruction->ToString();
     }
   }
-
-  EXPECT_TRUE(RunAndCompare(std::move(module),
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 INSTANTIATE_TEST_SUITE_P(

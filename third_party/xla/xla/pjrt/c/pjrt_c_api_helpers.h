@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"  // IWYU pragma: keep
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -47,19 +48,6 @@ namespace pjrt {
 ABSL_CONST_INIT extern const absl::string_view kHloFormat;
 ABSL_CONST_INIT extern const absl::string_view kMlirFormat;
 ABSL_CONST_INIT extern const absl::string_view kHloWithConfigFormat;
-
-// Return error status if not success and frees the PJRT_Error returned by
-// `expr`.
-#define RETURN_STATUS_IF_PJRT_ERROR(expr, c_api)                         \
-  do {                                                                   \
-    PJRT_Error* error = (expr);                                          \
-    std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> _error(         \
-        error, pjrt::MakeErrorDeleter(c_api));                           \
-    absl::Status _status = pjrt::PjrtErrorToStatus(_error.get(), c_api); \
-    if (!_status.ok()) {                                                 \
-      return _status;                                                    \
-    }                                                                    \
-  } while (false)
 
 using PJRT_ClientDeleter = std::function<void(PJRT_Client*)>;
 
@@ -74,12 +62,6 @@ using PJRT_AsyncHostToDeviceTransferManagerDeleter =
 // The lifetime of the Api pointed to must be longer than the transfer manager.
 PJRT_AsyncHostToDeviceTransferManagerDeleter
 MakeAsyncHostToDeviceTransferManagerDeleter(const PJRT_Api* api);
-
-using PJRT_ErrorDeleter = std::function<void(PJRT_Error*)>;
-
-// Pass in an API pointer; receive a custom deleter for smart pointers.
-// The lifetime of the Api pointed to must be longer than the error.
-PJRT_ErrorDeleter MakeErrorDeleter(const PJRT_Api* api);
 
 using PJRT_BufferDeleter = std::function<void(PJRT_Buffer*)>;
 
@@ -126,23 +108,6 @@ using PJRT_Layouts_MemoryLayoutDeleter =
 // deleted. This function requires that `api` includes the PJRT_Layouts
 // extension.
 PJRT_Layouts_MemoryLayoutDeleter MakeMemoryLayoutDeleter(const PJRT_Api* api);
-
-// Fatal error logging if status is not success. This terminates the process
-// and frees the PJRT_Error passed in.
-void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api);
-
-absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
-                                      const PJRT_Api* api);
-
-PJRT_Error_Code GetErrorCode(const PJRT_Error* error, const PJRT_Api* api);
-
-absl::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
-
-absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
-                                       const PJRT_Api* api);
-
-absl::StatusCode PjrtErrorCodeToStatusCode(PJRT_Error_Code code);
-PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code);
 
 // Conversion helper from xla::PrimitiveType to PJRT_Buffer_Type.
 PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type);

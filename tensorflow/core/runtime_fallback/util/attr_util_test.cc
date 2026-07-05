@@ -79,7 +79,7 @@ TEST_P(ParseTfDataTypeTest, Ok) {
 TEST(ParseTfDataTypeTest, ReturnsInvalidArgument) {
   DataType data_type;
   EXPECT_EQ(ParseTfDataType("DT_BFLOAT16_REF", &data_type),
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(
                 "Unsupported dtype, DT_BFLOAT16_REF in ParseTfDataType."));
 }
 
@@ -218,9 +218,9 @@ TEST(UtilsTest, ParseTensorAttrValueOk) {
 TEST(UtilsTest, ParseTensorAttrValueReturnsInvalidArgument) {
   tensorflow::Tensor tensor;
   std::string tensor_str = R"pb(foobar)pb";
-  EXPECT_EQ(
-      ParseTensorAttrValue(tensor_str, &tensor),
-      errors::InvalidArgument("Could not parse tensor value from \"foobar\""));
+  EXPECT_EQ(ParseTensorAttrValue(tensor_str, &tensor),
+            absl::InvalidArgumentError(
+                "Could not parse tensor value from \"foobar\""));
 }
 
 TEST(UtilsTest, ParseTensorShapeAttrValueOk) {
@@ -231,17 +231,18 @@ TEST(UtilsTest, ParseTensorShapeAttrValueOk) {
 
 TEST(UtilsTest, ParseTensorShapeAttrValueInvalidArgument) {
   std::vector<int64_t> dims;
-  EXPECT_EQ(
-      ParseTensorShapeAttrValue("foobar", &dims),
-      errors::InvalidArgument("Tensor shape attribute must be a string of the "
-                              "form [1,2...], instead got \"foobar\""));
+  EXPECT_EQ(ParseTensorShapeAttrValue("foobar", &dims),
+            absl::InvalidArgumentError(
+                "Tensor shape attribute must be a string of the "
+                "form [1,2...], instead got \"foobar\""));
 }
 
 TEST(UtilsTest, ParseTensorShapeAttrValueInvalidArgumentEmptyString) {
   std::vector<int64_t> dims;
-  EXPECT_EQ(ParseTensorShapeAttrValue("", &dims),
-            errors::InvalidArgument("Tensor shape attribute must be a string "
-                                    "of the form [1,2...], instead got \"\""));
+  EXPECT_EQ(
+      ParseTensorShapeAttrValue("", &dims),
+      absl::InvalidArgumentError("Tensor shape attribute must be a string "
+                                 "of the form [1,2...], instead got \"\""));
 }
 
 TEST(UtilsTest, ParseBoolAttrValueOk) {
@@ -256,7 +257,7 @@ TEST(UtilsTest, ParseBoolAttrValueOk) {
 TEST(UtilsTest, ParseBoolAttrValueInvalidArgument) {
   bool bool_val;
   EXPECT_EQ(ParseBoolAttrValue("foobar", &bool_val),
-            errors::InvalidArgument("Could not parse bool from \"foobar\""));
+            absl::InvalidArgumentError("Could not parse bool from \"foobar\""));
 }
 
 TEST(UtilsTest, ParseIntAttrValueOk) {
@@ -268,7 +269,7 @@ TEST(UtilsTest, ParseIntAttrValueOk) {
 TEST(UtilsTest, ParseIntAttrValueInvalidArgument) {
   int64_t int_val;
   EXPECT_EQ(ParseIntAttrValue("foobar", &int_val),
-            errors::InvalidArgument("Could not parse int from \"foobar\""));
+            absl::InvalidArgumentError("Could not parse int from \"foobar\""));
 }
 
 TEST(UtilsTest, IsUnusedAttributeOk) {

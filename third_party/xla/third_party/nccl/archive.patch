@@ -11,20 +11,20 @@ diff --git a/src/device/common.h b/src/device/common.h
 +++ b/src/device/common.h
 @@ -24,7 +24,7 @@
  #endif
- 
+
  typedef void(*ncclDevFuncPtr_t)();
 -extern __device__ ncclDevFuncPtr_t const ncclDevFuncTable[];
 +extern __device__ ncclDevFuncPtr_t ncclDevFuncTable[];
- 
+
  struct ncclShmemGroup {
    ncclConnInfo *recvConns[NCCL_MAX_ARITY];
 diff --git a/src/device/generate.py b/src/device/generate.py
 --- a/src/device/generate.py
 +++ b/src/device/generate.py
-@@ -194,8 +194,8 @@ kernel_funcs = sorted(set(best_kernel(*fn) for fn in primary_funcs))
- 
+@@ -209,8 +209,8 @@ kernel_funcs = sorted(set(best_kernel(*fn) for fn in primary_funcs))
+
  ################################################################################
- 
+
 -# Generate <gensrc>/device_table.cu
 -with open(os.path.join(gensrc, "device_table.cu"), "w") as f:
 +# Generate <gensrc>/device_table.cu.cc
@@ -32,22 +32,16 @@ diff --git a/src/device/generate.py b/src/device/generate.py
    out = f.write
    out('#include "common.h"\n')
    out("\n")
-@@ -210,7 +210,7 @@ with open(os.path.join(gensrc, "device_table.cu"), "w") as f:
+@@ -225,7 +225,7 @@ with open(os.path.join(gensrc, "device_table.cu"), "w") as f:
        out("#endif\n")
    out("\n")
- 
+
 -  out("__device__ ncclDevFuncPtr_t const ncclDevFuncTable[] = {\n");
 +  out("__device__ ncclDevFuncPtr_t ncclDevFuncTable[] = {\n");
    index = 0
    for fn in primary_funcs:
      sym = paste("_", "ncclDevFunc", *fn)
-@@ -262,28 +262,43 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
- 
-   # List of all kernel function pointers.
-   out("extern int const ncclDevKernelCount = %d;\n" % len(kernel_funcs))
--  out("extern void* const ncclDevKernelList[] = {\n")
-   index = 0
-   for kfn in kernel_funcs:
+@@ -283,8 +283,16 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
      cudart, _ = required_cuda(*kfn)
      sym = paste("_", "ncclDevKernel", *kfn)
      if cudart != 0: out("#if CUDART_VERSION >= %d\n" % cudart)
@@ -66,7 +60,9 @@ diff --git a/src/device/generate.py b/src/device/generate.py
      index += 1
    out("nullptr};\n")
    out("\n")
- 
+@@ -298,15 +306,23 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+   out("\n")
+
    # Maps primary id to kernel function pointer.
 -  out("extern void* const ncclDevKernelForFunc[] = {\n")
    index = 0
@@ -91,34 +87,84 @@ diff --git a/src/device/generate.py b/src/device/generate.py
      index += 1
    out("nullptr};\n")
    out("\n")
-@@ -302,7 +317,7 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+@@ -325,7 +341,7 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
  # "coll" is reflected in the name: formally that no two funcs having different
  # coll's map to the same filename.
  def impl_filename(coll, redop, ty, algo, proto):
 -  return "%s.cu" % paste("_", coll_camel_to_lower[coll], redop and redop.lower(), ty)
 +  return "%s.cu.cc" % paste("_", coll_camel_to_lower[coll], redop and redop.lower(), ty)
- 
+
  # Partition the functions and kernels to the .cu filenames. The partition is
  # a dictionary mapping filename to (coll, func-tuple list)
-@@ -326,7 +341,7 @@ name_to_kernels = partition_by_name(kfn for kfn in kernel_funcs if kfn[0]!="Gene
- with open(os.path.join(gensrc, "rules.mk"), "w") as f:
-   out = f.write
-   impl_names = sorted(name_to_funcs.keys())
--  names = impl_names + ["host_table.cc", "device_table.cu"]
-+  names = impl_names + ["host_table.cc", "device_table.cu.cc"]
-   out("LIB_OBJS_GEN = $(patsubst %,$(OBJDIR)/genobj/%.o,{names})\n"
-       .format(names=" ".join(names)))
-   out("\n")
-diff --git a/src/ras/ras.cc b/src/ras/ras.cc
---- a/src/ras/ras.cc
-+++ b/src/ras/ras.cc
-@@ -5,7 +5,9 @@
-  ************************************************************************/
- 
+@@ -357,7 +373,7 @@ if os.environ.get("NCCL_USE_CMAKE", "0") != "1":
+   with open(os.path.join(gensrc, "rules.mk"), "w") as f:
+     out = f.write
+     impl_names = sorted(name_to_funcs.keys())
+-    names = impl_names + ["host_table.cc", "device_table.cu"]
++    names = impl_names + ["host_table.cc", "device_table.cu.cc"]
+     out("LIB_OBJS_GEN = $(patsubst %,$(OBJDIR)/genobj/%.o,{names})\n"
+         .format(names=" ".join(names)))
+     out("\n")
+
+diff --git a/src/include/nccl_common.h b/src/include/nccl_common.h
+--- a/src/include/nccl_common.h
++++ b/src/include/nccl_common.h
+@@ -9,7 +9,9 @@
+ #define NCCL_DEBUG_H_
+
  // Workaround for libstdc++ trying to force public visibility of std:: symbols.  We don't want to do that in libnccl.so.
 +#if defined(__GLIBCXX__)
  #include <bits/c++config.h>
 +#endif
  #undef _GLIBCXX_VISIBILITY
  #define _GLIBCXX_VISIBILITY(V)
- #include <cstddef>
+
+diff --git a/src/include/nccl_device/gin/proxy/gin_proxy.h b/src/include/nccl_device/gin/proxy/gin_proxy.h
+--- a/src/include/nccl_device/gin/proxy/gin_proxy.h
++++ b/src/include/nccl_device/gin/proxy/gin_proxy.h
+@@ -55,7 +55,7 @@ NCCL_DEVICE_INLINE void postGfd(Coop coop, ncclGinProxyGpuCtx_t* proxyCtx, ncclG
+-// 4x16 byte store with the write-through cache hint
++// 16x4 byte store with the write-through cache hint
+ #pragma unroll
+-    for (uint8_t i = 0; i < 4; i++) {
+-      __stwt((uint4*)&q[idx] + i, ((uint4*)gfd)[i]);
++    for (uint8_t i = 0; i < 16; i++) {
++      __stwt((__half2*)&q[idx] + i, ((__half2*)gfd)[i]);
+     }
+   }
+ }
+diff --git a/src/include/nccl_device/utility.h b/src/include/nccl_device/utility.h
+--- a/src/include/nccl_device/utility.h
++++ b/src/include/nccl_device/utility.h
+@@ -17,7 +17,7 @@
+             #define NCCL_CHECK_CUDACC 0
+         #endif
+     #else
+-        #if __CUDACC__
++        #ifdef __CUDACC__
+             #define NCCL_CHECK_CUDACC 1
+         #else
+             #define NCCL_CHECK_CUDACC 0
+        #endif
+
+diff --git a/src/device/symmetric/data_ops.cuh b/src/device/symmetric/data_ops.cuh
+--- a/src/device/symmetric/data_ops.cuh
++++ b/src/device/symmetric/data_ops.cuh
+@@ -26,7 +26,7 @@
+   case 1: for (int i=0; i < sizeof(T)/1; i++) u8[i] = __ldcs((uint8_t*)p + i); break;
+   case 2: for (int i=0; i < sizeof(T)/2; i++) u16[i] = __ldcs((uint16_t*)p + i); break;
+   case 4: for (int i=0; i < sizeof(T)/4; i++) u32[i] = __ldcs((uint32_t*)p + i); break;
+-  case 8: for (int i=0; i < sizeof(T)/8; i++) u64[i] = __ldcs((uint64_t*)p + i); break;
++  case 8: for (int i=0; i < sizeof(T)/8; i++) u64[i] = __ldcs((unsigned long long*)p + i); break;
+   case 16: for (int i=0; i < sizeof(T)/16; i++) u32v4[i] = __ldcs((uint4*)p + i); break;
+   default: __builtin_unreachable();
+   }
+@@ -62,7 +62,7 @@
+   case 1: for (int i=0; i < sizeof(T)/1; i++) __stcs((uint8_t*)p + i, u8[i]); break;
+   case 2: for (int i=0; i < sizeof(T)/2; i++) __stcs((uint16_t*)p + i, u16[i]); break;
+   case 4: for (int i=0; i < sizeof(T)/4; i++) __stcs((uint32_t*)p + i, u32[i]); break;
+-  case 8: for (int i=0; i < sizeof(T)/8; i++) __stcs((uint64_t*)p + i, u64[i]); break;
++  case 8: for (int i=0; i < sizeof(T)/8; i++) __stcs((unsigned long long*)p + i, u64[i]); break;
+   case 16: for (int i=0; i < sizeof(T)/16; i++) __stcs((uint4*)p + i, u32v4[i]); break;
+   default: __builtin_unreachable();
+   }

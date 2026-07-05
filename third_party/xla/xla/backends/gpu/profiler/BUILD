@@ -52,6 +52,7 @@ cc_library(
     deps = [
         "//xla/stream_executor:platform",
         "//xla/stream_executor/platform:platform_object_registry",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
     ] + if_cuda_is_configured([
@@ -76,9 +77,9 @@ xla_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/runtime:command",
-        "//xla/backends/gpu/runtime:command_buffer_cmd",
         "//xla/backends/gpu/runtime:command_buffer_thunk",
         "//xla/backends/gpu/runtime:command_executor",
+        "//xla/backends/gpu/runtime:kernel_thunk",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
@@ -98,6 +99,7 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_test_kernels",
         "//xla/stream_executor/gpu:gpu_test_kernels_fatbin",
         "//xla/stream_executor/rocm:rocm_platform_id",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",

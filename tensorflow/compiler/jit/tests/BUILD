@@ -22,7 +22,6 @@ cc_library(
         "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",

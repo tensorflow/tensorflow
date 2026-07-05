@@ -80,14 +80,14 @@ TEST(MultiDeviceAdapter, UsesCorrectAllocator) {
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
   std::vector<MultiDeviceAdapter::AllocatorInfo> infos;
-  infos.emplace_back(std::make_unique<TestAllocator>(0x1000), stream.get(),
-                     /*memory_space=*/0, /*device_ordinal=*/0);
-  infos.emplace_back(std::make_unique<TestAllocator>(0x2000), stream.get(),
-                     /*memory_space=*/0, /*device_ordinal=*/1);
-  infos.emplace_back(std::make_unique<TestAllocator>(0x3000), stream.get(),
-                     /*memory_space=*/1, /*device_ordinal=*/0);
-  infos.emplace_back(std::make_unique<TestAllocator>(0x4000), stream.get(),
-                     /*memory_space=*/1, /*device_ordinal=*/1);
+  infos.push_back({std::make_shared<TestAllocator>(0x1000), stream.get(),
+                   /*memory_space=*/0, /*device_ordinal=*/0});
+  infos.push_back({std::make_shared<TestAllocator>(0x2000), stream.get(),
+                   /*memory_space=*/0, /*device_ordinal=*/1});
+  infos.push_back({std::make_shared<TestAllocator>(0x3000), stream.get(),
+                   /*memory_space=*/1, /*device_ordinal=*/0});
+  infos.push_back({std::make_shared<TestAllocator>(0x4000), stream.get(),
+                   /*memory_space=*/1, /*device_ordinal=*/1});
   std::unique_ptr<DeviceAddressAllocator> allocator =
       std::make_unique<MultiDeviceAdapter>(platform, std::move(infos));
 
@@ -123,17 +123,17 @@ TEST(MultiDeviceAdapter, DeallocationWithDifferentAllocator) {
   std::shared_ptr<absl::flat_hash_set<void*>> allocations =
       std::make_shared<absl::flat_hash_set<void*>>();
   std::vector<MultiDeviceAdapter::AllocatorInfo> info_allocator;
-  info_allocator.emplace_back(
-      std::make_unique<TestAllocator>(0x1000, allocations), stream.get(),
-      /*memory_space=*/0, /*device_ordinal=*/0);
+  info_allocator.push_back(
+      {std::make_shared<TestAllocator>(0x1000, allocations), stream.get(),
+       /*memory_space=*/0, /*device_ordinal=*/0});
 
   std::unique_ptr<DeviceAddressAllocator> allocator =
       std::make_unique<MultiDeviceAdapter>(platform, std::move(info_allocator));
 
   std::vector<MultiDeviceAdapter::AllocatorInfo> info_deallocator;
-  info_deallocator.emplace_back(
-      std::make_unique<TestAllocator>(0x1000, allocations), stream.get(),
-      /*memory_space=*/0, /*device_ordinal=*/0);
+  info_deallocator.push_back(
+      {std::make_shared<TestAllocator>(0x1000, allocations), stream.get(),
+       /*memory_space=*/0, /*device_ordinal=*/0});
   std::unique_ptr<DeviceAddressAllocator> deallocator =
       std::make_unique<MultiDeviceAdapter>(platform,
                                            std::move(info_deallocator));

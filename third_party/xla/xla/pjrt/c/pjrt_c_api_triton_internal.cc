@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/triton.h"
@@ -57,10 +58,10 @@ PJRT_Error* PJRT_Triton_Compile(PJRT_Triton_Compile_Args* args) {
   } else if (xla::triton::HsacoPath* ptr =
                  std::get_if<xla::triton::HsacoPath>(&result.compiled_output)) {
     if (is_v1_struct) {
-      return new PJRT_Error{absl::InvalidArgumentError(
+      return StatusToPjRtError(absl::InvalidArgumentError(
           "Triton compilation returned ROCm HsacoPath, but client is using V1 "
           "PJRT_Triton_Compile_Args struct version which only supports CUDA "
-          "PTX AsmText output.")};
+          "PTX AsmText output."));
     }
 
     args->out_asm = nullptr;

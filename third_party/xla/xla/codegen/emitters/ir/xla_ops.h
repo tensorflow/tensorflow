@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
 #include "xla/codegen/emitters/ir/xla_dialect.h"  // IWYU pragma: keep
 #include "xla/hlo/analysis/indexing_map.h"  // IWYU pragma: keep
+#include "xla/hlo/analysis/symbolic_expr.h"  // IWYU pragma: keep
 
 // The order of these includes is important.
 #include "xla/codegen/emitters/ir/xla_enums.h.inc"  // IWYU pragma: keep
@@ -44,9 +45,9 @@ limitations under the License.
 namespace xla {
 
 struct VariableConstraints {
-  llvm::SmallVector<llvm::SmallDenseMap<mlir::AffineExpr, Interval>>
+  llvm::SmallVector<llvm::SmallDenseMap<SymbolicExpr, Interval>>
       constraints_for_dims;
-  llvm::SmallVector<llvm::SmallDenseMap<mlir::AffineExpr, Interval>>
+  llvm::SmallVector<llvm::SmallDenseMap<SymbolicExpr, Interval>>
       constraints_for_symbols;
 };
 VariableConstraints GetConstraintsForVariables(const IndexingMap& map);
