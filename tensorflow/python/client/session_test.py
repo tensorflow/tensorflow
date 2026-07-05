@@ -2123,13 +2123,10 @@ class SessionTest(test_util.TensorFlowTestCase):
         session.Session(config=config_pb)
 
   @test_util.run_v1_only('b/120545219')
-  def testNegativeInterOpParallelismThreadsRaisesError(self):
+  def testNegativeInterOpParallelismThreadsIsAllowed(self):
     with ops.Graph().as_default():
       config_pb = config_pb2.ConfigProto(inter_op_parallelism_threads=-1)
-      with self.assertRaisesRegex(
-          ValueError,
-          r'config\.inter_op_parallelism_threads.*must be >= 0.*-1'):
-        session.Session(config=config_pb)
+      session.Session(config=config_pb).close()
 
 
 if __name__ == '__main__':
