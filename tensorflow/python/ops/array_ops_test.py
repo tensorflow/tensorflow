@@ -511,7 +511,10 @@ class TestFoldSamePadding(test.TestCase):
     x = random_ops.random_normal([1, image_size, image_size, 2])
     
     patches = self._extract_patches(
-        x, kernel=kernel_size, stride=stride, padding='VALID', dilation=dilation)
+        x, kernel=kernel_size,
+          stride=stride, 
+          padding='VALID', 
+          dilation=dilation)
     
     reconstructed = array_ops.fold(
         patches,
@@ -524,7 +527,10 @@ class TestFoldSamePadding(test.TestCase):
 
     ones = array_ops.ones_like(x)
     ones_patches = self._extract_patches(
-        ones, kernel=kernel_size, stride=stride, padding='VALID', dilation=dilation)
+        ones, kernel=kernel_size, 
+        stride=stride, 
+        padding='VALID', 
+        dilation=dilation)
     overlap_counts = array_ops.fold(
         ones_patches,
         output_size=(image_size, image_size),
@@ -705,14 +711,14 @@ class TestFoldDeterminism(test.TestCase):
         padding="VALID")
     outputs = []
     for i in range(20):
-        outputs.append(
-          array_ops.fold(
-            patches,
-            output_size=(128, 128),
-            kernel_size=15,
-            stride=1,
-            padding="VALID",
-            dilation=1))
+      outputs.append(
+        array_ops.fold(
+          patches,
+          output_size=(128, 128),
+          kernel_size=15,
+          stride=1,
+          padding="VALID",
+          dilation=1))
     reference = outputs[0]
     for output in outputs[1:]:
       self.assertAllClose(reference,output)

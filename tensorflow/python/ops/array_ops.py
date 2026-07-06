@@ -6397,11 +6397,15 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
     from tensorflow.python.platform import tf_logging
     if not config.is_op_determinism_enabled():
       tf_logging.get_logger().warning(
-        msg="The fold operation may produce non-deterministic results for floating-point data types " \
-        "when patches are overlapping (stride < kernel_size)." \
-        "This is because the order in which the updates are applied is non-deterministic and " \
-        "when floating-point numbers are added in different orders the resulting numerical approximation error can be slightly different." \
-        " To ensure reproducible results, enable op determinism using `tf.config.experimental.enable_op_determinism()`"
+        msg="The fold operation may produce non-deterministic results" \
+        " for floating-point data types " \
+        "when patches are overlapping (stride < kernel_size). " \
+        "This is because the order in which the updates are applied is " \
+        "non-deterministic and when floating-point numbers are added in" \
+        " different orders the resulting numerical approximation error " \
+        "can be slightly different. To ensure reproducible results, " \
+        " enable op determinism using " \
+        "`tf.config.experimental.enable_op_determinism()`"
         )
 
 
@@ -6443,11 +6447,11 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
     else:
       raise ValueError(f"padding must be 'VALID' , 'SAME' or int got {padding}")
   elif isinstance(padding, int):
-        if padding < 0:
-            raise ValueError("padding must be >= 0")
-        pad_top = pad_bottom = pad_left = pad_right = padding
+    if padding < 0:
+      raise ValueError("padding must be >= 0")
+    pad_top = pad_bottom = pad_left = pad_right = padding
   else:
-      raise ValueError(f"padding must be 'VALID', 'SAME' or int, got {padding}")
+    raise ValueError(f"padding must be 'VALID', 'SAME' or int, got {padding}")
     
   # Padded output size
   padded_height = height + pad_top + pad_bottom
