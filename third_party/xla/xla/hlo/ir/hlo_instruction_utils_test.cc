@@ -541,6 +541,124 @@ ENTRY main {
   EXPECT_THAT(async::GetAsyncBoundOperands(done),
               ::testing::ElementsAre(p0, p1));
 }
+
+TEST_F(HloInstructionUtilsTest, IsFirstFullyBound_LateBinding) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT abs = f32[2,3] abs(p0)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  start = ((), (), s32[]) call-start(), to_apply=async_computation
+  update = ((f32[2,3]), f32[2,3], ()) call-update(start, p0)
+  ROOT done = f32[2,3] call-done(update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* update = FindInstruction(module.get(), "update");
+  HloInstruction* done = FindInstruction(module.get(), "done");
+
+  EXPECT_THAT(async::IsFirstFullyBound(start), IsOkAndHolds(false));
+  EXPECT_THAT(async::IsFirstFullyBound(update), IsOkAndHolds(true));
+  EXPECT_THAT(async::IsFirstFullyBound(done), IsOkAndHolds(false));
+}
+
+TEST_F(HloInstructionUtilsTest, IsFirstFullyBound_EarlyBinding) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT abs = f32[2,3] abs(p0)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  start = ((f32[2,3]), f32[2,3], s32[]) call-start(p0), to_apply=async_computation
+  ROOT done = f32[2,3] call-done(start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* done = FindInstruction(module.get(), "done");
+
+  EXPECT_THAT(async::IsFirstFullyBound(start), IsOkAndHolds(true));
+  EXPECT_THAT(async::IsFirstFullyBound(done), IsOkAndHolds(false));
+}
+TEST_F(HloInstructionUtilsTest, IsFirstFullyBound_Parameterless) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  constant = f32[2,3] constant(1.0)
+  ROOT abs = f32[2,3] abs(constant)
+}
+
+ENTRY main {
+  start = ((), f32[2,3], s32[]) call-start(), to_apply=async_computation
+  ROOT done = f32[2,3] call-done(start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* done = FindInstruction(module.get(), "done");
+
+  EXPECT_THAT(async::IsFirstFullyBound(start), IsOkAndHolds(true));
+  EXPECT_THAT(async::IsFirstFullyBound(done), IsOkAndHolds(false));
+}
+
+TEST_F(HloInstructionUtilsTest, IsFirstFullyBound_LateBinding_MultipleUpdates) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  p1 = f32[2,3] parameter(1)
+  ROOT abs = f32[2,3] abs(p0)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  p1 = f32[2,3] parameter(1)
+  start = ((), (), s32[]) call-start(), to_apply=async_computation
+  update1 = ((f32[2,3]), (), s32[]) call-update(start, p0)
+  update2 = ((f32[2,3], f32[2,3]), f32[2,3], ()) call-update(update1, p1)
+  ROOT done = f32[2,3] call-done(update2)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* update1 = FindInstruction(module.get(), "update1");
+  HloInstruction* update2 = FindInstruction(module.get(), "update2");
+  HloInstruction* done = FindInstruction(module.get(), "done");
+
+  EXPECT_THAT(async::IsFirstFullyBound(start), IsOkAndHolds(false));
+  EXPECT_THAT(async::IsFirstFullyBound(update1), IsOkAndHolds(false));
+  EXPECT_THAT(async::IsFirstFullyBound(update2), IsOkAndHolds(true));
+  EXPECT_THAT(async::IsFirstFullyBound(done), IsOkAndHolds(false));
+}
+
+TEST_F(HloInstructionUtilsTest, IsFirstFullyBound_NonAsyncInstruction) {
+  const char* const hlo = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  ROOT add = f32[2,3] add(p0, p0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  EXPECT_THAT(
+      async::IsFirstFullyBound(add),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               ::testing::HasSubstr("Instruction is not asynchronous")));
+}
 }  // namespace
 
 }  // namespace hlo_instruction_utils

@@ -58,6 +58,10 @@ namespace async {
 absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
     const HloInstruction* async_op, const ShapeIndex& index = {});
 
+// Returns true if the async-op is the first fully bound instruction in the
+// async chain.
+absl::StatusOr<bool> IsFirstFullyBound(const HloInstruction* async_inst);
+
 // Returns all data operands accumulated in the async chain up to and including
 // `async_op`.
 // For `async-update` and `async-done`, the first operand (the chaining operand)

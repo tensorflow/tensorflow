@@ -242,6 +242,21 @@ std::vector<const HloInstruction*> GetAsyncBoundOperands(
   return bound_operands;
 }
 
+absl::StatusOr<bool> IsFirstFullyBound(const HloInstruction* async_inst) {
+  ASSIGN_OR_RETURN(bool fully_bound,
+                   AreOperandsAndOutputFullyBound(async_inst));
+  if (!fully_bound) {
+    return false;
+  }
+  if (async_inst->opcode() == HloOpcode::kAsyncStart) {
+    return true;
+  }
+
+  ASSIGN_OR_RETURN(bool prev_fully_bound,
+                   AreOperandsAndOutputFullyBound(async_inst->operand(0)));
+  return !prev_fully_bound;
+}
+
 }  // namespace async
 
 }  // namespace hlo_instruction_utils
