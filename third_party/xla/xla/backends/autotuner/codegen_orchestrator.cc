@@ -116,7 +116,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CodegenOrchestrator::Compile(
           << instr.ToString();
   absl::StatusOr<std::unique_ptr<Executable>> executable =
       config.codegen_backend->Compile(instr, *config.backend_config);
-  if (absl::Status status = IsValidExecutable(executable, instr);
+  if (absl::Status status = IsValidExecutable(executable, instr, config);
       !status.ok()) {
     return status;
   }
@@ -151,26 +151,27 @@ absl::Status CodegenOrchestrator::ApplyConfig(HloInstruction& instr,
 
 absl::Status CodegenOrchestrator::IsValidExecutable(
     const absl::StatusOr<std::unique_ptr<Executable>>& executable,
-    const HloInstruction& instr) const {
+    const HloInstruction& instr, const Config& config) const {
   if (!executable.ok()) {
     return tsl::errors::CreateWithUpdatedMessage(
         executable.status(),
         absl::StrCat("Compilation failed: ", executable.status().message()));
   }
 
-  bool allow_spills = false;
-  if (options_.allow_reg_spills_fn) {
-    allow_spills = options_.allow_reg_spills_fn(instr);
+  if (!*executable) {
+    return absl::OkStatus();
   }
 
-  if (!allow_spills && *executable) {
-    const auto spills_registers = [](const auto& pair) {
-      const KernelStats& kernel_stats = pair.second;
-      return kernel_stats.store_bytes_spilled > 0 ||
-             kernel_stats.load_bytes_spilled > 0;
-    };
-    ModuleStats module_stats = (*executable)->module_stats();
-    if (absl::c_any_of(module_stats, spills_registers)) {
+  if (options_.allow_reg_spills_fn &&
+      options_.allow_reg_spills_fn(instr, config.codegen_backend->backend())) {
+    return absl::OkStatus();
+  }
+
+  // Fail if any registers spilled.
+  ModuleStats module_stats = (*executable)->module_stats();
+  for (const auto& [kernel_name, kernel_stats] : module_stats) {
+    if (kernel_stats.store_bytes_spilled > 0 ||
+        kernel_stats.load_bytes_spilled > 0) {
       return absl::ResourceExhaustedError(
           "Discarding compilation due to register spilling.");
     }

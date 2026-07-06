@@ -39,8 +39,9 @@ class CodegenOrchestrator {
   struct Options {
     // Whether to allow or discard configs that ptxas warns will spill
     // registers.
-    std::function<bool(const HloInstruction&)> allow_reg_spills_fn =
-        [](const HloInstruction&) { return false; };
+    std::function<bool(const HloInstruction&, autotuner::Backend)>
+        allow_reg_spills_fn =
+            [](const HloInstruction&, autotuner::Backend) { return false; };
     // TODO(b/519059655): Generalize and move to tuner.
     // If true, do not allow compilation of cublas or rocblas configs.
     bool exclude_cublas_config = false;
@@ -98,7 +99,7 @@ class CodegenOrchestrator {
 
   absl::Status IsValidExecutable(
       const absl::StatusOr<std::unique_ptr<Executable>>& executable,
-      const HloInstruction& instr) const;
+      const HloInstruction& instr, const Config& config) const;
 
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends_;
   Options options_;

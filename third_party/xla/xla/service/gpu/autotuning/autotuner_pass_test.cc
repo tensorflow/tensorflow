@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/config_assigner.h"
 #include "xla/backends/autotuner/profiler.h"
@@ -489,7 +490,7 @@ TEST_P(AutotunerRegSpillsTest, RegSpills) {
       params.filter_kernels_flag);
   auto config = GetCodegenOrchestratorOptions(debug_options);
   std::unique_ptr<HloInstruction> dummy = HloInstruction::CreateTuple({});
-  EXPECT_EQ(config.allow_reg_spills_fn(*dummy),
+  EXPECT_EQ(config.allow_reg_spills_fn(*dummy, autotuner::Backend::TRITON),
             params.expected_allow_reg_spills_out);
 }
 
@@ -780,6 +781,149 @@ TEST_F(AutotunerPassTest, CudnnSelectFirstConfig) {
                 .algorithm()
                 .algo_id(),
             expected_config->algorithm().algo_id());
+}
+
+TEST_F(AutotunerPassTest, CublasLtFissionAllowsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    ENTRY main {
+      ROOT tuple = () tuple()
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(options.allow_reg_spills_fn(
+      *instr, autotuner::Backend::CUBLASLT_FISSION));
+}
+
+TEST_F(AutotunerPassTest, CublasLtGemmCustomCallForbidsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    ENTRY main {
+      arg0 = f32[100,100]{1,0} parameter(0)
+      arg1 = f32[100,100]{1,0} parameter(1)
+      ROOT custom-call = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(arg0, arg1),
+        custom_call_target="__cublas$lt$matmul",
+        backend_config="{\n  \"gemm_backend_config\": {\n    \"dot_dimension_numbers\": {\n      \"lhs_contracting_dimensions\": [\n        \"1\"\n      ],\n      \"rhs_contracting_dimensions\": [\n        \"0\"\n      ]\n    }\n  }\n}"
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(
+      options.allow_reg_spills_fn(*instr, autotuner::Backend::CUBLASLT));
+}
+
+TEST_F(AutotunerPassTest, CudnnConvCustomCallForbidsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    ENTRY main {
+      p0 = f32[1,1,3,3]{3,2,1,0} parameter(0)
+      p1 = f32[1,1,3,3]{3,2,1,0} parameter(1)
+      ROOT custom-call = (f32[1,1,3,3]{3,2,1,0}, u8[0]{0}) custom-call(p0, p1),
+        custom_call_target="__cudnn$convForward"
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::CUDNN));
+}
+
+TEST_F(AutotunerPassTest, TritonGemmFusionForbidsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    computation {
+      p0 = bf16[128,128]{1,0} parameter(0)
+      p1 = bf16[128,128]{1,0} parameter(1)
+      ROOT dot = bf16[128,128]{1,0} dot(p0, p1),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+    ENTRY main {
+      p0 = bf16[128,128]{1,0} parameter(0)
+      p1 = bf16[128,128]{1,0} parameter(1)
+      ROOT fusion = bf16[128,128]{1,0} fusion(p0, p1),
+        kind=kCustom, calls=computation,
+        backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::TRITON));
+}
+
+TEST_F(AutotunerPassTest, CudnnFusionForbidsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    computation {
+      p0 = f32[100,100]{1,0} parameter(0)
+      ROOT neg = f32[100,100]{1,0} negate(p0)
+    }
+    ENTRY main {
+      p0 = f32[100,100]{1,0} parameter(0)
+      ROOT fusion = f32[100,100]{1,0} fusion(p0), kind=kCustom, calls=computation,
+        backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion"}}
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::CUDNN));
+}
+
+TEST_F(AutotunerPassTest, CustomFusionForbidsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    computation {
+      p0 = f32[100,100]{1,0} parameter(0)
+      ROOT neg = f32[100,100]{1,0} negate(p0)
+    }
+    ENTRY main {
+      p0 = f32[100,100]{1,0} parameter(0)
+      ROOT fusion = f32[100,100]{1,0} fusion(p0), kind=kCustom, calls=computation,
+        backend_config={"fusion_backend_config":{"kind":"__custom_fusion"}}
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::TRITON));
+}
+
+TEST_F(AutotunerPassTest, LoopFusionAllowsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    computation {
+      p0 = f32[100,100]{1,0} parameter(0)
+      ROOT neg = f32[100,100]{1,0} negate(p0)
+    }
+    ENTRY main {
+      p0 = f32[100,100]{1,0} parameter(0)
+      ROOT fusion = f32[100,100]{1,0} fusion(p0), kind=kLoop, calls=computation
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(
+      options.allow_reg_spills_fn(*instr, autotuner::Backend::NATIVE_EMITTER));
+}
+
+TEST_F(AutotunerPassTest, OtherOpcodeAllowsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    ENTRY main {
+      p0 = f32[100,100]{1,0} parameter(0)
+      ROOT neg = f32[100,100]{1,0} negate(p0)
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(options.allow_reg_spills_fn(
+      *instr, autotuner::Backend::BLOCK_LEVEL_EMITTER));
 }
 
 }  // namespace

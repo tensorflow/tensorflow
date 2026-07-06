@@ -80,7 +80,13 @@ using AutotuneDecision = Decision;
 // regressions. These are allowed on non-GEMM fusions because sometimes these
 // are the only viable configurations to try.
 AutotuneDecision AllowRegSpillsForGpuInstruction(
-    const HloInstruction& instruction) {
+    const HloInstruction& instruction, autotuner::Backend backend) {
+  // CUBLASLT_FISSION creates loop fusions for the decomposed prologue and
+  // epilogue of the GEMM fusion. These fusions are allowed to spill as they
+  // have limited configs and can still be faster.
+  if (backend == autotuner::Backend::CUBLASLT_FISSION) {
+    return AutotuneDecision::Allow();
+  }
   if (instruction.opcode() == HloOpcode::kCustomCall) {
     if (IsCublasLtGemm(instruction) ||
         IsCustomCallToDnnConvolution(instruction)) {
@@ -290,8 +296,9 @@ CodegenOrchestrator::Options GetCodegenOrchestratorOptions(
   CodegenOrchestrator::Options options;
   options.exclude_cublas_config = !debug_options.xla_gpu_cublas_fallback();
   if (!debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling()) {
-    options.allow_reg_spills_fn = [](const HloInstruction& instr) {
-      return static_cast<bool>(AllowRegSpillsForGpuInstruction(instr));
+    options.allow_reg_spills_fn = [](const HloInstruction& instr,
+                                     autotuner::Backend backend) {
+      return static_cast<bool>(AllowRegSpillsForGpuInstruction(instr, backend));
     };
   }
   // xla_gpu_filter_kernels_spilling_registers_on_autotuning is true by default,
@@ -301,7 +308,8 @@ CodegenOrchestrator::Options GetCodegenOrchestratorOptions(
   // explicitly set to false.
   if (!debug_options
            .xla_gpu_filter_kernels_spilling_registers_on_autotuning()) {
-    options.allow_reg_spills_fn = [](const HloInstruction&) { return false; };
+    options.allow_reg_spills_fn = [](const HloInstruction&,
+                                     autotuner::Backend) { return false; };
   }
   return options;
 }
