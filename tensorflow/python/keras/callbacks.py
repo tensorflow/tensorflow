@@ -1763,6 +1763,8 @@ class EarlyStopping(Callback):
     super(EarlyStopping, self).__init__()
 
     self.monitor = monitor
+    if patience < 0:
+      raise ValueError(f'`patience` must be >= 0, got {patience}')
     self.patience = patience
     self.verbose = verbose
     self.baseline = baseline
