@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/reduction_ops_common.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -87,9 +88,16 @@ absl::Status BiasGPU<T>::compute(const GPUDevice& d, const T* input,
                                  int32_t height, int32_t width, int32_t depth,
                                  int32_t channel, TensorFormat data_format) {
   const int32_t bias_size = channel;
-  const int64_t image_size = static_cast<int64_t>(height) * width * depth;
-  const int64_t total_count =
-      static_cast<int64_t>(batch) * bias_size * image_size;
+  // MultiplyWithoutOverflow returns a negative value if the product would
+  // overflow int64 (or if an operand is negative). Counts up to int64 max are
+  // supported; the kernels iterate with 64-bit indices.
+  const int64_t image_size =
+      MultiplyWithoutOverflow(MultiplyWithoutOverflow(height, width), depth);
+  const int64_t total_count = MultiplyWithoutOverflow(
+      MultiplyWithoutOverflow(batch, bias_size), image_size);
+  if (image_size < 0 || total_count < 0) {
+    return absl::InternalError("BiasGPU: dimensions overflow int64");
+  }
   if (total_count == 0) {
     return absl::OkStatus();
   }
@@ -238,9 +246,16 @@ absl::Status BiasGradGPU<T>::compute(const GPUDevice& d,
                                      int32_t channel,
                                      TensorFormat data_format) {
   const int32_t bias_size = channel;
-  const int64_t image_size = static_cast<int64_t>(height) * width * depth;
-  const int64_t total_count =
-      static_cast<int64_t>(batch) * bias_size * image_size;
+  // MultiplyWithoutOverflow returns a negative value if the product would
+  // overflow int64 (or if an operand is negative). Counts up to int64 max are
+  // supported; the kernels iterate with 64-bit indices.
+  const int64_t image_size =
+      MultiplyWithoutOverflow(MultiplyWithoutOverflow(height, width), depth);
+  const int64_t total_count = MultiplyWithoutOverflow(
+      MultiplyWithoutOverflow(batch, bias_size), image_size);
+  if (image_size < 0 || total_count < 0) {
+    return absl::InternalError("BiasGradGPU: dimensions overflow int64");
+  }
   if (total_count == 0) {
     return absl::OkStatus();
   }
