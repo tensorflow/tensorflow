@@ -4378,6 +4378,7 @@ bool HloParserImpl::ParseSingleSharding(
 
   std::vector<AxisRef> replicated_axes;
   std::vector<AxisRef> unreduced_axes;
+  NamedSharding::ReductionOp reduction_op = NamedSharding::ReductionOp::kSum;
   std::vector<AxisRef> manual_axes;
 
   while (lexer_.GetKind() != TokKind::kRbrace) {
@@ -4393,6 +4394,20 @@ bool HloParserImpl::ParseSingleSharding(
         return false;
       }
     } else if (attr_name == "unreduced") {
+      if (lexer_.GetKind() == TokKind::kAttributeName ||
+          lexer_.GetKind() == TokKind::kIdent) {
+        std::string op_str = lexer_.GetStrVal();
+        if (op_str == "sum") {
+          reduction_op = NamedSharding::ReductionOp::kSum;
+        } else if (op_str == "max") {
+          reduction_op = NamedSharding::ReductionOp::kMax;
+        } else if (op_str == "min") {
+          reduction_op = NamedSharding::ReductionOp::kMin;
+        } else {
+          return TokenError("expected sum, max, or min for unreduced op");
+        }
+        lexer_.Lex();
+      }
       if (!ParseAxisRefList(*mesh, unreduced_axes)) {
         return false;
       }
@@ -4411,7 +4426,7 @@ bool HloParserImpl::ParseSingleSharding(
     }
   }
   sharding = NamedSharding(*mesh, dim_shardings, replicated_axes,
-                           unreduced_axes, manual_axes, metadata);
+                           unreduced_axes, manual_axes, metadata, reduction_op);
   return ParseToken(TokKind::kRbrace, "expected '}' to end sharding attribute");
 }
 
