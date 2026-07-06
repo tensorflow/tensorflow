@@ -167,6 +167,23 @@ TEST_F(AlgebraicSimplifierTest, IsNonNegative_Op_NegativeTestCase) {
   }
 }
 
+TEST_F(AlgebraicSimplifierTest,
+       IsNonNegativeSignedIntegerOverflowNegativeTestCase) {
+  for (const auto op : {"abs(p0)", "multiply(p0, p0)"}) {
+    const auto kModuleStr = absl::StrFormat(R"(
+      HloModule m
+      test {
+        p0 = s8[] parameter(0)
+        ROOT y = s8[] %s
+      }
+    )",
+                                            op);
+    TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+    ASSERT_FALSE(AlgebraicSimplifierVisitor::IsNonNegative(
+        m->entry_computation()->root_instruction(), default_options_));
+  }
+}
+
 // Test that the result of Broadcast is non-negative if its operand is
 // non-negative
 TEST_F(AlgebraicSimplifierTest, IsNonNegative_Broadcast) {
@@ -12079,6 +12096,30 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationIota) {
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Iota()));
+}
+
+TEST_F(AlgebraicSimplifierTest, DoesNotFoldSignedIntegerSquareAbsSelect) {
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    ENTRY test {
+      p0 = s8[4]{0} parameter(0)
+      mul = s8[4]{0} multiply(p0, p0)
+      zero = s8[] constant(0)
+      bcast = s8[4]{0} broadcast(zero), dimensions={}
+      cmp = pred[4]{0} compare(mul, bcast), direction=LT
+      abs = s8[4]{0} abs(mul)
+      ROOT select = s8[4]{0} select(cmp, abs, mul)
+    }
+  )"));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kCompare);
+  EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kAbs);
+  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kMultiply);
+  EXPECT_EQ(root->operand(0)->operand(0), root->operand(2));
+  EXPECT_EQ(root->operand(1)->operand(0), root->operand(2));
 }
 
 TEST_F(AlgebraicSimplifierTest, SimplifyRedundantBitcastConvert) {

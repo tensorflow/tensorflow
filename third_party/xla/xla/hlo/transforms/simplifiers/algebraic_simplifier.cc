@@ -135,6 +135,11 @@ bool IsAnyOperandComplex(const HloInstruction* hlo) {
   return false;
 }
 
+bool HasSignedIntegralElementType(const HloInstruction* hlo) {
+  return ShapeUtil::ElementIsIntegral(hlo->shape()) &&
+         ShapeUtil::ElementIsSigned(hlo->shape());
+}
+
 bool IsPositive(const HloInstruction* hlo,
                 const AlgebraicSimplifierOptions& options) {
   // Utility only handles real types.
@@ -534,12 +539,15 @@ bool AlgebraicSimplifierVisitor::IsNonNegative(
   }
   switch (hlo->opcode()) {
     case HloOpcode::kMultiply: {
-      return hlo->operand(0) == hlo->operand(1);
+      return hlo->operand(0) == hlo->operand(1) &&
+             !HasSignedIntegralElementType(hlo);
     }
-    case HloOpcode::kAbs:
     case HloOpcode::kExp:
     case HloOpcode::kIota: {
       return true;
+    }
+    case HloOpcode::kAbs: {
+      return !HasSignedIntegralElementType(hlo);
     }
     case HloOpcode::kBroadcast: {
       return IsNonNegative(hlo->operand(0), options);
