@@ -586,6 +586,7 @@ xla_cc_test(
         ":logical_buffer_analysis",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
         "//xla/service:logical_buffer",
