@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 
+#include "absl/base/attributes.h"
+
 namespace tensorflow {
 namespace tpu {
-const char kCompilationCacheUnloaderResourceName[] =
+ABSL_CONST_INIT const char kCompilationCacheUnloaderResourceName[] =
     "tpu_compilation_cache_unloader";
-const char kFingerprintLookupResourceName[] = "tpu_fingerprint_lookup";
+ABSL_CONST_INIT const char kFingerprintLookupResourceName[] =
+    "tpu_fingerprint_lookup";
 }  // namespace tpu
 }  // namespace tensorflow
