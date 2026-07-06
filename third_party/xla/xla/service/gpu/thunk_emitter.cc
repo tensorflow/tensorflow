@@ -2667,12 +2667,14 @@ AsyncThunkSequence ThunkEmitter::EmitAsyncStart(const HloInstruction* instr) {
     case HloOpcode::kAllReduce: {
       auto* all_reduce = Cast<HloAllReduceInstruction>(wrapped);
       return EmitCollectiveThunk<AllReduceThunk, HloAllReduceInstruction>(
-          Thunk::kAllReduce, instr, all_reduce, std::nullopt);
+          Thunk::kAllReduce, instr, all_reduce,
+          /*use_global_device_ids=*/all_reduce->use_global_device_ids());
     }
     case HloOpcode::kAllGather: {
       auto* all_gather = Cast<HloAllGatherInstruction>(wrapped);
       return EmitCollectiveThunk<AllGatherThunk, HloAllGatherInstruction>(
-          Thunk::kAllGather, instr, all_gather, std::nullopt);
+          Thunk::kAllGather, instr, all_gather,
+          /*use_global_device_ids=*/all_gather->use_global_device_ids());
     }
     case HloOpcode::kCollectivePermute: {
       auto* collective_permute = Cast<HloCollectivePermuteInstruction>(wrapped);
