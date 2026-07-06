@@ -56,6 +56,14 @@ namespace async {
 // 1.
 absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
     const HloInstruction* async_op, const ShapeIndex& index = {});
+
+// Returns true if the async-op is the first fully bound instruction in the
+// async chain.
+bool IsFirstFullyBound(const HloInstruction* async_inst);
+
+// Returns the operands bound from async-start to async-op in the chain.
+std::vector<const HloInstruction*> GetAsyncBoundOperands(
+    const HloInstruction* async_op);
 }  // namespace async
 
 }  // namespace hlo_instruction_utils
