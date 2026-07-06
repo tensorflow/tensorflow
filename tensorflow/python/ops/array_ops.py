@@ -6391,6 +6391,20 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
     dilation_h, dilation_w = dilation
     if dilation_h < 1 or dilation_w < 1:
       raise ValueError(f"dilation must be >= 1, got {dilation}")
+  
+  if stride_h < kernel_h or stride_w < kernel_w:
+    from tensorflow.python.framework import config #* Local imports - to avoid circular imports
+    from tensorflow.python.platform import tf_logging
+    if not config.is_op_determinism_enabled():
+      tf_logging.get_logger().warning(
+        msg="The fold operation may produce non-deterministic results for floating-point data types " \
+        "when patches are overlapping (stride < kernel_size)." \
+        "This is because the order in which the updates are applied is non-deterministic and " \
+        "when floating-point numbers are added in different orders the resulting numerical approximation error can be slightly different." \
+        " To ensure reproducible results, enable op determinism using `tf.config.experimental.enable_op_determinism()`"
+        )
+
+
         
 # Get dimensions - extract dynamic shapes for the graph logic
   dynamic_shape = shape_internal(patches)
