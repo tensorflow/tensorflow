@@ -190,8 +190,8 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
           absl::Status status =
               PopulateTensorFromResponse(state->call->resp_, dst_tensor);
           if (!status.ok()) {
-            done(status);
             delete state;
+            done(status);
             return;
           }
 
