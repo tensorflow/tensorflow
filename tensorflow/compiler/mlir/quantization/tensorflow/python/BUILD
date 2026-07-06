@@ -407,6 +407,9 @@ tf_py_strict_test(
     name = "concurrency_test",
     size = "medium",
     srcs = ["integration_test/concurrency_test.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     deps = [
         ":quantize_model",
         "//tensorflow:tensorflow_py",

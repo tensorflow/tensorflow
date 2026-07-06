@@ -39,6 +39,9 @@ py_binary(
     name = "basic",
     testonly = 1,
     srcs = ["basic.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     strict_deps = True,
     deps = [
         ":common",
@@ -49,6 +52,9 @@ py_binary(
 py_binary(
     name = "cyclic_object_graph",
     srcs = ["cyclic_object_graph.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     strict_deps = True,
     deps = [
         ":common",
@@ -59,6 +65,9 @@ py_binary(
 py_binary(
     name = "multi_variables_v1",
     srcs = ["multi_variables_v1.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     strict_deps = True,
     deps = [
         ":common_v1",
@@ -69,6 +78,9 @@ py_binary(
 py_binary(
     name = "import_restore_v1",
     srcs = ["import_restore_v1.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     strict_deps = True,
     deps = [
         ":common_v1",
@@ -89,6 +101,9 @@ py_binary(
 py_binary(
     name = "control_flow_upgrade_legacy_v1",
     srcs = ["control_flow_upgrade_legacy_v1.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     strict_deps = True,
     deps = [
         ":common_v1",
@@ -120,6 +135,9 @@ py_binary(
 py_binary(
     name = "multi_arguments_results_v1",
     srcs = ["multi_arguments_results_v1.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     strict_deps = True,
     deps = [
         ":common_v1",
@@ -142,6 +160,9 @@ py_binary(
 py_binary(
     name = "structured_input",
     srcs = ["structured_input.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     strict_deps = True,
     deps = [
         ":common",
@@ -163,6 +184,9 @@ py_binary(
 py_binary(
     name = "basic_v1",
     srcs = ["basic_v1.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     strict_deps = True,
     deps = [
         ":common_v1",
@@ -203,6 +227,9 @@ py_binary(
 py_binary(
     name = "hash_table_v1",
     srcs = ["hash_table_v1.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     strict_deps = True,
     deps = [
         ":common_v1",
@@ -213,6 +240,9 @@ py_binary(
 py_binary(
     name = "include_variables_in_init_v1",
     srcs = ["include_variables_in_init_v1.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     strict_deps = True,
     deps = [
         ":common_v1",
@@ -253,6 +283,9 @@ py_binary(
 py_binary(
     name = "dag_object_graph",
     srcs = ["dag_object_graph.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     strict_deps = True,
     deps = [
         ":common",
@@ -293,6 +326,9 @@ py_binary(
 py_binary(
     name = "structured_output",
     srcs = ["structured_output.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     strict_deps = True,
     deps = [
         ":common",
