@@ -591,6 +591,9 @@ class BinaryCrossentropy(LossFunctionWrapper):
             more details.
       name: Name for the op. Defaults to 'binary_crossentropy'.
     """
+    if not 0 <= label_smoothing <= 1:
+      raise ValueError(
+          f'`label_smoothing` must be in [0, 1], got {label_smoothing}')
     super().__init__(
         binary_crossentropy,
         name=name,
