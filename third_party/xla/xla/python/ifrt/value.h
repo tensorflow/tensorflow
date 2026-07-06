@@ -74,6 +74,12 @@ class Value : public tsl::ReferenceCounted<Value>,
   virtual std::string DebugString() const = 0;
 
   static char ID;  // NOLINT
+
+ protected:
+  friend class tsl::ReferenceCounted<Value>;
+
+  // Allows implementations to override `tsl::ReferenceCounted<T>::Destroy()`.
+  virtual void Destroy() { delete this; }
 };
 
 using ValueRef = tsl::RCReference<Value>;
