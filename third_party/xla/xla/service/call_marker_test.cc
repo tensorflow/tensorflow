@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/call_inliner.h"
@@ -120,6 +121,37 @@ ENTRY inline {
 )";
 
   EXPECT_EQ(module->ToString(HloPrintOptions::ShortParsable()), expected_hlo);
+}
+
+TEST_F(CallMarkerTest, MarkRootCallPreservesEntryResultLayout) {
+  const absl::string_view hlo_string = R"(
+  HloModule inline_module, entry_computation_layout={()->f32[4,4]{0,1}}
+
+  a {
+    p = f32[4,4]{1,0} parameter(0)
+    ROOT add = f32[4,4]{1,0} add(p, p)
+  }
+
+  ENTRY inline {
+    c = f32[4,4]{1,0} constant(1)
+    ROOT a = f32[4,4]{1,0} call(c), to_apply=a
+  })";
+
+  HloParserOptions parser_options;
+  parser_options.set_keep_module_auto_layouts(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest(),
+                                   parser_options));
+  CallInliner inliner;
+  CallMarker call_marker(inliner);
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  EXPECT_TRUE(mutated);
+
+  EXPECT_EQ(
+      module->entry_computation()->root_instruction()->shape().layout(),
+      module->entry_computation_layout().result_layout().shape().layout());
 }
 
 TEST_F(CallMarkerTest, MarkNestedCalls) {
@@ -482,5 +514,97 @@ ENTRY inline {
   EXPECT_EQ(module->ToString(HloPrintOptions::ShortParsable()), expected_hlo);
 }
 
+TEST_F(CallMarkerTest, SkipCallWithNoParameters) {
+  const absl::string_view hlo_string = R"(
+  HloModule inline_module
+
+  a {
+    ROOT c = f32[] constant(1.0)
+  }
+
+  ENTRY inline {
+    a = f32[] call(), to_apply=a
+    ROOT tuple = (f32[]) tuple(a)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  CallInliner inliner;
+  CallMarker call_marker(inliner);
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  EXPECT_FALSE(mutated);
+}
+
+TEST_F(CallMarkerTest, DontLoseLayoutOnParameters) {
+  // Test check that we don't lose layout on parameters when we mark and inline
+  // a call. Here in initial `hlo_string`, arugment (constant `c`) has layout
+  // {1,0}, but in the callee `a` it has layout {0,1}. Which is layout mismatch.
+  // Call marker should respect this pre-set layouts and not change them.
+  // so after marking and inlining the call, the argument should be still the
+  // same, with the same layout (in this case in `inlined` string it is
+  // `get-tuple-element = f32[4,4]{0,1} get-tuple-element(custom-call),index=0`)
+  const absl::string_view hlo_string =
+      R"(HloModule inline_module, entry_computation_layout={()->f32[4,4]{1,0}}
+
+  a {
+    p = f32[4,4]{0,1} parameter(0)
+    ROOT add = f32[4,4] add(p, p)
+  }
+
+  ENTRY inline {
+    c = f32[4,4]{1,0} constant(1)
+    ROOT a = f32[4,4]{1,0} call(c), to_apply=a
+  })";
+
+  HloParserOptions parser_options;
+  parser_options.set_keep_module_auto_layouts(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest(),
+                                   parser_options));
+  CallInliner inliner;
+  CallMarker call_marker(inliner);
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  EXPECT_TRUE(mutated);
+
+  const absl::string_view just_call_marked =
+      R"(HloModule inline_module, entry_computation_layout={()->f32[4,4]{1,0}}
+
+a {
+  p = f32[4,4]{0,1} parameter(0)
+  ROOT add = f32[4,4]{1,0} add(p, p)
+}
+
+ENTRY inline {
+  c = f32[4,4]{1,0} constant({ { 1, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } })
+  custom-call = (f32[4,4]{0,1}) custom-call(c), custom_call_target="__xla_internal_call_marker_before", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a"}
+  get-tuple-element = f32[4,4]{0,1} get-tuple-element(custom-call), index=0
+  a = f32[4,4]{1,0} call(get-tuple-element), to_apply=a
+  ROOT custom-call.1 = f32[4,4]{1,0} custom-call(a), custom_call_target="__xla_internal_call_marker_after", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a",xla_call_marked_instruction_name="a"}
+}
+
+)";
+
+  EXPECT_EQ(module->ToString(HloPrintOptions::ShortParsable()),
+            just_call_marked);
+
+  TF_ASSERT_OK_AND_ASSIGN(mutated, inliner.Run(module.get()));
+  EXPECT_TRUE(mutated);
+
+  const absl::string_view inlined =
+      R"(HloModule inline_module, entry_computation_layout={()->f32[4,4]{1,0}}
+
+ENTRY inline {
+  c = f32[4,4]{1,0} constant({ { 1, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } })
+  custom-call = (f32[4,4]{0,1}) custom-call(c), custom_call_target="__xla_internal_call_marker_before", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a"}
+  get-tuple-element = f32[4,4]{0,1} get-tuple-element(custom-call), index=0
+  add.1 = f32[4,4]{1,0} add(get-tuple-element, get-tuple-element)
+  ROOT custom-call.1 = f32[4,4]{1,0} custom-call(add.1), custom_call_target="__xla_internal_call_marker_after", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a",xla_call_marked_instruction_name="a"}
+}
+
+)";
+  EXPECT_EQ(module->ToString(HloPrintOptions::ShortParsable()), inlined);
+}
 }  // namespace
 }  // namespace xla
