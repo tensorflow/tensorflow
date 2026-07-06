@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
@@ -219,6 +221,25 @@ absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
 
   return AreOperandsAndOutputFullyBoundImpl(async_op, expected_shape,
                                             async_tuple_shape, index);
+}
+
+std::vector<const HloInstruction*> GetAsyncBoundOperands(
+    const HloAsyncInstruction* async_op) {
+  std::vector<const HloInstruction*> bound_operands;
+  for (const HloInstruction* instr :
+       Cast<HloAsyncStartInstruction>(async_op->async_chain_start())
+           ->GetAsyncChain()) {
+    int start_idx = (instr->opcode() == HloOpcode::kAsyncStart) ? 0 : 1;
+
+    for (int i = start_idx; i < instr->operand_count(); ++i) {
+      bound_operands.push_back(instr->operand(i));
+    }
+    if (instr == async_op) {
+      break;
+    }
+  }
+
+  return bound_operands;
 }
 
 }  // namespace async

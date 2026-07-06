@@ -506,6 +506,41 @@ ENTRY main {
       StatusIs(absl::StatusCode::kInvalidArgument,
                ::testing::HasSubstr("has no valid wrapped computation")));
 }
+
+TEST_F(HloInstructionUtilsTest, GetAsyncBoundOperandsTest) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  p1 = f32[2,3] parameter(1)
+  ROOT abs = f32[2,3] abs(p0)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  p1 = f32[2,3] parameter(1)
+  start = ((f32[2,3]), f32[2,3], s32[]) call-start(p0), to_apply=async_computation
+  update = ((f32[2,3], f32[2,3]), f32[2,3], ()) call-update(start, p1)
+  ROOT done = f32[2,3] call-done(update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloAsyncInstruction* start =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "start"));
+  HloAsyncInstruction* update =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "update"));
+  HloAsyncInstruction* done =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "done"));
+  HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
+  HloInstruction* p1 = module->entry_computation()->parameter_instruction(1);
+
+  EXPECT_THAT(async::GetAsyncBoundOperands(start), ::testing::ElementsAre(p0));
+  EXPECT_THAT(async::GetAsyncBoundOperands(update),
+              ::testing::ElementsAre(p0, p1));
+  EXPECT_THAT(async::GetAsyncBoundOperands(done),
+              ::testing::ElementsAre(p0, p1));
+}
 }  // namespace
 
 }  // namespace hlo_instruction_utils
