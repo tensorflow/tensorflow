@@ -25,6 +25,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -64,9 +65,10 @@ limitations under the License.
 
 namespace pjrt {
 
-const absl::string_view kHloFormat = "hlo";
-const absl::string_view kMlirFormat = "mlir";
-const absl::string_view kHloWithConfigFormat = "hlo_with_config";
+ABSL_CONST_INIT const absl::string_view kHloFormat = "hlo";
+ABSL_CONST_INIT const absl::string_view kMlirFormat = "mlir";
+ABSL_CONST_INIT const absl::string_view kHloWithConfigFormat =
+    "hlo_with_config";
 
 PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api) {
   return [api](PJRT_Client* client) -> void {
