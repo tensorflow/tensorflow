@@ -127,8 +127,16 @@ absl::Status SnappyInputBuffer::Inflate() {
   // Output buffer must have been cleared before uncompressing more input.
   DCHECK_EQ(avail_out_, 0);
 
-  // Output buffer must be large enough to fit the uncompressed block.
-  DCHECK_GE(output_buffer_capacity_, uncompressed_length);
+  // Output buffer must be large enough to fit the uncompressed block. The
+  // uncompressed length is read from the (untrusted) input, so enforce this at
+  // runtime rather than only via DCHECK, otherwise Snappy_Uncompress writes
+  // past the end of output_buffer_.
+  if (output_buffer_capacity_ < uncompressed_length) {
+    return absl::ResourceExhaustedError(
+        absl::StrCat("Output buffer(size: ", output_buffer_capacity_,
+                     " bytes) too small. Should be larger than ",
+                     uncompressed_length, " bytes."));
+  }
   next_out_ = output_buffer_.get();
 
   bool status = port::Snappy_Uncompress(next_in_, compressed_block_length,

@@ -357,6 +357,17 @@ TEST(SnappyBuffers, SmallUncompressInputStream) {
                "Should be larger than ", GetRecord().size(), " bytes.")));
 }
 
+TEST(SnappyBuffers, SmallUncompressOutputBuffer) {
+  if (!SnappyCompressionSupported()) {
+    fprintf(stderr, "skipping compression tests\n");
+    return;
+  }
+  CHECK_EQ(TestMultipleWrites(10000, 10000, 10000, 10, 2, true),
+           absl::ResourceExhaustedError(absl::StrCat(
+               "Output buffer(size: 10 bytes) too small. ",
+               "Should be larger than ", GetRecord().size(), " bytes.")));
+}
+
 TEST(SnappyBuffers, CorruptBlock) {
   if (!SnappyCompressionSupported()) {
     fprintf(stderr, "skipping compression tests\n");
