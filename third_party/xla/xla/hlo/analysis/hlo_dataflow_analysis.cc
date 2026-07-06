@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -443,10 +444,13 @@ bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
 }
 
 bool HloDataflowAnalysis::UpdateAsyncChainOperandValueSet(
-    HloInstruction* async_start, int64_t operand_index) {
-  CHECK_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
+    HloInstruction* async_op, int64_t operand_index,
+    const HloInstruction* operand) {
+  CHECK(async_op->opcode() == HloOpcode::kAsyncStart ||
+        async_op->opcode() == HloOpcode::kAsyncUpdate);
+  CHECK_NE(operand, nullptr);
   bool changed = false;
-  const HloInstruction* operand = async_start->operand(operand_index);
+
   ShapeUtil::ForEachSubshape(
       operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray() && !subshape.IsToken()) {
@@ -456,8 +460,9 @@ bool HloDataflowAnalysis::UpdateAsyncChainOperandValueSet(
 
         ShapeIndex output_index = {0, operand_index};
         output_index.insert(output_index.end(), index.begin(), index.end());
+        CHECK(ShapeUtil::IndexIsValid(async_op->shape(), output_index));
 
-        HloValueSet& value_set = GetMutableValueSet(async_start, output_index);
+        HloValueSet& value_set = GetMutableValueSet(async_op, output_index);
         if (value_set != operand_value_set) {
           value_set = operand_value_set;
           changed = true;
@@ -539,7 +544,8 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
   bool changed = false;
   // AsyncStart forwards the operand values to element {0} of its output.
   for (int64_t i = 0; i < async_start->operand_count(); ++i) {
-    changed |= UpdateAsyncChainOperandValueSet(async_start, i);
+    changed |= UpdateAsyncChainOperandValueSet(async_start, i,
+                                               async_start->operand(i));
   }
 
   // AsyncStart forwards the async wrapped computation root values to element
@@ -553,27 +559,38 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
   CHECK_EQ(async_update->opcode(), HloOpcode::kAsyncUpdate);
   CHECK_EQ(async_update->shape(), async_update->operand(0)->shape());
   bool changed = false;
-  // AsyncUpdate forwards all of the operand values to corresponding elements of
-  // its output.
+
+  // 1. Update bound operands (index 0)
+  std::vector<const HloInstruction*> async_bound_operands =
+      hlo_instruction_utils::async::GetAsyncBoundOperands(
+          Cast<HloAsyncInstruction>(async_update));
+  for (int64_t i = 0; i < async_bound_operands.size(); ++i) {
+    changed |= UpdateAsyncChainOperandValueSet(async_update, i,
+                                               async_bound_operands[i]);
+  }
+
+  // 2. Forward other indices from operand(0)
+  const HloInstruction* prev_chain = async_update->operand(0);
   ShapeUtil::ForEachSubshape(
-      async_update->operand(0)->shape(),
+      async_update->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray() && !subshape.IsToken()) {
           return;
         }
-        const HloValueSet& operand_value_set =
-            GetValueSet(async_update->operand(0), index);
-
-        if (index.front() == 1) {
+        if (index.empty() || index.front() <= 1) {
+          // Skip the bound operands and the output of the previous async
+          // instruction in the chain.
           return;
         }
 
+        const HloValueSet& operand_value_set = GetValueSet(prev_chain, index);
         HloValueSet& value_set = GetMutableValueSet(async_update, index);
         if (value_set != operand_value_set) {
           value_set = operand_value_set;
           changed = true;
         }
       });
+  // 3. Update the output values from wrapped computation (index 1)
   changed |= UpdateAsyncChainOutputValueSet(async_update);
   return changed;
 }
