@@ -3416,7 +3416,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       setter_for_xla_gpu_command_buffer_update_mode,
       DebugOptions::CommandBufferUpdateMode_Name(
           debug_options->xla_gpu_command_buffer_update_mode()),
-      "Controls the VA remapping update strategy for command buffer thunks. "
+      "Controls the VA remapping allocation strategy for command buffer "
+      "thunks. "
       "See CommandBufferUpdateMode for details."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_cost_model_gemm_tiling_options",

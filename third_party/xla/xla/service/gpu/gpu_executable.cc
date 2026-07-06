@@ -510,15 +510,9 @@ GpuExecutable::GpuExecutable(
 
   const DebugOptions* allocation_debug_options =
       has_module() ? &module_config().debug_options() : nullptr;
-  GpuExecutableBufferAllocator::AllocationIndexSet
-      returned_output_allocation_indexes;
-  for (const auto& [_, output_info] : output_info_) {
-    returned_output_allocation_indexes.insert(output_info.allocation_index);
-  }
   buffer_allocator_ = std::make_unique<GpuExecutableBufferAllocator>(
       module_name_, allocation_ptrs_, program_shape_.result(),
-      allocation_debug_options, thunk_executor_.get(),
-      std::move(returned_output_allocation_indexes));
+      allocation_debug_options, thunk_executor_.get());
 }
 
 GpuExecutable::~GpuExecutable() {
@@ -1297,7 +1291,7 @@ absl::Status GpuExecutable::ExecuteThunks(
   se::StreamExecutor* executor = run_options->stream()->parent();
 
   XLA_VLOG_DEVICE(3, executor->device_ordinal()) << absl::StreamFormat(
-      "ExecuteThunks: command_buffer_persistent_allocation_indexes.size()=%d",
+      "ExecuteThunks: persistent_alloc_indices.size()=%d",
       buffer_allocator_->command_buffer_allocation_count());
 
   return ExecuteThunksImpl(
