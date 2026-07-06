@@ -627,7 +627,8 @@ def _resolve_xla_einsum_ellipsis(equation, input0_shape, input1_shape):
   # Pick fresh single-char labels for the batch dims. Use letters
   # that do not already appear in the equation.
   used = set(left_explicit + right_explicit + output_explicit)
-  available = [c for c in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ' if c not in used]
+  all_labels = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  available = [c for c in all_labels if c not in used]
   if len(available) < batch_ndims:
     # Not enough fresh labels; fall back to the original equation.
     return equation
@@ -649,8 +650,10 @@ def _einsum_grad(op, grad):
   # the gradient xla_einsum ops get concrete equations that XLA can lower to
   # efficient DOT/matmul kernels (fixes register-spill regression, #122274).
   if '...' in equation:
-    input0_shape = op.inputs[0].shape.as_list() if op.inputs[0].shape.ndims is not None else None
-    input1_shape = op.inputs[1].shape.as_list() if op.inputs[1].shape.ndims is not None else None
+    shape0 = op.inputs[0].shape
+    shape1 = op.inputs[1].shape
+    input0_shape = shape0.as_list() if shape0.ndims is not None else None
+    input1_shape = shape1.as_list() if shape1.ndims is not None else None
     equation = _resolve_xla_einsum_ellipsis(equation, input0_shape,
                                             input1_shape)
 
