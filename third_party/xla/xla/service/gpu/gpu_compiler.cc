@@ -2924,10 +2924,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*module_name=*/std::move(res.compile_module_results.module_name),
           /*program_shape=*/
           module->compute_computation_layout().ComputeProgramShape(),
-          /*mlir_allocations=*/
-          (res.compile_module_results.use_original_allocations
-               ? std::optional<std::vector<BufferAllocation>>()
-               : std::move(res.compile_module_results.allocations)),
+          /*mlir_allocations=*/std::optional<std::vector<BufferAllocation>>(),
           /*buffer_assignment=*/
           std::move(res.compile_module_results.buffer_assignment),
           /*alias_info=*/std::move(alias_info),
