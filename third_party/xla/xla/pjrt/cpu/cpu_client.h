@@ -42,26 +42,28 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/cpu/cpu_device.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/thread_pool_async_work_runner.h"
-#include "xla/pjrt/transpose.h"
-#include "xla/pjrt/utils.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
@@ -73,11 +75,9 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 
@@ -284,7 +284,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
       bool asynchronous,
       std::function<void(HloModuleConfig&)> customize_hlo_module_config,
       int max_transpose_threads,
-      std::unique_ptr<CpuTopologyDescription> topology);
+      std::shared_ptr<const CpuTopologyDescription> topology);
 
   absl::StatusOr<std::pair<std::unique_ptr<PjRtCpuExecutable>,
                            std::shared_ptr<DeviceAssignment>>>
@@ -344,7 +344,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   std::shared_ptr<cpu::CpuCollectives> collectives_;
 
-  std::unique_ptr<xla::CpuTopologyDescription> topology_;
+  std::shared_ptr<const xla::CpuTopologyDescription> topology_;
 
   // Used to control whether asynchronous computation dispatch is available for
   // this client. Only applies to non-parallel computations.
@@ -402,7 +402,7 @@ class PjRtCpuExecutable final : public PjRtExecutable {
       std::unique_ptr<Executable> cpu_executable,
       absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
       std::unique_ptr<HloModule> unoptimized_hlo_module,
-      const CpuTopologyDescription& topology);
+      std::shared_ptr<const CpuTopologyDescription> topology);
 
   ~PjRtCpuExecutable() override = default;
 
@@ -493,7 +493,7 @@ class PjRtCpuExecutable final : public PjRtExecutable {
 
   std::unique_ptr<HloModule> unoptimized_hlo_module_;
 
-  const CpuTopologyDescription* topology_;
+  std::shared_ptr<const CpuTopologyDescription> topology_;
 };
 
 class PjRtCpuLoadedExecutable final : public CommonPjRtLoadedExecutable {
