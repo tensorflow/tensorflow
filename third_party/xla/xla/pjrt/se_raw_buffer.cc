@@ -407,7 +407,7 @@ void PjRtStreamExecutorRawBuffer::ScheduleCopyTo(
     PjRtDeviceEventPromiseRef src_usage_event_promise,
     absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
   if (dst_raw_buffer->memory_space()->client() == memory_space()->client()) {
-    client_->async_work_runner()->Schedule(
+    client_->async_work_runner()->Execute(
         [this_ref = tsl::FormRef(this),
          transfer_dependency_events = std::move(transfer_dependency_events),
          dst_raw_buffer = std::move(dst_raw_buffer),
