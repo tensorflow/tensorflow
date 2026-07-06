@@ -142,6 +142,10 @@ class Conv(Layer):
                        f'Was expecting a positive value, got {filters}.')
     self.filters = filters
     self.groups = groups or 1
+    if self.groups <= 0:
+      raise ValueError(
+          'The number of groups must be a positive integer. '
+          f'Received: groups={groups}')
     self.kernel_size = conv_utils.normalize_tuple(
         kernel_size, rank, 'kernel_size')
     self.strides = conv_utils.normalize_tuple(strides, rank, 'strides')
