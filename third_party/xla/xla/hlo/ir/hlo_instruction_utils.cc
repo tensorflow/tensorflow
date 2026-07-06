@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
@@ -120,16 +122,10 @@ absl::StatusOr<bool> AreOperandsAndOutputFullyBoundImpl(
     return operands_bound && output_bound;
   }
 
-  if (index.front() > 1) {
+  if (index.front() > 1 || !ShapeUtil::IndexIsValid(expected_shape, index)) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Invalid index: ", index.ToString(),
         ", index must start with 0 (for operands) or 1 (for output)."));
-  }
-
-  if (!ShapeUtil::IndexIsValid(expected_shape, index)) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Invalid index: ", index.ToString(),
-        " is not valid for expected shape: ", expected_shape.ToString()));
   }
 
   // Check operands
@@ -189,7 +185,7 @@ absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
       async_start->called_computations().front();
 
   if (async_op->opcode() == HloOpcode::kAsyncDone) {
-    if (async_op->operand_count() != 1) {
+    if (async_op->operand_count() == 0) {
       return absl::InvalidArgumentError(
           absl::StrCat("AsyncDone instruction ", async_op->name(),
                        " does not have exactly one operand."));
@@ -219,6 +215,43 @@ absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
 
   return AreOperandsAndOutputFullyBoundImpl(async_op, expected_shape,
                                             async_tuple_shape, index);
+}
+
+std::vector<const HloInstruction*> GetAsyncBoundOperands(
+    const HloInstruction* async_op) {
+  CHECK(async_op->opcode() == HloOpcode::kAsyncStart ||
+        async_op->opcode() == HloOpcode::kAsyncUpdate ||
+        async_op->opcode() == HloOpcode::kAsyncDone);
+
+  std::vector<const HloInstruction*> bound_operands;
+  for (const HloInstruction* instr :
+       Cast<HloAsyncStartInstruction>(async_op->async_chain_start())
+           ->GetAsyncChain()) {
+    int start_idx = (instr->opcode() == HloOpcode::kAsyncStart) ? 0 : 1;
+
+    for (int i = start_idx; i < instr->operand_count(); ++i) {
+      bound_operands.push_back(instr->operand(i));
+    }
+    if (instr == async_op) {
+      break;
+    }
+  }
+
+  return bound_operands;
+}
+
+bool IsFirstFullyBound(const HloInstruction* async_inst) {
+  bool is_fully_bound =
+      AreOperandsAndOutputFullyBound(async_inst).value_or(false);
+  if (!is_fully_bound) {
+    return false;
+  }
+  if (async_inst->opcode() == HloOpcode::kAsyncStart) {
+    return true;
+  }
+  bool is_prev_fully_bound =
+      AreOperandsAndOutputFullyBound(async_inst->operand(0)).value_or(false);
+  return !is_prev_fully_bound;
 }
 
 }  // namespace async
