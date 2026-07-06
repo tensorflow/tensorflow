@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/service/stream_pool.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/shape.h"
@@ -88,6 +89,8 @@ class GpuExecutable : public Executable {
 
   struct OutputInfo {
     // Corresponding allocation index.
+    // Note that each output lives on its own allocation, i.e., it is allocated
+    // in a slice with offset 0, and size equal to the size of the allocation.
     int allocation_index;
 
     // Output is passed-through from a parameter.

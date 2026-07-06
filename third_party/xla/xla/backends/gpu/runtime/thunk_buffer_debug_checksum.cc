@@ -214,11 +214,11 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateBufferDebugDumpThunk(
 
 }  // namespace
 
-absl::Status RunChecksumPassInternal(ThunkSequence* thunk_sequence,
-                                     const DebugOptions& debug_options,
-                                     const HloModule* absl_nonnull hlo_module,
-                                     const BufferAssignment* buffer_assignment,
-                                     ThunkPassBufferAllocator& allocator) {
+absl::Status RunChecksumPassInternal(
+    ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
+    const HloModule* absl_nonnull hlo_module,
+    const std::vector<ShapedSlice>& module_output_slices,
+    ThunkPassBufferAllocator& allocator) {
   std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store =
       std::make_shared<BufferDebugLogEntryMetadataStore>();
 
@@ -250,16 +250,15 @@ absl::Status RunChecksumPassInternal(ThunkSequence* thunk_sequence,
 
   std::unique_ptr<BuffersDebugChecksumThunk> output_buffers_check_thunk;
   if (debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs() &&
-      buffer_assignment != nullptr) {
+      !module_output_slices.empty()) {
     absl::flat_hash_map<size_t, BufferAllocation::Slice> buffers_to_check;
-    ASSIGN_OR_RETURN(buffers_to_check,
-                     GetOutputBuffers(hlo_module, buffer_assignment));
-    if (!buffers_to_check.empty()) {
-      output_buffers_check_thunk = std::make_unique<BuffersDebugChecksumThunk>(
-          Thunk::ThunkInfo(), log_slice, ThunkId{0},
-          std::move(buffers_to_check),
-          /*runs_before_checked_thunk=*/false, metadata_store);
+    buffers_to_check.reserve(module_output_slices.size());
+    for (size_t i = 0; i < module_output_slices.size(); ++i) {
+      buffers_to_check[i] = module_output_slices[i].slice;
     }
+    output_buffers_check_thunk = std::make_unique<BuffersDebugChecksumThunk>(
+        Thunk::ThunkInfo(), log_slice, ThunkId{0}, std::move(buffers_to_check),
+        /*runs_before_checked_thunk=*/false, metadata_store);
   }
 
   thunk_sequence->reserve(thunk_sequence->size() + 3);

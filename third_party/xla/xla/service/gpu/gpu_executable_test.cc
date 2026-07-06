@@ -72,7 +72,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/testing/temporary_directory.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
@@ -161,7 +160,7 @@ TEST_F(GpuExecutableTest, OutputInfoToAndFromProto) {
 }
 
 TEST_F(GpuExecutableTest, RunThunkPasses) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       tsl::testing::TemporaryDirectory dump_dir,
       tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
   DebugOptions debug_options = GetDebugOptionsFromFlags();
@@ -209,15 +208,15 @@ TEST_F(GpuExecutableTest, RunThunkPasses) {
     return GpuExecutable::Create(std::move(params));
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
-                          create_executable());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       create_executable());
   const ThunkSequence& thunks = executable->thunk_executor().thunks();
   EXPECT_THAT(
       thunks,
       ElementsAre(Pointee(Property(&Thunk::kind, Thunk::kCommandBuffer))));
 
   std::vector<std::string> dump_files;
-  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(dump_dir.path(),
                         "*thunk_sequence_after_thunk_passes*.txt"),
       &dump_files));
@@ -297,9 +296,12 @@ TEST_F(GpuExecutableTest, ComputeComputationLayout) {
   *params.program_shape.mutable_result() = ShapeUtil::MakeShape(F64, {2});
   params.executable = std::make_unique<ThunkExecutor>(ThunkSequence{});
   SetDummyBufferAssignment(params);
+  params.mlir_allocations =
+      std::vector<BufferAllocation>{BufferAllocation(0, 8, 0)};
+  params.output_info[{}] = GpuExecutable::OutputInfo{/*allocation_index=*/0};
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
-                          GpuExecutable::Create(std::move(params)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       GpuExecutable::Create(std::move(params)));
   EXPECT_THAT(executable->compute_computation_layout().parameter_layouts(),
               ElementsAre(ShapeLayout(ShapeUtil::MakeShape(F32, {1, 2, 3})),
                           ShapeLayout(ShapeUtil::MakeShape(U8, {1}))));
@@ -313,8 +315,8 @@ TEST_F(GpuExecutableTest, ExecutableName) {
   params.executable = std::make_unique<ThunkExecutor>(ThunkSequence{});
   SetDummyBufferAssignment(params);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
-                          GpuExecutable::Create(std::move(params)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       GpuExecutable::Create(std::move(params)));
   EXPECT_THAT(executable->name(), "test_module");
 }
 
@@ -332,8 +334,8 @@ TEST_F(GpuExecutableTest, GetMlirAllocations) {
 
   params.mlir_allocations = std::move(allocations);
   SetDummyBufferAssignment(params);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
-                          GpuExecutable::Create(std::move(params)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       GpuExecutable::Create(std::move(params)));
 
   // The pointers must match exactly because the allocations may have Slice
   // objects which hold pointers to the parent allocations.
@@ -377,8 +379,8 @@ absl::StatusOr<ScopedBufferAssignment> MakeNonEmptyBufferAssignment() {
 }
 
 TEST_F(GpuExecutableTest, GetBufferAssignmentAllocations) {
-  TF_ASSERT_OK_AND_ASSIGN(ScopedBufferAssignment holder,
-                          MakeNonEmptyBufferAssignment());
+  ASSERT_OK_AND_ASSIGN(ScopedBufferAssignment holder,
+                       MakeNonEmptyBufferAssignment());
   std::unique_ptr<BufferAssignment>& buffer_assignment =
       holder.buffer_assignment;
 
@@ -394,8 +396,8 @@ TEST_F(GpuExecutableTest, GetBufferAssignmentAllocations) {
 
   params.buffer_assignment = std::move(buffer_assignment);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
-                          GpuExecutable::Create(std::move(params)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       GpuExecutable::Create(std::move(params)));
 
   // The pointers must match exactly because the allocations may have Slice
   // objects which hold pointers to the parent allocations.
@@ -403,8 +405,8 @@ TEST_F(GpuExecutableTest, GetBufferAssignmentAllocations) {
 }
 
 TEST_F(GpuExecutableTest, MlirAllocationsArePreferred) {
-  TF_ASSERT_OK_AND_ASSIGN(ScopedBufferAssignment holder,
-                          MakeNonEmptyBufferAssignment());
+  ASSERT_OK_AND_ASSIGN(ScopedBufferAssignment holder,
+                       MakeNonEmptyBufferAssignment());
   std::unique_ptr<BufferAssignment>& buffer_assignment =
       holder.buffer_assignment;
 
@@ -422,8 +424,8 @@ TEST_F(GpuExecutableTest, MlirAllocationsArePreferred) {
   params.buffer_assignment = std::move(buffer_assignment);
   params.mlir_allocations = std::move(allocations);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
-                          GpuExecutable::Create(std::move(params)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       GpuExecutable::Create(std::move(params)));
 
   // Expect that the allocations from mlir_allocations are returned.
   EXPECT_THAT(executable->GetAllocations(),
@@ -469,9 +471,8 @@ TEST_F(GpuExecutableTest, ThunkChecksumPassAddsAllocation) {
       std::make_unique<ThunkExecutor>(make_test_thunk_sequence());
   SetDummyBufferAssignment(params_without_pass);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<GpuExecutable> executable_without_pass,
-      GpuExecutable::Create(std::move(params_without_pass)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable_without_pass,
+                       GpuExecutable::Create(std::move(params_without_pass)));
   size_t allocations_without_pass =
       executable_without_pass->GetAllocations().size();
 
@@ -483,14 +484,14 @@ TEST_F(GpuExecutableTest, ThunkChecksumPassAddsAllocation) {
       .set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(true);
   SetDummyBufferAssignment(params_with_pass);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable_with_pass,
-                          GpuExecutable::Create(std::move(params_with_pass)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable_with_pass,
+                       GpuExecutable::Create(std::move(params_with_pass)));
   EXPECT_EQ(executable_with_pass->GetAllocations().size(),
             allocations_without_pass + 1);
 }
 
 TEST_F(GpuExecutableTest, DumpsMetadataListProto) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       tsl::testing::TemporaryDirectory dump_dir,
       tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
   DebugOptions debug_options = GetDebugOptionsFromFlags();
@@ -535,16 +536,16 @@ TEST_F(GpuExecutableTest, DumpsMetadataListProto) {
     return GpuExecutable::Create(std::move(params));
   };
 
-  TF_ASSERT_OK(create_executable());
+  ASSERT_OK(create_executable());
 
   std::vector<std::string> dump_files;
-  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(dump_dir.path(), "*thunk_metadata.txt"), &dump_files));
   ASSERT_THAT(dump_files, SizeIs(1));
 
   ThunkMetadataListProto metadata_list_proto;
-  TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), dump_files.front(),
-                                  &metadata_list_proto));
+  ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), dump_files.front(),
+                               &metadata_list_proto));
 
   EXPECT_THAT(metadata_list_proto, EqualsProto(R"pb(
                 thunk_metadata {
@@ -587,13 +588,13 @@ TEST_F(GpuExecutableTest, ProtoConversion) {
   params.cpu_target_machine_options = xla::cpu::TargetMachineOptions(
       "test_triple", "test_cpu", "+test_features");
   SetDummyBufferAssignment(params);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> reference_executable,
-                          GpuExecutable::Create(std::move(params)));
-  TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto,
-                          reference_executable->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> reference_executable,
+                       GpuExecutable::Create(std::move(params)));
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto,
+                       reference_executable->ToProto());
 
   DebugOptions debug_options = GetDebugOptionsFromFlags();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> reconstructed_executable,
       GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
                                debug_options));
@@ -633,8 +634,8 @@ TEST_F(GpuExecutableTest, ProtoConversionWithBackendConfigInterning) {
       p1 = f32[] parameter(1)
       ROOT add = f32[] add(p0, p1)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto debug_module,
-                          ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto debug_module,
+                       ParseAndReturnUnverifiedModule(hlo_text));
   HloInstruction* p0 =
       debug_module->entry_computation()->GetInstructionWithName("p0");
   HloInstruction* p1 =
@@ -645,9 +646,9 @@ TEST_F(GpuExecutableTest, ProtoConversionWithBackendConfigInterning) {
   params.debug_module = std::move(debug_module);
   SetDummyBufferAssignment(params);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
-                          GpuExecutable::Create(std::move(params)));
-  TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       GpuExecutable::Create(std::move(params)));
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
 
   // Verify that the serialized HLO module has interned backend configs using
   // Partially(EqualsProto).
@@ -678,8 +679,8 @@ TEST_F(GpuExecutableTest, GpuExecutableDump) {
 
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_experimental_dump_gpu_executable(true);
-  TF_ASSERT_OK_AND_ASSIGN(TemporaryDirectory temp_dir,
-                          TemporaryDirectory::CreateForCurrentTestcase());
+  ASSERT_OK_AND_ASSIGN(TemporaryDirectory temp_dir,
+                       TemporaryDirectory::CreateForCurrentTestcase());
   debug_options.set_xla_dump_to(temp_dir.path());
   debug_options.set_xla_enable_dumping(true);
 
@@ -713,26 +714,25 @@ TEST_F(GpuExecutableTest, GpuExecutableDump) {
     SetDummyBufferAssignment(params);
     return GpuExecutable::Create(std::move(params));
   };
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
-                          create_executable());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       create_executable());
   ExecutableBuildOptions build_options;
   build_options.set_num_replicas(2);
   build_options.set_num_partitions(1);
   // Thread pool is not serializable, and should be ignored in the dump.
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "test_pool", 1);
   build_options.set_compile_thread_pool(&pool);
-  TF_ASSERT_OK(
-      executable->DumpExecutableIfEnabled(build_options, debug_options));
+  ASSERT_OK(executable->DumpExecutableIfEnabled(build_options, debug_options));
 
   std::vector<std::string> dump_files;
-  TF_ASSERT_OK(env->GetMatchingPaths(
+  ASSERT_OK(env->GetMatchingPaths(
       tsl::io::JoinPath(debug_options.xla_dump_to(), "*gpu_executable.riegeli"),
       &dump_files));
   ASSERT_EQ(dump_files.size(), 1);
 
   ExecutableAndOptionsProto dump_content;
   auto reader = std::make_unique<riegeli::CFileReader<>>(dump_files[0]);
-  TF_ASSERT_OK(ReadSplitProto(std::move(reader), dump_content));
+  ASSERT_OK(ReadSplitProto(std::move(reader), dump_content));
   EXPECT_THAT(dump_content.compile_options().executable_build_options(),
               Partially(EqualsProto(R"pb(
                 num_replicas: 2 num_partitions: 1
@@ -741,8 +741,7 @@ TEST_F(GpuExecutableTest, GpuExecutableDump) {
   GpuExecutableProto gpu_executable_proto;
   auto executable_reader = std::make_unique<riegeli::StringReader<>>(
       dump_content.serialized_executable());
-  TF_ASSERT_OK(
-      ReadSplitProto(std::move(executable_reader), gpu_executable_proto));
+  ASSERT_OK(ReadSplitProto(std::move(executable_reader), gpu_executable_proto));
   ASSERT_THAT(gpu_executable_proto, Partially(EqualsProto(R"pb(
                 module_name: "test_module"
                 thunks: {
@@ -805,7 +804,7 @@ TEST_F(GpuExecutableTest, FromProtoWithSymbolResolver) {
   };
 
   DebugOptions debug_options = GetDebugOptionsFromFlags();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> executable,
       GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
                                debug_options, symbol_resolver));
@@ -877,8 +876,8 @@ TEST_F(GpuExecutableTest, ToProtoReturnsUnchangedThunkGraph) {
     SetDummyBufferAssignment(params);
     return GpuExecutable::Create(std::move(params));
   };
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
-                          create_executable());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       create_executable());
 
   // We expect our 5 kernel launches got wrapped in a command buffer thunk.
   // If this assertion fails, you might need to either adjust the thunk graph or
@@ -888,7 +887,7 @@ TEST_F(GpuExecutableTest, ToProtoReturnsUnchangedThunkGraph) {
 
   // The proto should be a straight dump of the thunk graph, without any
   // transformation.
-  TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
   EXPECT_THAT(proto.thunks(), SizeIs(5));
 }
 
@@ -961,7 +960,7 @@ TEST_F(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_executable_embed_debug_info(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> executable,
       GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
                                debug_options));
@@ -972,7 +971,7 @@ TEST_F(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
       executable->module().unique_id()));
 
   debug_options.set_xla_gpu_executable_embed_debug_info(false);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> executable_without_debug_info_manager,
       GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
                                debug_options));
@@ -1046,7 +1045,7 @@ TEST_F(GpuExecutableTest, ConstantContentOnlySerializedInHloModule) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_executable_embed_debug_info(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> executable,
       GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
                                debug_options));
@@ -1055,7 +1054,7 @@ TEST_F(GpuExecutableTest, ConstantContentOnlySerializedInHloModule) {
 
   EXPECT_EQ(ToString(executable->constants()[0].content.span()), "data");
 
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized, executable->ToProto());
+  ASSERT_OK_AND_ASSIGN(auto serialized, executable->ToProto());
   EXPECT_EQ(serialized.constants().size(), 1);
   EXPECT_THAT(serialized.constants()[0], EqualsProto(proto.constants()[0]));
 }
@@ -1081,7 +1080,7 @@ TEST_F(GpuExecutableTest, ExecutableAbiVersion) {
   EXPECT_THAT(executable_abi_version.proto(),
               EqualsProto(executable_abi_version_proto));
 
-  TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
   EXPECT_THAT(proto.executable_abi_version(),
               EqualsProto(executable_abi_version_proto));
 }

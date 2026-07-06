@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/ffi.h"
@@ -47,7 +49,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_filter.h"
-#include "xla/backends/gpu/runtime/thunk_buffer_debug_pass.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
@@ -64,11 +65,13 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/env.h"
@@ -373,22 +376,12 @@ ThunkBuffersToCheckAndBackup GetBuffersToCheckOrBackup(const Thunk& thunk) {
 }
 
 absl::StatusOr<std::vector<NullableShapedSlice>> GetInstructionOperands(
-    const HloInstruction* instr, const BufferAssignment* buffer_assignment) {
+    const Thunk& thunk) {
   std::vector<NullableShapedSlice> operands;
-  operands.reserve(instr->operand_count());
-  for (int64_t i = 0; i < instr->operand_count(); ++i) {
-    const HloInstruction* op = instr->operand(i);
-    absl::Status status = ShapeUtil::ForEachSubshapeWithStatus(
-        op->shape(),
-        [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
-          if (subshape.IsArray()) {
-            ASSIGN_OR_RETURN(auto slice,
-                             buffer_assignment->GetUniqueSlice(op, index));
-            operands.push_back(ShapedSlice{slice, subshape});
-          }
-          return absl::OkStatus();
-        });
-    RETURN_IF_ERROR(status);
+  for (const BufferUse& use : thunk.buffer_uses()) {
+    if (use.HasDefinedContentsOnInput()) {
+      operands.push_back(ShapedSlice{use.slice(), use.shape()});
+    }
   }
   return operands;
 }
@@ -399,7 +392,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithSyncDumpThunk(
     std::unique_ptr<Thunk> thunk,
     std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
     BufferAllocation::Slice log_slice, const HloModule* absl_nonnull hlo_module,
-    const BufferAssignment* absl_nonnull buffer_assignment,
     ThunkPassBufferAllocator& allocator,
     const absl::flat_hash_map<absl::string_view, const HloInstruction*>&
         hlo_instruction_map,
@@ -441,7 +433,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithSyncDumpThunk(
   BufferAllocation::Slice tmp_slice(tmp_alloc, 0, tmp_alloc->size());
 
   ASSIGN_OR_RETURN(std::vector<NullableShapedSlice> operands,
-                   GetInstructionOperands(instr, buffer_assignment));
+                   GetInstructionOperands(*thunk));
 
   std::vector<BufferAllocation::Slice> operand_slices;
   operand_slices.reserve(operands.size());
@@ -804,31 +796,22 @@ CreateBufferDebugFloatCheckThunk(
 absl::StatusOr<std::unique_ptr<BuffersDebugFloatCheckThunk>>
 CreateOutputBuffersCheckThunk(
     const DebugOptions& debug_options, const HloModule* absl_nonnull hlo_module,
-    const BufferAssignment* absl_nonnull buffer_assignment,
+    const std::vector<ShapedSlice>& module_output_slices,
     BufferAllocation::Slice log_slice,
     std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
     ThunkPassBufferAllocator& allocator) {
   if (!debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs()) {
     return nullptr;
   }
-  if (buffer_assignment == nullptr) {
-    LOG(ERROR)
-        << "Buffer assignment is null, cannot determine module output buffers";
-    return nullptr;
-  }
-
-  absl::flat_hash_map<size_t, ShapedSlice> buffers_to_check_shaped;
-  ASSIGN_OR_RETURN(buffers_to_check_shaped,
-                   GetOutputShapedBuffers(hlo_module, buffer_assignment));
 
   absl::flat_hash_map<size_t, BufferAllocation::Slice> buffers_to_check;
-  buffers_to_check.reserve(buffers_to_check_shaped.size());
+  buffers_to_check.reserve(module_output_slices.size());
   size_t max_buffer_size_bytes = 0;
 
-  for (const auto& [idx, shaped_slice] : buffers_to_check_shaped) {
-    const BufferAllocation::Slice& slice = shaped_slice.slice;
+  for (size_t i = 0; i < module_output_slices.size(); ++i) {
+    const BufferAllocation::Slice& slice = module_output_slices[i].slice;
     if (IsFloatTypeSupportedByChecker(slice.element_type())) {
-      buffers_to_check.emplace(idx, slice);
+      buffers_to_check.emplace(i, slice);
       max_buffer_size_bytes =
           std::max<size_t>(max_buffer_size_bytes, slice.size());
     }
@@ -892,7 +875,7 @@ absl::StatusOr<BufferAllocation*> AllocateBufferForInputBackups(
 absl::Status RunFloatCheckPassInternal(
     ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
     const HloModule* absl_nonnull hlo_module,
-    const BufferAssignment* buffer_assignment,
+    const std::vector<ShapedSlice>& module_output_slices,
     ThunkPassBufferAllocator& allocator) {
   const bool dump_mode =
       debug_options.xla_gpu_detect_nan() == DebugOptions::DETECTION_MODE_DUMP ||
@@ -933,8 +916,8 @@ absl::Status RunFloatCheckPassInternal(
         return thunk;
       }
       return WrapWithSyncDumpThunk(std::move(thunk), metadata_store, log_slice,
-                                   hlo_module, buffer_assignment, allocator,
-                                   hlo_instruction_map, global_backup_alloc);
+                                   hlo_module, allocator, hlo_instruction_map,
+                                   global_backup_alloc);
     };
     RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
 
@@ -965,7 +948,7 @@ absl::Status RunFloatCheckPassInternal(
   ASSIGN_OR_RETURN(
       std::unique_ptr<BuffersDebugFloatCheckThunk> output_buffers_check_thunk,
       CreateOutputBuffersCheckThunk(debug_options, hlo_module,
-                                    buffer_assignment, log_slice,
+                                    module_output_slices, log_slice,
                                     metadata_store, allocator));
 
   thunk_sequence->reserve(thunk_sequence->size() + 3);
