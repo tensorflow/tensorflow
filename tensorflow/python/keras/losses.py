@@ -1770,6 +1770,9 @@ def binary_crossentropy(y_true,
   Returns:
     Binary crossentropy loss value. shape = `[batch_size, d0, .. dN-1]`.
   """
+  if not 0 <= label_smoothing <= 1:
+    raise ValueError(
+        f'`label_smoothing` must be in [0, 1], got {label_smoothing}')
   y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   label_smoothing = tensor_conversion.convert_to_tensor_v2_with_dispatch(
