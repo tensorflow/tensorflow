@@ -6304,55 +6304,98 @@ extract_image_patches.__doc__ = gen_array_ops.extract_image_patches.__doc__
 @tf_export("experimental.fold")
 def fold(patches, output_size, sizes, strides, padding='VALID', 
          rates=1, reduction='sum'):
+  """Reconstructs an image from a tensor of extracted patches.
+
+  This op acts as an inverse of `tf.image.extract_patches`.It takes a 
+  tensor of patches and folds them back into an image. When patches overlap 
+  (i.e., when strides are smaller than the patch sizes), the `reduction` 
+  argument determines whether the overlapping pixel values are accumulated(summed) or averaged.
 
   Note: For overlapping patches with floating-point data, the output may be
-  nondeterministic due to the order of accumulation in scatter_nd. To ensure
+  nondeterministic due to the order of accumulation in `scatter_nd`. To ensure
   deterministic behavior, enable op determinism before calling this function:
     
-    tf.config.experimental.enable_op_determinism()
+    `tf.config.experimental.enable_op_determinism()`
+  
+  When op determinism is enabled, TensorFlow ops will be deterministic.
+  This means that if an op is run multiple times with the same inputs on the same hardware, 
+  it will have the exact same outputs each time.
+  refer: https://www.tensorflow.org/api_docs/python/tf/config/experimental/enable_op_determinism
     
   Args:
-    patches: Tensor of shape (batch, out_h, out_w, kernel_h*kernel_w*channels)
-                 This is the OUTPUT format from tf.image.extract_patches
+    patches: A 4D `Tensor` of shape `(batch, out_h, out_w, patch_dim)`, where 
+      `patch_dim = kernel_h * kernel_w * channels`. This matches the standard 
+      output format of `tf.image.extract_patches`.
                  
-    output_size: Tuple (height, width) of the reconstructed image
-          (before removing padding if padding='VALID')
-                    
-    sizes: Int or tuple (kernel_h, kernel_w) - size of each patch
-        
-    strides: Int or tuple (stride_h, stride_w) - step between patches
-        
-    padding: 'VALID' , 'SAME' or int
-                 - 'VALID': no padding (default)
-                 - 'SAME': matches tf.image.extract_patches padding behavior
-                 - int: symmetric padding on all sides
-                 
-    rates: Int or tuple (dilation_h, dilation_w) - spacing between 
-                 kernel elements (called 'rates' in tf.image.extract_patches)
-                 Must be >= 1.
+    output_size: A tuple of integers `(height, width)` specifying the spatial 
+      dimensions of the reconstructed image (before removing padding if 
+      `padding='VALID'`).
+
+    sizes: An `int` or tuple `(kernel_h, kernel_w)` specifying the size of 
+      each patch.
+
+    strides: An `int` or tuple `(stride_h, stride_w)` specifying the step 
+      size between patches.
+      A single value `int` specifies the same stride for both height and width.
+
+    padding: A `str` ('VALID', 'SAME') or an `int`. 
+      - 'VALID': No padding is applied (default).
+      - 'SAME': Matches the padding behavior of `tf.image.extract_patches`.
+      - `int`: Applies symmetric padding of this exact value to all sides.
+
+    rates: An `int` or tuple `(dilation_h, dilation_w)` specifying the dilation 
+      rate (spacing between kernel elements). Must be `>= 1`. Defaults to 1.
+
+    reduction: A `str`, either `'sum'` or `'mean'`. Specifies how to aggregate 
+      pixel values from overlapping patches. Defaults to `'sum'`.
                 
     
   Returns:
-    Tensor of shape (batch, height, width, channels)
+    A 4D `Tensor` of shape `(batch, height, width, channels)`.
         
   Example:
-    # Basic non-overlapping patches
-    x = tf.reshape(tf.range(0, 16, dtype=tf.float32), (1, 4, 4, 1))
-    patches = tf.image.extract_patches(
-    images=x,
-    sizes=[1, 2, 2, 1],
-    strides=[1, 2, 2, 1],
-    rates=[1, 1, 1, 1],
-    padding='VALID'
-    )
-        
-    # Reconstruct image
-    out = tf.experimental.fold(
-    patches,
-    output_size=(4, 4),
-    kernel_size=2,
-    stride=2
-    )
+    **Eg.1 : Basic non-overlapping patches:**
+    >>> # Create a simple 4x4 image (batch=1, h=4, w=4, channels=1)
+    >>> x = tf.reshape(tf.range(16, dtype=tf.float32), (1, 4, 4, 1))
+    
+    >>> # Extract non-overlapping 2x2 patches
+    >>> patches = tf.image.extract_patches(
+    ...     images=x,
+    ...     sizes=[1, 2, 2, 1],
+    ...     strides=[1, 2, 2, 1],
+    ...     rates=[1, 1, 1, 1],
+    ...     padding='VALID'
+    ... )
+    
+    >>> # Reconstruct the original image
+    >>> out = tf.experimental.fold(
+    ...     patches=patches,
+    ...     output_size=(4, 4),
+    ...     sizes=(2, 2),
+    ...     strides=(2, 2)
+    ... )
+
+    **Eg.2: Overlapping patches: (stride is smaller than sizes(kernel))**
+    >>> # It's important to enable_op_determinism before using fold() in this case
+    >>> tf.config.experimental.enable_op_determinism()
+    >>> # Extract overlapping 2x2 patches 
+    >>> overlapping_patches = tf.image.extract_patches(
+    ...     images=x,
+    ...     sizes=[1, 2, 2, 1],
+    ...     strides=[1, 1, 1, 1], 
+    ...     rates=[1, 1, 1, 1],
+    ...     padding='VALID'
+    ... )
+    
+    >>> # Reconstruct the image using mean reduction to average the 
+    >>> # overlapping pixel values and restore the original image.
+    >>> out_overlapping = tf.experimental.fold(
+    ...     patches=overlapping_patches,
+    ...     output_size=(4, 4),
+    ...     sizes=(2, 2),
+    ...     strides=(1, 1),
+    ...     reduction='mean'
+    ... )
   """
 
   kernel_size = sizes
