@@ -346,7 +346,7 @@ bool IsConvolutionOpSupported(const TfLiteRegistration* registration,
   if (!IsConstantTensor(weights)) {
     return false;
   }
-  if (weights->dims->size != 4) {
+  if (weights->dims == nullptr || weights->dims->size != 4) {
     TF_LITE_KERNEL_LOG(context,
                        "Convolution weights tensor must have rank 4.");
     return false;
