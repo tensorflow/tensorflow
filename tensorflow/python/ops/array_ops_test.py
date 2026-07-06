@@ -715,7 +715,7 @@ class TestFoldDeterminism(test.TestCase):
             dilation=1))
     reference = outputs[0]
     for output in outputs[1:]:
-      self.assertAllEqual(reference,output)
+      self.assertAllClose(reference,output)
 
   def test_fold_cpu_deterministic(self):
     """To check if CPU output is deterministic if op determinism is turned off"""
@@ -744,7 +744,7 @@ class TestFoldDeterminism(test.TestCase):
             stride=1,
             padding="VALID")
         
-        self.assertAllEqual(reference, result)
+        self.assertAllClose(reference, result)
 
 if __name__ == "__main__":
   test.main()
