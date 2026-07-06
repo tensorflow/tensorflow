@@ -39,6 +39,11 @@ inline constexpr absl::string_view kCallMarkerAfterTarget =
 inline constexpr absl::string_view kCallMarkedComputationAttribute =
     "xla_call_marked_computation";
 
+// The key used in the frontend attributes of the call markers to store the name
+// of the call instruction that is being marked for outlining.
+inline constexpr absl::string_view kCallMarkedInstructionNameAttribute =
+    "xla_call_marked_instruction_name";
+
 // This pass marks the call instructions in the module by wrapping them with
 // custom call instructions, which will be used to identify the call
 // instructions during the call outliner pass.
