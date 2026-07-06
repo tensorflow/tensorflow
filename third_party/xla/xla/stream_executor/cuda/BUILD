@@ -937,6 +937,7 @@ xla_cc_test(
         "//xla/service:computation_placer_hdr",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_vmm_allocator",
+        "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:memory_space",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",

@@ -738,13 +738,12 @@ GpuExecutableBufferAllocator::CreateExecutionScope(
   }
   remapping->vmm_allocator = vmm_allocator;
 
-  if (remapping->va_reservation != nullptr) {
-    // With a single VA reservation range, the next execution must wait until
-    // deferred unmaps from the previous execution have retired before it can
-    // map the same reservation aliases again.
-    RETURN_IF_ERROR(
-        vmm_allocator->SynchronizePendingOperations(device_ordinal));
-  }
+  // Deferred deallocations and unmaps from the previous execution are left
+  // pending on purpose: Allocate() and Map() reactivate a compatible stale
+  // mapping at the same reservation VA, which keeps the same physical
+  // allocation across executions and avoids waiting for the previous execution
+  // to retire. Incompatible stale mappings are completed lazily and per-record
+  // by the fresh-mapping paths.
   return ExecutionScope(this, remapping, vmm_allocator, std::move(remap_lock),
                         /*address_policy_active=*/true);
 }
