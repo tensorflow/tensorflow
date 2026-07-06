@@ -227,6 +227,37 @@ typedef struct TF_RandomAccessFileOps {
   ///     other value to provide more information about the error.
   int64_t (*read)(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
                   char* buffer, TF_Status* status);
+
+  /// OPTIONAL. Reads up to `n` bytes from `*file` starting at `offset`
+  /// directly into `device_ptr`, a caller-owned pointer into accelerator
+  /// (e.g. GPU) memory, bypassing any host-memory bounce buffer.
+  ///
+  /// `device_ptr` must already be registered with the accelerator's
+  /// buffer-registration mechanism (e.g. cuFileBufferRegister) by the
+  /// caller; this call does not take ownership of it and does not manage
+  /// its lifetime.
+  ///
+  /// DEFAULT: nullptr. Plugins that do not support a direct-to-device path
+  /// must leave this as nullptr; callers must check for nullptr before use
+  /// and fall back to `read` followed by a separate host-to-device copy.
+  ///
+  /// Plugins:
+  ///   * Must set `status` to `TF_OK` if exactly `n` bytes have been read.
+  ///   * Must set `status` to `TF_OUT_OF_RANGE` if fewer than `n` bytes have
+  ///     been read due to EOF.
+  ///   * Must set `status` to `TF_UNIMPLEMENTED` if a direct transfer is not
+  ///     possible for this particular file/device combination even though
+  ///     the function pointer itself is non-null (e.g. handle registration
+  ///     failed for this file). Callers must treat this the same as a
+  ///     nullptr function pointer: fall back to `read`.
+  ///   * Must return -1 for any other error and must set `status` to any
+  ///     other value to provide more information about the error.
+  ///
+  /// Added after the initial release of this table; per the versioning
+  /// rules above, appending a field here is ABI-compatible and does not
+  /// require bumping TF_RANDOM_ACCESS_FILE_OPS_ABI.
+  int64_t (*read_to_device)(const TF_RandomAccessFile* file, uint64_t offset,
+                            size_t n, void* device_ptr, TF_Status* status);
 } TF_RandomAccessFileOps;
 // LINT.ThenChange(:random_access_file_ops_version)
 
@@ -451,7 +482,7 @@ typedef struct TF_FilesystemOps {
   ///   * Must set `status` to `TF_FAILED_PRECONDITION` if `path` points to a
   ///     directory or if it is invalid.
   ///   * Might use any other error value for `status` to signal other errors.
-  void (*delete_file)(const TF_Filesystem* filesystem, const char* path,
+  void (*delete_file)(const TF_Filessystem* filesystem, const char* path,
                       TF_Status* status);
 
   /// Deletes the empty directory specified by `path`.
@@ -716,7 +747,6 @@ typedef struct TF_FilesystemOps {
 
 
 
-
   /// Returns pointer to an array of available configuration options and their
   /// current/default values in `options` and number of options in array in
   /// `num_options`. Ownership of the array is transferred to caller and the
@@ -836,7 +866,7 @@ typedef struct TF_FilesystemOps {
 /// only load compatible plugins and discard all others.
 
 // LINT.IfChange(random_access_file_ops_version)
-constexpr int TF_RANDOM_ACCESS_FILE_OPS_API = 0;
+constexpr int TF_RANDOM_ACCESS_FILE_OPS_API = 1;
 constexpr int TF_RANDOM_ACCESS_FILE_OPS_ABI = 0;
 constexpr size_t TF_RANDOM_ACCESS_FILE_OPS_SIZE =
     sizeof(TF_RandomAccessFileOps);
