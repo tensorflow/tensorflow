@@ -6392,21 +6392,24 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
     if dilation_h < 1 or dilation_w < 1:
       raise ValueError(f"dilation must be >= 1, got {dilation}")
         
-  # Get dimensions
-  batch_size = shape_internal(patches)[0]
-  out_h = shape_internal(patches)[1]
-  out_w = shape_internal(patches)[2]
-  patch_dim = shape_internal(patches)[3]
+# Get dimensions - extract dynamic shapes for the graph logic
+  dynamic_shape = shape_internal(patches)
+  batch_size = dynamic_shape[0]
+  out_h = dynamic_shape[1]
+  out_w = dynamic_shape[2]
+  patch_dim = dynamic_shape[3]
+  kernel_area = kernel_h * kernel_w
 
-  if patch_dim % (kernel_h * kernel_w) != 0:
-    raise ValueError(
-        f"Expected size of input's dimension 3 should be divisble by"
-        f" the product of kernel_size, but input's dim 3 is"
-        f" {shape_internal(patches)[3]} and kernel_size is {kernel_size}")
-  channels = patch_dim // (kernel_h * kernel_w)
+  if patches.shape.rank is not None and patches.shape[3] is not None:
+    if patches.shape[3] % kernel_area != 0:
+      raise ValueError(
+          f"Expected size of input's dimension 3 should be divisble by"
+          f" the product of kernel_size, but input's dim 3 is"
+          f" {patches.shape[3]} and kernel_size is {kernel_size}")
+
+  channels = patch_dim // kernel_area
     
   height, width = output_size 
-  #TODO: ^ Validate that output_size is consistent with the patch tensor shape?
     
   # Handling inputs for padding argument
   k_eff_h = (kernel_h - 1) * dilation_h + 1

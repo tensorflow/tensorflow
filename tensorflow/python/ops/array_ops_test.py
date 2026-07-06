@@ -693,6 +693,7 @@ class TestFoldDeterminism(test.TestCase):
         padding=padding,
     )
   @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
   def test_fold_gpu_deterministic(self):
     """To check if GPU output is deterministic if op determinism is turned off"""
     config.disable_op_determinism()
