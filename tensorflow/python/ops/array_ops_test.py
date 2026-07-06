@@ -320,6 +320,123 @@ class TestFoldOverlapping(test.TestCase):
           self.assertEqual(reconstructed.dtype, x.dtype)
           self.assertAllClose(reconstructed, expected)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testFoldReductionMeanReconstruction(self):
+    """Basic test for reduction='mean' """
+    input_image = array_ops.constant(
+        [[[[1.0], [2.0], [3.0]],
+          [[4.0], [5.0], [6.0]],
+          [[7.0], [8.0], [9.0]]]]
+    )
+
+    # The center pixel (5.0) will be duplicated 4 times!
+    patches = array_ops.extract_image_patches(
+        input_image, 
+        ksizes=[1, 2, 2, 1], 
+        strides=[1, 1, 1, 1], 
+        rates=[1, 1, 1, 1], 
+        padding='VALID'
+    )
+
+    # patches = [[1, 2, 4, 5],
+    #            [2, 3, 5, 6],
+    #            [4, 5, 7, 8],
+    #            [5, 6, 8, 9]
+
+    # *(divisor_matrix) represents overlap count
+    # Eg. element 5.0 (in the input image,center pixel) was overlapped 4 times!
+    # [  1    2    1 ] 
+    # [  2    4    2 ]
+    # [  1    2    1 ]
+
+    # folded_img (with reduction='sum')
+    # [  1    4    3 ]  
+    # [  8   20   12 ]
+    # [  7   16    9 ]
+
+    folded_image = array_ops.fold(
+        patches,
+        output_size=(3, 3),
+        sizes=2,
+        strides=1,
+        rates=1,
+        padding='VALID',
+        reduction='mean'
+    )
+
+    #* folded_img (with reduction='mean') = folded_img_summed ⊘ overlap count (ones_tensor)
+    # [  1/1    4/2    3/1 ]  = [1,2,3]
+    # [  8/2   20/4   12/2 ]  = [4,5,6]
+    # [  7/1   16/2    9/1 ]  = [7,8,9]
+
+    # reduction='mean' should recreate the original image.
+    self.assertAllClose(input_image, folded_image)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFoldReductionMeanEmptyPixels(self):
+    """This tests the `safe_divisor` logic to ensure no NaNs are produced 
+    when pixels receive 0 patches."""
+    patches = array_ops.constant(
+        [[[[1.0, 2.0, 3.0, 4.0]]]]
+    ) # created a single 2x2 patch
+
+    # fold it into a 3x3 output space.
+    # The bottom and right edges will have 0 overlap
+    folded_image = array_ops.fold(
+        patches,
+        output_size=(3, 3),
+        sizes=2,
+        strides=1,
+        rates=1,
+        padding='VALID',
+        reduction='mean'
+    )
+
+    # 1. Ensuring NO NaNs exist in the output 
+    has_nans = math_ops.reduce_any(math_ops.is_nan(folded_image))
+    self.assertFalse(self.evaluate(has_nans))
+
+    # 2. Ensuring the untouched pixels defaulted to 0.0
+    # Check coordinate (row 0, col 2) which is outside the 2x2 patch
+    self.assertEqual(self.evaluate(folded_image[0, 0, 2, 0]), 0.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFoldReductionMeanMultipleDimensions(self):
+    """ We test combinations of (batch_size, channels, size, stride, rate)"""
+
+    test_configs = [
+        {"batch": 2, "channels": 3, "size": 2, "stride": 1, "rate": 2},
+        {"batch": 3, "channels": 2, "size": 3, "stride": 2, "rate": 1},
+    ]
+
+    for config in test_configs:
+      
+      input_shape = [config["batch"], 7, 7, config["channels"]]
+      input_image = random_ops.random_uniform(input_shape, seed=42)
+
+      
+      patches = array_ops.extract_image_patches(
+          input_image,
+          ksizes=[1, config["size"], config["size"], 1],
+          strides=[1, config["stride"], config["stride"], 1],
+          rates=[1, config["rate"], config["rate"], 1],
+          padding='VALID'
+      )
+
+      
+      folded_image = array_ops.fold(
+          patches,
+          output_size=(7, 7),
+          sizes=config["size"],
+          strides=config["stride"],
+          rates=config["rate"],
+          padding='VALID',
+          reduction='mean'
+      )
+
+      
+      self.assertAllClose(input_image, folded_image)
+
 class TestFoldInputValidation(test.TestCase):
   """Also checks error handling"""
 

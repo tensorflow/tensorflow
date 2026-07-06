@@ -6302,10 +6302,8 @@ def extract_image_patches(  # pylint: disable=missing-docstring
 extract_image_patches.__doc__ = gen_array_ops.extract_image_patches.__doc__
 
 @tf_export("experimental.fold")
-def fold(patches, output_size, kernel_size, stride, padding='VALID', 
-         dilation=1):
-  """
-  Fold operation - inverse of tf.image.extract_patches.
+def fold(patches, output_size, sizes, strides, padding='VALID', 
+         rates=1, reduction='sum'):
 
   Note: For overlapping patches with floating-point data, the output may be
   nondeterministic due to the order of accumulation in scatter_nd. To ensure
@@ -6366,7 +6364,8 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
       f"patches(input must be 4D (batch, height, width, patch_dim), "
       f"got {patches.shape.ndims}D tensor with shape {patches.shape}"
     )
-    
+  if reduction not in ('sum', 'mean'):
+    raise ValueError(f"reduction must be 'sum' or 'mean', got {reduction}")  
   if isinstance(kernel_size, int):
     kernel_h = kernel_w = kernel_size
     if kernel_size < 1:
@@ -6497,7 +6496,19 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
     updates=updates,
     shape=[batch_size, padded_height, padded_width, channels]
   )
-    
+  if reduction == 'mean':
+    ones_updates = ones_like(updates)
+    divisor_matrix = gen_array_ops.scatter_nd( #calc overlapping count
+      indices=indices,
+      updates=ones_updates,
+      shape=[batch_size, padded_height, padded_width, channels]
+    )
+    safe_divisor = gen_math_ops.maximum( # To avoid zero division errors
+        divisor_matrix, 
+        constant_op.constant(1, dtype=divisor_matrix.dtype)
+    )
+    output = gen_math_ops.div(output, safe_divisor)  # element-wise division
+
   # Crop to desired output_size by removing the calculated padding
   # No-op if padding='VALID' or 0
   if pad_top > 0 or pad_bottom > 0 or pad_left > 0 or pad_right > 0:
