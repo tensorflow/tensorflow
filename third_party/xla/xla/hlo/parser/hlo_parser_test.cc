@@ -4652,12 +4652,12 @@ TEST_F(HloParserTest, ParseReplicaGroupsV3) {
   EXPECT_EQ("{{0,1},{2,3}}", ReplicaGroupsToString(replica_groups));
 }
 
-TEST_F(HloParserTest, ParseReplicaGroupsMaximalMeshError) {
+TEST_F(HloParserTest, ParseReplicaGroupsMaximalMesh) {
   const std::string original = "maximal_mesh[device_id=1] {}";
   auto status = ParseReplicaGroupsOnly(original).status();
-  EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("must have more than one device per group"));
+  ASSERT_OK_AND_ASSIGN(std::vector<ReplicaGroup> replica_groups,
+                       ParseReplicaGroupsOnly(original));
+  EXPECT_EQ("{{1}}", ReplicaGroupsToString(replica_groups));
 }
 
 TEST_F(HloParserTest, ParseDynamicReshapeMissingOperands) {

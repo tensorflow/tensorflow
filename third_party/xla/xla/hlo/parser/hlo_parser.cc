@@ -3924,12 +3924,6 @@ bool HloParserImpl::ParseCollectiveDeviceListBase(
     for (const auto& axis : axes) {
       devices_per_group *= axis.size(*mesh);
     }
-    if (devices_per_group <= 1) {
-      return TokenError(absl::StrCat(
-          "MeshAxesReplicaGroupList must have more than one device per group, "
-          "but got ",
-          devices_per_group));
-    }
     *device_list = std::make_unique<MeshAxesReplicaGroupList>(*mesh, axes);
     return true;
   }
