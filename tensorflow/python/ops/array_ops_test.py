@@ -175,8 +175,8 @@ class TestFoldNonOverlapping(test.TestCase):
     reconstructed = array_ops.fold(
             patches,
             output_size=(8, 8),
-            kernel_size=4,
-            stride=4,
+            sizes=4,
+            strides=4,
             padding='VALID'
         )
     self.assertAllClose(
@@ -204,8 +204,8 @@ class TestFoldNonOverlapping(test.TestCase):
             reconstructed = array_ops.fold(
               patches,
               output_size=(image_size, image_size),
-              kernel_size=kernel_size,
-              stride=kernel_size,
+              sizes=kernel_size,
+              strides=kernel_size,
               padding='VALID'
               )
             self.assertAllClose(reconstructed, x)
@@ -222,10 +222,10 @@ class TestFoldNonOverlapping(test.TestCase):
       out = array_ops.fold(
           patches,
           output_size=(4, 4),
-          kernel_size=2,
-          stride=2,
+          sizes=2,
+          strides=2,
           padding='VALID',
-          dilation=dilation
+          rates=dilation
       )
       self.assertAllEqual(out.shape, x.shape)
       self.assertEqual(out.dtype, x.dtype)
@@ -257,8 +257,8 @@ class TestFoldOverlapping(test.TestCase):
     reconstructed = array_ops.fold(
             patches,
             output_size=(4, 4),
-            kernel_size=2,
-            stride=1,
+            sizes=2,
+            strides=1,
             padding='VALID'
         )
     
@@ -299,8 +299,8 @@ class TestFoldOverlapping(test.TestCase):
           reconstructed = array_ops.fold(
               patches,
               output_size=(image_size, image_size),
-              kernel_size=kernel_size,
-              stride=stride,
+              sizes=kernel_size,
+              strides=stride,
               padding='VALID'
           )
           # Building the overlap count map by folding a tensor of ones.
@@ -311,8 +311,8 @@ class TestFoldOverlapping(test.TestCase):
           overlap_counts = array_ops.fold(
               ones_patches,
               output_size=(image_size, image_size),
-              kernel_size=kernel_size,
-              stride=stride,
+              sizes=kernel_size,
+              strides=stride,
               padding='VALID'
           )              
           expected = x * overlap_counts                
@@ -331,7 +331,7 @@ class TestFoldInputValidation(test.TestCase):
     patches = random_ops.random_normal([1, 3, 3, 4])
     with self.assertRaisesRegex(ValueError, "dilation must be >= 1"):
       array_ops.fold(
-        patches, output_size=(4, 4), kernel_size=2, stride=2, dilation=-1)
+        patches, output_size=(4, 4), sizes=2, strides=2, rates=-1)
   
   def test_invalid_padding_string_raises(self):
     patches = random_ops.random_normal([1, 3, 3, 4])
@@ -340,22 +340,22 @@ class TestFoldInputValidation(test.TestCase):
       array_ops.fold(
         patches, 
         output_size=(4, 4), 
-        kernel_size=2, 
-        stride=2, 
+        sizes=2, 
+        strides=2, 
         padding='INVALID_STRING')
 
   def test_invalid_image_input_size(self):
     patches = random_ops.random_normal([3, 3, 4])  
     with self.assertRaisesRegex(ValueError, "input must be 4D"):
       array_ops.fold(
-        patches, output_size=(4, 4), kernel_size=2, stride=2)
+        patches, output_size=(4, 4), sizes=2, strides=2)
 
   def test_patch_dim_not_divisible_by_kernel_raises(self):
     patches = random_ops.random_normal([1, 3, 3, 5]) 
     with self.assertRaisesRegex(
       ValueError,
       "input's dimension 3 should be divisble by the product of kernel_size"):        
-      array_ops.fold(patches, output_size=(4, 4), kernel_size=2, stride=2)
+      array_ops.fold(patches, output_size=(4, 4), sizes=2, strides=2)
   
   def test_invalid_kernel_size(self):
     patches = random_ops.random_normal([1, 4, 4, 1]) 
@@ -400,8 +400,8 @@ class TestFoldGradients(test.TestCase):
       y = array_ops.fold(
         patches,
         output_size=(4, 4),
-        kernel_size=2,
-        stride=1,
+        sizes=2,
+        strides=1,
         padding="VALID")
       loss = math_ops.reduce_sum(y)
     
@@ -420,8 +420,8 @@ class TestFoldGradients(test.TestCase):
       y = array_ops.fold(
         patches,
         output_size=(4, 4),
-        kernel_size=2,
-        stride=1,
+        sizes=2,
+        strides=1,
         padding="VALID")
       return math_ops.reduce_sum(y)
 
@@ -461,8 +461,8 @@ class TestFoldSamePadding(test.TestCase):
     reconstructed = array_ops.fold(
         patches,
         output_size=(5, 5),
-        kernel_size=3,
-        stride=3,
+        sizes=3,
+        strides=3,
         padding='SAME'
     )
     
@@ -484,8 +484,8 @@ class TestFoldSamePadding(test.TestCase):
     reconstructed = array_ops.fold(
         patches,
         output_size=(image_size, image_size),
-        kernel_size=kernel_size,
-        stride=stride,
+        sizes=kernel_size,
+        strides=stride,
         padding='SAME'
     )
 
@@ -496,8 +496,8 @@ class TestFoldSamePadding(test.TestCase):
     overlap_counts = array_ops.fold(
         ones_patches,
         output_size=(image_size, image_size),
-        kernel_size=kernel_size,
-        stride=stride,
+        sizes=kernel_size,
+        strides=stride,
         padding='SAME'
     )
     
@@ -519,10 +519,10 @@ class TestFoldSamePadding(test.TestCase):
     reconstructed = array_ops.fold(
         patches,
         output_size=(image_size, image_size),
-        kernel_size=kernel_size,
-        stride=stride,
+        sizes=kernel_size,
+        strides=stride,
         padding='VALID',
-        dilation=dilation
+        rates=dilation
     )
 
     ones = array_ops.ones_like(x)
@@ -534,10 +534,10 @@ class TestFoldSamePadding(test.TestCase):
     overlap_counts = array_ops.fold(
         ones_patches,
         output_size=(image_size, image_size),
-        kernel_size=kernel_size,
-        stride=stride,
+        sizes=kernel_size,
+        strides=stride,
         padding='VALID',
-        dilation=dilation
+        rates=dilation
     )
     
     expected = x * overlap_counts
@@ -575,8 +575,8 @@ class TestFoldSamePadding(test.TestCase):
     reconstructed = array_ops.fold(
         patches,
         output_size=(height, width),
-        kernel_size=kernel_size,
-        stride=stride,
+        sizes=kernel_size,
+        strides=stride,
         padding="SAME"
     )
 
@@ -591,8 +591,8 @@ class TestFoldSamePadding(test.TestCase):
     overlap_counts = array_ops.fold(
         ones_patches,
         output_size=(height, width),
-        kernel_size=kernel_size,
-        stride=stride,
+        sizes=kernel_size,
+        strides=stride,
         padding="SAME"
     )
 
@@ -616,10 +616,10 @@ def test_fold_same_padding_with_dilation(self):
   reconstructed = array_ops.fold(
       patches,
       output_size=(image_size, image_size),
-      kernel_size=kernel_size,
-      stride=stride,
+      sizes=kernel_size,
+      strides=stride,
       padding="SAME",
-      dilation=dilation)
+      rates=dilation)
 
   ones = array_ops.ones_like(x)
   ones_patches = self._extract_patches(
@@ -632,10 +632,10 @@ def test_fold_same_padding_with_dilation(self):
   overlap_counts = array_ops.fold(
       ones_patches,
       output_size=(image_size, image_size),
-      kernel_size=kernel_size,
-      stride=stride,
+      sizes=kernel_size,
+      strides=stride,
       padding="SAME",
-      dilation=dilation)
+      rates=dilation)
 
   expected = x * overlap_counts
   self.assertAllClose(reconstructed, expected)
@@ -659,10 +659,10 @@ def test_fold_non_square_parameters(self):
   reconstructed = array_ops.fold(
       patches,
       output_size=(height, width),
-      kernel_size=kernel_size,
-      stride=stride,
+      sizes=kernel_size,
+      strides=stride,
       padding="SAME",
-      dilation=dilation)
+      rates=dilation)
 
   ones = array_ops.ones_like(x)
   ones_patches = self._extract_patches(
@@ -675,10 +675,10 @@ def test_fold_non_square_parameters(self):
   overlap_counts = array_ops.fold(
       ones_patches,
       output_size=(height, width),
-      kernel_size=kernel_size,
-      stride=stride,
+      sizes=kernel_size,
+      strides=stride,
       padding="SAME",
-      dilation=dilation)
+      rates=dilation)
 
   expected = x * overlap_counts
   self.assertAllClose(reconstructed, expected)
@@ -715,10 +715,10 @@ class TestFoldDeterminism(test.TestCase):
         array_ops.fold(
           patches,
           output_size=(128, 128),
-          kernel_size=15,
-          stride=1,
+          sizes=15,
+          strides=1,
           padding="VALID",
-          dilation=1))
+          rates=1))
     reference = outputs[0]
     for output in outputs[1:]:
       self.assertAllClose(reference,output)
@@ -738,16 +738,16 @@ class TestFoldDeterminism(test.TestCase):
       reference = array_ops.fold(
           patches,
           output_size=(32, 32),
-          kernel_size=5,
-          stride=1,
+          sizes=5,
+          strides=1,
           padding="VALID")
 
       for i in range(10):
         result = array_ops.fold(
             patches,
             output_size=(32, 32),
-            kernel_size=5,
-            stride=1,
+            sizes=5,
+            strides=1,
             padding="VALID")
         
         self.assertAllClose(reference, result)

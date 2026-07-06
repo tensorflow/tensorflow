@@ -6320,16 +6320,16 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
     output_size: Tuple (height, width) of the reconstructed image
           (before removing padding if padding='VALID')
                     
-    kernel_size: Int or tuple (kernel_h, kernel_w) - size of each patch
+    sizes: Int or tuple (kernel_h, kernel_w) - size of each patch
         
-    stride: Int or tuple (stride_h, stride_w) - step between patches
+    strides: Int or tuple (stride_h, stride_w) - step between patches
         
     padding: 'VALID' , 'SAME' or int
                  - 'VALID': no padding (default)
                  - 'SAME': matches tf.image.extract_patches padding behavior
                  - int: symmetric padding on all sides
                  
-    dilation: Int or tuple (dilation_h, dilation_w) - spacing between 
+    rates: Int or tuple (dilation_h, dilation_w) - spacing between 
                  kernel elements (called 'rates' in tf.image.extract_patches)
                  Must be >= 1.
                 
@@ -6357,7 +6357,9 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
     )
   """
 
-    
+  kernel_size = sizes
+  stride = strides
+  dilation = rates  
   # Handling inputs
   if patches.shape.ndims != 4:
     raise ValueError(
