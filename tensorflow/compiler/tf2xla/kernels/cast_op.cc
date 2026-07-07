@@ -131,12 +131,17 @@ class BitcastOp : public XlaOpKernel {
     const bool dst_complex = xla::primitive_util::IsComplexType(dst_type_);
 
     if (src_complex && !dst_complex) {
-      // A bitcast from a complex type reinterprets its contiguous
-      // [real, imag] storage. XLA's BitcastConvert cannot cross the
-      // complex<->real boundary, so express it with supported primitives:
-      // split into real/imag, lay them out as a trailing [real, imag]
-      // dimension, and bitcast the real component type to the destination.
-      // This is byte-for-byte equivalent to the eager Bitcast kernel.
+      // A bitcast from a complex type reinterprets its contiguous storage,
+      // which holds the real component followed by the imaginary component
+      // (each component_bit_width bits). XLA's BitcastConvert cannot cross
+      // the complex<->real boundary directly, so bitcast each component to
+      // the destination type separately -- this keeps every BitcastConvert
+      // call on a plain real-typed operand, matching the shape XLA's own
+      // shape inference (and the Bitcast op's shape function) computes for
+      // that type pair -- and concatenate the real result before the
+      // imaginary result, since the real component occupies the lower
+      // bytes. This is byte-for-byte equivalent to the eager Bitcast
+      // kernel.
       const xla::PrimitiveType component =
           xla::primitive_util::ComplexComponentType(src_type_);
       const int64_t component_bit_width =
@@ -148,26 +153,28 @@ class BitcastOp : public XlaOpKernel {
                   absl::InvalidArgumentError(
                       "Neither bit width is a multiple of the other."));
 
+      xla::XlaOp real_bits = xla::BitcastConvertType(xla::Real(input), dst_type_);
+      xla::XlaOp imag_bits = xla::BitcastConvertType(xla::Imag(input), dst_type_);
+
       const TensorShape input_shape = ctx->InputShape(0);
       const int64_t rank = input_shape.dims();
-      std::vector<int64_t> component_dims(input_shape.dim_sizes().begin(),
-                                          input_shape.dim_sizes().end());
-      component_dims.push_back(1);
-      xla::XlaOp real = xla::Reshape(xla::Real(input), component_dims);
-      xla::XlaOp imag = xla::Reshape(xla::Imag(input), component_dims);
-      xla::XlaOp paired = xla::ConcatInDim(ctx->builder(), {real, imag}, rank);
-      xla::XlaOp bits = xla::BitcastConvertType(paired, dst_type_);
-
-      // Match the shape the eager Bitcast produces: when the source element
-      // is wider than the destination it expands into a trailing minor
-      // dimension of src_bit_width / dst_bit_width integers.
-      const int64_t src_bit_width = xla::primitive_util::BitWidth(src_type_);
-      std::vector<int64_t> output_dims(input_shape.dim_sizes().begin(),
-                                       input_shape.dim_sizes().end());
-      if (src_bit_width > dst_bit_width) {
-        output_dims.push_back(src_bit_width / dst_bit_width);
+      if (component_bit_width == dst_bit_width) {
+        // BitcastConvertType does not introduce a new minor dimension when
+        // the widths already match, so add one explicitly before
+        // concatenating the real and imaginary halves.
+        std::vector<int64_t> expanded_dims(input_shape.dim_sizes().begin(),
+                                           input_shape.dim_sizes().end());
+        expanded_dims.push_back(1);
+        real_bits = xla::Reshape(real_bits, expanded_dims);
+        imag_bits = xla::Reshape(imag_bits, expanded_dims);
       }
-      ctx->SetOutput(0, xla::Reshape(bits, output_dims));
+      // When component_bit_width > dst_bit_width, BitcastConvertType has
+      // already appended a minor dimension of component_bit_width /
+      // dst_bit_width to each of real_bits and imag_bits, so concatenating
+      // along that existing dimension directly produces the same shape the
+      // eager Bitcast kernel does, with no further reshape required.
+      ctx->SetOutput(
+          0, xla::ConcatInDim(ctx->builder(), {real_bits, imag_bits}, rank));
       return;
     }
 
