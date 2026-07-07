@@ -2281,8 +2281,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
             HloInstruction::CreateAsyncUpdate(*shape, operands));
         //  We update async_wrapped_computation with the parsed shape,
         //  if there is mismatch, the verifier will catch it.
-        if (async_wrapped_opcode && async_wrapped_opcode != HloOpcode::kCall &&
-            async_wrapped_opcode != HloOpcode::kFusion) {
+        if (async_wrapped_opcode) {
           UpdateAsyncWrappedComputation(
               async_update->async_wrapped_computation(),
               /*result_shape=*/shape->tuple_shapes(1),
@@ -2297,8 +2296,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
 
       const Shape& operand_shape = async_done->operand(0)->shape();
 
-      if (async_wrapped_opcode && async_wrapped_opcode != HloOpcode::kCall &&
-          async_wrapped_opcode != HloOpcode::kFusion) {
+      if (async_wrapped_opcode) {
         UpdateAsyncWrappedComputation(
             async_done->async_wrapped_computation(),
             /*result_shape=*/*shape,
