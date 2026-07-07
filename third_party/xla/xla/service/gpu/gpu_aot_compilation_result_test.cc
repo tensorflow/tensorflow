@@ -145,7 +145,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
 
     params.module_name = "test_module";
     params.enable_debug_info_manager = false;
-    params.mlir_allocations = {BufferAllocation(0, 1024, 0)};
+    params.allocations = {BufferAllocation(0, 1024, 0)};
     ASSIGN_OR_RETURN(
         params.executable_abi_version,
         stream_executor::ExecutableAbiVersion::FromDeviceDescription(
