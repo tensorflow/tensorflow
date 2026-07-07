@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/gtl/map_util.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/profiler/utils/tf_op_utils.h"
 
@@ -423,7 +424,8 @@ const StatTypeMap& GetStatTypeMap() {
        {"hbm_energy_nj", kHbmEnergy},
        {"hbm_power_events", kHbmPowerEvents},
        {"transaction_with_chip_core_id", kTransactionWithChipCoreId},
-       {"program_counter", kProgramCounter}});
+       {"program_counter", kProgramCounter},
+       {"uses_ici", kUsesIci}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }

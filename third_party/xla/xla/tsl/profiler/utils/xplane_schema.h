@@ -406,11 +406,12 @@ enum StatType {
   kTransactionWithChipCoreId,
   // Program Counter in Oci Descriptors, etc
   kProgramCounter,
+  kUsesIci,
   // LINT.ThenChange(:last_stat_type)
 
   // LINT.IfChange(last_stat_type)
   // Change this to point to the last stat type when adding a new one.
-  kLastStatType = kProgramCounter,
+  kLastStatType = kUsesIci,
   // LINT.ThenChange(:stat_type_enum)
 };
 
