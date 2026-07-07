@@ -1796,6 +1796,22 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_dump_compress_protos),
                 debug_options->xla_dump_compress_protos(),
                 "Gzip-compress protos dumped by --xla_dump_hlo_as_proto."));
+  flag_list->push_back(
+      tsl::Flag("xla_async_hlo_dump",
+                bool_setter_for(&DebugOptions::set_xla_async_hlo_dump),
+                debug_options->xla_async_hlo_dump(),
+                "Whether to dump HLO passes asynchronously."));
+  flag_list->push_back(tsl::Flag(
+      "xla_async_hlo_dump_max_pending",
+      int32_setter_for(&DebugOptions::set_xla_async_hlo_dump_max_pending),
+      debug_options->xla_async_hlo_dump_max_pending(),
+      "Maximum number of pending async HLO dump tasks. Block the main thread "
+      "if this limit is reached."));
+  flag_list->push_back(tsl::Flag(
+      "xla_async_hlo_dump_max_threads",
+      int32_setter_for(&DebugOptions::set_xla_async_hlo_dump_max_threads),
+      debug_options->xla_async_hlo_dump_max_threads(),
+      "Maximum number of threads for async HLO dumping."));
   flag_list->push_back(tsl::Flag(
       "xla_hlo_graph_addresses",
       bool_setter_for(&DebugOptions::set_xla_hlo_graph_addresses),

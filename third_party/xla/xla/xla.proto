@@ -1494,6 +1494,16 @@ message DebugOptions {
   // true.
   optional bool xla_dump_buffer_assignment_analysis = 466;
 
+  // If true, dump HLO passes asynchronously in a separate thread pool.
+  optional bool xla_async_hlo_dump = 507;
+
+  // Maximum number of pending async HLO dump tasks. Block the main thread if
+  // this limit is reached.
+  optional int32 xla_async_hlo_dump_max_pending = 508;
+
+  // Maximum number of threads for async HLO dumping.
+  optional int32 xla_async_hlo_dump_max_threads = 509;
+
   //
   // END flags controlling dumping HLO modules.
   //

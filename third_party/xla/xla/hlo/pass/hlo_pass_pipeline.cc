@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
@@ -55,7 +54,6 @@ void RecordPassStartMetadata(HloModule& module, const std::string& pass_name,
 }
 
 absl::Status AttemptRecordPassEndMetadata(HloModule& module,
-                                          const std::string& pass_name,
                                           bool module_changed) {
   // Module id is set here instead of RecordPassStartMetadata because it may
   // change in the middle of the pass, and we want the final id.
@@ -67,10 +65,8 @@ absl::Status AttemptRecordPassEndMetadata(HloModule& module,
   return absl::OkStatus();
 }
 
-void RecordPassEndMetadata(HloModule& module, const std::string& pass_name,
-                           bool module_changed) {
-  absl::Status status =
-      AttemptRecordPassEndMetadata(module, pass_name, module_changed);
+void RecordPassEndMetadata(HloModule& module, bool module_changed) {
+  absl::Status status = AttemptRecordPassEndMetadata(module, module_changed);
   if (!status.ok()) {
     LOG(FATAL) << status;
   }
@@ -158,13 +154,11 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
       RunInvariantCheckers<HloT>(hlo, kPipelineStart, execution_threads));
 
   RecordPassStartMetadata(*hlo, std::string(kPipelineStart), pipeline_name);
-  MaybeDumpHloAndSaveFilenames(*hlo,
-                               /*after_pass_name=*/kPipelineStart,
+  MaybeDumpHloAndSaveFilenames(*hlo, /*after_pass_name=*/kPipelineStart,
                                /*before_pass_name=*/passes.empty()
                                    ? kPipelineEnd
                                    : passes.front()->name());
-  RecordPassEndMetadata(*hlo, std::string(kPipelineStart),
-                        /*module_changed=*/false);
+  RecordPassEndMetadata(*hlo, /*module_changed=*/false);
 
   bool changed = false;
   bool verify_pass_changed_report =
@@ -201,13 +195,12 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
                                     pipeline_name, hash_before.value());
     }
     if (!dump_regex.empty() && (pass_changed || dump_regex != ".*")) {
-      MaybeDumpHloAndSaveFilenames(*hlo,
-                                   /*after_pass_name=*/pass_name,
+      MaybeDumpHloAndSaveFilenames(*hlo, /*after_pass_name=*/pass_name,
                                    /*before_pass_name=*/i + 1 >= passes.size()
                                        ? kPipelineEnd
                                        : passes[i + 1]->name());
     }
-    RecordPassEndMetadata(*hlo, pass_name, pass_changed);
+    RecordPassEndMetadata(*hlo, pass_changed);
     changed |= pass_changed;
     if (pass_changed) {
       VLOG(3) << "  Pass caused changes " << pass_name;
@@ -223,6 +216,7 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
       compilation_stats_->EndPass(pass_name);
     }
   }
+
   return changed;
 }
 

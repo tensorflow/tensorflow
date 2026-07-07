@@ -155,7 +155,7 @@ class HloPassPipeline : public HloPassInterface {
   std::vector<std::unique_ptr<HloPassInterface>> invariant_checkers_;
   bool run_called_ = false;
 
-  CompilationStats* compilation_stats_;
+  CompilationStats* compilation_stats_ = nullptr;
   // Default stats instance for when one is not passed in the constructor.
   // Use via compilation_stats_, not directly.
   std::unique_ptr<CompilationStats> empty_compilation_stats_;
