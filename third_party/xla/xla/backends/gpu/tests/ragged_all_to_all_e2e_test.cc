@@ -269,7 +269,6 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
         // NCCL 2.29 integrated with host API to check LSA connectivity.
         Capability().cuda_compute_capability()->IsAtLeastHopper()) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
-      opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier(false);
       opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
           true);
     }

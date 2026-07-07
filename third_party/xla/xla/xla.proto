@@ -1643,9 +1643,6 @@ message DebugOptions {
   // If true, use third-party library raft::matrix::select_k to implement TopK.
   optional bool xla_gpu_experimental_use_raft_select_k = 413;
 
-  // If true, use MultiGpuBarrierKernel in one-shot RaggedAllToAll thunk.
-  optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier = 450;
-
   // If true, use MultiGpuBarrierWithNcclKernel in one-shot RaggedAllToAll
   // thunk.
   optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl =
@@ -1748,6 +1745,7 @@ message DebugOptions {
   reserved "xla_gpu_experimental_enable_triton_i4_rewrites";
   reserved "xla_gpu_experimental_enable_triton_softmax_priority_fusion";
   reserved "xla_gpu_experimental_enable_triton_tma";
+  reserved "xla_gpu_experimental_ragged_all_to_all_use_barrier";
   reserved "xla_gpu_experimental_use_autotuner_pass";
   reserved "xla_gpu_graph_eviction_timeout_seconds";
   reserved "xla_gpu_graph_level";
@@ -1793,7 +1791,7 @@ message DebugOptions {
       243, 249, 263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298,
       299, 302, 303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 354, 355,
       358, 361, 367, 369, 371, 385, 388, 389, 394, 396, 398, 402, 420, 423, 430,
-      443, 446, 458, 464, 477;
+      443, 446, 458, 464, 477, 500;
 }
 
 // Contains flags which affects the GPU compilation result.
