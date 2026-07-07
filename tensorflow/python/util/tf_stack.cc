@@ -187,7 +187,7 @@ class StackTraceWrapper : public AbstractStackTrace {
 
 }  // namespace
 
-PYBIND11_MODULE(_tf_stack, m) {
+PYBIND11_MODULE(_tf_stack, m, pybind11::mod_gil_not_used()) {
   pybind11::google::ImportStatusModule();
 
   py::class_<PyBindSourceMap>(m, "PyBindSourceMap")
