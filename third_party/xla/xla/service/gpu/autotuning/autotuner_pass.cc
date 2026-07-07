@@ -330,19 +330,9 @@ AutotunerPass::GetGpuAutotunerBackends(
     HloCostAnalysis::ShapeSizeFunction shape_size_fn, Compiler* compiler,
     se::PlatformId platform_id) {
   std::vector<autotuner::Backend> autotune_backends;
-  if (!debug_options.xla_gpu_experimental_autotune_backends().empty()) {
-    for (const auto& backend :
-         debug_options.xla_gpu_experimental_autotune_backends()) {
-      autotune_backends.push_back(static_cast<autotuner::Backend>(backend));
-    }
-  } else {
-    for (int i = 0; i < autotuner::Backend_descriptor()->value_count(); ++i) {
-      const auto backend = static_cast<autotuner::Backend>(
-          autotuner::Backend_descriptor()->value(i)->number());
-      if (backend != autotuner::Backend::UNSPECIFIED_BACKEND) {
-        autotune_backends.push_back(backend);
-      }
-    }
+  for (const auto& backend :
+       debug_options.xla_gpu_experimental_autotune_backends()) {
+    autotune_backends.push_back(static_cast<autotuner::Backend>(backend));
   }
 
   std::vector<autotuner::Backend> disabled_autotune_backends;
