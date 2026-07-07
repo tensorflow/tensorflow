@@ -34,6 +34,12 @@ bool IsBinaryOpSupported(const TfLiteRegistration* registration,
 // constant float32/float16 tensor of size 1.
 float GetScalarFloatFromTensor(const TfLiteTensor* tensor);
 
+// Returns true if `tensor` has a non-null `dims` array with exactly
+// `expected_rank` dimensions. Guards against a null `tensor` or null `dims`
+// (which can occur for uninitialized or scalar tensors in malformed models)
+// before dereferencing `dims`, preventing an out-of-bounds read.
+bool TensorHasRank(const TfLiteTensor* tensor, int expected_rank);
+
 }  // namespace coreml
 }  // namespace delegates
 }  // namespace tflite
