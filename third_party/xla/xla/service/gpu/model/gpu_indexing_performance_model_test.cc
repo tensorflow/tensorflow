@@ -138,6 +138,59 @@ ENTRY e {
 }
 
 TEST_P(GpuIndexingPerformanceModelTest,
+       TritonGemmWithCustomBlockLevelParameters) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+triton_dot {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  lhs = f32[1024,1024] broadcast(p0), dimensions={}
+  rhs = f32[1024,1024] broadcast(p1), dimensions={}
+  ROOT dot = f32[1024,1024]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0},
+    backend_config={sizes:[64]}
+}
+
+ENTRY e {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT _ = f32[1024,1024]{1,0} fusion(p0, p1),
+    kind=kCustom,
+    calls=triton_dot,
+    backend_config={
+      "fusion_backend_config": {
+        kind: "__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["64", "64"]}],
+          "num_warps":"4",
+          "num_stages":"3",
+          "num_ctas":"1"
+        }
+      }
+    }
+}
+)"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  ASSERT_OK_AND_ASSIGN(
+      const EstimateRunTimeData result_default,
+      indexing_cost_model_.EstimateRunTimeForTriton(root, nullptr));
+
+  BlockLevelParameters custom_params;
+  custom_params.num_warps = 1;
+  custom_params.num_stages = 1;
+  custom_params.output_tile_sizes = {{16, 16}};
+  ASSERT_OK_AND_ASSIGN(
+      const EstimateRunTimeData result_with_custom,
+      indexing_cost_model_.EstimateRunTimeForTriton(root, &custom_params));
+
+  EXPECT_NE(result_with_custom.exec_time, result_default.exec_time);
+}
+
+TEST_P(GpuIndexingPerformanceModelTest,
        TritonSoftmaxFusionInstructionIsSupported) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -284,7 +337,7 @@ ENTRY entry_computation {
       module->entry_computation()->root_instruction());
 
   ASSERT_OK_AND_ASSIGN(
-      auto tiling_result,
+      TiledRunTimeDataOrError tiling_result,
       indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
 
   ASSERT_TRUE(std::holds_alternative<TiledRunTimeData>(tiling_result));
@@ -337,7 +390,7 @@ ENTRY entry_computation {
       module->entry_computation()->root_instruction());
 
   ASSERT_OK_AND_ASSIGN(
-      auto tiling_result,
+      TiledRunTimeDataOrError tiling_result,
       indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
 
   ASSERT_TRUE(std::holds_alternative<TiledRunTimeData>(tiling_result));
@@ -384,7 +437,7 @@ ENTRY main {
       module->entry_computation()->root_instruction());
 
   ASSERT_OK_AND_ASSIGN(
-      auto tiling_result,
+      TiledRunTimeDataOrError tiling_result,
       indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
 
   ASSERT_TRUE(std::holds_alternative<TiledRunTimeData>(tiling_result));
