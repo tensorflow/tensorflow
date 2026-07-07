@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/index_util.h"
@@ -3335,6 +3336,58 @@ absl::Status HloEvaluator::HandleCopy(const HloInstruction* copy) {
   return absl::OkStatus();
 }
 
+absl::Status HloEvaluator::PropagateAsyncOutputs(
+    const HloInstruction* start_async_inst,
+    const LiteralSlice& result_literal) {
+  const HloInstruction* current_async_inst = start_async_inst;
+  while (current_async_inst->opcode() == HloOpcode::kAsyncUpdate ||
+         current_async_inst->opcode() == HloOpcode::kAsyncStart) {
+    const Shape& current_shape = current_async_inst->shape();
+    RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+        current_shape,
+        [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+          if (index.empty() || index.front() != 1) {
+            return absl::OkStatus();
+          }
+          if (subshape.IsTuple() && subshape.tuple_shapes().empty()) {
+            return absl::OkStatus();
+          }
+          Literal* eval_literal = state_.find_evaluated(current_async_inst);
+          TF_RET_CHECK(eval_literal != nullptr);
+          RETURN_IF_ERROR(eval_literal->CopyFrom(
+              result_literal,
+              /*dest_shape_index=*/index,
+              /*src_shape_index=*/ShapeIndex(index.begin() + 1, index.end())));
+          if (eval_literal_handler_) {
+            eval_literal_handler_(current_async_inst, *eval_literal);
+          }
+          return absl::OkStatus();
+        }));
+    if (current_async_inst->opcode() == HloOpcode::kAsyncStart) {
+      break;
+    }
+    current_async_inst = current_async_inst->operand(0);
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::vector<Literal>> HloEvaluator::ExtractAsyncInputParameters(
+    const HloInstruction* async_op, const LiteralSlice& async_literal) {
+  int num_params = async_op->async_wrapped_computation()->num_parameters();
+  std::vector<Literal> sub_literals;
+  sub_literals.reserve(num_params);
+  for (int i = 0; i < num_params; ++i) {
+    ShapeIndex sub_index = {0, i};
+    ASSIGN_OR_RETURN(Literal sub_literal,
+                     Literal::Make(ShapeUtil::GetSubshape(async_literal.shape(),
+                                                          sub_index)));
+    RETURN_IF_ERROR(sub_literal.CopyFrom(async_literal, /*dest_shape_index=*/{},
+                                         /*src_shape_index=*/sub_index));
+    sub_literals.push_back(std::move(sub_literal));
+  }
+  return sub_literals;
+}
+
 absl::Status HloEvaluator::HandleAsyncStart(const HloInstruction* async_start) {
   std::vector<const Literal*> arg_literals;
   arg_literals.reserve(async_start->operands().size());
@@ -3342,15 +3395,6 @@ absl::Status HloEvaluator::HandleAsyncStart(const HloInstruction* async_start) {
     const Literal& arg_literal = GetEvaluatedLiteralFor(operand);
     arg_literals.push_back(&arg_literal);
   }
-
-  std::unique_ptr<HloEvaluator> embedded_evaluator =
-      CreateEmbedded(max_loop_iterations_);
-  embedded_evaluator->set_dynamic_dimension_inference(
-      dynamic_dimension_inference_);
-  ASSIGN_OR_RETURN(
-      Literal result,
-      embedded_evaluator->Evaluate(*async_start->async_wrapped_computation(),
-                                   arg_literals));
 
   ASSIGN_OR_RETURN(Literal literal, Literal::Make(async_start->shape()));
 
@@ -3360,9 +3404,23 @@ absl::Status HloEvaluator::HandleAsyncStart(const HloInstruction* async_start) {
                                      /*dest_shape_index=*/{0, i},
                                      /*src_shape_index=*/{}));
   }
-  // Move the output value to the index {1} of the output.
-  RETURN_IF_ERROR(
-      literal.MoveFrom(std::move(result), /*dest_shape_index=*/{1}));
+
+  ASSIGN_OR_RETURN(
+      bool is_first_fully_bound,
+      hlo_instruction_utils::async::IsFirstFullyBound(async_start));
+  if (is_first_fully_bound) {
+    std::unique_ptr<HloEvaluator> embedded_evaluator =
+        CreateEmbedded(max_loop_iterations_);
+    embedded_evaluator->set_dynamic_dimension_inference(
+        dynamic_dimension_inference_);
+    ASSIGN_OR_RETURN(
+        Literal result,
+        embedded_evaluator->Evaluate(*async_start->async_wrapped_computation(),
+                                     arg_literals));
+    // Move the output value to the index {1} of the output.
+    RETURN_IF_ERROR(
+        literal.MoveFrom(std::move(result), /*dest_shape_index=*/{1}));
+  }
 
   SetEvaluatedLiteralFor(async_start, std::move(literal));
 
@@ -3371,12 +3429,65 @@ absl::Status HloEvaluator::HandleAsyncStart(const HloInstruction* async_start) {
 
 absl::Status HloEvaluator::HandleAsyncUpdate(
     const HloInstruction* async_update) {
+  const HloInstruction* prev_async_inst = async_update->operand(0);
   const Literal& operand_tuple_literal =
-      GetEvaluatedLiteralFor(async_update->operand(0));
-  ASSIGN_OR_RETURN(Literal literal, Literal::Make(async_update->shape()));
-  RETURN_IF_ERROR(literal.CopyFrom(operand_tuple_literal,
-                                   /*dest_shape_index=*/{},
-                                   /*src_shape_index=*/{}));
+      GetEvaluatedLiteralFor(prev_async_inst);
+  const Shape& async_update_shape = async_update->shape();
+  const Shape& prev_async_op_shape = prev_async_inst->shape();
+  ASSIGN_OR_RETURN(Literal literal, Literal::Make(async_update_shape));
+  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      prev_async_op_shape,
+      [&](const Shape& prev_subshape, const ShapeIndex& index) -> absl::Status {
+        if (!index.empty() &&
+            ShapeUtil::IndexIsValid(async_update_shape, index)) {
+          const Shape& new_subshape =
+              ShapeUtil::GetSubshape(async_update_shape, index);
+          if (ShapeUtil::Compatible(prev_subshape, new_subshape)) {
+            RETURN_IF_ERROR(literal.CopyFrom(operand_tuple_literal,
+                                             /*dest_shape_index=*/index,
+                                             /*src_shape_index=*/index));
+          }
+        }
+        return absl::OkStatus();
+      }));
+
+  // Copy the new input values to the index {0, i + prev_operand_count} of the
+  // output.
+  const Shape& prev_shape = prev_async_inst->shape();
+  CHECK(prev_shape.IsTuple());
+  const Shape& prev_input_subshape = prev_shape.tuple_shapes(0);
+  CHECK(prev_input_subshape.IsTuple());
+  int prev_operand_count = prev_input_subshape.tuple_shapes().size();
+  for (int i = 1; i < async_update->operand_count(); ++i) {
+    RETURN_IF_ERROR(
+        literal.CopyFrom(GetEvaluatedLiteralFor(async_update->operand(i)),
+                         /*dest_shape_index=*/{0, i - 1 + prev_operand_count},
+                         /*src_shape_index=*/{}));
+  }
+
+  ASSIGN_OR_RETURN(
+      bool is_first_fully_bound,
+      hlo_instruction_utils::async::IsFirstFullyBound(async_update));
+  if (is_first_fully_bound) {
+    ASSIGN_OR_RETURN(std::vector<Literal> sub_literals,
+                     ExtractAsyncInputParameters(async_update, literal));
+    std::unique_ptr<HloEvaluator> embedded_evaluator =
+        CreateEmbedded(max_loop_iterations_);
+    embedded_evaluator->set_dynamic_dimension_inference(
+        dynamic_dimension_inference_);
+    ASSIGN_OR_RETURN(
+        Literal result,
+        embedded_evaluator->Evaluate(*async_update->async_wrapped_computation(),
+                                     sub_literals));
+    // Move the output value to the index {1} of the output.
+    RETURN_IF_ERROR(
+        literal.MoveFrom(std::move(result), /*dest_shape_index=*/{1}));
+
+    // propagate the output subshapes back to previous async ops
+    RETURN_IF_ERROR(
+        PropagateAsyncOutputs(prev_async_inst, LiteralSlice(literal, {1})));
+  }
+
   SetEvaluatedLiteralFor(async_update, std::move(literal));
   return absl::OkStatus();
 }
@@ -3384,10 +3495,41 @@ absl::Status HloEvaluator::HandleAsyncUpdate(
 absl::Status HloEvaluator::HandleAsyncDone(const HloInstruction* async_done) {
   const Literal& operand_tuple_literal =
       GetEvaluatedLiteralFor(async_done->operand(0));
-  ASSIGN_OR_RETURN(Literal literal, Literal::Make(async_done->shape()));
-  RETURN_IF_ERROR(literal.CopyFrom(operand_tuple_literal,
-                                   /*dest_shape_index=*/{},
-                                   /*src_shape_index=*/{1}));
+  Literal literal = Literal(async_done->shape());
+
+  ASSIGN_OR_RETURN(bool is_first_fully_bound,
+                   hlo_instruction_utils::async::IsFirstFullyBound(async_done));
+  if (is_first_fully_bound) {
+    int num_params = async_done->async_wrapped_computation()->num_parameters();
+    const HloInstruction* prev_async_inst = async_done->operand(0);
+    const Shape& prev_shape = prev_async_inst->shape();
+    CHECK(prev_shape.IsTuple());
+    const Shape& prev_input_subshape = prev_shape.tuple_shapes(0);
+    CHECK(prev_input_subshape.IsTuple());
+    int prev_operand_count = prev_input_subshape.tuple_shapes().size();
+    CHECK_EQ(num_params, prev_operand_count);
+    Literal* prev_eval_literal = state_.find_evaluated(prev_async_inst);
+    CHECK(prev_eval_literal != nullptr);
+    ASSIGN_OR_RETURN(
+        std::vector<Literal> sub_literals,
+        ExtractAsyncInputParameters(async_done, *prev_eval_literal));
+    std::unique_ptr<HloEvaluator> embedded_evaluator =
+        CreateEmbedded(max_loop_iterations_);
+    embedded_evaluator->set_dynamic_dimension_inference(
+        dynamic_dimension_inference_);
+    ASSIGN_OR_RETURN(
+        Literal result,
+        embedded_evaluator->Evaluate(*async_done->async_wrapped_computation(),
+                                     sub_literals));
+    literal = std::move(result);
+
+    // propagate the output subshapes back to previous async ops
+    RETURN_IF_ERROR(PropagateAsyncOutputs(async_done->operand(0), literal));
+  } else {
+    RETURN_IF_ERROR(literal.CopyFrom(operand_tuple_literal,
+                                     /*dest_shape_index=*/{},
+                                     /*src_shape_index=*/{1}));
+  }
   SetEvaluatedLiteralFor(async_done, std::move(literal));
   return absl::OkStatus();
 }

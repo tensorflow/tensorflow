@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -483,6 +482,12 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     }
     state_.set_evaluated(hlo, std::move(literal));
   }
+
+  absl::Status PropagateAsyncOutputs(const HloInstruction* start_async_inst,
+                                     const LiteralSlice& result_literal);
+
+  absl::StatusOr<std::vector<Literal>> ExtractAsyncInputParameters(
+      const HloInstruction* async_op, const LiteralSlice& async_literal);
 
   // EvaluationState encapsulates the state of an in-progress evaluation. Once
   // evaluation is complete the state is cleaned up.
