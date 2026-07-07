@@ -311,10 +311,11 @@ TEST(PjRtStreamExecutorClientTest, MakeAllocationReadyEventAsync) {
   std::vector<int32_t> data(1024);
   std::iota(data.begin(), data.end(), 100);
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->BufferFromHostBuffer(
-                       data.data(), S32, {1024}, /*byte_strides=*/std::nullopt,
-                       PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
-                       nullptr, memory_space, /*device_layout=*/nullptr));
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), S32, {1024}, /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          memory_space, /*device_layout=*/nullptr));
 
   Shape shape = buffer->on_device_shape();
   TF_ASSERT_OK_AND_ASSIGN(auto result,
