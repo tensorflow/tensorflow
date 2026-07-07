@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/coreml/builders/op_builder.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_factory.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_validator.h"
+#include "tensorflow/lite/delegates/coreml/builders/util.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -346,7 +347,7 @@ bool IsConvolutionOpSupported(const TfLiteRegistration* registration,
   if (!IsConstantTensor(weights)) {
     return false;
   }
-  if (weights->dims == nullptr || weights->dims->size != 4) {
+  if (!TensorHasRank(weights, 4)) {
     TF_LITE_KERNEL_LOG(context,
                        "Convolution weights tensor must have rank 4.");
     return false;

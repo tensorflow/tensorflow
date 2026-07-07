@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_factory.h"
+#include "tensorflow/lite/delegates/coreml/builders/util.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -111,7 +112,7 @@ bool IsPadOpSupported(const TfLiteRegistration* registration,
                        padding_name);
     return false;
   }
-  if (padding->dims == nullptr || padding->dims->size != 2) {
+  if (!TensorHasRank(padding, 2)) {
     TF_LITE_KERNEL_LOG(context, "%s: PAD padding tensor must be 2D.",
                        padding_name);
     return false;
