@@ -542,7 +542,8 @@ MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
         initial_resources[i] *= current_bw_adjustment_factor;
       }
       VLOG(2) << "Initial resource[" << i << "] = " << initial_resources[i]
-              << " (" << inst->name() << ")";
+              << " (" << inst->name() << ") " << inst->opcode() << " on thread "
+              << inst->parent()->execution_thread();
     }
   }
   prefetch_async_copy_resource_ = AsynchronousCopyResource(initial_resources);
@@ -1477,6 +1478,14 @@ void MsaAlgorithm::IdentifyAndOptimizeMemoryBoundLoops() {
 
 bool MsaAlgorithm::IsAsyncConversionCandidate(
     const HloInstruction* instruction) const {
+  if (instruction->parent()->execution_thread() !=
+      HloInstruction::kMainExecutionThread) {
+    VLOG(2) << "Skipping async conversion for " << instruction->name()
+            << " because its execution thread is "
+            << instruction->parent()->execution_thread();
+    return false;
+  }
+
   bool meets_special_preconditions =
       IsAsyncConversionCopyCandidate(instruction) ||
       IsAsyncConversionSliceCandidate(instruction) ==

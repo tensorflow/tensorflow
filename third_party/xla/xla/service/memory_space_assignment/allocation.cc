@@ -522,19 +522,32 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
     }
     RETURN_IF_ERROR(copy_start_->ReplaceOperandWith(0, producing_instruction));
   } else {
-    Shape dest_shape = shape;
+    Shape dest_shape = sync_mem_op_ != nullptr ? sync_mem_op_->shape() : shape;
     if (memory_space() == MemorySpace::kDefault) {
       dest_shape.mutable_layout()->clear_split_configs();
     }
-    copy_start_ = computation->AddInstruction(HloInstruction::CreateCopyStart(
-        ShapeUtil::MakeTupleShape(
-            {dest_shape, shape, ShapeUtil::MakeShape(U32, {})}),
-        producing_instruction, cross_program_prefetch_index()));
-    copy_done_ = computation->AddInstruction(HloInstruction::CreateUnary(
-        dest_shape, HloOpcode::kCopyDone, copy_start_));
+    if (prev_allocation_.memory_space() == memory_space()) {
+      // Avoid emitting a DMA transfer to the exact same memory space which
+      // violates invariant checks. Emit a synchronous copy instead.
+      copy_start_ = nullptr;
+      copy_done_ = computation->AddInstruction(HloInstruction::CreateUnary(
+          dest_shape, HloOpcode::kCopy, producing_instruction));
+    } else {
+      copy_start_ = computation->AddInstruction(HloInstruction::CreateCopyStart(
+          ShapeUtil::MakeTupleShape(
+              {dest_shape, shape, ShapeUtil::MakeShape(U32, {})}),
+          producing_instruction, cross_program_prefetch_index()));
+      copy_done_ = computation->AddInstruction(HloInstruction::CreateUnary(
+          dest_shape, HloOpcode::kCopyDone, copy_start_));
+    }
   }
-  VLOG(4) << "Created " << copy_start_->name()
-          << " for copy allocation: " << ToString();
+  if (copy_start_ != nullptr) {
+    VLOG(4) << "Created " << copy_start_->name()
+            << " for copy allocation: " << ToString();
+  } else {
+    VLOG(4) << "Created synchronous " << copy_done_->name()
+            << " for same-space redundant copy allocation: " << ToString();
+  }
 
   // Update the allocation position with the copy complete instruction, so that
   // if there are further copies from it, they can find the correct position.
