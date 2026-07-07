@@ -459,6 +459,33 @@ TEST_F(HloEvaluatorTest, DoesMulhiS32Min) {
   TestBinaryOp(HloOpcode::kMulhi, std::move(expected_s32_2),
                std::move(lhs_s32_2), std::move(rhs_s32_2));
 }
+
+// Regression test: clz of a negative signed integer must be 0, not negative.
+// The evaluator used to sign extend to 64 bits, so clz(s32 0xC1A63AF0) gave
+// -32.
+TEST_F(HloEvaluatorTest, DoesCountLeadingZerosS32) {
+  auto input = LiteralUtil::CreateR1<int32_t>(
+      {0, 1, -1, -1046070544, std::numeric_limits<int32_t>::min(),
+       std::numeric_limits<int32_t>::max()});
+  auto expected = LiteralUtil::CreateR1<int32_t>({32, 31, 0, 0, 0, 1});
+  TestUnaryOp(HloOpcode::kClz, std::move(expected), std::move(input));
+}
+
+TEST_F(HloEvaluatorTest, DoesCountLeadingZerosU32) {
+  auto input = LiteralUtil::CreateR1<uint32_t>(
+      {0, 1, 0xFFFFFFFF, 0x80000000, 0x7FFFFFFF});
+  auto expected = LiteralUtil::CreateR1<uint32_t>({32, 31, 0, 0, 1});
+  TestUnaryOp(HloOpcode::kClz, std::move(expected), std::move(input));
+}
+
+// Narrow type: masks to the s8 width, not the 64 bit ElementwiseT width.
+TEST_F(HloEvaluatorTest, DoesCountLeadingZerosS8) {
+  auto input = LiteralUtil::CreateR1<int8_t>(
+      {0, 1, -1, std::numeric_limits<int8_t>::min(),
+       std::numeric_limits<int8_t>::max()});
+  auto expected = LiteralUtil::CreateR1<int8_t>({8, 7, 0, 0, 1});
+  TestUnaryOp(HloOpcode::kClz, std::move(expected), std::move(input));
+}
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise divide with 2 operands.
 TEST_F(HloEvaluatorTest, DoesDivideInt64) {
