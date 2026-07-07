@@ -53,53 +53,109 @@ Future<> AbstractTrackedDeviceBuffer::GetReadyFuture(
     PjRtMemorySpace* memory_space) {
   auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
 
+  if (!client->event_tracking_enabled()) {
+    bool all_ready = true;
+    absl::Status fast_status;
+    if (raw_buffer() && client->include_raw_buffer_in_ready_event()) {
+      PjRtDeviceEventPtr alloc_event = raw_buffer()->GetRawBufferAsyncValue();
+      if (alloc_event) {
+        if (!alloc_event.async_value()->IsConcrete()) {
+          all_ready = false;
+        } else if (auto error = alloc_event.GetErrorIfPresent()) {
+          fast_status.Update(absl::Status(
+              absl::StatusCode::kFailedPrecondition,
+              absl::StrCat("Error in buffer allocation: ", error->message())));
+        }
+      }
+    }
+    if (all_ready) {
+      for (const auto& ev : definition_events()) {
+        if (!ev) {
+          continue;
+        }
+        if (!ev.async_value()->IsConcrete()) {
+          all_ready = false;
+          break;
+        }
+        if (auto error = ev.GetErrorIfPresent()) {
+          fast_status.Update(*error);
+        }
+      }
+    }
+    if (all_ready) {
+      return Future<>(std::move(fast_status));
+    }
+  }
+
   auto [definition_promise, definition_future] = tsl::MakePromise<void>();
   client->TrackFuture(memory_space, "BufferDefinitionEvent", definition_future);
 
-  CHECK(!usage_events_locked_);
   PjRtDeviceEventRefVector dependencies;
   dependencies.reserve(definition_events().size() + 1);
-  bool first_event_is_buffer_alloc = false;
+  absl::Status initial_status;
+
+  PjRtDeviceEventRef alloc_event_ref;
   if (raw_buffer() && client->include_raw_buffer_in_ready_event()) {
     PjRtDeviceEventPtr alloc_event = raw_buffer()->GetRawBufferAsyncValue();
     if (alloc_event) {
-      if (!alloc_event.async_value()->IsConcrete()) {
-        first_event_is_buffer_alloc = true;
+      if (alloc_event.async_value()->IsConcrete()) {
+        if (auto error = alloc_event.GetErrorIfPresent()) {
+          initial_status.Update(absl::Status(
+              absl::StatusCode::kFailedPrecondition,
+              absl::StrCat("Error in buffer allocation: ", error->message())));
+        }
+      } else {
+        alloc_event_ref = alloc_event.CopyRef();
         dependencies.push_back(alloc_event.CopyRef());
       }
     }
   }
+
+  absl::InlinedVector<PjRtDeviceEventRef, 2> pending_definition_events;
   for (const auto& ev : definition_events()) {
-    if (!ev.async_value()->IsConcrete()) {
+    if (!ev) {
+      continue;
+    }
+    if (ev.async_value()->IsConcrete()) {
+      if (auto error = ev.GetErrorIfPresent()) {
+        initial_status.Update(*error);
+      }
+    } else {
+      pending_definition_events.push_back(ev);
       dependencies.push_back(ev);
     }
   }
+
   if (client->event_tracking_enabled()) {
     client->AddEventDependencies(
         memory_space,
         PjRtDeviceEventPtr::FromAsyncValue(definition_future.async_value()),
         dependencies);
   }
+
   PjRtDeviceEventSpan deps_span(dependencies);
-  xla::RunWhenReady(deps_span, [definition_event =
+  xla::RunWhenReady(deps_span, [definition_promise =
                                     std::move(definition_promise),
-                                first_event_is_buffer_alloc,
-                                dependencies =
-                                    std::move(dependencies)]() mutable {
-    absl::Status status;
-    for (size_t i = 0; i < dependencies.size(); ++i) {
-      const auto& e = dependencies[i];
-      if (auto error = e.GetErrorIfPresent()) {
-        if (i == 0 && first_event_is_buffer_alloc) {
-          status.Update(absl::Status(
-              absl::StatusCode::kFailedPrecondition,
-              absl::StrCat("Error in buffer allocation: ", error->message())));
-        } else {
-          status.Update(*error);
-        }
+                                pending_definition_events =
+                                    std::move(pending_definition_events),
+                                alloc_event_ref = std::move(alloc_event_ref),
+                                status = std::move(initial_status)]() mutable {
+    if (alloc_event_ref) {
+      if (auto error = alloc_event_ref.GetErrorIfPresent()) {
+        status.Update(absl::Status(
+            absl::StatusCode::kFailedPrecondition,
+            absl::StrCat("Error in buffer allocation: ", error->message())));
       }
     }
-    definition_event.Set(std::move(status));
+    for (const auto& ev : pending_definition_events) {
+      if (!ev) {
+        continue;
+      }
+      if (auto error = ev.GetErrorIfPresent()) {
+        status.Update(*error);
+      }
+    }
+    definition_promise.Set(std::move(status));
   });
 
   return definition_future;
