@@ -44,8 +44,6 @@ TF_CONST_INIT extern const absl::string_view kVirtualDevicePlanePrefix;
 TF_CONST_INIT extern const char kTpuPlaneRegex[];
 // Regex for XPlanes that contain TPU Core planes.
 TF_CONST_INIT extern const char kSparseCorePlaneRegex[];
-// Regex for XPlanes that contain SparseCore Alt planes.
-TF_CONST_INIT extern const char kSparseCoreAltPlaneRegex[];
 // Name prefix of XPlane that contains custom device events.
 TF_CONST_INIT extern const absl::string_view kCustomPlanePrefix;
 // Name prefix of XPlane that contains TPU non-core events such as HBM, ICI etc.
