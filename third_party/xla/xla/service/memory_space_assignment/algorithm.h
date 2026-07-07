@@ -491,6 +491,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Runs a feature that attempts to expand the size of scoped alternate memory
   // allocations to the largest contiguous open space available.
   void ExtendScopedAlternateMemoryAllocations();
+  bool HasOnlyAlternateMemoryCopyUses(
+      const AllocationValue& allocation_value) const;
 
  private:
   // We inherit AllocationBlock struct to attach the Allocation information to

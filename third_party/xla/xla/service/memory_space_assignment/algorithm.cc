@@ -4274,6 +4274,29 @@ bool MsaAlgorithm::RequiresNoCopyAlternateMemAllocation(
              options_.alternate_memory_space;
 }
 
+bool MsaAlgorithm::HasOnlyAlternateMemoryCopyUses(
+    const AllocationValue& allocation_value) const {
+  if (allocation_value.uses().empty()) {
+    return false;
+  }
+  for (const AllocationValue::Use& use : allocation_value.uses()) {
+    const HloInstruction* user = use.hlo_use.instruction;
+    if (user->opcode() == HloOpcode::kCopy) {
+      if (user->shape().layout().memory_space() ==
+          options_.alternate_memory_space) {
+        continue;
+      }
+    } else if (user->opcode() == HloOpcode::kCopyStart) {
+      if (ShapeUtil::GetSubshape(user->shape(), {0}).layout().memory_space() ==
+          options_.alternate_memory_space) {
+        continue;
+      }
+    }
+    return false;
+  }
+  return true;
+}
+
 void MsaAlgorithm::AssignDefaultMemIfNotAllowedInAlternateMem(
     AllocationValue& allocation_value, int64_t definition_time) {
   if (!options_.is_position_allowed_in_alternate_mem_fn(
@@ -4467,6 +4490,13 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
             allocation_value.defining_instruction())) {
       VLOG(3) << "Skip allocating allocation value "
               << allocation_value.ToShortString();
+      continue;
+    }
+
+    if (HasOnlyAlternateMemoryCopyUses(allocation_value)) {
+      VLOG(3) << "Skip allocating allocation value "
+              << allocation_value.ToShortString()
+              << " because it only has copy uses to alternate memory.";
       continue;
     }
 
