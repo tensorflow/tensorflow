@@ -42,6 +42,7 @@ TEST_F(MklAvgPoolingGradOpTest, ScalarOrigInputShape_2D) {
                    .Attr("strides", {1, 1, 1, 1})
                    .Attr("padding", "VALID")
                    .Attr("data_format", "NHWC")
+                   .Attr("_kernel", "MklNameChangeOp")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
@@ -68,6 +69,7 @@ TEST_F(MklAvgPoolingGradOpTest, EmptyOrigInputShape_2D) {
                    .Attr("strides", {1, 1, 1, 1})
                    .Attr("padding", "VALID")
                    .Attr("data_format", "NHWC")
+                   .Attr("_kernel", "MklNameChangeOp")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
@@ -90,6 +92,7 @@ TEST_F(MklAvgPoolingGradOpTest, WrongRankGrad_2D) {
                    .Attr("strides", {1, 1, 1, 1})
                    .Attr("padding", "VALID")
                    .Attr("data_format", "NHWC")
+                   .Attr("_kernel", "MklNameChangeOp")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
@@ -118,6 +121,7 @@ TEST_F(MklAvgPoolingGradOpTest, ScalarOrigInputShape_3D) {
                    .Attr("strides", {1, 1, 1, 1, 1})
                    .Attr("padding", "VALID")
                    .Attr("data_format", "NDHWC")
+                   .Attr("_kernel", "MklNameChangeOp")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
@@ -143,6 +147,7 @@ TEST_F(MklAvgPoolingGradOpTest, WrongRankGrad_3D) {
                    .Attr("strides", {1, 1, 1, 1, 1})
                    .Attr("padding", "VALID")
                    .Attr("data_format", "NDHWC")
+                   .Attr("_kernel", "MklNameChangeOp")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
