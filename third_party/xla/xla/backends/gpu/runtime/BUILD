@@ -4112,6 +4112,7 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/service:gpu_topology",
         "//xla/service/gpu:gpu_constants",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
