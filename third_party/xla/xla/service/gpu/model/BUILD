@@ -616,6 +616,7 @@ xla_cc_test(
     deps = [
         ":block_level_parameters",
         ":fusion_analysis_cache",
+        ":gpu_dot_fusion_cost_model",
         ":gpu_hlo_cost_analysis",
         ":gpu_indexing_performance_model",
         ":gpu_performance_model_base",

@@ -357,6 +357,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
   int64_t num_blocks = tiled_hlo_computation.num_output_tiles();
 
   absl::Duration dot_compute_time = absl::ZeroDuration();
+  absl::Duration dot_exec_time = absl::ZeroDuration();
 
   // Check if the computation is too large to fit in registers and would result
   // in spilling.
@@ -392,6 +393,8 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
               // doesn't overlap their counting.
               // TODO: b/495346904 - integrate the dot stats more completely.
               dot_compute_time += dot_perf_stats->compute_time;
+              dot_exec_time =
+                  std::max(dot_exec_time, dot_perf_stats->exec_time);
 
               // The dot cost model operates on the tile- and wave- quantized
               // FLOPS which is more accurate for performance estimates but
@@ -493,6 +496,13 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
   absl::Duration exec_time =
       GpuPerformanceModelBase::CombineComputeAndMemoryAccessTime(
           compute_time, memory_access_time);
+
+  // TODO(b/503201785): This is a hacky way to ensure that the execution time is
+  // at least as long as the dot execution time. But in those cases we are not
+  // accounting for any work in the epilogue or prologue properly. We are
+  // planning to do it in the future but the cost model will need to be
+  // significantly more complex for that.
+  exec_time = std::max(exec_time, dot_exec_time);
 
   return EstimateRunTimeData{/*flops=*/flops + dot_flops,
                              /*bytes_read=*/bytes_read,
