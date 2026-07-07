@@ -471,9 +471,12 @@ xla_test(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",
         "//xla/tests:literal_test_util",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
