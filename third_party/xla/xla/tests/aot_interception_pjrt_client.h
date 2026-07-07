@@ -41,10 +41,7 @@ namespace xla {
 // The interception mode dictated by the testing macro.
 enum class AOTTestMode {
   kGoldenVerification,
-  kBackwardPrevious,
-  kBackwardOldest,
-  kForwardPrevious,
-  kForwardOldest,
+  kBackwardsCompatibility,
 };
 
 // A wrapper around an existing PjRtClient that intercepts compilation
