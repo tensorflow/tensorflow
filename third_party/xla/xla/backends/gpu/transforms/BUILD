@@ -219,6 +219,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:hlo_cost_analysis",
+        "//xla/service:hlo_graph_dumper",
         "//xla/service:instruction_fusion",
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:backend_configs_cc",

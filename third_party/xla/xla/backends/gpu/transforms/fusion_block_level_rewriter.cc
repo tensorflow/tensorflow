@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
@@ -191,6 +192,11 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size,
     mlir::MLIRContext* mlir_context, bool use_experimental_tiling) {
+  bool dump_fusion_visualization = fusion_instruction->GetModule()
+                                       ->config()
+                                       .debug_options()
+                                       .xla_dump_fusion_visualization();
+
   ASSIGN_OR_RETURN(bool should_try_rewrite,
                    ShouldTryRewriteFusion(fusion_instruction, device_info));
   if (!should_try_rewrite) {
@@ -207,6 +213,13 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     VLOG(2) << "Can't rewrite fusion " << fusion_instruction->ToString()
             << " because one or more instructions is not supported by Triton: "
             << can_codegen.Explain();
+    if (dump_fusion_visualization) {
+      RegisterFusionState(
+          *fusion_instruction->parent(),
+          absl::StrCat("Can't rewrite |", fusion_instruction->name(),
+                       "|: not supported by Triton: ", can_codegen.Explain()),
+          *fusion_instruction);
+    }
     return false;
   }
 
@@ -237,6 +250,13 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     VLOG(2) << "Can't rewrite fusion " << fusion_instruction->ToString()
             << " because tiling search failed. (The most likely cause for "
             << "is that SymbolicTileAnalysis failed.)";
+    if (dump_fusion_visualization) {
+      RegisterFusionState(
+          *fusion_instruction->parent(),
+          absl::StrCat("Can't rewrite |", fusion_instruction->name(),
+                       "|: tiling search failed: ", fusion_decision->Explain()),
+          *fusion_instruction);
+    }
     return false;
   }
 
@@ -259,6 +279,13 @@ absl::StatusOr<bool> ProcessFusionInstruction(
   backend_config.mutable_fusion_backend_config()->set_kind(kTritonFusionKind);
   RETURN_IF_ERROR(fusion_instruction->set_backend_config(backend_config));
   fusion_instruction->set_fusion_kind(HloInstruction::FusionKind::kCustom);
+
+  if (dump_fusion_visualization) {
+    RegisterFusionState(*fusion_instruction->parent(),
+                        absl::StrCat("Rewrote |", fusion_instruction->name(),
+                                     "| to Triton block-level fusion"),
+                        *fusion_instruction);
+  }
   return true;
 }
 
