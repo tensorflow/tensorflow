@@ -11,6 +11,7 @@ load("//xla:xla.default.bzl", "xla_cc_test", "xla_py_test_deps")
 load(
     "//xla/tests:backend_defs.bzl",
     _ALL_BACKENDS = "ALL_BACKENDS",
+    _ALL_HARDWARE_BACKENDS = "ALL_HARDWARE_BACKENDS",
     _AMD_GPU_DEFAULT_BACKENDS = "AMD_GPU_DEFAULT_BACKENDS",
     _DEFAULT_BACKENDS = "DEFAULT_BACKENDS",
     _DEFAULT_DISABLED_BACKENDS = "DEFAULT_DISABLED_BACKENDS",
@@ -32,6 +33,7 @@ load("//xla/tsl/platform/default:cuda_build_defs.bzl", "is_cuda_configured")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
+ALL_HARDWARE_BACKENDS = _ALL_HARDWARE_BACKENDS
 AMD_GPU_DEFAULT_BACKENDS = _AMD_GPU_DEFAULT_BACKENDS
 DEFAULT_DISABLED_BACKENDS = _DEFAULT_DISABLED_BACKENDS
 GPU_BACKENDS = _GPU_BACKENDS
@@ -47,7 +49,6 @@ def xla_test(
         deps,
         backends = [],
         disabled_backends = DEFAULT_DISABLED_BACKENDS,
-        real_hardware_only = False,  # @unused, all backends are real hardware.
         args = [],
         tags = [],
         copts = [],
@@ -119,7 +120,6 @@ def xla_test(
         "gpu". If this list is empty, the test will be generated for all supported
         backends.
       disabled_backends: A list of backends to NOT generate tests for.
-      real_hardware_only: No-op.
       args: Test arguments for the target.
       tags: Tags for the target.
       copts: Additional copts to pass to the build.
