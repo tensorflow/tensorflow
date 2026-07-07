@@ -37,5 +37,6 @@ common_patch_list = [
     "//third_party/triton:common/llvm_cl933453789.patch",
     "//third_party/triton:common/amdbufferopsemitter.patch",
     "//third_party/triton:common/allocator.patch",
+    "//third_party/triton:common/llvm_cl943393061.patch",
     # Add new patches just above this line
 ]

@@ -1,78 +1,15 @@
-diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index bbe8faef..509398da 100644
---- a/third_party/llvm/generated.patch
-+++ b/third_party/llvm/generated.patch
-@@ -1,58 +1 @@
- Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlanTransforms.cpp b/llvm/lib/Transforms/Vectorize/VPlanTransforms.cpp
----- a/llvm/lib/Transforms/Vectorize/VPlanTransforms.cpp
--+++ b/llvm/lib/Transforms/Vectorize/VPlanTransforms.cpp
--@@ -1736,14 +1736,6 @@
--     return;
--   }
-- 
---  // Replace uses of a BuildVector by users that only use its first lane with
---  // its first operand directly.
---  if (match(Def, m_BuildVector())) {
---    Def->replaceUsesWithIf(Def->getOperand(0), [Def](VPUser &U, unsigned) {
---      return U.usesFirstLaneOnly(Def);
---    });
---  }
---
--   // Look through broadcast of single-scalar when used as select conditions; in
--   // that case the scalar condition can be used directly.
--   if (match(Def,
--diff -ruN --strip-trailing-cr a/llvm/test/tools/llvm-profdata/malformed-not-space-for-another-header.test b/llvm/test/tools/llvm-profdata/malformed-not-space-for-another-header.test
----- a/llvm/test/tools/llvm-profdata/malformed-not-space-for-another-header.test
--+++ b/llvm/test/tools/llvm-profdata/malformed-not-space-for-another-header.test
--@@ -57,7 +57,6 @@
-- RUN: printf '\0\0\0\0\0\0\0\0' >> %t.profraw
-- RUN: printf '\1\0\0\0\0\0\0\0' >> %t.profraw
-- RUN: printf '\0\0\0\0\0\0\0\0' >> %t.profraw
---RUN: printf '\0\0\0\0\0\0\0\0' >> %t.profraw
-- 
-- RUN: printf '\023\0\0\0\0\0\0\0' >> %t.profraw
-- RUN: printf '\3\0foo\0\0\0' >> %t.profraw
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/VPlan/buildvector-first-lane-only.ll b/llvm/test/Transforms/LoopVectorize/VPlan/buildvector-first-lane-only.ll
----- a/llvm/test/Transforms/LoopVectorize/VPlan/buildvector-first-lane-only.ll
--+++ b/llvm/test/Transforms/LoopVectorize/VPlan/buildvector-first-lane-only.ll
--@@ -19,15 +19,19 @@
-- ; CHECK-NEXT:  Successor(s): middle.block
-- ; CHECK-EMPTY:
-- ; CHECK-NEXT:  middle.block:
---; CHECK-NEXT:    EMIT vp<%active.lane.mask> = active lane mask ir<0>, ir<2>, ir<1>
---; CHECK-NEXT:    EMIT vp<[[VP5:%[0-9]+]]> = not vp<%active.lane.mask>
---; CHECK-NEXT:    EMIT vp<%first.inactive.lane> = first-active-lane vp<[[VP5]]>
--+; CHECK-NEXT:    vp<[[VP5:%[0-9]+]]> = SCALAR-STEPS ir<0>, ir<1>, ir<4>, ir<1>
--+; CHECK-NEXT:    vp<[[VP6:%[0-9]+]]> = SCALAR-STEPS ir<0>, ir<1>, ir<4>, ir<2>
--+; CHECK-NEXT:    vp<[[VP7:%[0-9]+]]> = SCALAR-STEPS ir<0>, ir<1>, ir<4>, ir<3>
--+; CHECK-NEXT:    EMIT vp<[[VP8:%[0-9]+]]> = buildvector ir<0>, vp<[[VP5]]>, vp<[[VP6]]>, vp<[[VP7]]>
--+; CHECK-NEXT:    EMIT vp<%active.lane.mask> = active lane mask vp<[[VP8]]>, ir<2>, ir<1>
--+; CHECK-NEXT:    EMIT vp<[[VP9:%[0-9]+]]> = not vp<%active.lane.mask>
--+; CHECK-NEXT:    EMIT vp<%first.inactive.lane> = first-active-lane vp<[[VP9]]>
-- ; CHECK-NEXT:    EMIT vp<%last.active.lane> = sub vp<%first.inactive.lane>, ir<1>
---; CHECK-NEXT:    EMIT vp<[[VP6:%[0-9]+]]> = extractelement vp<[[VP4]]>, vp<%last.active.lane>
--+; CHECK-NEXT:    EMIT vp<[[VP10:%[0-9]+]]> = extractelement vp<[[VP4]]>, vp<%last.active.lane>
-- ; CHECK-NEXT:  Successor(s): ir-bb<exit>
-- ; CHECK-EMPTY:
-- ; CHECK-NEXT:  ir-bb<exit>:
---; CHECK-NEXT:    IR   %red.lcssa = phi i32 [ %red, %loop ] (extra operand: vp<[[VP6]]> from middle.block)
--+; CHECK-NEXT:    IR   %red.lcssa = phi i32 [ %red, %loop ] (extra operand: vp<[[VP10]]> from middle.block)
-- ; CHECK-NEXT:  No successors
-- ; CHECK-NEXT:  }
-- ;
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index bebc3f4c..a7609ec7 100644
+index a7609ec7..e3d9aa63 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "f5faf2902744e133336ae728bd654f94860f4868"
--    LLVM_SHA256 = "a98f9c82cc59d91cd964b28acf29fb1f9d4927c13d15f72b705938dc50101905"
-+    LLVM_COMMIT = "c7e2809a631a2fbe73a13e5f2d2e48bc3f3dcf18"
-+    LLVM_SHA256 = "978c698af342692419133eea3b23bc6137e6f341101abf41d8164ca148258bb2"
+-    LLVM_COMMIT = "c7e2809a631a2fbe73a13e5f2d2e48bc3f3dcf18"
+-    LLVM_SHA256 = "978c698af342692419133eea3b23bc6137e6f341101abf41d8164ca148258bb2"
++    LLVM_COMMIT = "58bc8dff332e0d4d7609b6dbda62200355bbc75f"
++    LLVM_SHA256 = "6b47681850bfef23abab31d193fb850b3200940ec001c26fa73b17d3134b6d82"
  
      tf_http_archive(
          name = name,
