@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/python/ifrt/index_domain.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
