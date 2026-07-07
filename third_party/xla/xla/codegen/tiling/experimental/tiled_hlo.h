@@ -42,6 +42,7 @@ limitations under the License.
 namespace xla::gpu::experimental {
 
 class TiledHloInstruction;
+class OrderedTiledHloPtrSet;
 
 // A region is a collection of instructions grouped to represent a nested
 // control flow (e.g., loops) or a distinct computation branch.
@@ -67,7 +68,7 @@ class TiledHloInstruction {
   llvm::ArrayRef<const TiledHloInstruction*> operands() const {
     return operands_;
   }
-  void AddOperand(TiledHloInstruction* operand) {
+  void AddOperand(const TiledHloInstruction* operand) {
     operands_.push_back(operand);
   }
 
@@ -79,6 +80,12 @@ class TiledHloInstruction {
   // Returns the TiledHloInstructions that correspond to the runtime variables
   // of the original HLO instruction.
   llvm::SmallVector<const TiledHloInstruction*, 2> runtime_variables() const;
+
+  // Returns true if the instruction requires sequential loop generation.
+  bool IsControlFlowLoop() const;
+
+  // Returns true if the instruction requires conditional branch control flow.
+  bool IsControlFlowCondition() const;
 
   // Returns a string representation of the instruction. Used only for error
   // messages and debugging.
@@ -155,6 +162,9 @@ H AbslHashValue(H h, const TiledHloInstruction& tiled_hlo_instruction) {
 class TiledHloComputation {
  public:
   using InstructionType = TiledHloInstruction;
+  using TiledInstructionCache =
+      absl::flat_hash_map<std::pair<const HloInstruction*, Tile>,
+                          TiledHloInstruction*>;
 
   static absl::StatusOr<TiledHloComputation> Tile(
       const HloFusionAdaptor& fusion,
@@ -228,12 +238,39 @@ class TiledHloComputation {
         roots_(std::move(roots)),
         rt_symbol_to_tiled_hlo_(std::move(rt_symbol_to_tiled_hlo)) {}
 
+  static std::pair<TiledHloInstruction*, std::unique_ptr<TiledHloInstruction>>
+  CreateAndCacheInstructionIfNotExists(
+      TiledInstructionCache& cache, const HloInstruction* hlo,
+      const ::xla::gpu::experimental::Tile& tile);
+
+  static absl::StatusOr<llvm::SmallVector<const TiledHloInstruction*>>
+  BuildRegionsForOperands(
+      std::vector<std::pair<int64_t, std::unique_ptr<TiledHloInstruction>>>&
+          operands,
+      const HloFusionAdaptor& fusion, TilingSpace& tiling_space,
+      absl::flat_hash_map<int64_t,
+                          std::pair<const TiledHloInstruction*, Interval>>&
+          rt_symbol_to_tiled_hlo,
+      TiledInstructionCache& cache,
+      std::vector<const TiledHloInstruction*>& tiled_operands_ordered,
+      OrderedTiledHloPtrSet& output_set,
+      const OrderedTiledHloPtrSet* filter_set = nullptr);
+
   static absl::StatusOr<TiledHloRegion> CreateHloRegion(
       std::unique_ptr<TiledHloInstruction> tiled_root,
       const HloFusionAdaptor& fusion, TilingSpace& tiling_space,
       absl::flat_hash_map<int64_t,
                           std::pair<const TiledHloInstruction*, Interval>>&
-          rt_symbol_to_tiled_hlo);
+          rt_symbol_to_tiled_hlo,
+      TiledInstructionCache& cache);
+
+  static absl::StatusOr<TiledHloRegion> CreateReduceHloRegion(
+      std::unique_ptr<TiledHloInstruction> tiled_root,
+      const HloFusionAdaptor& fusion, TilingSpace& tiling_space,
+      absl::flat_hash_map<int64_t,
+                          std::pair<const TiledHloInstruction*, Interval>>&
+          rt_symbol_to_tiled_hlo,
+      TiledInstructionCache& cache);
 
   std::unique_ptr<TilingSpace> tiling_space_;
 
