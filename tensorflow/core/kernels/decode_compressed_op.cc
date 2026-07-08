@@ -15,8 +15,10 @@ limitations under the License.
 
 // See docs in ../ops/parse_ops.cc.
 
-#include <algorithm>
 #include <climits>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -25,8 +27,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
+#include "tensorflow/core/platform/tstring.h"
 
 // NOTE: The way zstd is packaged in TF, we cannot include it as <zstd.h>.
 #define ZSTD_STATIC_LINKING_ONLY
@@ -40,7 +44,7 @@ class MemoryInputStream : public io::InputStreamInterface {
   explicit MemoryInputStream(const char* buffer, size_t length)
       : buf_(buffer), len_(length), pos_(0) {}
 
-  ~MemoryInputStream() override {}
+  ~MemoryInputStream() override = default;
 
   absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) override {
     result->clear();
@@ -56,7 +60,7 @@ class MemoryInputStream : public io::InputStreamInterface {
     }
     if (bytes > 0) {
       result->resize(bytes);
-      memcpy(&(*result)[0], &buf_[pos_], bytes);
+      std::memcpy(&(*result)[0], &buf_[pos_], bytes);
       pos_ += bytes;
     }
     return s;
@@ -142,6 +146,14 @@ class DecodeCompressedOp : public OpKernel {
         ZSTD_freeDCtx(decompress_ctx);
         return absl::InvalidArgumentError(
             "Failed to determine decompressed size");
+      }
+
+      // Limit decompressed size to 1GB to prevent overflow/OOM (force run).
+      constexpr uint64_t kMaxDecompressedSize = 1024 * 1024 * 1024;  // 1GB
+      if (max_decompressed_size > kMaxDecompressedSize) {
+        ZSTD_freeDCtx(decompress_ctx);
+        return absl::InvalidArgumentError(
+            "Decompressed size exceeds maximum allowed size (1GB)");
       }
 
       // Allocate enough to maximally decompress into.
