@@ -246,6 +246,8 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
     if (is_dynamically_quantized && bias_id != YNN_INVALID_VALUE_ID) {
       TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(
           subgraph, ynn_binary_add, dot_output_id, bias_id, output_id, 0));
+    } else {
+      *output_id = dot_output_id;
     }
   } else {
     TF_LITE_ENSURE_YNN_STATUS(
@@ -271,34 +273,48 @@ TfLiteStatus IsBatchMatMulSupported(const TfLiteRegistration* registration,
   TF_LITE_ENSURE(context, tflite::NumElements(&input_a) > 0);
   TF_LITE_ENSURE(context, tflite::NumElements(&input_b) > 0);
 
+  TF_LITE_ENSURE(context, IsTensorSupported(input_a));
+  TF_LITE_ENSURE(context,
+                 IsTensorSupported(input_b, /*allow_per_channel=*/true));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
+
   auto is_float_type = [](TfLiteType type) {
     return type == kTfLiteFloat32 || type == kTfLiteFloat16 ||
            type == kTfLiteBFloat16;
   };
 
   if (input_a.type == kTfLiteInt8) {
-    TF_LITE_ENSURE_EQ(context, input_b.type, kTfLiteInt8);
+    TF_LITE_ENSURE(context, input_b.type == kTfLiteInt8 ||
+                                input_b.type == kTfLiteInt4 ||
+                                input_b.type == kTfLiteUInt4 ||
+                                input_b.type == kTfLiteInt2);
     TF_LITE_ENSURE(context,
                    output.type == kTfLiteInt8 || output.type == kTfLiteInt32);
   } else if (is_float_type(input_a.type)) {
-    TF_LITE_ENSURE(context,
-                   is_float_type(input_b.type) || input_b.type == kTfLiteInt8);
+    if (!is_float_type(input_b.type)) {
+      TF_LITE_ENSURE(context, input_b.type == kTfLiteInt8 ||
+                                  input_b.type == kTfLiteInt4 ||
+                                  input_b.type == kTfLiteUInt4 ||
+                                  input_b.type == kTfLiteInt2);
+      const auto* params =
+          static_cast<const TfLiteBatchMatMulParams*>(node->builtin_data);
+      TF_LITE_ENSURE(context,
+                     params != nullptr && params->asymmetric_quantize_inputs);
+    }
     TF_LITE_ENSURE(context, is_float_type(output.type));
   } else {
     return kTfLiteError;
   }
 
-  if (!IsQuantized(input_a) && IsQuantized(input_b) && !IsQuantized(output)) {
-    const auto* params =
-        static_cast<const TfLiteBatchMatMulParams*>(node->builtin_data);
-    TF_LITE_ENSURE(context, params != nullptr);
-    TF_LITE_ENSURE(context, params->asymmetric_quantize_inputs);
+  if (input_b.type == kTfLiteInt4 || input_b.type == kTfLiteUInt4) {
+    TF_LITE_ENSURE(context, input_b.dims->size >= 2);
+    TF_LITE_ENSURE_EQ(context, input_b.dims->data[input_b.dims->size - 1] % 2,
+                      0);
+  } else if (input_b.type == kTfLiteInt2) {
+    TF_LITE_ENSURE(context, input_b.dims->size >= 2);
+    TF_LITE_ENSURE_EQ(context, input_b.dims->data[input_b.dims->size - 1] % 4,
+                      0);
   }
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input_a));
-  TF_LITE_ENSURE(context,
-                 IsSupportedQuantization(input_b, /*allow_per_channel=*/true));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
 
   TF_LITE_ENSURE(context, input_a.dims->size >= 2);
   TF_LITE_ENSURE(context, input_b.dims->size >= 2);
@@ -323,21 +339,36 @@ TfLiteStatus IsFullyConnectedSupported(const TfLiteRegistration* registration,
 
   bool has_bias = node->inputs->size == 3 && node->inputs->data[2] >= 0;
 
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context,
+                 IsTensorSupported(weights, /*allow_per_channel=*/true));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
+  if (has_bias) {
+    const TfLiteTensor& bias = context->tensors[node->inputs->data[2]];
+    TF_LITE_ENSURE(context, IsTensorSupported(bias));
+  }
+
   auto is_float_type = [](TfLiteType type) {
     return type == kTfLiteFloat32 || type == kTfLiteFloat16 ||
            type == kTfLiteBFloat16;
   };
 
   if (input.type == kTfLiteInt8) {
-    TF_LITE_ENSURE_EQ(context, weights.type, kTfLiteInt8);
+    TF_LITE_ENSURE(context, weights.type == kTfLiteInt8 ||
+                                weights.type == kTfLiteInt4 ||
+                                weights.type == kTfLiteUInt4 ||
+                                weights.type == kTfLiteInt2);
     TF_LITE_ENSURE_EQ(context, output.type, kTfLiteInt8);
     if (has_bias) {
       const TfLiteTensor& bias = context->tensors[node->inputs->data[2]];
       TF_LITE_ENSURE_EQ(context, bias.type, kTfLiteInt32);
     }
   } else if (is_float_type(input.type)) {
-    TF_LITE_ENSURE(context,
-                   is_float_type(weights.type) || weights.type == kTfLiteInt8);
+    TF_LITE_ENSURE(context, is_float_type(weights.type) ||
+                                weights.type == kTfLiteInt8 ||
+                                weights.type == kTfLiteInt4 ||
+                                weights.type == kTfLiteUInt4 ||
+                                weights.type == kTfLiteInt2);
     TF_LITE_ENSURE(context, is_float_type(output.type));
     if (has_bias) {
       const TfLiteTensor& bias = context->tensors[node->inputs->data[2]];
@@ -347,13 +378,14 @@ TfLiteStatus IsFullyConnectedSupported(const TfLiteRegistration* registration,
     return kTfLiteError;
   }
 
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
-  TF_LITE_ENSURE(context,
-                 IsSupportedQuantization(weights, /*allow_per_channel=*/true));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
-  if (has_bias) {
-    const TfLiteTensor& bias = context->tensors[node->inputs->data[2]];
-    TF_LITE_ENSURE(context, IsSupportedQuantization(bias));
+  if (weights.type == kTfLiteInt4 || weights.type == kTfLiteUInt4) {
+    TF_LITE_ENSURE_EQ(context, weights.dims->size, 2);
+    TF_LITE_ENSURE_EQ(context, weights.dims->data[0] % 2, 0);
+    TF_LITE_ENSURE_EQ(context, weights.dims->data[1] % 2, 0);
+  } else if (weights.type == kTfLiteInt2) {
+    TF_LITE_ENSURE_EQ(context, weights.dims->size, 2);
+    TF_LITE_ENSURE_EQ(context, weights.dims->data[0] % 4, 0);
+    TF_LITE_ENSURE_EQ(context, weights.dims->data[1] % 4, 0);
   }
 
   TF_LITE_ENSURE(context, input.dims->size >= 2);
@@ -365,10 +397,6 @@ TfLiteStatus IsFullyConnectedSupported(const TfLiteRegistration* registration,
   TF_LITE_ENSURE(context, params != nullptr);
   TF_LITE_ENSURE(context,
                  IsActivationSupported(params->activation, output.type));
-
-  if (!IsQuantized(input) && IsQuantized(weights) && !IsQuantized(output)) {
-    TF_LITE_ENSURE(context, params->asymmetric_quantize_inputs);
-  }
 
   return kTfLiteOk;
 }
@@ -507,15 +535,11 @@ TfLiteStatus IsConvSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& bias = context->tensors[node->inputs->data[2]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type input_ynn_type = GetYnnType(input.type);
-  ynn_type filter_ynn_type = GetYnnType(filter.type);
-  ynn_type bias_ynn_type = GetYnnType(bias.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
-
-  TF_LITE_ENSURE(context, input_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, filter_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, bias_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context,
+                 IsTensorSupported(filter, /*allow_per_channel=*/true));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
+  TF_LITE_ENSURE(context, IsTensorSupported(bias));
 
   auto is_float_type = [](TfLiteType type) {
     return type == kTfLiteFloat32 || type == kTfLiteFloat16 ||
@@ -535,11 +559,6 @@ TfLiteStatus IsConvSupported(const TfLiteRegistration* registration,
   } else {
     return kTfLiteError;
   }
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
-  TF_LITE_ENSURE(context,
-                 IsSupportedQuantization(filter, /*allow_per_channel=*/true));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
 
   TF_LITE_ENSURE_EQ(context, input.dims->size, 4);
   TF_LITE_ENSURE_EQ(context, filter.dims->size, 4);
@@ -583,16 +602,11 @@ TfLiteStatus IsDepthwiseConvSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& bias = context->tensors[node->inputs->data[2]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type input_ynn_type = GetYnnType(input.type);
-  ynn_type filter_ynn_type = GetYnnType(filter.type);
-  ynn_type bias_ynn_type = GetYnnType(bias.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
-
-  TF_LITE_ENSURE(context, input_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, filter_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, bias_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
-
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context,
+                 IsTensorSupported(filter, /*allow_per_channel=*/true));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
+  TF_LITE_ENSURE(context, IsTensorSupported(bias));
   auto is_float_type = [](TfLiteType type) {
     return type == kTfLiteFloat32 || type == kTfLiteFloat16 ||
            type == kTfLiteBFloat16;
@@ -611,11 +625,6 @@ TfLiteStatus IsDepthwiseConvSupported(const TfLiteRegistration* registration,
   } else {
     return kTfLiteError;
   }
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
-  TF_LITE_ENSURE(context,
-                 IsSupportedQuantization(filter, /*allow_per_channel=*/true));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
 
   TF_LITE_ENSURE_EQ(context, input.dims->size, 4);
   TF_LITE_ENSURE_EQ(context, filter.dims->size, 4);

@@ -43,6 +43,7 @@ struct NodeInfo {
 
 // Generic helpers
 ynn_type GetYnnType(TfLiteType type);
+size_t YnnTypeElementCount(ynn_type type);
 ynn_unary_operator GetYnnUnaryOperator(int builtin_code);
 ynn_binary_operator GetYnnBinaryOperator(int builtin_code);
 ynn_reduce_operator GetYnnReduceOperator(int builtin_code);
@@ -52,6 +53,8 @@ bool IsStablehloOp(int builtin_code);
 bool IsQuantized(const TfLiteTensor& tensor);
 bool IsSupportedQuantization(const TfLiteTensor& tensor,
                              bool allow_per_channel = false);
+bool IsTensorSupported(const TfLiteTensor& tensor,
+                       bool allow_per_channel = false);
 bool QuantizationParamsEqual(const TfLiteTensor& tensor1,
                              const TfLiteTensor& tensor2);
 bool IsActivationSupported(TfLiteFusedActivation activation,

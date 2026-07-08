@@ -103,6 +103,12 @@ ynn_type GetYnnType(TfLiteType type) {
       return ynn_type_int8;
     case kTfLiteUInt8:
       return ynn_type_uint8;
+    case kTfLiteInt4:
+      return ynn_type_int4;
+    case kTfLiteUInt4:
+      return ynn_type_uint4;
+    case kTfLiteInt2:
+      return ynn_type_int2;
     default:
       return ynn_type_invalid;
   }
@@ -266,6 +272,32 @@ bool IsSupportedQuantization(const TfLiteTensor& tensor,
     }
   }
   return true;
+}
+
+size_t YnnTypeElementCount(ynn_type type) {
+  switch (type) {
+    case ynn_type_int2:
+    case ynn_type_uint2:
+      return 4;
+    case ynn_type_int4:
+    case ynn_type_uint4:
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+bool IsTensorSupported(const TfLiteTensor& tensor, bool allow_per_channel) {
+  ynn_type type = GetYnnType(tensor.type);
+  if (type == ynn_type_invalid) return false;
+  size_t element_count = YnnTypeElementCount(type);
+  if (element_count > 1) {
+    if (tensor.dims == nullptr) return false;
+    size_t dense_dim =
+        tensor.dims->size == 0 ? 1 : tensor.dims->data[tensor.dims->size - 1];
+    if (dense_dim % element_count != 0) return false;
+  }
+  return IsSupportedQuantization(tensor, allow_per_channel);
 }
 
 bool QuantizationParamsEqual(const TfLiteTensor& tensor1,
