@@ -40,6 +40,10 @@ def _validate_dct_arguments(input_tensor, dct_type, n, axis, norm):
     if input_tensor.shape[-1] is not None and input_tensor.shape[-1] < 2:
       raise ValueError(
           "Type-I DCT requires the dimension to be greater than one.")
+    if n is not None and n < 2:
+      raise ValueError(
+          "Type-I DCT requires the transform length n to be greater than "
+          "one.")
 
   if norm not in (None, "ortho"):
     raise ValueError(
@@ -248,7 +252,10 @@ def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disab
 
   Raises:
     ValueError: If `type` is not `1`, `2`, `3` or `4`, `axis` is not `-1`,
-      or `norm` is not `None` or `'ortho'`.
+      `n` is not `None` or greater than 0, or `norm` is not `None` or
+      `'ortho'`.
+    ValueError: If `type` is `1` and `norm` is `ortho`, or `type` is `1`
+      and `n` is less than 2.
 
   [idct]:
   https://en.wikipedia.org/wiki/Discrete_cosine_transform#Inverse_transforms
