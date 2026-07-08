@@ -265,9 +265,6 @@ class SharedBatchScheduler
     // The padding policy to use.
     //
     // See the documentation for kPadUpPolicy for details.
-    // When `enable_priority_aware_batch_scheduler` is true,
-    // `batch_padding_policy` must be kPadUpPolicy. Batches are formed with as
-    // many requests as possible up to `max_execution_batch_size`.
     std::string batch_padding_policy = std::string(kPadUpPolicy);
 
     // A pointer to a ModelBatchStats instance for this model. To be used for
