@@ -25,6 +25,8 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla::gpu::experimental {
 
@@ -44,6 +46,16 @@ MATCHER_P(MatchString, tile_string, "") {
 
 Tile GetTestTile(const TilingSpace& tiling_space,
                  absl::Span<const int64_t> shape);
+
+bool BumpCoordinates(absl::Span<const int64_t> limits,
+                     absl::Span<int64_t> coordinates);
+
+absl::StatusOr<std::vector<int64_t>> EvaluateAccessedIndexesForTile(
+    DimensionVector dim_values, const Tile& tile, const Shape& shape);
+
+absl::Status VerifyTileEquivalence(const Tile& tile_a, const Shape& shape_a,
+                                   const Tile& tile_b, const Shape& shape_b,
+                                   TilingSpace* tiling_space);
 
 }  // namespace xla::gpu::experimental
 

@@ -24,9 +24,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/test_utils.h"
@@ -41,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu::experimental {
@@ -130,6 +134,14 @@ TEST_P(ReshapeTilePropagationTest, PropagateReshape) {
   auto output_tiles =
       PropagateTileToOutput(*tiling_space, *reshape, input_tile, 0);
 
+  input_tile.Simplify();
+  if (output_tiles.ok()) {
+    ASSERT_EQ(output_tiles->size(), 1);
+    auto output_tile = output_tiles.value()[0];
+    output_tile.Simplify();
+    ASSERT_OK(VerifyTileEquivalence(input_tile, input_shape, output_tile,
+                                    output_shape, tiling_space.get()));
+  }
   if (param.expected_output.empty()) {
     ASSERT_FALSE(output_tiles.ok());
   } else {
@@ -157,6 +169,19 @@ INSTANTIATE_TEST_SUITE_P(
       -> offsets [tid_0 * ts_0, tid_1 * ts_1]
          sizes [ts_0, ts_1]
          strides [1, 2]
+         upper bounds [10, 20]
+  )"},
+        {"IdentityConcrete",
+         /*input_shape=*/{10, 20},
+         /*input_tile_sizes=*/{2, 2},
+         /*input_tile_strides=*/{1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{10, 20},
+         /*expected_output=*/R"(
+    0) (tid_0, tid_1)
+      -> offsets [tid_0 * 2, tid_1 * 2]
+         sizes [2, 2]
+         strides [1, 1]
          upper bounds [10, 20]
   )"},
         {"IncreaseRank",
