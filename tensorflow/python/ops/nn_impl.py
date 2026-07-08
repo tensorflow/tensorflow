@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import candidate_sampling_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import ctc_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import custom_gradient
@@ -1488,11 +1489,24 @@ def batch_normalization(x,
       [Ioffe et al., 2015](http://arxiv.org/abs/1502.03167)
       ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
-  if not tensor_util.is_tf_type(variance_epsilon) and variance_epsilon <= 0:
-    raise ValueError(
-        f'variance_epsilon must be greater than 0, got {variance_epsilon}'
-    )
+  if not tensor_util.is_tf_type(variance_epsilon):
+    if variance_epsilon < 0:
+      raise ValueError(
+          f'variance_epsilon must be non-negative, got {variance_epsilon}'
+      )
+    elif variance_epsilon == 0.0:
+      warnings.warn(
+          'variance_epsilon is set to 0.0, which may cause division by zero.'
+          ' Consider using a small positive value instead.'
+      )
   with ops.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):
+    if tensor_util.is_tf_type(variance_epsilon):
+      with ops.control_dependencies(
+          [check_ops.assert_positive(
+              variance_epsilon,
+              message=f'variance_epsilon must be positive, got: {variance_epsilon}'  # pylint: disable=g-error-prone-assert-raises
+          )]):
+        variance_epsilon = array_ops.identity(variance_epsilon)
     inv = math_ops.rsqrt(variance + variance_epsilon)
     if scale is not None:
       inv *= scale
