@@ -86,7 +86,6 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: jax-ml/jax
-          ref: 'e6299e2e5917c3856beece723a97e566708daaf8'
           path: jax
           persist-credentials: false
 
