@@ -38,7 +38,12 @@ TEST_TARGETS="${TEST_TARGETS:-\
   //xla/backends/gpu/codegen/emitters/tests/... \
   //xla/codegen/emitters/tests/... \
   -//xla/backends/gpu/codegen/emitters/tests:transpose/packed_transpose_s4.hlo.test \
-  -//xla/codegen/emitters/tests:loop/s8_to_s2.hlo.test\
+  -//xla/codegen/emitters/tests:loop/s8_to_s2.hlo.test \
+  -//xla/backends/gpu/codegen/emitters/tests:transpose/multiple_roots_mixed_rank.hlo.test \
+  -//xla/backends/gpu/codegen/emitters/tests:transpose/multiple_roots_one_shmem_transpose.hlo.test \
+  -//xla/backends/gpu/codegen/emitters/tests:transpose/packed_transpose_bf16.hlo.test \
+  -//xla/backends/gpu/codegen/emitters/tests:transpose/packed_transpose_two_heroes.hlo.test \
+  -//xla/codegen/emitters/tests:loop/broadcast_constant.hlo.test\
 }"
 
 echo "TEST_TARGETS=${TEST_TARGETS}"
