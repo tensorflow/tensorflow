@@ -136,11 +136,10 @@ TEST_P(RemapPlanTest, MixedDtype) {
                                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
                                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
 
-  RemapPlan plan(std::move(input_specs), std::move(output_specs),
-                 std::move(mappings));
-
-  TF_EXPECT_OK(plan.ComputeInputDevicesForOutputMap(client()));
-  TF_EXPECT_OK(plan.Validate());
+  EXPECT_OK(RemapPlan::CreateOptimized(client(), std::move(input_specs),
+                                       std::move(output_specs),
+                                       std::move(mappings))
+                .status());
 }
 
 TEST_P(RemapPlanTest, InvalidOutputDtype) {
@@ -735,12 +734,10 @@ TEST_P(RemapPlanTest, InvalidInputDevicesForOutputMap) {
                                HasSubstr("does not reference that device")));
   }
 
-  {
-    RemapPlan plan(std::move(input_specs), std::move(output_specs),
-                   std::move(mappings));
-    TF_EXPECT_OK(plan.ComputeInputDevicesForOutputMap(client()));
-    TF_EXPECT_OK(plan.Validate());
-  }
+  ASSERT_OK(RemapPlan::CreateOptimized(client(), std::move(input_specs),
+                                       std::move(output_specs),
+                                       std::move(mappings))
+                .status());
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, RemapPlanTest,

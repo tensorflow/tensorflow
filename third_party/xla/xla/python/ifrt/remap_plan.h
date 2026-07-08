@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -94,26 +94,38 @@ class RemapPlan {
     DeviceListRef input_devices;
   };
 
-  RemapPlan() : mappings_(std::make_shared<const std::vector<Mapping>>()) {}
+  RemapPlan() : rep_(std::make_shared<Rep>()) {}
 
   RemapPlan(std::vector<ArraySpec> input_specs,
             std::vector<ArraySpec> output_specs, std::vector<Mapping> mappings,
             absl::flat_hash_map<int, std::vector<InputDeviceRange>>
                 input_devices_for_output_map = {})
-      : input_specs_(std::move(input_specs)),
-        output_specs_(std::move(output_specs)),
-        mappings_(
-            std::make_shared<const std::vector<Mapping>>(std::move(mappings))),
-        input_devices_for_output_map_(std::move(input_devices_for_output_map)) {
+      : rep_(std::make_shared<Rep>(Rep{
+            /*.input_specs=*/std::move(input_specs),
+            /*.output_specs=*/std::move(output_specs),
+            /*.mappings=*/std::move(mappings),
+            /*.input_devices_for_output_map=*/
+            std::move(input_devices_for_output_map),
+        })) {}
+
+  // A convenience method that calculates `input_devices_for_output_map`,
+  // creates a `RemapPlan`, and validates it. Users who create remap plans with
+  // mappings once and reuse them should prefer this over constructors.
+  static absl::StatusOr<RemapPlan> CreateOptimized(
+      Client* client, std::vector<ArraySpec> input_specs,
+      std::vector<ArraySpec> output_specs, std::vector<Mapping> mappings);
+
+  absl::Span<const ArraySpec> input_specs() const { return rep_->input_specs; }
+
+  absl::Span<const ArraySpec> output_specs() const {
+    return rep_->output_specs;
   }
 
-  absl::Span<const ArraySpec> input_specs() const { return input_specs_; }
-  absl::Span<const ArraySpec> output_specs() const { return output_specs_; }
-  absl::Span<const Mapping> mappings() const { return *mappings_; }
+  absl::Span<const Mapping> mappings() const { return rep_->mappings; }
 
   const absl::flat_hash_map<int, std::vector<InputDeviceRange>>&
   input_devices_for_output_map() const {
-    return input_devices_for_output_map_;
+    return rep_->input_devices_for_output_map;
   }
 
   // Validates this plan against the requirements (see `RemapPlan` comment).
@@ -121,9 +133,6 @@ class RemapPlan {
   // Implementations of `Client::RemapArrays()` may bypass runtime checks on a
   // plan's validity, delegating the role to this method.
   absl::Status Validate() const;
-
-  // Fills in `input_devices_for_output_map` from `mappings`.
-  absl::Status ComputeInputDevicesForOutputMap(Client* client);
 
   // Constructs `RemapPlan` from `RemapPlanProto`. Devices are looked up
   // using `lookup_device`. Device ids in the proto must be consistent with
@@ -151,31 +160,35 @@ class RemapPlan {
       xla::ifrt::ArrayCopySemantics semantics) const;
 
  private:
-  // Specification of inputs.
-  std::vector<ArraySpec> input_specs_;
+  struct Rep {
+    // Specification of inputs.
+    std::vector<ArraySpec> input_specs;
 
-  // Specification of outputs.
-  std::vector<ArraySpec> output_specs_;
+    // Specification of outputs.
+    std::vector<ArraySpec> output_specs;
 
-  // Mappings.
-  absl_nonnull std::shared_ptr<const std::vector<Mapping>> mappings_;
+    // Mappings.
+    std::vector<Mapping> mappings;
 
-  // If a key K is present in `input_devices_for_output_map` then it describes
-  // all the inputs that contribute to the output with index K.
-  //
-  // The value lists all the input array indices that contribute to output K,
-  // and for each input array I a device list containing all of the devices that
-  // hold shards coming from I.
-  //
-  // Information must be consistent with the information in `mappings`, i.e.,
-  // `input_devices_for_output_map` must duplicate, not replace, information in
-  // `mappings`.
-  //
-  // Entries in `input_devices_for_output_map` are strictly optional, but their
-  // presence may allow some implementations to be more efficient since the
-  // implementation need not construct the device lists at execution time.
-  absl::flat_hash_map<int, std::vector<InputDeviceRange>>
-      input_devices_for_output_map_;
+    // If a key K is present in `input_devices_for_output_map` then it describes
+    // all the inputs that contribute to the output with index K.
+    //
+    // The value lists all the input array indices that contribute to output K,
+    // and for each input array I a device list containing all of the devices
+    // that hold shards coming from I.
+    //
+    // Information must be consistent with the information in `mappings`, i.e.,
+    // `input_devices_for_output_map` must duplicate, not replace, information
+    // in `mappings`.
+    //
+    // Entries in `input_devices_for_output_map` are strictly optional, but
+    // their presence may allow some implementations to be more efficient since
+    // the implementation need not construct the device lists at execution time.
+    absl::flat_hash_map<int, std::vector<InputDeviceRange>>
+        input_devices_for_output_map;
+  };
+
+  absl_nonnull std::shared_ptr<const Rep> rep_;
 };
 
 }  // namespace ifrt

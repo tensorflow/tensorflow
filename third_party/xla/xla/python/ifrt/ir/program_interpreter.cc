@@ -677,12 +677,11 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
     output_specs.push_back(std::move(spec));
   }
 
-  state.remap_plan = RemapPlan(std::move(input_specs), std::move(output_specs),
-                               std::move(mappings));
+  ASSIGN_OR_RETURN(
+      state.remap_plan,
+      RemapPlan::CreateOptimized(client_, std::move(input_specs),
+                                 std::move(output_specs), std::move(mappings)));
   state.remap_is_donated = remap_op.getDonated();
-
-  RETURN_IF_ERROR(state.remap_plan.ComputeInputDevicesForOutputMap(client_));
-  RETURN_IF_ERROR(state.remap_plan.Validate());
 
   for (const auto output : remap_op.getOutputs()) {
     const ArrayHandle handle =

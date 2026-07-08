@@ -203,10 +203,10 @@ TEST(RemapImplTest, ExtractSingleShard) {
   mappings.push_back(RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
                                         /*from=*/{RemapPlan::Interval{1, 2, 1}},
                                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
-  RemapPlan plan(std::move(input_specs), std::move(output_specs),
-                 std::move(mappings));
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  ASSERT_OK_AND_ASSIGN(
+      RemapPlan plan,
+      RemapPlan::CreateOptimized(client.get(), std::move(input_specs),
+                                 std::move(output_specs), std::move(mappings)));
 
   std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -257,10 +257,10 @@ TEST(RemapImplTest, InterleaveArraysDonate) {
   mappings.push_back(RemapPlan::Mapping{/*in_array=*/1, /*out_array=*/0,
                                         /*from=*/{RemapPlan::Interval{0, 2, 1}},
                                         /*to=*/{RemapPlan::Interval{1, 4, 2}}});
-  RemapPlan plan(std::move(input_specs), std::move(output_specs),
-                 std::move(mappings));
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  ASSERT_OK_AND_ASSIGN(
+      RemapPlan plan,
+      RemapPlan::CreateOptimized(client.get(), std::move(input_specs),
+                                 std::move(output_specs), std::move(mappings)));
 
   std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -307,10 +307,10 @@ TEST(RemapImplTest, InterleaveArraysReuse) {
   mappings.push_back(RemapPlan::Mapping{/*in_array=*/1, /*out_array=*/0,
                                         /*from=*/{RemapPlan::Interval{0, 2, 1}},
                                         /*to=*/{RemapPlan::Interval{1, 4, 2}}});
-  RemapPlan plan(std::move(input_specs), std::move(output_specs),
-                 std::move(mappings));
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  ASSERT_OK_AND_ASSIGN(
+      RemapPlan plan,
+      RemapPlan::CreateOptimized(client.get(), std::move(input_specs),
+                                 std::move(output_specs), std::move(mappings)));
 
   std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -351,10 +351,10 @@ TEST(RemapImplTest, DeinterleaveArrays) {
   mappings.push_back(RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/1,
                                         /*from=*/{RemapPlan::Interval{1, 4, 2}},
                                         /*to=*/{RemapPlan::Interval{0, 2, 1}}});
-  RemapPlan plan(std::move(input_specs), std::move(output_specs),
-                 std::move(mappings));
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  ASSERT_OK_AND_ASSIGN(
+      RemapPlan plan,
+      RemapPlan::CreateOptimized(client.get(), std::move(input_specs),
+                                 std::move(output_specs), std::move(mappings)));
 
   std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -424,10 +424,10 @@ TEST(RemapImplTest, BatchMappingIdentity) {
                                         /*out_array=*/1,
                                         /*from=*/{RemapPlan::Interval{0, 2, 1}},
                                         /*to=*/{RemapPlan::Interval{0, 2, 1}}});
-  RemapPlan plan(std::move(input_specs), std::move(output_specs),
-                 std::move(mappings));
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  ASSERT_OK_AND_ASSIGN(
+      RemapPlan plan,
+      RemapPlan::CreateOptimized(client.get(), std::move(input_specs),
+                                 std::move(output_specs), std::move(mappings)));
 
   std::vector<ArrayRef> inputs;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -505,10 +505,10 @@ TEST(RemapImplTest, BatchMappingDeinterleave) {
                                         /*out_array=*/3,
                                         /*from=*/{RemapPlan::Interval{1, 2, 1}},
                                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
-  RemapPlan plan(std::move(input_specs), std::move(output_specs),
-                 std::move(mappings));
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  ASSERT_OK_AND_ASSIGN(
+      RemapPlan plan,
+      RemapPlan::CreateOptimized(client.get(), std::move(input_specs),
+                                 std::move(output_specs), std::move(mappings)));
 
   std::vector<ArrayRef> inputs;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -554,10 +554,10 @@ TEST(RemapImplTest, DetectBadInput) {
   mappings.push_back(RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
                                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
                                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
-  RemapPlan plan(std::move(input_specs), std::move(output_specs),
-                 std::move(mappings));
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  ASSERT_OK_AND_ASSIGN(
+      RemapPlan plan,
+      RemapPlan::CreateOptimized(client.get(), std::move(input_specs),
+                                 std::move(output_specs), std::move(mappings)));
 
   {
     std::vector<ArrayRef> arrays;
