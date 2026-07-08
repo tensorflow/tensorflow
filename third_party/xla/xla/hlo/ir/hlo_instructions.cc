@@ -1376,23 +1376,26 @@ HloCollectiveBroadcastInstruction::HloCollectiveBroadcastInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
     std::shared_ptr<CollectiveDeviceListBase> device_list,
-    bool constrain_layout, const std::optional<int64_t>& channel_id)
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool has_dynamic_root)
     : HloCollectiveInstruction(opcode, shape, operands, std::move(device_list),
-                               constrain_layout, channel_id) {}
+                               constrain_layout, channel_id),
+      has_dynamic_root_(has_dynamic_root) {}
 
 HloCollectiveBroadcastInstruction::HloCollectiveBroadcastInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const std::optional<int64_t>& channel_id)
+    const std::optional<int64_t>& channel_id, bool has_dynamic_root)
     : HloCollectiveBroadcastInstruction(
           opcode, shape, operands,
           std::make_shared<CollectiveDeviceList>(replica_groups),
-          constrain_layout, channel_id) {}
+          constrain_layout, channel_id, has_dynamic_root) {}
 
 void HloCollectiveBroadcastInstruction::ToProto(
     HloInstructionProto* proto) const {
   HloCollectiveInstruction::ToProto(proto);
+  proto->set_has_dynamic_root(has_dynamic_root());
 }
 
 std::unique_ptr<HloInstruction>
@@ -1401,7 +1404,16 @@ HloCollectiveBroadcastInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* /*context*/) const {
   return std::make_unique<HloCollectiveBroadcastInstruction>(
       opcode(), shape, new_operands, device_list(), constrain_layout(),
-      channel_id());
+      channel_id(), has_dynamic_root());
+}
+
+void HloCollectiveBroadcastInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  HloCollectiveInstruction::PrintExtraAttributesImpl(printer, options);
+  printer.Next([this](Printer* printer) {
+    printer->Append("has_dynamic_root=");
+    printer->Append(has_dynamic_root() ? "true" : "false");
+  });
 }
 
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(

@@ -2381,7 +2381,21 @@ R"(HloModule CollectiveBroadcast, entry_computation_layout={(f32[128,32]{0,1})->
 
 ENTRY CollectiveBroadcast {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT cb = f32[128,32]{0,1} collective-broadcast(input), replica_groups={{1,0},{2,3}}
+  ROOT cb = f32[128,32]{0,1} collective-broadcast(input), replica_groups={{1,0},{2,3}}, has_dynamic_root=false
+}
+
+)",
+/*replica_count=*/4,
+},
+// collective-broadcast with dynamic root
+{
+"CollectiveBroadcastDynamicRoot",
+R"(HloModule CollectiveBroadcast, entry_computation_layout={(f32[128,32]{0,1}, f32[1]{0})->f32[128,32]{0,1}}, replica_count=4
+
+ENTRY CollectiveBroadcast {
+  input = f32[128,32]{0,1} parameter(0)
+  root = f32[1]{0} parameter(1)
+  ROOT cb = f32[128,32]{0,1} collective-broadcast(input, root), replica_groups={{1,0},{2,3}}, has_dynamic_root=true
 }
 
 )",

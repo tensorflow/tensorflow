@@ -2047,6 +2047,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           *shape, operands, std::move(device_list), channel_id));
     }
     case HloOpcode::kCollectiveBroadcast: {
+      optional<bool> has_dynamic_root;
+      attrs["has_dynamic_root"] = {/*required=*/false, AttrTy::kBool,
+                                   &has_dynamic_root};
       std::unique_ptr<CollectiveDeviceListBase> device_list =
           std::make_unique<CollectiveDeviceList>(std::vector<ReplicaGroup>{});
       attrs["replica_groups"] = {
@@ -2058,7 +2061,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateCollectiveBroadcast(
-          *shape, operands, std::move(device_list), false, channel_id));
+          *shape, operands, std::move(device_list), false, channel_id,
+          has_dynamic_root ? *has_dynamic_root : false));
     }
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart: {
