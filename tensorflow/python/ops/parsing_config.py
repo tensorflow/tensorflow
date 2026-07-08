@@ -218,12 +218,14 @@ class RaggedFeature(
         f"{type(partition)}"
     )
 
-  def __new__(cls,
-              dtype,
-              value_key=None,
-              partitions=(),
-              row_splits_dtype=dtypes.int32,
-              validate=False):
+  def __new__(
+      cls,
+      dtype,
+      value_key=None,
+      partitions=(),
+      row_splits_dtype=dtypes.int32,
+      validate=True,
+  ):
     if value_key is not None:
       if not isinstance(value_key, str):
         raise ValueError(
@@ -334,7 +336,7 @@ class SparseFeature(
   """
 
   def __new__(cls, index_key, value_key, dtype, size, already_sorted=False):
-    return super(SparseFeature, cls).__new__(
+    return super().__new__(
         cls, index_key, value_key, dtype, size, already_sorted)
 
 
@@ -354,7 +356,7 @@ class FixedLenFeature(collections.namedtuple(
   """
 
   def __new__(cls, shape, dtype, default_value=None):
-    return super(FixedLenFeature, cls).__new__(
+    return super().__new__(
         cls, shape, dtype, default_value)
 
 
@@ -389,7 +391,7 @@ class FixedLenSequenceFeature(collections.namedtuple(
   """
 
   def __new__(cls, shape, dtype, allow_missing=False, default_value=None):
-    return super(FixedLenSequenceFeature, cls).__new__(
+    return super().__new__(
         cls, shape, dtype, allow_missing, default_value)
 
 
@@ -535,7 +537,7 @@ class _ParseOpParams:
         # Reshape to a scalar to ensure user gets an error if they
         # provide a tensor that's not intended to be a padding value
         # (0 or 2+ elements).
-        key_name = "padding_" + re.sub("[^A-Za-z0-9_.\\-/]", "_", key)
+        key_name = "padding_" + re.sub(r"[^A-Za-z0-9_.\-/]", "_", key)
         default_value = ops.convert_to_tensor(
             default_value, dtype=dtype, name=key_name)
         default_value = array_ops.reshape(default_value, [])
@@ -543,7 +545,7 @@ class _ParseOpParams:
       if default_value is None:
         default_value = constant_op.constant([], dtype=dtype)
       elif not isinstance(default_value, tensor.Tensor):
-        key_name = "key_" + re.sub("[^A-Za-z0-9_.\\-/]", "_", key)
+        key_name = "key_" + re.sub(r"[^A-Za-z0-9_.\-/]", "_", key)
         default_value = ops.convert_to_tensor(
             default_value, dtype=dtype, name=key_name)
         default_value = array_ops.reshape(default_value, shape)
@@ -926,48 +928,153 @@ def _add_batched_ragged_partition(rt, partition, tensor_dict, feature_key,
           reshaped_vals, rt.row_splits // partition.length, validate=validate)
 
   partition_t = tensor_dict[partition.key]
-  if partition_t.values.dtype != rt.row_splits.dtype:
+  partition_t_rt = (
+      partition_t
+      if isinstance(partition_t, ragged_tensor.RaggedTensor)
+      else None
+  )
+
+  partition_t_values = (
+      partition_t.values
+      if isinstance(partition_t, ragged_tensor.RaggedTensor)
+      else partition_t
+  )
+  if partition_t_values.dtype != rt.row_splits.dtype:
     partition_t = math_ops.cast(partition_t, rt.row_splits.dtype)
+    if partition_t_rt is not None:
+      partition_t_rt = math_ops.cast(partition_t_rt, rt.row_splits.dtype)
 
   checks = []
   if outer_splits is not None:
-    if validate:
-      checks.append(check_ops.assert_equal(
-          outer_splits, partition_t.row_splits,
-          message="Feature %s: values and partitions are not aligned"
-          % feature_key))
-    partition_t = partition_t.values
+    if isinstance(partition_t, ragged_tensor.RaggedTensor):
+      if validate:
+        checks.append(
+            check_ops.assert_equal(
+                outer_splits,
+                partition_t.row_splits,
+                message="Feature %s: values and partitions are not aligned"
+                % feature_key,
+            )
+        )
+      partition_t = partition_t.values
+
+  if validate and isinstance(partition, RaggedFeature.RowLengths):
+    partition_t_flat = (
+        partition_t.values
+        if isinstance(partition_t, ragged_tensor.RaggedTensor)
+        else partition_t
+    )
+    checks.append(
+        check_ops.assert_equal(
+            math_ops.cast(
+                math_ops.reduce_sum(partition_t_flat), rt.row_splits.dtype
+            ),
+            math_ops.cast(array_ops.shape(rt.values)[0], rt.row_splits.dtype),
+            message="Feature %s: values and partitions are not aligned"
+            % feature_key,
+        )
+    )
 
   with ops.control_dependencies(checks):
     if isinstance(partition, (RaggedFeature.RowSplits,
                               RaggedFeature.RowLimits)):
       if isinstance(partition, RaggedFeature.RowSplits):
-        partition_t = partition_t[:, 1:]
-      adjusted_limits = partition_t.values + array_ops.repeat(
-          rt.row_starts(), partition_t.row_lengths())
-      return partition_t.with_values(
-          ragged_tensor.RaggedTensor.from_row_limits(
-              rt.values, adjusted_limits, validate=validate))
+        if isinstance(partition_t, ragged_tensor.RaggedTensor):
+          partition_t = partition_t[:, 1:]
+        else:
+          partition_t = partition_t[1:]
+
+      if isinstance(partition_t, ragged_tensor.RaggedTensor):
+        adjusted_limits = partition_t.values + array_ops.repeat(
+            rt.row_starts(), partition_t.row_lengths()
+        )
+        return partition_t.with_values(
+            ragged_tensor.RaggedTensor.from_row_limits(
+                rt.values, adjusted_limits, validate=validate
+            )
+        )
+      else:
+        if partition_t_rt is None:
+          raise ValueError(
+              "Cannot process RowLimits/RowSplits because partition_t is Tensor"
+              " and no RaggedTensor source is available."
+          )
+        adjusted_limits = partition_t + array_ops.repeat(
+            rt.row_starts(), partition_t_rt.row_lengths()
+        )
+        return ragged_tensor.RaggedTensor.from_row_limits(
+            rt.values, adjusted_limits, validate=validate
+        )
+
     elif isinstance(partition, RaggedFeature.RowStarts):
-      adjusted_starts = partition_t.values + array_ops.repeat(
-          rt.row_starts(), partition_t.row_lengths())
-      return partition_t.with_values(
-          ragged_tensor.RaggedTensor.from_row_starts(
-              rt.values, adjusted_starts, validate=validate))
+      if isinstance(partition_t, ragged_tensor.RaggedTensor):
+        adjusted_starts = partition_t.values + array_ops.repeat(
+            rt.row_starts(), partition_t.row_lengths()
+        )
+        return partition_t.with_values(
+            ragged_tensor.RaggedTensor.from_row_starts(
+                rt.values, adjusted_starts, validate=validate
+            )
+        )
+      else:
+        if partition_t_rt is None:
+          raise ValueError(
+              "Cannot process RowStarts because partition_t is Tensor and no"
+              " RaggedTensor source is available."
+          )
+        adjusted_starts = partition_t + array_ops.repeat(
+            rt.row_starts(), partition_t_rt.row_lengths()
+        )
+        return ragged_tensor.RaggedTensor.from_row_starts(
+            rt.values, adjusted_starts, validate=validate
+        )
+
     elif isinstance(partition, RaggedFeature.RowLengths):
-      return partition_t.with_values(
-          ragged_tensor.RaggedTensor.from_row_lengths(
-              rt.values, partition_t.values, validate=validate))
+      if isinstance(partition_t, ragged_tensor.RaggedTensor):
+        return partition_t.with_values(
+            ragged_tensor.RaggedTensor.from_row_lengths(
+                rt.values, partition_t.values, validate=validate
+            )
+        )
+      else:
+        return ragged_tensor.RaggedTensor.from_row_lengths(
+            rt.values, partition_t, validate=validate
+        )
+
     elif isinstance(partition, RaggedFeature.ValueRowIds):
-      nrows = math_ops.maximum(  # number of rows in each batch item
-          ragged_math_ops.reduce_max(partition_t + 1, axis=1), 0)
-      adjusted_rowids = partition_t.values + array_ops.repeat(
-          math_ops.cumsum(nrows, exclusive=True), partition_t.row_lengths())
-      return ragged_tensor.RaggedTensor.from_row_lengths(
-          ragged_tensor.RaggedTensor.from_value_rowids(
-              rt.values, adjusted_rowids, validate=validate),
-          nrows,
-          validate=validate)
+      if isinstance(partition_t, ragged_tensor.RaggedTensor):
+        nrows = math_ops.maximum(  # number of rows in each batch item
+            ragged_math_ops.reduce_max(partition_t + 1, axis=1), 0
+        )
+        adjusted_rowids = partition_t.values + array_ops.repeat(
+            math_ops.cumsum(nrows, exclusive=True), partition_t.row_lengths()
+        )
+        return ragged_tensor.RaggedTensor.from_row_lengths(
+            ragged_tensor.RaggedTensor.from_value_rowids(
+                rt.values, adjusted_rowids, validate=validate
+            ),
+            nrows,
+            validate=validate,
+        )
+      else:
+        if partition_t_rt is None:
+          raise ValueError(
+              "Cannot process ValueRowIds because partition_t is Tensor and no"
+              " RaggedTensor source is available."
+          )
+        nrows = math_ops.maximum(
+            ragged_math_ops.reduce_max(partition_t_rt + 1, axis=1), 0
+        )
+        adjusted_rowids = partition_t + array_ops.repeat(
+            math_ops.cumsum(nrows, exclusive=True), partition_t_rt.row_lengths()
+        )
+        return ragged_tensor.RaggedTensor.from_row_lengths(
+            ragged_tensor.RaggedTensor.from_value_rowids(
+                rt.values, adjusted_rowids, validate=validate
+            ),
+            nrows,
+            validate=validate,
+        )
 
     raise ValueError(f"Unhandled partition type {partition!r}")
 

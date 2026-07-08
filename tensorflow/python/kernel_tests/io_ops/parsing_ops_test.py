@@ -2300,6 +2300,39 @@ class ParseSequenceExampleTest(test.TestCase):
             # Message for batch=false in eager mode:
             "|Incompatible shapes|required broadcastable shapes"))
 
+  def testSerializedContainingMisalignedNestedRaggedFeatureRowLengths(self):
+    """FeatureList with 4 values but RowLengths partition total sum is 3."""
+    original = sequence_example(
+        feature_lists=feature_lists({
+            "b_values": feature_list(
+                [float_feature([1, 2, 3, 4]), float_feature([2, 4, 6])]
+            ),
+            "b_lengths": feature_list([int64_feature([1]), int64_feature([2])]),
+        })
+    )
+    sequence_features = {
+        "b": parsing_ops.RaggedFeature(
+            value_key="b_values",
+            dtype=dtypes.float32,
+            partitions=[parsing_ops.RaggedFeature.RowLengths("b_lengths")],
+        ),
+        "b_lengths": parsing_ops.RaggedFeature(dtype=dtypes.int64),
+    }
+    self._testBoth(
+        dict(
+            serialized=ops.convert_to_tensor(original.SerializeToString()),
+            sequence_features=sequence_features,
+        ),
+        expected_err=(
+            (errors_impl.InvalidArgumentError, ValueError),
+            ("Feature b: values and partitions are not aligned"
+             # Message for batch=false in graph mode:
+             "|.* do not form a valid RaggedTensor"
+             # Message for batch=false in eager mode:
+             "|Incompatible shapes|required broadcastable shapes"),
+        ),
+    )
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class DecodeRawTest(test.TestCase):
