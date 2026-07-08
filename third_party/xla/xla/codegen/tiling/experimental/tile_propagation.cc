@@ -951,19 +951,42 @@ absl::Status VerifyReshapeContiguity(
   // 3. Contiguous Tiling Verification (All strides are 1)
   // ===========================================================================
   // Verify that the multidim side has at most one partially tiled dimension.
-  // - In Collapse: we allow the inner dimensions to be fully covered
-  //   or skipped (size 1)
   // - In Expand: we allow inner dimensions to be fully covered.
+  // - In Collapse: we allow the inner dimensions to be fully covered, or
+  //   partially tiled with size 1 ONLY if they are at the innermost boundary
+  //   (i.e., not sandwiched between other tiled dimensions).
+  //   A sandwiched size-1 tile is a partially tiled dimension that introduces
+  //   irregular gaps in the access pattern (non-contiguous collapse), whereas
+  //   an innermost size-1 tile only introduces a regular stride multiplier.
   int i = 0;
   while (i < n && IsConstantValue(multidim_side_tiles[i].size, 1)) {
     ++i;
   }
 
   int j = n - 1;
-  while (j >= 0 &&
-         (DimIsFullyCovered(multidim_side_tiles[j], multidim_side_dims[j]) ||
-          (is_collapse && IsConstantValue(multidim_side_tiles[j].size, 1)))) {
-    --j;
+  // Tracks if all dimensions processed so far (from right to left) have a tile
+  // size of 1. If we encounter any dimension with tile size > 1, this becomes
+  // false, meaning any subsequent size-1 dimensions are "sandwiched" (have a
+  // tiled dimension to their right).
+  bool all_suffix_is_size_1 = true;
+  while (j >= 0) {
+    auto size_val = TryGetConstantValue(multidim_side_tiles[j].size);
+    if (!size_val.has_value()) {
+      return FormatError("Expect constant source tile size. Got: ",
+                         multidim_side_tiles[j].size.ToString());
+    }
+    if (DimIsFullyCovered(multidim_side_tiles[j], multidim_side_dims[j])) {
+      if (*size_val > 1) {
+        all_suffix_is_size_1 = false;
+      }
+      --j;
+    } else if (is_collapse && *size_val == 1 && all_suffix_is_size_1) {
+      // We can skip a size-1 dimension during collapse only if it is not
+      // sandwiched (all_suffix_is_size_1 is still true).
+      --j;
+    } else {
+      break;
+    }
   }
 
   // All dimensions before i are size 1 and all dimensions after j are full.

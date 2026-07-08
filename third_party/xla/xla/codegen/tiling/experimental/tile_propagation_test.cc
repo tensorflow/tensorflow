@@ -246,6 +246,19 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1]
          upper bounds [min(tid_0 * 2 + 1, 2) * 4 + 4]
   )"},
+        {"CollapseShapeContiguous_10x4_1x4",
+         /*input_shape=*/{10, 4},
+         /*input_tile_sizes=*/{1, 4},
+         /*input_tile_strides=*/{1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{40},
+         /*expected_output=*/R"(
+    0) (tid_0, tid_1)
+      -> offsets [tid_0 * 4]
+         sizes [4]
+         strides [1]
+         upper bounds [min(tid_0, 9) * 4 + 4]
+  )"},
         // Example (tid_0, tid_1) -> (offset, upper bound):
         // (0, 0) -> (0,  4), (0, 1) -> ( 3,  4)
         // (1, 0) -> (4,  8), (1, 1) -> ( 7,  8)
@@ -315,6 +328,26 @@ INSTANTIATE_TEST_SUITE_P(
            strides [128]
            upper bounds [min(tid_1 * 16 + 15, 31) * 128 + min(tid_0, 1) * 4096 + min(tid_2, 127) + 1]
     )"},
+        {"CollapseShapeContiguous_3DCollapseWithTrivialInnerDim_Strided",
+         /*input_shape=*/{2, 32, 128},
+         /*input_tile_sizes=*/{1, 16, 1},
+         /*input_tile_strides=*/{1, 1, 2},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{8192},
+         /*expected_output=*/R"(
+      0) (tid_0, tid_1, tid_2)
+        -> offsets [tid_0 * 4096 + tid_1 * 2048 + tid_2]
+           sizes [16]
+           strides [128]
+           upper bounds [min(tid_1 * 16 + 15, 31) * 128 + min(tid_0, 1) * 4096 + min(tid_2, 127) + 1]
+    )"},
+        {"CollaseShapeNonContinousTile1",
+         /*input_shape=*/{17, 2, 4},
+         /*input_tile_sizes=*/{4, 1, 4},
+         /*input_tile_strides=*/{1, 1, 1},
+         /*input_tile_offsets=*/{0, 0, 0},
+         /*output_shape=*/{136},
+         /*expected_output=*/""},
         {"CollapseShapeContiguous_FullySpannedInnermost",
          /*input_shape=*/{3, 4},
          /*input_tile_sizes=*/{3, 2},
