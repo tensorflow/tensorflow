@@ -52,7 +52,7 @@ tf_class {
   }
   member_method {
     name: "__new__"
-    argspec: "args=[\'cls\', \'dtype\', \'value_key\', \'partitions\', \'row_splits_dtype\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'()\', \"<dtype: \'int32\'>\", \'False\'], "
+    argspec: "args=[\'cls\', \'dtype\', \'value_key\', \'partitions\', \'row_splits_dtype\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'()\', \"<dtype: \'int32\'>\", \'True\'], "
   }
   member_method {
     name: "count"
