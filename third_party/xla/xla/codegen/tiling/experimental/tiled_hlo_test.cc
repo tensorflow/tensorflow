@@ -568,6 +568,83 @@ TEST_F(TileAnalysisTest, DISABLED_DuplicateFusionRoots) {
       "xla::gpu::experimental::SortTiledHloInstructionsInPostOrder()");
 }
 
+TEST_F(TiledHloTest, DefinitionCache) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10] parameter(0)
+      ROOT p1 = f32[10] parameter(1)
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      auto tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  Tile tile = tiling_space->tiled_roots()[0];
+
+  const HloInstruction* p0 = nullptr;
+  for (const HloInstruction* instr : root->parent()->instructions()) {
+    if (instr->name() == "p0") {
+      p0 = instr;
+      break;
+    }
+  }
+  ASSERT_NE(p0, nullptr);
+  const HloInstruction* p1 = root;
+
+  // Tree structure:
+  // <ROOT>
+  //  |- def0_root
+  //  |- use_root
+  //  |- l1
+  //  |   |- def1_l1
+  //  |   |- use_in_l1
+  //  |   '- root_use_in_l1
+  //  '- l2
+  //      |- def1_l2
+  //      '- use_in_l2
+
+  auto def0_root = std::make_unique<TiledHloInstruction>(p0, tile);
+  auto use_root = std::make_unique<TiledHloInstruction>(p1, tile);
+
+  auto l1 = std::make_unique<TiledHloInstruction>(p1, tile);
+  auto def1_l1 = std::make_unique<TiledHloInstruction>(p1, tile, l1.get(), 0);
+  auto use_in_l1 = std::make_unique<TiledHloInstruction>(p1, tile, l1.get(), 0);
+  auto root_use_in_l1 =
+      std::make_unique<TiledHloInstruction>(p0, tile, l1.get(), 0);
+
+  auto l2 = std::make_unique<TiledHloInstruction>(p1, tile);
+  auto def1_l2 = std::make_unique<TiledHloInstruction>(p1, tile, l2.get(), 0);
+  auto use_in_l2 = std::make_unique<TiledHloInstruction>(p1, tile, l2.get(), 0);
+
+  DefinitionCache cache;
+  cache.AddDef(*def0_root);
+  cache.AddDef(*def1_l1);
+
+  // use_in_l2 cannot reuse def1_l1 because they are in different regions of
+  // siblings.
+  EXPECT_EQ(cache.FindDef(*use_in_l2), nullptr);
+
+  cache.AddDef(*def1_l2);
+
+  // FindRootDef/FindDef only looks for cached defs.
+  EXPECT_EQ(cache.FindRootDef(*p0, GetTestTile(*tiling_space, {5})), nullptr);
+
+  // Root level use matches root level def.
+  EXPECT_EQ(cache.FindRootDef(*p0, tile), def0_root.get());
+
+  // Root level use does NOT match nested defs.
+  EXPECT_EQ(cache.FindRootDef(*p1, tile), nullptr);
+  EXPECT_EQ(cache.FindDef(*use_root), nullptr);
+
+  // Nested use matches nested def in same region.
+  EXPECT_EQ(cache.FindDef(*use_in_l1), def1_l1.get());
+  EXPECT_EQ(cache.FindDef(*use_in_l2), def1_l2.get());
+
+  // Root level def matches nested use.
+  EXPECT_EQ(cache.FindDef(*root_use_in_l1), def0_root.get());
+}
+
 // TODO(b/422676780): Port the remaining tests.
 
 }  // namespace

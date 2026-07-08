@@ -53,8 +53,13 @@ class TiledHloRegion
 // with different tiling parameters.
 class TiledHloInstruction {
  public:
-  TiledHloInstruction(const HloInstruction* hlo, Tile tile)
-      : hlo_(hlo), tile_(std::move(tile)) {}
+  TiledHloInstruction(const HloInstruction* hlo, Tile tile,
+                      const TiledHloInstruction* parent = nullptr,
+                      int64_t parent_region_index = -1)
+      : hlo_(hlo),
+        tile_(std::move(tile)),
+        parent_(parent),
+        parent_region_index_(parent_region_index) {}
 
   const HloInstruction* hlo() const { return hlo_; }
 
@@ -75,6 +80,10 @@ class TiledHloInstruction {
   void AddHloRegion(TiledHloRegion region) {
     regions_.push_back(std::move(region));
   }
+
+  const TiledHloInstruction* parent() const { return parent_; }
+
+  int64_t parent_region_index() const { return parent_region_index_; }
 
   // Returns the TiledHloInstructions that correspond to the runtime variables
   // of the original HLO instruction.
@@ -128,6 +137,12 @@ class TiledHloInstruction {
 
   // Regions of the instruction.
   llvm::SmallVector<TiledHloRegion, 2> regions_;
+
+  // Parent instruction that owns the region containing this instruction.
+  const TiledHloInstruction* parent_ = nullptr;
+
+  // Index of the region within the parent instruction.
+  int64_t parent_region_index_ = -1;
 };
 
 inline bool operator==(const TiledHloInstruction& lhs,
@@ -150,6 +165,46 @@ H AbslHashValue(H h, const TiledHloInstruction& tiled_hlo_instruction) {
   }
   return h;
 }
+
+class DefinitionCache {
+ public:
+  // Finds a root-level definition for a given HLO instruction with the given
+  // tile.
+  TiledHloInstruction* FindRootDef(const HloInstruction& hlo, Tile tile) const;
+
+  // Finds a definition for the given candidate instruction (use).
+  //
+  // We assume that instructions are processed in the order they show up in the
+  // HLO DAG (top-down). If a dominating definition is found in the cache, it
+  // means it was already created in a previously processed path. If the cached
+  // definition is a sibling of the candidate (shares the same parent and
+  // region), it is safe to reuse it because the final post-order sort will
+  // ensure the definition is scheduled before the user.
+  TiledHloInstruction* FindDef(const TiledHloInstruction& use) const;
+
+  // Inserts a definition into the cache.
+  void AddDef(TiledHloInstruction& def) {
+    tiled_hlo_cache_[{def.hlo(), def.tile()}].push_back(&def);
+  }
+
+ private:
+  struct TiledHloKey {
+    const HloInstruction* hlo;
+    Tile tile;
+
+    bool operator==(const TiledHloKey& other) const {
+      return hlo == other.hlo && tile == other.tile;
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const TiledHloKey& key) {
+      return H::combine(std::move(h), key.hlo, key.tile);
+    }
+  };
+
+  absl::flat_hash_map<TiledHloKey, std::vector<TiledHloInstruction*>>
+      tiled_hlo_cache_;
+};
 
 // Constructs and holds symbolic tiles for all the instructions within a fusion.
 class TiledHloComputation {
