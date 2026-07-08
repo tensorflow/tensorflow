@@ -3034,6 +3034,508 @@ absl::Status SpmdPartitioningVisitor::HandleSlice(HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+namespace {
+
+// Rebuilds a scan body computation for new (per-shard) parameter shapes.
+//
+// Scan bodies operate on rank-reduced slices of the scanned operands, so
+// partitioning a non-scan dimension changes the shape of every slice-shaped
+// value in the body. Associative-scan combiners emitted by frontends are
+// elementwise, so the body only contains values that are either scalars or
+// exactly slice-shaped; those can be rebuilt mechanically. Returns nullptr if
+// the body contains anything else (the caller then falls back to replicating
+// the scan).
+HloComputation* CloneScanBodyWithNewShapes(
+    HloComputation* body, absl::Span<const Shape> new_param_shapes) {
+  const auto& old_params = body->parameter_instructions();
+  CHECK_EQ(old_params.size(), new_param_shapes.size());
+
+  // Map old parameter dimensions to new parameter dimensions. Values in the
+  // body are rebuilt by looking up their dimensions in this map; a conflict
+  // (same old dimensions, different new dimensions) is ambiguous.
+  absl::flat_hash_map<std::vector<int64_t>, std::vector<int64_t>> dims_map;
+  for (int64_t i = 0; i < old_params.size(); ++i) {
+    const Shape& old_shape = old_params[i]->shape();
+    const Shape& new_shape = new_param_shapes[i];
+    if (!old_shape.IsArray() || !new_shape.IsArray()) {
+      return nullptr;
+    }
+    std::vector<int64_t> old_dims(old_shape.dimensions().begin(),
+                                  old_shape.dimensions().end());
+    std::vector<int64_t> new_dims(new_shape.dimensions().begin(),
+                                  new_shape.dimensions().end());
+    auto [it, inserted] = dims_map.emplace(old_dims, new_dims);
+    if (!inserted && it->second != new_dims) {
+      return nullptr;
+    }
+  }
+
+  auto map_shape = [&](const Shape& old_shape) -> std::optional<Shape> {
+    if (!old_shape.IsArray()) {
+      return std::nullopt;
+    }
+    if (old_shape.dimensions().empty()) {
+      return old_shape;
+    }
+    auto it = dims_map.find(std::vector<int64_t>(old_shape.dimensions().begin(),
+                                                 old_shape.dimensions().end()));
+    if (it == dims_map.end()) {
+      return std::nullopt;
+    }
+    Shape new_shape = old_shape;
+    for (int64_t d = 0; d < it->second.size(); ++d) {
+      new_shape.set_dimensions(d, it->second[d]);
+    }
+    return new_shape;
+  };
+
+  HloComputation::Builder builder(absl::StrCat(body->name(), ".spmd"));
+  absl::flat_hash_map<const HloInstruction*, HloInstruction*> cloned;
+  auto cloned_operands = [&](const HloInstruction* instr) {
+    std::vector<HloInstruction*> operands;
+    operands.reserve(instr->operand_count());
+    for (const HloInstruction* operand : instr->operands()) {
+      operands.push_back(cloned.at(operand));
+    }
+    return operands;
+  };
+  for (HloInstruction* instr : body->MakeInstructionPostOrder()) {
+    HloInstruction* new_instr = nullptr;
+    if (instr->opcode() == HloOpcode::kParameter) {
+      new_instr = builder.AddInstruction(HloInstruction::CreateParameter(
+          instr->parameter_number(),
+          new_param_shapes[instr->parameter_number()], instr->name()));
+    } else if (instr == body->root_instruction() &&
+               instr->opcode() == HloOpcode::kTuple) {
+      new_instr = builder.AddInstruction(
+          HloInstruction::CreateTuple(cloned_operands(instr)));
+    } else if (instr->opcode() == HloOpcode::kConstant) {
+      // Only scalar constants are shape-independent.
+      if (!instr->shape().dimensions().empty()) {
+        return nullptr;
+      }
+      new_instr = builder.AddInstruction(instr->Clone());
+    } else if (instr->opcode() == HloOpcode::kBroadcast &&
+               instr->operand(0)->shape().dimensions().empty()) {
+      std::optional<Shape> new_shape = map_shape(instr->shape());
+      if (!new_shape.has_value()) {
+        return nullptr;
+      }
+      new_instr = builder.AddInstruction(HloInstruction::CreateBroadcast(
+          *new_shape, cloned.at(instr->operand(0)), {}));
+    } else if (instr->IsElementwise()) {
+      std::optional<Shape> new_shape = map_shape(instr->shape());
+      if (!new_shape.has_value()) {
+        return nullptr;
+      }
+      new_instr = builder.AddInstruction(
+          instr->CloneWithNewOperands(*new_shape, cloned_operands(instr)));
+    } else {
+      return nullptr;
+    }
+    cloned[instr] = new_instr;
+  }
+  if (body->root_instruction()->opcode() != HloOpcode::kTuple) {
+    return nullptr;
+  }
+  return body->parent()->AddEmbeddedComputation(
+      builder.Build(cloned.at(body->root_instruction())));
+}
+
+}  // namespace
+
+absl::StatusOr<bool>
+SpmdPartitioningVisitor::TryPartitionScanAlongScanDimension(
+    HloInstruction* hlo, const HloSharding& output_sharding) {
+  HloScanInstruction* scan = Cast<HloScanInstruction>(hlo);
+  const int64_t scan_dim = scan->scan_dimension();
+  const int64_t num_inputs = scan->inputs().size();
+  const int64_t num_carries = scan->num_carries();
+  const bool reverse = scan->is_reverse();
+
+  // The parallel prefix below reassociates the combine across shards and
+  // seeds each shard's total with its boundary slice, so it needs an
+  // associative scan with one carry per input whose carry shape matches the
+  // input slice shape.
+  if (scan->is_associative() != TRI_STATE_TRUE || num_carries != num_inputs) {
+    return false;
+  }
+
+  const int64_t num_shards = output_sharding.dimension(scan_dim);
+  const int64_t scan_len = scan->inputs()[0]->shape().dimensions(scan_dim);
+  // Shard totals fold whole shards, so a padded last shard would fold
+  // garbage into its total: require evenly divisible shards.
+  if (scan_len == 0 || scan_len % num_shards != 0) {
+    return false;
+  }
+  const int64_t shard_len = scan_len / num_shards;
+  const int64_t rank = hlo->shape().tuple_shapes(0).dimensions().size();
+  for (const HloInstruction* input : scan->inputs()) {
+    if (input->shape().dimensions().size() != rank ||
+        input->shape().dimensions(scan_dim) != scan_len) {
+      return false;
+    }
+  }
+
+  const HloSharding& input_sharding = output_sharding;
+  const HloSharding partially_replicated =
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(input_sharding,
+                                                               {scan_dim});
+  const HloSharding carry_sharding =
+      partially_replicated.IsTiled() ? hlo_sharding_util::RemoveShapeDimensions(
+                                           partially_replicated, {scan_dim})
+                                     : partially_replicated;
+
+  // Rebuild the body for the per-shard slice shapes, as in the shard-local
+  // path.
+  std::vector<Shape> body_param_shapes;
+  body_param_shapes.reserve(num_inputs + num_carries);
+  std::vector<Shape> slice_shapes;
+  slice_shapes.reserve(num_inputs);
+  bool body_shapes_changed = false;
+  for (int64_t i = 0; i < num_inputs; ++i) {
+    Shape shard_shape =
+        MakePartitionedShape(hlo->operand(i)->shape(), input_sharding);
+    Shape slice_shape = ShapeUtil::DeleteDimension(scan_dim, shard_shape);
+    body_shapes_changed |= !ShapeUtil::Compatible(
+        slice_shape, scan->to_apply()->parameter_instruction(i)->shape());
+    slice_shapes.push_back(slice_shape);
+    body_param_shapes.push_back(std::move(slice_shape));
+  }
+  std::vector<Shape> carry_shard_shapes;
+  carry_shard_shapes.reserve(num_carries);
+  for (int64_t i = 0; i < num_carries; ++i) {
+    Shape carry_shard = MakePartitionedShape(
+        hlo->operand(num_inputs + i)->shape(), carry_sharding);
+    if (!ShapeUtil::Compatible(carry_shard, slice_shapes[i])) {
+      return false;
+    }
+    body_shapes_changed |= !ShapeUtil::Compatible(
+        carry_shard,
+        scan->to_apply()->parameter_instruction(num_inputs + i)->shape());
+    carry_shard_shapes.push_back(carry_shard);
+    body_param_shapes.push_back(std::move(carry_shard));
+  }
+  HloComputation* slice_body = scan->to_apply();
+  if (body_shapes_changed) {
+    slice_body =
+        CloneScanBodyWithNewShapes(scan->to_apply(), body_param_shapes);
+    if (slice_body == nullptr) {
+      return false;
+    }
+  }
+
+  // All gates passed; emit the partitioned program.
+  PartitionedHlo::PartitioningState state = MakePartitioningState();
+  std::vector<HloInstruction*> local_inputs;
+  local_inputs.reserve(num_inputs);
+  std::vector<Shape> shard_input_shapes;
+  shard_input_shapes.reserve(num_inputs);
+  for (int64_t i = 0; i < num_inputs; ++i) {
+    local_inputs.push_back(
+        GetPartitionedHlo(hlo->operand(i)).Reshard(input_sharding).hlo());
+    shard_input_shapes.push_back(local_inputs.back()->shape());
+  }
+  std::vector<HloInstruction*> local_inits;
+  local_inits.reserve(num_carries);
+  for (int64_t i = 0; i < num_carries; ++i) {
+    local_inits.push_back(GetPartitionedHlo(hlo->operand(num_inputs + i))
+                              .Reshard(carry_sharding)
+                              .hlo());
+  }
+
+  // Phase 1: fold each shard's elements into a carry-shaped shard total.
+  // There is no identity element to seed a plain reduce with, so scan the
+  // shard's remaining elements seeded with its boundary slice (the first
+  // slice, or the last one for reverse scans); the scan's final carry is
+  // the shard total.
+  std::vector<HloInstruction*> shard_totals(num_inputs);
+  std::vector<HloInstruction*> boundary_seeds(num_inputs);
+  std::vector<HloInstruction*> rest_slices(num_inputs);
+  std::vector<Shape> rest_shapes(num_inputs);
+  for (int64_t i = 0; i < num_inputs; ++i) {
+    const Shape& in_shape = shard_input_shapes[i];
+    std::vector<int64_t> starts(rank, 0);
+    std::vector<int64_t> limits(in_shape.dimensions().begin(),
+                                in_shape.dimensions().end());
+    std::vector<int64_t> strides(rank, 1);
+    starts[scan_dim] = reverse ? shard_len - 1 : 0;
+    limits[scan_dim] = starts[scan_dim] + 1;
+    Shape boundary_shape = in_shape;
+    boundary_shape.set_dimensions(scan_dim, 1);
+    HloInstruction* boundary = b_.AddInstruction(HloInstruction::CreateSlice(
+        boundary_shape, local_inputs[i], starts, limits, strides));
+    boundary_seeds[i] = b_.AddInstruction(
+        HloInstruction::CreateReshape(carry_shard_shapes[i], boundary));
+    if (shard_len > 1) {
+      starts[scan_dim] = reverse ? 0 : 1;
+      limits[scan_dim] = starts[scan_dim] + shard_len - 1;
+      rest_shapes[i] = in_shape;
+      rest_shapes[i].set_dimensions(scan_dim, shard_len - 1);
+      rest_slices[i] = b_.AddInstruction(HloInstruction::CreateSlice(
+          rest_shapes[i], local_inputs[i], starts, limits, strides));
+    }
+  }
+  if (shard_len == 1) {
+    shard_totals = boundary_seeds;
+  } else {
+    std::vector<Shape> totals_shapes = rest_shapes;
+    totals_shapes.insert(totals_shapes.end(), carry_shard_shapes.begin(),
+                         carry_shard_shapes.end());
+    HloInstruction* totals_scan = b_.AddInstruction(HloInstruction::CreateScan(
+        ShapeUtil::MakeTupleShape(totals_shapes), rest_slices, boundary_seeds,
+        slice_body, scan_dim, reverse, TRI_STATE_TRUE));
+    for (int64_t i = 0; i < num_inputs; ++i) {
+      shard_totals[i] = b_.AddInstruction(HloInstruction::CreateGetTupleElement(
+          carry_shard_shapes[i], totals_scan, num_inputs + i));
+    }
+  }
+
+  // Phase 2: all-gather the carry-sized shard totals along the scan mesh
+  // axis (stacked on the scan dimension in shard order) and scan the stack
+  // once. Inclusive prefix k is then the incoming carry of shard k+1 (k-1
+  // for reverse scans), and the stack scan's final carry is the global
+  // final carry, identical on every shard of the scan axis.
+  std::vector<HloInstruction*> gathered(num_inputs);
+  std::vector<Shape> gathered_shapes(num_inputs);
+  for (int64_t i = 0; i < num_inputs; ++i) {
+    Shape stacked_shape = shard_input_shapes[i];
+    stacked_shape.set_dimensions(scan_dim, 1);
+    HloInstruction* stacked = b_.AddInstruction(
+        HloInstruction::CreateReshape(stacked_shape, shard_totals[i]));
+    gathered[i] = state.partitioner->AllGatherShards(
+        &b_, stacked, input_sharding, state.next_channel_id, {scan_dim},
+        state.collective_ops_creator);
+    gathered_shapes[i] = gathered[i]->shape();
+  }
+  std::vector<Shape> prefix_shapes = gathered_shapes;
+  prefix_shapes.insert(prefix_shapes.end(), carry_shard_shapes.begin(),
+                       carry_shard_shapes.end());
+  HloInstruction* prefix_scan = b_.AddInstruction(HloInstruction::CreateScan(
+      ShapeUtil::MakeTupleShape(prefix_shapes), gathered, local_inits,
+      slice_body, scan_dim, reverse, TRI_STATE_TRUE));
+
+  // Each shard's incoming carry: the neighbor shard's inclusive prefix, or
+  // the original init on the boundary shard.
+  const Shape scalar_s32 = ShapeUtil::MakeShape(S32, {});
+  std::vector<HloInstruction*> ordinals =
+      MakeTiledPartitionOrdinals(input_sharding, state.partition_id, &b_);
+  HloInstruction* ordinal = ordinals[scan_dim];
+  HloInstruction* zero = b_.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
+  HloInstruction* one = b_.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
+  HloInstruction* neighbor;
+  HloInstruction* boundary_ordinal;
+  if (reverse) {
+    HloInstruction* next = b_.AddInstruction(HloInstruction::CreateBinary(
+        scalar_s32, HloOpcode::kAdd, ordinal, one));
+    boundary_ordinal = b_.AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR0<int32_t>(num_shards - 1)));
+    neighbor = b_.AddInstruction(HloInstruction::CreateBinary(
+        scalar_s32, HloOpcode::kMinimum, next, boundary_ordinal));
+  } else {
+    HloInstruction* prev = b_.AddInstruction(HloInstruction::CreateBinary(
+        scalar_s32, HloOpcode::kSubtract, ordinal, one));
+    boundary_ordinal = zero;
+    neighbor = b_.AddInstruction(HloInstruction::CreateBinary(
+        scalar_s32, HloOpcode::kMaximum, prev, zero));
+  }
+  HloInstruction* is_boundary = b_.AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::MakeShape(PRED, {}), ordinal, boundary_ordinal,
+      ComparisonDirection::kEq));
+
+  std::vector<HloInstruction*> incoming_carries(num_carries);
+  for (int64_t i = 0; i < num_carries; ++i) {
+    HloInstruction* prefixes =
+        b_.AddInstruction(HloInstruction::CreateGetTupleElement(
+            gathered_shapes[i], prefix_scan, i));
+    Shape ds_shape = gathered_shapes[i];
+    ds_shape.set_dimensions(scan_dim, 1);
+    std::vector<HloInstruction*> ds_starts(rank, zero);
+    ds_starts[scan_dim] = neighbor;
+    HloInstruction* neighbor_prefix =
+        b_.AddInstruction(HloInstruction::CreateDynamicSlice(
+            ds_shape, prefixes, ds_starts, ds_shape.dimensions()));
+    HloInstruction* neighbor_carry = b_.AddInstruction(
+        HloInstruction::CreateReshape(carry_shard_shapes[i], neighbor_prefix));
+    HloInstruction* pred_broadcast =
+        b_.AddInstruction(HloInstruction::CreateBroadcast(
+            ShapeUtil::ChangeElementType(carry_shard_shapes[i], PRED),
+            is_boundary, {}));
+    incoming_carries[i] = b_.AddInstruction(HloInstruction::CreateTernary(
+        carry_shard_shapes[i], HloOpcode::kSelect, pred_broadcast,
+        local_inits[i], neighbor_carry));
+  }
+
+  // Phase 3: rerun the shard-local scan seeded with the true incoming
+  // carries; its outputs are the final per-shard outputs.
+  std::vector<Shape> final_shapes = shard_input_shapes;
+  final_shapes.insert(final_shapes.end(), carry_shard_shapes.begin(),
+                      carry_shard_shapes.end());
+  HloInstruction* final_scan = b_.AddInstruction(HloInstruction::CreateScan(
+      ShapeUtil::MakeTupleShape(final_shapes), local_inputs, incoming_carries,
+      slice_body, scan_dim, reverse, TRI_STATE_TRUE));
+
+  std::vector<HloInstruction*> result_elements;
+  result_elements.reserve(num_inputs + num_carries);
+  for (int64_t i = 0; i < num_inputs; ++i) {
+    result_elements.push_back(
+        b_.AddInstruction(HloInstruction::CreateGetTupleElement(
+            shard_input_shapes[i], final_scan, i)));
+  }
+  for (int64_t i = 0; i < num_carries; ++i) {
+    result_elements.push_back(
+        b_.AddInstruction(HloInstruction::CreateGetTupleElement(
+            carry_shard_shapes[i], prefix_scan, num_inputs + i)));
+  }
+  HloInstruction* result =
+      b_.AddInstruction(HloInstruction::CreateTuple(result_elements));
+
+  std::vector<HloSharding> element_shardings;
+  element_shardings.reserve(num_inputs + num_carries);
+  for (int64_t i = 0; i < num_inputs; ++i) {
+    element_shardings.push_back(input_sharding);
+  }
+  for (int64_t i = 0; i < num_carries; ++i) {
+    element_shardings.push_back(carry_sharding);
+  }
+  result->set_sharding(HloSharding::Tuple(hlo->shape(), element_shardings));
+  PartitionedHlo partitioned_scan(result, hlo->shape(), state);
+  SetPartitionedHlo(hlo, partitioned_scan.Reshard(hlo->sharding()));
+  return true;
+}
+
+absl::Status SpmdPartitioningVisitor::HandleScan(HloInstruction* hlo) {
+  HloScanInstruction* scan = Cast<HloScanInstruction>(hlo);
+  const HloSharding& sharding = hlo->sharding();
+  if (sharding.IsSingleDevice()) {
+    return DefaultAction(hlo);
+  }
+
+  const int64_t scan_dim = scan->scan_dimension();
+  const int64_t num_carries = scan->num_carries();
+  const int64_t num_results = hlo->shape().tuple_shapes().size();
+  const int64_t num_outputs = num_results - num_carries;
+  const int64_t num_inputs = scan->inputs().size();
+  if (num_inputs == 0 || num_inputs != num_outputs || !sharding.IsTuple()) {
+    return DefaultAction(hlo);
+  }
+
+  // All outputs must share one sharding; the carries then use that sharding
+  // with the scan dimension removed.
+  HloSharding output_sharding = sharding.GetSubSharding(hlo->shape(), {0});
+  for (int64_t i = 1; i < num_outputs; ++i) {
+    if (output_sharding != sharding.GetSubSharding(hlo->shape(), {i})) {
+      return DefaultAction(hlo);
+    }
+  }
+  if (!output_sharding.IsTiled()) {
+    return DefaultAction(hlo);
+  }
+  // Both paths below apply the output sharding to the scan inputs, which
+  // requires matching ranks; shape-changing scans are replicated.
+  const int64_t output_rank = hlo->shape().tuple_shapes(0).dimensions().size();
+  for (const HloInstruction* input : scan->inputs()) {
+    if (input->shape().dimensions().size() != output_rank) {
+      return DefaultAction(hlo);
+    }
+  }
+
+  const Shape& input_shape = scan->inputs()[0]->shape();
+  HloSharding input_sharding = output_sharding;
+  if (input_sharding.dimension(scan_dim) != 1) {
+    // Associative scans sharded on the scan dimension are partitioned in
+    // place with a distributed parallel prefix.
+    ASSIGN_OR_RETURN(bool handled,
+                     TryPartitionScanAlongScanDimension(hlo, output_sharding));
+    if (handled) {
+      return absl::OkStatus();
+    }
+  }
+  // Otherwise the scan runs shard-local with the scan dimension unsharded:
+  // move its tiles to another dimension when possible, or partially
+  // replicate them (mirroring HandleSort).
+  if (input_sharding.dimension(scan_dim) != 1) {
+    if (std::optional<int64_t> picked_dim =
+            hlo_sharding_util::GetFirstTargetDimToMoveShardingTiles(
+                input_shape, input_sharding, scan_dim)) {
+      input_sharding = hlo_sharding_util::MoveAndMergeShardingTiles(
+          input_sharding, scan_dim, *picked_dim);
+    } else {
+      input_sharding = hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+          input_sharding, {scan_dim});
+    }
+  }
+  if (!input_sharding.IsTiled()) {
+    return DefaultAction(hlo);
+  }
+  const HloSharding carry_sharding =
+      hlo_sharding_util::RemoveShapeDimensions(input_sharding, {scan_dim});
+
+  // Rebuild the scan body for the per-shard slice shapes. If the body cannot
+  // be rebuilt, fall back to replicating the scan.
+  std::vector<Shape> new_body_param_shapes;
+  new_body_param_shapes.reserve(num_inputs + num_carries);
+  bool body_shapes_changed = false;
+  for (int64_t i = 0; i < num_inputs; ++i) {
+    Shape shard_shape =
+        MakePartitionedShape(hlo->operand(i)->shape(), input_sharding);
+    Shape slice_shape = ShapeUtil::DeleteDimension(scan_dim, shard_shape);
+    body_shapes_changed |= !ShapeUtil::Compatible(
+        slice_shape, scan->to_apply()->parameter_instruction(i)->shape());
+    new_body_param_shapes.push_back(std::move(slice_shape));
+  }
+  for (int64_t i = 0; i < num_carries; ++i) {
+    Shape shard_shape = MakePartitionedShape(
+        hlo->operand(num_inputs + i)->shape(), carry_sharding);
+    body_shapes_changed |= !ShapeUtil::Compatible(
+        shard_shape,
+        scan->to_apply()->parameter_instruction(num_inputs + i)->shape());
+    new_body_param_shapes.push_back(std::move(shard_shape));
+  }
+  HloComputation* new_body = scan->to_apply();
+  if (body_shapes_changed) {
+    new_body =
+        CloneScanBodyWithNewShapes(scan->to_apply(), new_body_param_shapes);
+    if (new_body == nullptr) {
+      return DefaultAction(hlo);
+    }
+  }
+
+  std::vector<HloInstruction*> new_operands;
+  new_operands.reserve(num_inputs + num_carries);
+  for (int64_t i = 0; i < num_inputs; ++i) {
+    new_operands.push_back(
+        GetPartitionedHlo(hlo->operand(i)).Reshard(input_sharding).hlo());
+  }
+  for (int64_t i = 0; i < num_carries; ++i) {
+    new_operands.push_back(GetPartitionedHlo(hlo->operand(num_inputs + i))
+                               .Reshard(carry_sharding)
+                               .hlo());
+  }
+
+  std::vector<HloSharding> element_shardings;
+  element_shardings.reserve(num_results);
+  for (int64_t i = 0; i < num_outputs; ++i) {
+    element_shardings.push_back(input_sharding);
+  }
+  for (int64_t i = 0; i < num_carries; ++i) {
+    element_shardings.push_back(carry_sharding);
+  }
+  HloSharding new_sharding =
+      HloSharding::Tuple(hlo->shape(), element_shardings);
+
+  HloInstruction* new_scan = b_.AddInstruction(hlo->CloneWithNewOperands(
+      MakePartitionedShape(hlo->shape(), new_sharding), new_operands));
+  new_scan->set_to_apply(new_body);
+  new_scan->set_sharding(new_sharding);
+  PartitionedHlo partitioned_scan(new_scan, hlo->shape(),
+                                  MakePartitioningState());
+  SetPartitionedHlo(hlo, partitioned_scan.Reshard(hlo->sharding()));
+  return absl::OkStatus();
+}
+
 absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
   HloSharding sharding = hlo->sharding();
   int64_t input_count = 1;

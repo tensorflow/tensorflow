@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/enums.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mhlo = ::mlir::mhlo;
@@ -206,6 +208,45 @@ struct TopKShardingRuleOpInterface
   }
 };
 
+// Returns true if the scan body only contains ops the SPMD partitioner can
+// rebuild for per-shard slice shapes: elementwise ops, scalar constants,
+// and broadcasts of scalars (plus the terminator). Mirrors the acceptance
+// of CloneScanBodyWithNewShapes in spmd_partitioner.cc; bodies outside this
+// set force the partitioner to replicate the scan.
+bool isElementwiseScanBody(mhlo::ScanOp scan) {
+  for (mlir::Operation& bodyOp : scan.getBody().front()) {
+    if (bodyOp.hasTrait<mlir::OpTrait::IsTerminator>() ||
+        bodyOp.hasTrait<mlir::OpTrait::Elementwise>()) {
+      continue;
+    }
+    if (bodyOp.hasTrait<mlir::OpTrait::ConstantLike>()) {
+      auto type =
+          llvm::dyn_cast<mlir::RankedTensorType>(bodyOp.getResult(0).getType());
+      if (!type || type.getRank() != 0) {
+        return false;
+      }
+      continue;
+    }
+    // Recomposed scan bodies hold stablehlo ops; handle both dialects.
+    mlir::Value broadcast_operand;
+    if (auto broadcast = llvm::dyn_cast<mhlo::BroadcastInDimOp>(bodyOp)) {
+      broadcast_operand = broadcast.getOperand();
+    } else if (auto broadcast =
+                   llvm::dyn_cast<mlir::stablehlo::BroadcastInDimOp>(bodyOp)) {
+      broadcast_operand = broadcast.getOperand();
+    }
+    if (broadcast_operand) {
+      auto operandType =
+          llvm::dyn_cast<mlir::RankedTensorType>(broadcast_operand.getType());
+      if (operandType && operandType.getRank() == 0) {
+        continue;
+      }
+    }
+    return false;
+  }
+  return true;
+}
+
 // Sharding rule for `mhlo.scan`.
 //
 // `mhlo.scan` has variadic operands `(inputs..., inits...)` and variadic
@@ -224,14 +265,19 @@ struct TopKShardingRuleOpInterface
 // independent across iterations and propagate point-wise between
 // input/output/init/carry. The scan dimension's treatment depends on
 // `is_associative`:
-//   * associative: a parallel-prefix implementation exists (local scans per
-//     shard plus inter-shard combine). The dimension is permutable
+//   * associative: the SPMD partitioner implements a distributed parallel
+//     prefix (local scans per shard plus an inter-shard combine of the
+//     carry-sized shard totals). The dimension is permutable
 //     (`kPermutation`) so propagation may shard it at the cost of data
 //     movement, mirroring how `stablehlo.reduce_window` handles window dims
 //     with size > 1.
 //   * non-associative or unspecified: the body has a true sequential
 //     dependency along the scan dim, so it must be replicated
 //     (`kNeedReplication`).
+// Both cases additionally require a body the partitioner can rebuild for
+// per-shard shapes (elementwise over slices and scalars). For other bodies
+// the partitioner replicates the whole scan, so every dimension is marked
+// `kNeedReplication` and Shardy inserts the reshards up front.
 //
 // For shape-changing scans, we fall back to a conservative rule that only
 // constrains the scan dim and blocks propagation through every other dim.
@@ -257,8 +303,7 @@ struct ScanShardingRuleOpInterface
     int64_t numInputs = inputs.size();
     int64_t numInits = inits.size();
     bool isAssociative = scan.getIsAssociative().value_or(false);
-    FactorType scanDimFactorType =
-        isAssociative ? FactorType::kPermutation : FactorType::kNeedReplication;
+    bool elementwiseBody = isElementwiseScanBody(scan);
 
     // Pick a representative input/output tensor to derive the rank and the
     // scan dim size. Bail out with an empty (no-factor) rule if the
@@ -307,6 +352,18 @@ struct ScanShardingRuleOpInterface
       return true;
     }();
 
+    // The partitioner can only partition shape-preserving scans whose body
+    // it can rebuild for per-shard shapes; everything else is replicated,
+    // and the scan dimension additionally needs an associative combine for
+    // the distributed parallel prefix. Reflect that here so propagation
+    // does not shard dimensions the partitioner would replicate anyway.
+    bool partitionable = isShapePreserving && elementwiseBody;
+    FactorType scanDimFactorType = isAssociative && partitionable
+                                       ? FactorType::kPermutation
+                                       : FactorType::kNeedReplication;
+    FactorType nonScanDimFactorType =
+        partitionable ? FactorType::kPassThrough : FactorType::kNeedReplication;
+
     // Layout of the operand/result mapping vectors mirrors the variadic op:
     //   operandDims = [input_0, ..., input_{N-1}, init_0, ..., init_{M-1}]
     //   resultDims  = [output_0, ..., output_{N-1}, carry_0, ..., carry_{M-1}]
@@ -344,10 +401,12 @@ struct ScanShardingRuleOpInterface
         std::fill_n(resultDims.begin() + numInputs, numInits, kNullDim);
         builder.addFactor(operandDims, resultDims, dimSize, scanDimFactorType);
       } else {
-        // Non-scan dim: pass-through across inputs/outputs/inits/carries.
+        // Non-scan dim: pass-through across inputs/outputs/inits/carries,
+        // unless the body forces the partitioner to replicate the scan.
         std::fill_n(operandDims.begin() + numInputs, numInits, initDim);
         std::fill_n(resultDims.begin() + numInputs, numInits, initDim);
-        builder.addFactor(operandDims, resultDims, dimSize);
+        builder.addFactor(operandDims, resultDims, dimSize,
+                          nonScanDimFactorType);
         ++initDim;
       }
     }
