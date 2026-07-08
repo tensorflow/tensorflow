@@ -428,9 +428,10 @@ class Client:
               'Tensorflow version {} is not available on Cloud TPU, '
               'try a previous nightly version or refer to '
               'https://cloud.google.com/tpu/docs/release-notes for '
-              'the latest official version.'.format(version)) from e 
+              'the latest official version.'.format(version)) from e
         else:
-          raise RuntimeError('Failed to configure worker {}'.format(ip_address)) from e
+          raise RuntimeError(
+              'Failed to configure worker {}'.format(ip_address)) from e
 
     workers = self.network_endpoints()
 
