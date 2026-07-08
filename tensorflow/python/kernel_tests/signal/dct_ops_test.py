@@ -268,6 +268,12 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     # DCT-I requires at least two inputs.
     with self.assertRaises(ValueError):
       dct_ops.dct(np.random.rand(1), type=1)
+    # DCT-I requires n to be greater than one, since truncating the input
+    # to length one would violate the same requirement.
+    with self.assertRaises(ValueError):
+      dct_ops.dct(signals, type=1, n=1)
+    with self.assertRaises(ValueError):
+      dct_ops.idct(signals, type=1, n=1)
     # Unknown normalization.
     with self.assertRaises(ValueError):
       dct_ops.dct(signals, norm="bad")
