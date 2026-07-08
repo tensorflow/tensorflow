@@ -142,12 +142,14 @@ void CalculateRange(const TfLiteTensor* start, const TfLiteTensor* delta,
   const T delta_value = *GetTensorData<T>(delta);
   T* output_data = GetTensorData<T>(output);
   const int num_elements = NumElements(output);
-  T value = start_value;
-  for (int i = 0; i < num_elements; ++i) {
-    output_data[i] = value;
-    if (i + 1 < num_elements) {
+
+  if (num_elements > 0) {
+    T value = start_value;
+    for (int i = 0; i < num_elements - 1; ++i) {
+      output_data[i] = value;
       value += delta_value;
     }
+    output_data[num_elements - 1] = value;
   }
 }
 
