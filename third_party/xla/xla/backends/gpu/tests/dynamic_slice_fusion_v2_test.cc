@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 
@@ -20,6 +21,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
@@ -38,60 +42,44 @@ namespace {
 
 static constexpr char kPlatform[] = "gpu";
 
-static absl::Status MemsetScale1(se::Stream* stream, ffi::AnyBuffer input,
-                                 ffi::Result<ffi::BufferR1<F32>> result,
-                                 float scale0) {
+// Variadic memset hero used by all dynamic-slice-fusion tests. Ignores its
+// inputs and fills result j with `loop_iteration * scales[j]`. The number of
+// results is arbitrary (RemainingRets) and the per-result scale is passed as a
+// float array attribute.
+static absl::Status ScaledMemset(se::Stream* stream, ffi::RemainingArgs inputs,
+                                 ffi::RemainingRets outputs,
+                                 absl::Span<const float> scales) {
   const WhileLoopState* state = IsInsideWhileLoop();
   if (state == nullptr) {
-    return absl::InternalError("MemsetScale1: not inside a while loop");
+    return absl::InternalError("ScaledMemset: not inside a while loop");
   }
+
+  if (scales.size() != outputs.size()) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("ScaledMemset: expected %d scales for %d outputs",
+                        outputs.size(), outputs.size()));
+  }
+
   float iter = static_cast<float>(state->loop_iteration);
-  se::DeviceAddressBase dst = result->device_memory();
-  return stream->Memset32(&dst, absl::bit_cast<uint32_t>(iter * scale0),
-                          dst.size());
+  for (size_t j = 0; j < outputs.size(); ++j) {
+    ASSIGN_OR_RETURN(auto out, outputs.get<ffi::AnyBuffer>(j));
+    se::DeviceAddressBase dst = out->device_memory();
+    RETURN_IF_ERROR(stream->Memset32(
+        &dst, absl::bit_cast<uint32_t>(iter * scales[j]), dst.size()));
+  }
+
+  return absl::OkStatus();
 }
 
-XLA_FFI_DEFINE_HANDLER(kMemsetScale1, MemsetScale1,
+XLA_FFI_DEFINE_HANDLER(kScaledMemset, ScaledMemset,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
-                           .Arg<ffi::AnyBuffer>()
-                           .Ret<ffi::BufferR1<F32>>()
-                           .Attr<float>("scale0"));
+                           .RemainingArgs()
+                           .RemainingRets()
+                           .Attr<absl::Span<const float>>("scales"));
 
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memset_scale1",
-                         kPlatform, kMemsetScale1);
-
-static absl::Status MemsetScale12(se::Stream* stream, ffi::AnyBuffer input,
-                                  ffi::Result<ffi::BufferR1<F32>> out0,
-                                  ffi::Result<ffi::BufferR1<F32>> out1,
-                                  float scale0, float scale1) {
-  const WhileLoopState* state = IsInsideWhileLoop();
-  if (state == nullptr) {
-    return absl::InternalError("MemsetScale12: not inside a while loop");
-  }
-  float iter = static_cast<float>(state->loop_iteration);
-  se::DeviceAddressBase dst0 = out0->device_memory();
-  auto status = stream->Memset32(&dst0, absl::bit_cast<uint32_t>(iter * scale0),
-                                 dst0.size());
-  if (!status.ok()) {
-    return status;
-  }
-  se::DeviceAddressBase dst1 = out1->device_memory();
-  return stream->Memset32(&dst1, absl::bit_cast<uint32_t>(iter * scale1),
-                          dst1.size());
-}
-
-XLA_FFI_DEFINE_HANDLER(kMemsetScale12, MemsetScale12,
-                       ffi::Ffi::Bind()
-                           .Ctx<ffi::Stream>()
-                           .Arg<ffi::AnyBuffer>()
-                           .Ret<ffi::BufferR1<F32>>()
-                           .Ret<ffi::BufferR1<F32>>()
-                           .Attr<float>("scale0")
-                           .Attr<float>("scale1"));
-
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memset_scale12",
-                         kPlatform, kMemsetScale12);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$scaled_memset",
+                         kPlatform, kScaledMemset);
 
 static absl::Status MemsetConst(se::Stream* stream, ffi::AnyBuffer input,
                                 ffi::Result<ffi::BufferR1<F32>> result,
@@ -129,9 +117,9 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUS) {
       %p1 = s32[] parameter(1)
       %p2 = s32[] parameter(2)
       %fill = f32[4] custom-call(%p0),
-        custom_call_target="__xla_test$$memset_scale1",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 1.0 : f32}"
+        backend_config="{scales = array<f32: 1.0>}"
       %fill_2d = f32[1,4] bitcast(%fill)
       ROOT %dus = f32[4,4]
         dynamic-update-slice(%p0, %fill_2d, %p1, %p2),
@@ -192,9 +180,9 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUSWithOffsetExpression) {
       %p1 = s32[] parameter(1)
       %p2 = s32[] parameter(2)
       %fill = f32[4] custom-call(%p0),
-        custom_call_target="__xla_test$$memset_scale1",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 1.0 : f32}"
+        backend_config="{scales = array<f32: 1.0>}"
       %fill_2d = f32[1,4] bitcast(%fill)
       %one = s32[] constant(1)
       %offset = s32[] add(%p1, %one)
@@ -331,9 +319,9 @@ TEST_F(DynamicSliceFusionV2Test, TupleOutputTwoDUS) {
       %p2 = s32[] parameter(2)
       %p3 = s32[] parameter(3)
       %call = (f32[4], f32[4]) custom-call(%p0),
-        custom_call_target="__xla_test$$memset_scale12",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 1.0 : f32, scale1 = 2.0 : f32}"
+        backend_config="{scales = array<f32: 1.0, 2.0>}"
       %gte0 = f32[4] get-tuple-element(%call), index=0
       %gte1 = f32[4] get-tuple-element(%call), index=1
       %bc0 = f32[1,4] bitcast(%gte0)
@@ -413,9 +401,9 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputNoDUS) {
     %dsf_computation {
       %p0 = f32[4,4] parameter(0)
       ROOT %fill = f32[4] custom-call(%p0),
-        custom_call_target="__xla_test$$memset_scale1",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 1.0 : f32}"
+        backend_config="{scales = array<f32: 1.0>}"
     }
 
     body {
@@ -473,9 +461,9 @@ TEST_F(DynamicSliceFusionV2Test, AsyncSingleOutputOneDUS) {
       %p1 = s32[] parameter(1)
       %p2 = s32[] parameter(2)
       %fill = f32[4] custom-call(%p0),
-        custom_call_target="__xla_test$$memset_scale1",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 1.0 : f32}"
+        backend_config="{scales = array<f32: 1.0>}"
       %fill_2d = f32[1,4] bitcast(%fill)
       ROOT %dus = f32[4,4]
         dynamic-update-slice(%p0, %fill_2d, %p1, %p2),
@@ -546,9 +534,9 @@ TEST_F(DynamicSliceFusionV2Test, AsyncTupleOutputTwoDUS) {
       %p2 = s32[] parameter(2)
       %p3 = s32[] parameter(3)
       %call = (f32[4], f32[4]) custom-call(%p0),
-        custom_call_target="__xla_test$$memset_scale12",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 1.0 : f32, scale1 = 2.0 : f32}"
+        backend_config="{scales = array<f32: 1.0, 2.0>}"
       %gte0 = f32[4] get-tuple-element(%call), index=0
       %gte1 = f32[4] get-tuple-element(%call), index=1
       %bc0 = f32[1,4] bitcast(%gte0)
@@ -640,9 +628,9 @@ TEST_F(DynamicSliceFusionV2Test, TupleOutputOneDUS) {
       %p1 = s32[] parameter(1)
       %p2 = s32[] parameter(2)
       %call = (f32[4], f32[4]) custom-call(%p0),
-        custom_call_target="__xla_test$$memset_scale12",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 1.0 : f32, scale1 = 2.0 : f32}"
+        backend_config="{scales = array<f32: 1.0, 2.0>}"
       %gte0 = f32[4] get-tuple-element(%call), index=0
       %bc0 = f32[1,4] bitcast(%gte0)
       %dus0 = f32[4,4]
@@ -706,6 +694,75 @@ TEST_F(DynamicSliceFusionV2Test, TupleOutputOneDUS) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected1, LiteralSlice(result, {1})));
 }
 
+// Hero accepts a zero-sized (f32[0]) parameter in addition to a real one.
+// Exercises buffer indexing when a fusion operand is a zero-element array.
+TEST_F(DynamicSliceFusionV2Test, ZeroSizedParameter) {
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    %dsf_computation {
+      %empty = f32[0] parameter(0)
+      %p0 = f32[4,4] parameter(1)
+      %p1 = s32[] parameter(2)
+      %p2 = s32[] parameter(3)
+      %fill = f32[4] custom-call(%empty),
+        custom_call_target="__xla_test$$scaled_memset",
+        api_version=API_VERSION_TYPED_FFI,
+        backend_config="{scales = array<f32: 1.0>}"
+      %fill_2d = f32[1,4] bitcast(%fill)
+      ROOT %dus = f32[4,4]
+        dynamic-update-slice(%p0, %fill_2d, %p1, %p2),
+        backend_config={"dynamic_slice_config":
+          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+    }
+
+    body {
+      param = (s32[], f32[0], f32[4,4]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      empty = f32[0] get-tuple-element(param), index=1
+      buf = f32[4,4] get-tuple-element(param), index=2
+      zero = s32[] constant(0)
+      updated = f32[4,4] fusion(empty, buf, i, zero),
+        kind=kCustom, calls=%dsf_computation,
+        backend_config={"fusion_backend_config":{
+          "kind":"__custom_fusion",
+          "custom_fusion_config":
+            {"name":"dynamic_slice_fusion"}}}
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      ROOT tuple = (s32[], f32[0], f32[4,4]) tuple(next_i, empty, updated)
+    }
+
+    cond {
+      param = (s32[], f32[0], f32[4,4]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      limit = s32[] constant(4)
+      ROOT cmp = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      empty_arg = f32[0] parameter(0)
+      zero = s32[] constant(0)
+      init_buf = f32[4,4] broadcast(f32[] constant(0)), dimensions={}
+      init = (s32[], f32[0], f32[4,4]) tuple(zero, empty_arg, init_buf)
+      while = (s32[], f32[0], f32[4,4])
+        while(init), condition=cond, body=body
+      ROOT result = f32[4,4] get-tuple-element(while), index=2
+    }
+  )";
+
+  Literal expected = LiteralUtil::CreateR2<float>({{0.0f, 0.0f, 0.0f, 0.0f},
+                                                   {1.0f, 1.0f, 1.0f, 1.0f},
+                                                   {2.0f, 2.0f, 2.0f, 2.0f},
+                                                   {3.0f, 3.0f, 3.0f, 3.0f}});
+
+  Literal empty_arg = LiteralUtil::CreateR1<float>({});
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       Execute(std::move(*ParseAndReturnVerifiedModule(hlo)),
+                               {&empty_arg}, /*run_hlo_passes=*/false));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_F(DynamicSliceFusionV2Test, TupleOutputNoDUS) {
   const char* hlo = R"(
     HloModule test, is_scheduled=true
@@ -713,9 +770,9 @@ TEST_F(DynamicSliceFusionV2Test, TupleOutputNoDUS) {
     %dsf_computation {
       %p0 = f32[4] parameter(0)
       %call = (f32[4], f32[4]) custom-call(%p0),
-        custom_call_target="__xla_test$$memset_scale12",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 1.0 : f32, scale1 = 2.0 : f32}"
+        backend_config="{scales = array<f32: 1.0, 2.0>}"
       %gte0 = f32[4] get-tuple-element(%call), index=0
       %gte1 = f32[4] get-tuple-element(%call), index=1
       ROOT %tuple = (f32[4], f32[4]) tuple(%gte0, %gte1)
@@ -779,9 +836,9 @@ TEST_F(DynamicSliceFusionV2Test, AsyncTupleOutputOneDUS) {
       %p1 = s32[] parameter(1)
       %p2 = s32[] parameter(2)
       %call = (f32[4], f32[4]) custom-call(%p0),
-        custom_call_target="__xla_test$$memset_scale12",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 1.0 : f32, scale1 = 2.0 : f32}"
+        backend_config="{scales = array<f32: 1.0, 2.0>}"
       %gte0 = f32[4] get-tuple-element(%call), index=0
       %bc0 = f32[1,4] bitcast(%gte0)
       %dus0 = f32[4,4]
@@ -863,9 +920,9 @@ TEST_F(DynamicSliceFusionV2Test, OffsetCheckWrongStride) {
       %p1 = s32[] parameter(1)
       %p2 = s32[] parameter(2)
       %fill = f32[4] custom-call(%p0),
-        custom_call_target="__xla_test$$memset_scale1",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 1.0 : f32}"
+        backend_config="{scales = array<f32: 1.0>}"
       %fill_2d = f32[1,4] bitcast(%fill)
       ROOT %dus = f32[4,4]
         dynamic-update-slice(%p0, %fill_2d, %p1, %p2),
@@ -923,9 +980,9 @@ TEST_F(DynamicSliceFusionV2Test, NestedTupleOutputTwoDUS) {
       %p2 = s32[] parameter(2)
       %p3 = s32[] parameter(3)
       %call = (f32[4], f32[4]) custom-call(%p0),
-        custom_call_target="__xla_test$$memset_scale12",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 1.0 : f32, scale1 = 2.0 : f32}"
+        backend_config="{scales = array<f32: 1.0, 2.0>}"
       %gte0 = f32[4] get-tuple-element(%call), index=0
       %gte1 = f32[4] get-tuple-element(%call), index=1
       %bc0 = f32[1,4] bitcast(%gte0)
@@ -1015,9 +1072,9 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDSOneDUS) {
           {"loop_index":0,"byte_offset":0,"byte_stride":16}}
       %ds_flat = f32[4] bitcast(%ds)
       %hero = f32[4] custom-call(%ds_flat),
-        custom_call_target="__xla_test$$memset_scale1",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 3.0 : f32}"
+        backend_config="{scales = array<f32: 3.0>}"
       %hero_2d = f32[1,4] bitcast(%hero)
       ROOT %dus = f32[4,4]
         dynamic-update-slice(%p1, %hero_2d, %p2, %zero),
@@ -1086,9 +1143,9 @@ TEST_F(DynamicSliceFusionV2Test, CombinedDSInputTupleOutputTwoDUS) {
           {"loop_index":0,"byte_offset":0,"byte_stride":16}}
       %ds_flat = f32[4] bitcast(%ds)
       %call = (f32[4], f32[4]) custom-call(%ds_flat),
-        custom_call_target="__xla_test$$memset_scale12",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 3.0 : f32, scale1 = 5.0 : f32}"
+        backend_config="{scales = array<f32: 3.0, 5.0>}"
       %gte0 = f32[4] get-tuple-element(%call), index=0
       %gte1 = f32[4] get-tuple-element(%call), index=1
       %bc0 = f32[1,4] bitcast(%gte0)
@@ -1178,9 +1235,9 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDSNoDUS) {
           {"loop_index":0,"byte_offset":0,"byte_stride":16}}
       %ds_flat = f32[4] bitcast(%ds)
       ROOT %hero = f32[4] custom-call(%ds_flat),
-        custom_call_target="__xla_test$$memset_scale1",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 1.0 : f32}"
+        backend_config="{scales = array<f32: 1.0>}"
     }
 
     body {
@@ -1247,9 +1304,9 @@ TEST_F(DynamicSliceFusionV2Test, NestedTupleDSInputTwoDUS) {
           {"loop_index":0,"byte_offset":0,"byte_stride":16}}
       %ds_flat = f32[4] bitcast(%ds)
       %call = (f32[4], f32[4]) custom-call(%ds_flat),
-        custom_call_target="__xla_test$$memset_scale12",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 3.0 : f32, scale1 = 5.0 : f32}"
+        backend_config="{scales = array<f32: 3.0, 5.0>}"
       %gte0 = f32[4] get-tuple-element(%call), index=0
       %gte1 = f32[4] get-tuple-element(%call), index=1
       %bc0 = f32[1,4] bitcast(%gte0)
@@ -1379,9 +1436,9 @@ TEST_F(DynamicSliceFusionV2Test, OobClampingAccumulatesInLastSlice) {
       %p1 = s32[] parameter(1)
       %p2 = s32[] parameter(2)
       %fill = f32[4] custom-call(%p0),
-        custom_call_target="__xla_test$$memset_scale1",
+        custom_call_target="__xla_test$$scaled_memset",
         api_version=API_VERSION_TYPED_FFI,
-        backend_config="{scale0 = 1.0 : f32}"
+        backend_config="{scales = array<f32: 1.0>}"
       %fill_2d = f32[1,4] bitcast(%fill)
       ROOT %dus = f32[4,4]
         dynamic-update-slice(%p0, %fill_2d, %p1, %p2),
