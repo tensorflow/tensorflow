@@ -131,10 +131,14 @@ class PrepareOnlyDetectionPostprocessOpModel : public SingleOpModel {
   PrepareOnlyDetectionPostprocessOpModel(int max_detections,
                                          int max_classes_per_detection,
                                          float scale = 10.0,
-                                         int num_class_predictions = 2) {
-    input1_ = AddInput({TensorType_FLOAT32, {1, 1, 4}});
-    input2_ = AddInput({TensorType_FLOAT32, {1, 1, num_class_predictions}});
-    input3_ = AddInput({TensorType_FLOAT32, {1, 4}});
+                                         int num_class_predictions = 2,
+                                         int num_boxes = 1, int num_anchors = 1,
+                                         int num_class_boxes = 1,
+                                         int detections_per_class = 100) {
+    input1_ = AddInput({TensorType_FLOAT32, {1, num_boxes, 4}});
+    input2_ =
+        AddInput({TensorType_FLOAT32, {1, num_class_boxes, num_class_predictions}});
+    input3_ = AddInput({TensorType_FLOAT32, {num_anchors, 4}});
     AddOutput({TensorType_FLOAT32, {}});
     AddOutput({TensorType_FLOAT32, {}});
     AddOutput({TensorType_FLOAT32, {}});
@@ -144,6 +148,7 @@ class PrepareOnlyDetectionPostprocessOpModel : public SingleOpModel {
     fbb.Map([&]() {
       fbb.Int("max_detections", max_detections);
       fbb.Int("max_classes_per_detection", max_classes_per_detection);
+      fbb.Int("detections_per_class", detections_per_class);
       fbb.Float("nms_score_threshold", 0.0);
       fbb.Float("nms_iou_threshold", 0.5);
       fbb.Int("num_classes", 1);
@@ -212,6 +217,51 @@ TEST(DetectionPostprocessOpTest, RejectsZeroClassDimension) {
                                            /*max_classes_per_detection=*/1,
                                            /*scale=*/10.0,
                                            /*num_class_predictions=*/0);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// A zero max_detections collapses num_detections_per_class to zero, which the
+// regular NMS path rejects during Eval, so Prepare() rejects it up front.
+TEST(DetectionPostprocessOpTest, RejectsZeroMaxDetections) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/0,
+                                           /*max_classes_per_detection=*/1);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// A negative detections_per_class otherwise only fails later in the regular NMS
+// path, so Prepare() rejects it early.
+TEST(DetectionPostprocessOpTest, RejectsNegativeDetectionsPerClass) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
+                                           /*max_classes_per_detection=*/1,
+                                           /*scale=*/10.0,
+                                           /*num_class_predictions=*/2,
+                                           /*num_boxes=*/1, /*num_anchors=*/1,
+                                           /*num_class_boxes=*/1,
+                                           /*detections_per_class=*/-1);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// Fewer anchors than box encodings would read past the anchors buffer while
+// decoding, so Prepare() must reject the mismatch.
+TEST(DetectionPostprocessOpTest, RejectsAnchorCountMismatch) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
+                                           /*max_classes_per_detection=*/1,
+                                           /*scale=*/10.0,
+                                           /*num_class_predictions=*/2,
+                                           /*num_boxes=*/2, /*num_anchors=*/1,
+                                           /*num_class_boxes=*/2);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// Fewer class prediction rows than box encodings would read past the scores
+// buffer, so Prepare() must reject the mismatch.
+TEST(DetectionPostprocessOpTest, RejectsClassPredictionCountMismatch) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
+                                           /*max_classes_per_detection=*/1,
+                                           /*scale=*/10.0,
+                                           /*num_class_predictions=*/2,
+                                           /*num_boxes=*/2, /*num_anchors=*/2,
+                                           /*num_class_boxes=*/1);
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
