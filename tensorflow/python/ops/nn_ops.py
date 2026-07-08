@@ -167,6 +167,7 @@ API docstring: tensorflow.nn
 
 import functools
 import numbers
+import warnings
 
 import numpy as np
 
@@ -3693,12 +3694,24 @@ def leaky_relu(features, alpha=0.2, name=None):
   with ops.name_scope(name, "LeakyRelu", [features, alpha]) as name:
     features = ops.convert_to_tensor(features, name="features")
     if features.dtype.is_integer:
-      features = math_ops.cast(features, dtypes.float32)
+    if not tensor_util.is_tf_type(alpha):
+      if alpha < 0:
+        raise ValueError(
+            f"alpha must be non-negative, got {alpha}")
+      elif alpha == 0.0:
+        warnings.warn(
+            "alpha is set to 0.0. For alpha=0, leaky_relu behaves as"
+            " identity. Consider using a positive alpha value instead.")
     if isinstance(alpha, np.ndarray):
-    if alpha < 0:
-      raise ValueError(
-          f'alpha must be >= 0, got {alpha}')
       alpha = alpha.item()
+    if tensor_util.is_tf_type(alpha):
+      with ops.control_dependencies(
+          [check_ops.assert_non_negative(
+              alpha,
+              message=f"alpha must be non-negative, got: {alpha}"
+          )]):
+        alpha = array_ops.identity(alpha)
+    return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
     return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
 
 
