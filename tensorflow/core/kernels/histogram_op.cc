@@ -22,10 +22,18 @@ limitations under the License.
 #include <cmath>
 #include <limits>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -61,6 +69,11 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
         static_cast<double>(value_range(0)) / static_cast<double>(nbins);
     if (!std::isfinite(step)) {
       return absl::InvalidArgumentError("Step is not finite");
+    }
+    if (step <= 0.0) {
+      return absl::InvalidArgumentError(
+          "Step size in histogram computation must be positive. Check if "
+          "value_range is too narrow or suffers from precision loss.");
     }
     const double nbins_minus_1 = static_cast<double>(nbins - 1);
 

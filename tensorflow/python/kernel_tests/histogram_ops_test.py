@@ -17,10 +17,10 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
-from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import histogram_ops
 from tensorflow.python.platform import test
@@ -205,6 +205,20 @@ class HistogramFixedWidthTest(test.TestCase):
     )
     self.assertAllEqual(hist, [1, 1])
 
+  def test_invalid_step(self):
+    # This will trigger step <= 0 because casting to double loses precision.
+    # 2**53 and 2**53 + 1 both map to 9007199254740992.0 when cast to double,
+    # so step is 0.0.
+    value_range = [2**53, 2**53 + 1]
+    values = [2**53]
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        "Step size in histogram computation must be positive",
+    ):
+      self.evaluate(
+          histogram_ops.histogram_fixed_width(values, value_range, nbins=2)
+      )
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   test.main()
