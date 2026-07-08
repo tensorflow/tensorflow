@@ -21,6 +21,7 @@ limitations under the License.
 # pylint: disable=missing-function-docstring
 # pylint: disable=missing-class-docstring
 # pylint: disable=protected-access
+# pylint: disable=too-many-function-args
 # pylint: disable=invalid-unary-operand-type
 from __future__ import absolute_import
 from __future__ import division
