@@ -279,7 +279,8 @@ class GpuExecutable : public Executable {
       se::ExecutableAbiVersion executable_abi_version,
       std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
       BufferAssignmentProto buffer_assignment_proto,
-      std::string buffer_allocations_debug_summary);
+      std::string buffer_allocations_debug_summary,
+      bool collective_use_minimal_resource);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -405,6 +406,8 @@ class GpuExecutable : public Executable {
   // OOMs, includes the Hlo op metadata for every buffer associated with each
   // allocation.
   std::string buffer_allocations_debug_summary_;
+
+  const bool collective_use_minimal_resource_;
 };
 
 absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

@@ -426,6 +426,14 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
   auto executor =
       std::make_unique<ThunkExecutor>(std::move(seq_thunk->thunks()));
 
+  // Precompute if collectives should use minimal resource once, as it can be
+  // expensive because it requires whole HLO module traversal.
+  bool collective_use_minimal_resource = false;
+  if (params.debug_module != nullptr) {
+    ASSIGN_OR_RETURN(collective_use_minimal_resource,
+                     ShouldCollectiveUseMinimalResource(*params.debug_module));
+  }
+
   return std::unique_ptr<GpuExecutable>(new GpuExecutable(
       std::move(params.debug_module), std::move(params.binary),
       std::move(params.dnn_compiled_graphs),
@@ -438,7 +446,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(thunk_sequence_proto), std::move(params.executable_abi_version),
       std::move(params.cpu_target_machine_options),
       std::move(params.buffer_assignment_proto),
-      std::move(params.buffer_allocations_debug_summary)));
+      std::move(params.buffer_allocations_debug_summary),
+      collective_use_minimal_resource));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -457,7 +466,8 @@ GpuExecutable::GpuExecutable(
     se::ExecutableAbiVersion executable_abi_version,
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
     BufferAssignmentProto buffer_assignment_proto,
-    std::string buffer_allocations_debug_summary)
+    std::string buffer_allocations_debug_summary,
+    bool collective_use_minimal_resource)
     : Executable(std::move(debug_module)),
       binary_(std::move(binary)),
       dnn_compiled_graphs_(std::move(dnn_compiled_graphs)),
@@ -483,7 +493,8 @@ GpuExecutable::GpuExecutable(
       executable_abi_version_(std::move(executable_abi_version)),
       cpu_target_machine_options_(std::move(cpu_target_machine_options)),
       buffer_allocations_debug_summary_(
-          std::move(buffer_allocations_debug_summary)) {
+          std::move(buffer_allocations_debug_summary)),
+      collective_use_minimal_resource_(collective_use_minimal_resource) {
   if (gpu_version_.IsRocm()) {
     // ROCm uses hsaco hashes to distinguish between modules.
     // Bad things happen if multiple modules with identical code are loaded.
@@ -1289,18 +1300,12 @@ absl::Status GpuExecutable::ExecuteThunks(
       "ExecuteThunks: command_buffer_persistent_allocation_indexes.size()=%d",
       buffer_allocator_->command_buffer_allocation_count());
 
-  bool collective_use_minimal_resource = false;
-  if (has_module()) {
-    ASSIGN_OR_RETURN(collective_use_minimal_resource,
-                     ShouldCollectiveUseMinimalResource(module()));
-  }
-  RETURN_IF_ERROR(ExecuteThunksImpl(
+  return ExecuteThunksImpl(
       has_module() ? &module_config().debug_options() : nullptr, module_name_,
       unique_id, *thunk_executor_, executable_source, run_options,
       buffer_allocations, block_host_until_done, persistent_alloc_indices,
       num_additional_streams_, collective_memory_cache_,
-      collective_use_minimal_resource));
-  return absl::OkStatus();
+      collective_use_minimal_resource_);
 }
 
 int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
