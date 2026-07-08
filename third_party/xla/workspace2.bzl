@@ -143,10 +143,10 @@ def _tf_toolchains():
     cc_download_clang_toolchain(name = "local_config_download_clang")
     tensorrt_configure(name = "local_config_tensorrt")
     python_configure(name = "local_config_python")
-    hipcc_configure(name = "config_rocm_hipcc")  # Must be before rocm_configure.
-    rocm_configure(
-        name = "local_config_rocm",
-        rocm_dist = "@config_rocm_hipcc//rocm:rocm_dist",
+    rocm_configure(name = "local_config_rocm")
+    hipcc_configure(
+        name = "config_rocm_hipcc",
+        rocm_dist = "@local_config_rocm//rocm:toolchain_data",
     )
 
     local_clang_configure(name = "local_config_clang")
