@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/core/collectives/registered_memory.h"
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -66,7 +67,7 @@ static constexpr GlobalDeviceId kD3(3);
 
 TEST(GpuCollectivesTest, CreateWithMultipleIds) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -85,7 +86,7 @@ TEST(GpuCollectivesTest, CreateWithMultipleIds) {
 
 TEST(GpuCollectivesTest, SplitCommunicators) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -109,7 +110,7 @@ TEST(GpuCollectivesTest, SplitCommunicators) {
 
 TEST(GpuCollectivesTest, GroupLaunchMultipleCommunicators) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 4) {
     GTEST_SKIP() << "Test requires at least 4 GPUs";
@@ -201,7 +202,7 @@ TEST(GpuCollectivesTest, GroupLaunchMultipleCommunicators) {
 
 TEST(GpuCollectivesTest, CreateSymmetricMemory) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -238,7 +239,7 @@ TEST(GpuCollectivesTest, CreateSymmetricMemory) {
 
 TEST(GpuCollectivesTest, CreateRegisteredMemory) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -269,7 +270,7 @@ TEST(GpuCollectivesTest, CreateRegisteredMemory) {
 
 TEST(GpuCollectivesTest, CreateSymmetricMemoryOnDifferentComms) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 4) {
     GTEST_SKIP() << "Test requires at least 4 GPUs";
@@ -314,7 +315,7 @@ TEST(GpuCollectivesTest, CreateSymmetricMemoryOnDifferentComms) {
 
 TEST(GpuCollectivesTest, CreateDeviceComm) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -370,7 +371,7 @@ TEST_P(GpuAbortCollectivesTest, Abort) {
   bool blocking = GetParam();
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -417,7 +418,7 @@ INSTANTIATE_TEST_SUITE_P(GpuAbortCollectives, GpuAbortCollectivesTest,
 
 TEST(GpuCollectivesTest, PutAndWaitSignal) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -428,10 +429,8 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
   if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
     GTEST_SKIP() << "Test requires peer access between devices";
   }
-  if (!executors[0]
-           ->GetDeviceDescription()
-           .cuda_compute_capability()
-           .IsAtLeastHopper()) {
+  if (auto cc = executors[0]->GetDeviceDescription().gpu_compute_capability();
+      cc.IsCuda() && !cc.cuda_compute_capability()->IsAtLeastHopper()) {
     GTEST_SKIP() << "Test requires at least Hopper architecture";
   }
 
@@ -515,7 +514,7 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
 // with the clique communicator that runs on the same device.
 TEST(GpuCollectivesTest, AllocatorMemoryRegistrationRegistersWithClique) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
