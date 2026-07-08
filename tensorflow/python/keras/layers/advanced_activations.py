@@ -16,6 +16,8 @@
 # pylint: disable=g-classes-have-attributes
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_util
+
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
@@ -206,7 +208,7 @@ class ELU(Layer):
     if alpha is None:
       raise ValueError('Alpha of an ELU layer cannot be None, '
                        'requires a float. Got %s' % alpha)
-    if alpha < 0:
+    if not tensor_util.is_tf_type(alpha) and alpha < 0:
       raise ValueError('The alpha value of an ELU layer '
                        'should be >= 0, got %s' % alpha)
     self.supports_masking = True
