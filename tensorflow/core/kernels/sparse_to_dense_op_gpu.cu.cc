@@ -170,7 +170,6 @@ void LaunchSparseToDense<T, Index>::operator()(
     VLOG(1) << "SparseToDense will be performed on GPUs. For performance "
                "reasons, it is suggested to pass False to validate_indices.";
 
-    auto valid_status = std::make_shared<IndicesValidStatus>();
     int valid_status_size = sizeof(IndicesValidStatus) / sizeof(int);
     int valid_status_bytes = sizeof(IndicesValidStatus);
 
@@ -181,30 +180,47 @@ void LaunchSparseToDense<T, Index>::operator()(
                          &valid_status_tensor),
         done);
 
+    Tensor valid_status_host_tensor;
+    AllocatorAttributes alloc_attr;
+    alloc_attr.set_on_host(true);
+    alloc_attr.set_gpu_compatible(true);
+    OP_REQUIRES_OK_ASYNC(
+        c,
+        c->allocate_temp(DT_INT32, TensorShape({valid_status_size}),
+                         &valid_status_host_tensor, alloc_attr),
+        done);
+
     auto status_ptr = valid_status_tensor.template flat<int>().data();
     stream_executor::DeviceAddressBase valid_status_ptr(status_ptr,
                                                         valid_status_bytes);
 
     GpuLaunchConfig config = GetGpuLaunchConfig(num_elems, d);
-    OP_REQUIRES_OK(
-        c, stream->Memset32(&valid_status_ptr, INT_MAX, valid_status_bytes));
+    OP_REQUIRES_OK_ASYNC(
+        c, stream->Memset32(&valid_status_ptr, INT_MAX, valid_status_bytes),
+        done);
     OP_REQUIRES_OK_ASYNC(
         c,
         GpuLaunchKernel(CheckIndicesValid<Index>, config.block_count,
                         config.thread_per_block, 0, d.stream(), indices_ptr,
                         num_elems, shape_ptr, num_dims, status_ptr),
         done);
-    OP_REQUIRES_OK(c, stream->Memcpy(reinterpret_cast<int*>(valid_status.get()),
-                                     valid_status_ptr, valid_status_bytes));
+
+    auto status_host_ptr = valid_status_host_tensor.template flat<int>().data();
+    OP_REQUIRES_OK_ASYNC(
+        c,
+        stream->Memcpy(status_host_ptr, valid_status_ptr, valid_status_bytes),
+        done);
 
     // We capture 'shape' instead of 'shape_ptr' since this lambda outlives
     // the 'shape' tensor.
-    // We also capture 'valid_status_tensor' (device memory) by value to keep it
-    // alive while the GPU is asynchronously executing kernels and memcpy.
-    auto check_status_and_compute = [op, c, valid_status, valid_status_tensor,
-                                     dense_size, default_value, indices_ptr,
-                                     values_ptr, num_elems, num_values, shape,
-                                     num_dims, dense_ptr, done]() {
+    // We also capture 'valid_status_tensor' (device memory) and
+    // 'valid_status_host_tensor' (host memory) by value to keep them alive
+    // while the GPU is asynchronously executing kernels and memcpy.
+    auto check_status_and_compute = [op, c, valid_status_host_tensor,
+                                     valid_status_tensor, dense_size,
+                                     default_value, indices_ptr, values_ptr,
+                                     num_elems, num_values, shape, num_dims,
+                                     dense_ptr, done]() {
       {
         // Ensure that within the callback, the proper GPU settings are
         // configured.
@@ -212,24 +228,30 @@ void LaunchSparseToDense<T, Index>::operator()(
         std::unique_ptr<se::ActivateContext> scoped_activation =
             stream->parent()->Activate();
 
+        auto status_host_ptr =
+            valid_status_host_tensor.template flat<int>().data();
+        int valid_status_valid = status_host_ptr[0];
+        int valid_status_increasing = status_host_ptr[1];
+        int valid_status_different = status_host_ptr[2];
+
         OP_REQUIRES_ASYNC(
-            c, valid_status->valid == INT_MAX,
+            c, valid_status_valid == INT_MAX,
             absl::InvalidArgumentError(absl::StrCat(
-                "indices[", valid_status->valid, "] is out of bounds.")),
+                "indices[", valid_status_valid, "] is out of bounds.")),
             done);
 
-        OP_REQUIRES_ASYNC(c, valid_status->increasing == INT_MAX,
+        OP_REQUIRES_ASYNC(c, valid_status_increasing == INT_MAX,
                           absl::InvalidArgumentError(absl::StrCat(
-                              "indices[", valid_status->increasing,
+                              "indices[", valid_status_increasing,
                               "] is out of "
                               "order. Many sparse ops require sorted indices.\n"
                               "  Use `tf.sparse.reorder` to create a correctly "
                               "ordered copy.\n\n")),
                           done);
 
-        OP_REQUIRES_ASYNC(c, valid_status->different == INT_MAX,
+        OP_REQUIRES_ASYNC(c, valid_status_different == INT_MAX,
                           absl::InvalidArgumentError(
-                              absl::StrCat("indices[", valid_status->different,
+                              absl::StrCat("indices[", valid_status_different,
                                            "] is "
                                            "repeated.")),
                           done);
@@ -270,5 +292,6 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
 TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_SPEC);
 DEFINE_GPU_SPEC(bool);
 
+// Pinned host memory fix.
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

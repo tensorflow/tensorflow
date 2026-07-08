@@ -13,26 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <functional>
+#include <cstdint>
+#include <fstream>
+#include <iterator>
+#include <memory>
+#include <string>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/version.h"
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda_runtime.h"
+#endif
 
 namespace tensorflow {
 
@@ -196,6 +205,81 @@ TEST_F(SparseToDenseTest, ThreeD_MultValues) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(SparseToDenseTest, GPU_InvalidIndices) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  SetDevice(DEVICE_GPU,
+            std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(
+                "GPU", {}, "/job:a/replica:0/task:0")));
+
+  // Test 1: Index out of bounds
+  {
+    MakeOp(1, DT_INT32, DT_FLOAT);
+    // sparse_indices (6 is out of bounds for shape 5)
+    AddInputFromArray<int32_t>(TensorShape({3}), {1, 6, 4});
+    // output_shape
+    AddInputFromArray<int32_t>(TensorShape({1}), {5});
+    // sparse_values
+    AddInputFromArray<float>(TensorShape({}), {2});
+    // default_value
+    AddInputFromArray<float>(TensorShape({}), {-2});
+
+    absl::Status status = RunOpKernel();
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("out of bounds"), std::string::npos);
+  }
+
+  // Test 2: Indices not sorted (out of order)
+  {
+    MakeOp(1, DT_INT32, DT_FLOAT);
+    // sparse_indices (4 then 2 is out of order)
+    AddInputFromArray<int32_t>(TensorShape({3}), {1, 4, 2});
+    // output_shape
+    AddInputFromArray<int32_t>(TensorShape({1}), {5});
+    // sparse_values
+    AddInputFromArray<float>(TensorShape({}), {2});
+    // default_value
+    AddInputFromArray<float>(TensorShape({}), {-2});
+
+    absl::Status status = RunOpKernel();
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("out of order"), std::string::npos);
+  }
+
+  // Test 3: Repeated indices
+  {
+    MakeOp(1, DT_INT32, DT_FLOAT);
+    // sparse_indices (2 is repeated)
+    AddInputFromArray<int32_t>(TensorShape({3}), {1, 2, 2});
+    // output_shape
+    AddInputFromArray<int32_t>(TensorShape({1}), {5});
+    // sparse_values
+    AddInputFromArray<float>(TensorShape({}), {2});
+    // default_value
+    AddInputFromArray<float>(TensorShape({}), {-2});
+
+    absl::Status status = RunOpKernel();
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("repeated"), std::string::npos);
+  }
+#endif
+}
+
+TEST(SparseToDenseFixTest, SourceCheck) {
+  std::ifstream file(
+      "third_party/tensorflow/core/kernels/sparse_to_dense_op_gpu.cu.cc");
+  ASSERT_TRUE(file.is_open())
+      << "Failed to open source file "
+         "third_party/tensorflow/core/kernels/sparse_to_dense_op_gpu.cu.cc!";
+  std::string content((std::istreambuf_iterator<char>(file)),
+                      std::istreambuf_iterator<char>());
+  EXPECT_NE(content.find("valid_status_host_tensor"), std::string::npos)
+      << "The UAF/pinned memory validation fix (valid_status_host_tensor) "
+         "was not found in the GPU source file!";
+}
+
 }  // namespace
 
 static void BM_SparseToDense(::testing::benchmark::State& state) {
@@ -253,7 +337,7 @@ static void BM_SparseToDense(::testing::benchmark::State& state) {
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> sparse_context(new OpKernelContext(&params));
+  auto sparse_context = std::make_unique<OpKernelContext>(&params);
   op->Compute(sparse_context.get());
   for (auto s : state) {
     delete sparse_context->release_output(0).tensor;
@@ -284,4 +368,5 @@ BENCHMARK(BM_SparseToDense)
     ->ArgPair(5, 1000)
     ->ArgPair(5, 10000);
 
+// Trigger Copybara export.
 }  // namespace tensorflow
