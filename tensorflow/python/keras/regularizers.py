@@ -37,7 +37,7 @@ def _check_penalty_number(x):
         ).format(x)
     )
 
-  if x < 0:
+  if not tensor_util.is_tf_type(x) and x < 0:
     raise ValueError(
         ('Value: {} is not a valid regularization penalty number, '
          'expected a non-negative value').format(x)
