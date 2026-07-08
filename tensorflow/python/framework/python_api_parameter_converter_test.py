@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.python.framework.python_api_parameter_converter."""
+"""Tests for verifying Python API parameter conversion logic in TensorFlow C++ backend."""
 
 from absl.testing import parameterized
 
@@ -183,12 +183,29 @@ class PythonAPIWrapperTest(test_util.TensorFlowTestCase,
     self.assertIsInstance(params[2], float)
 
   @parameterized.named_parameters([
-      ("StringFromInt", "string", 5, "Foo argument x: Failed to convert value "
-       "of type 'int' to type 'string'."),
-      ("IntFromNone", "int", None, "Foo argument x: Failed to convert value "
-       "of type 'NoneType' to type 'int'."),
-      ("BoolFromInt", "bool", 0,
-       "Foo argument x: Failed to convert value of type 'int' to type 'bool'."),
+      (
+          "StringFromInt",
+          "string",
+          5,
+          "Foo argument x: Failed to convert value "
+          + "of type 'int' to type 'string'.",
+      ),
+      (
+          "IntFromNone",
+          "int",
+          None,
+          "Foo argument x: Failed to convert value "
+          + "of type 'NoneType' to type 'int'.",
+      ),
+      (
+          "BoolFromInt",
+          "bool",
+          0,
+          (
+              "Foo argument x: Failed to convert value of type 'int' to type"
+              " 'bool'."
+          ),
+      ),
   ])
   def testConvertAttributeError(self, attr_type, attr_val, message):
     api_info = self.makeApiInfoFromParamSpecs("Foo", ["x"], {},
@@ -476,6 +493,37 @@ class PythonAPIWrapperTest(test_util.TensorFlowTestCase,
     param_values = inputs()
     with self.assertRaisesRegex(exception, message):
       Convert(api_info, tensor_converter, param_values)
+
+  def testConvertTuple(self):
+    api_info = self.makeApiInfoFromParamSpecs(
+        "TestFunc", ["x"], {}, {"x": "int"}
+    )
+    tensor_converter = self.makeTensorConverter()
+    # If a tuple is passed, it should convert safely without mutating the tuple.
+    params = (5.0,)
+    Convert(api_info, tensor_converter, params)
+    # The original tuple is not mutated:
+    self.assertEqual(params, (5.0,))
+
+  def testConvertTooFewParameters(self):
+    api_info = self.makeApiInfoFromParamSpecs(
+        "TestFunc", ["x", "y"], {}, {"x": "int", "y": "int"}
+    )
+    tensor_converter = self.makeTensorConverter()
+    # List is smaller than max parameter index (which expects >= 2 elements).
+    with self.assertRaisesRegex(
+        ValueError, "Parameters list size is smaller than expected"
+    ):
+      Convert(api_info, tensor_converter, [5.0])
+
+  def testConvertNonSequence(self):
+    api_info = self.makeApiInfoFromParamSpecs(
+        "TestFunc", ["x"], {}, {"x": "int"}
+    )
+    tensor_converter = self.makeTensorConverter()
+    # Non-iterable passed: should raise TypeError or similar, but NOT crash.
+    with self.assertRaises(TypeError):
+      Convert(api_info, tensor_converter, 123)
 
 
 if __name__ == "__main__":
