@@ -34,5 +34,6 @@ message ExecuteOptionsProto {
   ExecutionModeProto execution_mode = 6;
   repeated int32 non_donatable_input_indices = 7;
   int64 seed = 9;
-  // NEXT ID: 10
+  bool use_output_arena = 10;
+  // NEXT ID: 11
 }

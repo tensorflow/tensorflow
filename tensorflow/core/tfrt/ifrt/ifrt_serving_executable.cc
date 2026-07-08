@@ -63,12 +63,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/layout.h"
-#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -81,7 +79,6 @@ limitations under the License.
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/service/computation_placer.h"
@@ -367,7 +364,8 @@ IfrtServingExecutable::Create(
         compilation_env_or_overrides,
     TfToHloCompiler* tf_to_hlo_compiler,
     IfrtPersistentCompilationCache* persistent_compilation_cache,
-    H2DTransferExecutorFactory* h2d_transfer_executor_factory) {
+    H2DTransferExecutorFactory* h2d_transfer_executor_factory,
+    bool use_output_arena) {
   if (h2d_transfer_executor_factory == nullptr) {
     return absl::InvalidArgumentError("H2DTransferExecutorFactory is null.");
   }
@@ -393,7 +391,8 @@ IfrtServingExecutable::Create(
       ifrt_serving_core_selector, std::move(original_compile_metadata),
       std::move(device_list), std::move(static_shape_arg_map),
       compilation_env_or_overrides, tf_to_hlo_compiler,
-      persistent_compilation_cache, h2d_transfer_executor_factory));
+      persistent_compilation_cache, h2d_transfer_executor_factory,
+      use_output_arena));
 
   return executable;
 }
@@ -1220,7 +1219,7 @@ IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
       [&]() -> absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult> {
         tsl::profiler::TraceMe traceme("Execute");
         return executable_bundle->ifrt_executable->Execute(
-            absl::MakeSpan(transfer_result), /*options=*/{.fill_status = true},
+            absl::MakeSpan(transfer_result), execute_options_,
             std::move(execution_device_list));
       }());
 

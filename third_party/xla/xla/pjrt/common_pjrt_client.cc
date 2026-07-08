@@ -47,6 +47,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "llvm/Support/MathExtras.h"
 #include "xla/error/error_codes.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
@@ -981,7 +982,8 @@ CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
     const Shape& output_device_shape,
     absl::Span<const CommonPjRtBuffer::ScopedHold> input_device_buffer_holds,
     const HloInputOutputAliasConfig& alias_config, PjRtDevice* device,
-    absl::Span<const int> output_memory_space_kind_ids) {
+    absl::Span<const int> output_memory_space_kind_ids,
+    const ExecuteOptions& options) {
   tsl::profiler::TraceMe traceme("AllocateOutputBuffersWithInputReuse");
   VLOG(1) << "Creating an output buffer, which may be partially donated, with "
              "shape "
@@ -1000,7 +1002,7 @@ CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
     return output_device_shape.IsTuple() ? alias_config.GetAliasedParameter({i})
                                          : alias_config.GetAliasedParameter({});
   };
-  buffers.reserve(output_leaf_shapes.size());
+  buffers.resize(output_leaf_shapes.size());
 
   auto should_allocate_new_buffer =
       [&](std::optional<HloInputOutputAliasConfig::Alias> alias) -> bool {
@@ -1026,7 +1028,17 @@ CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
         input_device_buffer_holds[parameter_index].buffer()->raw_buffer();
     return buffer && !buffer->is_mutable();
   };
-  std::vector<size_t> output_buffer_sizes;
+
+  struct PendingAllocation {
+    int output_index;
+    const Shape* shape;
+    int64_t size_bytes;
+  };
+
+  absl::flat_hash_map<PjRtMemorySpace*, std::vector<PendingAllocation>>
+      pending_allocations;
+  int64_t total_allocated_bytes = 0;
+
   for (int i = 0; i < output_leaf_shapes.size(); ++i) {
     std::optional<HloInputOutputAliasConfig::Alias> alias = get_alias(i);
     if (should_allocate_new_buffer(alias)) {
@@ -1051,10 +1063,19 @@ CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
       }
       ASSIGN_OR_RETURN(int64_t on_device_bytes,
                        GetOnDeviceBytesCount(memory_space, leaf_shape));
-      ASSIGN_OR_RETURN(auto raw_buffer, AllocateRawBufferForExecute(
-                                            memory_space, on_device_bytes,
-                                            /*retry_on_oom=*/false));
-      buffers.push_back(std::move(raw_buffer));
+
+      total_allocated_bytes += on_device_bytes;
+
+      if (!options.use_output_arena) {
+        ASSIGN_OR_RETURN(auto raw_buffer, AllocateRawBufferForExecute(
+                                              memory_space, on_device_bytes,
+                                              /*retry_on_oom=*/false));
+        buffers[i] = std::move(raw_buffer);
+      } else {
+        // If arena allocation is requested, we defer the allocation.
+        pending_allocations[memory_space].push_back(
+            {i, &leaf_shape, on_device_bytes});
+      }
     } else {
       // a tuple output element alias to input. There are 3 supported cases.
       // Case 1: alias a non-tuple input.
@@ -1084,18 +1105,48 @@ CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
       }
       const CommonPjRtBuffer::ScopedHold& input_hold =
           input_device_buffer_holds[parameter_number];
-      buffers.push_back(input_hold.buffer()->raw_buffer());
+      buffers[i] = input_hold.buffer()->raw_buffer();
+    }
+  }
+
+  // If pending_allocations is not empty, these allocations should be done in
+  // an arena.
+  for (const auto& [memory_space, allocs] : pending_allocations) {
+    tsl::profiler::TraceMe trace_arena("Arena Allocation");
+    ASSIGN_OR_RETURN(size_t alignment, GetDeviceAddressAlignment());
+    std::vector<PjRtRawBufferInterface::SliceInfo> slices(allocs.size());
+    int64_t total_arena_size_in_bytes = 0;
+    for (int i = 0; i < allocs.size(); ++i) {
+      PjRtRawBufferInterface::SliceInfo slice;
+      slice.offset = total_arena_size_in_bytes;
+      slice.size = allocs[i].size_bytes;
+      slices[i] = std::move(slice);
+      total_arena_size_in_bytes += allocs[i].size_bytes;
+
+      // Make each sub buffer aligned.
+      total_arena_size_in_bytes =
+          llvm::alignTo(total_arena_size_in_bytes, alignment);
+    }
+
+    ASSIGN_OR_RETURN(
+        PjRtRawBufferRef arena_buffer,
+        AllocateRawBufferForExecute(memory_space, total_arena_size_in_bytes,
+                                    /*retry_on_oom=*/false));
+
+    tsl::profiler::TraceMe trace_arena_slicing("Arena Slicing");
+    ASSIGN_OR_RETURN(std::vector<PjRtRawBufferRef> sliced_buffers,
+                     arena_buffer->MultiSlice(slices));
+
+    for (int i = 0; i < allocs.size(); ++i) {
+      buffers[allocs[i].output_index] = std::move(sliced_buffers[i]);
     }
   }
 
   if (VLOG_IS_ON(1)) {
-    int64_t total_size = 0;
-    for (const auto size : output_buffer_sizes) {
-      total_size += size;
-    }
     LOG(INFO)
         << "Total size of new output buffers allocated in this execution: "
-        << total_size;
+        << total_allocated_bytes
+        << (options.use_output_arena ? " (using arena)" : "");
   }
   return std::move(buffers);
 }
@@ -1541,7 +1592,7 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
                      client()->AllocateOutputBuffersWithInputReuse(
                          *output_device_shape_, launch_args.device_buffers,
                          input_output_alias_config(), device,
-                         output_memory_space_kind_ids_));
+                         output_memory_space_kind_ids_, options));
     VLOG(3) << "Created output buffer: " << output_device_shape_->ToString();
 
     RETURN_IF_ERROR(CheckBufferCompatibilities(

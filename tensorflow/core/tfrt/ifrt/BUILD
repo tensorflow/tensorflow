@@ -162,7 +162,6 @@ cc_library(
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/ir:hlo",
         "@xla//xla/hlo/translate:stablehlo",
-        "@xla//xla/pjrt:common_pjrt_client",
         "@xla//xla/pjrt:host_callback",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_compiler",
