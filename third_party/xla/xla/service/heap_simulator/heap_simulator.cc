@@ -756,6 +756,8 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Alloc(
       buffer, BufferInterval{buffer, size, current_time_, -1, {}, true});
   CHECK(emplace_result.second);
   ++current_time_;
+  // The set of buffers changed; invalidate the transitive-colocation memo.
+  transitive_colocations_cache_.clear();
 }
 
 template <typename BufferType>
@@ -772,12 +774,28 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::ShareWith(
       buffer, BufferInterval{buffer, size, current_time_, -1, {}, false});
   CHECK(emplace_result.second);
   ++current_time_;
+  // The colocation graph changed; invalidate the transitive-colocation memo.
+  transitive_colocations_cache_.clear();
 }
 
 template <typename BufferType>
 absl::flat_hash_set<const BufferType*>
 GlobalDecreasingSizeBestFitHeap<BufferType>::GetTransitiveColocations(
     const BufferInterval& interval) const {
+  // This is called O(candidates) times per buffer during the placement search
+  // (via MakeFreeChunks and GetMaxColocationSize, each per prefetch candidate),
+  // always with the same colocation set for that buffer, so memoize the walk.
+  // The result depends on interval.colocations (the starting set), NOT just
+  // interval.buffer: the same buffer is also queried with different inline
+  // intervals during commit, so a cached entry is only valid when its stored
+  // colocations snapshot matches the passed interval.colocations. See the cache
+  // member comment. Decision-preserving: the returned set is identical to the
+  // recomputation.
+  auto cache_it = transitive_colocations_cache_.find(interval.buffer);
+  if (cache_it != transitive_colocations_cache_.end() &&
+      cache_it->second.first == interval.colocations) {
+    return cache_it->second.second;
+  }
   absl::flat_hash_set<const BufferType*> result;
   std::vector<const BufferInterval*> worklist = {&interval};
   while (!worklist.empty()) {
@@ -790,6 +808,8 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GetTransitiveColocations(
     }
   }
 
+  transitive_colocations_cache_[interval.buffer] = {interval.colocations,
+                                                    result};
   return result;
 }
 
@@ -829,46 +849,155 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Free(const BufferType* buffer,
 
 using Chunk = HeapSimulator::Chunk;
 
+namespace {
+// Total order on nodes: (start, end, chunk.offset) lexicographically. Used as
+// the treap's BST key. Making it total (rather than keying on `start` alone)
+// keeps duplicate-start intervals unambiguous so Remove always finds the exact
+// node after rotations. `start` is the primary key, so all overlap-query
+// pruning (which only reasons about `start` and `subtree_end`) is unaffected.
+bool BufferIntervalTreeNodeKeyLess(int64_t a_start, int64_t a_end,
+                                   int64_t a_offset, int64_t b_start,
+                                   int64_t b_end, int64_t b_offset) {
+  if (a_start != b_start) return a_start < b_start;
+  if (a_end != b_end) return a_end < b_end;
+  return a_offset < b_offset;
+}
+
+// Deterministic treap priority from the node key, so the tree shape (and thus
+// compilation) is reproducible. Tree shape does not affect query results.
+uint64_t BufferIntervalTreeNodePriority(int64_t start, int64_t end,
+                                        int64_t offset) {
+  uint64_t p = static_cast<uint64_t>(start) * 0x9E3779B97F4A7C15ull;
+  p ^= (static_cast<uint64_t>(end) + 0x9E3779B9ull) * 0xC2B2AE3D27D4EB4Full;
+  p ^= (static_cast<uint64_t>(offset) + 0x85EBCA6Bull) * 0x165667B19E3779F9ull;
+  p ^= p >> 31;
+  p *= 0xD6E8FEB86659FD93ull;
+  p ^= p >> 32;
+  return p;
+}
+}  // namespace
+
+void BufferIntervalTree::RecomputeSubtreeEnd(BufferIntervalTreeNode* node) {
+  node->subtree_end = node->end;
+  if (node->left != nullptr) {
+    node->subtree_end = std::max(node->subtree_end, node->left->subtree_end);
+  }
+  if (node->right != nullptr) {
+    node->subtree_end = std::max(node->subtree_end, node->right->subtree_end);
+  }
+}
+
+// Left rotation: x's right child y moves up to x's position; x becomes y's left
+// child. Preserves BST order; recomputes subtree_end for the rotated pair
+// (x first, since it moves down and becomes y's child).
+void BufferIntervalTree::RotateLeft(BufferIntervalTreeNode* x) {
+  BufferIntervalTreeNode* y = x->right;
+  x->right = y->left;
+  if (y->left != nullptr) {
+    y->left->parent = x;
+  }
+  y->parent = x->parent;
+  if (x->parent == nullptr) {
+    root_ = y;
+  } else if (x == x->parent->left) {
+    x->parent->left = y;
+  } else {
+    x->parent->right = y;
+  }
+  y->left = x;
+  x->parent = y;
+  RecomputeSubtreeEnd(x);
+  RecomputeSubtreeEnd(y);
+}
+
+// Right rotation: mirror of RotateLeft.
+void BufferIntervalTree::RotateRight(BufferIntervalTreeNode* x) {
+  BufferIntervalTreeNode* y = x->left;
+  x->left = y->right;
+  if (y->right != nullptr) {
+    y->right->parent = x;
+  }
+  y->parent = x->parent;
+  if (x->parent == nullptr) {
+    root_ = y;
+  } else if (x == x->parent->left) {
+    x->parent->left = y;
+  } else {
+    x->parent->right = y;
+  }
+  y->right = x;
+  x->parent = y;
+  RecomputeSubtreeEnd(x);
+  RecomputeSubtreeEnd(y);
+}
+
 void BufferIntervalTree::Add(int64_t start, int64_t end, const Chunk& chunk) {
+  ++version_;
+  const uint64_t priority =
+      BufferIntervalTreeNodePriority(start, end, chunk.offset);
   node_storage_.emplace_back(BufferIntervalTreeNode{
       start, end, end, chunk,
-      /*left=*/nullptr, /*right=*/nullptr, /*parent=*/nullptr});
+      /*left=*/nullptr, /*right=*/nullptr, /*parent=*/nullptr, priority});
+  BufferIntervalTreeNode* node = &node_storage_.back();
   if (root_ == nullptr) {
-    root_ = &node_storage_.back();
-    // This is root.
+    root_ = node;
     return;
   }
 
+  // BST insert keyed by (start, end, offset).
   BufferIntervalTreeNode* parent = root_;
   while (true) {
-    parent->subtree_end = std::max(parent->subtree_end, end);
-    if (parent->start > start) {
+    if (BufferIntervalTreeNodeKeyLess(start, end, chunk.offset, parent->start,
+                                      parent->end, parent->chunk.offset)) {
       if (parent->left == nullptr) {
-        parent->left = &node_storage_.back();
-        node_storage_.back().parent = parent;
-        return;
+        parent->left = node;
+        node->parent = parent;
+        break;
       }
       parent = parent->left;
     } else {
       if (parent->right == nullptr) {
-        parent->right = &node_storage_.back();
-        node_storage_.back().parent = parent;
-        return;
+        parent->right = node;
+        node->parent = parent;
+        break;
       }
       parent = parent->right;
+    }
+  }
+
+  // Propagate the new leaf's end up the ancestor chain (subtree_end is monotone
+  // up the tree, so stop once an ancestor already covers `end`).
+  for (BufferIntervalTreeNode* a = parent; a != nullptr; a = a->parent) {
+    if (a->subtree_end >= end) {
+      break;
+    }
+    a->subtree_end = end;
+  }
+
+  // Bubble up to restore the max heap on priority. Each rotation recomputes
+  // subtree_end for the rotated pair; a rotation preserves the multiset of
+  // nodes in that subtree, so ancestors above keep a correct subtree_end.
+  while (node->parent != nullptr && node->parent->priority < node->priority) {
+    if (node == node->parent->left) {
+      RotateRight(node->parent);
+    } else {
+      RotateLeft(node->parent);
     }
   }
 }
 
 bool BufferIntervalTree::Remove(int64_t start, int64_t end,
                                 const Chunk& chunk) {
+  // Find the node by the total (start, end, offset) key.
   BufferIntervalTreeNode* to_delete = root_;
   while (to_delete != nullptr) {
     if (to_delete->start == start && to_delete->end == end &&
         to_delete->chunk.offset == chunk.offset) {
       break;
     }
-    if (start < to_delete->start) {
+    if (BufferIntervalTreeNodeKeyLess(start, end, chunk.offset,
+                                      to_delete->start, to_delete->end,
+                                      to_delete->chunk.offset)) {
       to_delete = to_delete->left;
     } else {
       to_delete = to_delete->right;
@@ -878,111 +1007,38 @@ bool BufferIntervalTree::Remove(int64_t start, int64_t end,
     // Nothing to delete.
     return false;
   }
-  // Found the node to be deleted, enter deletion sequence.
+  ++version_;
 
-  // Recursively traverse the parents of node and fix up the `subtree_end`
-  // invariant of a node. Recursive lambda need an explicit
-  // std::function declaration.
-  std::function<void(BufferIntervalTreeNode*)> fix_up =
-      [&](BufferIntervalTreeNode* node) {
-        if (node == nullptr) {
-          return;
-        }
-        node->subtree_end = node->end;
-        if (node->left) {
-          node->subtree_end =
-              std::max(node->subtree_end, node->left->subtree_end);
-        }
-        if (node->right) {
-          node->subtree_end =
-              std::max(node->subtree_end, node->right->subtree_end);
-        }
-        // Recursively go up.
-        fix_up(node->parent);
-      };
-
-  if (to_delete->right == nullptr) {
-    // to_delete has no right child, simply move up left child of to_delete if
-    // any.
-    //
-    // Turn:
-    //      parent
-    //       /
-    // to_delete
-    //  /      \
-    // left    nullptr
-    //
-    // Into:
-    //      parent
-    //      /
-    //    left
-    if (root_ == to_delete) {
-      // Deleting root is simply resetting root;
-      root_ = to_delete->left;
-      return true;
-    }
-
-    if (to_delete == to_delete->parent->left) {
-      // to_delete is left child of parent.
-      to_delete->parent->left = to_delete->left;
-    }
-    if (to_delete == to_delete->parent->right) {
-      // to_delete is right child of parent.
-      to_delete->parent->right = to_delete->left;
-    }
-    // Rewire parent to the node being moved up.
-    if (to_delete->left) {
-      to_delete->left->parent = to_delete->parent;
-    }
-    // Fix up starting from subroot.
-    fix_up(to_delete);
-  } else {
-    // 1. Find left-most node of the right subtree, promote it to the position
-    // of to_delete.
-    BufferIntervalTreeNode* to_promote = to_delete->right;
-    while (to_promote->left != nullptr) {
-      // Go to left-most subtree.
-      to_promote = to_promote->left;
-    }
-
-    // 2. Copy the content of `to_promote` to `to_delete`.
-    to_delete->start = to_promote->start;
-    to_delete->end = to_promote->end;
-    // This is incorrect but we will fix this up later in the `fix_up`
-    // procedure.
-    to_delete->subtree_end = to_promote->subtree_end;
-    to_delete->chunk = to_promote->chunk;
-    auto to_promote_parent = to_promote->parent;
-    // 3. Move the right child of `to_promote` up if there is any.
-    //
-    // Turn
-    //
-    // to_delete
-    //         \
-    //        to_promote_parent
-    //         /
-    //    to_promote
-    //          \
-    //          right
-    // into
-    //
-    // to_promote
-    //         \
-    //         to_promote_parent
-    //         /
-    //      right
-    if (to_promote_parent->left == to_promote) {
-      to_promote_parent->left = to_promote->right;
+  // Treap delete: rotate `to_delete` down until it is a leaf, always bringing
+  // up the higher-priority child so the remaining tree keeps the max heap
+  // property (and stays balanced). Each rotation recomputes subtree_end for the
+  // rotated pair.
+  while (to_delete->left != nullptr || to_delete->right != nullptr) {
+    if (to_delete->left == nullptr) {
+      RotateLeft(to_delete);
+    } else if (to_delete->right == nullptr) {
+      RotateRight(to_delete);
+    } else if (to_delete->left->priority > to_delete->right->priority) {
+      RotateRight(to_delete);
     } else {
-      to_promote_parent->right = to_promote->right;
+      RotateLeft(to_delete);
     }
-    if (to_promote->right) {
-      // Set correct parent.
-      to_promote->right->parent = to_promote_parent;
+  }
+
+  // `to_delete` is now a leaf. Detach it and fix subtree_end up to the root.
+  BufferIntervalTreeNode* parent = to_delete->parent;
+  if (parent == nullptr) {
+    root_ = nullptr;
+  } else {
+    if (parent->left == to_delete) {
+      parent->left = nullptr;
+    } else {
+      parent->right = nullptr;
     }
-    // 4. Recursive fix up the `subtree_end` starting from
-    // `to_promote_parent`.
-    fix_up(to_promote_parent);
+    to_delete->parent = nullptr;
+    for (BufferIntervalTreeNode* a = parent; a != nullptr; a = a->parent) {
+      RecomputeSubtreeEnd(a);
+    }
   }
   // Don't free the entry in node_storage_ until we free the entire tree.
   return true;
@@ -1160,6 +1216,7 @@ int64_t BufferIntervalTree::HeapSizeInInterval(const int64_t start,
 }
 
 void BufferIntervalTree::Clear() {
+  ++version_;
   root_ = nullptr;
   node_storage_.clear();
 }
@@ -1775,11 +1832,45 @@ class ComposedSliceTimePermutationIterator
   std::unique_ptr<SliceTimePermutationIterator> base_iterator_;
 };
 
+// A trivial iterator that yields exactly one permutation, {0}, for an unsliced
+// allocation (num_slices == 1). This is the overwhelmingly common case, and it
+// is called once per FindChunkCandidates(), which itself runs many times per
+// prefetch search. The general ComposedSliceTimePermutationIterator allocates a
+// hash set (ObservedPermutationManager) plus several vectors on every
+// construction; for a single slice all of that machinery deterministically
+// produces the single permutation {0}. Short circuiting it here is a pure
+// compile time speedup and is decision preserving: for a new allocation the
+// validator is unconditionally valid (original_slices == nullptr), the single
+// permutation is emitted exactly once, and the dedup set is never exercised, so
+// the emitted permutation sequence is byte identical to the general path.
+class SingleSliceTimePermutationIterator : public SliceTimePermutationIterator {
+ public:
+  SingleSliceTimePermutationIterator() : permutation_(1, 0) {}
+  ~SingleSliceTimePermutationIterator() override = default;
+
+  void Begin() override { done_ = false; }
+  bool Done() const override { return done_; }
+  void Next() override { done_ = true; }
+  absl::Span<const int64_t> Get() const override { return permutation_; }
+
+ private:
+  bool done_ = true;
+  std::vector<int64_t> permutation_;
+};
+
 }  // namespace
 
 std::unique_ptr<SliceTimePermutationIterator>
 SliceTimePermutationIterator::CreateForNewAllocation(
     Ty ty, absl::Span<const int64_t> inclusive_slice_start_times) {
+  // Fast path for the common unsliced case: a single slice has exactly one
+  // valid permutation ({0}), so avoid constructing the general iterator (which
+  // heap allocates a hash set and vectors on every call). Decision preserving:
+  // the general path also emits exactly {0} once for a new single slice
+  // allocation. See SingleSliceTimePermutationIterator.
+  if (inclusive_slice_start_times.size() == 1) {
+    return std::make_unique<SingleSliceTimePermutationIterator>();
+  }
   switch (ty) {
     case Ty::kAll:
       return std::make_unique<ComposedSliceTimePermutationIterator>(
@@ -2484,41 +2575,160 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
 }
 
 template <typename BufferType>
-typename GlobalDecreasingSizeBestFitHeap<BufferType>::FreeChunks
-GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
+void GlobalDecreasingSizeBestFitHeap<BufferType>::BeginFreeChunksSnapshotScope(
+    int64_t start, int64_t end) const {
+  DCHECK(!free_chunks_snapshot_scope_active_);
+  free_chunks_snapshot_scope_active_ = true;
+  free_chunks_snapshot_scope_start_ = start;
+  free_chunks_snapshot_scope_end_ = end;
+  // Keep a previously built snapshot if it still covers this scope's window
+  // and the interval tree has not changed: consecutive explorations often
+  // probe nearly identical windows with no intervening commit, and a
+  // snapshot built for a larger window stays exact for any query inside it
+  // (the per query filter tests actual overlap).
+  if (free_chunks_snapshot_valid_ &&
+      free_chunks_snapshot_tree_version_ == interval_tree_.version() &&
+      free_chunks_snapshot_built_start_ <= start &&
+      end <= free_chunks_snapshot_built_end_) {
+    return;
+  }
+  free_chunks_snapshot_valid_ = false;
+}
+
+template <typename BufferType>
+void GlobalDecreasingSizeBestFitHeap<BufferType>::EndFreeChunksSnapshotScope()
+    const {
+  free_chunks_snapshot_scope_active_ = false;
+  // Deliberately keep the snapshot itself (and its validity): the next scope
+  // reuses it if the tree is unchanged and its window is covered.
+}
+
+template <typename BufferType>
+void GlobalDecreasingSizeBestFitHeap<
+    BufferType>::RefreshFreeChunksSnapshotIfNeeded() const {
+  if (free_chunks_snapshot_valid_ &&
+      free_chunks_snapshot_tree_version_ == interval_tree_.version()) {
+    return;
+  }
+  free_chunks_snapshot_.clear();
+  interval_tree_.ApplyToNodesOverlappingInTime(
+      free_chunks_snapshot_scope_start_, free_chunks_snapshot_scope_end_,
+      [&](const BufferIntervalTreeNode* node) {
+        free_chunks_snapshot_.push_back(
+            FreeChunksSnapshotEntry{node->start, node->end, node->chunk});
+      });
+  // Sort by chunk offset so that a per query filter pass yields an offset
+  // sorted used chunk list without sorting per query. Ties are ordered
+  // deterministically; the downstream merge is insensitive to tie order.
+  absl::c_sort(free_chunks_snapshot_, [](const FreeChunksSnapshotEntry& a,
+                                         const FreeChunksSnapshotEntry& b) {
+    return std::tie(a.chunk.offset, a.chunk.size, a.start, a.end) <
+           std::tie(b.chunk.offset, b.chunk.size, b.start, b.end);
+  });
+  free_chunks_snapshot_valid_ = true;
+  free_chunks_snapshot_tree_version_ = interval_tree_.version();
+  free_chunks_snapshot_built_start_ = free_chunks_snapshot_scope_start_;
+  free_chunks_snapshot_built_end_ = free_chunks_snapshot_scope_end_;
+}
+
+template <typename BufferType>
+const std::vector<std::pair<int64_t, int64_t>>&
+GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunksList(
     const BufferInterval& buffer_interval, int64_t max_colocation_size) const {
   used_chunks_.clear();
 
-  // Collect chunks that are in use.
-  interval_tree_.ApplyToNodesOverlappingInTime(
-      buffer_interval.start, buffer_interval.end,
-      [&](const BufferIntervalTreeNode* node) {
-        used_chunks_.push_back(node->chunk);
-      });
-
-  for (const BufferType* colocation :
-       GetTransitiveColocations(buffer_interval)) {
-    const BufferInterval& interval = buffer_intervals_.at(colocation);
-    VLOG(1) << "  Alias size " << interval.size << ", start " << interval.start
-            << ", end " << interval.end << " " << interval.buffer->ToString();
+  // When a snapshot scope is active and this query's window lies inside the
+  // scope window (and there are no colocations to account for), collect the
+  // used chunks from the offset sorted snapshot instead of walking the
+  // interval tree and sorting. The collected multiset is identical to the
+  // direct computation: a chunk overlaps the query window if and only if it
+  // overlaps it as a member of the snapshot, and every chunk overlapping the
+  // query window also overlaps the enclosing scope window, so it is present
+  // in the snapshot.
+  // Only wide queries (at least half the scope window) use the snapshot: a
+  // snapshot build costs a tree walk plus a sort over every chunk
+  // overlapping the scope window, which a few narrow queries never amortize.
+  // Narrow queries (for example the fail fast latest time fit checks) stay
+  // on the direct tree path, whose cost tracks the query window's own
+  // overlap. Wide queries, the loop spanning prefetch probes the scope
+  // exists for, share one build.
+  const bool use_snapshot =
+      free_chunks_snapshot_scope_active_ &&
+      buffer_interval.colocations.empty() &&
+      free_chunks_snapshot_scope_start_ <= buffer_interval.start &&
+      buffer_interval.end <= free_chunks_snapshot_scope_end_ &&
+      (buffer_interval.end - buffer_interval.start) * 2 >=
+          (free_chunks_snapshot_scope_end_ - free_chunks_snapshot_scope_start_);
+  if (use_snapshot) {
+    RefreshFreeChunksSnapshotIfNeeded();
+    for (const FreeChunksSnapshotEntry& entry : free_chunks_snapshot_) {
+      if (entry.start <= buffer_interval.end &&
+          entry.end >= buffer_interval.start) {
+        used_chunks_.push_back(entry.chunk);
+      }
+    }
+#ifndef NDEBUG
+    // Debug cross check: the snapshot path must collect exactly the chunks
+    // the direct interval tree query would collect (as a multiset; the merge
+    // below is insensitive to the order of equal offsets).
+    std::vector<Chunk> direct_chunks;
     interval_tree_.ApplyToNodesOverlappingInTime(
-        interval.start, interval.end, [&](const BufferIntervalTreeNode* node) {
+        buffer_interval.start, buffer_interval.end,
+        [&](const BufferIntervalTreeNode* node) {
+          direct_chunks.push_back(node->chunk);
+        });
+    auto chunk_key_less = [](const Chunk& a, const Chunk& b) {
+      return std::tie(a.offset, a.size) < std::tie(b.offset, b.size);
+    };
+    std::sort(direct_chunks.begin(), direct_chunks.end(), chunk_key_less);
+    std::vector<Chunk> snapshot_chunks = used_chunks_;
+    std::sort(snapshot_chunks.begin(), snapshot_chunks.end(), chunk_key_less);
+    DCHECK(snapshot_chunks.size() == direct_chunks.size() &&
+           std::equal(snapshot_chunks.begin(), snapshot_chunks.end(),
+                      direct_chunks.begin(),
+                      [](const Chunk& a, const Chunk& b) {
+                        return a.offset == b.offset && a.size == b.size;
+                      }))
+        << "Free chunks snapshot diverged from the direct interval tree "
+           "query for interval "
+        << buffer_interval.ToString();
+#endif
+  } else {
+    // Collect chunks that are in use.
+    interval_tree_.ApplyToNodesOverlappingInTime(
+        buffer_interval.start, buffer_interval.end,
+        [&](const BufferIntervalTreeNode* node) {
           used_chunks_.push_back(node->chunk);
         });
+
+    for (const BufferType* colocation :
+         GetTransitiveColocations(buffer_interval)) {
+      const BufferInterval& interval = buffer_intervals_.at(colocation);
+      VLOG(1) << "  Alias size " << interval.size << ", start "
+              << interval.start << ", end " << interval.end << " "
+              << interval.buffer->ToString();
+      interval_tree_.ApplyToNodesOverlappingInTime(
+          interval.start, interval.end,
+          [&](const BufferIntervalTreeNode* node) {
+            used_chunks_.push_back(node->chunk);
+          });
+    }
+
+    // Sort used chunks by offset ascending.
+    std::sort(
+        used_chunks_.begin(), used_chunks_.end(),
+        [](const Chunk& a, const Chunk& b) { return a.offset < b.offset; });
   }
 
+  free_chunks_list_.clear();
   if (used_chunks_.empty()) {
-    return FreeChunks({{0, INT64_MAX}});
+    free_chunks_list_.push_back({0, INT64_MAX});
+    return free_chunks_list_;
   }
-
-  // Sort used chunks by offset ascending.
-  std::sort(used_chunks_.begin(), used_chunks_.end(),
-            [](const Chunk& a, const Chunk& b) { return a.offset < b.offset; });
 
   // Merge overlapping used chunks and build free chunks in a single pass.
   // Track the start of the current free space candidate.
   int64_t current_free_chunk_start = 0;
-  free_chunks_list_.clear();
 
   {
     const absl::Span<const Chunk> used_chunks = used_chunks_;
@@ -2550,7 +2760,16 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
 
   free_chunks_list_.push_back({current_free_chunk_start, INT64_MAX});
 
-  return FreeChunks(free_chunks_list_.rbegin(), free_chunks_list_.rend());
+  return free_chunks_list_;
+}
+
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::FreeChunks
+GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
+    const BufferInterval& buffer_interval, int64_t max_colocation_size) const {
+  const std::vector<std::pair<int64_t, int64_t>>& free_chunks_list =
+      MakeFreeChunksList(buffer_interval, max_colocation_size);
+  return FreeChunks(free_chunks_list.rbegin(), free_chunks_list.rend());
 }
 
 template <typename BufferType>
@@ -2590,6 +2809,10 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
 
   int64_t max_colocation_size =
       GetMaxColocationSize(sliced_buffer_interval.full_buffer_interval());
+  if (sliced_buffer_interval.num_slices() == 1) {
+    return FindUnslicedChunkCandidates(sliced_buffer_interval,
+                                       max_colocation_size, preferred_offset);
+  }
   auto chunks =
       CreateSlicedAllocationFinder(
           sliced_buffer_interval, max_colocation_size, preferred_offset,
@@ -2599,6 +2822,105 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
           .Find();
   return PostProcessFindChunkCandidatesResult(sliced_buffer_interval,
                                               std::move(chunks));
+}
+
+template <typename BufferType>
+std::vector<typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk>
+GlobalDecreasingSizeBestFitHeap<BufferType>::FindUnslicedChunkCandidates(
+    const SlicedBufferInterval& sliced_buffer_interval,
+    int64_t max_colocation_size, int64_t preferred_offset) const {
+  // For a single slice, SlicedAllocationFinder::Find() reduces to:
+  //   1. If preferred_offset >= 0 and it is aligned, find the free chunk with
+  //      the largest start <= preferred_offset; if
+  //      [preferred_offset, preferred_offset + max_colocation_size) lies
+  //      inside it, place at preferred_offset.
+  //   2. Otherwise, among free chunks whose aligned start still fits
+  //      max_colocation_size before the chunk end, pick the one with the
+  //      smallest (size, start) and place at its aligned start.
+  // (Each root has a single piece for a single slice time, so FindInRoot only
+  // ever tries the first aligned offset, and the single permutation {0}
+  // always satisfies the piece time check.) Computing this directly from the
+  // merged free chunk list skips the FreeChunks map, the finder's root map,
+  // and its root heap, which are otherwise constructed per probe on the
+  // prefetch hot path. Decision preserving: the selection rule above is
+  // exactly the finder's for num_slices() == 1, and the last free chunk
+  // extends to INT64_MAX so a fit always exists.
+  const std::vector<std::pair<int64_t, int64_t>>& free_chunks =
+      MakeFreeChunksList(sliced_buffer_interval.IntervalForMakeFreeChunks(0),
+                         max_colocation_size);
+  CHECK(!free_chunks.empty());
+  const int64_t slice_size =
+      sliced_buffer_interval.SliceSizesSortedByOffset().front();
+  std::vector<Chunk> result;
+
+  auto compute_candidate = [&]() -> int64_t {
+    if (preferred_offset >= 0 && preferred_offset % alignment_ == 0) {
+      // Find the free chunk with the largest start <= preferred_offset.
+      auto it = std::upper_bound(
+          free_chunks.begin(), free_chunks.end(), preferred_offset,
+          [](int64_t offset, const std::pair<int64_t, int64_t>& free_chunk) {
+            return offset < free_chunk.first;
+          });
+      if (it != free_chunks.begin()) {
+        const std::pair<int64_t, int64_t>& free_chunk = *std::prev(it);
+        if (preferred_offset < free_chunk.second &&
+            free_chunk.second - max_colocation_size >= preferred_offset) {
+          return preferred_offset;
+        }
+      }
+    }
+    // Best fit: smallest (size, start) free chunk that fits
+    // max_colocation_size at its aligned start.
+    int64_t best_offset = -1;
+    int64_t best_size = std::numeric_limits<int64_t>::max();
+    for (const std::pair<int64_t, int64_t>& free_chunk : free_chunks) {
+      int64_t aligned_start = free_chunk.first;
+      if (aligned_start % alignment_ != 0) {
+        aligned_start += alignment_ - (aligned_start % alignment_);
+      }
+      if (free_chunk.second - max_colocation_size < aligned_start) {
+        continue;
+      }
+      int64_t size = free_chunk.second - free_chunk.first;
+      // Note: best_offset < 0 must be checked explicitly because the final
+      // free chunk extends to INT64_MAX, so its size can equal the best_size
+      // sentinel.
+      if (best_offset < 0 || size < best_size) {
+        best_size = size;
+        best_offset = aligned_start;
+      }
+    }
+    return best_offset;
+  };
+
+  int64_t candidate_offset = compute_candidate();
+  if (candidate_offset >= 0) {
+    result.push_back(Chunk::FromOffsetSize(candidate_offset, slice_size));
+  }
+
+#ifndef NDEBUG
+  // Debug cross check: the fast path must return exactly what the general
+  // finder path returns. (Run after the fast path because both share the
+  // MakeFreeChunks scratch buffers.)
+  std::vector<Chunk> general_chunks =
+      CreateSlicedAllocationFinder(
+          sliced_buffer_interval, max_colocation_size, preferred_offset,
+          SliceTimePermutationIterator::CreateForNewAllocation(
+              slice_time_permutation_iteration_type_,
+              sliced_buffer_interval.inclusive_start_times()))
+          .Find();
+  std::vector<Chunk> general_result = PostProcessFindChunkCandidatesResult(
+      sliced_buffer_interval, std::move(general_chunks));
+  DCHECK(result.size() == general_result.size() &&
+         (result.empty() || (result[0].offset == general_result[0].offset &&
+                             result[0].size == general_result[0].size)))
+      << "Unsliced chunk candidate fast path diverged from the general "
+         "finder: fast = "
+      << (result.empty() ? "{}" : result[0].ToString()) << ", general = "
+      << (general_result.empty() ? "{}" : general_result[0].ToString());
+#endif
+
+  return result;
 }
 
 template <typename BufferType>

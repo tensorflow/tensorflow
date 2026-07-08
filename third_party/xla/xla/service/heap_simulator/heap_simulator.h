@@ -354,6 +354,12 @@ struct BufferIntervalTreeNode {
   BufferIntervalTreeNode* right;
   // parent
   BufferIntervalTreeNode* parent;
+  // Treap heap priority. The tree is a BST keyed by (start, end, chunk.offset)
+  // and a max heap keyed by this priority, which keeps it balanced regardless
+  // of insertion order. Priority is a deterministic hash of the key, so the
+  // tree shape is reproducible. Tree shape does not affect query results
+  // (overlap queries return the same node set for any shape), only their cost.
+  uint64_t priority = 0;
 
   std::string ToString() const;
 };
@@ -441,14 +447,27 @@ class BufferIntervalTree {
 
   void Clear();
 
+  // Monotonically increasing counter, bumped on every mutation of the tree
+  // (Add, successful Remove, Clear). Callers that cache data derived from the
+  // tree can compare versions to detect staleness.
+  uint64_t version() const { return version_; }
+
  private:
   // The BufferIntervalTreeNode objects inside the result vector are guaranteed
   // to be non-null.
   std::vector<const BufferIntervalTreeNode*> NodesOverlappingInTime(
       int64_t start, int64_t end) const;
 
+  // Treap rebalancing helpers. Rotations preserve the BST-by-key ordering and
+  // recompute `subtree_end` for the two rotated nodes, so overlap queries are
+  // unchanged; they only keep the tree height O(log n).
+  static void RecomputeSubtreeEnd(BufferIntervalTreeNode* node);
+  void RotateLeft(BufferIntervalTreeNode* x);
+  void RotateRight(BufferIntervalTreeNode* x);
+
   BufferIntervalTreeNode* root_ = nullptr;
   std::list<BufferIntervalTreeNode> node_storage_;
+  uint64_t version_ = 0;
 };
 
 // An iterator that is passed to
@@ -925,6 +944,20 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   FreeChunks MakeFreeChunks(const BufferInterval& buffer_interval,
                             int64_t max_colocation_size) const;
 
+  // Scopes an acceleration of MakeFreeChunks to a placement exploration whose
+  // queries all fall within the time window [start, end]. While a scope is
+  // active, MakeFreeChunks queries whose interval lies inside the scope window
+  // (and that have no colocations) collect their used chunks from an offset
+  // sorted snapshot of the chunks overlapping the scope window, instead of
+  // walking the interval tree and sorting on every call. The snapshot is
+  // rebuilt automatically whenever the interval tree changes (tracked by its
+  // version counter), so results are always identical to the direct
+  // computation; this is purely a compile time optimization. Queries outside
+  // the scope window (or with colocations) fall back to the direct path.
+  // Scopes do not nest.
+  void BeginFreeChunksSnapshotScope(int64_t start, int64_t end) const;
+  void EndFreeChunksSnapshotScope() const;
+
   // Finds the latest value <= buffer_interval.end such that that no chunk
   // intersects [preferred_offset, preferred_offset + buffer_interval.size).
   int64_t FindLatestEndWithFreeChunkAtPreferredOffset(
@@ -1015,6 +1048,69 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // Temporary buffers used by MakeFreeChunks to avoid reallocating memory.
   mutable std::vector<Chunk> used_chunks_;
   mutable std::vector<std::pair<int64_t, int64_t>> free_chunks_list_;
+
+  // Computes the same free chunks as MakeFreeChunks, but returns them as the
+  // internal ascending-by-offset (start, end) vector (a reference to reused
+  // scratch storage, invalidated by the next call) instead of materializing
+  // the FreeChunks map. Used by the unsliced fast path in FindChunkCandidates
+  // to avoid per-query container construction.
+  const std::vector<std::pair<int64_t, int64_t>>& MakeFreeChunksList(
+      const BufferInterval& buffer_interval, int64_t max_colocation_size) const;
+
+  // Fast path of FindChunkCandidates for an unsliced (num_slices() == 1)
+  // interval: computes the best fit chunk directly from the merged free chunk
+  // list, skipping the FreeChunks map, the SlicedAllocationFinder root map,
+  // and its root heap. Returns exactly what FindChunkCandidates returns
+  // (already post processed). Selection matches SlicedAllocationFinder::Find()
+  // for a single slice exactly; see the implementation comment.
+  std::vector<Chunk> FindUnslicedChunkCandidates(
+      const SlicedBufferInterval& sliced_buffer_interval,
+      int64_t max_colocation_size, int64_t preferred_offset) const;
+
+  // State for BeginFreeChunksSnapshotScope / EndFreeChunksSnapshotScope. The
+  // snapshot holds every interval tree node overlapping the scope window,
+  // sorted by chunk offset, so that a MakeFreeChunks query inside the scope
+  // window can produce its offset sorted used chunk list with a single linear
+  // filter pass (no tree walk, no sort). The tree version stamp detects
+  // interval tree mutations and forces a lazy rebuild, which makes the
+  // snapshot correct even if chunks are committed or uncommitted while a
+  // scope is active.
+  struct FreeChunksSnapshotEntry {
+    int64_t start;
+    int64_t end;
+    Chunk chunk;
+  };
+  mutable bool free_chunks_snapshot_scope_active_ = false;
+  mutable int64_t free_chunks_snapshot_scope_start_ = 0;
+  mutable int64_t free_chunks_snapshot_scope_end_ = -1;
+  mutable bool free_chunks_snapshot_valid_ = false;
+  mutable uint64_t free_chunks_snapshot_tree_version_ = 0;
+  // The window the snapshot was actually built for. It can be larger than
+  // the active scope window (snapshots are kept across scopes and reused
+  // when they still cover the new scope and the tree is unchanged).
+  mutable int64_t free_chunks_snapshot_built_start_ = 0;
+  mutable int64_t free_chunks_snapshot_built_end_ = -1;
+  mutable std::vector<FreeChunksSnapshotEntry> free_chunks_snapshot_;
+
+  // Rebuilds the snapshot for the active scope if the interval tree has
+  // changed since the snapshot was last built (or if it was never built).
+  void RefreshFreeChunksSnapshotIfNeeded() const;
+
+  // Memoizes GetTransitiveColocations. Keyed by interval.buffer; the stored
+  // value is the (immediate colocations snapshot, transitive closure) it was
+  // computed from. A hit requires the passed interval.colocations to equal the
+  // stored snapshot, because the transitive closure depends on the interval's
+  // colocation set, not just its buffer: the same buffer is queried with the
+  // canonical entry during the placement search but with different inline
+  // intervals during commit (CommitChunkOnly/CommitChunkAndInterval), and those
+  // must not share a cache entry. Repeated search calls for one buffer use the
+  // same colocations, so they hit; commit calls recompute. Also cleared by
+  // Alloc/ShareWith so any colocation-graph change invalidates it. Pure
+  // compile-time speedup: returns exactly the same set the recomputation would.
+  mutable absl::flat_hash_map<
+      const BufferType*, std::pair<absl::InlinedVector<const BufferType*, 2>,
+                                   absl::flat_hash_set<const BufferType*>>>
+      transitive_colocations_cache_;
 
  protected:
   // Returns all transitive colocated buffers of this buffer interval. I.e., If

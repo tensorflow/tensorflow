@@ -36,6 +36,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -95,6 +96,7 @@ limitations under the License.
 
 namespace xla {
 namespace memory_space_assignment {
+
 namespace {
 
 HloPosition GetNonTrivialSourcePosition(HloPosition position) {
@@ -454,6 +456,118 @@ bool MsaAlgorithm::MatchesPrefetchContext(
                  .instruction->name() == producer_name &&
          context.request->allocation_value->defining_position().index ==
              producer_shape_index;
+}
+
+RangeAddMinMaxTree::RangeAddMinMaxTree(int64_t size)
+    : size_(size), nodes_(size > 0 ? 4 * size : 0) {}
+
+void RangeAddMinMaxTree::AddRange(int64_t start, int64_t end, int64_t delta) {
+  start = std::max<int64_t>(start, 0);
+  end = std::min<int64_t>(end, size_ - 1);
+  if (size_ == 0 || start > end || delta == 0) {
+    return;
+  }
+  AddRangeImpl(/*node=*/1, /*node_start=*/0, /*node_end=*/size_ - 1, start, end,
+               delta);
+}
+
+void RangeAddMinMaxTree::AddRangeImpl(int64_t node, int64_t node_start,
+                                      int64_t node_end, int64_t start,
+                                      int64_t end, int64_t delta) {
+  if (start <= node_start && node_end <= end) {
+    nodes_[node].pending += delta;
+    nodes_[node].min += delta;
+    nodes_[node].max += delta;
+    return;
+  }
+  int64_t mid = node_start + (node_end - node_start) / 2;
+  if (start <= mid) {
+    AddRangeImpl(2 * node, node_start, mid, start, std::min(end, mid), delta);
+  }
+  if (end > mid) {
+    AddRangeImpl(2 * node + 1, mid + 1, node_end, std::max(start, mid + 1), end,
+                 delta);
+  }
+  nodes_[node].min = std::min(nodes_[2 * node].min, nodes_[2 * node + 1].min) +
+                     nodes_[node].pending;
+  nodes_[node].max = std::max(nodes_[2 * node].max, nodes_[2 * node + 1].max) +
+                     nodes_[node].pending;
+}
+
+int64_t RangeAddMinMaxTree::At(int64_t index) const {
+  return MaxInRange(index, index);
+}
+
+int64_t RangeAddMinMaxTree::MaxInRange(int64_t start, int64_t end) const {
+  start = std::max<int64_t>(start, 0);
+  end = std::min<int64_t>(end, size_ - 1);
+  CHECK_LE(start, end);
+  return MaxImpl(/*node=*/1, /*node_start=*/0, /*node_end=*/size_ - 1, start,
+                 end);
+}
+
+int64_t RangeAddMinMaxTree::MaxImpl(int64_t node, int64_t node_start,
+                                    int64_t node_end, int64_t start,
+                                    int64_t end) const {
+  if (start <= node_start && node_end <= end) {
+    return nodes_[node].max;
+  }
+  int64_t mid = node_start + (node_end - node_start) / 2;
+  int64_t result = std::numeric_limits<int64_t>::min();
+  if (start <= mid) {
+    result = MaxImpl(2 * node, node_start, mid, start, std::min(end, mid));
+  }
+  if (end > mid) {
+    result = std::max(result, MaxImpl(2 * node + 1, mid + 1, node_end,
+                                      std::max(start, mid + 1), end));
+  }
+  return result + nodes_[node].pending;
+}
+
+int64_t RangeAddMinMaxTree::MinInRange(int64_t start, int64_t end) const {
+  start = std::max<int64_t>(start, 0);
+  end = std::min<int64_t>(end, size_ - 1);
+  CHECK_LE(start, end);
+  return MinImpl(/*node=*/1, /*node_start=*/0, /*node_end=*/size_ - 1, start,
+                 end);
+}
+
+int64_t RangeAddMinMaxTree::MinImpl(int64_t node, int64_t node_start,
+                                    int64_t node_end, int64_t start,
+                                    int64_t end) const {
+  if (start <= node_start && node_end <= end) {
+    return nodes_[node].min;
+  }
+  int64_t mid = node_start + (node_end - node_start) / 2;
+  int64_t result = std::numeric_limits<int64_t>::max();
+  if (start <= mid) {
+    result = MinImpl(2 * node, node_start, mid, start, std::min(end, mid));
+  }
+  if (end > mid) {
+    result = std::min(result, MinImpl(2 * node + 1, mid + 1, node_end,
+                                      std::max(start, mid + 1), end));
+  }
+  return result + nodes_[node].pending;
+}
+
+std::optional<int64_t> RangeAddMinMaxTree::RightmostIndexAbove(
+    int64_t start, int64_t end, int64_t threshold) const {
+  start = std::max<int64_t>(start, 0);
+  end = std::min<int64_t>(end, size_ - 1);
+  if (size_ == 0 || start > end || MaxInRange(start, end) <= threshold) {
+    return std::nullopt;
+  }
+  int64_t lo = start;
+  int64_t hi = end;
+  while (lo < hi) {
+    int64_t mid = lo + (hi - lo + 1) / 2;
+    if (MaxInRange(mid, end) > threshold) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return lo;
 }
 
 MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
@@ -2389,12 +2503,60 @@ std::optional<int64_t> MsaAlgorithm::EarliestBlockPrefetchStartTime(
   return std::nullopt;
 }
 
+// Returns the latest schedule time at which `view`'s underlying storage is
+// still read through it: the max schedule time over the transitive closure of
+// `view`'s readers, following users that are themselves colored `view_color`.
+// A bitcast of a view is recolored to the view color and is just another
+// window onto the same storage, not a real reader, so the walk must continue
+// through it to the eventual consumers; stopping one hop early would end the
+// source's reservation before those consumers read it.
+int64_t ViewExtendedTransitiveUseTime(
+    const HloInstruction* view, int64_t view_color,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_schedule) {
+  auto is_view_colored = [view_color](const HloInstruction* instruction) {
+    return instruction->shape().has_layout() &&
+           instruction->shape().layout().memory_space() == view_color;
+  };
+  int64_t use_time = -1;
+  absl::flat_hash_set<const HloInstruction*> visited = {view};
+  std::vector<const HloInstruction*> worklist = {view};
+  while (!worklist.empty()) {
+    const HloInstruction* current = worklist.back();
+    worklist.pop_back();
+    auto time_it = instruction_schedule.find(current);
+    if (time_it != instruction_schedule.end()) {
+      use_time = std::max(use_time, time_it->second);
+    }
+    for (const HloInstruction* user : current->users()) {
+      if (is_view_colored(user)) {
+        if (visited.insert(user).second) {
+          worklist.push_back(user);
+        }
+      } else {
+        auto user_time_it = instruction_schedule.find(user);
+        if (user_time_it != instruction_schedule.end()) {
+          use_time = std::max(use_time, user_time_it->second);
+        }
+      }
+    }
+  }
+  return use_time;
+}
+
 namespace {
 
+// Computes each value's [first_use_time, last_use_time] interval. When
+// `view_color` is set, a use by a view colored instruction extends the last
+// use time through the view's transitive readers (see
+// ViewExtendedTransitiveUseTime): the view carries no storage of its own, so
+// the value's buffer must stay reserved while any consumer still reads it
+// through the view.
 absl::flat_hash_map<const HloValue*, UseInterval> GetUseIntervals(
     const std::vector<const HloValue*>& values,
     const absl::flat_hash_map<const HloInstruction*, int64_t>&
-        instruction_schedule) {
+        instruction_schedule,
+    std::optional<int64_t> view_color) {
   absl::flat_hash_map<const HloValue*, UseInterval> value_to_use_intervals;
   for (const HloValue* value : values) {
     UseInterval& use_interval = value_to_use_intervals[value];
@@ -2407,8 +2569,16 @@ absl::flat_hash_map<const HloValue*, UseInterval> GetUseIntervals(
       }
       use_interval.first_use_time =
           std::min(use_interval.first_use_time, it->second);
+      int64_t last_use_time = it->second;
+      if (view_color.has_value() && use.instruction->shape().has_layout() &&
+          use.instruction->shape().layout().memory_space() == *view_color) {
+        last_use_time =
+            std::max(last_use_time,
+                     ViewExtendedTransitiveUseTime(use.instruction, *view_color,
+                                                   instruction_schedule));
+      }
       use_interval.last_use_time =
-          std::max(use_interval.last_use_time, it->second);
+          std::max(use_interval.last_use_time, last_use_time);
     }
     CHECK_NE(use_interval.last_use_time, -1);
   }
@@ -2502,9 +2672,14 @@ absl::Status MsaAlgorithm::AllocateAndScheduleExistingBlockPrefetches(
 
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
 
-  // Compute the live ranges for each block prefetched value.
+  // Compute the live ranges for each block prefetched value. When view
+  // sources stay in default memory their storage is permanent, so no
+  // extension is needed (mirrors GetViewExtendedUseTime).
   absl::flat_hash_map<const HloValue*, UseInterval> value_to_use_intervals =
-      GetUseIntervals(block_prefetched_values, instruction_schedule);
+      GetUseIntervals(block_prefetched_values, instruction_schedule,
+                      options_.view_source_default_memory_only
+                          ? std::nullopt
+                          : options_.dus_view_color);
 
   // Erase all the values from block_prefetched_values that have been finalized.
   block_prefetched_values.erase(
@@ -4431,11 +4606,14 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
     }
   }
 
-  // Extract all use times
+  // Extract all use times. Use the view-extended time so this list agrees with
+  // the chunk reservation end (request.end_time) computed in
+  // CreateAllocationRequest; otherwise a view-extended end_time would not be
+  // found in this list.
   std::vector<int64_t> all_use_times;
   for (const AllocationValue& allocation_value : allocation_values) {
     for (const auto& use : allocation_value.uses()) {
-      all_use_times.push_back(use.time);
+      all_use_times.push_back(GetViewExtendedUseTime(use.hlo_use));
     }
   }
   absl::c_sort(all_use_times);
@@ -4780,14 +4958,31 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     }
   }
 
-  int64_t use_time = instruction_schedule.at(hlo_use.instruction);
+  // For a view use this extends the reservation through the view's consumers
+  // (which read this value's storage through the view); for every other use it
+  // is the use instruction's schedule time. Bounds request.end_time below, and
+  // must match the all-use-times list (see GetViewExtendedUseTime).
+  int64_t use_time = GetViewExtendedUseTime(hlo_use);
   bool allow_no_copy_alternate_mem_allocation = true;
   bool allow_prefetch = true;
   bool prefer_no_copy_alternate_mem_allocation = false;
   // TODO(b/318886791):  Rename boundary variables (here and other places)
   // like `latest_prefetch_time` and `earliest_prefetch_time` indicate
   // whether they are exclusive or inclusive boundaries.
-  int64_t latest_prefetch_time = use_time;
+  //
+  // The prefetch deadline is the use instruction's own schedule time, not the
+  // view extended use_time: a copy inserted for this use becomes an operand
+  // of the use instruction, so the final schedule always places the copy
+  // done before the use instruction itself. With the view extended deadline,
+  // the prefetch picker could choose a window entirely after the view's own
+  // time; the committed chunk interval would then cover a window the copy
+  // does not actually occupy, and miss the window it does occupy, silently
+  // overlapping buffers that are live at the view's actual time (a real
+  // double booking caught by VerifyAndExportHeapSimulatorTrace). The
+  // reservation itself (request.end_time = use_time) still spans the view's
+  // consumers.
+  int64_t latest_prefetch_time =
+      std::min(use_time, instruction_schedule.at(hlo_use.instruction));
 
   // Control flow  calls include kWhile, kCall, and kConditional opcodes.
   bool is_sequential_call =
@@ -4804,11 +4999,27 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     use_time = GetCorrectedUseTime(hlo_use);
   }
 
+  // When view sources are kept in default memory, a use through a view (the use
+  // instruction is itself view-colored) forces its source value into default
+  // memory. This keeps the source out of the alternate-memory placement search
+  // over its view-extended live range (the cause of the superlinear blowup),
+  // while the view still eliminates the materializing copy.
+  // Only the viewed value itself (operand 0 of the view) is forced to
+  // default memory; the view's start index operands are ordinary scalar
+  // uses.
+  const bool view_use_requires_default_memory =
+      options_.view_source_default_memory_only &&
+      options_.dus_view_color.has_value() && hlo_use.operand_number == 0 &&
+      hlo_use.instruction->shape().has_layout() &&
+      hlo_use.instruction->shape().layout().memory_space() ==
+          *options_.dus_view_color;
+
   // Add a required assignment in default memory if the use not allowed in
   // alternate memory.
   if (IsWhileLoopUseRequiredInDefaultMemory(hlo_use) ||
       !IsUseAllowedInAlternateMemory(hlo_use) ||
-      !IsWhileLoopUseBeneficialInAlternateMemory(hlo_use)) {
+      !IsWhileLoopUseBeneficialInAlternateMemory(hlo_use) ||
+      view_use_requires_default_memory) {
     if (require_no_copy_alternate_mem_allocation) {
       LOG(WARNING) << "The value "
                    << allocation_value_to_update.value()->ToShortString()
@@ -5583,17 +5794,18 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
   int64_t latest_prefetch_time =
       instruction_schedule.at(first_use->instruction);
 
-  // Find the latest use time.
-  int64_t last_use_time = instruction_schedule.at(
-      absl::c_max_element(uses, use_schedule_compare)->instruction);
+  // Find the latest use time. A use by a view (dus_view_color) keeps this
+  // buffer readable through the view's transitive readers, so the freeing
+  // decision below must not end the alternate copy at the view's own (raw)
+  // schedule time; GetViewExtendedUseTime returns the raw time for every
+  // ordinary use and extends only view uses.
+  int64_t last_use_time = std::numeric_limits<int64_t>::min();
+  for (const HloUse& use : uses) {
+    last_use_time = std::max(last_use_time, GetViewExtendedUseTime(use));
+  }
   for (const HloValue* colocation : prefetch_candidate.colocations) {
-    auto colocation_uses = colocation->GetUses();
-    if (!colocation_uses.empty()) {
-      last_use_time = std::max(
-          last_use_time,
-          instruction_schedule.at(
-              absl::c_max_element(colocation_uses, use_schedule_compare)
-                  ->instruction));
+    for (const HloUse& use : colocation->GetUses()) {
+      last_use_time = std::max(last_use_time, GetViewExtendedUseTime(use));
     }
   }
 
@@ -5825,6 +6037,36 @@ int64_t MsaAlgorithm::GetCorrectedUseTime(
 
 int64_t MsaAlgorithm::GetCorrectedUseTime(const HloUse& use) const {
   return GetCorrectedUseTime(use.instruction);
+}
+
+int64_t MsaAlgorithm::GetViewExtendedUseTime(const HloUse& use) const {
+  const absl::flat_hash_map<const HloInstruction*, int64_t>& schedule =
+      hlo_live_range_.instruction_schedule();
+  int64_t use_time = schedule.at(use.instruction);
+  // When view sources are kept in default memory, their storage is permanent,
+  // so a view reads valid data at any later consumer time without extending the
+  // reservation. Skip the extension entirely (it exists only to keep an
+  // alternate-memory copy of the source alive across the view's consumers).
+  if (options_.view_source_default_memory_only) {
+    return use_time;
+  }
+  // Only the viewed value itself (operand 0 of the view, on both the read
+  // and write sides) needs its reservation extended; a view's start index
+  // operands are consumed at the view's own time.
+  if (!options_.dus_view_color.has_value() || use.operand_number != 0 ||
+      !use.instruction->shape().has_layout() ||
+      use.instruction->shape().layout().memory_space() !=
+          *options_.dus_view_color) {
+    return use_time;
+  }
+  // The use instruction is a view into the used value; its consumers read the
+  // value's storage through it at later times. Extend to the latest transitive
+  // reader: a consumer that is itself view colored (for example a bitcast
+  // reattached on the view) is only another window onto the same storage, so
+  // the walk continues through it to the real readers.
+  return std::max(use_time,
+                  ViewExtendedTransitiveUseTime(
+                      use.instruction, *options_.dus_view_color, schedule));
 }
 
 std::optional<MsaAlgorithm::RequiredMemoryAssignment>
@@ -6183,8 +6425,9 @@ void MsaAlgorithm::UpdateReservedScopedAllocationSize() {
     Allocation* allocation = allocation_block.allocation;
     if (allocation->is_scoped_allocation()) {
       int64_t time = allocation->start_time();
-      peak_memory_usage_[time] +=
-          (reserved_scoped_memory_map[time] - allocation->chunk().size);
+      peak_memory_usage_.AddRange(
+          time, time,
+          reserved_scoped_memory_map[time] - allocation->chunk().size);
       allocation_block.size = reserved_scoped_memory_map[time];
       allocation->mutable_chunk()->size = reserved_scoped_memory_map[time];
     }
@@ -6379,10 +6622,12 @@ bool MsaAlgorithm::UncommitChunkAndUpdatePeakMemory(
     const MsaBufferInterval& interval, const Chunk& chunk) {
   VLOG(3) << "Uncommitting: [" << interval.start << ", " << interval.end
           << "] off = " << chunk.offset << " size = " << chunk.size;
-  for (int i = interval.start; i <= interval.end; ++i) {
-    peak_memory_usage_[i] -= chunk.size;
-    CHECK_GE(peak_memory_usage_[i], 0)
-        << "Peak memory usage at " << i << " is below zero after uncommitting. "
+  // Note: intervals with start > end update nothing (the historical element
+  // wise loop was a no op for them), so only check non empty intervals.
+  if (interval.start <= interval.end) {
+    peak_memory_usage_.AddRange(interval.start, interval.end, -chunk.size);
+    CHECK_GE(peak_memory_usage_.MinInRange(interval.start, interval.end), 0)
+        << "Peak memory usage is below zero after uncommitting. "
         << interval.start << "-" << interval.end << " : [" << chunk.offset
         << ", " << chunk.size << "]";
   }
@@ -6391,11 +6636,15 @@ bool MsaAlgorithm::UncommitChunkAndUpdatePeakMemory(
 
 void MsaAlgorithm::CommitChunkAndUpdatePeakMemory(
     const MsaBufferInterval& buffer_interval, const Chunk& chunk) {
-  for (int i = buffer_interval.start; i <= buffer_interval.end; ++i) {
-    peak_memory_usage_[i] += chunk.size;
-    CHECK_LE(peak_memory_usage_[i], options_.max_size_in_bytes)
-        << "Peak memory usage at " << i
-        << " exceeds the max size of alternate memory. "
+  // Note: intervals with start > end update nothing (the historical element
+  // wise loop was a no op for them), so only check non empty intervals.
+  if (buffer_interval.start <= buffer_interval.end) {
+    peak_memory_usage_.AddRange(buffer_interval.start, buffer_interval.end,
+                                chunk.size);
+    CHECK_LE(peak_memory_usage_.MaxInRange(buffer_interval.start,
+                                           buffer_interval.end),
+             options_.max_size_in_bytes)
+        << "Peak memory usage exceeds the max size of alternate memory. "
         << buffer_interval.start << "-" << buffer_interval.end << " : "
         << chunk.ToString() << " buffer "
         << (buffer_interval.buffer ? buffer_interval.buffer->ToString()
@@ -6578,18 +6827,31 @@ void MsaAlgorithm::AddToPendingChunks(const MsaBufferInterval& buffer_interval,
 
 std::optional<int> MsaAlgorithm::FindEarliestExclusiveTimeToSatisfyPeakMemory(
     int exclusive_start_time, int end_time, int64_t size) const {
-  std::optional<int> earliest_time_exclusive = std::nullopt;
-  for (int time_inclusive = ExclusiveToInclusiveEndTime(end_time);
-       time_inclusive > exclusive_start_time; --time_inclusive) {
-    if (peak_memory_usage_[time_inclusive] + size <=
-        options_.max_size_in_bytes) {
-      earliest_time_exclusive = InclusiveToExclusiveStartTime(time_inclusive);
-    } else {
-      break;
-    }
+  // This computes the earliest exclusive time from which every inclusive
+  // time through the end still has room for `size` more bytes: equivalently,
+  // one past the rightmost inclusive time in the window whose peak usage
+  // would overflow. The segment tree finds that time in O(log n) instead of
+  // walking every time in the (potentially loop body sized) window.
+  int inclusive_end_time = ExclusiveToInclusiveEndTime(end_time);
+  if (inclusive_end_time <= exclusive_start_time) {
+    return std::nullopt;
   }
-
-  return earliest_time_exclusive;
+  std::optional<int64_t> rightmost_violation =
+      peak_memory_usage_.RightmostIndexAbove(exclusive_start_time + 1,
+                                             inclusive_end_time,
+                                             options_.max_size_in_bytes - size);
+  if (!rightmost_violation.has_value()) {
+    // The whole window fits; the earliest satisfying inclusive time is
+    // exclusive_start_time + 1.
+    return InclusiveToExclusiveStartTime(exclusive_start_time + 1);
+  }
+  if (*rightmost_violation == inclusive_end_time) {
+    // Even the last time does not fit.
+    return std::nullopt;
+  }
+  // Times (rightmost_violation, inclusive_end_time] all fit.
+  return InclusiveToExclusiveStartTime(static_cast<int>(*rightmost_violation) +
+                                       1);
 }
 
 std::string MsaAlgorithm::SingleFailureResultToString(
@@ -8071,6 +8333,32 @@ AllocationResult MsaAlgorithm::PrefetchWithResourceConstraints(
   if (init_result != AllocationResult::kSuccess) {
     return init_result;
   }
+
+  // Every MakeFreeChunks query this exploration makes (via
+  // EnsureSomeSpatialPrefetchFitExists and the per prefetch start time
+  // CheckPrefetchFit -> FindBestChunkCandidates probes) has a time window
+  // contained in [scope_start, scope_end]: query start times come from the
+  // prefetch interval picker, which never proposes a time earlier than the
+  // earliest prefetch time, and query end times come from the request's use
+  // times and end time. Open a snapshot scope over that window so the probes
+  // share one offset sorted snapshot of the committed chunks instead of
+  // walking and sorting the interval tree per probe. This is purely a compile
+  // time optimization: results are identical (the snapshot auto invalidates
+  // if the interval tree changes).
+  int64_t scope_start =
+      context.prev_allocation_in_default_mem->earliest_available_time();
+  if (request.earliest_prefetch_time) {
+    scope_start = std::max(scope_start, *request.earliest_prefetch_time);
+  }
+  int64_t scope_end = request.end_time;
+  if (!request.all_use_times.empty()) {
+    scope_end = std::max(scope_end, request.all_use_times.back());
+  }
+  BeginFreeChunksSnapshotScope(scope_start, scope_end);
+  absl::Cleanup free_chunks_snapshot_scope_cleanup = [this] {
+    EndFreeChunksSnapshotScope();
+  };
+
   AllocationResult check_result = EnsureSomeSpatialPrefetchFitExists(context);
   if (check_result != AllocationResult::kSuccess) {
     return check_result;
@@ -8891,15 +9179,18 @@ bool MsaAlgorithm::IsUseColoredInDefaultMemory(const HloUse& use) const {
 
 bool MsaAlgorithm::IsPositionColoredInAlternateMemoryAtTime(
     const HloPosition& position, int64_t time) const {
+  // Fast exit when there are no alternate memory colorings at all: the loop
+  // below can only return true through the reserved allocations map, and the
+  // alias analysis queries it would issue are expensive.
+  if (reserved_allocations_for_alt_mem_colorings_.empty()) {
+    return false;
+  }
   // Check if the defining position of the corresponding value is colored in
   // alternate memory at the time of the use or the defining position of an
   // aliasing value is colored in alternate memory at the time of the use.
-  for (const HloValue* value :
-       alias_analysis_.GetUniqueBufferAt(position.instruction, position.index)
-           .values()) {
+  for (const HloValue* value : GetUniqueBufferAtCached(position).values()) {
     HloPosition defining_position = value->defining_position();
-    const HloBuffer& buffer = alias_analysis_.GetUniqueBufferAt(
-        defining_position.instruction, defining_position.index);
+    const HloBuffer& buffer = GetUniqueBufferAtCached(defining_position);
     auto reserved_allocations_it =
         reserved_allocations_for_alt_mem_colorings_.find(&buffer);
     if (reserved_allocations_it !=
@@ -8919,15 +9210,18 @@ bool MsaAlgorithm::IsPositionColoredInAlternateMemoryAtTime(
 
 bool MsaAlgorithm::IsPositionColoredInDefaultMemoryAtTime(
     const HloPosition& position, int64_t time) const {
+  // Fast exit when there are no default memory colorings at all: the loop
+  // below can only return true through the coloring requirements map, and
+  // the alias analysis queries it would issue are expensive.
+  if (default_memory_coloring_requirements_.empty()) {
+    return false;
+  }
   // Check if the defining position of the corresponding value is colored in
   // default memory at the time of the use or the defining position of an
   // aliasing value is colored in default memory at the time of the use.
-  for (const HloValue* value :
-       alias_analysis_.GetUniqueBufferAt(position.instruction, position.index)
-           .values()) {
+  for (const HloValue* value : GetUniqueBufferAtCached(position).values()) {
     HloPosition defining_position = value->defining_position();
-    const HloBuffer& buffer = alias_analysis_.GetUniqueBufferAt(
-        defining_position.instruction, defining_position.index);
+    const HloBuffer& buffer = GetUniqueBufferAtCached(defining_position);
     auto default_memory_colorings_it =
         default_memory_coloring_requirements_.find(&buffer);
     if (default_memory_colorings_it !=
@@ -8943,6 +9237,17 @@ bool MsaAlgorithm::IsPositionColoredInDefaultMemoryAtTime(
     }
   }
   return false;
+}
+
+const HloBuffer& MsaAlgorithm::GetUniqueBufferAtCached(
+    const HloPosition& position) const {
+  auto [it, inserted] =
+      unique_buffer_at_position_cache_.try_emplace(position, nullptr);
+  if (inserted) {
+    it->second = &alias_analysis_.GetUniqueBufferAt(position.instruction,
+                                                    position.index);
+  }
+  return *it->second;
 }
 
 int64_t AsynchronousCopyResource::GetScaledIntegerResource(

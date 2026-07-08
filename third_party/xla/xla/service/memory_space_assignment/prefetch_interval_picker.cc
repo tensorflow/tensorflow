@@ -216,6 +216,29 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
   }
   for (int i = 0; i <= max_while_nest_level; ++i) {
     while_execution_counts_.push_back(cost_analysis_.GetWhileNestMultiplier(i));
+    // The binary searches below (Begin, LatestPrefetchStartTime,
+    // PreferredPrefetchStartTime) rely on GetLogicalIntervalElapsed being
+    // monotone in its start time, which holds iff the per level multiplier
+    // is non-decreasing (the while execution count flag is >= 1, its default
+    // is 5). A decreasing multiplier would silently change picked times
+    // versus the old linear scans.
+    DCHECK(i == 0 ||
+           while_execution_counts_[i] >= while_execution_counts_[i - 1])
+        << "while nest multiplier must be non-decreasing per level for the "
+           "prefetch picker's binary searches";
+  }
+  // Index the logical times by computation nest level, so searches restricted
+  // to "times at the same nest level as the prefetch end time" can binary
+  // search instead of scanning every time in a range.
+  int max_computation_nest_level = 0;
+  for (int level : computation_nest_level_) {
+    max_computation_nest_level = std::max(max_computation_nest_level, level);
+  }
+  positions_by_computation_nest_level_.resize(max_computation_nest_level + 1);
+  for (int64_t time = 0;
+       time < static_cast<int64_t>(computation_nest_level_.size()); ++time) {
+    positions_by_computation_nest_level_[computation_nest_level_[time]]
+        .push_back(time);
   }
 }
 
@@ -281,14 +304,31 @@ int64_t CostAnalysisPrefetchIntervalPicker::LatestPrefetchStartTime(
 
   // Find the latest time we're allowed to start prefetching.
   float min_interval = min_overlap_to_async_copy_ratio_ * async_copy_elapsed;
-  int latest_prefetch_time;
-  for (latest_prefetch_time = end_time - 1;
-       latest_prefetch_time >= start_time &&
-       (computation_nest_level_[latest_prefetch_time] != end_nest_level ||
-        min_interval >
-            GetLogicalIntervalElapsed(latest_prefetch_time, end_time) +
-                inst_elapsed_reduction);
-       --latest_prefetch_time) {
+  // GetLogicalIntervalElapsed(t, end_time) is monotonically non increasing in t
+  // (see Begin()), so "the interval is long enough: elapsed + reduction >=
+  // min_interval" holds for every t at or below a single boundary. Binary
+  // search for the largest such t instead of walking backward over every time
+  // whose interval is still too short (an O(range) scan when a view stretches a
+  // source's live range across a whole loop body), then step down to the first
+  // matching nest level exactly as the linear scan would. Decision preserving:
+  // times above the boundary all have elapsed + reduction < min_interval, so
+  // the linear scan would skip them regardless of nest level.
+  int64_t threshold_lo = start_time;
+  int64_t threshold_hi = end_time - 1;
+  int64_t latest_prefetch_time = start_time - 1;
+  while (threshold_lo <= threshold_hi) {
+    int64_t mid = threshold_lo + (threshold_hi - threshold_lo) / 2;
+    if (GetLogicalIntervalElapsed(mid, end_time) + inst_elapsed_reduction >=
+        min_interval) {
+      latest_prefetch_time = mid;
+      threshold_lo = mid + 1;
+    } else {
+      threshold_hi = mid - 1;
+    }
+  }
+  while (latest_prefetch_time >= start_time &&
+         computation_nest_level_[latest_prefetch_time] != end_nest_level) {
+    --latest_prefetch_time;
   }
 
   return latest_prefetch_time;
@@ -302,25 +342,74 @@ int64_t CostAnalysisPrefetchIntervalPicker::PreferredPrefetchStartTime(
   float async_copy_elapsed = cost_analysis_.GetAsyncCopyElapsed(
       size_override_ ? *size_override_
                      : cost_analysis_.GetShapeSizeBytes(shape));
-  int64_t preferred_prefetch_start_time = earliest_prefetch_start_time;
   float preferred_interval =
       preferred_overlap_to_async_copy_ratio_ * async_copy_elapsed;
+  int end_nest_level = computation_nest_level_[prefetch_end_time];
+
+  // This replaces a linear scan that visited every time in
+  // (earliest_prefetch_start_time, latest_prefetch_start_time], computed the
+  // logical interval elapsed for each (an O(range) walk that dominates when a
+  // buffer's live range spans a whole loop body), and kept the earliest time
+  // (with earliest_prefetch_start_time as the initial candidate, regardless
+  // of its nest level) whose deviation |preferred - interval(t)| strictly
+  // improved on the best so far, considering only times at the end time's
+  // nest level. Because GetLogicalIntervalElapsed(t, end) is monotonically
+  // non increasing in t (see Begin()), the deviation over the matching nest
+  // level times is V shaped: its minimum is attained at the last matching
+  // time whose interval is >= preferred (A) or at the first matching time
+  // whose interval is < preferred (B). On ties the scan kept the earliest
+  // time, which on the A side is the first time of the plateau of equal
+  // intervals ending at A (every earlier matching time has a strictly larger
+  // interval, hence a strictly larger deviation). So the scan's answer is
+  // always one of: the initial candidate, the first time of A's plateau, or
+  // B. Binary search those out of the sorted list of times at
+  // end_nest_level. Decision preserving: the same float quantities are
+  // compared with the same strictness, and candidates are considered in
+  // ascending time order so equal deviations keep the earlier time.
+  int64_t best_time = earliest_prefetch_start_time;
   float best_interval = GetLogicalIntervalElapsed(earliest_prefetch_start_time,
                                                   prefetch_end_time);
-  int end_nest_level = computation_nest_level_[prefetch_end_time];
-  for (int64_t prefetch_start_time = earliest_prefetch_start_time + 1;
-       prefetch_start_time <= latest_prefetch_start_time;
-       ++prefetch_start_time) {
-    float interval =
-        GetLogicalIntervalElapsed(prefetch_start_time, prefetch_end_time);
-    if (computation_nest_level_[prefetch_start_time] == end_nest_level &&
-        std::abs(preferred_interval - interval) <
-            std::abs(preferred_interval - best_interval)) {
+  auto interval_at = [&](int64_t time) {
+    return GetLogicalIntervalElapsed(time, prefetch_end_time);
+  };
+  auto try_improve = [&](int64_t time) {
+    float interval = interval_at(time);
+    if (std::abs(preferred_interval - interval) <
+        std::abs(preferred_interval - best_interval)) {
       best_interval = interval;
-      preferred_prefetch_start_time = prefetch_start_time;
+      best_time = time;
+    }
+  };
+  if (end_nest_level <
+      static_cast<int>(positions_by_computation_nest_level_.size())) {
+    const std::vector<int64_t>& level_positions =
+        positions_by_computation_nest_level_[end_nest_level];
+    auto lo_it =
+        std::upper_bound(level_positions.begin(), level_positions.end(),
+                         earliest_prefetch_start_time);
+    auto hi_it = std::upper_bound(lo_it, level_positions.end(),
+                                  latest_prefetch_start_time);
+    if (lo_it != hi_it) {
+      // Intervals are non increasing over these times, so "interval >=
+      // preferred" holds on a prefix; partition_point finds B, the first
+      // matching time whose interval is < preferred.
+      auto b_it = std::partition_point(lo_it, hi_it, [&](int64_t time) {
+        return interval_at(time) >= preferred_interval;
+      });
+      if (b_it != lo_it) {
+        // A (= b_it - 1) exists; find the first time of A's plateau.
+        float a_interval = interval_at(*(b_it - 1));
+        auto plateau_first_it = std::partition_point(
+            lo_it, b_it,
+            [&](int64_t time) { return interval_at(time) > a_interval; });
+        try_improve(*plateau_first_it);
+      }
+      if (b_it != hi_it) {
+        try_improve(*b_it);
+      }
     }
   }
-  return preferred_prefetch_start_time;
+  return best_time;
 }
 
 int64_t CostAnalysisPrefetchIntervalPicker::LatestPrefetchEndTime(
@@ -381,12 +470,34 @@ void CostAnalysisPrefetchIntervalPicker::Begin(
 
   // Find the earliest time we're allowed to start prefetching.
   float max_interval = GetMaxElapsedInAlternateMemory(async_copy_elapsed_);
-  for (earliest_prefetch_time_ = start_time;
-       earliest_prefetch_time_ < latest_prefetch_time_ &&
-       (computation_nest_level_[earliest_prefetch_time_] != end_nest_level ||
-        max_interval < GetLogicalIntervalElapsed(earliest_prefetch_time_,
-                                                 end_logical_time_));
-       ++earliest_prefetch_time_) {
+  // GetLogicalIntervalElapsed(t, end_logical_time_) is monotonically non
+  // increasing in t: its numerator (a prefix sum difference) shrinks as t grows
+  // and its divisor (the while execution count of the interval's min nest
+  // level) does not shrink, so the predicate "the async copy fits, elapsed <=
+  // max_interval" flips from false to true exactly once as t increases. Binary
+  // search for that first fitting time instead of walking every earlier time
+  // (an O(range) scan that dominates when a view stretches a source's live
+  // range across a whole loop body). This returns the IDENTICAL
+  // earliest_prefetch_time_ the linear scan below would: for any t before the
+  // fit, elapsed > max_interval so the scan would advance regardless of nest
+  // level; from the first fitting time the only remaining reason to advance is
+  // a nest level mismatch, which the trailing loop reproduces exactly.
+  {
+    int64_t lo = start_time;
+    int64_t hi = latest_prefetch_time_;
+    while (lo < hi) {
+      int64_t mid = lo + (hi - lo) / 2;
+      if (GetLogicalIntervalElapsed(mid, end_logical_time_) <= max_interval) {
+        hi = mid;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    earliest_prefetch_time_ = lo;
+    while (earliest_prefetch_time_ < latest_prefetch_time_ &&
+           computation_nest_level_[earliest_prefetch_time_] != end_nest_level) {
+      ++earliest_prefetch_time_;
+    }
   }
   if (earliest_prefetch_time_ > latest_prefetch_time_) {
     // There is no available prefetch interval for the given start and end
