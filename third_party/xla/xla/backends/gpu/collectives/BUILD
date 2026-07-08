@@ -96,6 +96,7 @@ cc_library(
         "//xla/tsl/lib/gtl:int_type",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -512,6 +513,7 @@ cc_library(
         "//xla/core/collectives:collectives_registry",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -694,6 +696,7 @@ cc_library(
         "//xla:util",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@local_config_rocm//rocm:rccl",  # buildcleaner: keep
