@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_SE_RAW_BUFFER_H_
-#define XLA_PJRT_SE_RAW_BUFFER_H_
+#ifndef XLA_PJRT_SE_SE_RAW_BUFFER_H_
+#define XLA_PJRT_SE_SE_RAW_BUFFER_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -24,13 +24,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/pjrt/async_work_runner.h"
-#include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
-#include "xla/pjrt/local_device_state.h"
-#include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/raw_buffer.h"
-#include "xla/pjrt/tracked_device_buffer.h"
+#include "xla/pjrt/se/buffer_sequencing_event.h"
+#include "xla/pjrt/se/local_device_state.h"
+#include "xla/pjrt/se/pjrt_stream_executor_client.h"
+#include "xla/pjrt/se/tracked_device_buffer.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -147,4 +147,4 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
 
 }  // namespace xla
 
-#endif  // XLA_PJRT_SE_RAW_BUFFER_H_
+#endif  // XLA_PJRT_SE_SE_RAW_BUFFER_H_

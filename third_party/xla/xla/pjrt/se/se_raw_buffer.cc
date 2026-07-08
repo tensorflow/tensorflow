@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/se_raw_buffer.h"
+#include "xla/pjrt/se/se_raw_buffer.h"
 
 #include <cstdint>
 #include <cstring>
@@ -26,17 +26,17 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/async_work_runner.h"
-#include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/device_event_utils.h"
-#include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/host_memory_allocator.h"
-#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/raw_buffer.h"
-#include "xla/pjrt/tracked_device_buffer.h"
+#include "xla/pjrt/se/buffer_sequencing_event.h"
+#include "xla/pjrt/se/event_pool.h"
+#include "xla/pjrt/se/local_device_state.h"
+#include "xla/pjrt/se/pjrt_stream_executor_client.h"
+#include "xla/pjrt/se/tracked_device_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value.h"

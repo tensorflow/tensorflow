@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_STREAM_EXECUTOR_PJRT_ABI_VERSION_H_
-#define XLA_PJRT_STREAM_EXECUTOR_PJRT_ABI_VERSION_H_
+#ifndef XLA_PJRT_SE_STREAM_EXECUTOR_PJRT_ABI_VERSION_H_
+#define XLA_PJRT_SE_STREAM_EXECUTOR_PJRT_ABI_VERSION_H_
 
 #include <memory>
 #include <utility>
@@ -55,4 +55,4 @@ class StreamExecutorPjRtExecutableAbiVersion : public PjRtExecutableAbiVersion {
 
 }  // namespace xla
 
-#endif  // XLA_PJRT_STREAM_EXECUTOR_PJRT_ABI_VERSION_H_
+#endif  // XLA_PJRT_SE_STREAM_EXECUTOR_PJRT_ABI_VERSION_H_

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/stream_executor_executable.h"
+#include "xla/pjrt/se/stream_executor_executable.h"
 
 #include <cstdint>
 #include <memory>
@@ -36,8 +36,8 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
-#include "xla/pjrt/stream_executor_executable.pb.h"
-#include "xla/pjrt/stream_executor_pjrt_abi_version.h"
+#include "xla/pjrt/se/stream_executor_executable.pb.h"
+#include "xla/pjrt/se/stream_executor_pjrt_abi_version.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiled_module.h"

@@ -9,8 +9,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_PJRT_PJRT_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
-#define XLA_PJRT_PJRT_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
+#ifndef XLA_PJRT_SE_PJRT_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
+#define XLA_PJRT_SE_PJRT_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
 
 #include <array>
 #include <string>
@@ -75,4 +75,4 @@ class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
 };
 }  // namespace xla
 
-#endif  // XLA_PJRT_PJRT_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
+#endif  // XLA_PJRT_SE_PJRT_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_

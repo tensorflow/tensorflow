@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/pjrt/se/pjrt_stream_executor_client.h"
 
 #include <cstdint>
 #include <memory>
@@ -40,9 +40,9 @@ limitations under the License.
 #include "xla/literal_comparison.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
-#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/se/local_device_state.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/tracked_device_buffer.h"
+#include "xla/pjrt/se/tracked_device_buffer.h"
 
 #include <cstddef>
 #include <limits>
@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/pjrt/async_work_runner.h"
-#include "xla/pjrt/buffer_sequencing_event.h"
-#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/se/buffer_sequencing_event.h"
+#include "xla/pjrt/se/local_device_state.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"

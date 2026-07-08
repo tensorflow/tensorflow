@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/tracked_device_buffer.h"
+#include "xla/pjrt/se/tracked_device_buffer.h"
 
 #include <cstddef>
 #include <cstdint>

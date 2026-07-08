@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_BUFFER_SEQUENCING_EVENT_H_
-#define XLA_PJRT_BUFFER_SEQUENCING_EVENT_H_
+#ifndef XLA_PJRT_SE_BUFFER_SEQUENCING_EVENT_H_
+#define XLA_PJRT_SE_BUFFER_SEQUENCING_EVENT_H_
 
 #include <cstdint>
 #include <string>
@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
-#include "xla/pjrt/event_pool.h"
+#include "xla/pjrt/se/event_pool.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -190,4 +190,4 @@ GetBuiltinDeviceEventCApiFunctionTable<BufferSequencingEvent>();
 
 }  // namespace xla
 
-#endif  // XLA_PJRT_BUFFER_SEQUENCING_EVENT_H_
+#endif  // XLA_PJRT_SE_BUFFER_SEQUENCING_EVENT_H_

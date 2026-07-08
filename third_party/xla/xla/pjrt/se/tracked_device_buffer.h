@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_TRACKED_DEVICE_BUFFER_H_
-#define XLA_PJRT_TRACKED_DEVICE_BUFFER_H_
+#ifndef XLA_PJRT_SE_TRACKED_DEVICE_BUFFER_H_
+#define XLA_PJRT_SE_TRACKED_DEVICE_BUFFER_H_
 
 #include <atomic>
 #include <cstdint>
@@ -34,11 +34,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
-#include "xla/pjrt/buffer_sequencing_event.h"
-#include "xla/pjrt/event_pool.h"
-#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/se/buffer_sequencing_event.h"
+#include "xla/pjrt/se/event_pool.h"
+#include "xla/pjrt/se/local_device_state.h"
 #include "xla/service/executable.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
@@ -114,4 +114,4 @@ class ForeignRawSEDeviceMemory : public RawSEDeviceMemory {
 
 }  // namespace xla
 
-#endif  // XLA_PJRT_TRACKED_DEVICE_BUFFER_H_
+#endif  // XLA_PJRT_SE_TRACKED_DEVICE_BUFFER_H_

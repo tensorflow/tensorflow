@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/stream_executor_pjrt_abi_version.h"
+#include "xla/pjrt/se/stream_executor_pjrt_abi_version.h"
 
 #include <memory>
 

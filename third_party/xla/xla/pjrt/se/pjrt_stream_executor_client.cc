@@ -62,7 +62,7 @@ limitations under the License.
 // See the comment on LocalDeviceState::AllocationModel for a discussion of the
 // different allocation semantics on CPU, GPU, and TPU.
 
-#include "xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/pjrt/se/pjrt_stream_executor_client.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -109,18 +109,15 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/dump/dump.h"
 #include "xla/pjrt/dynamic_shapes.h"
-#include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/layout_mode.h"
-#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/metrics.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -133,13 +130,16 @@ limitations under the License.
 #include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/raw_buffer.h"
-#include "xla/pjrt/se_raw_buffer.h"
+#include "xla/pjrt/se/buffer_sequencing_event.h"
+#include "xla/pjrt/se/event_pool.h"
+#include "xla/pjrt/se/local_device_state.h"
+#include "xla/pjrt/se/se_raw_buffer.h"
+#include "xla/pjrt/se/stream_executor_executable.h"
+#include "xla/pjrt/se/stream_executor_pjrt_abi_version.h"
+#include "xla/pjrt/se/tracked_device_buffer.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/staging_buffer.h"
-#include "xla/pjrt/stream_executor_executable.h"
-#include "xla/pjrt/stream_executor_pjrt_abi_version.h"
 #include "xla/pjrt/thread_pool_async_work_runner.h"
-#include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"

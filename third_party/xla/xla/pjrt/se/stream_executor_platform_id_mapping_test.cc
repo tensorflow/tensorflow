@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/stream_executor_platform_id_mapping.h"
+#include "xla/pjrt/se/stream_executor_platform_id_mapping.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

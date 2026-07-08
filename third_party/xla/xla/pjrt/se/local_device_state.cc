@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/local_device_state.h"
+#include "xla/pjrt/se/local_device_state.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/async_work_runner.h"
-#include "xla/pjrt/buffer_sequencing_event.h"
+#include "xla/pjrt/se/buffer_sequencing_event.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"

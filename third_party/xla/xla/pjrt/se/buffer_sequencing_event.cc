@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/buffer_sequencing_event.h"
+#include "xla/pjrt/se/buffer_sequencing_event.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/device_event.h"
-#include "xla/pjrt/event_pool.h"
+#include "xla/pjrt/se/event_pool.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
