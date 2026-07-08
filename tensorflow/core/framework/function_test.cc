@@ -1900,5 +1900,138 @@ TEST(FrozenStackTrace, ToStringWithDropInternalFrames) {
             "File \"some/path/beta.cc\", line 30, in fox");
 }
 
+TEST(CompactFunctionDefTest, BasicRoundTripAndStringInterning) {
+  FunctionDef fdef = test::function::XTimesTwo();
+  CompactFunctionDef compact = CompactFunctionDef::FromProto(fdef);
+  EXPECT_TRUE(FunctionDefsEqual(compact, fdef));
+  EXPECT_TRUE(FunctionDefsEqual(fdef, compact));
+  EXPECT_EQ(FunctionDefHash(fdef), FunctionDefHash(compact));
+
+  FunctionDef round_trip = compact.ToProto();
+  EXPECT_TRUE(FunctionDefsEqual(fdef, round_trip));
+
+  // Test string interning exactly matches stable pointer
+  const std::string* op1 = CompactFunctionDef::Intern("MatMul");
+  const std::string* op2 = CompactFunctionDef::Intern("MatMul");
+  EXPECT_EQ(op1, op2);
+  EXPECT_EQ(*op1, "MatMul");
+
+  // Test AttrValue interning matches stable pointer
+  AttrValue val1;
+  SetAttrValue(DT_FLOAT, &val1);
+  AttrValue val2;
+  SetAttrValue(DT_FLOAT, &val2);
+  const AttrValue* a1 = CompactFunctionDef::Intern(val1);
+  const AttrValue* a2 = CompactFunctionDef::Intern(val2);
+  EXPECT_EQ(a1, a2);
+  EXPECT_EQ(a1->type(), DT_FLOAT);
+}
+
+TEST(CompactFunctionDefTest, FunctionRecordBehavior) {
+  FunctionDef fdef = test::function::XTimesFour();
+  core::RefCountPtr<FunctionRecord> unfinalized_record(
+      new FunctionRecord(fdef, StackTracesMap(), false));
+  EXPECT_FALSE(unfinalized_record->finalized());
+
+  // Access fdef() before finalization and hold reference.
+  const FunctionDef& ref_before = unfinalized_record->fdef();
+  const void* addr_before = &ref_before;
+  EXPECT_TRUE(FunctionDefsEqual(ref_before, fdef));
+
+  // Mutate signature via mutable_fdef() and verify op_registration_data
+  // reflects change.
+  auto mutable_fdef_or = unfinalized_record->mutable_fdef();
+  ASSERT_TRUE(mutable_fdef_or.ok());
+  mutable_fdef_or.value()->mutable_signature()->set_description(
+      "mutated_description");
+  EXPECT_EQ(unfinalized_record->op_registration_data().op_def.description(),
+            "mutated_description");
+  EXPECT_EQ(addr_before, &unfinalized_record->fdef());
+
+  // Finalize the record. Reference must remain stable and non-empty.
+  unfinalized_record->finalize();
+  EXPECT_TRUE(unfinalized_record->finalized());
+  const FunctionDef& ref_after = unfinalized_record->fdef();
+  EXPECT_EQ(addr_before, &ref_after);
+  EXPECT_EQ(ref_after.signature().description(), "mutated_description");
+  EXPECT_EQ(unfinalized_record->op_registration_data().op_def.description(),
+            "mutated_description");
+
+  core::RefCountPtr<FunctionRecord> record(
+      new FunctionRecord(fdef, StackTracesMap(), true));
+  EXPECT_TRUE(record->finalized());
+
+  // Accessing compact representation directly.
+  const CompactFunctionDef& compact = record->compact_fdef();
+  EXPECT_EQ(compact.signature().name(), fdef.signature().name());
+
+  // Check lazy conversion back to const FunctionDef&.
+  const FunctionDef& lazy_fdef = record->fdef();
+  EXPECT_TRUE(FunctionDefsEqual(lazy_fdef, fdef));
+
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
+  TF_EXPECT_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
+  TF_EXPECT_OK(lib_def.AddFunctionDef(test::function::XTimesFour()));
+  EXPECT_NE(lib_def.Find("XTimesTwo"), nullptr);
+}
+
+TEST(CompactFunctionDefTest, ExperimentalFieldsRoundTrip) {
+  FunctionDef fdef = test::function::XTimesTwoInt32();
+  fdef.mutable_node_def(2)->mutable_experimental_type()->set_type_id(
+      TFT_PRODUCT);
+  fdef.mutable_node_def(2)
+      ->mutable_experimental_type()
+      ->add_args()
+      ->set_type_id(TFT_TENSOR);
+  fdef.mutable_node_def(2)
+      ->mutable_experimental_debug_info()
+      ->add_original_node_names("node_orig");
+  fdef.mutable_node_def(2)
+      ->mutable_experimental_debug_info()
+      ->add_original_func_names("func_orig");
+
+  CompactFunctionDef compact = CompactFunctionDef::FromProto(fdef);
+  EXPECT_TRUE(FunctionDefsEqual(compact, fdef));
+  EXPECT_TRUE(FunctionDefsEqual(fdef, compact));
+  EXPECT_EQ(FunctionDefHash(fdef), FunctionDefHash(compact));
+
+  FunctionDef round_trip = compact.ToProto();
+  EXPECT_TRUE(FunctionDefsEqual(fdef, round_trip));
+  ASSERT_TRUE(round_trip.node_def(2).has_experimental_type());
+  EXPECT_EQ(round_trip.node_def(2).experimental_type().type_id(), TFT_PRODUCT);
+  ASSERT_TRUE(round_trip.node_def(2).has_experimental_debug_info());
+  EXPECT_EQ(
+      round_trip.node_def(2).experimental_debug_info().original_node_names(0),
+      "node_orig");
+  EXPECT_EQ(
+      round_trip.node_def(2).experimental_debug_info().original_func_names(0),
+      "func_orig");
+}
+
+TEST(CompactFunctionDefTest,
+     GraphEquivalenceWithReorderingAndPortNormalization) {
+  FunctionDef fdef1 = test::function::XTimesTwo();
+  FunctionDef fdef2 = test::function::XTimesTwo();
+
+  // Reorder node_defs in fdef2
+  std::swap(*fdef2.mutable_node_def(0), *fdef2.mutable_node_def(1));
+
+  CompactFunctionDef compact1 = CompactFunctionDef::FromProto(fdef1);
+  CompactFunctionDef compact2 = CompactFunctionDef::FromProto(fdef2);
+
+  // Both proto and compact equality should recognize them as equal
+  EXPECT_TRUE(FunctionDefsEqual(fdef1, fdef2));
+  EXPECT_TRUE(FunctionDefsEqual(compact1, compact2));
+  EXPECT_TRUE(FunctionDefsEqual(compact1, fdef2));
+  EXPECT_TRUE(FunctionDefsEqual(fdef1, compact2));
+
+  // Modify input port from "x" to "x:0"
+  fdef2 = test::function::XTimesTwo();
+  fdef2.mutable_node_def(2)->set_input(0, "x:0");
+  CompactFunctionDef compact3 = CompactFunctionDef::FromProto(fdef2);
+  EXPECT_TRUE(FunctionDefsEqual(fdef1, fdef2));
+  EXPECT_TRUE(FunctionDefsEqual(compact1, compact3));
+}
+
 }  // end namespace
 }  // end namespace tensorflow
