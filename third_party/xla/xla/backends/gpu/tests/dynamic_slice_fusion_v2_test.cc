@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <atomic>
 #include <cstdint>
 #include <utility>
 
@@ -110,6 +111,48 @@ XLA_FFI_DEFINE_HANDLER(kMemsetConst, MemsetConst,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memset_const",
                          kPlatform, kMemsetConst);
 
+// Result addresses seen by the prepare and (first) execute stages, so tests
+// can verify both stages resolve the same fusion-local buffer.
+static std::atomic<const void*> prepared_result_address{nullptr};
+static std::atomic<const void*> first_executed_result_address{nullptr};
+
+static absl::Status MemsetConstPrepare(ffi::AnyBuffer input,
+                                       ffi::Result<ffi::BufferR1<F32>> result,
+                                       float value) {
+  prepared_result_address = result->device_memory().opaque();
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kMemsetConstPrepare, MemsetConstPrepare,
+                       ffi::Ffi::Bind<ffi::ExecutionStage::kPrepare>()
+                           .Arg<ffi::AnyBuffer>()
+                           .Ret<ffi::BufferR1<F32>>()
+                           .Attr<float>("value"));
+
+static absl::Status MemsetConstPreparedExecute(
+    se::Stream* stream, ffi::AnyBuffer input,
+    ffi::Result<ffi::BufferR1<F32>> result, float value) {
+  const void* expected = nullptr;
+  first_executed_result_address.compare_exchange_strong(
+      expected, result->device_memory().opaque());
+  se::DeviceAddressBase dst = result->device_memory();
+  return stream->Memset32(&dst, absl::bit_cast<uint32_t>(value), dst.size());
+}
+
+XLA_FFI_DEFINE_HANDLER(kMemsetConstPreparedExecute, MemsetConstPreparedExecute,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Arg<ffi::AnyBuffer>()
+                           .Ret<ffi::BufferR1<F32>>()
+                           .Attr<float>("value"));
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         "__xla_test$$memset_const_prepared", kPlatform,
+                         (XLA_FFI_Handler_Bundle{/*instantiate=*/nullptr,
+                                                 kMemsetConstPrepare,
+                                                 /*initialize=*/nullptr,
+                                                 kMemsetConstPreparedExecute}));
+
 class DynamicSliceFusionV2Test : public HloPjRtGpuTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
@@ -181,6 +224,78 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUS) {
       Literal result, Execute(std::move(*ParseAndReturnVerifiedModule(hlo)), {},
                               /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(DynamicSliceFusionV2Test, FfiPrepareStageSeesFusionLocalBuffers) {
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    %dsf_computation {
+      %p0 = f32[4,4] parameter(0)
+      %p1 = s32[] parameter(1)
+      %p2 = s32[] parameter(2)
+      %fill = f32[4] custom-call(%p0),
+        custom_call_target="__xla_test$$memset_const_prepared",
+        api_version=API_VERSION_TYPED_FFI,
+        backend_config="{value = 7.0 : f32}"
+      %fill_2d = f32[1,4] bitcast(%fill)
+      ROOT %dus = f32[4,4]
+        dynamic-update-slice(%p0, %fill_2d, %p1, %p2),
+        backend_config={"dynamic_slice_config":
+          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+    }
+
+    body {
+      param = (s32[], f32[4,4]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      buf = f32[4,4] get-tuple-element(param), index=1
+      zero = s32[] constant(0)
+      updated = f32[4,4] fusion(buf, i, zero),
+        kind=kCustom, calls=%dsf_computation,
+        backend_config={"fusion_backend_config":{
+          "kind":"__custom_fusion",
+          "custom_fusion_config":
+            {"name":"dynamic_slice_fusion"}}}
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      ROOT tuple = (s32[], f32[4,4]) tuple(next_i, updated)
+    }
+
+    cond {
+      param = (s32[], f32[4,4]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      limit = s32[] constant(4)
+      ROOT cmp = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      zero = s32[] constant(0)
+      init_buf = f32[4,4] broadcast(f32[] constant(0)), dimensions={}
+      init = (s32[], f32[4,4]) tuple(zero, init_buf)
+      while = (s32[], f32[4,4])
+        while(init), condition=cond, body=body
+      ROOT result = f32[4,4] get-tuple-element(while), index=1
+    }
+  )";
+
+  prepared_result_address = nullptr;
+  first_executed_result_address = nullptr;
+
+  ASSERT_OK_AND_ASSIGN(
+      Literal result, Execute(std::move(*ParseAndReturnVerifiedModule(hlo)), {},
+                              /*run_hlo_passes=*/false));
+
+  Literal expected = LiteralUtil::CreateR2<float>({{7.0f, 7.0f, 7.0f, 7.0f},
+                                                   {7.0f, 7.0f, 7.0f, 7.0f},
+                                                   {7.0f, 7.0f, 7.0f, 7.0f},
+                                                   {7.0f, 7.0f, 7.0f, 7.0f}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+
+  // The prepare stage must resolve the same fusion-local result buffer that
+  // the first loop iteration executes with.
+  EXPECT_NE(prepared_result_address.load(), nullptr);
+  EXPECT_EQ(prepared_result_address.load(),
+            first_executed_result_address.load());
 }
 
 TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUSWithOffsetExpression) {
