@@ -20,16 +20,20 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/future.h"
 #include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/buffer_sequencing_event.h"
+#include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/device_event.h"
+#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/tracked_device_buffer.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 
@@ -96,8 +100,6 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
   }
 
   size_t GetOnDeviceSizeInBytes() const override { return buffer_size_; }
-
-  ShapedBuffer AsShapedBuffer(const xla::Shape&);
 
   absl::StatusOr<PjRtDeviceEventRef> CopyRawHostToDeviceAndReturnEvent(
       const void* src, int64_t offset, int64_t transfer_size,

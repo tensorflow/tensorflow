@@ -46,7 +46,7 @@ namespace {
 using std::nullopt;
 
 class ElementalIrEmitterExecutionTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
+    : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   void RunTest(const std::string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;

@@ -22,6 +22,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <variant>
@@ -43,6 +44,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -1297,29 +1299,6 @@ BuildLocalDeviceStates(LocalClient* xla_client, bool schedule_async,
   return std::move(addressable_devices);
 }
 
-// Creates allocator memory registration and adds the required suballocator
-// visitors to `allocator_config`. Allocators that do not use suballocator
-// visitors simply ignore them.
-std::shared_ptr<gpu::AllocatorMemoryRegistration>
-CreateAllocatorMemoryRegistration(GpuAllocatorConfig* allocator_config) {
-  // Automatic memory registration is only safe for preallocated BFC arenas.
-  // If BFC grows later, ranks may not see a consistent set of registered
-  // backing allocations, which can lead to undefined behavior or deadlocks.
-  if (!allocator_config->preallocate) {
-    return nullptr;
-  }
-
-  auto memory_registration =
-      std::make_shared<gpu::AllocatorMemoryRegistration>();
-  gpu::RegisterOnGpuCliqueCreatedCallback(
-      memory_registration->CliqueCreatedCallback());
-  allocator_config->sub_allocator_alloc_visitors.push_back(
-      memory_registration->alloc_visitor());
-  allocator_config->sub_allocator_free_visitors.push_back(
-      memory_registration->free_visitor());
-
-  return memory_registration;
-}
 
 // Constructs a GPU device memory allocator to use, according to the allocator
 // configuration the client requested.
@@ -1531,6 +1510,35 @@ void NameDeviceAndLauncherThread(const LocalTopologyProto& node,
 }
 
 }  // namespace
+
+// Creates allocator memory registration and adds the required suballocator
+// visitors to `allocator_config`. Allocators that do not use suballocator
+// visitors simply ignore them.
+std::shared_ptr<gpu::AllocatorMemoryRegistration>
+CreateAllocatorMemoryRegistration(GpuAllocatorConfig* allocator_config) {
+  const DebugOptions& debug_options = GetDebugOptionsFromFlags();
+  // TODO(b/530631424): Enable by default once bug is fixed.
+  if (!debug_options.xla_gpu_enable_nccl_user_buffers_in_default_space()) {
+    return nullptr;
+  }
+  // Automatic memory registration is only safe for preallocated BFC arenas.
+  // If BFC grows later, ranks may not see a consistent set of registered
+  // backing allocations, which can lead to undefined behavior or deadlocks.
+  if (!allocator_config->preallocate) {
+    return nullptr;
+  }
+
+  auto memory_registration =
+      std::make_shared<gpu::AllocatorMemoryRegistration>();
+  gpu::RegisterOnGpuCliqueCreatedCallback(
+      memory_registration->CliqueCreatedCallback());
+  allocator_config->sub_allocator_alloc_visitors.push_back(
+      memory_registration->alloc_visitor());
+  allocator_config->sub_allocator_free_visitors.push_back(
+      memory_registration->free_visitor());
+
+  return memory_registration;
+}
 
 absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     absl::string_view platform_name,
@@ -2104,6 +2112,7 @@ StreamExecutorGpuClient::RunAsync(
       gpu::GpuExecutableBufferAllocator::ExecutionScope allocation_scope,
       gpu_exec->buffer_allocator().CreateExecutionScope(
           run_options, memory_allocator, device_ordinal));
+
   ASSIGN_OR_RETURN(xla::gpu::BufferAllocations buffer_allocations,
                    allocation_scope.GenerateBufferAllocations(
                        run_options, get_parameter_buffer, globals,
@@ -2190,8 +2199,11 @@ StreamExecutorGpuClient::RunAsync(
 
   absl::Status execute_status = allocation_scope.ExecuteWithBufferAllocations(
       buffer_allocations, device_ordinal,
-      [&](const gpu::BufferAllocations& execution_buffers) {
-        return gpu_exec->ExecuteThunks(execution_buffers, run_options);
+      [&](const gpu::BufferAllocations& execution_buffers,
+          std::optional<absl::Span<const BufferAllocation::Index>>
+              persistent_alloc_indices) {
+        return gpu_exec->ExecuteThunks(execution_buffers, run_options,
+                                       persistent_alloc_indices);
       });
   absl::Status teardown_status = buffer_allocations.TearDown(
       buffers_in_result, gpu_exec->GetAllocations());

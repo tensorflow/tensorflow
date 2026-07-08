@@ -550,7 +550,11 @@ void insertPropagationBarriers(FuncOp funcOp, ModuleOp moduleOp,
         }
       }
 
-      if (shouldInsertBarrier) {
+      if (shouldInsertBarrier &&
+          (!calleeSharding || calleeSharding.getUnreducedAxes().empty())) {
+        // Insert the barrier on the argument itself (before the constraint, if
+        // any). We only do this when there's no unreduced sharding, to avoid
+        // altering JAX's decision for unreduced boundary shardings.
         auto barrierOp = PropagationBarrierOp::create(
             rewriter, funcOp.getLoc(), arg, PropagationDirection::FORWARD);
         rewriter.replaceAllUsesExcept(arg, barrierOp.getResult(), barrierOp);

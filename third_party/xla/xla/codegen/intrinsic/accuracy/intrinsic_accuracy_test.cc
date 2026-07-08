@@ -76,7 +76,7 @@ using codegen::intrinsic::accuracy::UlpBudget;
 // Test fixture: uses PjRt test runner.
 // ---------------------------------------------------------------------------
 
-using HloIntrinsicAccuracyTest = HloPjRtTestBase;
+using HloIntrinsicAccuracyTest = HloTestBase;
 
 // ---------------------------------------------------------------------------
 // Accuracy reporting (ULP-based, independent of XLA's ErrorSpec).

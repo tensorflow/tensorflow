@@ -18041,6 +18041,24 @@ ENTRY entry {
   EXPECT_EQ(it->second, "hello");
 }
 
+TEST_F(SpmdPartitioningV3Test, NamedUnreducedParamGrouped) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = s32[2,4]{1,0} parameter(0), sharding={mesh['a'=2, 'b'=2], [], unreduced=max{'a', 'b'}}
+  b = s32[2,4]{1,0} parameter(1), sharding={mesh['a'=2, 'b'=2], [], unreduced=max{'a', 'b'}}
+  ROOT add = s32[2,4]{1,0} add(a, b)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  // Check that unreduced HloSharding is preserved after the pass.
+  EXPECT_THAT(
+      module->entry_computation()->parameter_instructions(),
+      Each(op::Sharding("{mesh['a'=2,'b'=2], [], unreduced=max{'a','b'}}")));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

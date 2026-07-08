@@ -16,17 +16,25 @@ limitations under the License.
 #ifndef XLA_TESTS_AOT_INTERCEPTION_PJRT_CLIENT_H_
 #define XLA_TESTS_AOT_INTERCEPTION_PJRT_CLIENT_H_
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/runtime/device_id.h"
+#include "xla/service/computation_placer.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -83,8 +91,51 @@ class AOTInterceptionPjrtClient : public PjRtClient {
     return inner_client_->platform_version();
   }
 
+  absl::StatusOr<PjRtDevice*> LookupDevice(
+      GlobalDeviceId global_device_id) const override;
+
+  absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
+      LocalDeviceId local_device_id) const override;
+
   // Expose the inner client for any testing needs.
   PjRtClient* inner_client() const { return inner_client_.get(); }
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+      const Layout* device_layout) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      PjRtClient::HostBufferSemantics host_buffer_semantics,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      PjRtMemorySpace* memory_space, const Layout* device_layout) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      PjRtClient::HostBufferSemantics host_buffer_semantics,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      PjRtBuffer* donated_dst, const Layout* device_layout) override;
+
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions) const override;
+
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, std::optional<int> num_replicas_per_slice,
+      int num_partitions,
+      const MultiSliceConfig* multi_slice_config) const override;
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+      std::shared_ptr<PjRtExecutable> executable,
+      const LoadOptions& load_options) override;
 
  private:
   std::unique_ptr<PjRtClient> inner_client_;

@@ -54,6 +54,7 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
+#include "xla/debug_options_flags.h"
 #include "xla/ffi/ffi.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -63,6 +64,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/parse_flags_from_env.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -75,6 +77,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/pjrt/profiling/test_util/mock_device_time_measurement.h"
@@ -86,6 +89,7 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/env.h"
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_device_address_vmm_allocator.h"
@@ -2812,18 +2816,20 @@ TEST_F(VmmTest, CommandBufferVaRemappingSingleRangeReuse) {
   mock_log.StopCapturingLogs();
 }
 
+#if GOOGLE_CUDA
+
 // Tests that CAPTURE_CMD_NEVER_UPDATE mode produces correct results across
 // multiple runs. The GEMM is routed through cuBLAS (GemmCmd/CublasLtCmd), which
 // are traced commands. In CAPTURE_CMD_NEVER_UPDATE mode only traced commands
-// populate command_buffer_allocation_indexes_, activating VA remapping so that
-// traced commands skip command buffer updates across single-range remaps.
+// populate the persistent allocation index set and activate VA remapping so
+// that traced commands skip command buffer updates across single-range remaps.
 TEST_F(VmmTest, CommandBufferVaRemappingCustomLibraryUpdateFree) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(VmmClientOptions()));
 
   // Pure GEMM: lhs * rhs. With Triton disabled the dot is lowered to a
   // GemmCmd/CublasLtCmd (TracedCommandBufferCmd subclass), so its allocations
-  // populate the VA-remapped allocation index set under
+  // populate the persistent and VA-remapped allocation index sets under
   // CAPTURE_CMD_NEVER_UPDATE.
   static constexpr char kHlo[] = R"(
     HloModule custom_lib_update_free_test
@@ -2984,7 +2990,40 @@ TEST_F(VmmTest, CommandBufferVaRemappingTwoExecutables) {
   absl::SetVLogLevel("command_buffer_thunk", old_vlog_cbt);
 }
 
+#endif  // GOOGLE_CUDA
+
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+TEST(StreamExecutorGpuClientTest, MemoryRegistrationDisabledByDefault) {
+  int* pargc;
+  std::vector<char*>* pargv;
+  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+  tsl::unsetenv("XLA_FLAGS");
+  ResetFlagValues();
+  ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
+
+  GpuAllocatorConfig config;
+  auto registration = CreateAllocatorMemoryRegistration(&config);
+  EXPECT_EQ(registration, nullptr);
+  EXPECT_TRUE(config.sub_allocator_alloc_visitors.empty());
+  EXPECT_TRUE(config.sub_allocator_free_visitors.empty());
+}
+
+TEST(StreamExecutorGpuClientTest, MemoryRegistrationEnabledWithFlag) {
+  int* pargc;
+  std::vector<char*>* pargv;
+  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+  tsl::setenv("XLA_FLAGS",
+              "--xla_gpu_enable_nccl_user_buffers_in_default_space=true", 1);
+  ResetFlagValues();
+  ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
+
+  GpuAllocatorConfig config;
+  auto registration = CreateAllocatorMemoryRegistration(&config);
+  EXPECT_NE(registration, nullptr);
+  EXPECT_FALSE(config.sub_allocator_alloc_visitors.empty());
+  EXPECT_FALSE(config.sub_allocator_free_visitors.empty());
+}
 
 }  // namespace
 }  // namespace xla

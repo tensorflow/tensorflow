@@ -655,9 +655,9 @@ ENTRY main {
       Normalize(module_exp.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
 
-TEST_F(FloatSupportTest, BF16ExpOnGfx1250IsNotNormalized) {
-  // gfx1250 has a native bf16 exponential instruction, so bf16 exp should be
-  // kept as bf16 instead of being upcast to f32.
+TEST_F(FloatSupportTest, BF16TranscendentalsOnGfx1250AreNotNormalized) {
+  // gfx1250 has native bf16 transcendental instructions, so these bf16 ops
+  // should be kept as bf16 instead of being upcast to f32.
   auto cc = se::RocmComputeCapability("gfx1250");
   constexpr absl::string_view kHloModule = R"(
 HloModule module
@@ -667,11 +667,13 @@ ENTRY main {
       ROOT r = bf16[4] $0(p0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module_exp,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(kHloModule, "exponential")));
-  EXPECT_FALSE(
-      Normalize(module_exp.get(), se::GpuComputeCapability{cc}, BF16, F32));
+  for (absl::string_view op : {"exponential", "sqrt", "rsqrt", "tanh"}) {
+    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                             absl::Substitute(kHloModule, op)));
+    EXPECT_FALSE(
+        Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32))
+        << "bf16 " << op << " should not be normalized on gfx1250";
+  }
 
   // log has no native bf16 instruction wired up, so it is still normalized.
   TF_ASSERT_OK_AND_ASSIGN(

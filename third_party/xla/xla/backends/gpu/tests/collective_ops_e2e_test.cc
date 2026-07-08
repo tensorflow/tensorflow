@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -2676,19 +2677,20 @@ ENTRY entry {
 
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(std::move(module),
-                                           /*run_hlo_passes=*/true));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+  ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                       test_runner().HloModuleFromWrapped(executable.get()));
   const HloInstruction* all_gather =
       FindCollectiveStart(hlo_module, HloOpcode::kAllGather);
 
   EXPECT_THAT(all_gather, NotNull());
-  EXPECT_EQ(all_gather->shape().tuple_shapes(0).element_type(), BF16);
+  EXPECT_EQ(all_gather->shape().tuple_shapes(0).tuple_shapes(0).element_type(),
+            BF16);
   EXPECT_EQ(all_gather->shape().tuple_shapes(1).element_type(), BF16);
 }
 
@@ -2926,15 +2928,16 @@ ENTRY main {
 TEST_F(CollectiveOpsTestE2E, AllgatherMemspaceWithNcclUserBuffer) {
   absl::string_view hlo_string = R"(
 HloModule AllgatherMemspaceWithNcclUserBuffer, entry_computation_layout={(bf16[1024,1024]{1,0},bf16[1024,1024]{1,0})->bf16[4096,1024]{1,0}}, num_partitions=4
-
+all_gather_computation {
+  arg = bf16[1024,1024]{1,0} parameter(0)
+  ROOT all-gather = bf16[4096,1024]{1,0} all-gather(arg), dimensions={0}
+}
 ENTRY main {
   Arg_1 = bf16[1024,1024]{1,0} parameter(0)
   Arg_2 = bf16[1024,1024]{1,0} parameter(1)
-
   add = bf16[1024,1024]{1,0} add(Arg_1, Arg_2)
-  all-gather-start = (bf16[1024,1024]{1,0},bf16[4096,1024]{1,0}) all-gather-start(add), dimensions={0}
-  all-gather-done = bf16[4096,1024]{1,0} all-gather-done(all-gather-start)
-
+  all-gather-start = ((bf16[1024,1024]{1,0}), bf16[4096,1024]{1,0}) async-start(add), calls=all_gather_computation
+  all-gather-done = bf16[4096,1024]{1,0} async-done(all-gather-start)
   ROOT add2 = bf16[4096,1024]{1,0} add(all-gather-done, all-gather-done)
 } // main
 )";
@@ -2960,7 +2963,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
                           test_runner().HloModuleFromWrapped(executable.get()));
   const HloInstruction* ag_start =
-      FindCollectiveStarts(executable_module, HloOpcode::kAllGather)[0];
+      FindCollectiveStarts(executable_module, HloOpcode::kAllGather).at(0);
   // Both ag and its producer should have collective memory space 1
   EXPECT_EQ(ag_start->shape().tuple_shapes()[1].layout().memory_space(), 1);
   EXPECT_EQ(ag_start->operand(0)->shape().layout().memory_space(), 1);

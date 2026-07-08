@@ -126,7 +126,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 100
+// Next ID: 101
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -430,6 +430,10 @@ message HloInstructionProto {
 
   // Convolution sparsity config.
   SparsityConfig sparsity_config = 98;
+
+  // For collective-broadcast: indicates the last operand is a scalar
+  // root rank index rather than a data tensor to broadcast.
+  bool has_dynamic_root = 100;
 }
 
 // Serialization of HloComputation.

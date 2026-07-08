@@ -68,13 +68,14 @@ struct LocalCacheKey {
 };
 }  // namespace
 
-LocalCacheStorage& LocalCacheStorage::GetInstance(const AutotuneScope& scope) {
+LocalCacheStorage& LocalCacheStorage::GetInstance(
+    const AutotuneCacheContext& ctx) {
   static absl::Mutex mu(absl::kConstInit);
   using StorageMap =
       absl::flat_hash_map<std::string, std::unique_ptr<LocalCacheStorage>>;
   static auto* instances = new StorageMap();
 
-  std::string key = scope.GetId();
+  std::string key = ctx.GetId();
   absl::MutexLock lock(mu);
   auto [it, inserted] = instances->try_emplace(key, nullptr);
   if (inserted) {

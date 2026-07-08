@@ -29,11 +29,13 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -100,6 +102,10 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
 // Rewrites stablehlo all-reduce op to a triton implementation.
 mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
                                      mlir::PatternRewriter& rewriter);
+
+// Creates a CollectiveKernelSpec for a given collective or fusion instruction.
+absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
 
 }  // namespace xla::gpu
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_

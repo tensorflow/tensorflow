@@ -48,7 +48,7 @@ message DeviceInterconnectInfoProto {
   string clique_id = 3;
 }
 
-// Next ID: 43
+// Next ID: 46
 message GpuDeviceInfoProto {
   string device_vendor = 30;
   string platform_version = 31;
@@ -94,6 +94,9 @@ message GpuDeviceInfoProto {
   int64 device_address_bits = 40;
   int64 pcie_bandwidth = 41;
   bool ecc_enabled = 42;
+  float mem_clock_ghz = 43;
+  int64 reserved_shared_memory_per_block = 44;
+  int64 max_blocks_per_multiprocessor = 45;
 }
 
 message DnnVersionInfoProto {

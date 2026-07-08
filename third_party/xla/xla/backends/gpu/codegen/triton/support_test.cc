@@ -1258,6 +1258,22 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 64, 1}, cc);
 }
 
+TEST_P(ConcatenateDeviceTest, TritonDoesNotSupportUnalignedConcatenate) {
+  auto [cc, tiling] = GetParam();
+  // Operand 0 has size 63 along concat dim (1), which is not divisible by 64.
+  // Operand 1 has size 128 (aligned).
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  p0 = $0[18,63,20] parameter(0)
+  p1 = $0[18,128,20] parameter(1)
+  ROOT concatenate = $0[18,191,20] concatenate(p0, p1), dimensions={1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                          ParseTemplateAndGetInstruction(
+                              kHloTestTemplate, F32, HloOpcode::kConcatenate));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 64, 1}, cc);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     ConcatenateTestSuite, ConcatenateDeviceTest,
     ::testing::Combine(::testing::ValuesIn(AllDevicesToTest()),
@@ -1341,66 +1357,6 @@ ENTRY triton_computation {
                                                     kHloTestTemplate, data_type,
                                                     HloOpcode::kAllReduce));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
-}
-
-TEST_P(CollectiveTest,
-       IsTritonSupportedAllReduceStartAndDoneWithNoReplicaGroups) {
-  // 'all-reduce-start' and 'all-reduce-done' need to be tested together, since
-  // the HLO verifier relies on one directly consuming the other.
-  auto [data_type, cc, tiling] = GetParam();
-  const std::string kHloTestTemplate = R"(
-apply_op {
-  x = $0[] parameter(0)
-  y = $0[] parameter(1)
-  ROOT apply_op = $0[] add(x, y)
-}
-
-ENTRY triton_computation {
-  input = $0[128,32] parameter(0)
-  all-reduce-start = $0[128,32] all-reduce-start(input), replica_groups={},
-      to_apply=apply_op
-  ROOT all-reduce-done = $0[128,32] all-reduce-done(all-reduce-start)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti_start,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
-                                     HloOpcode::kAllReduceStart));
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti_done,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
-                                     HloOpcode::kAllReduceDone));
-  RunSupportTest(std::move(ti_start), /*output_tile_sizes=*/{2, 2}, cc);
-  RunSupportTest(std::move(ti_done), /*output_tile_sizes=*/{2, 2}, cc);
-}
-
-TEST_P(CollectiveTest,
-       IsTritonSupportedAllReduceStartAndDoneWithReplicaGroups) {
-  // 'all-reduce-start' and 'all-reduce-done' need to be tested together, since
-  // the HLO verifier relies on one directly consuming the other.
-  auto [data_type, cc, tiling] = GetParam();
-  const std::string kHloTestTemplate = R"(
-apply_op {
-  x = $0[] parameter(0)
-  y = $0[] parameter(1)
-  ROOT apply_op = $0[] add(x, y)
-}
-
-ENTRY triton_computation {
-  input = $0[128,32] parameter(0)
-  all-reduce-start = $0[128,32] all-reduce-start(input), replica_groups={{0,1}},
-      to_apply=apply_op
-  ROOT all-reduce-done = $0[128,32] all-reduce-done(all-reduce-start)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti_start,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
-                                     HloOpcode::kAllReduceStart));
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti_done,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
-                                     HloOpcode::kAllReduceDone));
-  RunSupportTest(std::move(ti_start), /*output_tile_sizes=*/{2, 2}, cc);
-  RunSupportTest(std::move(ti_done), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
 TEST_P(CollectiveTest, UnsupportedAllToAllFailsGracefullyWithTriton) {

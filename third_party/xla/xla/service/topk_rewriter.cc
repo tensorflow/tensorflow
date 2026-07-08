@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "re2/re2.h"
 #include "xla/hlo/builder/lib/comparators.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -513,6 +514,12 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     bool is_stable = true;
     if (auto* topk_inst = DynCast<HloTopKInstruction>(call)) {
       is_stable = topk_inst->is_stable();
+    } else if (auto* custom_call = DynCast<HloCustomCallInstruction>(call)) {
+      absl::string_view config = custom_call->raw_backend_config_string();
+      static const LazyRE2 kUnstableRegex = {R"((?i)is_stable\s*=\s*false)"};
+      if (RE2::PartialMatch(config, *kUnstableRegex)) {
+        is_stable = false;
+      }
     }
     std::vector<int64_t> zeroes(iota_shape.dimensions().size(), 0);
     std::vector<int64_t> ones(iota_shape.dimensions().size(), 1);

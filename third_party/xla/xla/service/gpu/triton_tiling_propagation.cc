@@ -1022,6 +1022,8 @@ bool AllUsersAreSlicesWithSameShape(const HloInstruction& operand,
   return true;
 }
 
+}  // namespace
+
 // Tells that fusing an instruction as an input is efficient.
 bool IsInputWorthFusing(const HloInstruction& hlo) {
   std::optional<int64_t> input_minus_output_bytes = InputMinusOutputBytes(hlo);
@@ -1072,8 +1074,6 @@ bool IsOutputWorthFusing(const HloInstruction& hlo) {
   return CanNotBeFusedIntoAUser(hlo) ||
          input_minus_output_bytes.value() >= -kIoToleranceBytes;
 }
-
-}  // namespace
 
 DimOrdersAndReqsOrError GetPropagatedDimOrdersAndRequirements(
     const HloInstruction& hlo, const DimensionOrder& src_dim_order,

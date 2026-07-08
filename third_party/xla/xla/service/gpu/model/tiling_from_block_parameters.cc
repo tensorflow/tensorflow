@@ -104,7 +104,7 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
     const xla::gpu::experimental::TilingSpace& tiling_space,
     const BlockLevelParameters& block_level_parameters) {
   if (block_level_parameters.output_tile_sizes.size() != 1) {
-    return Internal(
+    return Unimplemented(
         "Only single-result fusions are supported for now. Received %d "
         "roots.",
         block_level_parameters.output_tile_sizes.size());

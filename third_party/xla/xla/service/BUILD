@@ -4246,6 +4246,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:collective_op_group_mode",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/hlo/pass:hlo_pass",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
@@ -5802,6 +5803,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_googlesource_code_re2//:re2",
     ],
 )
 

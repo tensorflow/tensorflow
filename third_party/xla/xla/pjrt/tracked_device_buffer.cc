@@ -24,28 +24,17 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
-#include "xla/future.h"
-#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
-#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
-#include "xla/pjrt/pjrt_stream_executor_client.h"
-#include "xla/pjrt/raw_buffer.h"
-#include "xla/pjrt/se_raw_buffer.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
-#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/threadpool.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
 
@@ -122,23 +111,6 @@ RawSEDeviceMemory::CreateDelayedMemory() {
   return tsl::MakeUnconstructedAsyncValueRef<AllocatedRawSEDeviceMemory>();
 }
 
-class ForeignRawSEDeviceMemory : public RawSEDeviceMemory {
- public:
-  ForeignRawSEDeviceMemory(se::DeviceAddressBase value,
-                           absl::AnyInvocable<void() &&> on_delete_callback)
-      : RawSEDeviceMemory(value),
-        on_delete_callback_(std::move(on_delete_callback)) {}
-
-  ~ForeignRawSEDeviceMemory() override { std::move(on_delete_callback_)(); }
-
-  void UnsafeReleaseMemory() override {
-    LOG(FATAL) << "ForeignRawSEDeviceMemory cannot be donated.";
-  }
-
- private:
-  absl::AnyInvocable<void() &&> on_delete_callback_;
-};
-
 class SlicedRawSEDeviceMemory : public RawSEDeviceMemory {
  public:
   SlicedRawSEDeviceMemory(se::DeviceAddressBase value,
@@ -162,16 +134,45 @@ tsl::AsyncValueRef<RawSEDeviceMemory> RawSEDeviceMemory::CreateForeign(
 
 tsl::AsyncValueRef<RawSEDeviceMemory> RawSEDeviceMemory::CreateSlice(
     tsl::AsyncValueRef<RawSEDeviceMemory> base, size_t offset, size_t size) {
-  size_t src_size = base->mem().size();
-  if (offset <= src_size && size <= src_size - offset) {
-    return tsl::MakeAvailableAsyncValueRef<SlicedRawSEDeviceMemory>(
-        se::DeviceAddressBase(
-            reinterpret_cast<char*>(base->mem().opaque()) + offset, size),
-        base);
+  if (base.IsAvailable()) {
+    if (base.IsError()) {
+      return base;
+    }
+    size_t src_size = base->mem().size();
+    if (offset <= src_size && size <= src_size - offset) {
+      return tsl::MakeAvailableAsyncValueRef<SlicedRawSEDeviceMemory>(
+          se::DeviceAddressBase(
+              reinterpret_cast<char*>(base->mem().opaque()) + offset, size),
+          base);
+    }
+    return tsl::MakeErrorAsyncValueRef(absl::InvalidArgumentError(
+        absl::StrFormat("Error when slicing: [%d,%d) in array of size %d",
+                        offset, offset + size, src_size)));
   }
-  return tsl::MakeErrorAsyncValueRef(absl::InvalidArgumentError(
-      absl::StrFormat("Error when slicing: [%d,%d) in array of size %d", offset,
-                      offset + size, src_size)));
+
+  // Return an unconstructed AsyncValueRef for the sliced buffer wrapper.
+  auto slice_av =
+      tsl::MakeUnconstructedAsyncValueRef<SlicedRawSEDeviceMemory>();
+
+  // Schedule construction asynchronously when the parent is concrete.
+  base.AndThen([base, slice_av, offset, size]() mutable {
+    if (base.IsError()) {
+      slice_av.SetError(base.GetError());
+      return;
+    }
+    size_t src_size = base->mem().size();
+    if (offset <= src_size && size <= src_size - offset) {
+      slice_av.emplace(
+          se::DeviceAddressBase(
+              reinterpret_cast<char*>(base->mem().opaque()) + offset, size),
+          base);
+    } else {
+      slice_av.SetError(absl::InvalidArgumentError(
+          absl::StrFormat("Error when slicing: [%d,%d) in array of size %d",
+                          offset, offset + size, src_size)));
+    }
+  });
+  return slice_av;
 }
 
 

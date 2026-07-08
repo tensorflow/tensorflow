@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/rccl_communicator.h"
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>

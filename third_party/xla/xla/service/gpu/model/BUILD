@@ -616,6 +616,7 @@ xla_cc_test(
     deps = [
         ":block_level_parameters",
         ":fusion_analysis_cache",
+        ":gpu_dot_fusion_cost_model",
         ":gpu_hlo_cost_analysis",
         ":gpu_indexing_performance_model",
         ":gpu_performance_model_base",
@@ -736,7 +737,6 @@ cc_library(
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:decision",
         "//xla/stream_executor:device_description",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",

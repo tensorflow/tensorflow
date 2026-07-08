@@ -64,10 +64,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
     : allocation_model_(allocation_model),
       event_pool_(allow_event_reuse),
       executor_(executor),
-      client_(client),
-      prng_seed_generator_(prng_seed_device_()),
-      prng_seed_distribution_(std::numeric_limits<int>::min(),
-                              std::numeric_limits<int>::max()) {
+      client_(client) {
   if (max_inflight_computations.has_value()) {
     compute_semaphore_.emplace(*max_inflight_computations);
   }
@@ -387,14 +384,6 @@ void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
   usage_stream_pool_.push(std::move(stream));
 }
 
-int LocalDeviceState::GetNewPrngSeed() {
-  absl::MutexLock lock(mu_);
-  int x = 0;
-  do {
-    x = prng_seed_distribution_(prng_seed_generator_);
-  } while (x == 0);
-  return x;
-}
 
 absl::Status LocalDeviceState::AllocateAndRecordEvent(
     AsyncWorkRunner* async_work_runner, BufferSequencingEventRef event,

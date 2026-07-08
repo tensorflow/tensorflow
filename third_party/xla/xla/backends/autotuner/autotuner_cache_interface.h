@@ -17,18 +17,21 @@ limitations under the License.
 #define XLA_BACKENDS_AUTOTUNER_AUTOTUNER_CACHE_INTERFACE_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/autotuner/backend_config.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 
@@ -55,35 +58,55 @@ enum class CacheMode {
   kReadWrite,   // Lookup, Insert, and update existing entries.
 };
 
-// AutotuneScope contains information about the current scope of the autotuner
-// (such as target device and compilation version). Because this scope does not
-// change within a process, it is kept outside of the Lookup/Insert methods and
-// should instead be accepted directly by the constructors of cache
-// implementations.
-// The cache implementations are responsible for converting this scope into the
-// appropriate fields in the AutotuneKey.
-struct AutotuneScope {
-  std::string device;
-  std::string explicit_version;
-  std::string codegen_version;
-  // Version of each codegen backend. They should already represented by the
-  // codegen version, but we maintain them separately for backend specific
-  // version matching.
-  absl::flat_hash_map<autotuner::Backend, std::string> per_backend_versions;
+// AutotuneCacheContext defines the compilation and hardware context used for
+// the autotuning cache lookup/insert operations (such as the target device
+// description and active codegen backend versions). Because this context
+// remains invariant during the lifetime of a compiler process, it is
+// passed directly to the constructors of cache implementations. Cache
+// implementations use this to construct keys and match entries.
+class AutotuneCacheContext {
+ public:
+  // Creates an AutotuneCacheContext from the given device description and
+  // codegen backends. Optional explicit version can be provided to further
+  // differentiate cache entries, and is accepted by all cache implementations.
+  static AutotuneCacheContext Create(
+      const stream_executor::DeviceDescription& device_description,
+      absl::Span<const std::unique_ptr<CodegenBackend>> backends,
+      std::string explicit_version = "");
 
-  std::string GetId() const {
-    return absl::StrCat(device, explicit_version, codegen_version);
+  // Returns a unique identifier for the cache context.
+  std::string GetId() const;
+
+  bool operator==(const AutotuneCacheContext& other) const;
+  bool operator!=(const AutotuneCacheContext& other) const;
+
+  const std::string& device() const { return device_; }
+  const std::string& explicit_version() const { return explicit_version_; }
+  const std::string& codegen_version() const { return codegen_version_; }
+  // TODO(b/444398084): change to an api which returns version for a given
+  // backend.
+  const absl::flat_hash_map<autotuner::Backend, std::string>&
+  per_backend_versions() const {
+    return per_backend_versions_;
   }
 
-  bool operator==(const AutotuneScope& other) const {
-    return device == other.device &&
-           explicit_version == other.explicit_version &&
-           codegen_version == other.codegen_version;
-  }
+ private:
+  // Private constructor to enforce creation via the static Create method.
+  AutotuneCacheContext(
+      std::string device, std::string explicit_version,
+      std::string codegen_version,
+      absl::flat_hash_map<autotuner::Backend, std::string> per_backend_versions)
+      : device_(std::move(device)),
+        explicit_version_(std::move(explicit_version)),
+        codegen_version_(std::move(codegen_version)),
+        per_backend_versions_(std::move(per_backend_versions)) {}
 
-  bool operator!=(const AutotuneScope& other) const {
-    return !(*this == other);
-  }
+  std::string device_;
+  std::string explicit_version_;
+  std::string codegen_version_;
+  // Already represented by the combined codegen, but we maintain them
+  // separately for backend specific version matching.
+  absl::flat_hash_map<autotuner::Backend, std::string> per_backend_versions_;
 };
 
 // AutotunerCacheInterface is an interface for managing autotuning cache.

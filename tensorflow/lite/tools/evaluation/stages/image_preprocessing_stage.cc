@@ -399,19 +399,69 @@ TfLiteStatus ImagePreprocessingStage::Run() {
     return kTfLiteError;
   }
 
+  // Find the index of the last sizing step with a target size.
+  int last_sizing_step_index = -1;
+  for (int i = params.steps_size() - 1; i >= 0; --i) {
+    const auto& param = params.steps(i);
+    bool is_sizing_step_with_target = false;
+    if (param.has_cropping_params() &&
+        param.cropping_params().has_target_size()) {
+      is_sizing_step_with_target = true;
+    } else if (param.has_resizing_params() &&
+               param.resizing_params().has_target_size()) {
+      is_sizing_step_with_target = true;
+    } else if (param.has_padding_params() &&
+               param.padding_params().has_target_size()) {
+      is_sizing_step_with_target = true;
+    }
+    if (is_sizing_step_with_target) {
+      last_sizing_step_index = i;
+      break;
+    }
+  }
+
   // Cropping, padding and resizing are not supported with raw images since raw
   // images do not contain image size information. Those steps are assumed to
   // be done before raw images are generated.
-  for (const ImagePreprocessingStepParams& param : params.steps()) {
+  for (int i = 0; i < params.steps_size(); ++i) {
+    const ImagePreprocessingStepParams& param = params.steps(i);
     if (param.has_cropping_params()) {
       if (is_raw_image) {
         LOG(WARNING) << "Image cropping will not be performed on raw images";
+        if (param.cropping_params().has_target_size() &&
+            i == last_sizing_step_index) {
+          // Only validate against the target size if this is the last sizing
+          // step in the preprocessing chain.
+          if (image_data.data.size() !=
+              param.cropping_params().target_size().width() *
+                  param.cropping_params().target_size().height() *
+                  kNumChannels) {
+            LOG(ERROR)
+                << "Raw image size does not match the final expected size "
+                   "from cropping params.";
+            return kTfLiteError;
+          }
+        }
         continue;
       }
       TF_LITE_ENSURE_STATUS(Crop(&image_data, param.cropping_params()));
     } else if (param.has_resizing_params()) {
       if (is_raw_image) {
         LOG(WARNING) << "Image resizing will not be performed on raw images";
+        if (param.resizing_params().has_target_size() &&
+            i == last_sizing_step_index) {
+          // Only validate against the target size if this is the last sizing
+          // step in the preprocessing chain.
+          if (image_data.data.size() !=
+              param.resizing_params().target_size().width() *
+                  param.resizing_params().target_size().height() *
+                  kNumChannels) {
+            LOG(ERROR)
+                << "Raw image size does not match the final expected size "
+                   "from resizing params.";
+            return kTfLiteError;
+          }
+        }
         continue;
       }
       TF_LITE_ENSURE_STATUS(
@@ -419,6 +469,20 @@ TfLiteStatus ImagePreprocessingStage::Run() {
     } else if (param.has_padding_params()) {
       if (is_raw_image) {
         LOG(WARNING) << "Image padding will not be performed on raw images";
+        if (param.padding_params().has_target_size() &&
+            i == last_sizing_step_index) {
+          // Only validate against the target size if this is the last sizing
+          // step in the preprocessing chain.
+          if (image_data.data.size() !=
+              param.padding_params().target_size().width() *
+                  param.padding_params().target_size().height() *
+                  kNumChannels) {
+            LOG(ERROR)
+                << "Raw image size does not match the final expected size "
+                   "from padding params.";
+            return kTfLiteError;
+          }
+        }
         continue;
       }
       TF_LITE_ENSURE_STATUS(Pad(&image_data, param.padding_params()));
@@ -427,7 +491,6 @@ TfLiteStatus ImagePreprocessingStage::Run() {
           Normalize(&image_data, param.normalization_params()));
     }
   }
-
   // Converts data to output type.
   if (output_type_ == kTfLiteUInt8) {
     uint8_preprocessed_image_.clear();
@@ -462,6 +525,25 @@ void* ImagePreprocessingStage::GetPreprocessedImageData() {
     return float_preprocessed_image_.data();
   }
   return nullptr;
+}
+
+size_t ImagePreprocessingStage::GetPreprocessedImageBytes() {
+  if (latency_stats_.count() == 0) return 0;
+
+  if (output_type_ == kTfLiteUInt8) {
+    return (uint8_preprocessed_image_.size() >= 16
+                ? uint8_preprocessed_image_.size() - 16
+                : 0) *
+           sizeof(uint8_t);
+  } else if (output_type_ == kTfLiteInt8) {
+    return (int8_preprocessed_image_.size() >= 16
+                ? int8_preprocessed_image_.size() - 16
+                : 0) *
+           sizeof(int8_t);
+  } else if (output_type_ == kTfLiteFloat32) {
+    return float_preprocessed_image_.size() * sizeof(float);
+  }
+  return 0;
 }
 
 EvaluationStageMetrics ImagePreprocessingStage::LatestMetrics() {

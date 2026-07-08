@@ -18,46 +18,53 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
-#include <string>
 #include <utility>
-#include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "xla/future.h"
-#include "xla/layout.h"
-#include "xla/layout_util.h"
-#include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/device_event_utils.h"
-#include "xla/pjrt/dynamic_shapes.h"
+#include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/tracked_device_buffer.h"
-#include "xla/primitive_util.h"
-#include "xla/service/generic_transfer_manager.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "tsl/platform/casts.h"
-#include "tsl/profiler/lib/connected_traceme.h"
+
+namespace {
+static absl::StatusOr<xla::BufferSequencingEventRef>
+GetOrCreateAllocationReadyEvent(const xla::RawSEDeviceMemory& device_buffer,
+                                xla::PjRtStreamExecutorClient* client,
+                                xla::LocalDeviceState* local_device) {
+  ASSIGN_OR_RETURN(auto result,
+                   device_buffer.GetDefinitionEvent(client->async_work_runner(),
+                                                    /*nullptr_if_past=*/false));
+  if (!result) {
+    result = xla::BufferSequencingEvent::Create(client->async_work_runner());
+    auto stream = local_device->BorrowStreamFromPool();
+    auto status = client->AllocateAndRecordEvent(
+        result, local_device, stream.get(),
+        "PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent");
+    local_device->ReturnStreamToPool(std::move(stream));
+    RETURN_IF_ERROR(status);
+  }
+  return result;
+}
+}  // namespace
 
 namespace xla {
 
@@ -242,22 +249,6 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
   return PjRtDeviceEventRef(std::move(device_event));
 }
 
-ShapedBuffer PjRtStreamExecutorRawBuffer::AsShapedBuffer(
-    const xla::Shape& shape) {
-  auto* device = memory_space()->devices()[0];
-  ShapedBuffer shaped_buffer(shape, device->local_device_id().value(),
-                             device->local_hardware_id().value());
-  ShapeTree<se::DeviceAddressBase>::iterator iterator =
-      shaped_buffer.buffers().begin();
-  if (device_buffer_) {
-    CHECK(iterator != shaped_buffer.buffers().end());
-    iterator->second = device_buffer_->mem();
-    ++iterator;
-  }
-  CHECK(iterator == shaped_buffer.buffers().end());
-  return shaped_buffer;
-}
-
 absl::Status PjRtStreamExecutorRawBuffer::ValidateSlice(int64_t offset,
                                                         int64_t slice_size) {
   size_t buffer_size = GetOnDeviceSizeInBytes();
@@ -282,19 +273,39 @@ absl::StatusOr<PjRtDeviceEventRef>
 PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
   auto* client =
       tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space_->client());
-  ASSIGN_OR_RETURN(auto result,
-                   device_buffer_->GetDefinitionEvent(
-                       client->async_work_runner(), /*nullptr_if_past=*/false));
-  if (!result) {
-    result = BufferSequencingEvent::Create(client->async_work_runner());
-    auto stream = local_device_->BorrowStreamFromPool();
-    auto status = client->AllocateAndRecordEvent(
-        result, local_device_, stream.get(),
-        "PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent");
-    local_device_->ReturnStreamToPool(std::move(stream));
-    RETURN_IF_ERROR(status);
+  if (device_buffer_.IsConcrete()) {
+    ASSIGN_OR_RETURN(auto result, GetOrCreateAllocationReadyEvent(
+                                      *device_buffer_, client, local_device_));
+    return PjRtDeviceEventRef(std::move(result));
   }
-  return PjRtDeviceEventRef(std::move(result));
+  if (device_buffer_.IsError()) {
+    return device_buffer_.GetError();
+  }
+
+  ASSIGN_OR_RETURN(
+      auto promise_and_event,
+      client->CreateLinkedEventPromise(
+          memory_space_,
+          "PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent"));
+  auto [promise, event] = std::move(promise_and_event);
+
+  device_buffer_.AndThen([client, promise = std::move(promise),
+                          device_buffer = device_buffer_,
+                          local_device = local_device_]() mutable {
+    if (device_buffer.IsError()) {
+      promise.SetError(device_buffer.GetError());
+      return;
+    }
+    auto result_or =
+        GetOrCreateAllocationReadyEvent(*device_buffer, client, local_device);
+    if (!result_or.ok()) {
+      promise.SetError(result_or.status());
+      return;
+    }
+    promise.Set(PjRtDeviceEventRef(std::move(*result_or)));
+  });
+
+  return event;
 }
 
 void PjRtStreamExecutorRawBuffer::CopyTo(
@@ -396,7 +407,7 @@ void PjRtStreamExecutorRawBuffer::ScheduleCopyTo(
     PjRtDeviceEventPromiseRef src_usage_event_promise,
     absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
   if (dst_raw_buffer->memory_space()->client() == memory_space()->client()) {
-    client_->async_work_runner()->Schedule(
+    client_->async_work_runner()->Execute(
         [this_ref = tsl::FormRef(this),
          transfer_dependency_events = std::move(transfer_dependency_events),
          dst_raw_buffer = std::move(dst_raw_buffer),

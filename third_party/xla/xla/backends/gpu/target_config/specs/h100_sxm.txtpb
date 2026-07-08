@@ -224,6 +224,9 @@ gpu_device_info {
   pcie_bandwidth: 34359738368
   ecc_enabled: true
   name: "NVIDIA H100 80GB HBM3"
+  mem_clock_ghz: 2.619
+  reserved_shared_memory_per_block: 1024
+  max_blocks_per_multiprocessor: 32
   driver_version: "13.0.0"
   runtime_version: "12.8.0"
   compile_time_toolkit_version: "12.8.0"

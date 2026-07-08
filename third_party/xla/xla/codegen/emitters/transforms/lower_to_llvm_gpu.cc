@@ -74,33 +74,42 @@ namespace se = ::stream_executor;
 // log2(e), used to express exp(x) = exp2(x * log2(e)).
 constexpr double kLog2E = 1.4426950408889634;
 
-// Lowers a scalar bf16 `math.exp2` to the native gfx1250 `v_exp_bf16`
-// instruction via the `llvm.amdgcn.exp2` intrinsic. Without this, the default
-// MathToROCDL lowering upcasts bf16 to f32 and calls `__ocml_exp2_f32`, never
-// using the hardware bf16 transcendental unit. Vector ops are scalarized first
-// by MathToROCDL's ScalarizeVectorOpLowering (lower benefit), so this pattern
-// only needs to handle the scalar case.
-struct Exp2BF16ToAMDGPU
-    : public mlir::ConvertOpToLLVMPattern<mlir::math::Exp2Op> {
-  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+// Lowers a scalar bf16 unary `math` op to the matching native gfx1250 bf16
+// transcendental instruction (v_exp_bf16, v_sqrt_bf16, v_rsq_bf16, v_tanh_bf16,
+// v_log_bf16, ...) via its `llvm.amdgcn.*` intrinsic, when the op maps 1:1 to
+// the instruction. Without this, the default MathToROCDL lowering upcasts bf16
+// to f32 and calls an `__ocml_*_f32` library function, never using the hardware
+// bf16 transcendental unit. Vector ops are scalarized first by MathToROCDL's
+// ScalarizeVectorOpLowering (lower benefit), so this pattern only needs to
+// handle the scalar case.
+template <typename OpTy>
+struct TranscendentalBF16ToAMDGPU : public mlir::ConvertOpToLLVMPattern<OpTy> {
+  TranscendentalBF16ToAMDGPU(const mlir::LLVMTypeConverter& converter,
+                             llvm::StringRef intrinsic,
+                             mlir::PatternBenefit benefit)
+      : mlir::ConvertOpToLLVMPattern<OpTy>(converter, benefit),
+        intrinsic(intrinsic) {}
 
   mlir::LogicalResult matchAndRewrite(
-      mlir::math::Exp2Op op, OpAdaptor adaptor,
+      OpTy op, typename OpTy::Adaptor adaptor,
       mlir::ConversionPatternRewriter& rewriter) const override {
     if (!op.getType().isBF16()) {
-      return rewriter.notifyMatchFailure(op, "not a scalar bf16 exp2");
+      return rewriter.notifyMatchFailure(op, "not a scalar bf16 op");
     }
     mlir::Value operand = adaptor.getOperands().front();
     rewriter.replaceOpWithNewOp<mlir::LLVM::CallIntrinsicOp>(
-        op, /*resultType=*/operand.getType(),
-        rewriter.getStringAttr("llvm.amdgcn.exp2"), mlir::ValueRange{operand});
+        op, /*resultType=*/operand.getType(), rewriter.getStringAttr(intrinsic),
+        mlir::ValueRange{operand});
     return mlir::success();
   }
+
+  llvm::StringRef intrinsic;
 };
 
 // Lowers a scalar bf16 `math.exp` to the native gfx1250 `v_exp_bf16`
 // instruction by rewriting exp(x) = exp2(x * log2(e)) and emitting the
-// `llvm.amdgcn.exp2` intrinsic. See Exp2BF16ToAMDGPU for the rationale.
+// `llvm.amdgcn.exp2` intrinsic. See TranscendentalBF16ToAMDGPU for the
+// rationale.
 struct ExpBF16ToAMDGPU
     : public mlir::ConvertOpToLLVMPattern<mlir::math::ExpOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
@@ -167,14 +176,25 @@ class LowerToLLVMGPUPass
         mlir::configureGpuToROCDLConversionLegality(target);
         mlir::populateAMDGPUToROCDLConversionPatterns(converter, patterns,
                                                       *maybeChipset);
-        // On gfx1250 emit native bf16 exp via v_exp_bf16 instead of upcasting
-        // to f32 and calling __ocml_exp(2)_f32. Higher benefit than the default
-        // MathToROCDL patterns so it wins for scalar bf16 ops.
+        // On gfx1250 emit native bf16 transcendentals (v_exp_bf16, v_sqrt_bf16,
+        // v_rsq_bf16, v_tanh_bf16, v_log_bf16, ...) instead of upcasting to f32
+        // and calling __ocml_*_f32. Higher benefit than the default MathToROCDL
+        // patterns so it wins for scalar bf16 ops.
         if (device_spec_.gpu()
                 .rocm_compute_capability()
                 .has_bf16_transcendental_support()) {
-          patterns.add<ExpBF16ToAMDGPU, Exp2BF16ToAMDGPU>(
-              converter, /*benefit=*/mlir::PatternBenefit(2));
+          mlir::PatternBenefit benefit(2);
+          patterns.add<ExpBF16ToAMDGPU>(converter, benefit);
+          patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::Exp2Op>>(
+              converter, "llvm.amdgcn.exp2", benefit);
+          patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::SqrtOp>>(
+              converter, "llvm.amdgcn.sqrt", benefit);
+          patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::RsqrtOp>>(
+              converter, "llvm.amdgcn.rsq", benefit);
+          patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::TanhOp>>(
+              converter, "llvm.amdgcn.tanh", benefit);
+          patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::Log2Op>>(
+              converter, "llvm.amdgcn.log", benefit);
         }
         target.addIllegalDialect<mlir::amdgpu::AMDGPUDialect>();
       } else if (device_spec_.IsIntelGpu()) {

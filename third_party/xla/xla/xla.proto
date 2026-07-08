@@ -419,6 +419,21 @@ message DebugOptions {
     CAPTURE_CMD_NEVER_UPDATE = 2;
   }
 
+  // Controls when cuDNN fusions are compiled in "deviceless" mode, i.e. driven
+  // purely by the DeviceDescription without a live cuDNN handle. Deviceless
+  // compilation requires cuDNN >= 9.8.
+  enum CudnnDevicelessCompilationMode {
+    CUDNN_DEVICELESS_COMPILATION_UNSET = 0;
+    // Never use deviceless compilation; always require a live device.
+    CUDNN_DEVICELESS_COMPILATION_DISABLED = 1;
+    // Use deviceless compilation only when no live device is available (e.g.
+    // ahead-of-time compilation); use the device-dependent path otherwise.
+    CUDNN_DEVICELESS_COMPILATION_AUTO = 2;
+    // Always use deviceless compilation, even when a live device is available.
+    // Provides a testing path toward deprecating the device-dependent path.
+    CUDNN_DEVICELESS_COMPILATION_ALWAYS = 3;
+  }
+
   // Controls CUB sort behavior during deviceless GPU compilation. CUB sort
   // needs a scratch buffer whose size is usually queried from a live device.
   // Deviceless compilation relies on pre-computed lookups instead.
@@ -460,6 +475,9 @@ message DebugOptions {
     // If set, only collectives with this operand type will be enabled.
     optional PrimitiveType op_type = 3;
   }
+
+  optional CudnnDevicelessCompilationMode
+      xla_gpu_cudnn_deviceless_compilation_mode = 505;
 
   optional DevicelessCubMode xla_gpu_deviceless_cub_mode = 483;
 
@@ -732,6 +750,10 @@ message DebugOptions {
   // Enable NCCL user buffers.
   optional bool xla_gpu_enable_nccl_user_buffers = 267;
 
+  // Register NCCL user buffers without moving buffers to collective memory
+  // space.
+  optional bool xla_gpu_enable_nccl_user_buffers_in_default_space = 506;
+
   // Enable PDL - Programmatic Dependent Launch.
   optional bool xla_gpu_enable_pdl = 460;
 
@@ -844,7 +866,9 @@ message DebugOptions {
   optional bool xla_gpu_experimental_autotune_post_fusion = 481
       [deprecated = true];
 
-  // Specifies the directory to store per kernel autotuning cache.
+  // Specifies the directory for the new structured autotuning cache.
+  // This supersedes `xla_gpu_per_fusion_autotune_cache_dir`, which uses
+  // a different cache format.
   optional string xla_gpu_experimental_autotuner_cache_dir = 407;
 
   // Specifies the distance threshold in ScheduleAwareCollectiveOpsCSE
@@ -1645,7 +1669,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 505
+  // Next id: 507
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -1,0 +1,150 @@
+--- a/test/Conversion/amd/buffer_load_to_local_to_llvm.mlir
++++ b/test/Conversion/amd/buffer_load_to_local_to_llvm.mlir
+@@ -189,10 +189,7 @@
+     // The first constant 0 skips the LDS offset which is also 0.
+     // Match the i32 select used to compute voffset
+     // COMMON: %[[VOFFSET:.*]] = llvm.select {{.*}} : i1, i32
+-    // COMMON: %[[IMM0:.*]] = llvm.mlir.constant(0 : i32) : i32
+-    // COMMON: %[[aux_ca:.*]] = llvm.mlir.constant(0 : i32) : i32
+-    // COMMON: %[[IMM1:.*]] = llvm.mlir.constant(0 : i32) : i32
+-    // COMMON: rocdl.raw.ptr.buffer.load.async.lds {{.*}}, {{.*}}, {{.*}}, %[[VOFFSET]], %[[IMM1]], %[[IMM0]], %[[aux_ca]]
++    // COMMON: rocdl.raw.ptr.buffer.load.async.lds {{.*}}, {{.*}}, {{.*}}, %[[VOFFSET]], {{.*}}, {{.*}}, 0
+     %1 = amdg.buffer_load_to_local %arg0[%0] cacheModifier = ca into %arg2: <f32>[tensor<64xi32, #blocked>] -> <64xf32, #shared, #smem, mutable>
+     // COMMON: llvm.getelementptr
+     // COMMON: rocdl.raw.ptr.buffer.load.async.lds {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, 3
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.cpp
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.cpp
+@@ -113,7 +113,8 @@
+                               triton::CacheModifier cm) {
+   auto b = TritonLLVMOpBuilder(loc, rewriter);
+   SmallVector<Value, 6> args;
+-  fillCommonArgs(type, rsrcDesc, offset, pred, cm, /*isBufferLoad=*/true, args);
++  int32_t aux = fillCommonArgs(type, rsrcDesc, offset, pred, cm,
++                               /*isBufferLoad=*/true, args);
+   Type bufferType = getBufferOpType(type, false);
+   SmallVector<NamedAttribute> attrs;
+   attrs.push_back(
+@@ -132,23 +133,26 @@
+                              triton::CacheModifier cm) {
+   auto b = TritonLLVMOpBuilder(loc, rewriter);
+   SmallVector<Value, 6> commonArgs;
+-  fillCommonArgs(type, rsrcDesc, offset, pred, cm, /*isBufferLoad=*/true,
+-                 commonArgs);
++  int32_t aux = fillCommonArgs(type, rsrcDesc, offset, pred, cm,
++                               /*isBufferLoad=*/true, commonArgs);
+ 
+   // buffer_load_to_lds is only supported on gfx942/gfx950 which always use
+   // asyncmark. Emit the async intrinsic so LLVM's SIInsertWaitcnts tracks
+   // these operations via asyncmark/wait_asyncmark.
++  SmallVector<NamedAttribute> attrs;
++  attrs.push_back(
++      rewriter.getNamedAttr("aux", rewriter.getI32IntegerAttr(aux)));
+   return ROCDL::RawPtrBufferLoadAsyncLdsOp::create(
+       rewriter, loc, TypeRange{},
+       ValueRange{
+-          commonArgs[0], // Buffer descriptor
+-          dst,           // LDS base ptr
+-          byteWidth,     // Instr size
+-          commonArgs[1], // Buffer offset
+-          b.i32_val(0),  // LDS offset
+-          commonArgs[2], // Instruction offset
+-          commonArgs[3], // AUX
+-      });
++          commonArgs[0],  // Buffer descriptor
++          dst,            // LDS base ptr
++          byteWidth,      // Instr size
++          commonArgs[1],  // Buffer offset
++          b.i32_val(0),   // LDS offset
++          commonArgs[2],  // Instruction offset
++      },
++      attrs);
+ }
+ 
+ Value BufferEmitter::emitAtomicCAS(Type type, Value rsrcDesc, Value offset,
+@@ -223,10 +227,12 @@
+   if (vecTy != bufferType)
+     data = b.bitcast(data, bufferType);
+   SmallVector<Value, 6> args{data};
+-  fillCommonArgs(vecTy, rsrcDesc, offset, pred, cm, /*isBufferLoad=*/false,
+-                 args);
+-  ROCDL::RawPtrBufferStoreOp::create(rewriter, loc, TypeRange{}, args,
+-                                     ArrayRef<NamedAttribute>());
++  int32_t aux = fillCommonArgs(vecTy, rsrcDesc, offset, pred, cm,
++                               /*isBufferLoad=*/false, args);
++  SmallVector<NamedAttribute> attrs;
++  attrs.push_back(
++      rewriter.getNamedAttr("aux", rewriter.getI32IntegerAttr(aux)));
++  ROCDL::RawPtrBufferStoreOp::create(rewriter, loc, TypeRange{}, args, attrs);
+ }
+ 
+ Type BufferEmitter::getBufferOpType(Type type, bool atomicsOp) {
+@@ -275,10 +281,11 @@
+   return bufferType;
+ }
+ 
+-void BufferEmitter::fillCommonArgs(Type type, Value rsrcDesc,
+-                                   Value vOffsetElems, Value pred,
+-                                   triton::CacheModifier cm, bool isBufferLoad,
+-                                   SmallVector<Value> &args) {
++int32_t BufferEmitter::fillCommonArgs(Type type, Value rsrcDesc,
++                                      Value vOffsetElems, Value pred,
++                                      triton::CacheModifier cm,
++                                      bool isBufferLoad,
++                                      SmallVector<Value>& args) {
+   auto b = TritonLLVMOpBuilder(loc, rewriter);
+   // 1. Create the (masked) offset
+   Type elementType = getElementTypeOrSelf(type);
+@@ -303,7 +310,7 @@
+   args.push_back(rsrcDesc);
+   args.push_back(maskedOffsetBytes);
+   args.push_back(sgprOffset);
+-  args.push_back(cacheModifiers);
++  return aux;
+ }
+ 
+ int32_t BufferEmitter::fillCommonArgsAtomics(Type type, Value rsrcDesc,
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.h
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.h
+@@ -92,24 +92,24 @@
+ 
+ private:
+   // Fill common buffer operation arguments.
+-  void fillCommonArgs(Type type, Value rsrcDesc, Value vOffsetElems, Value pred,
+-                      CacheModifier cm, bool isBufferLoad,
+-                      SmallVector<Value> &args);
++ int32_t fillCommonArgs(Type type, Value rsrcDesc, Value vOffsetElems,
++                        Value pred, CacheModifier cm, bool isBufferLoad,
++                        SmallVector<Value>& args);
+ 
+-  // Fill buffer atomics arguments
+-  int32_t fillCommonArgsAtomics(Type type, Value rsrcDesc, Value vOffsetElems,
+-                                Value pred, bool hasUsers,
+-                                SmallVector<Value> &args);
++ // Fill buffer atomics arguments
++ int32_t fillCommonArgsAtomics(Type type, Value rsrcDesc, Value vOffsetElems,
++                               Value pred, bool hasUsers,
++                               SmallVector<Value>& args);
+ 
+-  // Given a type, the buffer type can be either the same type
+-  // or a packed version. E.g., a vector of 8xfp16 can be bitcasted to
+-  // a vector of 4xi32. This usually makes the life of the backend easier
+-  Type getBufferOpType(Type type, bool atomicsOp);
++ // Given a type, the buffer type can be either the same type
++ // or a packed version. E.g., a vector of 8xfp16 can be bitcasted to
++ // a vector of 4xi32. This usually makes the life of the backend easier
++ Type getBufferOpType(Type type, bool atomicsOp);
+ 
+-  // Rewriter utilities
+-  RewriterBase &rewriter;
+-  Location loc;
+-  mlir::triton::AMD::TargetInfo targetInfo;
++ // Rewriter utilities
++ RewriterBase& rewriter;
++ Location loc;
++ mlir::triton::AMD::TargetInfo targetInfo;
+ };
+ 
+ } // namespace mlir::LLVM::AMD
+
