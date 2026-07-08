@@ -544,7 +544,7 @@ struct RemapArraysOpState {
     VLOG(3) << pretty_print;
 
     std::vector<ArrayRef> inputs;
-    inputs.reserve(remap_plan.input_specs.size());
+    inputs.reserve(remap_plan.input_specs().size());
 
     std::vector<ArrayHandle> arrays_to_remove;
 
@@ -609,9 +609,9 @@ struct RemapArraysOpState {
     }
 
     // Store the result arrays in the environment.
-    TF_RET_CHECK(out_arrays.size() == remap_plan.output_specs.size())
+    TF_RET_CHECK(out_arrays.size() == remap_plan.output_specs().size())
         << "Got " << out_arrays.size() << " results, but op has "
-        << remap_plan.output_specs.size() << ". " << pretty_print;
+        << remap_plan.output_specs().size() << ". " << pretty_print;
     for (int i = 0; i < output_handles.size(); ++i) {
       const ArrayHandle handle = output_handles[i];
       if (handle != kArrayNotUsed) {
@@ -634,12 +634,12 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   state.pretty_print = PrettyPrint(remap_op);
 
   // Construct the mappings of the remap plan.
-  auto mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
-  mappings->reserve(remap_op.getMappings().size());
+  std::vector<RemapPlan::Mapping> mappings;
+  mappings.reserve(remap_op.getMappings().size());
   for (const auto& array_mapping : remap_op.getMappings()) {
     const auto array_mapping_attr =
         llvm::cast<IfrtArrayMappingAttr>(array_mapping);
-    auto& mapping = mappings->emplace_back();
+    auto& mapping = mappings.emplace_back();
     mapping.in_array = array_mapping_attr.getInArrayIndex();
     mapping.out_array = array_mapping_attr.getOutArrayIndex();
     mapping.from.reserve(array_mapping_attr.getMappings().size());
@@ -677,11 +677,8 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
     output_specs.push_back(std::move(spec));
   }
 
-  state.remap_plan = RemapPlan{
-      /*input_specs=*/std::move(input_specs),
-      /*output_specs=*/std::move(output_specs),
-      /*mappings=*/std::move(mappings),
-  };
+  state.remap_plan = RemapPlan(std::move(input_specs), std::move(output_specs),
+                               std::move(mappings));
   state.remap_is_donated = remap_op.getDonated();
 
   RETURN_IF_ERROR(state.remap_plan.ComputeInputDevicesForOutputMap(client_));

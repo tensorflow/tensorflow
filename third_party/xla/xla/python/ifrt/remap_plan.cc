@@ -166,8 +166,7 @@ int64_t GetNumberOfSteps(const RemapPlan::Interval& interval) {
 }
 
 bool CheckOneInputForOneOutput(const xla::ifrt::RemapPlan& plan) {
-  if (!plan.mappings) return false;
-  const auto& mappings = *plan.mappings;
+  const auto& mappings = plan.mappings();
   absl::flat_hash_map<int, int> output_to_input;
 
   for (const auto& mapping : mappings) {
@@ -222,8 +221,7 @@ std::string RemapPlan::Mapping::DebugString() const {
 }
 
 absl::Status RemapPlan::ComputeInputDevicesForOutputMap(Client* client) {
-  TF_RET_CHECK(mappings);
-  TF_RET_CHECK(input_devices_for_output_map.empty());
+  TF_RET_CHECK(input_devices_for_output_map_.empty());
   // A list of intervals along with the sum of entries across all the intervals.
   struct IntervalsAndCount {
     std::vector<Interval> intervals;
@@ -236,7 +234,7 @@ absl::Status RemapPlan::ComputeInputDevicesForOutputMap(Client* client) {
   // array that contribute to the given output.
   absl::flat_hash_map<int, absl::flat_hash_map<int, IntervalsAndCount>>
       output_to_inputs_and_intervals;
-  for (const Mapping& mapping : *mappings) {
+  for (const Mapping& mapping : *mappings_) {
     IntervalsAndCount& intervals =
         output_to_inputs_and_intervals[mapping.out_array][mapping.in_array];
     for (const Interval& interval : mapping.from) {
@@ -247,15 +245,15 @@ absl::Status RemapPlan::ComputeInputDevicesForOutputMap(Client* client) {
 
   for (const auto& [out_array, input_intervals] :
        output_to_inputs_and_intervals) {
-    TF_RET_CHECK(out_array < output_specs.size());
+    TF_RET_CHECK(out_array < output_specs_.size());
     const DeviceListRef& out_devices =
-        output_specs[out_array].sharding->devices();
-    auto [it, inserted] = input_devices_for_output_map.insert({out_array, {}});
+        output_specs_[out_array].sharding->devices();
+    auto [it, inserted] = input_devices_for_output_map_.insert({out_array, {}});
     TF_RET_CHECK(inserted);
     for (const auto& [in_array, intervals] : input_intervals) {
-      TF_RET_CHECK(in_array < input_specs.size());
+      TF_RET_CHECK(in_array < input_specs_.size());
       const DeviceListRef& in_devices =
-          input_specs[in_array].sharding->devices();
+          input_specs_[in_array].sharding->devices();
       TF_RET_CHECK(intervals.count <= out_devices->size());
       TF_RET_CHECK(intervals.count <= in_devices->size());
       DeviceListRef interval_device_list;
@@ -321,7 +319,7 @@ class ShardShapeVector {
 }  // namespace
 
 absl::Status RemapPlan::Validate() const {
-  const int num_inputs = input_specs.size();
+  const int num_inputs = input_specs_.size();
   if (num_inputs == 0) {
     return InvalidArgument("Must have at least one input");
   }
@@ -329,36 +327,36 @@ absl::Status RemapPlan::Validate() const {
   std::vector<std::vector<bool>> in_used_buffers_list(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     in_used_buffers_list[i].resize(
-        /*count=*/input_specs[i]
+        /*count=*/input_specs_[i]
             .sharding->devices()
             ->AddressableDeviceList()
             ->size(),
         /*value=*/false);
   }
 
-  const int num_outputs = output_specs.size();
+  const int num_outputs = output_specs_.size();
   std::vector<absl::InlinedVector<Device*, 1>> out_assigned_devices_list(
       num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     out_assigned_devices_list[i].resize(
-        /*n=*/output_specs[i]
+        /*n=*/output_specs_[i]
             .sharding->devices()
             ->AddressableDeviceList()
             ->size(),
         /*v=*/nullptr);
   }
 
-  if (!mappings || mappings->empty()) {
+  if (mappings_->empty()) {
     return InvalidArgument("Must have at least one mapping");
   }
 
   absl::flat_hash_map<int,
                       absl::flat_hash_map<int, absl::flat_hash_set<Device*>>>
       out_buffer_to_in_buffer_and_devices;
-  for (int64_t i = 0; i < mappings->size(); ++i) {
-    const RemapPlan::Mapping& mapping = (*mappings)[i];
+  for (int64_t i = 0; i < mappings_->size(); ++i) {
+    const RemapPlan::Mapping& mapping = (*mappings_)[i];
     absl::flat_hash_set<Device*>* in_device_set =
-        input_devices_for_output_map.contains(mapping.out_array)
+        input_devices_for_output_map_.contains(mapping.out_array)
             ? &out_buffer_to_in_buffer_and_devices[mapping.out_array]
                                                   [mapping.in_array]
             : nullptr;
@@ -379,8 +377,8 @@ absl::Status RemapPlan::Validate() const {
           i, i, mapping.from.size(), mapping.to.size());
     }
 
-    const ArraySpec& input_spec = input_specs[mapping.in_array];
-    const ArraySpec& output_spec = output_specs[mapping.out_array];
+    const ArraySpec& input_spec = input_specs_[mapping.in_array];
+    const ArraySpec& output_spec = output_specs_[mapping.out_array];
 
     if (input_spec.dtype != output_spec.dtype) {
       return InvalidArgument(
@@ -410,7 +408,7 @@ absl::Status RemapPlan::Validate() const {
                      ShardShapeVector::Create(output_spec));
 
     std::vector<bool>& in_used_buffers = in_used_buffers_list[mapping.in_array];
-    absl::Span<Device* const> in_devices = input_specs[mapping.in_array]
+    absl::Span<Device* const> in_devices = input_specs_[mapping.in_array]
                                                .sharding->devices()
                                                ->AddressableDeviceList()
                                                ->devices();
@@ -476,7 +474,7 @@ absl::Status RemapPlan::Validate() const {
     }
   }
 
-  for (const auto& [out_array, inputs] : input_devices_for_output_map) {
+  for (const auto& [out_array, inputs] : input_devices_for_output_map_) {
     const auto out_it = out_buffer_to_in_buffer_and_devices.find(out_array);
     if (out_it == out_buffer_to_in_buffer_and_devices.end()) {
       return InvalidArgument(
@@ -522,7 +520,7 @@ absl::Status RemapPlan::Validate() const {
 
   for (int i = 0; i < num_outputs; ++i) {
     xla::ifrt::DeviceList* devices =
-        output_specs[i].sharding->devices()->AddressableDeviceList();
+        output_specs_[i].sharding->devices()->AddressableDeviceList();
     for (int out_shard = 0; out_shard < devices->size(); ++out_shard) {
       if (out_assigned_devices_list[i][out_shard] == nullptr) {
         return InvalidArgument(
@@ -551,34 +549,35 @@ absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
         "Unsupported ", version_number, " for RemapPlan deserialization"));
   }
 
-  RemapPlan plan;
-
-  plan.input_specs.reserve(proto.input_specs_size());
+  std::vector<ArraySpec> input_specs;
+  input_specs.reserve(proto.input_specs_size());
   for (const auto& input_spec_proto : proto.input_specs()) {
     ASSIGN_OR_RETURN(ArraySpec input_spec,
                      ArraySpec::FromProto(client, input_spec_proto));
-    plan.input_specs.push_back(std::move(input_spec));
+    input_specs.push_back(std::move(input_spec));
   }
 
-  plan.output_specs.reserve(proto.output_specs_size());
+  std::vector<ArraySpec> output_specs;
+  output_specs.reserve(proto.output_specs_size());
   for (const auto& output_spec_proto : proto.output_specs()) {
     ASSIGN_OR_RETURN(ArraySpec output_spec,
                      ArraySpec::FromProto(client, output_spec_proto));
-    plan.output_specs.push_back(std::move(output_spec));
+    output_specs.push_back(std::move(output_spec));
   }
 
-  plan.mappings = std::make_shared<std::vector<Mapping>>();
-  plan.mappings->reserve(proto.mappings_size());
+  std::vector<Mapping> mappings;
+  mappings.reserve(proto.mappings_size());
   for (const auto& mapping_proto : proto.mappings()) {
     ASSIGN_OR_RETURN(auto mapping, MappingFromProto(mapping_proto));
-    plan.mappings->push_back(std::move(mapping));
+    mappings.push_back(std::move(mapping));
   }
 
-  plan.input_devices_for_output_map.reserve(
-      proto.input_devices_for_output_size());
+  absl::flat_hash_map<int, std::vector<InputDeviceRange>>
+      input_devices_for_output_map;
+  input_devices_for_output_map.reserve(proto.input_devices_for_output_size());
   for (const auto& inputs_for_output_proto : proto.input_devices_for_output()) {
     std::vector<InputDeviceRange>& input_ranges =
-        plan.input_devices_for_output_map[inputs_for_output_proto.out_array()];
+        input_devices_for_output_map[inputs_for_output_proto.out_array()];
     for (const auto& inputs_range_proto :
          inputs_for_output_proto.input_devices()) {
       ASSIGN_OR_RETURN(auto devices,
@@ -587,7 +586,9 @@ absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
     }
   }
 
-  return plan;
+  return RemapPlan(std::move(input_specs), std::move(output_specs),
+                   std::move(mappings),
+                   std::move(input_devices_for_output_map));
 }
 
 absl::Status RemapPlan::ToProto(RemapPlanProto& proto,
@@ -601,23 +602,23 @@ absl::Status RemapPlan::ToProto(RemapPlanProto& proto,
   proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());
 
-  proto.mutable_input_specs()->Reserve(input_specs.size());
-  for (const auto& input_spec : input_specs) {
+  proto.mutable_input_specs()->Reserve(input_specs_.size());
+  for (const auto& input_spec : input_specs_) {
     RETURN_IF_ERROR(input_spec.ToProto(*proto.add_input_specs(), version));
   }
-  proto.mutable_output_specs()->Reserve(output_specs.size());
-  for (const auto& output_spec : output_specs) {
+  proto.mutable_output_specs()->Reserve(output_specs_.size());
+  for (const auto& output_spec : output_specs_) {
     RETURN_IF_ERROR(output_spec.ToProto(*proto.add_output_specs(), version));
   }
 
-  proto.mutable_mappings()->Reserve(mappings->size());
-  for (const auto& mapping : *mappings) {
+  proto.mutable_mappings()->Reserve(mappings_->size());
+  for (const auto& mapping : *mappings_) {
     RETURN_IF_ERROR(MappingToProto(mapping, *proto.add_mappings()));
   }
 
   proto.mutable_input_devices_for_output()->Reserve(
-      input_devices_for_output_map.size());
-  for (const auto& [out_array, input_devices] : input_devices_for_output_map) {
+      input_devices_for_output_map_.size());
+  for (const auto& [out_array, input_devices] : input_devices_for_output_map_) {
     InputDeviceToOutputToProto(version, out_array, input_devices,
                                *proto.add_input_devices_for_output());
   }
@@ -659,11 +660,12 @@ std::string RemapPlan::DebugString() const {
                 }),
             "]");
       };
-  return absl::StrCat("RemapPlan(input_specs=", format_array_specs(input_specs),
-                      ",output_specs=", format_array_specs(output_specs), ",",
-                      "mappings=", format_mappings(*mappings), ",output_map=",
-                      format_output_to_inputs(input_devices_for_output_map),
-                      ")");
+  return absl::StrCat(
+      "RemapPlan(input_specs=", format_array_specs(input_specs_),
+      ",output_specs=", format_array_specs(output_specs_), ",",
+      "mappings=", format_mappings(*mappings_),
+      ",output_map=", format_output_to_inputs(input_devices_for_output_map_),
+      ")");
 }
 
 absl::Status RemapPlan::CheckArrayCopySemantics(
