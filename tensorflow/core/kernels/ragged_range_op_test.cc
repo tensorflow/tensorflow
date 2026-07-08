@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gtest/gtest.h>
+#include <limits>
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -98,6 +103,21 @@ TEST_F(RaggedRangeOpTest, RangeSizeOverflow2) {
   EXPECT_EQ(absl::StrCat("Requires ((limit - start) / delta) <= ",
                          std::numeric_limits<int64_t>::max()),
             RunOpKernel().message());
+}
+
+// Regression test for https://github.com/tensorflow/tensorflow/issues/122746.
+TEST_F(RaggedRangeOpTest, ExcessiveFloatAllocation) {
+  BuildRaggedRangeGraph<double>();
+  AddInputFromArray<double>(TensorShape({}), {-0.5});
+  AddInputFromArray<double>(TensorShape({}), {2.6623919835808085e+307});
+  AddInputFromArray<double>(TensorShape({}), {1.0162754537078317e+295});
+
+  absl::Status status = RunOpKernel();
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_NE(std::string::npos,
+            std::string(status.message())
+                .find("Requires Range output size in bytes"));
 }
 
 TEST_F(RaggedRangeOpTest, BroadcastDeltas) {

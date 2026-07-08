@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/sequence_ops.h"
 
 #include <cmath>
+#include <limits>
 #include <type_traits>
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -26,11 +27,33 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
+
+namespace {
+
+// Reject Range allocations larger than this before calling the allocator.
+// AddressSanitizer aborts on requests above 1 TiB instead of returning null,
+// and multi-terabyte Range outputs from a few scalars are never intentional.
+constexpr int64_t kMaxRangeOutputBytes = 1LL << 40;  // 1 TiB
+
+template <typename T>
+absl::Status CheckRangeOutputSize(int64_t size) {
+  const int64_t num_bytes = MultiplyWithoutOverflow(size, sizeof(T));
+  if (num_bytes < 0 || num_bytes >= kMaxRangeOutputBytes) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Requires Range output size in bytes to be less than ",
+        kMaxRangeOutputBytes, ", but got size ", size, " with element size ",
+        sizeof(T)));
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
 
 namespace functor {
 
@@ -120,6 +143,7 @@ class RangeOp : public OpKernel {
                                    std::numeric_limits<int64_t>::max())));
       size = static_cast<int64_t>(size_auto);
     }
+    OP_REQUIRES_OK(context, CheckRangeOutputSize<T>(size));
 
     TensorShape shape;
     OP_REQUIRES_OK(context, shape.AddDimWithStatus(size));
