@@ -80,6 +80,13 @@ py_test(
         "//tensorflow/lite/python/testdata:interpreter_test_data",
         "//tensorflow/lite/python/testdata:test_delegate.so",
     ],
+    exec_properties = if_oss(
+        None,
+        select({
+            "@bazel_tools//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
+            "//conditions:default": None,
+        }),
+    ),
     # Static linking is required because this loads a cc_binary as a shared
     # library, which would otherwise create ODR violations.
     # copybara:uncomment linking_mode = "static",
@@ -689,6 +696,13 @@ py_test(
         "//tensorflow/lite:testdata/conv_huge_im2col.bin",
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
+    exec_properties = if_oss(
+        None,
+        select({
+            "@bazel_tools//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
+            "//conditions:default": None,
+        }),
+    ),
     strict_deps = True,
     deps = [
         ":analyzer",
