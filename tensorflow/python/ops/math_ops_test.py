@@ -1344,7 +1344,6 @@ class EqualityTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-@test_util.run_all_in_graph_and_eager_modes
 class RangeTest(test_util.TensorFlowTestCase):
 
   def testConvertToTensorRange(self):
