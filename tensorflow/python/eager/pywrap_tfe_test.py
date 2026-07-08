@@ -383,6 +383,29 @@ class Tests(test.TestCase):
                                       shape, minval, maxval,
                                       "seed", seed)
 
+  def testTapeTypeConfusion(self):
+    ctx = context.context()
+    ctx.ensure_initialized()
+    dummy_obj = "not a tape object"
+
+    with self.assertRaisesRegex(TypeError, "Expected a TFE_Py_Tape object"):
+      pywrap_tfe.TFE_Py_TapeSetAdd(dummy_obj)
+
+    with self.assertRaisesRegex(TypeError, "Expected a TFE_Py_Tape object"):
+      pywrap_tfe.TFE_Py_TapeSetRemove(dummy_obj)
+
+    with self.assertRaisesRegex(TypeError, "Expected a TFE_Py_Tape object"):
+      pywrap_tfe.TFE_Py_TapeWatch(dummy_obj, None)
+
+    with self.assertRaisesRegex(TypeError, "Expected a TFE_Py_Tape object"):
+      pywrap_tfe.TFE_Py_TapeWatchVariable(dummy_obj, None)
+
+    with self.assertRaisesRegex(TypeError, "Expected a TFE_Py_Tape object"):
+      pywrap_tfe.TFE_Py_TapeWatchedVariables(dummy_obj)
+
+    with self.assertRaisesRegex(TypeError, "Expected a TFE_Py_Tape object"):
+      pywrap_tfe.TFE_Py_TapeGradient(dummy_obj, None, None, None, None, None)
+
 
 if __name__ == "__main__":
   test.main()
