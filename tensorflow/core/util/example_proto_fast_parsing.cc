@@ -15,15 +15,23 @@ limitations under the License.
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <functional>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "absl/types/span.h"
+#include "third_party/protobuf/io/coded_stream.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/allocator.h"

@@ -18,7 +18,7 @@ limitations under the License.
 #include <atomic>
 
 #include "absl/functional/bind_front.h"
-#include "absl/time/time.h"
+#include "absl/log/check.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
